@@ -59,5 +59,5 @@ serve(async req=>{
   })
   try{EdgeRuntime.waitUntil(noAnswer)}catch{void noAnswer}
 
-  return xml(`<Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="false" statusCallback="${base}/caller-hangup?conf=${encodeURIComponent(conf)}&tenant=${ADMIN_TENANT}" statusCallbackEvent="leave end" statusCallbackMethod="POST" record="record-from-start" recordingStatusCallback="${base}/call-recorded?tenant=${ADMIN_TENANT}&callsid=${encodeURIComponent(callSid)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}">${conf}</Conference></Dial>`)
+  return xml(`<Dial><Conference startConferenceOnEnter="false" endConferenceOnExit="false" statusCallback="${base}/caller-hangup?conf=${encodeURIComponent(conf)}&tenant=${ADMIN_TENANT}" statusCallbackEvent="leave end" statusCallbackMethod="POST" record="record-from-start" recordingStatusCallback="${base}/call-recorded?tenant=${ADMIN_TENANT}&callsid=${encodeURIComponent(callSid)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}">${conf}</Conference></Dial>`)
 })
