@@ -107,7 +107,7 @@ const NAV = [
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
   { path:'/crm-admin/email',          label:'Email',          icon:'📧' },
-  { path:'/crm-admin/dialer',         label:'Dialer',         icon:'📞' },
+  { path:'/crm-admin/dialer',         label:'Communications', icon:'📞' },
   { path:'/crm-admin/calendar',       label:'Calendar',       icon:'📅' },
   { path:'/crm-admin/meet',           label:'Meet & Training', icon:'🎥' },
   { path:'/crm-admin/chat',           label:'Chat (All)',      icon:'💬' },
@@ -170,6 +170,7 @@ function AdminDialer() {
     relayStatus, calling, active, elapsed,
     startCall, endCall, cancelCall,
   } = useCall()
+  const [tab,setTab] = useState('phone')
   const [number, setNumber] = useState('')
   const [voicemails, setVoicemails] = useState([])
   const [vmLoading, setVmLoading] = useState(true)
@@ -177,6 +178,13 @@ function AdminDialer() {
   const [callsLoading, setCallsLoading] = useState(true)
   const [recordings, setRecordings] = useState([])
   const [recordingsLoading, setRecordingsLoading] = useState(true)
+  const [smsMessages,setSmsMessages] = useState([])
+  const [smsLoading,setSmsLoading] = useState(true)
+  const [smsSending,setSmsSending] = useState(false)
+  const [smsPhone,setSmsPhone] = useState('')
+  const [smsBody,setSmsBody] = useState('')
+  const [selectedSmsPhone,setSelectedSmsPhone] = useState('')
+  const [smsToast,setSmsToast] = useState('')
 
   const loadVoicemails = useCallback(async () => {
     setVmLoading(true)
@@ -199,14 +207,58 @@ function AdminDialer() {
     setRecordingsLoading(false)
   }, [])
 
+  const loadSms = useCallback(async () => {
+    setSmsLoading(true)
+    const {data,error}=await supabase.functions.invoke('romylabs-sms',{body:{action:'list',limit:300}})
+    if(!error&&data?.ok)setSmsMessages(data.messages||[])
+    setSmsLoading(false)
+  },[])
+
   useEffect(() => {
-    loadVoicemails()
-    loadRecentCalls()
-    loadRecordings()
-    const refreshOnFocus = () => { loadVoicemails(); loadRecentCalls(); loadRecordings() }
+    loadVoicemails(); loadRecentCalls(); loadRecordings(); loadSms()
+    const refreshOnFocus = () => { loadVoicemails(); loadRecentCalls(); loadRecordings(); loadSms() }
     window.addEventListener('focus', refreshOnFocus)
     return () => window.removeEventListener('focus', refreshOnFocus)
-  }, [loadVoicemails, loadRecentCalls, loadRecordings])
+  }, [loadVoicemails, loadRecentCalls, loadRecordings, loadSms])
+
+  const smsNorm=v=>String(v||'').replace(/\D/g,'').slice(-10)
+  const smsFmt=v=>{const d=smsNorm(v);return d.length===10?`(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`:String(v||'')}
+  const smsThreads=Object.values(smsMessages.reduce((acc,m)=>{
+    const key=smsNorm(m.phone)
+    if(!key)return acc
+    if(!acc[key])acc[key]={phone:m.phone,key,messages:[],unread:0,lastAt:m.created_at,lastBody:m.body||'',name:m.clientName||''}
+    acc[key].messages.push(m)
+    if(m.direction==='inbound'&&!m.read)acc[key].unread++
+    if(new Date(m.created_at||0)>new Date(acc[key].lastAt||0)){acc[key].lastAt=m.created_at;acc[key].lastBody=m.body||''}
+    if(!acc[key].name&&m.clientName)acc[key].name=m.clientName
+    return acc
+  },{})).sort((a,b)=>new Date(b.lastAt||0)-new Date(a.lastAt||0))
+  const selectedThread=smsThreads.find(t=>t.key===selectedSmsPhone)||null
+  const selectedMessages=(selectedThread?.messages||[]).slice().sort((a,b)=>new Date(a.created_at||0)-new Date(b.created_at||0))
+  const unreadSms=smsMessages.filter(m=>m.direction==='inbound'&&!m.read).length
+  const unreadVm=voicemails.filter(v=>!v.is_read).length
+
+  async function selectSmsThread(thread){
+    setSelectedSmsPhone(thread.key); setSmsPhone(thread.phone||'')
+    if(thread.unread){
+      await supabase.functions.invoke('romylabs-sms',{body:{action:'mark_thread_read',phone:thread.phone}})
+      setSmsMessages(ms=>ms.map(m=>smsNorm(m.phone)===thread.key&&m.direction==='inbound'?{...m,read:true}:m))
+    }
+  }
+
+  async function sendSms(){
+    const d=smsNorm(smsPhone)
+    if(d.length!==10||!smsBody.trim()||smsSending)return
+    setSmsSending(true);setSmsToast('')
+    const {data,error}=await supabase.functions.invoke('send-sms',{
+      body:{to:'+1'+d,body:smsBody.trim(),phoneContext:'romylabs'}
+    })
+    setSmsSending(false)
+    if(error||!data?.success){setSmsToast(data?.error||error?.message||'SMS send failed');return}
+    setSmsBody('');setSelectedSmsPhone(d);setSmsToast('Sent')
+    await loadSms()
+    setTimeout(()=>setSmsToast(''),2500)
+  }
 
   async function markVoicemailRead(id) {
     const { data, error } = await supabase.functions.invoke('romylabs-voicemails', { body:{ action:'mark_read', id } })
@@ -224,34 +276,29 @@ function AdminDialer() {
 
   function placeCall() {
     if (!canCall) return
-    startCall({
-      id: null,
-      name: number,
-      phone: number,
-      status: 'Manual',
-      entityType: null,
-    })
+    startCall({id:null,name:number,phone:number,status:'Manual',entityType:null})
   }
 
   function callBack(phone, name) {
     const digits=String(phone||'').replace(/\D/g,'')
     if (relayStatus !== 'ready' || calling || digits.length < 7) return
-    setNumber(phone)
-    startCall({
-      id:null,
-      name:name || phone || 'RomyLabs Call',
-      phone,
-      status:'Manual',
-      entityType:null,
-    })
+    setNumber(phone);setTab('phone')
+    startCall({id:null,name:name || phone || 'RomyLabs Call',phone,status:'Manual',entityType:null})
   }
 
+  const tabs=[
+    ['phone','Phone',0],
+    ['sms','SMS',unreadSms],
+    ['voicemail','Voicemail',unreadVm],
+    ['recordings','Recordings',0],
+  ]
+
   return (
-    <div style={{ padding:'32px 36px', maxWidth:980 }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, marginBottom:22 }}>
+    <div style={{ padding:'28px 32px', maxWidth:1180 }}>
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, marginBottom:18 }}>
         <div>
-          <div style={{ fontSize:26, fontWeight:900, color:'#fff', marginBottom:4 }}>RomyLabs Dialer</div>
-          <div style={{ fontSize:13, color:'#64748b' }}>Central calling from the RomyLabs Admin Portal.</div>
+          <div style={{ fontSize:27, fontWeight:900, color:'#fff', marginBottom:4 }}>RomyLabs Communications</div>
+          <div style={{ fontSize:13, color:'#64748b' }}>Calls, texts, voicemail and recordings from the RomyLabs main line.</div>
         </div>
         <div style={{ textAlign:'right' }}>
           <div style={{ fontSize:10, color:'#64748b', fontWeight:800, textTransform:'uppercase', letterSpacing:'.06em' }}>SignalWire</div>
@@ -261,171 +308,103 @@ function AdminDialer() {
         </div>
       </div>
 
-      <div style={{ ...S.card, padding:22, maxWidth:560 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', gap:12, marginBottom:16, alignItems:'end' }}>
-          <div>
-            <div style={{ fontSize:10, color:'#64748b', fontWeight:800, textTransform:'uppercase', marginBottom:5 }}>Outbound identity</div>
-            <div style={{ background:'#12111f', color:'#e2e8f0', border:'1px solid rgba(99,102,241,.3)', borderRadius:8, padding:'8px 10px', fontSize:12, fontWeight:800 }}>
-              RomyLabs Main Line
-            </div>
-          </div>
-          <div style={{ fontSize:11, color:'#475569', textAlign:'right' }}>
-            Number assignment stays configurable<br/>for the pending SignalWire DIDs.
-          </div>
-        </div>
-
-        <input
-          value={number}
-          onChange={e=>setNumber(e.target.value)}
-          onKeyDown={e=>e.key==='Enter' && placeCall()}
-          placeholder="Enter phone number"
-          inputMode="tel"
-          autoComplete="tel"
-          style={{ width:'100%', boxSizing:'border-box', background:'#0d0c1a', color:'#fff',
-            border:'1px solid rgba(99,102,241,.3)', borderRadius:10, padding:'14px 16px',
-            fontSize:20, letterSpacing:'.04em', marginBottom:12 }}
-        />
-
-        {!calling ? (
-          <button onClick={placeCall} disabled={!canCall}
-            style={{ ...S.btn('primary'), width:'100%', padding:'12px 18px', opacity:canCall?1:.5 }}>
-            📞 Call
-          </button>
-        ) : (
-          <div>
-            <div style={{ fontSize:14, color:'#e2e8f0', marginBottom:12 }}>
-              Calling <strong>{active?.name || active?.phone || number}</strong>
-              <span style={{ color:'#64748b' }}> · {Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,'0')}</span>
-            </div>
-            <div style={{ display:'flex', gap:8 }}>
-              <button onClick={()=>endCall()} style={{ ...S.btn('danger'), flex:1 }}>End Call</button>
-              <button onClick={cancelCall} style={{ ...S.btn('ghost') }}>Cancel</button>
-            </div>
-          </div>
-        )}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:18,padding:5,borderRadius:12,background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.12)',width:'fit-content'}}>
+        {tabs.map(([key,label,badge])=><button key={key} onClick={()=>setTab(key)} style={{
+          border:'none',cursor:'pointer',borderRadius:9,padding:'9px 14px',fontSize:12,fontWeight:800,
+          background:tab===key?'linear-gradient(135deg,#6366f1,#8b5cf6)':'transparent',
+          color:tab===key?'#fff':'#64748b'
+        }}>{label}{badge>0&&<span style={{marginLeft:7,background:'#ef4444',color:'#fff',fontSize:9,borderRadius:999,padding:'2px 6px'}}>{badge}</span>}</button>)}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:10, marginTop:18 }}>
-        {[
-          ['1','Sales','Rings the RomyLabs Admin Portal'],
-          ['2','Support','Rings the RomyLabs Admin Portal'],
-          ['3','Billing','Rings the RomyLabs Admin Portal'],
-          ['4','Romy','Direct-to-Romy ring path'],
-          ['5','Voicemail','Records directly to RomyLabs voicemail'],
-        ].map(([digit,label,desc]) => (
-          <div key={digit} style={{ ...S.card, padding:'14px 16px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:5 }}>
-              <span style={{ width:25,height:25,borderRadius:7,display:'grid',placeItems:'center',background:'rgba(198,255,0,.12)',color:'#C6FF00',fontWeight:900 }}>{digit}</span>
-              <span style={{ fontSize:13,fontWeight:800,color:'#e2e8f0' }}>{label}</span>
+      {tab==='phone' && <>
+        <div style={{display:'grid',gridTemplateColumns:'minmax(320px,560px) 1fr',gap:16,alignItems:'start'}}>
+          <div style={{ ...S.card, padding:22 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', gap:12, marginBottom:16, alignItems:'end' }}>
+              <div>
+                <div style={{ fontSize:10, color:'#64748b', fontWeight:800, textTransform:'uppercase', marginBottom:5 }}>Outbound identity</div>
+                <div style={{ background:'#12111f', color:'#e2e8f0', border:'1px solid rgba(99,102,241,.3)', borderRadius:8, padding:'8px 10px', fontSize:12, fontWeight:800 }}>RomyLabs Main Line · (561) 420-6999</div>
+              </div>
             </div>
-            <div style={{ fontSize:10,color:'#64748b',lineHeight:1.5 }}>{desc}</div>
+            <input value={number} onChange={e=>setNumber(e.target.value)} onKeyDown={e=>e.key==='Enter'&&placeCall()} placeholder="Enter phone number" inputMode="tel" autoComplete="tel"
+              style={{width:'100%',boxSizing:'border-box',background:'#0d0c1a',color:'#fff',border:'1px solid rgba(99,102,241,.3)',borderRadius:10,padding:'14px 16px',fontSize:20,letterSpacing:'.04em',marginBottom:12}}/>
+            {!calling ? <button onClick={placeCall} disabled={!canCall} style={{...S.btn('primary'),width:'100%',padding:'12px 18px',opacity:canCall?1:.5}}>📞 Call</button> :
+              <div><div style={{fontSize:14,color:'#e2e8f0',marginBottom:12}}>Calling <strong>{active?.name||active?.phone||number}</strong><span style={{color:'#64748b'}}> · {Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,'0')}</span></div>
+              <div style={{display:'flex',gap:8}}><button onClick={()=>endCall()} style={{...S.btn('danger'),flex:1}}>End Call</button><button onClick={cancelCall} style={S.btn('ghost')}>Cancel</button></div></div>}
           </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginTop:18 }}>
-        <div style={{ padding:'14px 16px', borderBottom:'1px solid rgba(99,102,241,.12)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div>
-            <div style={{ fontSize:14,fontWeight:900,color:'#fff' }}>Recent Calls</div>
-            <div style={{ fontSize:10,color:'#64748b',marginTop:2 }}>Inbound, missed and outbound RomyLabs activity</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(150px,1fr))',gap:10}}>
+            {[['1','Sales'],['2','Support'],['3','Billing'],['4','Romy'],['5','Voicemail']].map(([digit,label])=><div key={digit} style={{...S.card,padding:'13px 15px',display:'flex',alignItems:'center',gap:9}}>
+              <span style={{width:26,height:26,borderRadius:7,display:'grid',placeItems:'center',background:'rgba(198,255,0,.12)',color:'#C6FF00',fontWeight:900}}>{digit}</span>
+              <span style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{label}</span>
+            </div>)}
           </div>
-          <button onClick={loadRecentCalls} style={{ ...S.btn('ghost'), padding:'6px 10px', fontSize:11 }}>Refresh</button>
         </div>
-        {callsLoading ? <Spinner/> : recentCalls.length===0 ? (
-          <div style={{ padding:28,textAlign:'center',color:'#475569',fontSize:12 }}>No RomyLabs call activity yet.</div>
-        ) : recentCalls.slice(0,25).map((call,i)=>(
-          <div key={call.id} style={{ padding:'10px 16px', display:'flex',alignItems:'center',gap:12,borderBottom:i<Math.min(recentCalls.length,25)-1?'1px solid rgba(99,102,241,.08)':'none' }}>
-            <div style={{ width:30,height:30,borderRadius:9,display:'grid',placeItems:'center',background:call.direction==='Inbound'?'rgba(16,185,129,.1)':'rgba(99,102,241,.1)' }}>
-              {call.direction==='Inbound'?'↙':'↗'}
-            </div>
-            <div style={{ flex:1,minWidth:0 }}>
-              <div style={{ fontSize:12,fontWeight:800,color:'#e2e8f0' }}>{call.name || call.phone || 'RomyLabs Call'}</div>
-              <div style={{ fontSize:10,color:'#64748b',marginTop:2 }}>{call.phone || '—'} · {call.created_at?new Date(call.created_at).toLocaleString():'—'}</div>
-            </div>
-            <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-              <span style={{ fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:999,background:String(call.status).toLowerCase()==='missed'?'rgba(239,68,68,.12)':'rgba(99,102,241,.12)',color:String(call.status).toLowerCase()==='missed'?'#fca5a5':'#a5b4fc' }}>{call.status}</span>
-              {call.phone && <button disabled={relayStatus!=='ready'||calling} onClick={()=>callBack(call.phone,call.name)} style={{ ...S.btn('ghost'),padding:'4px 8px',fontSize:9,opacity:relayStatus==='ready'&&!calling?1:.45 }}>Call Back</button>}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginTop:18 }}>
-        <div style={{ padding:'14px 16px', borderBottom:'1px solid rgba(99,102,241,.12)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div>
-            <div style={{ fontSize:14,fontWeight:900,color:'#fff' }}>Recordings & AI Summaries</div>
-            <div style={{ fontSize:10,color:'#64748b',marginTop:2 }}>Private RomyLabs call recordings</div>
-          </div>
-          <button onClick={loadRecordings} style={{ ...S.btn('ghost'), padding:'6px 10px', fontSize:11 }}>Refresh</button>
+        <div style={{...S.card,marginTop:16}}>
+          <div style={{padding:'13px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontSize:14,fontWeight:900,color:'#fff'}}>Recent Calls</div><div style={{fontSize:10,color:'#64748b'}}>Inbound, missed and outbound RomyLabs activity</div></div><button onClick={loadRecentCalls} style={{...S.btn('ghost'),padding:'6px 10px',fontSize:11}}>Refresh</button></div>
+          {callsLoading?<Spinner/>:recentCalls.length===0?<div style={{padding:30,textAlign:'center',color:'#475569',fontSize:12}}>No RomyLabs call activity yet.</div>:recentCalls.slice(0,30).map((call,i)=><div key={call.id} style={{padding:'10px 16px',display:'flex',alignItems:'center',gap:12,borderBottom:i<Math.min(recentCalls.length,30)-1?'1px solid rgba(99,102,241,.08)':'none'}}>
+            <div style={{width:30,height:30,borderRadius:9,display:'grid',placeItems:'center',background:call.direction==='Inbound'?'rgba(16,185,129,.1)':'rgba(99,102,241,.1)'}}>{call.direction==='Inbound'?'↙':'↗'}</div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{call.name||call.phone||'RomyLabs Call'}</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>{call.phone||'—'} · {call.created_at?new Date(call.created_at).toLocaleString():'—'}</div></div>
+            <span style={{fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:999,background:String(call.status).toLowerCase()==='missed'?'rgba(239,68,68,.12)':'rgba(99,102,241,.12)',color:String(call.status).toLowerCase()==='missed'?'#fca5a5':'#a5b4fc'}}>{call.status}</span>
+            {call.phone&&<button disabled={relayStatus!=='ready'||calling} onClick={()=>callBack(call.phone,call.name)} style={{...S.btn('ghost'),padding:'4px 8px',fontSize:9,opacity:relayStatus==='ready'&&!calling?1:.45}}>Call Back</button>}
+          </div>)}
         </div>
-        {recordingsLoading ? <Spinner/> : recordings.length===0 ? (
-          <div style={{ padding:28,textAlign:'center',color:'#475569',fontSize:12 }}>No RomyLabs recordings yet.</div>
-        ) : recordings.slice(0,20).map((rec,i)=>(
-          <div key={rec.id} style={{ padding:'13px 16px',borderBottom:i<Math.min(recordings.length,20)-1?'1px solid rgba(99,102,241,.08)':'none' }}>
-            <div style={{ display:'flex',gap:12,alignItems:'flex-start' }}>
-              <div style={{ flex:1,minWidth:0 }}>
-                <div style={{ fontSize:12,fontWeight:800,color:'#e2e8f0' }}>{rec.from_number || 'Unknown'} → {rec.to_number || 'RomyLabs'}</div>
-                <div style={{ fontSize:10,color:'#64748b',marginTop:2 }}>
-                  {rec.created_at?new Date(rec.created_at).toLocaleString():'—'}{rec.duration_seconds?` · ${rec.duration_seconds}s`:''}
+      </>}
+
+      {tab==='sms' && <div style={{...S.card,overflow:'hidden'}}>
+        <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+          <div><div style={{fontSize:14,fontWeight:900,color:'#fff'}}>RomyLabs SMS</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>Send and receive texts on (561) 420-6999</div></div>
+          <button onClick={loadSms} style={{...S.btn('ghost'),padding:'6px 10px',fontSize:11}}>Refresh</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'310px minmax(0,1fr)',minHeight:520}}>
+          <div style={{borderRight:'1px solid rgba(99,102,241,.12)',background:'rgba(255,255,255,.015)'}}>
+            <div style={{padding:10,borderBottom:'1px solid rgba(99,102,241,.08)'}}>
+              <button onClick={()=>{setSelectedSmsPhone('');setSmsPhone('');setSmsBody('')}} style={{...S.btn('primary'),width:'100%',fontSize:11}}>+ New Message</button>
+            </div>
+            {smsLoading?<Spinner/>:smsThreads.length===0?<div style={{padding:24,textAlign:'center',color:'#475569',fontSize:11}}>No RomyLabs text conversations yet.</div>:smsThreads.map(t=><button key={t.key} onClick={()=>selectSmsThread(t)} style={{width:'100%',border:'none',borderBottom:'1px solid rgba(99,102,241,.07)',background:selectedSmsPhone===t.key?'rgba(99,102,241,.10)':'transparent',padding:'12px 13px',textAlign:'left',cursor:'pointer'}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{t.name||smsFmt(t.phone)}</div><div style={{fontSize:9,color:'#475569',marginTop:2}}>{smsFmt(t.phone)} · {t.lastAt?new Date(t.lastAt).toLocaleDateString():'—'}</div></div>{t.unread>0&&<span style={{background:'#ef4444',color:'#fff',fontSize:9,fontWeight:800,borderRadius:999,padding:'2px 6px'}}>{t.unread}</span>}</div>
+              <div style={{fontSize:10,color:'#64748b',marginTop:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.lastBody||'Attachment'}</div>
+            </button>)}
+          </div>
+          <div style={{display:'flex',flexDirection:'column',minWidth:0}}>
+            <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(99,102,241,.08)',display:'flex',alignItems:'center',gap:8}}>
+              <input value={smsPhone} onChange={e=>{setSmsPhone(e.target.value);setSelectedSmsPhone(smsNorm(e.target.value))}} placeholder="Recipient phone number" inputMode="tel" style={{flex:1,minWidth:0,background:'#0d0c1a',color:'#e2e8f0',border:'1px solid rgba(99,102,241,.24)',borderRadius:8,padding:'9px 11px',fontSize:12}}/>
+              {smsNorm(smsPhone).length===10&&<button disabled={relayStatus!=='ready'||calling} onClick={()=>callBack(smsPhone,selectedThread?.name||smsPhone)} style={{...S.btn('ghost'),fontSize:10,padding:'7px 10px'}}>📞 Call</button>}
+            </div>
+            <div style={{flex:1,padding:14,overflowY:'auto',maxHeight:390}}>
+              {selectedMessages.length===0?<div style={{height:'100%',display:'grid',placeItems:'center',color:'#475569',fontSize:12}}>Start a new RomyLabs text conversation.</div>:selectedMessages.map(m=><div key={m.id} style={{display:'flex',justifyContent:m.direction==='outbound'?'flex-end':'flex-start',marginBottom:9}}>
+                <div style={{maxWidth:'78%',padding:'9px 11px',borderRadius:m.direction==='outbound'?'12px 12px 3px 12px':'12px 12px 12px 3px',background:m.direction==='outbound'?'rgba(99,102,241,.25)':'rgba(255,255,255,.06)',border:'1px solid rgba(99,102,241,.10)'}}>
+                  <div style={{fontSize:12,color:'#e2e8f0',whiteSpace:'pre-wrap',lineHeight:1.5}}>{m.body||'(attachment)'}</div>
+                  {Array.isArray(m.media)&&m.media.length>0&&<div style={{marginTop:6,fontSize:10,color:'#818cf8'}}>{m.media.length} attachment{m.media.length===1?'':'s'}</div>}
+                  <div style={{fontSize:8,color:'#475569',marginTop:5,textAlign:'right'}}>{m.created_at?new Date(m.created_at).toLocaleString():'—'}{m.status?` · ${m.status}`:''}</div>
                 </div>
-              </div>
-              {rec.ai?.sentiment && <span style={{ fontSize:9,fontWeight:800,padding:'3px 7px',borderRadius:999,background:'rgba(99,102,241,.12)',color:'#a5b4fc' }}>{rec.ai.sentiment}</span>}
+              </div>)}
             </div>
-            {rec.recording_url && <audio controls src={rec.recording_url} style={{ width:'100%',height:30,marginTop:9 }} />}
-            {rec.ai?.summary && <div style={{ marginTop:8,fontSize:11,color:'#94a3b8',lineHeight:1.55 }}><strong style={{color:'#cbd5e1'}}>Summary:</strong> {rec.ai.summary}</div>}
-            {rec.ai?.next_steps && <div style={{ marginTop:5,fontSize:11,color:'#64748b',lineHeight:1.5 }}><strong style={{color:'#94a3b8'}}>Next:</strong> {rec.ai.next_steps}</div>}
-            {rec.ai?.transcript && <details style={{ marginTop:8 }}>
-              <summary style={{ cursor:'pointer',fontSize:10,fontWeight:800,color:'#6366f1' }}>View transcript</summary>
-              <div style={{ marginTop:6,padding:'8px 10px',borderRadius:7,background:'rgba(255,255,255,.025)',fontSize:10,color:'#64748b',lineHeight:1.55,whiteSpace:'pre-wrap' }}>{rec.ai.transcript}</div>
-            </details>}
+            <div style={{padding:12,borderTop:'1px solid rgba(99,102,241,.08)'}}>
+              <textarea value={smsBody} onChange={e=>setSmsBody(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendSms()}}} placeholder="Write a RomyLabs text…  Enter to send, Shift+Enter for a new line" rows={3} style={{width:'100%',boxSizing:'border-box',background:'#0d0c1a',color:'#e2e8f0',border:'1px solid rgba(99,102,241,.24)',borderRadius:9,padding:'10px 12px',fontSize:12,resize:'vertical'}}/>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginTop:8}}><div style={{fontSize:10,color:smsToast==='Sent'?'#10b981':'#ef4444',flex:1}}>{smsToast}</div><span style={{fontSize:9,color:'#475569'}}>{smsBody.length}/1600</span><button onClick={sendSms} disabled={smsSending||smsNorm(smsPhone).length!==10||!smsBody.trim()||smsBody.length>1600} style={{...S.btn('primary'),padding:'8px 14px',fontSize:11,opacity:smsSending||smsNorm(smsPhone).length!==10||!smsBody.trim()?0.5:1}}>{smsSending?'Sending…':'Send SMS'}</button></div>
+            </div>
           </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginTop:18 }}>
-        <div style={{ padding:'14px 16px', borderBottom:'1px solid rgba(99,102,241,.12)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div>
-            <div style={{ fontSize:14,fontWeight:900,color:'#fff' }}>Voicemail</div>
-            <div style={{ fontSize:10,color:'#64748b',marginTop:2 }}>RomyLabs messages only</div>
-          </div>
-          <button onClick={loadVoicemails} style={{ ...S.btn('ghost'), padding:'6px 10px', fontSize:11 }}>Refresh</button>
         </div>
-        {vmLoading ? <Spinner/> : voicemails.length===0 ? (
-          <div style={{ padding:28,textAlign:'center',color:'#475569',fontSize:12 }}>No RomyLabs voicemails yet.</div>
-        ) : voicemails.map((vm,i)=>(
-          <div key={vm.id} style={{ padding:'12px 16px', borderBottom:i<voicemails.length-1?'1px solid rgba(99,102,241,.08)':'none', background:vm.is_read?'transparent':'rgba(99,102,241,.06)' }}>
-            <div style={{ display:'flex',alignItems:'center',gap:12 }}>
-              <div style={{ width:32,height:32,borderRadius:10,display:'grid',placeItems:'center',background:'rgba(99,102,241,.12)',fontSize:15 }}>📵</div>
-              <div style={{ flex:1,minWidth:0 }}>
-                <div style={{ fontSize:13,fontWeight:800,color:'#e2e8f0' }}>{vm.from_number || 'Unknown caller'}</div>
-                <div style={{ fontSize:10,color:'#64748b',marginTop:2 }}>
-                  {vm.created_at ? new Date(vm.created_at).toLocaleString() : '—'}{vm.duration_seconds ? ` · ${vm.duration_seconds}s` : ''}
-                </div>
-              </div>
-              <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end' }}>
-                {vm.from_number && <button disabled={relayStatus!=='ready'||calling} onClick={()=>callBack(vm.from_number,'Voicemail Callback')} style={{ ...S.btn('ghost'),padding:'5px 9px',fontSize:10,opacity:relayStatus==='ready'&&!calling?1:.45 }}>Call Back</button>}
-                {!vm.is_read && <button onClick={()=>markVoicemailRead(vm.id)} style={{ ...S.btn('ghost'),padding:'5px 9px',fontSize:10 }}>Mark read</button>}
-                <button onClick={()=>deleteVoicemail(vm.id)} style={{ ...S.btn('danger'),padding:'5px 9px',fontSize:10 }}>Delete</button>
-              </div>
-            </div>
-            {vm.recording_url && <audio controls src={vm.recording_url} onPlay={()=>!vm.is_read&&markVoicemailRead(vm.id)} style={{ width:'100%',height:30,marginTop:10 }} />}
-            <div style={{ marginTop:9, padding:'9px 11px', borderRadius:8, background:'rgba(255,255,255,.025)', border:'1px solid rgba(99,102,241,.08)' }}>
-              <div style={{ fontSize:9,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:4 }}>
-                Transcript · {vm.transcription_status || 'pending'}
-              </div>
-              <div style={{ fontSize:11,color:vm.transcript?'#94a3b8':'#475569',lineHeight:1.55,whiteSpace:'pre-wrap' }}>
-                {vm.transcript || (vm.transcription_status==='failed' ? 'Transcription failed — audio is still available.' :
-                  vm.transcription_status==='unavailable' ? 'Transcription is not configured for this recording.' :
-                  vm.transcription_status==='empty' ? 'No speech was detected.' : 'Transcription is processing…')}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      </div>}
 
-      <div style={{ marginTop:18, fontSize:11, color:'#475569', lineHeight:1.6 }}>
-        Business hours are Monday–Friday, 9:00 AM–6:00 PM Eastern. After-hours calls go directly to RomyLabs voicemail. Manual Admin Portal calls do not create TaxRes leads.
-      </div>
+      {tab==='voicemail' && <div style={{...S.card}}>
+        <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',alignItems:'center',justifyContent:'space-between'}}><div><div style={{fontSize:14,fontWeight:900,color:'#fff'}}>Voicemail</div><div style={{fontSize:10,color:'#64748b'}}>RomyLabs messages only</div></div><button onClick={loadVoicemails} style={{...S.btn('ghost'),padding:'6px 10px',fontSize:11}}>Refresh</button></div>
+        {vmLoading?<Spinner/>:voicemails.length===0?<div style={{padding:30,textAlign:'center',color:'#475569',fontSize:12}}>No RomyLabs voicemails yet.</div>:voicemails.map((vm,i)=><div key={vm.id} style={{padding:'13px 16px',borderBottom:i<voicemails.length-1?'1px solid rgba(99,102,241,.08)':'none',background:vm.is_read?'transparent':'rgba(99,102,241,.06)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}><div style={{width:32,height:32,borderRadius:10,display:'grid',placeItems:'center',background:'rgba(99,102,241,.12)'}}>📵</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:800,color:'#e2e8f0'}}>{vm.from_number||'Unknown caller'}</div><div style={{fontSize:10,color:'#64748b'}}>{vm.created_at?new Date(vm.created_at).toLocaleString():'—'}{vm.duration_seconds?` · ${vm.duration_seconds}s`:''}</div></div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{vm.from_number&&<button onClick={()=>callBack(vm.from_number,'Voicemail Callback')} style={{...S.btn('ghost'),fontSize:10,padding:'5px 9px'}}>Call Back</button>}{!vm.is_read&&<button onClick={()=>markVoicemailRead(vm.id)} style={{...S.btn('ghost'),fontSize:10,padding:'5px 9px'}}>Mark read</button>}<button onClick={()=>deleteVoicemail(vm.id)} style={{...S.btn('danger'),fontSize:10,padding:'5px 9px'}}>Delete</button></div></div>
+          {vm.recording_url&&<audio controls src={vm.recording_url} onPlay={()=>!vm.is_read&&markVoicemailRead(vm.id)} style={{width:'100%',height:30,marginTop:10}}/>}
+          <div style={{marginTop:8,padding:'9px 11px',borderRadius:8,background:'rgba(255,255,255,.025)',fontSize:11,color:vm.transcript?'#94a3b8':'#475569',whiteSpace:'pre-wrap'}}>{vm.transcript||(`Transcription: ${vm.transcription_status||'pending'}`)}</div>
+        </div>)}
+      </div>}
+
+      {tab==='recordings' && <div style={{...S.card}}>
+        <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',alignItems:'center',justifyContent:'space-between'}}><div><div style={{fontSize:14,fontWeight:900,color:'#fff'}}>Recordings & AI Summaries</div><div style={{fontSize:10,color:'#64748b'}}>Private RomyLabs call recordings</div></div><button onClick={loadRecordings} style={{...S.btn('ghost'),padding:'6px 10px',fontSize:11}}>Refresh</button></div>
+        {recordingsLoading?<Spinner/>:recordings.length===0?<div style={{padding:30,textAlign:'center',color:'#475569',fontSize:12}}>No RomyLabs recordings yet.</div>:recordings.slice(0,30).map((rec,i)=><div key={rec.id} style={{padding:'13px 16px',borderBottom:i<Math.min(recordings.length,30)-1?'1px solid rgba(99,102,241,.08)':'none'}}>
+          <div style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{flex:1}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{rec.from_number||'Unknown'} → {rec.to_number||'RomyLabs'}</div><div style={{fontSize:10,color:'#64748b'}}>{rec.created_at?new Date(rec.created_at).toLocaleString():'—'}{rec.duration_seconds?` · ${rec.duration_seconds}s`:''}</div></div>{rec.ai?.sentiment&&<span style={{fontSize:9,fontWeight:800,padding:'3px 7px',borderRadius:999,background:'rgba(99,102,241,.12)',color:'#a5b4fc'}}>{rec.ai.sentiment}</span>}</div>
+          {rec.recording_url&&<audio controls src={rec.recording_url} style={{width:'100%',height:30,marginTop:9}}/>}{rec.ai?.summary&&<div style={{marginTop:8,fontSize:11,color:'#94a3b8',lineHeight:1.55}}><strong style={{color:'#cbd5e1'}}>Summary:</strong> {rec.ai.summary}</div>}{rec.ai?.next_steps&&<div style={{marginTop:5,fontSize:11,color:'#64748b'}}><strong style={{color:'#94a3b8'}}>Next:</strong> {rec.ai.next_steps}</div>}{rec.ai?.transcript&&<details style={{marginTop:8}}><summary style={{cursor:'pointer',fontSize:10,fontWeight:800,color:'#6366f1'}}>View transcript</summary><div style={{marginTop:6,padding:'8px 10px',borderRadius:7,background:'rgba(255,255,255,.025)',fontSize:10,color:'#64748b',lineHeight:1.55,whiteSpace:'pre-wrap'}}>{rec.ai.transcript}</div></details>}
+        </div>)}
+      </div>}
+
+      <div style={{marginTop:16,fontSize:10,color:'#475569',lineHeight:1.6}}>RomyLabs main line: (561) 420-6999 · Business hours Monday–Friday, 9:00 AM–6:00 PM Eastern.</div>
     </div>
   )
 }
