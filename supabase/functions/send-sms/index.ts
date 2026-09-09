@@ -11,17 +11,26 @@ serve(async(req)=>{
  try{
   const url=Deno.env.get('SUPABASE_URL')!,service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,anon=Deno.env.get('SUPABASE_ANON_KEY')!
   if(!url||!service||!anon)return json({error:'Server configuration missing'},500)
-  const admin=createClient(url,service),payload=await req.json();let {to,body,lead_id,client_id,employee_portal_token}=payload
+  const admin=createClient(url,service),payload=await req.json();let {to,body,lead_id,client_id,employee_portal_token,phoneContext}=payload
+  const ROMYLABS_TENANT='a0000000-0000-0000-0000-000000000001'
+  const SIGNALWIRE_SOURCE_TENANT='61a89aef-0e7e-4ea2-b222-44ab2024655a'
   let tenantId:string|null=null,sentBy='CRM',employeeName:string|null=null,esignIdToMark:string|null=null
+  let isPlatformAdmin=false,romylabsContext=false
   let authenticatedUser:any=null,authClient:any=null
   const auth=req.headers.get('authorization')||''
   if(auth.startsWith('Bearer ')){
     const jwt=auth.slice(7);authClient=createClient(url,anon,{global:{headers:{Authorization:`Bearer ${jwt}`}}});const{data:u}=await authClient.auth.getUser(jwt)
-    if(u?.user){authenticatedUser=u.user;const{data:t}=await authClient.rpc('current_tenant_id');tenantId=t||null;sentBy=u.user.email||'CRM'}
+    if(u?.user){
+      authenticatedUser=u.user
+      const{data:isAdmin}=await authClient.rpc('_is_platform_admin');isPlatformAdmin=isAdmin===true
+      romylabsContext=phoneContext==='romylabs'&&isPlatformAdmin
+      if(romylabsContext)tenantId=ROMYLABS_TENANT
+      else {const{data:t}=await authClient.rpc('current_tenant_id');tenantId=t||null}
+      sentBy=u.user.email||'CRM'
+    }
   }
   if(authenticatedUser){
     if(!tenantId)return json({error:'No active office context'},403)
-    const{data:isPlatformAdmin}=await authClient.rpc('_is_platform_admin')
     const{data:emp}=await admin.from('employees').select('id,status,perm_comms,tenant_id').eq('tenant_id',tenantId).ilike('email',authenticatedUser.email||'').limit(1).maybeSingle()
     const active=emp&&String(emp.status||'Active').toLowerCase()==='active'
     if(!isPlatformAdmin&&(!active||Number(emp?.perm_comms||0)<2))return json({error:'SMS permission denied'},403)
@@ -42,15 +51,24 @@ serve(async(req)=>{
   const toDigits=digits(to),toNumber=toDigits.length===10?`+1${toDigits}`:(toDigits.length===11&&toDigits.startsWith('1')?`+${toDigits}`:'')
   if(!toNumber||!String(body||'').trim())return json({error:'valid to and body are required'},400)
   if(String(body).length>1600)return json({error:'Message is too long'},400)
-  const{data:settings}=await admin.from('settings').select('name,firmname,sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did').eq('tenant_id',tenantId).maybeSingle()
+  let{data:settings}=await admin.from('settings').select('name,firmname,sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did').eq('tenant_id',tenantId).maybeSingle()
+  let fromNumber=settings?.sw_outbound_did||settings?.sw_inbound_did||''
+  if(romylabsContext){
+    const[{data:source},{data:adminPhone}]=await Promise.all([
+      admin.from('settings').select('sw_space_url,sw_project_id,sw_api_token').eq('tenant_id',SIGNALWIRE_SOURCE_TENANT).limit(1).maybeSingle(),
+      admin.from('settings').select('sw_inbound_did').eq('tenant_id',ROMYLABS_TENANT).limit(1).maybeSingle()
+    ])
+    settings={...settings,...source}
+    fromNumber=String(adminPhone?.sw_inbound_did||'')
+  }
   if(esignIdToMark)body=`${settings?.name||settings?.firmname||'TaxRes CRM'}: ${body}`
   if(!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token)return json({error:'SignalWire not configured'},422)
-  const fromNumber=settings.sw_outbound_did||settings.sw_inbound_did;if(!fromNumber)return json({error:'SMS sending number not configured'},422)
+  if(!fromNumber)return json({error:'SMS sending number not configured'},422)
 
   // Explicit certification path: all production auth/tenant/permission/provider
   // checks above must pass, but no provider request or delivery log occurs.
   if(authenticatedUser&&payload.qa_certification===true&&payload.dry_run===true){
-    return json({success:true,dry_run:true,delivery:false,provider:'signalwire',tenant_id:tenantId})
+    return json({success:true,dry_run:true,delivery:false,provider:'signalwire',tenant_id:tenantId,phone_context:romylabsContext?'romylabs':'taxres',from_number:fromNumber})
   }
 
   const authHeader=btoa(`${settings.sw_project_id}:${settings.sw_api_token}`),form=new URLSearchParams({From:fromNumber,To:toNumber,Body:String(body).trim()})
