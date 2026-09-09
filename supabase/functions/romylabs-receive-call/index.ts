@@ -11,7 +11,9 @@ serve(async req=>{
   if(req.method!=='POST')return xml('',405)
   const raw=await req.text(),form=new URLSearchParams(raw),params:Record<string,string>={};for(const[k,v]of form)params[k]=v
   const secret=Deno.env.get('SW_SIGNING_SECRET')||'',sig=req.headers.get('x-signalwire-signature')||''
-  if(secret&&!await verify(secret,req.url,params,sig))return xml('<Hangup/>',403)
+  const internal=req.headers.get('x-romylabs-internal')||''
+  const trustedInternal=!!internal&&internal===String(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'')
+  if(!trustedInternal&&secret&&!await verify(secret,req.url,params,sig))return xml('<Hangup/>',403)
   const callSid=form.get('CallSid')||'',from=form.get('From')||'',to=form.get('To')||''
   const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   const {data:adminSettings}=await db.from('settings').select('sw_inbound_did').eq('tenant_id',ADMIN_TENANT).limit(1).maybeSingle()
@@ -26,9 +28,9 @@ serve(async req=>{
     // has claimed it. Never bridge to an unclaimed ringing call: otherwise an
     // unrelated inbound ring could hijack an outbound browser bridge.
     const {data:inc}=await db.from('incoming_calls').select('conference_name,callsid').eq('tenant_id',ADMIN_TENANT).eq('status','answered').gte('created_at',cutoff).not('conference_name','is',null).order('claimed_at',{ascending:false,nullsFirst:false}).limit(1).maybeSingle()
-    if(inc?.conference_name){return xml(`<Dial><Conference endConferenceOnExit="false">${inc.conference_name}</Conference></Dial>`)}
+    if(inc?.conference_name){return xml(`<Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="false">${inc.conference_name}</Conference></Dial>`)}
     const {data:out}=await db.from('outbound_calls').select('id,conference_name').eq('tenant_id',ADMIN_TENANT).in('status',['pending','ringing','answered','connected']).not('conference_name','is',null).order('created_at',{ascending:false}).limit(1).maybeSingle()
-    if(out?.conference_name){await db.from('outbound_calls').update({status:'connected'}).eq('id',out.id).eq('tenant_id',ADMIN_TENANT);return xml(`<Dial><Conference endConferenceOnExit="false">${out.conference_name}</Conference></Dial>`)}
+    if(out?.conference_name){await db.from('outbound_calls').update({status:'connected'}).eq('id',out.id).eq('tenant_id',ADMIN_TENANT);return xml(`<Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="false">${out.conference_name}</Conference></Dial>`)}
     return xml('<Hangup/>')
   }
 
