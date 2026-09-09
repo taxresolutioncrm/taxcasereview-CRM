@@ -17,7 +17,7 @@ Production base remains untouched.
   - 1 Sales
   - 2 Support
   - 3 Billing
-  - 4 Romy
+  - 4 Representative
   - 5 Voicemail
 - PASS — Business hours Monday–Friday, 9:00 AM–6:00 PM Eastern.
 - PASS — After-hours calls route directly to RomyLabs voicemail.
