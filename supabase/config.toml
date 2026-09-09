@@ -44,6 +44,8 @@ verify_jwt = false
 verify_jwt = true
 [functions.romylabs-phone-state]
 verify_jwt = true
+[functions.romylabs-sms]
+verify_jwt = true
 [functions.redirect-to-voicemail]
 verify_jwt = false
 
