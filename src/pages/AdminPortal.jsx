@@ -107,7 +107,7 @@ const NAV = [
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
   { path:'/crm-admin/email',          label:'Email',          icon:'📧' },
-  { path:'/crm-admin/dialer',         label:'Dialer',         icon:'📞' },
+  { path:'/crm-admin/dialer',         label:'Communications', icon:'📞' },
   { path:'/crm-admin/calendar',       label:'Calendar',       icon:'📅' },
   { path:'/crm-admin/meet',           label:'Meet & Training', icon:'🎥' },
   { path:'/crm-admin/chat',           label:'Chat (All)',      icon:'💬' },
