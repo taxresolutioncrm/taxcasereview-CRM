@@ -46,6 +46,27 @@ serve(async (req) => {
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
+    // Some SignalWire numbers may still have a legacy resource named
+    // "Receive Fax - Tax Case Review" assigned for inbound messaging.
+    // If the callback is clearly SMS/MMS, hand it to the dedicated SMS
+    // parser instead of ever treating it as fax traffic.
+    const isSmsCallback = !!(params.get('MessageSid') || params.get('SmsSid')) ||
+      (!!params.get('Body') && !params.get('FaxSid'))
+    if (isSmsCallback) {
+      const handoff = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/receive-sms`, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/x-www-form-urlencoded',
+          'x-romylabs-internal':Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
+        },
+        body:text
+      })
+      return new Response(await handoff.text(), {
+        status:handoff.status,
+        headers:{'Content-Type':'text/xml; charset=utf-8'}
+      })
+    }
+
     // Outbound delivery-status callback. The tenant is bound into the callback
     // URL by send-fax; update only the matching provider SID in that tenant.
     if (url.searchParams.get('outbound') === '1') {
