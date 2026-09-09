@@ -634,6 +634,10 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   async function answerIncoming() {
     const row = pendingInboundRef.current
     if (!row) return
+    if (phoneContext === 'romylabs' && !/^\\+\\d{10,15}$/.test(String(callerNumberRef.current || ''))) {
+      showCallToast('RomyLabs phone identity is not ready yet — the caller is still ringing.')
+      return
+    }
     if (inboundTimeoutRef.current) { clearTimeout(inboundTimeoutRef.current); inboundTimeoutRef.current = null }
     stopRing()
 
@@ -712,13 +716,41 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     // itself, and receive-call recognizes that self-dial and connects it
     // straight into this caller's hold conference instead of treating it
     // as a new customer call.
-    relayRef.current?.newCall({
-      destinationNumber: callerNumberRef.current,
-      callerNumber: callerNumberRef.current,
-    }).then(call => { liveCallRef.current = call; setMuted(false); setOnHold(false) })
-      .catch(err => { showCallToast('Could not connect: ' + (err?.message || err)); cancelCall() })
-
-    pendingInboundRef.current = null
+    try {
+      if (!relayRef.current) throw new Error('Calling connection is not ready')
+      const call = await relayRef.current.newCall({
+        destinationNumber: callerNumberRef.current,
+        callerNumber: callerNumberRef.current,
+      })
+      if (!call) throw new Error('SignalWire did not create the browser bridge')
+      liveCallRef.current = call
+      setMuted(false)
+      setOnHold(false)
+      pendingInboundRef.current = null
+    } catch (err) {
+      console.error('[answerIncoming] browser bridge failed:', err)
+      if (phoneContext === 'romylabs') {
+        await supabase.functions.invoke('romylabs-phone-state', {
+          body:{ action:'release_claim', callsid:row.callsid }
+        }).catch(() => {})
+        await supabase.functions.invoke('redirect-to-voicemail', {
+          body:{ callsid:row.callsid, phoneContext }
+        }).catch(() => {})
+      }
+      clearPersistedCallSession()
+      if (inboundStatusPollRef.current) { clearInterval(inboundStatusPollRef.current); inboundStatusPollRef.current = null }
+      activeConferenceRef.current = null
+      activeInboundCallsidRef.current = null
+      transferableCallsidRef.current = null
+      setCanTransfer(false)
+      uiStartedRef.current = false
+      clearInterval(timerRef.current)
+      setCalling(false)
+      setActive(null)
+      setElapsed(0)
+      pendingInboundRef.current = null
+      showCallToast('Could not connect the browser call. Caller sent to voicemail.')
+    }
   }
 
   function declineIncoming() {
