@@ -634,7 +634,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   async function answerIncoming() {
     const row = pendingInboundRef.current
     if (!row) return
-    if (phoneContext === 'romylabs' && !/^\\+\\d{10,15}$/.test(String(callerNumberRef.current || ''))) {
+    if (phoneContext === 'romylabs' && !/^+\d{10,15}$/.test(String(callerNumberRef.current || ''))) {
       showCallToast('RomyLabs phone identity is not ready yet — the caller is still ringing.')
       return
     }
