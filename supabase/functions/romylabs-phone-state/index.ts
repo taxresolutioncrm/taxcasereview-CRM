@@ -99,6 +99,16 @@ serve(async req=>{
       return error?json({error:error.message},500):json({ok:true,claimed:data||[]})
     }
 
+    if(action==='release_claim'){
+      const callsid=String(body?.callsid||'')
+      if(!callsid)return json({error:'callsid required'},400)
+      const {data,error}=await db.from('incoming_calls')
+        .update({status:'ringing',claimed_by:null,claimed_at:null})
+        .eq('tenant_id',TENANT).eq('callsid',callsid).eq('status','answered')
+        .select('callsid,conference_name,status')
+      return error?json({error:error.message},500):json({ok:true,released:data||[]})
+    }
+
     if(action==='incoming_status'){
       const callsid=String(body?.callsid||'')
       if(!callsid)return json({error:'callsid required'},400)
