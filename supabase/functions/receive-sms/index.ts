@@ -25,7 +25,9 @@ serve(async req=>{
     const form=new URLSearchParams(raw)
     const swSecret=Deno.env.get('SW_SIGNING_SECRET')??''
     const sig=req.headers.get('x-signalwire-signature')??''
-    if(swSecret){
+    const internal=req.headers.get('x-romylabs-internal')||''
+    const trustedInternal=!!internal&&internal===String(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'')
+    if(!trustedInternal&&swSecret){
       const params:Record<string,string>={}
       for(const[k,v]of form)params[k]=v
       if(!await verifySW(swSecret,req.url,params,sig))return respond(403)
