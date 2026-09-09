@@ -30,6 +30,7 @@ serve(async req=>{
       const {data,error}=await db.from('sms_messages')
         .select('id,clientName,phone,body,status,direction,signalwire_sms_id,sent_by,read,media,error_msg,created_at')
         .eq('tenant_id',TENANT)
+        .not('signalwire_sms_id','like','demo-seed-sms-%')
         .order('created_at',{ascending:false})
         .limit(limit)
       return error?json({error:error.message},500):json({ok:true,messages:data||[]})
