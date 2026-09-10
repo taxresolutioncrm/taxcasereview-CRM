@@ -332,7 +332,7 @@ function AdminDialer() {
               <div style={{display:'flex',gap:8}}><button onClick={()=>endCall()} style={{...S.btn('danger'),flex:1}}>End Call</button><button onClick={cancelCall} style={S.btn('ghost')}>Cancel</button></div></div>}
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(150px,1fr))',gap:10}}>
-            {[['1','Sales'],['2','Support'],['3','Billing'],['4','Romy'],['5','Voicemail']].map(([digit,label])=><div key={digit} style={{...S.card,padding:'13px 15px',display:'flex',alignItems:'center',gap:9}}>
+            {[['1','Sales'],['2','Support'],['3','Billing'],['4','Representative'],['5','Voicemail']].map(([digit,label])=><div key={digit} style={{...S.card,padding:'13px 15px',display:'flex',alignItems:'center',gap:9}}>
               <span style={{width:26,height:26,borderRadius:7,display:'grid',placeItems:'center',background:'rgba(198,255,0,.12)',color:'#C6FF00',fontWeight:900}}>{digit}</span>
               <span style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{label}</span>
             </div>)}

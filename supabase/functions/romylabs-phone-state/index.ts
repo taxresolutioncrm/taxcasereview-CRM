@@ -26,6 +26,11 @@ serve(async req=>{
     const db=createClient(URL,SERVICE)
 
     if(action==='ringing'){
+      // Provider/cXML failures can leave a row marked ringing even though the
+      // physical call is already gone. Never surface those as phantom calls.
+      const staleCutoff=new Date(Date.now()-2*60*1000).toISOString()
+      await db.from('incoming_calls').update({status:'missed'})
+        .eq('tenant_id',TENANT).eq('status','ringing').lt('created_at',staleCutoff)
       const {data,error}=await db.from('incoming_calls')
         .select('callsid,conference_name,from_number,department,created_at,status')
         .eq('tenant_id',TENANT).eq('status','ringing')

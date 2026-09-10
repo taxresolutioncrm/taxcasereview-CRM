@@ -47,9 +47,9 @@ serve(async req=>{
   if(!businessHours(new Date())){
     await db.from('incoming_calls').update({status:'missed',department:'After Hours'})
       .eq('tenant_id',ADMIN_TENANT).eq('callsid',callSid).eq('status','menu')
-    return xml(`<Say voice="Polly.Ruth-Neural" language="en-US"><speak>Thank you for calling RomyLabs. Our office is currently closed. Our normal business hours are Monday through Friday, nine A M to six P M Eastern. Please leave your name, number, and a brief message after the tone and we will return your call the next business day.</speak></Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="180" playBeep="true"/>`)
+    return xml(`<Say voice="Polly.Joanna-Neural" language="en-US">Thanks for calling RomyLabs. Our office is closed right now. We are normally available Monday through Friday from 9 A M to 6 P M Eastern. Please leave your name, number, and a brief message after the tone, and we will get back to you the next business day.</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="180" playBeep="true"/>`)
   }
 
-  const prompt=`<speak>Thank you for calling RomyLabs. <break time="350ms"/> For sales, press 1. <break time="250ms"/> For customer support, press 2. <break time="250ms"/> For billing, press 3. <break time="250ms"/> To reach Romy directly, press 4. <break time="250ms"/> To leave a general voicemail, press 5.</speak>`
-  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="Polly.Ruth-Neural" language="en-US">${prompt}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
+  const prompt='Thanks for calling RomyLabs. For sales, press 1. For support, press 2. For billing, press 3. To speak with a representative, press 4. To leave a voicemail, press 5.'
+  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="Polly.Joanna-Neural" language="en-US">${prompt}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
 })

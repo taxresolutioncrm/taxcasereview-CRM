@@ -62,8 +62,8 @@ const ended={status:'answered'};assert.equal(complete(ended),true);assert.equal(
 
 assert.deepEqual(pickRomyBridge({from:ROMY,to:ROMY,answeredInbound:null,outbound:{conference_name:'outbound-123'}}),{kind:'outbound',conference:'outbound-123',startConferenceOnEnter:true})
 
-const ivr={'1':'RomyLabs Sales','2':'RomyLabs Support','3':'RomyLabs Billing','4':'Romy','5':'Voicemail'}
-assert.deepEqual(Object.keys(ivr),['1','2','3','4','5']);assert.equal(ivr['4'],'Romy');assert.equal(ivr['5'],'Voicemail')
+const ivr={'1':'RomyLabs Sales','2':'RomyLabs Support','3':'RomyLabs Billing','4':'Representative','5':'Voicemail'}
+assert.deepEqual(Object.keys(ivr),['1','2','3','4','5']);assert.equal(ivr['4'],'Representative');assert.equal(ivr['5'],'Voicemail')
 
 const visibleSms=rows=>rows.filter(r=>!String(r.signalwire_sms_id||'').startsWith('demo-seed-sms-'))
 assert.deepEqual(visibleSms([{signalwire_sms_id:'demo-seed-sms-001',body:'fake'},{signalwire_sms_id:'real-provider-sid-1',body:'real'}]).map(r=>r.body),['real'])

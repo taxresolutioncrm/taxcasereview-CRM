@@ -19,7 +19,7 @@ Current TaxRes toll-free DID: +1 888-334-5052
    - 1 Sales rings Admin Portal
    - 2 Support rings Admin Portal
    - 3 Billing rings Admin Portal
-   - 4 Romy rings Admin Portal
+   - 4 Representative rings Admin Portal
    - 5 records RomyLabs voicemail
    - no selection routes to voicemail
    - after-hours routes directly to voicemail
