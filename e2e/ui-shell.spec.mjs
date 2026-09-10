@@ -47,7 +47,7 @@ async function mockSupabase(page) {
       return route.fulfill({ status:200, contentType:'application/json', headers:{'content-range':'0-0/1'}, body:JSON.stringify(wantsObject ? settings : [settings]) })
     }
     if (pathname.includes('/rest/v1/tenants')) {
-      const tenant = { id:'61a89aef-0e7e-4ea2-b222-44ab2024655a', status:'active', plan_tier:'pro', firm_name:'Tax Case Review' }
+      const tenant = { id:'61a89aef-0e7e-4ea2-b222-44ab2024655a', status:'active', plan_tier:'enterprise', firm_name:'Tax Case Review' }
       const wantsObject = accept.includes('application/vnd.pgrst.object+json')
       return route.fulfill({ status:200, contentType:'application/json', headers:{'content-range':'0-0/1'}, body:JSON.stringify(wantsObject ? tenant : [tenant]) })
     }
