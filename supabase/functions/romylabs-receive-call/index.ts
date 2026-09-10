@@ -21,12 +21,8 @@ serve(async req=>{
   if(!callSid||!romy||normalize(to)!==romy)return xml('<Hangup/>',403)
   const base=`${Deno.env.get('SUPABASE_URL')}/functions/v1`
 
-  // Browser self-dial: rejoin the active RomyLabs inbound/outbound conference.
   if(normalize(from)===romy){
     const cutoff=new Date(Date.now()-15*60*1000).toISOString()
-    // A browser self-dial belongs to an inbound call only AFTER the owner
-    // has claimed it. Never bridge to an unclaimed ringing call: otherwise an
-    // unrelated inbound ring could hijack an outbound browser bridge.
     const {data:inc}=await db.from('incoming_calls').select('conference_name,callsid').eq('tenant_id',ADMIN_TENANT).eq('status','answered').gte('created_at',cutoff).not('conference_name','is',null).order('claimed_at',{ascending:false,nullsFirst:false}).limit(1).maybeSingle()
     if(inc?.conference_name){return xml(`<Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="false">${inc.conference_name}</Conference></Dial>`)}
     const {data:out}=await db.from('outbound_calls').select('id,conference_name').eq('tenant_id',ADMIN_TENANT).in('status',['pending','ringing','answered','connected']).not('conference_name','is',null).order('created_at',{ascending:false}).limit(1).maybeSingle()
@@ -34,9 +30,6 @@ serve(async req=>{
     return xml('<Hangup/>')
   }
 
-  // Create one durable inbound history row before the auto attendant.
-  // Every later IVR path updates this same CallSid, so Recent Calls remains
-  // complete without duplicate rows.
   const menuConf=`romylabs-menu-${callSid}`.replace(/[^A-Za-z0-9_-]/g,'').slice(0,160)
   const {error:historyErr}=await db.from('incoming_calls').insert({
     callsid:callSid,conference_name:menuConf,from_number:from.slice(0,32),
@@ -47,9 +40,9 @@ serve(async req=>{
   if(!businessHours(new Date())){
     await db.from('incoming_calls').update({status:'missed',department:'After Hours'})
       .eq('tenant_id',ADMIN_TENANT).eq('callsid',callSid).eq('status','menu')
-    return xml(`<Say voice="Polly.Joanna-Neural" language="en-US">Thanks for calling RomyLabs. Our office is closed right now. We are normally available Monday through Friday from 9 A M to 6 P M Eastern. Please leave your name, number, and a brief message after the tone, and we will get back to you the next business day.</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="180" playBeep="true"/>`)
+    return xml(`<Say voice="polly.Joey-Neural" language="en-US">Thanks for calling RomyLabs. We're closed right now. Our regular hours are Monday through Friday, nine A M to six P M Eastern. Leave your name, number, and a short message after the tone, and we'll get back to you the next business day.</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="180" playBeep="true"/>`)
   }
 
-  const prompt='Thanks for calling RomyLabs. For sales, press 1. For support, press 2. For billing, press 3. To speak with a representative, press 4. To leave a voicemail, press 5.'
-  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="Polly.Joanna-Neural" language="en-US">${prompt}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
+  const prompt="Thanks for calling RomyLabs. How can I help you today? For sales, press 1. For support, press 2. For billing, press 3. To speak with a representative, press 4. To leave a voicemail, press 5."
+  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="polly.Joey-Neural" language="en-US">${prompt}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
 })
