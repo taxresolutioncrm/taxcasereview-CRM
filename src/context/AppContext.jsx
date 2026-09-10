@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect } f
 import { supabase } from '../lib/supabase'
 import { playSound } from '../lib/notifySound'
 import { loadFirmBranding , clearFirmBrandingCache } from '../lib/firmBranding'
+import { normalizePlanTier } from '../lib/planTiers'
 
 const AppContext = createContext(null)
 
@@ -108,7 +109,7 @@ export function AppProvider({ children }) {
   // so it is always the current tenant's value — not FIRM which can be stale.
   const [leadWorkflowModel, setLeadWorkflowModel] = useState('investigation-resolution')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [planTier, setPlanTier] = useState('pro') // default pro — loads from tenants on login
+  const [planTier, setPlanTier] = useState('enterprise') // canonical top tier until tenant plan loads
   const toastTimer = useRef(null)
 
   function applyBrandColor(hex) {
@@ -467,7 +468,7 @@ export function AppProvider({ children }) {
         .limit(1)
         .maybeSingle()
       if (!data) return
-      if (data.plan_tier) setPlanTier(data.plan_tier)
+      if (data.plan_tier) setPlanTier(normalizePlanTier(data.plan_tier))
       const blocked = ['suspended', 'cancelled']
       if (blocked.includes(data.status)) {
         await supabase.auth.signOut()
