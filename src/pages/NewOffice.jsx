@@ -961,7 +961,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
             <Row label="Contact Email"><input value={edit.primary_contact_email} onChange={e=>setEdit(f=>({...f,primary_contact_email:e.target.value}))} type="email"/></Row>
             <Row label="Contract Start"><input value={edit.contract_start_date} onChange={e=>setEdit(f=>({...f,contract_start_date:e.target.value}))} type="date"/></Row>
             <Row label="Contract End"><input value={edit.contract_end_date} onChange={e=>setEdit(f=>({...f,contract_end_date:e.target.value}))} type="date"/></Row>
-            <Row label="Plan"><select value={edit.plan_tier} onChange={e=>setEdit(f=>({...f,plan_tier:e.target.value}))}><option value="starter">Starter</option><option value="growth">Growth</option><option value="pro">Pro</option></select></Row>
+            <Row label="Plan"><select value={edit.plan_tier} onChange={e=>setEdit(f=>({...f,plan_tier:e.target.value}))}>{PLAN_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label} — {'$'}{p.price}/user/mo</option>)}</select></Row>
             <Row label="Notes"><textarea value={edit.notes} onChange={e=>setEdit(f=>({...f,notes:e.target.value}))} rows={3} style={{width:'100%',boxSizing:'border-box'}}/></Row>
             <div style={{display:'flex',gap:8,marginTop:4}}>
               <button className="btn pri" disabled={saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
@@ -974,7 +974,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
             <InfoRow label="Primary Contact" value={t.primary_contact_name}/>
             <InfoRow label="Contact Email" value={t.primary_contact_email}/>
             <InfoRow label="Contract" value={t.contract_start_date || t.contract_end_date ? `${t.contract_start_date||'—'} → ${t.contract_end_date||'—'}` : null}/>
-            <InfoRow label="Plan" value={t.plan_tier} capitalize/>
+            <InfoRow label="Plan" value={planLabel(t.plan_tier)}/>
             <InfoRow label="Notes" value={t.notes}/>
           </div>
         )}
@@ -1285,7 +1285,7 @@ function DataImport({ tenantId, onBack, showToast }) {
             <InfoRow label="Primary Contact" value={t.primary_contact_name}/>
             <InfoRow label="Contact Email" value={t.primary_contact_email}/>
             <InfoRow label="Contract" value={t.contract_start_date || t.contract_end_date ? `${t.contract_start_date||'—'} → ${t.contract_end_date||'—'}` : null}/>
-            <InfoRow label="Plan" value={t.plan_tier} capitalize/>
+            <InfoRow label="Plan" value={planLabel(t.plan_tier)}/>
             <InfoRow label="Notes" value={t.notes}/>
           </div>
         )}
@@ -1748,7 +1748,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
             <Row label="Contact Email"><input value={edit.primary_contact_email} onChange={e=>setEdit(f=>({...f,primary_contact_email:e.target.value}))} type="email"/></Row>
             <Row label="Contract Start"><input value={edit.contract_start_date} onChange={e=>setEdit(f=>({...f,contract_start_date:e.target.value}))} type="date"/></Row>
             <Row label="Contract End"><input value={edit.contract_end_date} onChange={e=>setEdit(f=>({...f,contract_end_date:e.target.value}))} type="date"/></Row>
-            <Row label="Plan"><select value={edit.plan_tier} onChange={e=>setEdit(f=>({...f,plan_tier:e.target.value}))}><option value="starter">Starter</option><option value="growth">Growth</option><option value="pro">Pro</option></select></Row>
+            <Row label="Plan"><select value={edit.plan_tier} onChange={e=>setEdit(f=>({...f,plan_tier:e.target.value}))}>{PLAN_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label} — {'$'}{p.price}/user/mo</option>)}</select></Row>
             <Row label="Notes"><textarea value={edit.notes} onChange={e=>setEdit(f=>({...f,notes:e.target.value}))} rows={3} style={{width:'100%',boxSizing:'border-box'}}/></Row>
             <div style={{display:'flex',gap:8,marginTop:4}}>
               <button className="btn pri" disabled={saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
@@ -1761,7 +1761,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
             <InfoRow label="Primary Contact" value={t.primary_contact_name}/>
             <InfoRow label="Contact Email" value={t.primary_contact_email}/>
             <InfoRow label="Contract" value={t.contract_start_date || t.contract_end_date ? `${t.contract_start_date||'—'} → ${t.contract_end_date||'—'}` : null}/>
-            <InfoRow label="Plan" value={t.plan_tier} capitalize/>
+            <InfoRow label="Plan" value={planLabel(t.plan_tier)}/>
             <InfoRow label="Notes" value={t.notes}/>
           </div>
         )}
