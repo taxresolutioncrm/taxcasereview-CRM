@@ -4,16 +4,7 @@ import { useApp } from '../../context/AppContext'
 import { supabase } from '../../lib/supabase'
 import { FIRM } from '../../lib/firmBranding'
 import { OPEN_STATUSES } from '../../lib/caseStatuses'
-
-// Tier gate — module-level constant, matches App.jsx
-const TIER_ORDER = { starter: 0, growth: 1, pro: 2 }
-const TIER_REQUIRED_SIDEBAR = {
-  dialer: 'growth', workflows: 'growth', irsforms: 'growth',
-  irsreference: 'growth', taxreturns: 'growth', transcripts: 'growth',
-  payments: 'growth', invoices: 'growth', estimates: 'growth',
-  books: 'growth', stateforms: 'growth',
-  payroll: 'pro', timeoff: 'pro', employees: 'pro', reports: 'pro', deadlines: 'pro',
-}
+import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
 
 const LOGO = '/logo.png'
 
@@ -514,8 +505,8 @@ export default function Sidebar() {
 
             {/* Items — only show when open */}
             {isOpen && section.items.map(item => {
-              const tierLocked = item.section && TIER_REQUIRED_SIDEBAR[item.section] &&
-                (TIER_ORDER[planTier] || 0) < (TIER_ORDER[TIER_REQUIRED_SIDEBAR[item.section]] || 0)
+              const requiredPlan = item.section && ROUTE_PLAN_MINIMUM[item.section]
+              const tierLocked = requiredPlan && !planAtLeast(planTier, requiredPlan)
               if (item.section && !can('view', item.section) && !tierLocked) return null
               const Icon = item.icon
               return (
