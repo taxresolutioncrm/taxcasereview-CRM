@@ -32,31 +32,71 @@ serve(async(req)=>{
     }
     if(sErr||!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token) return json({error:'SignalWire credentials missing for this calling context.'},400)
 
+    // Validate ownership by durable conference identity, regardless of DB status.
+    // The previous active-status filter raced with the browser marking a call
+    // completed, causing this endpoint to skip provider termination while the
+    // PSTN/cell leg remained connected.
     const [{data:inConf},{data:outConf}]=await Promise.all([
-      db.from('incoming_calls').select('id').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
-        .in('status',['ringing','answered']).limit(1).maybeSingle(),
-      db.from('outbound_calls').select('id').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
-        .in('status',['pending','ringing','answered','connected']).limit(1).maybeSingle(),
+      db.from('incoming_calls').select('id,callsid,status').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
+        .order('created_at',{ascending:false}).limit(1).maybeSingle(),
+      db.from('outbound_calls').select('id,provider_call_sid,status').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
+        .order('created_at',{ascending:false}).limit(1).maybeSingle(),
     ])
-    if(!inConf&&!outConf) return json({ok:true,note:'Call already ended or unavailable'})
+    if(!inConf&&!outConf) return json({error:'Conference does not belong to this calling context.'},403)
 
     const spaceDomain=settings.sw_space_url.replace(/^https?:\/\//,'')
     const providerAuth='Basic '+btoa(`${settings.sw_project_id}:${settings.sw_api_token}`)
     const base=`https://${spaceDomain}/api/laml/2010-04-01/Accounts/${settings.sw_project_id}`
-    const confResp=await fetch(`${base}/Conferences.json?FriendlyName=${encodeURIComponent(conferenceName)}&Status=in-progress`,{headers:{Authorization:providerAuth}})
-    const confData=await confResp.json();const conferenceSid=confData?.conferences?.[0]?.sid
-    if(!conferenceSid) return json({ok:true,note:'Conference already ended'})
+    const providerCallSids=new Set<string>()
+    if(inConf?.callsid)providerCallSids.add(String(inConf.callsid))
+    if(outConf?.provider_call_sid)providerCallSids.add(String(outConf.provider_call_sid))
 
+    let conferenceSid=''
     try{
-      const partResp=await fetch(`${base}/Conferences/${conferenceSid}/Participants.json`,{headers:{Authorization:providerAuth}})
-      const partData=await partResp.json()
-      for(const p of partData?.participants||[]){if(!p.call_sid)continue;const kill=await fetch(`${base}/Calls/${p.call_sid}.json`,{method:'POST',headers:{Authorization:providerAuth,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({Status:'completed'})});if(!kill.ok)console.error('end-conference participant hangup failed',p.call_sid,kill.status,await kill.text())}
-    }catch(e){console.error('end-conference participant sweep error',e)}
+      const confResp=await fetch(`${base}/Conferences.json?FriendlyName=${encodeURIComponent(conferenceName)}&Status=in-progress`,{headers:{Authorization:providerAuth}})
+      if(confResp.ok){
+        const confData=await confResp.json()
+        conferenceSid=String(confData?.conferences?.[0]?.sid||'')
+      }else{
+        console.error('end-conference conference lookup failed',confResp.status,await confResp.text())
+      }
+    }catch(e){console.error('end-conference conference lookup error',e)}
 
-    const updResp=await fetch(`${base}/Conferences/${conferenceSid}.json`,{method:'POST',headers:{Authorization:providerAuth,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({Status:'completed'})})
-    if(!updResp.ok) return json({error:'SignalWire rejected conference termination.'},502)
+    if(conferenceSid){
+      try{
+        const partResp=await fetch(`${base}/Conferences/${conferenceSid}/Participants.json`,{headers:{Authorization:providerAuth}})
+        if(partResp.ok){
+          const partData=await partResp.json()
+          for(const p of partData?.participants||[]){if(p?.call_sid)providerCallSids.add(String(p.call_sid))}
+        }else console.error('end-conference participant lookup failed',partResp.status,await partResp.text())
+      }catch(e){console.error('end-conference participant sweep error',e)}
+    }
+
+    let providerFailure=false
+    for(const callSid of providerCallSids){
+      try{
+        const kill=await fetch(`${base}/Calls/${encodeURIComponent(callSid)}.json`,{
+          method:'POST',headers:{Authorization:providerAuth,'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({Status:'completed'})
+        })
+        if(!kill.ok){providerFailure=true;console.error('end-conference call hangup failed',callSid,kill.status,await kill.text())}
+      }catch(e){providerFailure=true;console.error('end-conference call hangup error',callSid,e)}
+    }
+
+    if(conferenceSid){
+      try{
+        const updResp=await fetch(`${base}/Conferences/${conferenceSid}.json`,{
+          method:'POST',headers:{Authorization:providerAuth,'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({Status:'completed'})
+        })
+        if(!updResp.ok){providerFailure=true;console.error('end-conference conference termination failed',updResp.status,await updResp.text())}
+      }catch(e){providerFailure=true;console.error('end-conference conference termination error',e)}
+    }
+
+    if(providerFailure) return json({error:'Could not confirm every SignalWire call leg ended.'},502)
+
     await db.from('outbound_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
-    await db.from('incoming_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).eq('status','answered')
-    return json({ok:true})
+    await db.from('incoming_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
+    return json({ok:true,terminated_call_sids:providerCallSids.size,conference_found:!!conferenceSid})
   }catch(err){console.error('end-conference error:',err);return json({error:'Unable to end conference.'},500)}
 })
