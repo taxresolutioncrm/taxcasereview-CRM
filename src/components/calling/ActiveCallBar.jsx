@@ -31,7 +31,7 @@ export default function ActiveCallBar() {
 
   const {
     phoneContext,
-    incomingCall, incomingMatch, calling, active, elapsed, formatTime,
+    incomingCall, incomingMatch, calling, ending, active, elapsed, formatTime,
     answerIncoming, declineIncoming, cancelCall, endCall,
     logModal, logForm, setLogForm, saving, OUTCOMES, saveCallLog, closeLogModalWithoutSaving,
     callToast, sendDTMF, muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer,
@@ -306,14 +306,14 @@ export default function ActiveCallBar() {
                   </div>
                 </div>
               </div>
-              <button onClick={endCall}
+              <button onClick={() => endCall()} disabled={ending}
                 style={{
                   background: '#C0202F', color: '#fff', border: 'none', flexShrink: 0,
                   borderRadius: 7, padding: '6px 13px', fontWeight: 800,
-                  cursor: 'pointer', fontSize: 11.75, display: 'flex', alignItems: 'center', gap: 6,
+                  cursor: ending ? 'wait' : 'pointer', opacity: ending ? 0.75 : 1, fontSize: 11.75, display: 'flex', alignItems: 'center', gap: 6,
                   whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
                 }}>
-                🔴 End Call
+                {ending ? 'Ending…' : '🔴 End Call'}
               </button>
             </div>
 

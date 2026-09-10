@@ -6,6 +6,8 @@ const SERVICE_KEY=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const ANON_KEY=Deno.env.get('SUPABASE_ANON_KEY')!
 const corsHeaders={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'}
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json'}})
+const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms))
+const TERMINAL_CALL_STATUSES=new Set(['completed','canceled','cancelled','failed','busy','no-answer'])
 
 serve(async(req)=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:corsHeaders})
@@ -32,10 +34,6 @@ serve(async(req)=>{
     }
     if(sErr||!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token) return json({error:'SignalWire credentials missing for this calling context.'},400)
 
-    // Validate ownership by durable conference identity, regardless of DB status.
-    // The previous active-status filter raced with the browser marking a call
-    // completed, causing this endpoint to skip provider termination while the
-    // PSTN/cell leg remained connected.
     const [{data:inConf},{data:outConf}]=await Promise.all([
       db.from('incoming_calls').select('id,callsid,status').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
         .order('created_at',{ascending:false}).limit(1).maybeSingle(),
@@ -57,9 +55,7 @@ serve(async(req)=>{
       if(confResp.ok){
         const confData=await confResp.json()
         conferenceSid=String(confData?.conferences?.[0]?.sid||'')
-      }else{
-        console.error('end-conference conference lookup failed',confResp.status,await confResp.text())
-      }
+      }else console.error('end-conference conference lookup failed',confResp.status,await confResp.text())
     }catch(e){console.error('end-conference conference lookup error',e)}
 
     if(conferenceSid){
@@ -73,13 +69,26 @@ serve(async(req)=>{
     }
 
     let providerFailure=false
+    const terminatedCallSids:string[]=[]
     for(const callSid of providerCallSids){
       try{
         const kill=await fetch(`${base}/Calls/${encodeURIComponent(callSid)}.json`,{
           method:'POST',headers:{Authorization:providerAuth,'Content-Type':'application/x-www-form-urlencoded'},
           body:new URLSearchParams({Status:'completed'})
         })
-        if(!kill.ok){providerFailure=true;console.error('end-conference call hangup failed',callSid,kill.status,await kill.text())}
+        const killBody=await kill.text()
+        if(!kill.ok) console.warn('end-conference call hangup request was not 2xx; verifying actual provider state',callSid,kill.status,killBody)
+
+        let terminal=false
+        for(let attempt=0;attempt<4;attempt++){
+          if(attempt) await sleep(350)
+          const check=await fetch(`${base}/Calls/${encodeURIComponent(callSid)}.json`,{headers:{Authorization:providerAuth}})
+          if(!check.ok){console.error('end-conference call status check failed',callSid,check.status,await check.text());continue}
+          const data=await check.json()
+          const status=String(data?.status||'').toLowerCase()
+          if(TERMINAL_CALL_STATUSES.has(status)){terminal=true;terminatedCallSids.push(callSid);break}
+        }
+        if(!terminal){providerFailure=true;console.error('end-conference call still active after termination request',callSid)}
       }catch(e){providerFailure=true;console.error('end-conference call hangup error',callSid,e)}
     }
 
@@ -93,10 +102,10 @@ serve(async(req)=>{
       }catch(e){providerFailure=true;console.error('end-conference conference termination error',e)}
     }
 
-    if(providerFailure) return json({error:'Could not confirm every SignalWire call leg ended.'},502)
+    if(providerFailure) return json({error:'Could not confirm every SignalWire call leg ended.',terminated_call_sids:terminatedCallSids},502)
 
     await db.from('outbound_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
     await db.from('incoming_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
-    return json({ok:true,terminated_call_sids:providerCallSids.size,conference_found:!!conferenceSid})
+    return json({ok:true,terminated_call_sids:terminatedCallSids,conference_found:!!conferenceSid})
   }catch(err){console.error('end-conference error:',err);return json({error:'Unable to end conference.'},500)}
 })

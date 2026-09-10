@@ -70,6 +70,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const [logModal, setLogModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [callToast, setCallToast] = useState('')
+  const [ending, setEnding] = useState(false)
   const [outboundCallerId, setOutboundCallerIdState] = useState(() =>
     localStorage.getItem(phoneContext === 'romylabs' ? 'romylabs_outbound_caller_id' : 'taxres_outbound_caller_id') || 'local'
   )
@@ -81,6 +82,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   }
 
   const relayRef = useRef(null)
+  const endingRef = useRef(false)
   const activeCallRef = useRef(null) // ref to the live RELAY call object for DTMF
   const liveCallRef = useRef(null)
   // Mic mute for the live call — SDK muteAudio/unmuteAudio when available,
@@ -143,7 +145,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     // and firing it during the redirect kills the caller we just
     // transferred. Our own leg leaving ends the empty conference anyway.
     await new Promise(r => setTimeout(r, 1500))
-    endCall({ skipConferenceKill: true })
+    await endCall({ skipConferenceKill: true })
     return { ok: true }
   }
 
@@ -242,15 +244,17 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   // warning staff to check manually, rather than trusting a single
   // attempt that could fail for an ordinary transient reason (network
   // blip, SignalWire API hiccup).
-  async function endConferenceWithRetry(conferenceName, attempt = 1) {
-    const { data, error } = await supabase.functions.invoke('end-conference', { body: { conferenceName, phoneContext } })
-    if (error || data?.error) {
-      if (attempt < 3) {
-        setTimeout(() => endConferenceWithRetry(conferenceName, attempt + 1), 2000)
-      } else {
-        showCallToast('⚠️ Could not confirm the call actually ended — check your phone, it may still be connected.')
-      }
+  async function endConferenceWithRetry(conferenceName) {
+    let lastError = 'Unable to confirm provider hangup'
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { data, error } = await supabase.functions.invoke('end-conference', { body: { conferenceName, phoneContext } })
+      if (!error && data?.ok) return true
+      lastError = data?.error || error?.message || lastError
+      if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 2000))
     }
+    console.error('[end-conference] provider teardown not confirmed:', lastError)
+    showCallToast('⚠️ Could not confirm the remote call ended. Press End again.')
+    return false
   }
 
   useEffect(() => { elapsedRef.current = elapsed }, [elapsed])
@@ -375,7 +379,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       client.on('signalwire.socket.close', () => { setRelayStatus('error'); console.warn('[RELAY] socket closed — reconnecting in 3s'); scheduleReconnect() })
       client.on('signalwire.socket.error', (e) => { setRelayStatus('error'); console.error('[RELAY] socket error', e); scheduleReconnect() })
       client.on('blade.disconnect', () => { setRelayStatus('error'); console.warn('[RELAY] disconnected — reconnecting in 3s'); scheduleReconnect() })
-      client.on('signalwire.notification', (n) => {
+      client.on('signalwire.notification', async (n) => {
         console.log('[RELAY] notification received:', n.type, n)
         if (n.type !== 'callUpdate') return
         const call = n.call
@@ -415,8 +419,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
               liveCallRef.current = null
               return
             }
-            finalizeCallEnd({ alreadyHungUp: true })
-            handleRemoteHangup()
+            if (await finalizeCallEnd({ alreadyHungUp: true }))
+              handleRemoteHangup()
           }
         }
       })
@@ -498,8 +502,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
         outboundPollRef.current = setInterval(async () => {
           const { data: live } = await fetchOutboundStatus(conf)
           if (live?.status === 'completed' || live?.status === 'failed') {
-            finalizeCallEnd({ alreadyHungUp: true })
-            handleRemoteHangup()
+            if (await finalizeCallEnd({ alreadyHungUp: true }))
+              handleRemoteHangup()
           }
         }, 3000)
       } else if (saved.inboundCallsid) {
@@ -510,8 +514,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           if (live?.status === 'completed' || live?.status === 'missed') {
             clearInterval(inboundStatusPollRef.current)
             inboundStatusPollRef.current = null
-            finalizeCallEnd({ alreadyHungUp: true })
-            handleRemoteHangup()
+            if (await finalizeCallEnd({ alreadyHungUp: true }))
+              handleRemoteHangup()
           }
         }, 3000)
       }
@@ -706,8 +710,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       if (row?.status === 'completed' || row?.status === 'missed') {
         clearInterval(inboundStatusPollRef.current)
         inboundStatusPollRef.current = null
-        finalizeCallEnd({ alreadyHungUp: true })
-        handleRemoteHangup()
+        if (await finalizeCallEnd({ alreadyHungUp: true }))
+          handleRemoteHangup()
       }
     }, 3000)
 
@@ -849,8 +853,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           outboundPollRef.current = setInterval(async () => {
             const { data: row } = await fetchOutboundStatus(conf)
             if (row?.status === 'completed') {
-              finalizeCallEnd({ alreadyHungUp: true })
-              handleRemoteHangup()
+              if (await finalizeCallEnd({ alreadyHungUp: true }))
+                handleRemoteHangup()
             }
           }, 3000)
         }
@@ -884,54 +888,75 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   // completed so a stale row can never hijack the next agent-join. Having
   // one shared function means these three paths can't drift out of sync
   // with each other again.
-  function finalizeCallEnd({ alreadyHungUp, skipConferenceKill = false }) {
+  async function finalizeCallEnd({ alreadyHungUp, skipConferenceKill = false }) {
     stopRingback()
-    clearPersistedCallSession()
-    callStartedAtRef.current = null
     if (outboundPollRef.current) { clearInterval(outboundPollRef.current); outboundPollRef.current = null }
     if (inboundStatusPollRef.current) { clearInterval(inboundStatusPollRef.current); inboundStatusPollRef.current = null }
-    if (!alreadyHungUp) liveCallRef.current?.hangup()
+
+    if (!alreadyHungUp && liveCallRef.current) {
+      try { await Promise.resolve(liveCallRef.current.hangup?.()) }
+      catch (e) { console.warn('browser leg hangup failed:', e) }
+    }
     liveCallRef.current = null
+    activeCallRef.current = null
+
+    const conf = activeConferenceRef.current
+    if (conf && !skipConferenceKill) {
+      const providerEnded = await endConferenceWithRetry(conf)
+      if (!providerEnded) return false
+    }
+
+    clearPersistedCallSession()
+    callStartedAtRef.current = null
+    activeConferenceRef.current = null
     setMuted(false)
     setOnHold(false)
     setCanTransfer(false)
     transferableCallsidRef.current = null
-    const conf = activeConferenceRef.current
-    activeConferenceRef.current = null
-    // After a TRANSFER, end-conference must NOT run: its participant sweep
-    // hangs up everyone still in the conference, and the just-transferred
-    // caller's leg may not have physically moved out yet — the sweep would
-    // kill the caller mid-transfer. Our own RELAY leg hanging up ends the
-    // (now empty) conference naturally via endConferenceOnExit.
-    if (conf && !skipConferenceKill) endConferenceWithRetry(conf)
+
     const inboundCallsid = activeInboundCallsidRef.current
     activeInboundCallsidRef.current = null
-    if (inboundCallsid) {
-      // Conditional on 'answered': after a transfer, this same callsid has
-      // a fresh 'ringing' row for the target agent — completing THAT row
-      // would kill the transfer. Only our own answered row gets closed.
-      completeInboundState(inboundCallsid)
-        .catch(error => console.error('incoming_calls completion update error:', error))
+    if (inboundCallsid) await completeInboundState(inboundCallsid)
+    return true
+  }
+
+  async function endCall(opts = {}) {
+    if (endingRef.current) return false
+    endingRef.current = true
+    setEnding(true)
+    try {
+      const ended = await finalizeCallEnd({ alreadyHungUp: false, skipConferenceKill: !!opts.skipConferenceKill })
+      if (!ended) return false
+      uiStartedRef.current = false
+      clearInterval(timerRef.current)
+      setCalling(false)
+      setLogForm(f => ({ ...f, duration: formatTime(elapsedRef.current) }))
+      setLogModal(true)
+      return true
+    } finally {
+      endingRef.current = false
+      setEnding(false)
     }
   }
 
-  function endCall(opts = {}) {
-    finalizeCallEnd({ alreadyHungUp: false, skipConferenceKill: !!opts.skipConferenceKill })
-    uiStartedRef.current = false
-    clearInterval(timerRef.current)
-    setCalling(false)
-    setLogForm(f => ({ ...f, duration: formatTime(elapsedRef.current) }))
-    setLogModal(true)
-  }
-
-  function cancelCall() {
-    finalizeCallEnd({ alreadyHungUp: false })
-    activeOutboundCallIdRef.current = null
-    uiStartedRef.current = false
-    clearInterval(timerRef.current)
-    setCalling(false)
-    setActive(null)
-    setElapsed(0)
+  async function cancelCall() {
+    if (endingRef.current) return false
+    endingRef.current = true
+    setEnding(true)
+    try {
+      const ended = await finalizeCallEnd({ alreadyHungUp: false })
+      if (!ended) return false
+      activeOutboundCallIdRef.current = null
+      uiStartedRef.current = false
+      clearInterval(timerRef.current)
+      setCalling(false)
+      setActive(null)
+      setElapsed(0)
+      return true
+    } finally {
+      endingRef.current = false
+      setEnding(false)
+    }
   }
 
   async function saveCallLog(onSaved) {
@@ -1082,7 +1107,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
 
   const value = {
     phoneContext,
-    relayStatus, incomingCall, incomingMatch, calling, active, elapsed,
+    relayStatus, incomingCall, incomingMatch, calling, ending, active, elapsed,
     outboundCallerId, setOutboundCallerId,
     logForm, setLogForm, logModal, setLogModal, saving, callToast,
     OUTCOMES, formatTime,

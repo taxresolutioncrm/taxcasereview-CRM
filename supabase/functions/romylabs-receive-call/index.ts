@@ -40,9 +40,9 @@ serve(async req=>{
   if(!businessHours(new Date())){
     await db.from('incoming_calls').update({status:'missed',department:'After Hours'})
       .eq('tenant_id',ADMIN_TENANT).eq('callsid',callSid).eq('status','menu')
-    return xml(`<Say voice="polly.Joey-Neural" language="en-US">Thanks for calling RomyLabs. We're closed right now. Our regular hours are Monday through Friday, nine A M to six P M Eastern. Leave your name, number, and a short message after the tone, and we'll get back to you the next business day.</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="180" playBeep="true"/>`)
+    return xml(`<Say voice="openai.alloy" language="en-US">Thanks for calling RomyLabs. We're closed right now. Our regular hours are Monday through Friday, nine A M to six P M Eastern. Leave your name, number, and a short message after the tone, and we'll get back to you the next business day.</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="180" playBeep="true"/>`)
   }
 
-  const prompt="Thanks for calling RomyLabs. How can I help you today? For sales, press 1. For support, press 2. For billing, press 3. To speak with a representative, press 4. To leave a voicemail, press 5."
-  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="polly.Joey-Neural" language="en-US">${prompt}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
+  const prompt="Thanks for calling RomyLabs. How can I help? For sales, press 1. For support, press 2. For billing, press 3. To speak with a representative, press 4. Or, to leave a voicemail, press 5."
+  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="openai.alloy" language="en-US">${prompt}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
 })

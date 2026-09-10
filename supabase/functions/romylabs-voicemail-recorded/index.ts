@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 declare const EdgeRuntime:{waitUntil(p:Promise<unknown>):void}
 const ADMIN_TENANT='a0000000-0000-0000-0000-000000000001'
-const ACK='<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Polly.Ruth-Neural" language="en-US">Thank you. Your message has been recorded. RomyLabs will return your call as soon as possible.</Say></Response>'
+const ACK='<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="openai.alloy" language="en-US">Got it. Your message has been recorded. Someone from RomyLabs will get back to you as soon as possible.</Say></Response>'
 const resp=(status=200)=>new Response(ACK,{status,headers:{'Content-Type':'text/xml'}})
 const normalize=(v:string)=>{const d=String(v||'').replace(/\D/g,'');return d.length===10?`+1${d}`:(d.length===11&&d.startsWith('1')?`+${d}`:'')}
 function swUrl(raw:string){try{const u=new URL(raw);return u.protocol==='https:'&&(u.hostname==='signalwire.com'||u.hostname.endsWith('.signalwire.com'))}catch{return false}}
