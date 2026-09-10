@@ -12,6 +12,7 @@ import TopBar   from './components/layout/TopBar'
 import { Modal, Toast } from './components/ui'
 import ActiveCallBar from './components/calling/ActiveCallBar'
 import ImpersonationBanner from './components/ImpersonationBanner'
+import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
 
 
 class PageErrorBoundary extends React.Component {
@@ -125,21 +126,11 @@ function RequireAuth({ children }) {
   return children
 }
 
-// Tier gate maps — module-level, never change at runtime
-const TIER_ORDER = { starter: 0, growth: 1, pro: 2 }
-const TIER_REQUIRED = {
-  dialer: 'growth', workflows: 'growth', irsforms: 'growth',
-  irsreference: 'growth', taxreturns: 'growth', transcripts: 'growth',
-  payments: 'growth', invoices: 'growth', estimates: 'growth',
-  books: 'growth', stateforms: 'growth',
-  payroll: 'pro', timeoff: 'pro', employees: 'pro', reports: 'pro', deadlines: 'pro',
-}
-
 // Blocks a route by role permission OR plan tier
 function Guard({ section, children }) {
   const { can, planTier } = useApp()
-  const requiredTier = TIER_REQUIRED[section]
-  const tierBlocked = requiredTier && (TIER_ORDER[planTier] || 0) < (TIER_ORDER[requiredTier] || 0)
+  const requiredTier = ROUTE_PLAN_MINIMUM[section]
+  const tierBlocked = requiredTier && !planAtLeast(planTier, requiredTier)
   if (tierBlocked) {
     return (
       <div style={{
@@ -149,10 +140,10 @@ function Guard({ section, children }) {
       }}>
         <div style={{ fontSize: 48 }}>⭐</div>
         <div style={{ fontWeight: 800, fontSize: 20, color:'var(--tx)' }}>
-          {requiredTier.charAt(0).toUpperCase() + requiredTier.slice(1)} Plan Required
+          {planLabel(requiredTier)} Plan Required
         </div>
         <div style={{ fontSize:14, color:'var(--t2)', maxWidth:340, lineHeight:1.6 }}>
-          This feature requires the <strong>{requiredTier.charAt(0).toUpperCase() + requiredTier.slice(1)}</strong> plan.
+          This feature requires the <strong>{planLabel(requiredTier)}</strong> plan.
           Contact <strong>romy@taxrescrm.net</strong> to upgrade.
         </div>
       </div>
