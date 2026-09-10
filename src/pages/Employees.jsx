@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { FIRM, label } from '../lib/firmBranding'
+import { hasPlanFeature } from '../lib/planTiers'
 
 // Scope queries to current tenant when FIRM.tenantId is available (platform admin sessions)
 function tf(q) { return FIRM.tenantId ? q.eq('tenant_id', FIRM.tenantId) : q }
@@ -164,7 +165,7 @@ function fromDbRow(emp) {
 }
 
 export default function Employees() {
-  const { showToast, can, user } = useApp()
+  const { showToast, can, user, planTier } = useApp()
   const [employees, setEmployees] = useState([])
   const [confirmDel, setConfirmDel] = useState(null)
   const [loading, setLoading]     = useState(true)
@@ -453,7 +454,7 @@ export default function Employees() {
 
             {/* Tabs */}
             <div style={{ display: 'flex', gap: 4, padding: '12px 24px 0', borderBottom: '1px solid var(--br)' }}>
-              {['info', ...(can('edit','employees') || form.email === user?.email ? ['irs'] : []), 'pay', ...(editing ? ['documents'] : []), 'permissions'].map(t => (
+              {['info', ...(can('edit','employees') || form.email === user?.email ? ['irs'] : []), 'pay', ...(editing ? ['documents'] : []), ...(hasPlanFeature(planTier, 'advanced_user_permissions') ? ['permissions'] : [])].map(t => (
                 <button key={t} onClick={async () => { if (showForm && !editing) { await save(true) } setTab(t) }} style={{
                   padding: '8px 18px', borderRadius: '8px 8px 0 0',
                   border: '1px solid var(--br)', borderBottom: tab === t ? '1px solid var(--sf)' : '1px solid var(--br)',
@@ -766,7 +767,7 @@ export default function Employees() {
               )}
 
               {/* Permissions tab */}
-              {tab === 'permissions' && (
+              {tab === 'permissions' && hasPlanFeature(planTier, 'advanced_user_permissions') && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{
                     background: 'var(--s2)', border: '1px solid var(--br)',
