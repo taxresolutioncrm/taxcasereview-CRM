@@ -41,6 +41,11 @@ export default function Fax() {
   const [attachSearch, setAttachSearch] = useState('')
   const [attachFolder, setAttachFolder] = useState('Correspondence')
   const [attaching, setAttaching] = useState(null)
+  const [previewFaxRow, setPreviewFaxRow] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [faxView, setFaxView] = useState('cards')
+  const [cardPreviewUrls, setCardPreviewUrls] = useState({})
   useEffect(() => {
     if (qp.get('new') === '1') {
       setForm(prev => ({ ...BLANK, from_number: prev.from_number || '', client_name: qp.get('client') || '', to_number: (qp.get('phone') || '').replace(/\D/g,'') }))
@@ -124,16 +129,47 @@ export default function Fax() {
     return faxRow.file_url || ''
   }
 
-  async function openFax(faxRow) {
+  async function markFaxRead(faxRow) {
+    if (faxRow.direction === 'inbound' && faxRow.is_read === false) {
+      const { error } = await supabase.from('fax_logs').update({ is_read: true }).eq('id', faxRow.id)
+      if (!error) setLogs(prev => prev.map(r => r.id === faxRow.id ? { ...r, is_read: true } : r))
+    }
+  }
+
+  async function previewFax(faxRow) {
+    setPreviewFaxRow(faxRow)
+    setPreviewUrl('')
+    setPreviewLoading(true)
     try {
-      if (faxRow.direction === 'inbound' && faxRow.is_read === false) {
-        await supabase.from('fax_logs').update({ is_read: true }).eq('id', faxRow.id)
-        setLogs(prev => prev.map(r => r.id === faxRow.id ? { ...r, is_read: true } : r))
-      }
+      await markFaxRead(faxRow)
       const url = await resolveFaxUrl(faxRow)
-      if (!url) return showToast('This fax has no document attached', 'err')
-      window.open(url, '_blank', 'noopener,noreferrer')
+      if (!url) {
+        setPreviewFaxRow(null)
+        return showToast('This fax has no document attached', 'err')
+      }
+      setPreviewUrl(url)
     } catch (e) {
+      setPreviewFaxRow(null)
+      showToast('Could not preview fax: ' + (e?.message || e), 'err')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  async function openFaxNewTab(faxRow) {
+    const tab = window.open('about:blank', '_blank')
+    if (tab) tab.opener = null
+    try {
+      await markFaxRead(faxRow)
+      const url = previewFaxRow?.id === faxRow.id && previewUrl ? previewUrl : await resolveFaxUrl(faxRow)
+      if (!url) {
+        if (tab) tab.close()
+        return showToast('This fax has no document attached', 'err')
+      }
+      if (tab) tab.location.href = url
+      else showToast('Your browser blocked the new tab. Allow pop-ups to open the fax externally.', 'err')
+    } catch (e) {
+      if (tab) tab.close()
       showToast('Could not open fax: ' + (e?.message || e), 'err')
     }
   }
@@ -264,6 +300,24 @@ export default function Fax() {
   const received = inboundLogs.length
   const unread   = inboundLogs.filter(l=>l.is_read===false).length
 
+  useEffect(() => {
+    let cancelled = false
+    const visible = filtered.filter(row => row.file_url).slice(0, 40)
+    async function loadCardPreviews() {
+      const pairs = await Promise.all(visible.map(async row => {
+        try {
+          const url = await resolveFaxUrl(row)
+          return [row.id, url || '']
+        } catch (_) {
+          return [row.id, '']
+        }
+      }))
+      if (!cancelled) setCardPreviewUrls(prev => ({ ...prev, ...Object.fromEntries(pairs) }))
+    }
+    loadCardPreviews()
+    return () => { cancelled = true }
+  }, [logs, filterStatus, search])
+
   return (
     <div style={{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
       {toast && <div className={'toast show '+(toast.type==='err'?'terr':'')}>{toast.msg||toast}</div>}
@@ -296,58 +350,156 @@ export default function Fax() {
       </div>
 
       <div className='card' style={{padding:0,overflow:'hidden'}}>
-        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',padding:'12px 14px',borderBottom:'1px solid var(--br)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap',padding:'12px 16px',borderBottom:'1px solid var(--br)',background:'var(--s1)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:18,fontWeight:800,color:'var(--tx)'}}>Received Faxes</span>
+            <span style={{fontSize:12,color:'var(--t3)'}}>| Last 30 Days</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:'auto',flexWrap:'wrap'}}>
+            <button className='btn sec' style={{fontSize:11,padding:'6px 10px',background:faxView==='cards'?'var(--s2)':'transparent'}} onClick={()=>setFaxView('cards')}>▦ Card View</button>
+            <button className='btn sec' style={{fontSize:11,padding:'6px 10px',background:faxView==='table'?'var(--s2)':'transparent'}} onClick={()=>setFaxView('table')}>☷ Table View</button>
+            <button className='btn sec' style={{fontSize:11,padding:'6px 10px'}} onClick={()=>setFilter(filterStatus==='Unread'?'Received':'Unread')}>✉ Unread Only{unread>0?' '+unread:''}</button>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder='Search faxes…' style={{minWidth:230,padding:'8px 10px',background:'var(--bg)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:11}}/>
+          </div>
+        </div>
+
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',padding:'10px 16px',borderBottom:'1px solid var(--br)'}}>
           {['All','Received','Sent','Unread','Pending','Failed'].map(s=>( 
-            <button key={s} onClick={()=>setFilter(s)} style={{border:'1px solid '+(filterStatus===s?'var(--bad)':'var(--br)'),background:filterStatus===s?'rgba(239,68,68,.10)':'var(--s2)',color:filterStatus===s?'var(--bad)':'var(--t2)',borderRadius:999,padding:'7px 11px',fontSize:11,fontWeight:800,cursor:'pointer'}}>
+            <button key={s} onClick={()=>setFilter(s)} style={{border:'0',borderBottom:'2px solid '+(filterStatus===s?'var(--blue)':'transparent'),background:'transparent',color:filterStatus===s?'var(--tx)':'var(--t3)',padding:'6px 8px',fontSize:11,fontWeight:800,cursor:'pointer'}}>
               {s}{s==='Received'?' '+received:s==='Unread'?' '+unread:s==='Sent'?' '+outboundLogs.length:''}
             </button>
           ))}
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder='Search faxes…' style={{marginLeft:'auto',minWidth:260,flex:'1 1 320px',maxWidth:420,padding:'9px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:12}}/>
+          <span style={{fontSize:11,color:'var(--t3)',marginLeft:'auto'}}>{filtered.length} fax{filtered.length===1?'':'es'}</span>
         </div>
 
         {filtered.length===0 ? (
           <div style={{padding:48,textAlign:'center',color:'var(--t3)',fontSize:14}}>{filterStatus==='Unread'?'No unread faxes.':'No faxes match your filters.'}</div>
-        ) : filtered.map(l=>{
-          const inbound=l.direction==='inbound'
-          const number=inbound?l.from_number:l.to_number
-          const match=inbound&&!l.client_name?matchByPhone(l.from_number):null
-          const pickerOpen=attachPickerFor===l.id
-          const pickerResults=attachSearch.length>=2?[...clients.map(c=>({...c,_type:'Client'})),...leads.map(ld=>({...ld,_type:'Lead'}))].filter(p=>p.name.toLowerCase().includes(attachSearch.toLowerCase())).slice(0,6):[]
-          const at=l.received_at||l.sent_at||l.created_at
-          return (
-            <div key={l.id} style={{borderBottom:'1px solid var(--br)',background:inbound&&l.is_read===false?'rgba(59,130,246,.06)':'transparent'}}>
-              <div style={{display:'grid',gridTemplateColumns:'44px minmax(180px,1.15fr) minmax(240px,1.6fr) minmax(190px,.9fr)',gap:12,alignItems:'center',padding:'10px 14px'}}>
-                <div style={{width:34,height:34,borderRadius:8,border:'1px solid var(--br)',background:'var(--s2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>📠</div>
-                <div style={{minWidth:0}}>
-                  <div style={{display:'flex',alignItems:'center',gap:7,fontSize:12,fontWeight:800,color:'var(--tx)'}}>
-                    {inbound&&l.is_read===false&&<span style={{width:7,height:7,borderRadius:'50%',background:'var(--blue)',display:'inline-block',flex:'0 0 auto'}}/>}
-                    <span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{l.client_name||match?.name||(number?fmtPhone(number):'Unknown fax')}</span>
+        ) : faxView==='cards' ? (
+          <div style={{padding:'18px 16px 22px',background:'var(--bg)'}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:'22px 28px',alignItems:'start'}}>
+              {filtered.map(l=>{
+                const inbound=l.direction==='inbound'
+                const number=inbound?l.from_number:l.to_number
+                const match=inbound&&!l.client_name?matchByPhone(l.from_number):null
+                const pickerOpen=attachPickerFor===l.id
+                const pickerResults=attachSearch.length>=2?[...clients.map(c=>({...c,_type:'Client'})),...leads.map(ld=>({...ld,_type:'Lead'}))].filter(p=>p.name.toLowerCase().includes(attachSearch.toLowerCase())).slice(0,6):[]
+                const at=l.received_at||l.sent_at||l.created_at
+                const statusText=inbound?'Fax Receive Successful':(['Sent','Delivered'].includes(l.status)?'Fax Sent Successful':(l.status||'Fax'))
+                const cardUrl=cardPreviewUrls[l.id]||''
+                return (
+                  <div key={l.id} style={{minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:8,marginBottom:6}}>
+                      <div style={{fontSize:12,fontWeight:800,color:'var(--tx)',whiteSpace:'nowrap'}}>{at?new Date(at).toLocaleDateString(undefined,{month:'short',day:'numeric'}):''} <span style={{fontWeight:400,color:'var(--t3)'}}>{at?new Date(at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}):''}</span></div>
+                      <div style={{fontSize:11,fontWeight:800,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'48%'}}>{l.client_name||match?.name||(number?fmtPhone(number):'Unknown')}</div>
+                    </div>
+                    <div style={{border:'1px solid var(--br)',borderRadius:4,overflow:'hidden',background:'#fff',boxShadow:'0 1px 2px rgba(0,0,0,.08)'}}>
+                      <div style={{height:28,display:'flex',alignItems:'center',gap:7,padding:'0 9px',background:'#69b8ee',color:'#fff',fontSize:10,fontWeight:800}}>
+                        <span style={{width:9,height:9,border:'1px solid rgba(255,255,255,.75)',display:'inline-block'}}/>
+                        <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{statusText}</span>
+                        <span style={{marginLeft:'auto',fontSize:16,lineHeight:1}}>⋮</span>
+                      </div>
+                      <button type='button' onClick={()=>previewFax(l)} style={{display:'block',width:'100%',height:295,padding:0,border:0,background:'#fff',cursor:'pointer',position:'relative',overflow:'hidden'}}>
+                        {cardUrl ? (
+                          <iframe src={cardUrl+'#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH'} title={'Fax thumbnail '+l.id} style={{width:'100%',height:'100%',border:0,pointerEvents:'none',background:'#fff'}}/>
+                        ) : (
+                          <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#7b8794'}}>
+                            <div style={{fontSize:34}}>📄</div>
+                            <div style={{fontSize:11,fontWeight:700}}>Fax preview</div>
+                          </div>
+                        )}
+                      </button>
+                      <div style={{minHeight:28,display:'flex',alignItems:'center',gap:7,padding:'0 9px',background:'#f3f5fb',borderTop:'1px solid #e1e5ec',fontSize:10,color:'#394150'}}>
+                        {inbound&&l.is_read===false&&<span style={{fontWeight:800}}>✉ Unread</span>}
+                        {inbound&&l.is_read!==false&&<span>Read</span>}
+                        {!inbound&&<span>{l.status||'Sent'}</span>}
+                        <span style={{marginLeft:'auto'}}>{l.pages?l.pages+' page'+(Number(l.pages)===1?'':'s'):''}</span>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:5,marginTop:7,flexWrap:'wrap'}}>
+                      <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewFax(l)}>Preview</button>
+                      <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openFaxNewTab(l)}>Open ↗</button>
+                      <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>downloadFax(l)}>↓</button>
+                      {inbound&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>toggleUnread(l)}>{l.is_read===false?'Mark read':'Mark unread'}</button>}
+                      {inbound&&l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>{setAttachPickerFor(pickerOpen?null:l.id);setAttachSearch('');setAttachFolder('Correspondence')}}>📎</button>}
+                    </div>
+                    {pickerOpen&&(
+                      <div style={{marginTop:7,padding:9,border:'1px solid var(--br)',borderRadius:6,background:'var(--s2)'}}>
+                        {match?(<div style={{fontSize:11,fontWeight:700,marginBottom:7}}>Suggested: {match.name} <span style={{color:'var(--t3)',fontWeight:400}}>({match._type})</span></div>):(<><input autoFocus placeholder='Search client or lead…' value={attachSearch} onChange={e=>setAttachSearch(e.target.value)} style={{width:'100%',fontSize:11,padding:'6px 8px',borderRadius:5,border:'1px solid var(--br)',background:'var(--bg)',color:'var(--tx)'}}/>{pickerResults.map(p=><div key={p._type+p.id} onClick={()=>setAttachSearch(p.name)} style={{fontSize:11,padding:'5px 7px',cursor:'pointer'}}>{p.name} <span style={{color:'var(--t3)'}}>({p._type})</span></div>)}</>)}
+                        <select value={attachFolder} onChange={e=>setAttachFolder(e.target.value)} style={{width:'100%',marginTop:6,fontSize:11,padding:'6px 8px'}}>{DOC_FOLDERS.map(folder=><option key={folder}>{folder}</option>)}</select>
+                        <div style={{display:'flex',gap:5,marginTop:7}}><button className='btn pri' style={{fontSize:10,padding:'4px 7px'}} disabled={attaching===l.id||(!match&&!attachSearch)} onClick={()=>attachFaxToFile(l,match?match.name:attachSearch,attachFolder)}>Attach</button><button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>setAttachPickerFor(null)}>Cancel</button></div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{fontSize:10,color:'var(--t3)',marginTop:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>Fax · {inbound?'Inbound':'Outbound'} · {number?fmtPhone(number):'No number'}</div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div>
+            {filtered.map(l=>{
+              const inbound=l.direction==='inbound'
+              const number=inbound?l.from_number:l.to_number
+              const match=inbound&&!l.client_name?matchByPhone(l.from_number):null
+              const at=l.received_at||l.sent_at||l.created_at
+              return (
+                <div key={l.id} style={{display:'grid',gridTemplateColumns:'44px minmax(180px,1.15fr) minmax(240px,1.6fr) minmax(240px,.9fr)',gap:12,alignItems:'center',padding:'10px 14px',borderBottom:'1px solid var(--br)',background:inbound&&l.is_read===false?'rgba(59,130,246,.06)':'transparent'}}>
+                  <div style={{width:34,height:34,borderRadius:8,border:'1px solid var(--br)',background:'var(--s2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>📠</div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:800,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.client_name||match?.name||(number?fmtPhone(number):'Unknown fax')}</div>
+                    <div style={{fontSize:10,color:'var(--t3)',marginTop:3}}>Fax · {inbound?'Inbound':'Outbound'} · {number?fmtPhone(number):'No number'}</div>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:800,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.subject||(inbound?'Incoming fax':'Outgoing fax')}</div>
+                    <div style={{fontSize:10,color:'var(--t3)',marginTop:3}}>{l.file_name||(l.pages?(l.pages+' page'+(Number(l.pages)===1?'':'s')):(l.status||''))}</div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:5,flexWrap:'wrap'}}>
+                    <span style={{fontSize:10,color:'var(--t3)'}}>{at?new Date(at).toLocaleString():''}</span>
+                    <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewFax(l)}>Preview</button>
+                    <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openFaxNewTab(l)}>Open ↗</button>
+                    <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>downloadFax(l)}>↓</button>
+                  </div>
                 </div>
-                <div style={{minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:800,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{l.subject||(inbound?'Incoming fax':'Outgoing fax')}</div>
-                  <div style={{fontSize:10,color:'var(--t3)',marginTop:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{l.file_name||(l.pages?(l.pages+' page'+(Number(l.pages)===1?'':'s')):(l.status||''))}</div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+      {previewFaxRow && (
+        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setPreviewFaxRow(null)} style={{zIndex:1200}}>
+          <div className="modal" style={{width:'min(1180px,96vw)',maxWidth:'1180px',height:'88vh',padding:0,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderBottom:'1px solid var(--br)',background:'var(--s1)'}}>
+              <div style={{fontSize:18}}>📠</div>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{fontSize:13,fontWeight:800,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                  {previewFaxRow.subject || (previewFaxRow.direction==='inbound' ? 'Incoming fax' : 'Outgoing fax')}
                 </div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,minWidth:0}}>
-                  <div style={{fontSize:10,color:'var(--t3)',whiteSpace:'nowrap'}}>{at?new Date(at).toLocaleString():''}</div>
-                  {l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openFax(l)}>Open</button>}
-                  {l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>downloadFax(l)}>↓</button>}
-                  {inbound&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>toggleUnread(l)}>{l.is_read===false?'✓':'●'}</button>}
-                  {inbound&&l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>{setAttachPickerFor(pickerOpen?null:l.id);setAttachSearch('');setAttachFolder('Correspondence')}}>📎</button>}
+                <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>
+                  {previewFaxRow.direction==='inbound' ? 'From ' : 'To '}
+                  {fmtPhone(previewFaxRow.direction==='inbound' ? (previewFaxRow.from_number||'') : (previewFaxRow.to_number||''))}
+                  {previewFaxRow.file_name ? ' · '+previewFaxRow.file_name : ''}
                 </div>
               </div>
-              {pickerOpen&&(
-                <div style={{margin:'0 14px 12px 70px',padding:10,border:'1px solid var(--br)',borderRadius:8,background:'var(--s2)'}}>
-                  {match?(<div style={{fontSize:12,fontWeight:700,marginBottom:7}}>Suggested: {match.name} <span style={{color:'var(--t3)',fontWeight:400}}>({match._type})</span></div>):(<><input autoFocus placeholder='Search client or lead…' value={attachSearch} onChange={e=>setAttachSearch(e.target.value)} style={{width:'100%',fontSize:12,padding:'7px 9px',borderRadius:6,border:'1px solid var(--br)',background:'var(--bg)',color:'var(--tx)'}}/>{pickerResults.map(p=><div key={p._type+p.id} onClick={()=>setAttachSearch(p.name)} style={{fontSize:12,padding:'6px 8px',cursor:'pointer',borderRadius:5}}>{p.name} <span style={{color:'var(--t3)'}}>({p._type})</span></div>)}</>)}
-                  <select value={attachFolder} onChange={e=>setAttachFolder(e.target.value)} style={{width:'100%',marginTop:7,fontSize:12,padding:'7px 9px'}}>{DOC_FOLDERS.map(folder=><option key={folder}>{folder}</option>)}</select>
-                  <div style={{display:'flex',gap:6,marginTop:8}}><button className='btn pri' style={{fontSize:11,padding:'5px 9px'}} disabled={attaching===l.id||(!match&&!attachSearch)} onClick={()=>attachFaxToFile(l,match?match.name:attachSearch,attachFolder)}>Attach</button><button className='btn sec' style={{fontSize:11,padding:'5px 9px'}} onClick={()=>setAttachPickerFor(null)}>Cancel</button></div>
-                </div>
+              <button className='btn sec' style={{fontSize:11}} onClick={()=>openFaxNewTab(previewFaxRow)}>Open in new tab ↗</button>
+              <button className='btn sec' style={{fontSize:11}} onClick={()=>downloadFax(previewFaxRow)}>Download ↓</button>
+              <button className='btn sec' aria-label='Close fax preview' style={{fontSize:16,padding:'4px 9px'}} onClick={()=>setPreviewFaxRow(null)}>×</button>
+            </div>
+            <div style={{flex:1,minHeight:0,background:'#eef2f7',position:'relative'}}>
+              {previewLoading ? (
+                <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--t3)',fontSize:13}}>Loading fax preview…</div>
+              ) : previewUrl ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewFaxRow.file_name || 'Fax preview'}
+                  style={{width:'100%',height:'100%',border:0,background:'#fff'}}
+                />
+              ) : (
+                <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--t3)',fontSize:13}}>Preview unavailable.</div>
               )}
             </div>
-          )
-        })}
-      </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete confirm */}
       {confirmDel && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setConfirmDel(null)}>
