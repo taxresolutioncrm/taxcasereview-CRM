@@ -100,6 +100,8 @@ serve(async (req) => {
     const avgPos = stats.length > 0 ? Math.round(stats.reduce((s: number, r: any) => s + (r.AveragePosition || r.avgPosition || 0), 0) / stats.length * 10) / 10 : 0
 
     return new Response(JSON.stringify({
+      connected: true,
+      product_key: productKey,
       clicks: totalClicks,
       impressions: totalImpressions,
       ctr: avgCtr,
