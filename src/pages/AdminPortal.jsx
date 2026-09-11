@@ -100,9 +100,111 @@ function Spinner() {
   return <div style={{ padding:48, textAlign:'center', color:'#475569', fontSize:13 }}>Loading…</div>
 }
 
+const EXTERNAL_OFFICE_PRODUCTS = {
+  arcvena:       { label:'Arcvena',       color:'#00c2ff', appUrl:'https://app.arcvena.com/' },
+  camvella:      { label:'Camvella',      color:'#55B96A', appUrl:'https://app.camvella.com/' },
+  bocasync:      { label:'BocaSync',      color:'#22c7d3', appUrl:'https://app.bocasync.com/' },
+  groundivo:     { label:'GroundIVO',     color:'#16a34a', appUrl:'https://app.groundivo.com/' },
+  oculivo:       { label:'Oculivo',       color:'#7C3AED', appUrl:'https://app.oculivo.com/' },
+  restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/' },
+}
+
+async function loadPlatformOfficeRows() {
+  const [{ data: taxresRows, error: taxresError }, { data: registryData, error: registryError }] = await Promise.all([
+    supabase.rpc('admin_tenant_overview'),
+    supabase.rpc('admin_romylabs_office_registry'),
+  ])
+  if (taxresError) throw taxresError
+
+  const rows = [...(taxresRows || [])]
+  const warnings = []
+  const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
+  const seen = new Set(rows.map(r => `taxres_crm:${r.id}`))
+
+  // Central registry is the fallback/source of truth for offices already registered with RomyLabs.
+  if (!registryError && Array.isArray(registryData)) {
+    for (const office of registryData) {
+      if (!office?.product_key || office.product_key === 'taxres_crm' || !office.external_office_id) continue
+      const cfg = EXTERNAL_OFFICE_PRODUCTS[office.product_key] || { label:office.product_key, color:'#6366f1' }
+      const key = `${office.product_key}:${office.external_office_id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push({
+        id:key,
+        source_id:office.external_office_id,
+        product:office.product_key,
+        firm_name:office.firm_name || `${cfg.label} Office`,
+        brand_color:cfg.color,
+        employee_count:Number(office.seats || 0),
+        client_count:0,
+        lead_count:0,
+        storage_bytes:0,
+        total_collected:0,
+        transaction_count:0,
+        status:office.status || 'active',
+        plan_tier:cfg.label,
+        effective_monthly:Number(office.monthly_amount || 0),
+        last_activity:office.updated_at || office.created_at || null,
+      })
+    }
+  } else if (registryError) {
+    warnings.push('RomyLabs office registry unavailable')
+  }
+
+  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
+  const results = await Promise.all(productKeys.map(async productKey => {
+    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
+    return { productKey, ...response }
+  }))
+
+  for (const result of results) {
+    const cfg = EXTERNAL_OFFICE_PRODUCTS[result.productKey]
+    const offices = Array.isArray(result.data?.offices) ? result.data.offices : null
+    if (result.error || !offices) {
+      warnings.push(`${cfg.label} live office feed unavailable`)
+      continue
+    }
+
+    for (const office of offices) {
+      const key = `${result.productKey}:${office.id}`
+      const existing = rows.findIndex(r => r.id === key)
+      const normalized = {
+        id:key,
+        source_id:office.id,
+        product:result.productKey,
+        firm_name:office.name || `${cfg.label} Office`,
+        brand_color:cfg.color,
+        employee_count:Number(office.employee_count || office.staff_count || 0),
+        client_count:Number(office.client_count || 0),
+        lead_count:Number(office.lead_count || 0),
+        storage_bytes:Number(office.storage_bytes || 0),
+        total_collected:Number(office.total_collected || 0),
+        transaction_count:Number(office.transaction_count || 0),
+        status:office.status || (office.is_active === false ? 'inactive' : 'active'),
+        plan_tier:office.plan || office.subscription_status || cfg.label,
+        effective_monthly:Number(office.mrr || 0),
+        last_activity:office.last_activity || office.since || null,
+      }
+      if (existing >= 0) rows[existing] = { ...rows[existing], ...normalized }
+      else rows.push(normalized)
+      seen.add(key)
+    }
+
+    const metrics = result.data?.metrics || {}
+    externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
+    externalMetrics.active_clients += Number(metrics.active_clients || 0)
+    externalMetrics.active_leads += Number(metrics.active_leads || 0)
+    externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
+    if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
+  }
+
+  return { rows, warnings:[...new Set(warnings)], externalMetrics }
+}
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 // Operational items only — Marketing/Content/LinkedIn/Search/System live in Command Center tabs
 const NAV = [
+  { path:'/crm-admin',                label:'Overview',        icon:'📊' },
   { path:'/crm-admin/command-center', label:'Command Center', icon:'⚡' },
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
@@ -111,7 +213,6 @@ const NAV = [
   { path:'/crm-admin/calendar',       label:'Calendar',       icon:'📅' },
   { path:'/crm-admin/meet',           label:'Meet & Training', icon:'🎥' },
   { path:'/crm-admin/chat',           label:'Chat (All)',      icon:'💬' },
-  { path:'/crm-admin',                label:'Overview',        icon:'📊' },
   { path:'/crm-admin/provision',      label:'+ New Office',   icon:'➕' },
   { path:'/crm-admin/offices',        label:'Offices',         icon:'🏢' },
   { path:'/crm-admin/esign',          label:'E-Signatures',    icon:'✍️' },
@@ -413,23 +514,36 @@ function AdminDialer() {
 function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
+  const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
   const navigate = useNavigate()
   const { user } = useApp()
 
   useEffect(() => {
     if (!user) return
-    supabase.rpc('admin_tenant_overview').then(({ data, error }) => {
-      if (error) { setLoadError(error.message); setStats([]); return }
-      setLoadError(''); setStats(data || [])
-    })
+    let cancelled=false
+    ;(async()=>{
+      try {
+        const { rows, warnings, externalMetrics: productMetrics } = await loadPlatformOfficeRows()
+        if(cancelled) return
+        setStats(rows)
+        setExternalMetrics(productMetrics)
+        setLoadError(warnings.join(' · '))
+      } catch(error) {
+        if(cancelled) return
+        setStats([])
+        setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
+        setLoadError(error?.message || 'Unable to load platform offices')
+      }
+    })()
+    return()=>{cancelled=true}
   }, [user])
 
   const totalMRR     = (stats||[]).reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = (stats||[]).filter(r => r.status==='active').length
-  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.employee_count||0), 0)
-  const totalClients = (stats||[]).reduce((s,r) => s+Number(r.client_count||0), 0)
-  const totalLeads   = (stats||[]).reduce((s,r) => s+Number(r.lead_count||0), 0)
-  const totalStorage   = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0)
+  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.employee_count||0), 0) + externalMetrics.active_staff
+  const totalClients = (stats||[]).reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
+  const totalLeads   = (stats||[]).reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
+  const totalStorage = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
   const totalCollected = (stats||[]).reduce((s,r) => s+Number(r.total_collected||0), 0)
   const totalTx        = (stats||[]).reduce((s,r) => s+Number(r.transaction_count||0), 0)
 
@@ -565,9 +679,91 @@ function ArcvenaOfficePage() {
   )
 }
 
+function ExternalProductOfficePage({ productKey }) {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const cfg = EXTERNAL_OFFICE_PRODUCTS[productKey]
+  const officeId = String(id || '').replace(new RegExp(`^${productKey}:`), '')
+  const [office,setOffice] = useState(null)
+  const [loading,setLoading] = useState(true)
+  const [error,setError] = useState('')
+
+  useEffect(() => {
+    let cancelled=false
+    ;(async()=>{
+      setLoading(true); setError('')
+      const {data,error:invokeError}=await supabase.functions.invoke('hub-proxy',{body:{product:productKey}})
+      if(cancelled) return
+      const offices=Array.isArray(data?.offices)?data.offices:[]
+      if(invokeError || !offices.length){
+        const {data:registryRows,error:registryError}=await supabase.rpc('admin_romylabs_office_registry')
+        if(cancelled) return
+        const match=(Array.isArray(registryRows)?registryRows:[]).find(r=>r.product_key===productKey && String(r.external_office_id)===officeId)
+        if(match){
+          setOffice({
+            id:match.external_office_id,
+            name:match.firm_name,
+            status:match.status,
+            is_active:!['inactive','suspended','cancelled'].includes(String(match.status||'').toLowerCase()),
+            since:match.created_at,
+            mrr:match.monthly_amount,
+          })
+          setLoading(false)
+          return
+        }
+        setError(invokeError?.message || registryError?.message || data?.error || `Unable to load ${cfg.label} office`)
+        setLoading(false)
+        return
+      }
+      const match=offices.find(o=>String(o.id)===officeId)
+      if(!match){ setError(`${cfg.label} office not found`); setLoading(false); return }
+      setOffice(match); setLoading(false)
+    })()
+    return()=>{cancelled=true}
+  },[officeId,productKey,cfg.label])
+
+  if(loading) return <Spinner/>
+  if(error) return <div style={{padding:32}}><button onClick={()=>navigate('/crm-admin/offices')} style={S.btn('ghost')}>← Offices</button><div style={{marginTop:18,color:'#fca5a5'}}>{error}</div></div>
+
+  const kv=[['Product',cfg.label],['Status',office.status||(office.is_active===false?'inactive':'active')],['Office ID',office.id],['Created',office.since?fmtDate(office.since):'—']]
+  return (
+    <div style={{padding:'28px 36px',maxWidth:1100}}>
+      <button onClick={()=>navigate('/crm-admin/offices')} style={{...S.btn('ghost'),marginBottom:18}}>← All Offices</button>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,marginBottom:22}}>
+        <div>
+          <div style={{fontSize:11,color:cfg.color,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:5}}>{cfg.label} Office</div>
+          <div style={{fontSize:28,fontWeight:900,color:'#fff'}}>{office.name||`${cfg.label} Office`}</div>
+          <div style={{fontSize:13,color:'#64748b',marginTop:4}}>You are inside this office only.</div>
+        </div>
+        <button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={S.btn('primary')}>Open {cfg.label} CRM ↗</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:22}}>
+        {kv.map(([label,value])=><div key={label} style={{...S.card,padding:'16px 18px'}}><div style={{fontSize:10,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>{label}</div><div style={{fontSize:14,fontWeight:700,color:'#e2e8f0',wordBreak:'break-word'}}>{String(value??'—')}</div></div>)}
+      </div>
+      <UniversalOfficeESign
+        supabase={supabase}
+        productKey={productKey}
+        externalOfficeId={office.id}
+        firmName={office.name||`${cfg.label} Office`}
+        contactName=""
+        contactEmail=""
+        seats={null}
+        monthlyAmount={office.mrr ?? null}
+      />
+    </div>
+  )
+}
+
 function OfficePageRouter(){
   const {id}=useParams()
-  return String(id||'').startsWith('arcvena:') ? <ArcvenaOfficePage/> : <OfficePage/>
+  const raw=String(id||'')
+  if(raw.startsWith('arcvena:')) return <ArcvenaOfficePage/>
+  if(raw.startsWith('camvella:')) return <ExternalProductOfficePage productKey="camvella"/>
+  if(raw.startsWith('bocasync:')) return <ExternalProductOfficePage productKey="bocasync"/>
+  if(raw.startsWith('groundivo:')) return <ExternalProductOfficePage productKey="groundivo"/>
+  if(raw.startsWith('oculivo:')) return <ExternalProductOfficePage productKey="oculivo"/>
+  if(raw.startsWith('restore_relay:')) return <ExternalProductOfficePage productKey="restore_relay"/>
+  return <OfficePage/>
 }
 
 // ── Per-Office Deep Dive ─────────────────────────────────────────────────────
@@ -1012,51 +1208,20 @@ function OfficesList() {
   const [loadError, setLoadError] = useState('')
   const navigate = useNavigate()
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const { data: taxresRows, error: taxresError } = await supabase.rpc('admin_tenant_overview')
-      if (taxresError) {
-        if (!cancelled) {
-          setLoadError(taxresError.message)
-          setRows([])
-        }
-        return
-      }
-
-      const baseRows = taxresRows || []
-      if (!cancelled) setRows(baseRows)
-
-      const { data: arcvenaData, error: arcvenaError } = await supabase.functions.invoke('hub-proxy', {
-        body: { product: 'arcvena' },
-      })
-      if (arcvenaError || arcvenaData?.ok === false) {
-        if (!cancelled) {
-          setLoadError('Arcvena offices are temporarily unavailable; existing offices are still shown.')
-        }
-        return
-      }
-
-      const arcvenaRows = (arcvenaData?.offices || []).map(office => ({
-        id: `arcvena:${office.id}`,
-        source_id: office.id,
-        product: 'arcvena',
-        firm_name: office.name,
-        brand_color: '#00c2ff',
-        employee_count: 0,
-        client_count: 0,
-        storage_bytes: 0,
-        status: office.is_active ? 'active' : 'inactive',
-        plan_tier: 'Arcvena',
-        effective_monthly: Number(office.mrr || 0),
-        last_activity: office.since,
-      }))
-
-      if (!cancelled) {
-        setLoadError('')
-        setRows([...baseRows, ...arcvenaRows])
+    let cancelled=false
+    ;(async()=>{
+      try {
+        const { rows: allRows, warnings } = await loadPlatformOfficeRows()
+        if(cancelled) return
+        setRows(allRows)
+        setLoadError(warnings.join(' · '))
+      } catch(error) {
+        if(cancelled) return
+        setRows([])
+        setLoadError(error?.message || 'Unable to load offices')
       }
     })()
-    return () => { cancelled = true }
+    return()=>{cancelled=true}
   }, [])
 
   function openOffice(row) {
