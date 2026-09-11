@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect } from 'react'
 import PhoneNumber from '../components/PhoneNumber'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
@@ -34,7 +34,6 @@ export default function Fax() {
   const [search,   setSearch]   = useState('')
   const [filterStatus, setFilter] = useState('Received')
   const [settings, setSettings]  = useState({})
-  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
   const [showSug,  setShowSug]  = useState(false)
   const [sugg,     setSugg]     = useState([])
@@ -84,7 +83,6 @@ export default function Fax() {
     if (f) setLogs(f)
     if (c) setClients(c)
     if (l) setLeads(l)
-    setSettingsLoaded(true)
     if (s) {
       setSettings(s)
       const defaultFrom = s.firm_fax_number || s.sw_inbound_did
