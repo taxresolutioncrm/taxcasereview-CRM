@@ -197,13 +197,16 @@ export default function Fax() {
 
     try {
       let mediaUrl = null
+      let storagePath = null
 
       if (file) {
         const path = `fax/${Date.now()}_${file.name}`
         const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
         if (upErr) throw new Error('Upload failed: ' + upErr.message)
-        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
-        mediaUrl = urlData?.signedUrl || ''
+        storagePath = path
+        const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
+        if (signErr || !urlData?.signedUrl) throw new Error('Could not create secure fax link')
+        mediaUrl = urlData.signedUrl
       }
 
       const toNum   = '+1' + form.to_number.replace(/\D/g,'').slice(-10)
@@ -222,7 +225,7 @@ export default function Fax() {
         to_number: toNum, from_number: fromNum,
         client_name: form.client_name, subject: form.subject,
         notes: form.notes, file_name: file?.name || null,
-        file_url: mediaUrl, signalwire_fax_id: sw_id,
+        file_url: storagePath ? `storage://documents/${storagePath}` : mediaUrl, storage_path: storagePath, signalwire_fax_id: sw_id,
         status, sent_by: user?.email || 'Unknown',
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
