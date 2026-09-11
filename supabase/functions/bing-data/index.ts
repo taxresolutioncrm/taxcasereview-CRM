@@ -8,6 +8,17 @@ const corsHeaders = {
 
 const BING_BASE = 'https://api.bing.com/webmaster/api'
 
+const PRODUCT_SITES: Record<string,string> = {
+  taxres_crm: 'https://taxrescrm.net/',
+  camvella: 'https://camvella.com/',
+  arcvena: 'https://arcvena.com/',
+  bocasync: 'https://bocasync.com/',
+  groundivo: 'https://groundivo.com/',
+  oculivo: 'https://oculivo.com/',
+  restore_relay: 'https://restorerelay.com/',
+  romylabs: 'https://romylabs.com/',
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
@@ -27,8 +38,19 @@ serve(async (req) => {
       })
     }
 
+    const body = await req.json().catch(() => ({}))
+    const productKey = String(body?.product_key || 'taxres_crm').trim().toLowerCase()
     const apiKey = settings.bing_api_key
-    const siteUrl = settings.bing_site_url || 'https://taxrescrm.net/'
+    const siteUrl = PRODUCT_SITES[productKey] || (productKey === 'taxres_crm' ? (settings.bing_site_url || PRODUCT_SITES.taxres_crm) : '')
+
+    if (!siteUrl) {
+      return new Response(JSON.stringify({
+        error: 'unsupported_product',
+        connected: false,
+        product_key: productKey,
+        message: 'No Bing site mapping is configured for this product.'
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     const headers = {
       'Ocp-Apim-Subscription-Key': apiKey,
@@ -51,6 +73,21 @@ serve(async (req) => {
       pagesRes.json().catch(() => ({})),
       keywordsRes.json().catch(() => ({})),
     ])
+
+    if (!statsRes.ok || !pagesRes.ok || !keywordsRes.ok) {
+      return new Response(JSON.stringify({
+        connected: false,
+        product_key: productKey,
+        siteUrl,
+        error: 'bing_site_unavailable',
+        message: 'Bing Webmaster Tools did not return verified data for this product site.',
+        upstream_status: {
+          stats: statsRes.status,
+          pages: pagesRes.status,
+          keywords: keywordsRes.status,
+        },
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     // Aggregate totals
     const stats = Array.isArray(statsData) ? statsData : (statsData.value || [])
