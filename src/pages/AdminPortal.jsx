@@ -418,53 +418,10 @@ function Overview() {
 
   useEffect(() => {
     if (!user) return
-    let cancelled = false
-    ;(async () => {
-      const { data: taxRows, error: taxError } = await supabase.rpc('admin_tenant_overview')
-      if (taxError) {
-        if (!cancelled) { setLoadError(taxError.message); setStats([]) }
-        return
-      }
-
-      const baseRows = taxRows || []
-      const { data: arcvenaData, error: arcvenaError } = await supabase.functions.invoke('hub-proxy', {
-        body: { product: 'arcvena' },
-      })
-
-      if (arcvenaError || arcvenaData?.ok === false) {
-        if (!cancelled) {
-          setLoadError('Arcvena office data is temporarily unavailable; tax offices are still shown.')
-          setStats(baseRows)
-        }
-        return
-      }
-
-      const ochoaRows = (arcvenaData?.offices || [])
-        .filter(office => ['ochoa electric services','ochoa electric'].includes(String(office?.name || '').trim().toLowerCase()))
-        .map(office => ({
-          id: `arcvena:${office.id}`,
-          source_id: office.id,
-          product: 'arcvena',
-          firm_name: office.name,
-          brand_color: '#00c2ff',
-          employee_count: 0,
-          client_count: 0,
-          lead_count: 0,
-          storage_bytes: 0,
-          status: office.is_active ? 'active' : 'inactive',
-          plan_tier: 'Arcvena',
-          effective_monthly: Number(office.mrr || 0),
-          total_collected: 0,
-          transaction_count: 0,
-          last_activity: office.since,
-        }))
-
-      if (!cancelled) {
-        setLoadError('')
-        setStats([...baseRows, ...ochoaRows])
-      }
-    })()
-    return () => { cancelled = true }
+    supabase.rpc('admin_tenant_overview').then(({ data, error }) => {
+      if (error) { setLoadError(error.message); setStats([]); return }
+      setLoadError(''); setStats(data || [])
+    })
   }, [user])
 
   const totalMRR     = (stats||[]).reduce((s,r) => s+Number(r.effective_monthly||0), 0)
