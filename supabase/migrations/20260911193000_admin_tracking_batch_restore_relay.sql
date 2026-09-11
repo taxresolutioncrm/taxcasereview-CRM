@@ -57,6 +57,16 @@ set status='configured',
 where product_id='bocasync'
   and channel_key='clarity';
 
+-- Oculivo Clarity project ID supplied 2026-09-11.
+update public.product_traffic_channels
+set status='configured',
+    tracking_id='yguz2tkhnt',
+    destination_url='https://oculivo.com',
+    notes='Microsoft Clarity project ID yguz2tkhnt supplied on 2026-09-11 and staged in the Oculivo website release. Promote to Live after the public site is verified loading the exact project ID.',
+    updated_at=now()
+where product_id='oculivo'
+  and channel_key='clarity';
+
 -- Oculivo GA4 Measurement ID supplied from the Google tag setup screenshot.
 update public.product_traffic_channels
 set status='configured',
