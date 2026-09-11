@@ -473,7 +473,7 @@ export default function Sidebar() {
           if (item.badge === 'timeoff') return sum + Number(pendingTimeOff || 0)
           return sum + Number(BADGE_COUNTS[item.badge] || 0)
         }, 0)
-        const sectionNeedsAttention = !section.always && sectionAlertCount > 0
+        const sectionNeedsAttention = !section.always && !isOpen && sectionAlertCount > 0
 
         return (
           <div key={section.key}>
