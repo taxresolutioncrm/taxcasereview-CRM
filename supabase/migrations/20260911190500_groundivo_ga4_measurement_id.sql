@@ -1,4 +1,4 @@
--- Record the GroundIVO GA4 web-stream Measurement ID without misusing tracking_id.
+-- Record GroundIVO GA4 and Microsoft Clarity IDs without misusing the GA4 reporting property field.
 -- The central ga4-sync function requires the numeric GA4 Property ID in tracking_id,
 -- so this leaves the channel Blocked until that separate property ID is supplied.
 
@@ -10,7 +10,16 @@ set status='blocked',
 where product_id='groundivo'
   and channel_key='ga4';
 
-do $$
+update public.product_traffic_channels
+set status='configured',
+    tracking_id='ygv0xf8tea',
+    destination_url='https://groundivo.com',
+    notes='Microsoft Clarity project ID ygv0xf8tea supplied and wired into the GroundIVO marketing site on 2026-09-11. Promote to Live after public-page verification confirms the exact project ID is loading.',
+    updated_at=now()
+where product_id='groundivo'
+  and channel_key='clarity';
+
+do $
 begin
   if not exists (
     select 1
@@ -22,5 +31,16 @@ begin
   ) then
     raise exception 'GroundIVO GA4 Measurement ID tracking note was not persisted';
   end if;
+
+  if not exists (
+    select 1
+    from public.product_traffic_channels
+    where product_id='groundivo'
+      and channel_key='clarity'
+      and status='configured'
+      and tracking_id='ygv0xf8tea'
+  ) then
+    raise exception 'GroundIVO Clarity project ID was not persisted';
+  end if;
 end
-$$;
+$;
