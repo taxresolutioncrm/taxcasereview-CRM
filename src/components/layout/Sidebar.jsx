@@ -47,9 +47,9 @@ const SECTIONS = [
     key: 'billing',
     label: 'Billing',
     items: [
-      { path: '/invoices',  icon: InvIcon,     label: 'Invoices',              section: 'invoices' },
-      { path: '/payments',  icon: PayIcon,     label: 'Payments',              section: 'payments' },
-      { path: '/ar',        icon: ARIcon,      label: 'Accounts Receivable',   section: 'payments' },
+      { path: '/invoices',  icon: InvIcon,     label: 'Invoices',              badge: 'invoices', section: 'invoices' },
+      { path: '/payments',  icon: PayIcon,     label: 'Payments',              badge: 'payments', section: 'payments' },
+      { path: '/ar',        icon: ARIcon,      label: 'Accounts Receivable',   badge: 'ar', section: 'payments' },
       { path: '/transactions', icon: PayIcon,  label: 'Transactions',          section: 'payments' },
       { path: '/timeentry',  icon: ClockIcon,   label: 'Time & Billing',        section: 'payments' },
       { path: '/books',     icon: BooksIcon,   label: 'Books & Ledger',        section: 'books' },
@@ -156,6 +156,67 @@ export default function Sidebar() {
   const [unreadInbox, setUnreadInbox] = useState(0)
   const [openTasks, setOpenTasks] = useState(0)
   const [unreadChat, setUnreadChat] = useState(0)
+  const [pendingPayments, setPendingPayments] = useState(0)
+  const [overdueInvoices, setOverdueInvoices] = useState(0)
+  const [overdueReceivables, setOverdueReceivables] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    let debounce = null
+
+    async function loadBillingBadges() {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const [paymentsRes, invoicesRes, arRes] = await Promise.all([
+        supabase.from('payments').select('id,status', { count:'exact', head:false }).in('status', ['Pending','TBD','No Status','New Agmt','Failed']),
+        supabase.from('invoices').select('id,status,dueDate'),
+        supabase.from('payments').select('id,payment_status,scheduled_date,trade_type').in('trade_type', ['1st Trade','2nd Trade']),
+      ])
+      if (cancelled) return
+      if (!paymentsRes.error) setPendingPayments((paymentsRes.data || []).length)
+      if (!invoicesRes.error) {
+        setOverdueInvoices((invoicesRes.data || []).filter(inv => {
+          if (inv.status === 'Paid') return false
+          if (inv.status === 'Overdue') return true
+          if (!inv.dueDate) return false
+          const due = new Date(inv.dueDate)
+          due.setHours(0,0,0,0)
+          return due < today
+        }).length)
+      }
+      if (!arRes.error) {
+        setOverdueReceivables((arRes.data || []).filter(p => {
+          if (p.payment_status === 'Paid' || !p.scheduled_date) return false
+          const due = new Date(p.scheduled_date)
+          due.setHours(0,0,0,0)
+          return due < today
+        }).length)
+      }
+    }
+
+    function scheduleBillingReload() {
+      clearTimeout(debounce)
+      debounce = setTimeout(loadBillingBadges, 500)
+    }
+
+    loadBillingBadges()
+    const poll = setInterval(loadBillingBadges, 180000)
+    function onVisible() { if (document.visibilityState === 'visible') loadBillingBadges() }
+    document.addEventListener('visibilitychange', onVisible)
+    const ch = supabase.channel('sidebar-billing-rt')
+      .on('postgres_changes', { event:'*', schema:'public', table:'payments' }, scheduleBillingReload)
+      .on('postgres_changes', { event:'*', schema:'public', table:'invoices' }, scheduleBillingReload)
+      .subscribe()
+    return () => {
+      cancelled = true
+      clearTimeout(debounce)
+      clearInterval(poll)
+      document.removeEventListener('visibilitychange', onVisible)
+      supabase.removeChannel(ch)
+    }
+  }, [user])
+
 
   useEffect(() => {
     async function loadPendingTimeOff() {
@@ -222,7 +283,7 @@ export default function Sidebar() {
     return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
   }, [user])
 
-  const BADGE_COUNTS = { leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: pendingEsign, email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents }
+  const BADGE_COUNTS = {leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: pendingEsign, email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents, payments: pendingPayments, invoices: overdueInvoices, ar: overdueReceivables }
 
   // SIDEBAR_UNSEEN_ACK_V1
   useEffect(() => {
