@@ -170,6 +170,9 @@ Deno.serve(async (req) => {
         })
       }
       productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
+    } else if (productKey === 'camvella') {
+      // Camvella verifies the signed-in RomyLabs platform_admin against the RomyLabs Auth project.
+      productHeaders['Authorization'] = `Bearer ${jwt}`
     } else {
       productHeaders['x-hub-secret'] = hubSecret
     }
