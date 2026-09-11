@@ -51,6 +51,45 @@ function raw(o: any) {
   return `${h}\r\n\r\n${o.body}`
 }
 
+async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, username:string, password:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+  const encoder=new TextEncoder(), decoder=new TextDecoder()
+  let conn:Deno.TcpConn|Deno.TlsConn
+  if(opts.port===465||opts.ssl) conn=await Deno.connectTls({hostname:opts.host,port:opts.port})
+  else conn=await Deno.connect({hostname:opts.host,port:opts.port})
+  const read=async()=>{const buf=new Uint8Array(16384);const n=await conn.read(buf);return decoder.decode(buf.subarray(0,n||0))}
+  const write=async(s:string)=>{await conn.write(encoder.encode(s+'\r\n'))}
+  const expect=(resp:string,codes:string[],step:string)=>{if(!codes.some(c=>resp.startsWith(c))) throw new Error(`${step} failed: ${resp.slice(0,160)}`)}
+
+  let resp=await read(); expect(resp,['220'],'SMTP connect')
+  await write('EHLO romylabs.com'); resp=await read(); expect(resp,['250'],'SMTP EHLO')
+  if(opts.port===587&&!opts.ssl){
+    await write('STARTTLS'); resp=await read(); expect(resp,['220'],'SMTP STARTTLS')
+    conn=await Deno.startTls(conn as Deno.TcpConn,{hostname:opts.host})
+    await write('EHLO romylabs.com'); resp=await read(); expect(resp,['250'],'SMTP EHLO after TLS')
+  }
+  await write('AUTH LOGIN'); await read()
+  await write(btoa(opts.username)); await read()
+  await write(btoa(opts.password)); resp=await read(); expect(resp,['235'],'SMTP authentication')
+  await write(`MAIL FROM:<${opts.username}>`); resp=await read(); expect(resp,['250'],'SMTP MAIL FROM')
+  await write(`RCPT TO:<${opts.to}>`); resp=await read(); expect(resp,['250','251'],'SMTP recipient')
+  await write('DATA'); resp=await read(); expect(resp,['354'],'SMTP DATA')
+
+  const body=opts.html||opts.text||''
+  const contentType=opts.html?'text/html':'text/plain'
+  const headers=[
+    `From: ${enc(safe(opts.fromName))} <${safe(opts.username)}>`,
+    `To: ${safe(opts.to)}`,
+    `Subject: ${enc(safe(opts.subject))}`,
+    `Date: ${new Date().toUTCString()}`,
+    'MIME-Version: 1.0',
+    `Content-Type: ${contentType}; charset="UTF-8"`,
+  ].join('\r\n')
+  const payload=(headers+'\r\n\r\n'+body).replace(/\r?\n\./g,'\r\n..')
+  await write(payload+'\r\n.'); resp=await read(); expect(resp,['250'],'SMTP message acceptance')
+  await write('QUIT')
+  conn.close()
+}
+
 async function normalizeDocUrl(admin: any, baseUrl: string, input: string) {
   try {
     const u = new URL(input), host = new URL(baseUrl).hostname
@@ -168,6 +207,58 @@ serve(async (req) => {
     if (!to || !subject || (!html && !text)) return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     let q = admin.from('settings').select('*'); if (tenant_id) q = q.eq('tenant_id', tenant_id); else q = q.limit(1)
     const { data: ts } = await q.maybeSingle()
+
+    // Admin Portal office e-sign requests must use the exact product SMTP identity.
+    // Never fall back to the first Gmail OAuth mailbox for contracts.
+    if (authenticated && body.kind === 'office_esign_request') {
+      const { data: isPlatformAdmin } = await authClient.rpc('_is_platform_admin')
+      if (!isPlatformAdmin) return new Response(JSON.stringify({ error:'Platform admin required for office contract email' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      const requestedFrom=safe(from_email).toLowerCase()
+      if (!requestedFrom) return new Response(JSON.stringify({ error:'Contract sender identity missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      const { data: smtpSettings, error: smtpSettingsError } = await admin.from('settings')
+        .select('tenant_id,name,firmname,smtp_host,smtp_port,smtp_email,smtp_password,smtp_name,smtp_encryption')
+        .ilike('smtp_email', requestedFrom).limit(1).maybeSingle()
+      if (smtpSettingsError || !smtpSettings?.smtp_host || !smtpSettings?.smtp_email || !smtpSettings?.smtp_password) {
+        return new Response(JSON.stringify({ error:`No configured SMTP transport for ${requestedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      }
+      const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
+      if (!recipients.length) return new Response(JSON.stringify({ error:'Contract recipient missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      for (const recipient of recipients) {
+        await sendSmtpRaw({
+          host:safe(smtpSettings.smtp_host),
+          port:Number(smtpSettings.smtp_port||465),
+          ssl:String(smtpSettings.smtp_encryption||'').toLowerCase()==='ssl'||Number(smtpSettings.smtp_port||465)===465,
+          username:safe(smtpSettings.smtp_email),
+          password:String(smtpSettings.smtp_password),
+          fromName:safe(from_name||smtpSettings.smtp_name||smtpSettings.name||smtpSettings.firmname||'RomyLabs'),
+          to:recipient,
+          subject:safe(subject),
+          html:html?String(html):undefined,
+          text:text?String(text):undefined,
+        })
+      }
+      await admin.from('emails').insert(recipients.map((recipient:string)=>({
+        tenant_id:smtpSettings.tenant_id,
+        recipient,
+        recipients:[recipient],
+        subject:safe(subject),
+        body:text?String(text):String(html||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),
+        body_html:html?String(html):'',
+        triage:'Sent',
+        status:'Sent',
+        direction:'outbound',
+        is_read:true,
+        sender:safe(smtpSettings.smtp_email),
+        from_address:safe(smtpSettings.smtp_email),
+        reply_from:safe(smtpSettings.smtp_email),
+        mailbox_owner:safe(authenticatedUser?.email||'info@romylabs.com'),
+        received_at:new Date().toISOString(),
+        created_at:new Date().toISOString(),
+        product_id:safe(body.product_key||'')||null,
+      })))
+      return new Response(JSON.stringify({ success:true, via:'smtp', from:safe(smtpSettings.smtp_email) }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+    }
+
     const { data: gs } = await admin.from('settings').select('*').not('gmail_refresh_token', 'is', null).limit(1).maybeSingle()
     if (!gs?.gmail_refresh_token) return new Response(JSON.stringify({ error: 'No Gmail OAuth configured' }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
