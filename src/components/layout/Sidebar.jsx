@@ -303,8 +303,6 @@ export default function Sidebar() {
 
   // Clear badges when user visits those pages (instant — no refresh needed)
   useEffect(() => {
-    if (location.pathname.startsWith('/fax')) {
-    }
     if (location.pathname.startsWith('/sms')) {
       localStorage.setItem('tcr_sms_last_seen', new Date().toISOString())
       setUnreadSms(0)
