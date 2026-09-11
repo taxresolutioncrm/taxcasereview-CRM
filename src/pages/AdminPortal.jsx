@@ -101,9 +101,12 @@ function Spinner() {
 }
 
 const EXTERNAL_OFFICE_PRODUCTS = {
-  arcvena:  { label:'Arcvena',  color:'#00c2ff', appUrl:'https://app.arcvena.com/' },
-  camvella: { label:'Camvella', color:'#55B96A', appUrl:'https://app.camvella.com/' },
-  bocasync: { label:'BocaSync', color:'#22c7d3', appUrl:'https://app.bocasync.com/' },
+  arcvena:      { label:'Arcvena',       color:'#00c2ff', appUrl:'https://app.arcvena.com/' },
+  camvella:     { label:'Camvella',      color:'#55B96A', appUrl:'https://app.camvella.com/' },
+  bocasync:     { label:'BocaSync',      color:'#22c7d3', appUrl:'https://app.bocasync.com/' },
+  groundivo:    { label:'GroundIVO',     color:'#16a34a', appUrl:'https://app.groundivo.com/' },
+  oculivo:      { label:'Oculivo',       color:'#7C3AED', appUrl:'https://app.oculivo.com/' },
+  restore_relay:{ label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/' },
 }
 
 async function loadPlatformOfficeRows() {
@@ -138,8 +141,8 @@ async function loadPlatformOfficeRows() {
         storage_bytes: 0,
         total_collected: 0,
         transaction_count: 0,
-        status: office.is_active === false ? 'inactive' : 'active',
-        plan_tier: cfg.label,
+        status: office.status || (office.is_active === false ? 'inactive' : 'active'),
+        plan_tier: office.plan || office.subscription_status || cfg.label,
         effective_monthly: Number(office.mrr || 0),
         last_activity: office.since || null,
       })
@@ -696,6 +699,9 @@ function OfficePageRouter(){
   if(raw.startsWith('arcvena:')) return <ArcvenaOfficePage/>
   if(raw.startsWith('camvella:')) return <ExternalProductOfficePage productKey="camvella"/>
   if(raw.startsWith('bocasync:')) return <ExternalProductOfficePage productKey="bocasync"/>
+  if(raw.startsWith('groundivo:')) return <ExternalProductOfficePage productKey="groundivo"/>
+  if(raw.startsWith('oculivo:')) return <ExternalProductOfficePage productKey="oculivo"/>
+  if(raw.startsWith('restore_relay:')) return <ExternalProductOfficePage productKey="restore_relay"/>
   return <OfficePage/>
 }
 
