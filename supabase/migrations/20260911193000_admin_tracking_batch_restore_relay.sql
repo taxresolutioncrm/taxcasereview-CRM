@@ -1,4 +1,15 @@
 -- Batch tracking update: Restore Relay provider IDs supplied 2026-09-11.
+-- Arcvena Clarity is now live-verified on the public site.
+update public.product_traffic_channels
+set status='live',
+    tracking_id='yguz2tkhnt',
+    destination_url='https://arcvena.com',
+    notes='Verified live on 2026-09-11: Arcvena public HTML loads Microsoft Clarity project ID yguz2tkhnt and the previous project ID is no longer present.',
+    last_verified_at=now(),
+    updated_at=now()
+where product_id='arcvena'
+  and channel_key='clarity';
+
 -- Keep GA4 at Configured until the numeric GA4 Property ID is available for central reporting sync.
 -- Keep Clarity at Configured until the public site is verified serving the exact project ID.
 
@@ -19,8 +30,15 @@ set status='configured',
 where product_id='restore_relay'
   and channel_key='clarity';
 
-do $$
+do $
 begin
+  if not exists (
+    select 1 from public.product_traffic_channels
+    where product_id='arcvena' and channel_key='clarity'
+      and status='live' and tracking_id='yguz2tkhnt'
+  ) then raise exception 'Arcvena Clarity live batch update failed'; end if;
+
+
   if not exists (
     select 1 from public.product_traffic_channels
     where product_id='restore_relay' and channel_key='ga4'
