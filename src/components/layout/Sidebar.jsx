@@ -304,8 +304,6 @@ export default function Sidebar() {
   // Clear badges when user visits those pages (instant — no refresh needed)
   useEffect(() => {
     if (location.pathname.startsWith('/fax')) {
-      localStorage.setItem('tcr_fax_last_seen', new Date().toISOString())
-      setUnreadFax(0)
     }
     if (location.pathname.startsWith('/sms')) {
       localStorage.setItem('tcr_sms_last_seen', new Date().toISOString())
@@ -472,6 +470,13 @@ export default function Sidebar() {
         const isOpen = section.always || openKey === section.key
         const hasActive = !section.always && section.items.some(i => i.path !== '/' && location.pathname.startsWith(i.path))
 
+        const sectionAlertCount = section.items.reduce((sum, item) => {
+          if (!item.badge) return sum
+          if (item.badge === 'timeoff') return sum + Number(pendingTimeOff || 0)
+          return sum + Number(BADGE_COUNTS[item.badge] || 0)
+        }, 0)
+        const sectionNeedsAttention = !section.always && sectionAlertCount > 0
+
         return (
           <div key={section.key}>
             {/* Section header — clickable for non-always sections */}
@@ -487,12 +492,14 @@ export default function Sidebar() {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   paddingRight: 10,
-                  color: hasActive ? 'var(--blue)' : 'var(--t2)',
+                  color: sectionNeedsAttention ? 'var(--bad)' : (hasActive ? 'var(--blue)' : 'var(--t2)'),
                   userSelect: 'none',
                   fontSize: 12,
                 }}
               >
                 <span>{section.label}</span>
+                <span style={{display:'flex',alignItems:'center',gap:7}}>
+                  {sectionNeedsAttention && <span className="nav-badge">{sectionAlertCount}</span>}
                 <svg
                   width="10" height="10" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
@@ -500,6 +507,7 @@ export default function Sidebar() {
                 >
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
+                </span>
               </div>
             )}
 
@@ -520,7 +528,6 @@ export default function Sidebar() {
                     if (item.path === '/email') setUnreadInbox(0)
                     if (item.path === '/tasks') setOpenTasks(0)
                     if (item.path === '/esign') setPendingEsign(0)
-                    if (item.path === '/fax') { localStorage.setItem('tcr_fax_last_seen', new Date().toISOString()); setUnreadFax(0) }
                     if (item.path === '/sms') { localStorage.setItem('tcr_sms_last_seen', new Date().toISOString()); setUnreadSms(0) }
                     if (item.path === '/dialer') setUnreadVoicemails(0)
                     if (item.path === '/calendar') setUpcomingEvents(0)
