@@ -176,6 +176,19 @@ Deno.serve(async (req) => {
     } else if (productKey === 'camvella') {
       // Camvella verifies the signed-in RomyLabs platform_admin against the RomyLabs Auth project.
       productHeaders['Authorization'] = `Bearer ${jwt}`
+    } else if (productKey === 'groundivo' || productKey === 'oculivo' || productKey === 'restore_relay') {
+      const secretKey = productKey === 'groundivo'
+        ? 'GROUNDIVO_SUPPORT_SECRET'
+        : productKey === 'oculivo'
+          ? 'OCULIVO_SUPPORT_SECRET'
+          : 'RESTORE_RELAY_SUPPORT_SECRET'
+      const productSecret = Deno.env.get(secretKey)
+      if (!productSecret) {
+        return new Response(JSON.stringify({ ok: false, error: `${productKey} proxy credential not configured` }), {
+          status: 503, headers: { ...cors, 'Content-Type': 'application/json' }
+        })
+      }
+      productHeaders['x-romylabs-support-secret'] = productSecret
     } else {
       productHeaders['x-hub-secret'] = hubSecret
     }
