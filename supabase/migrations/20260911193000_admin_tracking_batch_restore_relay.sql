@@ -95,7 +95,7 @@ set status='configured',
 where product_id='restore_relay'
   and channel_key='clarity';
 
-do $
+do $$
 begin
   if not exists (
     select 1 from public.product_traffic_channels
