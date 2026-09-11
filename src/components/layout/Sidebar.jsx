@@ -275,7 +275,7 @@ export default function Sidebar() {
     const ch = supabase.channel('sidebar-comms-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voicemails' }, loadCommsCounts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'esigns' }, loadCommsCounts)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fax_logs' }, loadCommsCounts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, loadCommsCounts)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sms_messages' }, loadCommsCounts)
       .subscribe()
     return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
