@@ -115,6 +115,7 @@ async function loadPlatformOfficeRows() {
 
   const rows = [...(taxresRows || [])]
   const warnings = []
+  const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
   const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
   const results = await Promise.all(productKeys.map(async productKey => {
     const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
@@ -147,10 +148,15 @@ async function loadPlatformOfficeRows() {
         last_activity: office.since || null,
       })
     }
+    const metrics = result.data?.metrics || {}
+    externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
+    externalMetrics.active_clients += Number(metrics.active_clients || 0)
+    externalMetrics.active_leads += Number(metrics.active_leads || 0)
+    externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
   }
 
-  return { rows, warnings }
+  return { rows, warnings, externalMetrics }
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -466,6 +472,7 @@ function AdminDialer() {
 function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
+  const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -474,13 +481,15 @@ function Overview() {
     let cancelled = false
     ;(async () => {
       try {
-        const { rows, warnings } = await loadPlatformOfficeRows()
+        const { rows, warnings, externalMetrics: productMetrics } = await loadPlatformOfficeRows()
         if (cancelled) return
         setStats(rows)
+        setExternalMetrics(productMetrics)
         setLoadError(warnings.join(' · '))
       } catch (error) {
         if (!cancelled) {
           setStats([])
+          setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
           setLoadError(error?.message || 'Unable to load platform offices')
         }
       }
@@ -494,10 +503,10 @@ function Overview() {
 
   const totalMRR     = (stats||[]).reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = (stats||[]).filter(r => r.status==='active').length
-  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.employee_count||0), 0)
-  const totalClients = (stats||[]).reduce((s,r) => s+Number(r.client_count||0), 0)
-  const totalLeads   = (stats||[]).reduce((s,r) => s+Number(r.lead_count||0), 0)
-  const totalStorage   = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0)
+  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.employee_count||0), 0) + externalMetrics.active_staff
+  const totalClients = (stats||[]).reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
+  const totalLeads   = (stats||[]).reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
+  const totalStorage = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
   const totalCollected = (stats||[]).reduce((s,r) => s+Number(r.total_collected||0), 0)
   const totalTx        = (stats||[]).reduce((s,r) => s+Number(r.transaction_count||0), 0)
 
