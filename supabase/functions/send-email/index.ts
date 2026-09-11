@@ -210,7 +210,18 @@ serve(async (req) => {
 
     // Admin Portal office e-sign requests must use the exact product SMTP identity.
     // Never fall back to the first Gmail OAuth mailbox for contracts.
-    if (authenticated && body.kind === 'office_esign_request') {
+    const looksLikeOfficeEsign =
+      authenticated &&
+      (
+        body.kind === 'office_esign_request' ||
+        (
+          /^Signature Requested:/i.test(safe(subject)) &&
+          String(html || '').includes('/office-sign/') &&
+          safe(from_email).includes('@')
+        )
+      )
+
+    if (looksLikeOfficeEsign) {
       const { data: isPlatformAdmin } = await authClient.rpc('_is_platform_admin')
       if (!isPlatformAdmin) return new Response(JSON.stringify({ error:'Platform admin required for office contract email' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
       const requestedFrom=safe(from_email).toLowerCase()
