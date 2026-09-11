@@ -110,13 +110,28 @@ const EXTERNAL_OFFICE_PRODUCTS = {
 }
 
 async function loadPlatformOfficeRows() {
-  const [{ data: taxresRows, error: taxresError }, { data: registryData, error: registryError }] = await Promise.all([
+  const [
+    { data: taxresRows, error: taxresError },
+    { data: registryData, error: registryError },
+    { data: billingData, error: billingError },
+  ] = await Promise.all([
     supabase.rpc('admin_tenant_overview'),
     supabase.rpc('admin_romylabs_office_registry'),
+    supabase.rpc('admin_romylabs_billing_totals'),
   ])
   if (taxresError) throw taxresError
+  if (billingError) throw billingError
 
   const rows = [...(taxresRows || [])]
+  const billingByOffice = new Map(
+    (Array.isArray(billingData) ? billingData : []).map(b => [
+      `${b.product_key}:${b.external_tenant_id}`,
+      {
+        total_collected:Number(b.collected_cents || 0) / 100,
+        transaction_count:Number(b.payment_count || 0),
+      },
+    ])
+  )
   const warnings = []
   const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
   const seen = new Set(rows.map(r => `taxres_crm:${r.id}`))
@@ -178,8 +193,10 @@ async function loadPlatformOfficeRows() {
         client_count:Number(office.client_count || 0),
         lead_count:Number(office.lead_count || 0),
         storage_bytes:Number(office.storage_bytes || 0),
-        total_collected:Number(office.total_collected || 0),
-        transaction_count:Number(office.transaction_count || 0),
+        // Platform revenue is owned by the central RomyLabs billing ledger,
+        // never by a product CRM's client-payment totals.
+        total_collected:0,
+        transaction_count:0,
         status:office.status || (office.is_active === false ? 'inactive' : 'active'),
         plan_tier:office.plan || office.subscription_status || cfg.label,
         effective_monthly:Number(office.mrr || 0),
@@ -196,6 +213,21 @@ async function loadPlatformOfficeRows() {
     externalMetrics.active_leads += Number(metrics.active_leads || 0)
     externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
+  }
+
+  // Final revenue overlay: every product/office gets subscription collections
+  // exclusively from the central RomyLabs billing ledger. This prevents an
+  // office's own client revenue from ever appearing as RomyLabs collections.
+  for (let i=0; i<rows.length; i++) {
+    const row = rows[i]
+    const productKey = row.product || 'taxres_crm'
+    const externalId = row.source_id || row.id
+    const billing = billingByOffice.get(`${productKey}:${externalId}`)
+    rows[i] = {
+      ...row,
+      total_collected:Number(billing?.total_collected || 0),
+      transaction_count:Number(billing?.transaction_count || 0),
+    }
   }
 
   return { rows, warnings:[...new Set(warnings)], externalMetrics }
