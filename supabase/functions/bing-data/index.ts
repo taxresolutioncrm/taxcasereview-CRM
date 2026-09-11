@@ -74,6 +74,21 @@ serve(async (req) => {
       keywordsRes.json().catch(() => ({})),
     ])
 
+    if (!statsRes.ok || !pagesRes.ok || !keywordsRes.ok) {
+      return new Response(JSON.stringify({
+        connected: false,
+        product_key: productKey,
+        siteUrl,
+        error: 'bing_site_unavailable',
+        message: 'Bing Webmaster Tools did not return verified data for this product site.',
+        upstream_status: {
+          stats: statsRes.status,
+          pages: pagesRes.status,
+          keywords: keywordsRes.status,
+        },
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
     // Aggregate totals
     const stats = Array.isArray(statsData) ? statsData : (statsData.value || [])
     const pages = Array.isArray(pagesData) ? pagesData : (pagesData.value || [])
