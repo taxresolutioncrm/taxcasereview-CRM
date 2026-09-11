@@ -103,6 +103,7 @@ function Spinner() {
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 // Operational items only — Marketing/Content/LinkedIn/Search/System live in Command Center tabs
 const NAV = [
+  { path:'/crm-admin',                label:'Overview',        icon:'📊' },
   { path:'/crm-admin/command-center', label:'Command Center', icon:'⚡' },
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
@@ -111,7 +112,6 @@ const NAV = [
   { path:'/crm-admin/calendar',       label:'Calendar',       icon:'📅' },
   { path:'/crm-admin/meet',           label:'Meet & Training', icon:'🎥' },
   { path:'/crm-admin/chat',           label:'Chat (All)',      icon:'💬' },
-  { path:'/crm-admin',                label:'Overview',        icon:'📊' },
   { path:'/crm-admin/provision',      label:'+ New Office',   icon:'➕' },
   { path:'/crm-admin/offices',        label:'Offices',         icon:'🏢' },
   { path:'/crm-admin/esign',          label:'E-Signatures',    icon:'✍️' },
