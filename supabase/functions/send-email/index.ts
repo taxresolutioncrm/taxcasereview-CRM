@@ -289,12 +289,33 @@ serve(async (req) => {
       const { data: isPlatformAdmin } = await authClient.rpc('_is_platform_admin')
       if (!isPlatformAdmin) return new Response(JSON.stringify({ error:'Platform admin required for office contract email' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
       const requestedFrom=safe(from_email).toLowerCase()
-      if (!requestedFrom) return new Response(JSON.stringify({ error:'Contract sender identity missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      const requestedProduct=safe(body.product_key).toLowerCase()
+      if (!requestedFrom && !requestedProduct) return new Response(JSON.stringify({ error:'Contract sender identity missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
+
+      // Resolve the sender from the central RomyLabs mailbox registry.
+      // Legacy TaxRes e-sign builds requested romy@taxrescrm.net; normalize those
+      // onto the registered TaxRes mailbox instead of falling back to another provider.
+      const routeProduct = requestedProduct || (requestedFrom === 'romy@taxrescrm.net' || requestedFrom === 'info@taxrescrm.net' ? 'taxres_crm' : '')
+      let routeQuery = admin.from('romylabs_mailboxes')
+        .select('product_id,email_address,outbound_from,inbox_owner,tenant_id,display_name,active')
+        .eq('active', true)
+      if (routeProduct) routeQuery = routeQuery.eq('product_id', routeProduct)
+      else routeQuery = routeQuery.ilike('outbound_from', requestedFrom)
+      const { data: routes, error: routeError } = await routeQuery.order('created_at', { ascending:true })
+      if (routeError) return new Response(JSON.stringify({ error:'Contract mailbox route lookup failed' }), { status:500, headers:{...corsHeaders,'Content-Type':'application/json'} })
+
+      const routeList = Array.isArray(routes) ? routes : []
+      const route = routeList.find((r:any)=>safe(r.outbound_from).toLowerCase() === requestedFrom)
+        || routeList.find((r:any)=>!safe(r.email_address).toLowerCase().startsWith('support@'))
+        || routeList[0]
+      const routedFrom=safe(route?.outbound_from || route?.email_address || requestedFrom).toLowerCase()
+      if (!routedFrom) return new Response(JSON.stringify({ error:'No active mailbox route for contract product' }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+
       const { data: smtpSettings, error: smtpSettingsError } = await admin.from('settings')
         .select('tenant_id,name,firmname,smtp_host,smtp_port,smtp_email,smtp_password,smtp_name,smtp_encryption')
-        .ilike('smtp_email', requestedFrom).limit(1).maybeSingle()
+        .ilike('smtp_email', routedFrom).limit(1).maybeSingle()
       if (smtpSettingsError || !smtpSettings?.smtp_host || !smtpSettings?.smtp_email || !smtpSettings?.smtp_password) {
-        return new Response(JSON.stringify({ error:`No configured SMTP transport for ${requestedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        return new Response(JSON.stringify({ error:`No configured SMTP transport for ${routedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
       }
       const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
       if (!recipients.length) return new Response(JSON.stringify({ error:'Contract recipient missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
@@ -319,7 +340,7 @@ serve(async (req) => {
         }
       }
       await admin.from('emails').insert(recipients.map((recipient:string)=>({
-        tenant_id:smtpSettings.tenant_id,
+        tenant_id:route?.tenant_id || tenant_id || smtpSettings.tenant_id,
         recipient,
         recipients:[recipient],
         subject:safe(subject),
@@ -329,15 +350,15 @@ serve(async (req) => {
         status:'Sent',
         direction:'outbound',
         is_read:true,
-        sender:safe(smtpSettings.smtp_email),
-        from_address:safe(smtpSettings.smtp_email),
-        reply_from:safe(smtpSettings.smtp_email),
-        mailbox_owner:safe(authenticatedUser?.email||'info@romylabs.com'),
+        sender:routedFrom,
+        from_address:routedFrom,
+        reply_from:routedFrom,
+        mailbox_owner:safe(route?.inbox_owner || authenticatedUser?.email || 'info@romylabs.com'),
         received_at:new Date().toISOString(),
         created_at:new Date().toISOString(),
         product_id:safe(body.product_key||'')||null,
       })))
-      return new Response(JSON.stringify({ success:true, via:'smtp', from:safe(smtpSettings.smtp_email) }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+      return new Response(JSON.stringify({ success:true, via:'smtp', from:routedFrom, mailbox_owner:safe(route?.inbox_owner || authenticatedUser?.email || 'info@romylabs.com') }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
     const { data: gs } = await admin.from('settings').select('*').not('gmail_refresh_token', 'is', null).limit(1).maybeSingle()
