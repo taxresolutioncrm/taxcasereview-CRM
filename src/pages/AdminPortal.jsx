@@ -2412,7 +2412,7 @@ const PRODUCT_REGISTRY = [
   // ── ARCHITECTURE NOTE ────────────────────────────────────────────────────
   // PRODUCTS: TaxRes CRM (platform), Camvella, Arcvena, BocaSync, GroundIVO, Oculivo, Restore Relay, + planned verticals
   // CUSTOMERS/TENANTS: Tax Case Review, Nashville, CloudCPA (live TaxRes tenants — not products)
-  // connection: 'connected' | 'partial' | 'not_connected'
+  // connection: 'connected' | 'partial' | 'not_connected' — Command Center CRM platform-metrics feed only
   // lifecycleStage: 'live' | 'available' | 'building' | 'research' | 'internal'
   // brandStatus: 'branded' | 'working_name' | 'unnamed'
   // publicOnRomyLabs: bool — whether it appears on romylabs.com
@@ -3225,7 +3225,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:20 }}>
                   {[
                     { label:'Stage',      val: LIFECYCLE_LABEL[selected.lifecycleStage]?.label || selected.lifecycleStage },
-                    { label:'Connection', val: `${getConn(selected).dot} ${getConn(selected).label}` },
+                    { label:'CRM Metrics', val: `${getConn(selected).dot} ${getConn(selected).label}` },
                     { label:'Brand',      val: BRAND_LABEL[selected.brandStatus] || selected.brandStatus },
                     { label:'Domain',     val: selected.url || '—' },
                     { label:'Public',     val: selected.publicOnRomyLabs ? 'Yes — romylabs.com' : 'No' },
@@ -4638,7 +4638,7 @@ function CommandCenter() {
                 <div style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(99,102,241,.1)', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr 1fr .8fr .8fr .8fr 1.2fr', padding:'8px 16px',
                     borderBottom:'1px solid rgba(99,102,241,.1)', background:'rgba(99,102,241,.06)' }}>
-                    {['Product','Lifecycle','Connection','Commercial','Public','Analytics','Next Milestone'].map(h => (
+                    {['Product','Lifecycle','CRM Metrics','Commercial','Public','Analytics','Next Milestone'].map(h => (
                       <div key={h} style={{ fontSize:9, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.07em' }}>{h}</div>
                     ))}
                   </div>
