@@ -39,6 +39,24 @@ where product_id='arcvena'
   and channel_key='clarity';
 
 -- Keep GA4 at Configured until the numeric GA4 Property ID is available for central reporting sync.
+-- BocaSync provider IDs recovered from the existing chat.
+update public.product_traffic_channels
+set status='configured',
+    destination_url='https://bocasync.com',
+    notes='GA4 web stream Measurement ID G-1K0FEZF916 supplied on 2026-09-11 and staged in the BocaSync marketing site. Central Admin GA4 reporting still requires the separate numeric GA4 Property ID before this channel can be marked Live.',
+    updated_at=now()
+where product_id='bocasync'
+  and channel_key='ga4';
+
+update public.product_traffic_channels
+set status='configured',
+    tracking_id='yguw0uq4km',
+    destination_url='https://bocasync.com',
+    notes='Microsoft Clarity project ID yguw0uq4km supplied on 2026-09-11 and staged in the BocaSync marketing site. Promote to Live after the public site is verified loading the exact project ID.',
+    updated_at=now()
+where product_id='bocasync'
+  and channel_key='clarity';
+
 -- Oculivo GA4 Measurement ID supplied from the Google tag setup screenshot.
 update public.product_traffic_channels
 set status='configured',
