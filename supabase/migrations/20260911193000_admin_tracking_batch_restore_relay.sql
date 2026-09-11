@@ -1,4 +1,32 @@
 -- Batch tracking update: Restore Relay provider IDs supplied 2026-09-11.
+-- Existing live Clarity implementations verified directly on production.
+update public.product_traffic_channels
+set status='live',
+    tracking_id='xyck7g2mfl',
+    destination_url='https://taxrescrm.net',
+    notes='Verified live on 2026-09-11: TaxRes production config exposes Microsoft Clarity project ID xyck7g2mfl.',
+    last_verified_at=now(),
+    updated_at=now()
+where product_id='taxres_crm' and channel_key='clarity';
+
+update public.product_traffic_channels
+set status='live',
+    tracking_id='y62zna7yna',
+    destination_url='https://www.camvella.com',
+    notes='Verified live on 2026-09-11: Camvella production HTML loads Microsoft Clarity project ID y62zna7yna.',
+    last_verified_at=now(),
+    updated_at=now()
+where product_id='camvella' and channel_key='clarity';
+
+update public.product_traffic_channels
+set status='live',
+    tracking_id='y54zqoj6c2',
+    destination_url='https://romylabs.com',
+    notes='Verified live on 2026-09-11: RomyLabs production HTML loads Microsoft Clarity project ID y54zqoj6c2.',
+    last_verified_at=now(),
+    updated_at=now()
+where product_id='romylabs' and channel_key='clarity';
+
 -- Arcvena Clarity is now live-verified on the public site.
 update public.product_traffic_channels
 set status='live',
