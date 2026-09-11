@@ -41,7 +41,6 @@ export default function Fax() {
   const [attachSearch, setAttachSearch] = useState('')
   const [attachFolder, setAttachFolder] = useState('Correspondence')
   const [attaching, setAttaching] = useState(null)
-  const [previewUrls, setPreviewUrls] = useState({})
   useEffect(() => {
     if (qp.get('new') === '1') {
       setForm(prev => ({ ...BLANK, from_number: prev.from_number || '', client_name: qp.get('client') || '', to_number: (qp.get('phone') || '').replace(/\D/g,'') }))
@@ -58,20 +57,6 @@ export default function Fax() {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    async function resolvePreviewBatch() {
-      const targets = logs.filter(l => l.direction === 'inbound' && l.file_url && !previewUrls[l.id]).slice(0, 18)
-      if (!targets.length) return
-      const entries = await Promise.all(targets.map(async row => {
-        try { return [row.id, await resolveFaxUrl(row)] } catch { return [row.id, ''] }
-      }))
-      if (!cancelled) setPreviewUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }))
-    }
-    resolvePreviewBatch()
-    return () => { cancelled = true }
-  }, [logs])
 
   async function load() {
     const [{ data:f },{ data:c },{ data:l },{ data:s }] = await Promise.all([
@@ -278,17 +263,6 @@ export default function Fax() {
   const failed   = outboundLogs.filter(l=>l.status==='Failed').length
   const received = inboundLogs.length
   const unread   = inboundLogs.filter(l=>l.is_read===false).length
-  const thisMonth = logs.filter(l=>(l.sent_at||l.created_at)?.slice(0,7)===new Date().toISOString().slice(0,7)).length
-  const showInboxCards = filterStatus === 'Received' || filterStatus === 'Unread'
-
-  const statCards = [
-    { label: 'Received',    value: received,            color: 'var(--blue)' },
-    { label: 'Unread',      value: unread,              color: 'var(--warn)' },
-    { label: 'Total Sent',  value: outboundLogs.length, color: 'var(--tx)' },
-    { label: 'Delivered', value: sent,                color: 'var(--ok)' },
-    { label: 'Failed',      value: failed,              color: 'var(--bad)' },
-    { label: 'This Month',  value: thisMonth,           color: 'var(--b2)' },
-  ]
 
   return (
     <div style={{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
