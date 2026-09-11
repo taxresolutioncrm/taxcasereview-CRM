@@ -151,11 +151,43 @@ export default function Sidebar() {
   const [unreadSms, setUnreadSms] = useState(0)
   const [unreadVoicemails, setUnreadVoicemails] = useState(0)
   const [pendingEsign, setPendingEsign] = useState(0)
+  const [signedEsign, setSignedEsign] = useState(0)
   const [emailActionNeeded, setEmailActionNeeded] = useState(0)
   const [emailWaiting, setEmailWaiting] = useState(0)
   const [unreadInbox, setUnreadInbox] = useState(0)
   const [openTasks, setOpenTasks] = useState(0)
   const [unreadChat, setUnreadChat] = useState(0)
+  useEffect(() => {
+    if (!user?.email) return
+    let cancelled = false
+    const seenKey = `tcr_esign_signed_last_seen_${user.email}`
+
+    async function loadSignedEsignBadge() {
+      const seenAt = localStorage.getItem(seenKey) || new Date(0).toISOString()
+      const { count, error } = await supabase
+        .from('esigns')
+        .select('id', { count:'exact', head:true })
+        .eq('status', 'Signed')
+        .not('signed_at', 'is', null)
+        .gt('signed_at', seenAt)
+      if (!cancelled && !error) setSignedEsign(count || 0)
+    }
+
+    loadSignedEsignBadge()
+    const poll = setInterval(loadSignedEsignBadge, 180000)
+    function onVisible() { if (document.visibilityState === 'visible') loadSignedEsignBadge() }
+    document.addEventListener('visibilitychange', onVisible)
+    const ch = supabase.channel(`sidebar-esign-signed-rt-${user.email}`)
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'esigns' }, loadSignedEsignBadge)
+      .subscribe()
+    return () => {
+      cancelled = true
+      clearInterval(poll)
+      document.removeEventListener('visibilitychange', onVisible)
+      supabase.removeChannel(ch)
+    }
+  }, [user?.email])
+
   const [pendingPayments, setPendingPayments] = useState(0)
   const [overdueInvoices, setOverdueInvoices] = useState(0)
   const [overdueReceivables, setOverdueReceivables] = useState(0)
@@ -283,7 +315,7 @@ export default function Sidebar() {
     return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
   }, [user])
 
-  const BADGE_COUNTS = {leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: pendingEsign, email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents, payments: pendingPayments, invoices: overdueInvoices, ar: overdueReceivables }
+  const BADGE_COUNTS = {leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: (pendingEsign + signedEsign), email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents, payments: pendingPayments, invoices: overdueInvoices, ar: overdueReceivables }
 
   // SIDEBAR_UNSEEN_ACK_V1
   useEffect(() => {
@@ -375,6 +407,8 @@ export default function Sidebar() {
       setOpenTasks(0)
     }
     if (location.pathname.startsWith('/esign')) {
+      localStorage.setItem(`tcr_esign_signed_last_seen_${user.email}`, new Date().toISOString())
+      setSignedEsign(0)
       setPendingEsign(0)
     }
     if (location.pathname.startsWith('/voicemail') || location.pathname.startsWith('/dialer')) {
@@ -586,7 +620,11 @@ export default function Sidebar() {
                     if (tierLocked) { e.preventDefault(); return }
                     if (item.path === '/email') setUnreadInbox(0)
                     if (item.path === '/tasks') setOpenTasks(0)
-                    if (item.path === '/esign') setPendingEsign(0)
+                    if (item.path === '/esign') {
+                      localStorage.setItem(`tcr_esign_signed_last_seen_${user?.email || 'anon'}`, new Date().toISOString())
+                      setSignedEsign(0)
+                      setPendingEsign(0)
+                    }
                     if (item.path === '/sms') { localStorage.setItem('tcr_sms_last_seen', new Date().toISOString()); setUnreadSms(0) }
                     if (item.path === '/dialer') setUnreadVoicemails(0)
                     if (item.path === '/calendar') setUpcomingEvents(0)
