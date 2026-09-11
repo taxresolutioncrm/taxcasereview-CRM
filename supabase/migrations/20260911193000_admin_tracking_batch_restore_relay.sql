@@ -11,6 +11,15 @@ where product_id='arcvena'
   and channel_key='clarity';
 
 -- Keep GA4 at Configured until the numeric GA4 Property ID is available for central reporting sync.
+-- Oculivo GA4 Measurement ID supplied from the Google tag setup screenshot.
+update public.product_traffic_channels
+set status='configured',
+    destination_url='https://oculivo.com',
+    notes='GA4 web stream Measurement ID G-WR6GGVYLXX supplied on 2026-09-11 and staged in the Oculivo website release. Central Admin GA4 reporting still requires the separate numeric GA4 Property ID before this channel can be marked Live.',
+    updated_at=now()
+where product_id='oculivo'
+  and channel_key='ga4';
+
 -- Keep Clarity at Configured until the public site is verified serving the exact project ID.
 
 update public.product_traffic_channels
