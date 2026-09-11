@@ -49,6 +49,33 @@ begin
 end
 $$;
 
+
+-- Proven source readiness should never regress to Planned after normalization.
+do $
+declare
+  bad_count integer;
+begin
+  select count(*) into bad_count
+  from public.product_traffic_channels
+  where product_id in ('bocasync','groundivo','restore_relay')
+    and channel_key in ('organic_search','ai_aeo','local_search')
+    and status='planned';
+
+  if bad_count <> 0 then
+    raise exception 'Expected normalized source-readiness statuses; % rows remain Planned', bad_count;
+  end if;
+
+  if exists (
+    select 1
+    from public.product_traffic_channels
+    where product_id='oculivo'
+      and updated_at >= timestamp with time zone '2026-09-11 04:35:00+00'
+  ) then
+    raise exception 'Oculivo traffic rows were modified by this release; Oculivo must remain untouched';
+  end if;
+end
+$;
+
 select p.product_id,
        p.name,
        count(pt.*) as channel_rows,
