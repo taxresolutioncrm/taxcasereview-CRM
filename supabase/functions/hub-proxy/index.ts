@@ -44,6 +44,9 @@ const PRODUCT_ENDPOINTS: Record<string, string> = {
   camvella:          'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/platform-metrics',
   arcvena:           'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/platform-metrics',
   bocasync:          'https://zmejbkttzvaqzzbmjclz.supabase.co/functions/v1/platform-metrics',
+  groundivo:         'https://ydhmlphyvjgryefuwzyq.supabase.co/functions/v1/platform-metrics',
+  oculivo:           'https://czejdbdwaumbdepiswcu.supabase.co/functions/v1/platform-metrics',
+  restore_relay:     'https://yuwxzuybzuqnnldvdenx.supabase.co/functions/v1/platform-metrics',
 }
 
 Deno.serve(async (req) => {
