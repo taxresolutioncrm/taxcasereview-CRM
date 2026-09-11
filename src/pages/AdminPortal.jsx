@@ -4373,16 +4373,26 @@ function CommandCenter() {
     } else {
       fetchGSC()
     }
-    fetchBing()
   }, [])
 
-  async function fetchBing() {
+  async function fetchBing(productKey = 'taxres_crm') {
+    setBingData(null)
+    setBingConnected(false)
     try {
-      const { data: bing, error } = await supabase.functions.invoke('bing-data', { body: {} })
+      const { data: bing, error } = await supabase.functions.invoke('bing-data', { body: { product_key: productKey } })
       if (error) throw error
-      if (bing && !bing.error) { setBingData(bing); setBingConnected(true) }
-      else { setBingConnected(false) }
-    } catch(e) { console.error('Bing fetch:', e); setBingConnected(false) }
+      if (bing && !bing.error && bing.connected !== false) {
+        setBingData(bing)
+        setBingConnected(true)
+      } else {
+        setBingData(bing || { error:'not_connected', product_key:productKey })
+        setBingConnected(false)
+      }
+    } catch(e) {
+      console.error('Bing fetch:', e)
+      setBingData({ error:'request_failed', product_key:productKey })
+      setBingConnected(false)
+    }
   }
 
   async function fetchGSC(productKey = 'taxres_crm') {
@@ -4414,6 +4424,7 @@ function CommandCenter() {
 
   useEffect(() => {
     fetchGSC(seoProduct)
+    fetchBing(seoProduct)
   }, [seoProduct])
 
   async function loadGA4() {
@@ -5011,8 +5022,7 @@ function CommandCenter() {
             </>)})()}
           </div>
 
-          {/* Bing reporting is currently configured only for TaxRes. */}
-          {seoProduct === 'taxres_crm' && (
+          {/* Bing reporting is product-scoped to the currently selected product. */}
           <div style={CC.card({padding:'22px 24px'})}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
               <span style={{ fontSize:16 }}>🟠</span>
