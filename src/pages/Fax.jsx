@@ -56,10 +56,6 @@ export default function Fax() {
     const channel = supabase.channel('fax-log-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, () => load())
       .subscribe()
-    // Mark inbound faxes as read in the database (not just a local timestamp)
-    // the moment this page loads — mirrors how email/voicemail track read
-    // state, so the badge count is reliable across browsers/devices.
-    supabase.from('fax_logs').update({ is_read: true }).eq('direction', 'inbound').eq('is_read', false).then(()=>{})
     return () => { supabase.removeChannel(channel) }
   }, [])
 
@@ -118,6 +114,30 @@ export default function Fax() {
     if (error) { showToast('Error attaching: ' + error.message, 'err'); return }
     showToast(`✅ Attached to ${targetName}'s ${folder} folder`)
     setAttachPickerFor(null); setAttachSearch(''); setAttachFolder('Correspondence')
+  }
+
+  async function resolveFaxUrl(faxRow) {
+    const storagePath = faxRow.storage_path || (String(faxRow.file_url || '').startsWith('storage://documents/') ? String(faxRow.file_url).replace('storage://documents/','') : '')
+    if (storagePath) {
+      const { data, error } = await supabase.storage.from('documents').createSignedUrl(storagePath, 300)
+      if (error || !data?.signedUrl) throw error || new Error('Could not open fax document')
+      return data.signedUrl
+    }
+    return faxRow.file_url || ''
+  }
+
+  async function openFax(faxRow) {
+    try {
+      if (faxRow.direction === 'inbound' && faxRow.is_read === false) {
+        await supabase.from('fax_logs').update({ is_read: true }).eq('id', faxRow.id)
+        setLogs(prev => prev.map(r => r.id === faxRow.id ? { ...r, is_read: true } : r))
+      }
+      const url = await resolveFaxUrl(faxRow)
+      if (!url) return showToast('This fax has no document attached', 'err')
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      showToast('Could not open fax: ' + (e?.message || e), 'err')
+    }
   }
 
   function searchClient(val) {
