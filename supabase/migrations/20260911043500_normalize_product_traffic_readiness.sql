@@ -79,14 +79,6 @@ set status='not_applicable',
     updated_at=now()
 where product_id='restore_relay' and channel_key='local_search' and status='planned';
 
--- Pool-service CRM placeholder: keep every channel Planned until the final product name/domain is approved.
-update public.product_traffic_channels
-set notes='Product naming/domain is still unresolved. Keep this channel Planned; configure product-specific acquisition infrastructure only after the canonical brand and domain are approved.',
-    updated_at=now()
-where product_id='aquagrid'
-  and status='planned'
-  and notes is null;
-
 -- External channels stay Planned until a real provider/account/campaign/referral source exists.
 -- Ensure every non-Oculivo planned external channel carries an explicit activation condition.
 update public.product_traffic_channels
