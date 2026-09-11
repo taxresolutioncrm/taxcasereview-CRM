@@ -100,6 +100,56 @@ function Spinner() {
   return <div style={{ padding:48, textAlign:'center', color:'#475569', fontSize:13 }}>Loading…</div>
 }
 
+const EXTERNAL_OFFICE_PRODUCTS = {
+  arcvena:  { label:'Arcvena',  color:'#00c2ff', appUrl:'https://app.arcvena.com/' },
+  camvella: { label:'Camvella', color:'#55B96A', appUrl:'https://app.camvella.com/' },
+  bocasync: { label:'BocaSync', color:'#22c7d3', appUrl:'https://app.bocasync.com/' },
+}
+
+async function loadPlatformOfficeRows() {
+  const { data: taxresRows, error: taxresError } = await supabase.rpc('admin_tenant_overview')
+  if (taxresError) throw taxresError
+
+  const rows = [...(taxresRows || [])]
+  const warnings = []
+  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
+  const results = await Promise.all(productKeys.map(async productKey => {
+    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
+    return { productKey, ...response }
+  }))
+
+  for (const result of results) {
+    const cfg = EXTERNAL_OFFICE_PRODUCTS[result.productKey]
+    const offices = Array.isArray(result.data?.offices) ? result.data.offices : null
+    if (result.error || !offices) {
+      warnings.push(`${cfg.label} offices unavailable`)
+      continue
+    }
+    for (const office of offices) {
+      rows.push({
+        id: `${result.productKey}:${office.id}`,
+        source_id: office.id,
+        product: result.productKey,
+        firm_name: office.name || `${cfg.label} Office`,
+        brand_color: cfg.color,
+        employee_count: 0,
+        client_count: 0,
+        lead_count: 0,
+        storage_bytes: 0,
+        total_collected: 0,
+        transaction_count: 0,
+        status: office.is_active === false ? 'inactive' : 'active',
+        plan_tier: cfg.label,
+        effective_monthly: Number(office.mrr || 0),
+        last_activity: office.since || null,
+      })
+    }
+    if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
+  }
+
+  return { rows, warnings }
+}
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 // Operational items only — Marketing/Content/LinkedIn/Search/System live in Command Center tabs
 const NAV = [
@@ -420,44 +470,16 @@ function Overview() {
     if (!user) return
     let cancelled = false
     ;(async () => {
-      const { data: taxresRows, error: taxresError } = await supabase.rpc('admin_tenant_overview')
-      if (taxresError) {
-        if (!cancelled) { setLoadError(taxresError.message); setStats([]) }
-        return
-      }
-
-      const baseRows = taxresRows || []
-      if (!cancelled) setStats(baseRows)
-
-      const { data: arcvenaData, error: arcvenaError } = await supabase.functions.invoke('hub-proxy', {
-        body: { product: 'arcvena' },
-      })
-      if (arcvenaError || arcvenaData?.ok === false) {
-        if (!cancelled) setLoadError('Arcvena offices are temporarily unavailable; existing offices are still shown.')
-        return
-      }
-
-      const arcvenaRows = (arcvenaData?.offices || []).map(office => ({
-        id: `arcvena:${office.id}`,
-        source_id: office.id,
-        product: 'arcvena',
-        firm_name: office.name,
-        brand_color: '#00c2ff',
-        employee_count: 0,
-        client_count: 0,
-        lead_count: 0,
-        storage_bytes: 0,
-        total_collected: 0,
-        transaction_count: 0,
-        status: office.is_active ? 'active' : 'inactive',
-        plan_tier: 'Arcvena',
-        effective_monthly: Number(office.mrr || 0),
-        last_activity: office.since,
-      }))
-
-      if (!cancelled) {
-        setLoadError('')
-        setStats([...baseRows, ...arcvenaRows])
+      try {
+        const { rows, warnings } = await loadPlatformOfficeRows()
+        if (cancelled) return
+        setStats(rows)
+        setLoadError(warnings.join(' · '))
+      } catch (error) {
+        if (!cancelled) {
+          setStats([])
+          setLoadError(error?.message || 'Unable to load platform offices')
+        }
       }
     })()
     return () => { cancelled = true }
@@ -608,9 +630,73 @@ function ArcvenaOfficePage() {
   )
 }
 
+function ExternalProductOfficePage({ productKey }) {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const cfg = EXTERNAL_OFFICE_PRODUCTS[productKey]
+  const officeId = String(id || '').replace(new RegExp(`^${productKey}:`), '')
+  const [office,setOffice] = useState(null)
+  const [loading,setLoading] = useState(true)
+  const [error,setError] = useState('')
+
+  useEffect(() => {
+    let cancelled=false
+    ;(async()=>{
+      setLoading(true); setError('')
+      const {data,error:invokeError}=await supabase.functions.invoke('hub-proxy',{body:{product:productKey}})
+      if(cancelled) return
+      const offices=Array.isArray(data?.offices)?data.offices:[]
+      if(invokeError || !offices.length){
+        setError(invokeError?.message || data?.error || `Unable to load ${cfg.label} office`)
+        setLoading(false)
+        return
+      }
+      const match=offices.find(o=>String(o.id)===officeId)
+      if(!match){ setError(`${cfg.label} office not found`); setLoading(false); return }
+      setOffice(match); setLoading(false)
+    })()
+    return()=>{cancelled=true}
+  },[officeId,productKey,cfg.label])
+
+  if(loading) return <Spinner/>
+  if(error) return <div style={{padding:32}}><button onClick={()=>navigate('/crm-admin/offices')} style={S.btn('ghost')}>← Offices</button><div style={{marginTop:18,color:'#fca5a5'}}>{error}</div></div>
+
+  const kv=[['Product',cfg.label],['Status',office.is_active===false?'inactive':'active'],['Office ID',office.id],['Created',office.since?fmtDate(office.since):'—']]
+  return (
+    <div style={{padding:'28px 36px',maxWidth:1100}}>
+      <button onClick={()=>navigate('/crm-admin/offices')} style={{...S.btn('ghost'),marginBottom:18}}>← All Offices</button>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,marginBottom:22}}>
+        <div>
+          <div style={{fontSize:11,color:cfg.color,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:5}}>{cfg.label} Office</div>
+          <div style={{fontSize:28,fontWeight:900,color:'#fff'}}>{office.name||`${cfg.label} Office`}</div>
+          <div style={{fontSize:13,color:'#64748b',marginTop:4}}>You are inside this office only.</div>
+        </div>
+        <button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={S.btn('primary')}>Open {cfg.label} CRM ↗</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:22}}>
+        {kv.map(([label,value])=><div key={label} style={{...S.card,padding:'16px 18px'}}><div style={{fontSize:10,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>{label}</div><div style={{fontSize:14,fontWeight:700,color:'#e2e8f0',wordBreak:'break-word'}}>{String(value??'—')}</div></div>)}
+      </div>
+      <UniversalOfficeESign
+        supabase={supabase}
+        productKey={productKey}
+        externalOfficeId={office.id}
+        firmName={office.name||`${cfg.label} Office`}
+        contactName=""
+        contactEmail=""
+        seats={null}
+        monthlyAmount={office.mrr ?? null}
+      />
+    </div>
+  )
+}
+
 function OfficePageRouter(){
   const {id}=useParams()
-  return String(id||'').startsWith('arcvena:') ? <ArcvenaOfficePage/> : <OfficePage/>
+  const raw=String(id||'')
+  if(raw.startsWith('arcvena:')) return <ArcvenaOfficePage/>
+  if(raw.startsWith('camvella:')) return <ExternalProductOfficePage productKey="camvella"/>
+  if(raw.startsWith('bocasync:')) return <ExternalProductOfficePage productKey="bocasync"/>
+  return <OfficePage/>
 }
 
 // ── Per-Office Deep Dive ─────────────────────────────────────────────────────
@@ -1057,46 +1143,16 @@ function OfficesList() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data: taxresRows, error: taxresError } = await supabase.rpc('admin_tenant_overview')
-      if (taxresError) {
+      try {
+        const { rows: allRows, warnings } = await loadPlatformOfficeRows()
+        if (cancelled) return
+        setRows(allRows)
+        setLoadError(warnings.join(' · '))
+      } catch (error) {
         if (!cancelled) {
-          setLoadError(taxresError.message)
           setRows([])
+          setLoadError(error?.message || 'Unable to load offices')
         }
-        return
-      }
-
-      const baseRows = taxresRows || []
-      if (!cancelled) setRows(baseRows)
-
-      const { data: arcvenaData, error: arcvenaError } = await supabase.functions.invoke('hub-proxy', {
-        body: { product: 'arcvena' },
-      })
-      if (arcvenaError || arcvenaData?.ok === false) {
-        if (!cancelled) {
-          setLoadError('Arcvena offices are temporarily unavailable; existing offices are still shown.')
-        }
-        return
-      }
-
-      const arcvenaRows = (arcvenaData?.offices || []).map(office => ({
-        id: `arcvena:${office.id}`,
-        source_id: office.id,
-        product: 'arcvena',
-        firm_name: office.name,
-        brand_color: '#00c2ff',
-        employee_count: 0,
-        client_count: 0,
-        storage_bytes: 0,
-        status: office.is_active ? 'active' : 'inactive',
-        plan_tier: 'Arcvena',
-        effective_monthly: Number(office.mrr || 0),
-        last_activity: office.since,
-      }))
-
-      if (!cancelled) {
-        setLoadError('')
-        setRows([...baseRows, ...arcvenaRows])
       }
     })()
     return () => { cancelled = true }
