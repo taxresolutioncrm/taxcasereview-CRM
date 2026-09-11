@@ -30,6 +30,16 @@ where p.active = true
   and c.default_required = true
 on conflict (product_id, channel_key) do nothing;
 
+-- Internal-only CRM implementations should still appear in Traffic Coverage, but
+-- their acquisition channels are intentionally not applicable until/unless they
+-- become public commercial products.
+update public.product_traffic_channels
+set status = 'not_applicable',
+    notes = coalesce(notes, 'Internal-only CRM implementation; no standalone acquisition program is currently active.'),
+    updated_at = now()
+where product_id = 'phl_land_care'
+  and status = 'planned';
+
 -- Guard the invariant: no active product may be missing a required channel.
 do $$
 declare
