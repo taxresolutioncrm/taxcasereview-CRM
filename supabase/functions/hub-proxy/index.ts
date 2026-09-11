@@ -44,6 +44,9 @@ const PRODUCT_ENDPOINTS: Record<string, string> = {
   camvella:          'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/platform-metrics',
   arcvena:           'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/platform-metrics',
   bocasync:          'https://zmejbkttzvaqzzbmjclz.supabase.co/functions/v1/platform-metrics',
+  groundivo:         'https://ydhmlphyvjgryefuwzyq.supabase.co/functions/v1/platform-metrics',
+  oculivo:           'https://czejdbdwaumbdepiswcu.supabase.co/functions/v1/platform-metrics',
+  restore_relay:     'https://yuwxzuybzuqnnldvdenx.supabase.co/functions/v1/platform-metrics',
 }
 
 Deno.serve(async (req) => {
@@ -170,6 +173,21 @@ Deno.serve(async (req) => {
         })
       }
       productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
+    } else if (productKey === 'camvella') {
+      productHeaders['Authorization'] = `Bearer ${jwt}`
+    } else if (productKey === 'groundivo' || productKey === 'oculivo' || productKey === 'restore_relay') {
+      const secretKey = productKey === 'groundivo'
+        ? 'GROUNDIVO_SUPPORT_SECRET'
+        : productKey === 'oculivo'
+          ? 'OCULIVO_SUPPORT_SECRET'
+          : 'RESTORE_RELAY_SUPPORT_SECRET'
+      const productSecret = Deno.env.get(secretKey)
+      if (!productSecret) {
+        return new Response(JSON.stringify({ ok: false, error: `${productKey} proxy credential not configured` }), {
+          status: 503, headers: { ...cors, 'Content-Type': 'application/json' }
+        })
+      }
+      productHeaders['x-romylabs-support-secret'] = productSecret
     } else {
       productHeaders['x-hub-secret'] = hubSecret
     }
