@@ -19,7 +19,7 @@ set status='configured',
 where product_id='groundivo'
   and channel_key='clarity';
 
-do $
+do $$
 begin
   if not exists (
     select 1
@@ -43,4 +43,4 @@ begin
     raise exception 'GroundIVO Clarity project ID was not persisted';
   end if;
 end
-$;
+$$;
