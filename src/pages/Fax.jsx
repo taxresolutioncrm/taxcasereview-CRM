@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect } from 'react'
 import PhoneNumber from '../components/PhoneNumber'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
@@ -32,9 +32,8 @@ export default function Fax() {
   const [sending,  setSending]  = useState(false)
   const [toast,    setToast]    = useState('')
   const [search,   setSearch]   = useState('')
-  const [filterStatus, setFilter] = useState('All')
+  const [filterStatus, setFilter] = useState('Received')
   const [settings, setSettings]  = useState({})
-  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
   const [showSug,  setShowSug]  = useState(false)
   const [sugg,     setSugg]     = useState([])
@@ -42,6 +41,7 @@ export default function Fax() {
   const [attachSearch, setAttachSearch] = useState('')
   const [attachFolder, setAttachFolder] = useState('Correspondence')
   const [attaching, setAttaching] = useState(null)
+  const [previewUrls, setPreviewUrls] = useState({})
   useEffect(() => {
     if (qp.get('new') === '1') {
       setForm(prev => ({ ...BLANK, from_number: prev.from_number || '', client_name: qp.get('client') || '', to_number: (qp.get('phone') || '').replace(/\D/g,'') }))
@@ -56,12 +56,22 @@ export default function Fax() {
     const channel = supabase.channel('fax-log-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, () => load())
       .subscribe()
-    // Mark inbound faxes as read in the database (not just a local timestamp)
-    // the moment this page loads — mirrors how email/voicemail track read
-    // state, so the badge count is reliable across browsers/devices.
-    supabase.from('fax_logs').update({ is_read: true }).eq('direction', 'inbound').eq('is_read', false).then(()=>{})
     return () => { supabase.removeChannel(channel) }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function resolvePreviewBatch() {
+      const targets = logs.filter(l => l.direction === 'inbound' && l.file_url && !previewUrls[l.id]).slice(0, 18)
+      if (!targets.length) return
+      const entries = await Promise.all(targets.map(async row => {
+        try { return [row.id, await resolveFaxUrl(row)] } catch { return [row.id, ''] }
+      }))
+      if (!cancelled) setPreviewUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }))
+    }
+    resolvePreviewBatch()
+    return () => { cancelled = true }
+  }, [logs])
 
   async function load() {
     const [{ data:f },{ data:c },{ data:l },{ data:s }] = await Promise.all([
@@ -73,7 +83,6 @@ export default function Fax() {
     if (f) setLogs(f)
     if (c) setClients(c)
     if (l) setLeads(l)
-    setSettingsLoaded(true)
     if (s) {
       setSettings(s)
       const defaultFrom = s.firm_fax_number || s.sw_inbound_did
@@ -118,6 +127,54 @@ export default function Fax() {
     if (error) { showToast('Error attaching: ' + error.message, 'err'); return }
     showToast(`✅ Attached to ${targetName}'s ${folder} folder`)
     setAttachPickerFor(null); setAttachSearch(''); setAttachFolder('Correspondence')
+  }
+
+  async function resolveFaxUrl(faxRow) {
+    const storagePath = faxRow.storage_path || (String(faxRow.file_url || '').startsWith('storage://documents/') ? String(faxRow.file_url).replace('storage://documents/','') : '')
+    if (storagePath) {
+      const { data, error } = await supabase.storage.from('documents').createSignedUrl(storagePath, 300)
+      if (error || !data?.signedUrl) throw error || new Error('Could not open fax document')
+      return data.signedUrl
+    }
+    return faxRow.file_url || ''
+  }
+
+  async function openFax(faxRow) {
+    try {
+      if (faxRow.direction === 'inbound' && faxRow.is_read === false) {
+        await supabase.from('fax_logs').update({ is_read: true }).eq('id', faxRow.id)
+        setLogs(prev => prev.map(r => r.id === faxRow.id ? { ...r, is_read: true } : r))
+      }
+      const url = await resolveFaxUrl(faxRow)
+      if (!url) return showToast('This fax has no document attached', 'err')
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      showToast('Could not open fax: ' + (e?.message || e), 'err')
+    }
+  }
+
+  async function downloadFax(faxRow) {
+    try {
+      const url = await resolveFaxUrl(faxRow)
+      if (!url) return showToast('This fax has no document attached', 'err')
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      a.download = faxRow.file_name || `fax-${faxRow.id}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } catch (e) {
+      showToast('Could not download fax: ' + (e?.message || e), 'err')
+    }
+  }
+
+  async function toggleUnread(faxRow) {
+    const next = faxRow.is_read === false
+    const { error } = await supabase.from('fax_logs').update({ is_read: next }).eq('id', faxRow.id)
+    if (error) return showToast('Could not update read status: ' + error.message, 'err')
+    setLogs(prev => prev.map(r => r.id === faxRow.id ? { ...r, is_read: next } : r))
   }
 
   function searchClient(val) {
@@ -194,178 +251,209 @@ export default function Fax() {
   }
 
   const filtered = logs.filter(l => {
-    const q = search.toLowerCase()
-    const mq = !q || l.client_name?.toLowerCase().includes(q) || l.to_number?.includes(q) || l.subject?.toLowerCase().includes(q)
-    const ms = filterStatus==='All' || l.status===filterStatus
+    const q = search.trim().toLowerCase()
+    const number = l.direction === 'inbound' ? l.from_number : l.to_number
+    const mq = !q ||
+      l.client_name?.toLowerCase().includes(q) ||
+      l.subject?.toLowerCase().includes(q) ||
+      l.from_number?.includes(q) ||
+      l.to_number?.includes(q) ||
+      number?.replace(/\D/g,'').includes(q.replace(/\D/g,''))
+    const ms =
+      filterStatus === 'All' ||
+      (filterStatus === 'Received' && l.direction === 'inbound') ||
+      (filterStatus === 'Unread' && l.direction === 'inbound' && l.is_read === false) ||
+      (filterStatus === 'Sent' && l.direction !== 'inbound' && ['Sent','Delivered'].includes(l.status)) ||
+      (filterStatus === 'Failed' && l.status === 'Failed') ||
+      (filterStatus === 'Pending' && l.status === 'Pending')
     return mq && ms
   })
 
   const outboundLogs = logs.filter(l=>l.direction!=='inbound')
   const inboundLogs  = logs.filter(l=>l.direction==='inbound')
-  const sent     = outboundLogs.filter(l=>l.status==='Delivered').length
+  const sent     = outboundLogs.filter(l=>['Sent','Delivered'].includes(l.status)).length
   const failed   = outboundLogs.filter(l=>l.status==='Failed').length
   const received = inboundLogs.length
+  const unread   = inboundLogs.filter(l=>l.is_read===false).length
   const thisMonth = logs.filter(l=>(l.sent_at||l.created_at)?.slice(0,7)===new Date().toISOString().slice(0,7)).length
+  const showInboxCards = filterStatus === 'Received' || filterStatus === 'Unread'
 
   const statCards = [
-    { label: 'Total Sent',  value: outboundLogs.length, color: 'var(--tx)' },
-    { label: 'Delivered',   value: sent,                color: 'var(--ok)' },
-    { label: 'Failed',      value: failed,              color: 'var(--bad)' },
     { label: 'Received',    value: received,            color: 'var(--blue)' },
+    { label: 'Unread',      value: unread,              color: 'var(--warn)' },
+    { label: 'Total Sent',  value: outboundLogs.length, color: 'var(--tx)' },
+    { label: 'Delivered', value: sent,                color: 'var(--ok)' },
+    { label: 'Failed',      value: failed,              color: 'var(--bad)' },
     { label: 'This Month',  value: thisMonth,           color: 'var(--b2)' },
   ]
 
   return (
-    <div style={{padding:'20px 24px',maxWidth:1100,margin:'0 auto'}}>
+    <div style={{padding:'20px 24px',maxWidth:1240,margin:'0 auto'}}>
       {toast && <div className={`toast show ${toast.type==='err'?'terr':''}`}>{toast.msg||toast}</div>}
 
-      {settingsLoaded && !settings?.sw_space_url && (
-        <div style={{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.3)',borderRadius:10,padding:'12px 18px',marginBottom:20,fontSize:13,color:'var(--warn)',display:'flex',alignItems:'center',gap:10}}>
-          <span>⚠️</span>
-          <span>SignalWire isn't configured yet. <strong>Settings → 📞 SignalWire</strong> to set up. You can still log faxes manually.</span>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18,flexWrap:'wrap',gap:10}}>
+        <div>
+          <h2 style={{fontSize:22,fontWeight:800,margin:0,letterSpacing:'-0.3px'}}>📠 Fax</h2>
+          <div style={{fontSize:12,color:'var(--t3)',marginTop:4}}>Received fax inbox and outbound delivery history</div>
         </div>
-      )}
-
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:8}}>
-        <h2 style={{fontSize:22,fontWeight:800,margin:0,letterSpacing:'-0.3px'}}>📠 Fax</h2>
         <button className="btn pri" style={{fontSize:14,padding:'9px 20px',fontWeight:700}} onClick={()=>{setForm(BLANK);setFile(null);setModal(true)}}>+ Send Fax</button>
       </div>
 
-      {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginBottom:20}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(135px,1fr))',gap:10,marginBottom:18}}>
         {statCards.map(({label,value,color})=>(
-          <div key={label} className="card" style={{padding:'16px 18px',textAlign:'center'}}>
-            <div style={{fontWeight:900,fontSize:28,color,lineHeight:1}}>{value}</div>
-            <div style={{fontSize:11,color:'var(--t3)',marginTop:6,textTransform:'uppercase',letterSpacing:'.06em',fontWeight:600}}>{label}</div>
+          <div key={label} className="card" style={{padding:'14px 16px',textAlign:'center'}}>
+            <div style={{fontWeight:900,fontSize:26,color,lineHeight:1}}>{value}</div>
+            <div style={{fontSize:10,color:'var(--t3)',marginTop:6,textTransform:'uppercase',letterSpacing:'.06em',fontWeight:700}}>{label}</div>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
       <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search client, number, subject…"
-          style={{flex:1,minWidth:200,padding:'9px 14px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:14}}/>
-        {['All','Delivered','Failed','Pending'].map(s=>(
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search client, sender, recipient, subject…"
+          style={{flex:1,minWidth:240,padding:'9px 14px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:14}}/>
+        {['Received','Unread','Sent','Pending','Failed','All'].map(s=>(
           <button key={s} className={`btn ${filterStatus===s?'pri':'sec'}`} style={{fontSize:12,padding:'6px 14px',fontWeight:600}} onClick={()=>setFilter(s)}>{s}</button>
         ))}
       </div>
 
-      {/* Fax log table */}
-      <div className="card" style={{padding:0,overflow:'hidden'}}>
-        {filtered.length===0 ? (
-          <div style={{padding:48,textAlign:'center',color:'var(--t3)',fontSize:15}}>
-            {logs.length===0 ? '📠 No faxes yet. Click "+ Send Fax" to get started.' : 'No faxes match your filters.'}
+      {showInboxCards ? (
+        filtered.length === 0 ? (
+          <div className="card" style={{padding:52,textAlign:'center',color:'var(--t3)',fontSize:15}}>
+            {filterStatus==='Unread' ? '📭 No unread faxes.' : '📥 No received faxes yet.'}
           </div>
         ) : (
-          <div className="ovx">
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
-              <thead>
-                <tr style={{borderBottom:'1px solid var(--br)',background:'var(--s2)'}}>
-                  {['','Date & Time','Client','Number','Subject','File','Status','Sent By',''].map(h=>(
-                    <th key={h} style={{padding:'11px 14px',textAlign:'left',fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em'}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(l=>{
-                  const match = l.direction==='inbound' && !l.client_name ? matchByPhone(l.from_number) : null
-                  const pickerOpen = attachPickerFor === l.id
-                  const pickerResults = attachSearch.length >= 2
-                    ? [...clients.map(c=>({...c,_type:'Client'})), ...leads.map(ld=>({...ld,_type:'Lead'}))]
-                        .filter(p=>p.name.toLowerCase().includes(attachSearch.toLowerCase())).slice(0,6)
-                    : []
-                  return (
-                  <Fragment key={l.id}>
-                  <tr style={{borderBottom: pickerOpen ? 'none' : '1px solid var(--br)',cursor:l.file_url?'pointer':'default'}}
-                    onClick={()=>l.file_url&&window.open(l.file_url,'_blank')}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--s2)'}
-                    onMouseLeave={e=>e.currentTarget.style.background=''}>
-                    <td style={{padding:'12px 14px',fontSize:18}}>
-                      {l.direction==='inbound'
-                        ? <span title="Received" style={{color:'var(--blue)'}}>📥</span>
-                        : <span title="Sent" style={{color:'var(--t3)'}}>📤</span>}
-                    </td>
-                    <td style={{padding:'12px 14px',whiteSpace:'nowrap'}}>
-                      <div style={{fontWeight:700,fontSize:14}}>{(l.sent_at||l.created_at) ? new Date(l.sent_at||l.created_at).toLocaleDateString() : '—'}</div>
-                      <div style={{fontSize:12,color:'var(--t3)',marginTop:2}}>{(l.sent_at||l.created_at) ? new Date(l.sent_at||l.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : ''}</div>
-                    </td>
-                    <td style={{padding:'12px 14px',fontWeight:600,fontSize:14}}>
-                      {l.client_name ? <ClientLink name={l.client_name} /> : (match ? <span title="Suggested match by phone number">{match.name} ?</span> : '—')}
-                    </td>
-                    <td style={{padding:'12px 14px',fontFamily:'monospace',fontSize:13,color:'var(--t2)'}}>{l.to_number ? fmtPhone(l.to_number) : '—'}</td>
-                    <td style={{padding:'12px 14px',color:'var(--t2)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:13}}>{l.subject||'—'}</td>
-                    <td style={{padding:'12px 14px'}}>
-                      {l.file_url ? (
-                        <a href={l.file_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
-                          style={{fontSize:13,color:'var(--blue)',textDecoration:'none',display:'flex',alignItems:'center',gap:5,fontWeight:600}}>
-                          📄 View
-                        </a>
-                      ) : <span style={{color:'var(--t3)'}}>—</span>}
-                    </td>
-                    <td style={{padding:'12px 14px'}}>
-                      <span className={`bdg ${l.status==='Delivered'||l.status==='Received'?'bg':l.status==='Failed'?'br':'ba'}`}
-                        style={{fontSize:12,padding:'3px 10px',fontWeight:700}}>
-                        {l.status}
-                      </span>
-                      {l.error_msg && <div style={{fontSize:10,color:'var(--bad)',marginTop:3,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis'}}>{l.error_msg.slice(0,40)}</div>}
-                    </td>
-                    <td style={{padding:'12px 14px',fontSize:12,color:'var(--t3)'}}>{l.sent_by?.split('@')[0]||'—'}</td>
-                    <td style={{padding:'12px 14px',display:'flex',gap:6,alignItems:'center'}} onClick={e=>e.stopPropagation()}>
-                      {l.direction==='inbound' && l.file_url && (
-                        <button className="btn sec" style={{fontSize:11,padding:'4px 10px'}}
-                          onClick={()=>{ setAttachPickerFor(pickerOpen ? null : l.id); setAttachSearch(''); setAttachFolder('Correspondence') }}>
-                          📎 {match ? `Attach to ${match.name}'s file` : 'Attach to file'}
-                        </button>
-                      )}
-                      <button className="btn del" style={{fontSize:11,padding:'4px 10px'}} onClick={()=>setConfirmDel(l.id)}>Del</button>
-                    </td>
-                  </tr>
-                  {pickerOpen && (
-                    <tr style={{borderBottom:'1px solid var(--br)',background:'var(--s2)'}}>
-                      <td colSpan={9} style={{padding:'10px 14px'}}>
-                        <div style={{display:'flex',flexDirection:'column',gap:6,maxWidth:360}}>
-                          {match ? (
-                            <div style={{fontSize:13,fontWeight:600}}>Attaching to: {match.name} <span style={{color:'var(--t3)',fontWeight:400,fontSize:11}}>({match._type}, matched by phone)</span></div>
-                          ) : (
-                            <>
-                              <input autoFocus placeholder="Search client or lead name…" value={attachSearch}
-                                onChange={e=>setAttachSearch(e.target.value)}
-                                style={{fontSize:13,padding:'6px 10px',borderRadius:6,border:'1px solid var(--br)',background:'var(--bg)',color:'var(--tx)'}}/>
-                              {pickerResults.map(p=>(
-                                <div key={p._type+p.id} onClick={()=>setAttachSearch(p.name)}
-                                  style={{fontSize:13,padding:'6px 10px',cursor:'pointer',borderRadius:6,background:attachSearch===p.name?'var(--br)':'transparent'}}
-                                  onMouseEnter={e=>e.currentTarget.style.background='var(--br)'}
-                                  onMouseLeave={e=>e.currentTarget.style.background=attachSearch===p.name?'var(--br)':''}>
-                                  {p.name} <span style={{color:'var(--t3)',fontSize:11}}>({p._type})</span>
-                                </div>
-                              ))}
-                            </>
-                          )}
-                          <div className="field"><label style={{fontSize:11}}>Folder</label>
-                            <select value={attachFolder} onChange={e=>setAttachFolder(e.target.value)} style={{fontSize:13,padding:'6px 10px'}}>
-                              {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
-                            </select>
-                          </div>
-                          <div style={{display:'flex',gap:8}}>
-                            <button className="btn pri" style={{fontSize:12,padding:'5px 12px'}} disabled={attaching===l.id || (!match && !attachSearch)}
-                              onClick={()=>attachFaxToFile(l, match ? match.name : attachSearch, attachFolder)}>
-                              Confirm Attach
-                            </button>
-                            <button className="btn sec" style={{fontSize:12,padding:'5px 12px'}} onClick={()=>{setAttachPickerFor(null);setAttachSearch('');setAttachFolder('Correspondence')}}>Cancel</button>
-                          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(245px,1fr))',gap:14}}>
+            {filtered.map(l=>{
+              const match = !l.client_name ? matchByPhone(l.from_number) : null
+              const pickerOpen = attachPickerFor === l.id
+              const pickerResults = attachSearch.length >= 2
+                ? [...clients.map(c=>({...c,_type:'Client'})), ...leads.map(ld=>({...ld,_type:'Lead'}))]
+                    .filter(p=>p.name.toLowerCase().includes(attachSearch.toLowerCase())).slice(0,6)
+                : []
+              const date = l.created_at ? new Date(l.created_at) : null
+              return (
+                <div key={l.id} className="card" style={{padding:0,overflow:'hidden',position:'relative',border:l.is_read===false?'1px solid var(--blue)':'1px solid var(--br)'}}>
+                  <div style={{padding:'11px 13px',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,borderBottom:'1px solid var(--br)'}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:7,fontWeight:800,fontSize:13}}>
+                        {l.is_read===false && <span title="Unread" style={{width:8,height:8,borderRadius:'50%',background:'var(--blue)',display:'inline-block',flex:'0 0 auto'}}/>}
+                        <span>{date ? date.toLocaleDateString() : 'Received fax'}</span>
+                        <span style={{color:'var(--t3)',fontWeight:500}}>{date ? date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : ''}</span>
+                      </div>
+                      <div style={{fontSize:12,color:'var(--t2)',marginTop:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        From <strong style={{color:'var(--tx)'}}>{l.from_number ? fmtPhone(l.from_number) : 'Unknown'}</strong>
+                      </div>
+                    </div>
+                    <span className="bdg bg" style={{fontSize:10,padding:'3px 8px'}}>Received</span>
+                  </div>
+
+                  <button onClick={()=>openFax(l)} disabled={!l.file_url}
+                    style={{display:'block',width:'100%',height:230,padding:0,border:0,background:'var(--s2)',cursor:l.file_url?'pointer':'default',overflow:'hidden'}}>
+                    {previewUrls[l.id] ? (
+                      <iframe title={`Fax preview ${l.id}`} src={previewUrls[l.id]+'#toolbar=0&navpanes=0&scrollbar=0'} style={{width:'100%',height:'100%',border:0,pointerEvents:'none',background:'#fff'}} />
+                    ) : (
+                      <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'var(--t3)'}}>
+                        <div style={{fontSize:38}}>📄</div>
+                        <div style={{fontSize:12}}>{l.file_url ? 'Preparing secure preview…' : 'No document available'}</div>
+                      </div>
+                    )}
+                  </button>
+
+                  <div style={{padding:'11px 13px'}}>
+                    <div style={{fontSize:13,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      {l.client_name ? <ClientLink name={l.client_name}/> : (match ? <span>{match.name} <span style={{color:'var(--t3)',fontWeight:500}}>suggested</span></span> : 'Unassigned fax')}
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginTop:6,fontSize:11,color:'var(--t3)'}}>
+                      <span>{l.pages ? `${l.pages} page${Number(l.pages)===1?'':'s'}` : 'Page count pending'}</span>
+                      <span>{l.provider ? String(l.provider).replace(/^./,m=>m.toUpperCase()) : ''}</span>
+                    </div>
+
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>
+                      <button className="btn sec" style={{fontSize:11,padding:'5px 9px'}} onClick={()=>openFax(l)}>👁 Open</button>
+                      <button className="btn sec" style={{fontSize:11,padding:'5px 9px'}} onClick={()=>downloadFax(l)}>⬇ Download</button>
+                      <button className="btn sec" style={{fontSize:11,padding:'5px 9px'}} onClick={()=>toggleUnread(l)}>{l.is_read===false?'✓ Mark read':'● Mark unread'}</button>
+                      {l.file_url && <button className="btn sec" style={{fontSize:11,padding:'5px 9px'}}
+                        onClick={()=>{setAttachPickerFor(pickerOpen?null:l.id);setAttachSearch('');setAttachFolder('Correspondence')}}>📎 Attach</button>}
+                    </div>
+
+                    {pickerOpen && (
+                      <div style={{marginTop:10,padding:10,border:'1px solid var(--br)',borderRadius:8,background:'var(--s2)'}}>
+                        {match ? (
+                          <div style={{fontSize:12,fontWeight:700,marginBottom:7}}>Suggested: {match.name} <span style={{color:'var(--t3)',fontWeight:400}}>({match._type})</span></div>
+                        ) : (
+                          <>
+                            <input autoFocus placeholder="Search client or lead…" value={attachSearch} onChange={e=>setAttachSearch(e.target.value)}
+                              style={{width:'100%',fontSize:12,padding:'7px 9px',borderRadius:6,border:'1px solid var(--br)',background:'var(--bg)',color:'var(--tx)'}}/>
+                            {pickerResults.map(p=>(
+                              <div key={p._type+p.id} onClick={()=>setAttachSearch(p.name)}
+                                style={{fontSize:12,padding:'6px 8px',cursor:'pointer',borderRadius:5}}>
+                                {p.name} <span style={{color:'var(--t3)'}}>({p._type})</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        <select value={attachFolder} onChange={e=>setAttachFolder(e.target.value)} style={{width:'100%',marginTop:7,fontSize:12,padding:'7px 9px'}}>
+                          {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
+                        </select>
+                        <div style={{display:'flex',gap:6,marginTop:8}}>
+                          <button className="btn pri" style={{fontSize:11,padding:'5px 9px'}} disabled={attaching===l.id||(!match&&!attachSearch)}
+                            onClick={()=>attachFaxToFile(l,match?match.name:attachSearch,attachFolder)}>Attach</button>
+                          <button className="btn sec" style={{fontSize:11,padding:'5px 9px'}} onClick={()=>setAttachPickerFor(null)}>Cancel</button>
                         </div>
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        )}
-      </div>
+        )
+      ) : (
+        <div className="card" style={{padding:0,overflow:'hidden'}}>
+          {filtered.length===0 ? (
+            <div style={{padding:48,textAlign:'center',color:'var(--t3)',fontSize:15}}>No faxes match your filters.</div>
+          ) : (
+            <div className="ovx">
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
+                <thead>
+                  <tr style={{borderBottom:'1px solid var(--br)',background:'var(--s2)'}}>
+                    {['Direction','Date & Time','Client','Number','Subject','Pages','Status','Sent By','Actions'].map(h=>(
+                      <th key={h} style={{padding:'11px 14px',textAlign:'left',fontSize:10,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em'}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(l=>{
+                    const inbound=l.direction==='inbound'
+                    const number=inbound?l.from_number:l.to_number
+                    return (
+                      <tr key={l.id} style={{borderBottom:'1px solid var(--br)'}}>
+                        <td style={{padding:'12px 14px'}}>{inbound?'📥 Received':'📤 Sent'}</td>
+                        <td style={{padding:'12px 14px',whiteSpace:'nowrap'}}>
+                          <div style={{fontWeight:700,fontSize:13}}>{(l.sent_at||l.created_at)?new Date(l.sent_at||l.created_at).toLocaleDateString():'—'}</div>
+                          <div style={{fontSize:11,color:'var(--t3)',marginTop:2}}>{(l.sent_at||l.created_at)?new Date(l.sent_at||l.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):''}</div>
+                        </td>
+                        <td style={{padding:'12px 14px',fontWeight:600}}>{l.client_name?<ClientLink name={l.client_name}/>:inbound?(matchByPhone(l.from_number)?.name||'—'):'—'}</td>
+                        <td style={{padding:'12px 14px',fontFamily:'monospace',fontSize:12}}>{number?fmtPhone(number):'—'}</td>
+                        <td style={{padding:'12px 14px',maxWidth:190,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.subject||'—'}</td>
+                        <td style={{padding:'12px 14px'}}>{l.pages||'—'}</td>
+                        <td style={{padding:'12px 14px'}}><span className={`bdg ${['Sent','Delivered','Received'].includes(l.status)?'bg':l.status==='Failed'?'br':'ba'}`}>{l.status}</span></td>
+                        <td style={{padding:'12px 14px',fontSize:12,color:'var(--t3)'}}>{l.sent_by?.split('@')[0]||'—'}</td>
+                        <td style={{padding:'12px 14px'}}>
+                          <div style={{display:'flex',gap:5}}>
+                            {l.file_url&&<button className="btn sec" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>openFax(l)}>Open</button>}
+                            <button className="btn del" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>setConfirmDel(l.id)}>Del</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Delete confirm */}
       {confirmDel && (
