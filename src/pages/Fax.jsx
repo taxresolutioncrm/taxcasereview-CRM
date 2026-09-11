@@ -41,6 +41,9 @@ export default function Fax() {
   const [attachSearch, setAttachSearch] = useState('')
   const [attachFolder, setAttachFolder] = useState('Correspondence')
   const [attaching, setAttaching] = useState(null)
+  const [previewFaxRow, setPreviewFaxRow] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
   useEffect(() => {
     if (qp.get('new') === '1') {
       setForm(prev => ({ ...BLANK, from_number: prev.from_number || '', client_name: qp.get('client') || '', to_number: (qp.get('phone') || '').replace(/\D/g,'') }))
@@ -124,16 +127,47 @@ export default function Fax() {
     return faxRow.file_url || ''
   }
 
-  async function openFax(faxRow) {
+  async function markFaxRead(faxRow) {
+    if (faxRow.direction === 'inbound' && faxRow.is_read === false) {
+      const { error } = await supabase.from('fax_logs').update({ is_read: true }).eq('id', faxRow.id)
+      if (!error) setLogs(prev => prev.map(r => r.id === faxRow.id ? { ...r, is_read: true } : r))
+    }
+  }
+
+  async function previewFax(faxRow) {
+    setPreviewFaxRow(faxRow)
+    setPreviewUrl('')
+    setPreviewLoading(true)
     try {
-      if (faxRow.direction === 'inbound' && faxRow.is_read === false) {
-        await supabase.from('fax_logs').update({ is_read: true }).eq('id', faxRow.id)
-        setLogs(prev => prev.map(r => r.id === faxRow.id ? { ...r, is_read: true } : r))
-      }
+      await markFaxRead(faxRow)
       const url = await resolveFaxUrl(faxRow)
-      if (!url) return showToast('This fax has no document attached', 'err')
-      window.open(url, '_blank', 'noopener,noreferrer')
+      if (!url) {
+        setPreviewFaxRow(null)
+        return showToast('This fax has no document attached', 'err')
+      }
+      setPreviewUrl(url)
     } catch (e) {
+      setPreviewFaxRow(null)
+      showToast('Could not preview fax: ' + (e?.message || e), 'err')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  async function openFaxNewTab(faxRow) {
+    const tab = window.open('about:blank', '_blank')
+    if (tab) tab.opener = null
+    try {
+      await markFaxRead(faxRow)
+      const url = previewFaxRow?.id === faxRow.id && previewUrl ? previewUrl : await resolveFaxUrl(faxRow)
+      if (!url) {
+        if (tab) tab.close()
+        return showToast('This fax has no document attached', 'err')
+      }
+      if (tab) tab.location.href = url
+      else showToast('Your browser blocked the new tab. Allow pop-ups to open the fax externally.', 'err')
+    } catch (e) {
+      if (tab) tab.close()
       showToast('Could not open fax: ' + (e?.message || e), 'err')
     }
   }
@@ -331,8 +365,9 @@ export default function Fax() {
                 </div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,minWidth:0}}>
                   <div style={{fontSize:10,color:'var(--t3)',whiteSpace:'nowrap'}}>{at?new Date(at).toLocaleString():''}</div>
-                  {l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openFax(l)}>Open</button>}
-                  {l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>downloadFax(l)}>↓</button>}
+                  {l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewFax(l)}>Preview</button>}
+                  {l.file_url&&<button className='btn sec' title='Open in new tab' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openFaxNewTab(l)}>Open ↗</button>}
+                  {l.file_url&&<button className='btn sec' title='Download fax' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>downloadFax(l)}>↓</button>}
                   {inbound&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>toggleUnread(l)}>{l.is_read===false?'✓':'●'}</button>}
                   {inbound&&l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>{setAttachPickerFor(pickerOpen?null:l.id);setAttachSearch('');setAttachFolder('Correspondence')}}>📎</button>}
                 </div>
@@ -348,6 +383,42 @@ export default function Fax() {
           )
         })}
       </div>
+      {previewFaxRow && (
+        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setPreviewFaxRow(null)} style={{zIndex:1200}}>
+          <div className="modal" style={{width:'min(1180px,96vw)',maxWidth:'1180px',height:'88vh',padding:0,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderBottom:'1px solid var(--br)',background:'var(--s1)'}}>
+              <div style={{fontSize:18}}>📠</div>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{fontSize:13,fontWeight:800,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                  {previewFaxRow.subject || (previewFaxRow.direction==='inbound' ? 'Incoming fax' : 'Outgoing fax')}
+                </div>
+                <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>
+                  {previewFaxRow.direction==='inbound' ? 'From ' : 'To '}
+                  {fmtPhone(previewFaxRow.direction==='inbound' ? (previewFaxRow.from_number||'') : (previewFaxRow.to_number||''))}
+                  {previewFaxRow.file_name ? ' · '+previewFaxRow.file_name : ''}
+                </div>
+              </div>
+              <button className='btn sec' style={{fontSize:11}} onClick={()=>openFaxNewTab(previewFaxRow)}>Open in new tab ↗</button>
+              <button className='btn sec' style={{fontSize:11}} onClick={()=>downloadFax(previewFaxRow)}>Download ↓</button>
+              <button className='btn sec' aria-label='Close fax preview' style={{fontSize:16,padding:'4px 9px'}} onClick={()=>setPreviewFaxRow(null)}>×</button>
+            </div>
+            <div style={{flex:1,minHeight:0,background:'#eef2f7',position:'relative'}}>
+              {previewLoading ? (
+                <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--t3)',fontSize:13}}>Loading fax preview…</div>
+              ) : previewUrl ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewFaxRow.file_name || 'Fax preview'}
+                  style={{width:'100%',height:'100%',border:0,background:'#fff'}}
+                />
+              ) : (
+                <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--t3)',fontSize:13}}>Preview unavailable.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete confirm */}
       {confirmDel && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setConfirmDel(null)}>
