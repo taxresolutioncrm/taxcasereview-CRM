@@ -51,7 +51,7 @@ $$;
 
 
 -- Proven source readiness should never regress to Planned after normalization.
-do $
+do $$
 declare
   bad_count integer;
 begin
@@ -74,7 +74,7 @@ begin
     raise exception 'Oculivo traffic rows were modified by this release; Oculivo must remain untouched';
   end if;
 end
-$;
+$$;
 
 select p.product_id,
        p.name,
