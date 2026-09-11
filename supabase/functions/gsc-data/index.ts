@@ -7,7 +7,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GSC_BASE = 'https://searchconsole.googleapis.com'
 const ADMIN_TENANT = 'a0000000-0000-0000-0000-000000000001'
 const CANONICAL_REDIRECT = 'https://admin.romylabs.com/crm-admin/command-center'
-const LIVE_PRODUCTS = ['taxres_crm','romylabs','camvella','arcvena','bocasync','groundivo','oculivo']
+const LIVE_PRODUCTS = ['taxres_crm','romylabs','camvella','arcvena','bocasync','groundivo','oculivo','restore_relay']
 const corsHeaders = {
   'Access-Control-Allow-Origin':'*',
   'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
@@ -22,6 +22,7 @@ const GSC_SITE_CANDIDATES: Record<string,string[]> = {
   bocasync:['sc-domain:bocasync.com','https://bocasync.com/','https://www.bocasync.com/'],
   groundivo:['sc-domain:groundivo.com','https://groundivo.com/','https://www.groundivo.com/'],
   oculivo:['sc-domain:oculivo.com','https://oculivo.com/','https://www.oculivo.com/'],
+  restore_relay:['sc-domain:restorerelay.com','https://restorerelay.com/','https://www.restorerelay.com/'],
 }
 
 function hostOf(site:string){
