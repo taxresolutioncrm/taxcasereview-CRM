@@ -2497,7 +2497,7 @@ const PRODUCT_REGISTRY = [
     industry:   'Landscaping & Field Service',
     url:        'https://app.groundivo.com',
     appUrl:     'https://app.groundivo.com',
-    websiteUrl: null,  // www.groundivo.com is parked; set when real marketing site deploys
+    websiteUrl: 'https://groundivo.com',
     lifecycleStage: 'available',
     connection:     'partial',
     brandStatus:    'branded',
@@ -2517,11 +2517,11 @@ const PRODUCT_REGISTRY = [
     url:        'https://app.oculivo.com',
     appUrl:     'https://app.oculivo.com',
     websiteUrl: 'https://oculivo.com',
-    lifecycleStage: 'building',
+    lifecycleStage: 'available',
     connection:     'partial',
     brandStatus:    'branded',
     publicOnRomyLabs: true,
-    commerciallyAvailable: false,
+    commerciallyAvailable: true,
     desc:      'Eye-care CRM and practice operating system for optometry, ophthalmology, optical retail, and multi-location groups.',
     metricsUrl: null,
     nextMilestone: 'Finish product build, deploy platform metrics, and verify analytics reporting',
@@ -4266,7 +4266,7 @@ function CommandCenter() {
       if (error) { setGa4EnabledProducts([]); setGa4LiveProducts([]); return }
       const rows = data || []
       setGa4EnabledProducts(rows.filter(r => r.tracking_id && ['configured','live'].includes(r.status)).map(r => r.product_id))
-      setGa4LiveProducts(rows.filter(r => r.tracking_id && r.status === 'live').map(r => r.product_id))
+      setGa4LiveProducts(rows.filter(r => ['configured','live'].includes(r.status)).map(r => r.product_id))
     })
   }, [])
 
@@ -4276,7 +4276,7 @@ function CommandCenter() {
   const [gscLiveProducts, setGscLiveProducts] = React.useState([])
   React.useEffect(() => {
     supabase.from('romylabs_products')
-      .select('product_id,name,accent_color,icon_ref,sort_order,lifecycle,app_url,marketing_url')
+      .select('product_id,name,accent_color,icon_ref,sort_order,lifecycle,public,app_url,marketing_url')
       .eq('active', true)
       .order('sort_order')
       .then(({ data, error }) => {
@@ -4643,11 +4643,18 @@ function CommandCenter() {
                     ))}
                   </div>
                   {products.map((p, i) => {
-                    const lc = p.lifecycleStage
+                    const registryRow = reportingProducts.find(r => r.product_id === p.key)
+                    const registryLifecycle = String(registryRow?.lifecycle || '').toLowerCase()
+                    const lc = registryLifecycle === 'live'
+                      ? (p.lifecycleStage === 'live' ? 'live' : 'available')
+                      : (registryLifecycle || p.lifecycleStage)
                     const lcColor = LIFECYCLE_COLOR[lc] || '#64748b'
-                    const analyticsStatus = (p.ga4Connected || p.connection === 'connected')
+                    const isPublic = registryRow?.public ?? p.publicOnRomyLabs
+                    const commercialLive = registryLifecycle === 'live' || p.commerciallyAvailable
+                    const analyticsConnected = ga4LiveProducts.includes(p.key)
+                    const analyticsStatus = analyticsConnected
                       ? '🟢 Connected'
-                      : (p.publicOnRomyLabs ? '🟡 Pending' : 'N/A')
+                      : (isPublic ? '🟡 Pending' : 'N/A')
                     return (
                       <div key={p.key} style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr 1fr .8fr .8fr .8fr 1.2fr',
                         padding:'10px 16px', borderBottom: i < products.length-1 ? '1px solid rgba(99,102,241,.06)' : 'none',
@@ -4669,11 +4676,11 @@ function CommandCenter() {
                         <div style={{ fontSize:11, color: p.connection==='connected' ? '#10b981' : p.connection==='partial' ? '#f59e0b' : '#475569' }}>
                           {CONN_DOT[p.connection]} {p.connection === 'connected' ? 'Connected' : p.connection === 'partial' ? 'Partial' : 'Not Connected'}
                         </div>
-                        <div style={{ fontSize:11, color: p.commerciallyAvailable ? '#10b981' : '#475569' }}>
-                          {p.commerciallyAvailable ? 'Live' : '—'}
+                        <div style={{ fontSize:11, color: commercialLive ? '#10b981' : '#475569' }}>
+                          {commercialLive ? 'Live' : '—'}
                         </div>
-                        <div style={{ fontSize:11, color: p.publicOnRomyLabs ? '#10b981' : '#475569' }}>
-                          {p.publicOnRomyLabs ? 'Yes' : 'No'}
+                        <div style={{ fontSize:11, color: isPublic ? '#10b981' : '#475569' }}>
+                          {isPublic ? 'Yes' : 'No'}
                         </div>
                         <div style={{ fontSize:11, color:'#64748b' }}>{analyticsStatus}</div>
                         <div style={{ fontSize:10, color:'#6366f1', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
