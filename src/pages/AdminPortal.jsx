@@ -418,11 +418,54 @@ function Overview() {
 
   useEffect(() => {
     if (!user) return
-    supabase.rpc('admin_tenant_overview').then(({ data, error }) => {
-      if (error) { setLoadError(error.message); setStats([]); return }
-      setLoadError(''); setStats(data || [])
-    })
+    let cancelled = false
+    ;(async () => {
+      const { data: taxresRows, error: taxresError } = await supabase.rpc('admin_tenant_overview')
+      if (taxresError) {
+        if (!cancelled) { setLoadError(taxresError.message); setStats([]) }
+        return
+      }
+
+      const baseRows = taxresRows || []
+      if (!cancelled) setStats(baseRows)
+
+      const { data: arcvenaData, error: arcvenaError } = await supabase.functions.invoke('hub-proxy', {
+        body: { product: 'arcvena' },
+      })
+      if (arcvenaError || arcvenaData?.ok === false) {
+        if (!cancelled) setLoadError('Arcvena offices are temporarily unavailable; existing offices are still shown.')
+        return
+      }
+
+      const arcvenaRows = (arcvenaData?.offices || []).map(office => ({
+        id: `arcvena:${office.id}`,
+        source_id: office.id,
+        product: 'arcvena',
+        firm_name: office.name,
+        brand_color: '#00c2ff',
+        employee_count: 0,
+        client_count: 0,
+        lead_count: 0,
+        storage_bytes: 0,
+        total_collected: 0,
+        transaction_count: 0,
+        status: office.is_active ? 'active' : 'inactive',
+        plan_tier: 'Arcvena',
+        effective_monthly: Number(office.mrr || 0),
+        last_activity: office.since,
+      }))
+
+      if (!cancelled) {
+        setLoadError('')
+        setStats([...baseRows, ...arcvenaRows])
+      }
+    })()
+    return () => { cancelled = true }
   }, [user])
+
+  function openOffice(row) {
+    navigate(`/crm-admin/offices/${row.id}`)
+  }
 
   const totalMRR     = (stats||[]).reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = (stats||[]).filter(r => r.status==='active').length
