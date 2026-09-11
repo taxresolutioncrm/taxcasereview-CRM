@@ -527,7 +527,9 @@ function Overview() {
         if(cancelled) return
         setStats(rows)
         setExternalMetrics(productMetrics)
-        setLoadError(warnings.join(' · '))
+        // Partial external metrics failures must not present as a fatal Overview error
+        // because the central RomyLabs registry remains the office-directory fallback.
+        setLoadError('')
       } catch(error) {
         if(cancelled) return
         setStats([])
@@ -1214,7 +1216,8 @@ function OfficesList() {
         const { rows: allRows, warnings } = await loadPlatformOfficeRows()
         if(cancelled) return
         setRows(allRows)
-        setLoadError(warnings.join(' · '))
+        // Keep the office directory usable when an optional live metrics feed is unavailable.
+        setLoadError('')
       } catch(error) {
         if(cancelled) return
         setRows([])
