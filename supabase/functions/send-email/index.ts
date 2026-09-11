@@ -51,6 +51,70 @@ function raw(o: any) {
   return `${h}\r\n\r\n${o.body}`
 }
 
+async function sendViaStalwartJmap(opts: { host:string, username:string, password:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+  const base = `https://${opts.host.replace(/^https?:\/\//,'').replace(/\/$/,'')}`
+  const auth = 'Basic ' + btoa(`${opts.username}:${opts.password}`)
+  const sessionRes = await fetch(`${base}/.well-known/jmap`, { headers:{ Authorization:auth, Accept:'application/json' } })
+  if (!sessionRes.ok) throw new Error(`Stalwart JMAP session failed (${sessionRes.status})`)
+  const session = await sessionRes.json()
+  const apiUrl = String(session?.apiUrl || '').replace('{accountId}','')
+  const accountId = session?.primaryAccounts?.['urn:ietf:params:jmap:mail'] || Object.keys(session?.accounts || {})[0]
+  if (!apiUrl || !accountId) throw new Error('Stalwart JMAP session missing mail account')
+
+  const metaRes = await fetch(apiUrl, {
+    method:'POST',
+    headers:{ Authorization:auth, 'Content-Type':'application/json', Accept:'application/json' },
+    body:JSON.stringify({
+      using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+      methodCalls:[
+        ['Identity/get',{accountId},'i0'],
+        ['Mailbox/get',{accountId,properties:['id','name','role']},'m0'],
+      ],
+    }),
+  })
+  if (!metaRes.ok) throw new Error(`Stalwart JMAP metadata failed (${metaRes.status})`)
+  const meta = await metaRes.json()
+  const identityList = meta?.methodResponses?.find((x:any)=>x?.[0]==='Identity/get')?.[1]?.list || []
+  const mailboxes = meta?.methodResponses?.find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list || []
+  const identity = identityList.find((x:any)=>String(x?.email||'').toLowerCase()===opts.username.toLowerCase()) || identityList[0]
+  const drafts = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='drafts')
+  if (!identity?.id || !drafts?.id) throw new Error('Stalwart JMAP sender identity or Drafts mailbox unavailable')
+
+  const bodyPartId='body'
+  const createEmail:any = {
+    from:[{email:opts.username,name:opts.fromName||undefined}],
+    to:[{email:opts.to}],
+    subject:opts.subject,
+    mailboxIds:{[drafts.id]:true},
+    keywords:{'$draft':true},
+    bodyValues:{[bodyPartId]:{value:opts.html || opts.text || '',charset:'utf-8'}},
+  }
+  if (opts.html) createEmail.htmlBody=[{partId:bodyPartId,type:'text/html'}]
+  else createEmail.textBody=[{partId:bodyPartId,type:'text/plain'}]
+
+  const sendRes = await fetch(apiUrl, {
+    method:'POST',
+    headers:{ Authorization:auth, 'Content-Type':'application/json', Accept:'application/json' },
+    body:JSON.stringify({
+      using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+      methodCalls:[
+        ['Email/set',{accountId,create:{draft:createEmail}},'e0'],
+        ['EmailSubmission/set',{
+          accountId,
+          create:{sendIt:{emailId:'#draft',identityId:identity.id}},
+          onSuccessDestroyEmail:['#sendIt'],
+        },'s0'],
+      ],
+    }),
+  })
+  if (!sendRes.ok) throw new Error(`Stalwart JMAP send failed (${sendRes.status})`)
+  const sent = await sendRes.json()
+  const submission = sent?.methodResponses?.find((x:any)=>x?.[0]==='EmailSubmission/set')?.[1]
+  const notCreated = submission?.notCreated?.sendIt
+  if (notCreated) throw new Error(`Stalwart JMAP rejected send: ${notCreated.description || notCreated.type || 'unknown error'}`)
+  if (!submission?.created?.sendIt?.id) throw new Error('Stalwart JMAP did not confirm message submission')
+}
+
 async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, username:string, password:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
   const encoder=new TextEncoder(), decoder=new TextDecoder()
   let conn:Deno.TcpConn|Deno.TlsConn
@@ -235,7 +299,7 @@ serve(async (req) => {
       const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
       if (!recipients.length) return new Response(JSON.stringify({ error:'Contract recipient missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
       for (const recipient of recipients) {
-        await sendSmtpRaw({
+        const transport = {
           host:safe(smtpSettings.smtp_host),
           port:Number(smtpSettings.smtp_port||465),
           ssl:String(smtpSettings.smtp_encryption||'').toLowerCase()==='ssl'||Number(smtpSettings.smtp_port||465)===465,
@@ -246,7 +310,13 @@ serve(async (req) => {
           subject:safe(subject),
           html:html?String(html):undefined,
           text:text?String(text):undefined,
-        })
+        }
+        try {
+          await sendSmtpRaw(transport)
+        } catch (smtpError) {
+          console.warn('[send-email] SMTP contract send failed; retrying through Stalwart JMAP', String((smtpError as Error)?.message || smtpError))
+          await sendViaStalwartJmap(transport)
+        }
       }
       await admin.from('emails').insert(recipients.map((recipient:string)=>({
         tenant_id:smtpSettings.tenant_id,
