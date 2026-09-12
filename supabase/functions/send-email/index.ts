@@ -51,7 +51,7 @@ function raw(o: any) {
   return `${h}\r\n\r\n${o.body}`
 }
 
-async function sendViaStalwartJmap(opts: { host:string, username:string, password:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+async function sendViaStalwartJmap(opts: { host:string, username:string, password:string, fromAddress?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
   const base = `https://${opts.host.replace(/^https?:\/\//,'').replace(/\/$/,'')}`
   const auth = 'Basic ' + btoa(`${opts.username}:${opts.password}`)
   const sessionRes = await fetch(`${base}/.well-known/jmap`, { headers:{ Authorization:auth, Accept:'application/json' } })
@@ -76,14 +76,16 @@ async function sendViaStalwartJmap(opts: { host:string, username:string, passwor
   const meta = await metaRes.json()
   const identityList = meta?.methodResponses?.find((x:any)=>x?.[0]==='Identity/get')?.[1]?.list || []
   const mailboxes = meta?.methodResponses?.find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list || []
-  const identity = identityList.find((x:any)=>String(x?.email||'').toLowerCase()===opts.username.toLowerCase()) || identityList[0]
+  const fromAddress = safe(opts.fromAddress || opts.username).toLowerCase()
+  const identity = identityList.find((x:any)=>String(x?.email||'').toLowerCase()===fromAddress)
   const drafts = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='drafts')
   const sentBox = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='sent')
-  if (!identity?.id || !drafts?.id || !sentBox?.id) throw new Error('Stalwart JMAP sender identity, Drafts, or Sent mailbox unavailable')
+  if (!identity?.id) throw new Error(`Stalwart does not authorize sender identity ${fromAddress}`)
+  if (!drafts?.id || !sentBox?.id) throw new Error('Stalwart Drafts or Sent mailbox unavailable')
 
   const bodyPartId='body'
   const createEmail:any = {
-    from:[{email:opts.username,name:opts.fromName||undefined}],
+    from:[{email:fromAddress,name:opts.fromName||undefined}],
     to:[{email:opts.to}],
     subject:opts.subject,
     mailboxIds:{[drafts.id]:true},
@@ -319,11 +321,12 @@ serve(async (req) => {
       const routedFrom=safe(route?.outbound_from || route?.email_address || requestedFrom).toLowerCase()
       if (!routedFrom) return new Response(JSON.stringify({ error:'No active mailbox route for contract product' }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
 
+      const transportLogin = routeProduct === 'taxres_crm' ? 'info@taxrescrm.net' : routedFrom
       const { data: smtpSettings, error: smtpSettingsError } = await admin.from('settings')
         .select('tenant_id,name,firmname,smtp_host,smtp_port,smtp_email,smtp_password,smtp_name,smtp_encryption')
-        .ilike('smtp_email', routedFrom).limit(1).maybeSingle()
+        .ilike('smtp_email', transportLogin).limit(1).maybeSingle()
       if (smtpSettingsError || !smtpSettings?.smtp_host || !smtpSettings?.smtp_email || !smtpSettings?.smtp_password) {
-        return new Response(JSON.stringify({ error:`No configured SMTP transport for ${routedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        return new Response(JSON.stringify({ error:`No configured Stalwart transport for ${routedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
       }
       const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
       if (!recipients.length) return new Response(JSON.stringify({ error:'Contract recipient missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
@@ -335,7 +338,8 @@ serve(async (req) => {
           ssl:String(smtpSettings.smtp_encryption||'').toLowerCase()==='ssl'||Number(smtpSettings.smtp_port||465)===465,
           username:safe(smtpSettings.smtp_email),
           password:String(smtpSettings.smtp_password),
-          fromName:safe(from_name||smtpSettings.smtp_name||smtpSettings.name||smtpSettings.firmname||'RomyLabs'),
+          fromAddress:routedFrom,
+          fromName:safe(from_name||route?.display_name||smtpSettings.smtp_name||smtpSettings.name||smtpSettings.firmname||'RomyLabs'),
           to:recipient,
           subject:safe(subject),
           html:html?String(html):undefined,
