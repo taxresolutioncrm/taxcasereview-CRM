@@ -205,6 +205,25 @@ async function loadPlatformOfficeRows() {
       if (existing >= 0) rows[existing] = { ...rows[existing], ...normalized }
       else rows.push(normalized)
       seen.add(key)
+
+      // Any office successfully loaded into Admin Portal is also registered
+      // for the universal contract/e-sign engine. This keeps sender routing,
+      // document history, and future contract sends product-aware without
+      // requiring manual registry rows.
+      const { error: registrySyncError } = await supabase.rpc('admin_romylabs_upsert_office_registry', {
+        p_product_key:result.productKey,
+        p_external_office_id:String(office.id),
+        p_firm_name:normalized.firm_name,
+        p_status:normalized.status,
+        p_seats:normalized.employee_count || null,
+        p_monthly_amount:normalized.effective_monthly || null,
+        p_metadata:{
+          source:'hub-proxy',
+          last_activity:normalized.last_activity,
+          synced_at:new Date().toISOString(),
+        },
+      })
+      if (registrySyncError) warnings.push(`${cfg.label} office registry sync failed`)
     }
 
     const metrics = result.data?.metrics || {}
