@@ -298,116 +298,119 @@ serve(async (req) => {
     if (looksLikeOfficeEsign) {
       const { data: isPlatformAdmin } = await authClient.rpc('_is_platform_admin')
       if (!isPlatformAdmin) return new Response(JSON.stringify({ error:'Platform admin required for office contract email' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
-      const requestedFrom=safe(from_email).toLowerCase()
-      const requestedProduct=safe(body.product_key).toLowerCase()
-      if (!requestedFrom && !requestedProduct) return new Response(JSON.stringify({ error:'Contract sender identity missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
 
-      // Resolve the sender from the central RomyLabs mailbox registry.
-      // Legacy TaxRes e-sign builds requested romy@taxrescrm.net; normalize those
-      // onto the registered TaxRes mailbox instead of falling back to another provider.
-      const routeProduct = requestedProduct || (requestedFrom === 'romy@taxrescrm.net' || requestedFrom === 'info@taxrescrm.net' ? 'taxres_crm' : '')
-      let routeQuery = admin.from('romylabs_mailboxes')
-        .select('product_id,email_address,outbound_from,inbox_owner,tenant_id,display_name,active')
-        .eq('active', true)
-      if (routeProduct) routeQuery = routeQuery.eq('product_id', routeProduct)
-      else routeQuery = routeQuery.ilike('outbound_from', requestedFrom)
-      const { data: routes, error: routeError } = await routeQuery.order('created_at', { ascending:true })
+      const requestedProduct=safe(body.product_key).toLowerCase()
+      const externalOfficeId=safe(body.external_office_id)
+      if (!requestedProduct || !externalOfficeId) {
+        return new Response(JSON.stringify({ error:'Selected office identity is required for contract delivery' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      }
+
+      // The selected office is the authority. Never trust a browser-supplied From address.
+      const { data: registeredOffice, error: officeError } = await admin.from('romylabs_office_registry')
+        .select('product_key,external_office_id,firm_name,status')
+        .eq('product_key',requestedProduct)
+        .eq('external_office_id',externalOfficeId)
+        .maybeSingle()
+      if (officeError || !registeredOffice) {
+        return new Response(JSON.stringify({ error:'Selected office is not registered with RomyLabs' }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      }
+
+      const { data: routes, error: routeError } = await admin.from('romylabs_mailboxes')
+        .select('id,product_id,email_address,outbound_from,inbox_owner,tenant_id,display_name,active')
+        .eq('product_id',requestedProduct)
+        .eq('active',true)
+        .order('created_at',{ascending:true})
       if (routeError) return new Response(JSON.stringify({ error:'Contract mailbox route lookup failed' }), { status:500, headers:{...corsHeaders,'Content-Type':'application/json'} })
 
-      const routeList = Array.isArray(routes) ? routes : []
-      const route = routeList.find((r:any)=>safe(r.outbound_from).toLowerCase() === requestedFrom)
-        || routeList.find((r:any)=>!safe(r.email_address).toLowerCase().startsWith('support@'))
-        || routeList[0]
-      const routedFrom=safe(route?.outbound_from || route?.email_address || requestedFrom).toLowerCase()
-      if (!routedFrom) return new Response(JSON.stringify({ error:'No active mailbox route for contract product' }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
-
-      const transportLogin = routeProduct === 'taxres_crm' ? 'info@taxrescrm.net' : routedFrom
-      const { data: smtpSettings, error: smtpSettingsError } = await admin.from('settings')
-        .select('tenant_id,name,firmname,smtp_host,smtp_port,smtp_email,smtp_password,smtp_name,smtp_encryption')
-        .ilike('smtp_email', transportLogin).limit(1).maybeSingle()
-      if (smtpSettingsError || !smtpSettings?.smtp_host || !smtpSettings?.smtp_email || !smtpSettings?.smtp_password) {
-        return new Response(JSON.stringify({ error:`No configured Stalwart transport for ${routedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      const routeList=Array.isArray(routes)?routes:[]
+      const route=routeList.find((r:any)=>safe(r.outbound_from).toLowerCase().startsWith('romy@'))
+      if (!route) {
+        return new Response(JSON.stringify({ error:`No primary RomyLabs sender is registered for ${requestedProduct}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
       }
+      const routedFrom=safe(route.outbound_from).toLowerCase()
+
+      // Prefer the encrypted product Stalwart credential in Vault. Exact legacy
+      // settings remain a back-compat path only for products not yet mirrored there.
+      let transport:any=null
+      const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:requestedProduct})
+      if (vaultTransport?.ok) {
+        transport={
+          host:safe(vaultTransport.host||'mail.taxrescrm.net'),
+          port:Number(vaultTransport.port||465),
+          ssl:true,
+          username:safe(vaultTransport.username),
+          password:String(vaultTransport.password||''),
+        }
+      } else {
+        const { data: smtpSettings } = await admin.from('settings')
+          .select('smtp_host,smtp_port,smtp_email,smtp_password,smtp_encryption')
+          .ilike('smtp_email',routedFrom).limit(1).maybeSingle()
+        if (smtpSettings?.smtp_host && smtpSettings?.smtp_email && smtpSettings?.smtp_password) {
+          transport={
+            host:safe(smtpSettings.smtp_host),
+            port:Number(smtpSettings.smtp_port||465),
+            ssl:String(smtpSettings.smtp_encryption||'').toLowerCase()==='ssl'||Number(smtpSettings.smtp_port||465)===465,
+            username:safe(smtpSettings.smtp_email),
+            password:String(smtpSettings.smtp_password),
+          }
+        }
+      }
+      if (!transport?.username || !transport?.password) {
+        return new Response(JSON.stringify({ error:`Stalwart credential is not available to the Admin Portal for ${routedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      }
+
       const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
       if (!recipients.length) return new Response(JSON.stringify({ error:'Contract recipient missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
-      const deliveries:any[] = []
+
+      const deliveries:any[]=[]
       for (const recipient of recipients) {
-        const transport = {
-          host:safe(smtpSettings.smtp_host),
-          port:Number(smtpSettings.smtp_port||465),
-          ssl:String(smtpSettings.smtp_encryption||'').toLowerCase()==='ssl'||Number(smtpSettings.smtp_port||465)===465,
-          username:safe(smtpSettings.smtp_email),
-          password:String(smtpSettings.smtp_password),
+        const proof=await sendViaStalwartJmap({
+          ...transport,
           fromAddress:routedFrom,
-          fromName:safe(from_name||route?.display_name||smtpSettings.smtp_name||smtpSettings.name||smtpSettings.firmname||'RomyLabs'),
+          fromName:safe(route.display_name||from_name||registeredOffice.firm_name||'RomyLabs'),
           to:recipient,
           subject:safe(subject),
           html:html?String(html):undefined,
           text:text?String(text):undefined,
-        }
-        const proof = await sendViaStalwartJmap(transport)
+        })
         deliveries.push({recipient,...proof})
       }
+
       await admin.from('emails').insert(deliveries.map((delivery:any)=>({
-        tenant_id:route?.tenant_id || tenant_id || smtpSettings.tenant_id,
+        tenant_id:route.tenant_id||tenant_id,
         recipient:delivery.recipient,
         recipients:[delivery.recipient],
         subject:safe(subject),
         body:text?String(text):String(html||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),
         body_html:html?String(html):'',
-        triage:'Sent',
-        status:'Sent',
-        direction:'outbound',
-        is_read:true,
-        sender:routedFrom,
-        from_address:routedFrom,
-        reply_from:routedFrom,
-        mailbox_owner:safe(route?.inbox_owner || authenticatedUser?.email || 'info@romylabs.com'),
-        received_at:new Date().toISOString(),
-        created_at:new Date().toISOString(),
-        product_id:safe(body.product_key||'')||null,
+        triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
+        sender:routedFrom,from_address:routedFrom,reply_from:routedFrom,
+        mailbox_owner:safe(route.inbox_owner||authenticatedUser?.email||'info@romylabs.com'),
+        received_at:new Date().toISOString(),created_at:new Date().toISOString(),
+        product_id:requestedProduct,
         message_id:`stalwart:${delivery.submissionId}`,
         received_mailbox:routedFrom,
-        route_id:route?.id || null,
+        route_id:route.id,
       })))
 
-      // Transport acceptance is the source of truth for e-sign delivery state.
-      // Resolve the signing document from the secure link embedded in the email
-      // so older frontend builds cannot leave a successfully delivered request
-      // stuck in "pending".
-      const signMatch = String(html || '').match(/\/office-sign\/([a-f0-9]{64})/i)
+      const signMatch=String(html||'').match(/\/office-sign\/([a-f0-9]{64})/i)
       if (signMatch?.[1]) {
-        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(signMatch[1]))
-        const tokenHash = Array.from(new Uint8Array(digest)).map((b:number)=>b.toString(16).padStart(2,'0')).join('')
-        const { data: signDoc } = await admin.from('romylabs_office_signing_documents')
-          .select('id,sent_at,audit,status')
-          .eq('token_hash', tokenHash)
-          .maybeSingle()
+        const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(signMatch[1]))
+        const tokenHash=Array.from(new Uint8Array(digest)).map((b:number)=>b.toString(16).padStart(2,'0')).join('')
+        const { data: signDoc }=await admin.from('romylabs_office_signing_documents').select('id,sent_at,audit,status').eq('token_hash',tokenHash).maybeSingle()
         if (signDoc && !['signed','void'].includes(String(signDoc.status||''))) {
-          const now = new Date().toISOString()
-          const eventName = signDoc.sent_at ? 'resent' : 'sent'
-          const audit = Array.isArray(signDoc.audit) ? signDoc.audit : []
+          const now=new Date().toISOString()
+          const audit=Array.isArray(signDoc.audit)?signDoc.audit:[]
           await admin.from('romylabs_office_signing_documents').update({
-            status:'sent',
-            sent_at:now,
-            updated_at:now,
-            audit:[...audit,{
-              event:eventName,
-              at:now,
-              actor:safe(authenticatedUser?.email || 'platform-admin'),
-              transport:'stalwart_jmap',
-              submission_ids:deliveries.map((x:any)=>x.submissionId),
-            }],
+            status:'sent',sent_at:now,updated_at:now,
+            audit:[...audit,{event:signDoc.sent_at?'resent':'sent',at:now,actor:safe(authenticatedUser?.email||'platform-admin'),transport:'stalwart_jmap',from:routedFrom,submission_ids:deliveries.map((x:any)=>x.submissionId)}],
           }).eq('id',signDoc.id)
         }
       }
 
       return new Response(JSON.stringify({
-        success:true,
-        via:'stalwart_jmap',
-        from:routedFrom,
-        mailbox_owner:safe(route?.inbox_owner || authenticatedUser?.email || 'info@romylabs.com'),
-        submissions:deliveries.map((x:any)=>x.submissionId),
+        success:true,via:'stalwart_jmap',from:routedFrom,product_key:requestedProduct,
+        external_office_id:externalOfficeId,submissions:deliveries.map((x:any)=>x.submissionId),
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
