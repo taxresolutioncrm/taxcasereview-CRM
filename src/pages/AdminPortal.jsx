@@ -2557,20 +2557,20 @@ const PRODUCT_REGISTRY = [
     icon:       '🏚️',
     color:      '#C2410C',
     industry:   'Restoration & Roofing',
-    url:        null,
-    appUrl:     null,
-    websiteUrl: null,
-    lifecycleStage: 'building',
-    connection:     'not_connected',
+    url:        'https://restorerelay.com',
+    appUrl:     'https://restorerelay.com',
+    websiteUrl: 'https://restorerelay.com',
+    lifecycleStage: 'available',
+    connection:     'partial',
     brandStatus:    'branded',
     publicOnRomyLabs: true,
-    commerciallyAvailable: false,
-    nextToFinish:   true,
+    commerciallyAvailable: true,
+    nextToFinish:   false,
     priorityRank:   2,
-    repo:            'taxresolutioncrm/p7-crm',
-    desc:      'RomyLabs Product #7 — restoration and roofing CRM for claims, projects, customers, crews, documents, estimates, and field operations.',
+    repo:            'taxresolutioncrm/restore-relay-crm',
+    desc:      'Restoration and roofing CRM for claims, projects, customers, crews, documents, estimates, and field operations.',
     metricsUrl: null,
-    nextMilestone: 'NEXT CRM TO FINISH — complete Restore Relay build, deploy Supabase, platform metrics, SEO, and launch QA',
+    nextMilestone: 'Connect the Restore Relay platform-metrics feed to complete Command Center reporting',
   },
   // ── TENANTS (not products — operational data, not product counts) ─────────
   {
@@ -2942,6 +2942,48 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   const [filter, setFilter]         = useState('all') // 'all' | 'products' | 'tenants' | 'planned'
   const [taxresOps, setTaxresOps]   = useState(null)
   const [taxresLoading, setTaxresLoading] = useState(false)
+  const [registryTenants, setRegistryTenants] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.rpc('admin_romylabs_office_registry')
+      if (cancelled) return
+      if (error || !Array.isArray(data)) {
+        setRegistryTenants([])
+        return
+      }
+      const rows = data
+        .filter(r => r?.product_key && r.product_key !== 'taxres_crm' && r.external_office_id)
+        .map(r => {
+          const cfg = EXTERNAL_OFFICE_PRODUCTS[r.product_key] || {
+            label: r.product_key,
+            color: '#6366f1',
+            appUrl: null,
+          }
+          return {
+            key: `${r.product_key}:${r.external_office_id}`,
+            label: r.firm_name || `${cfg.label} Office`,
+            icon: r.product_key === 'arcvena' ? '⚡' : '🏢',
+            color: cfg.color,
+            industry: `${cfg.label} Office`,
+            isTenant: true,
+            url: cfg.appUrl,
+            appUrl: cfg.appUrl,
+            lifecycleStage: 'live',
+            connection: 'connected',
+            brandStatus: 'branded',
+            publicOnRomyLabs: false,
+            commerciallyAvailable: false,
+            desc: `${cfg.label} office · ${r.status || 'active'}`,
+            metricsUrl: null,
+            externalOfficeId: r.external_office_id,
+          }
+        })
+      setRegistryTenants(rows)
+    })()
+    return () => { cancelled = true }
+  }, [supabase])
 
   async function fetchMetrics(product) {
     if (!product.metricsUrl) return          // only fetch products with a connected endpoint
@@ -3026,7 +3068,9 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
 
   // ── Portfolio counts (from registry only — no live data needed) ─────────
   const products = PRODUCT_REGISTRY.filter(p => !p.isTenant)
-  const tenants  = PRODUCT_REGISTRY.filter(p =>  p.isTenant)
+  const staticTenants = PRODUCT_REGISTRY.filter(p => p.isTenant)
+  const tenantKeys = new Set(staticTenants.map(p => p.key))
+  const tenants = [...staticTenants, ...registryTenants.filter(p => !tenantKeys.has(p.key))]
   const liveCount     = products.filter(p => p.lifecycleStage === 'live' || p.lifecycleStage === 'available').length
   const comingCount   = products.filter(p => p.lifecycleStage === 'coming').length
   const buildingCount = products.filter(p => p.lifecycleStage === 'building').length
@@ -3107,7 +3151,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
       {/* ── Filter tabs ────────────────────────────────────────────────── */}
       <div style={{ display:'flex', gap:8, marginBottom:16 }}>
         {[
-          { key:'all',      label:`All (${PRODUCT_REGISTRY.length})` },
+          { key:'all',      label:`All (${products.length + tenants.length})` },
           { key:'products', label:`Products (${products.filter(p=>p.lifecycleStage!=='research').length})` },
           { key:'planned',  label:`Research (${researchCount})` },
           { key:'tenants',  label:`Tenants (${tenants.length})` },
