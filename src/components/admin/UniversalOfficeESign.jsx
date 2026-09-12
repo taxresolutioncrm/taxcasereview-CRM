@@ -92,6 +92,11 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)
   }
 
+  async function markDelivered(documentId,eventName='sent'){
+    const {data,error:e}=await supabase.rpc('admin_romylabs_mark_office_signing_sent',{p_document_id:documentId,p_event:eventName})
+    if(e||!data?.ok)throw new Error(e?.message||data?.error||'Could not mark signing request delivered')
+  }
+
   async function sendMail(url,recipient,titleText){
     const html=`<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${brand.name} — Signature Requested</h2><p>Hi ${recipient.name||'there'},</p><p><strong>${firmName}</strong> has a document ready for your review and electronic signature.</p><div style="background:#f5f7fb;border-radius:10px;padding:14px 16px;margin:18px 0"><strong>${titleText}</strong></div><p><a href="${url}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Review & Sign Document</a></p><p style="font-size:12px;color:#64748b">This secure signing link expires in 14 days.</p><p>Best Regards,<br><strong>${brand.name}</strong><br>RomyLabs</p></div>`
     const {data,error:e}=await supabase.functions.invoke('send-email',{body:{kind:'office_esign_request',product_key:productKey,to:recipient.email,subject:`Signature Requested: ${titleText}`,html,tenant_id:'a0000000-0000-0000-0000-000000000001',from_name:brand.name,from_email:brand.email}})
@@ -119,6 +124,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       createdRequest=true
       const signUrl=`${window.location.origin}${data.sign_url}`
       await sendMail(signUrl,signer,title.trim())
+      await markDelivered(data.id,'sent')
       setMsg(`Sent “${title}” to ${signer.email} for signature ✓`)
       setFile(null);setPdf(null);setFields([]);setTitle('');setPage(1)
       await load()
@@ -144,6 +150,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       const {data,error:e}=await supabase.rpc('admin_romylabs_refresh_office_signing_link',{p_document_id:row.id,p_expires_days:14})
       if(e||!data?.ok)throw new Error(e?.message||data?.error||'Could not refresh signing link')
       await sendMail(`${window.location.origin}${data.sign_url}`,{name:row.signer_name,email:row.signer_email},row.title)
+      await markDelivered(row.id,'resent')
       setMsg('Fresh signing link sent ✓');await load()
     }catch(e){setError(e.message||String(e))}
     setWorking(false)
