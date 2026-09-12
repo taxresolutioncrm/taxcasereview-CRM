@@ -366,6 +366,38 @@ serve(async (req) => {
         received_mailbox:routedFrom,
         route_id:route?.id || null,
       })))
+
+      // Transport acceptance is the source of truth for e-sign delivery state.
+      // Resolve the signing document from the secure link embedded in the email
+      // so older frontend builds cannot leave a successfully delivered request
+      // stuck in "pending".
+      const signMatch = String(html || '').match(/\/office-sign\/([a-f0-9]{64})/i)
+      if (signMatch?.[1]) {
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(signMatch[1]))
+        const tokenHash = Array.from(new Uint8Array(digest)).map((b:number)=>b.toString(16).padStart(2,'0')).join('')
+        const { data: signDoc } = await admin.from('romylabs_office_signing_documents')
+          .select('id,sent_at,audit,status')
+          .eq('token_hash', tokenHash)
+          .maybeSingle()
+        if (signDoc && !['signed','void'].includes(String(signDoc.status||''))) {
+          const now = new Date().toISOString()
+          const eventName = signDoc.sent_at ? 'resent' : 'sent'
+          const audit = Array.isArray(signDoc.audit) ? signDoc.audit : []
+          await admin.from('romylabs_office_signing_documents').update({
+            status:'sent',
+            sent_at:now,
+            updated_at:now,
+            audit:[...audit,{
+              event:eventName,
+              at:now,
+              actor:safe(authenticatedUser?.email || 'platform-admin'),
+              transport:'stalwart_jmap',
+              submission_ids:deliveries.map((x:any)=>x.submissionId),
+            }],
+          }).eq('id',signDoc.id)
+        }
+      }
+
       return new Response(JSON.stringify({
         success:true,
         via:'stalwart_jmap',
