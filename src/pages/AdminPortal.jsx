@@ -4268,12 +4268,20 @@ function CommandCenter() {
       setGa4EnabledProducts(rows.filter(r => r.tracking_id && ['configured','live'].includes(r.status)).map(r => r.product_id))
       setGa4LiveProducts(rows.filter(r => ['configured','live'].includes(r.status)).map(r => r.product_id))
     })
+    supabase.from('product_traffic_channels')
+      .select('product_id,status,tracking_id,destination_url,last_verified_at,notes')
+      .eq('channel_key','clarity')
+      .then(({ data, error }) => {
+        if (error) { console.error('Clarity status load:', error); setClarityRows([]); return }
+        setClarityRows(data || [])
+      })
   }, [])
 
   const [reportingProducts, setReportingProducts] = React.useState([])
   const [ga4EnabledProducts, setGa4EnabledProducts] = React.useState([])
   const [ga4LiveProducts, setGa4LiveProducts] = React.useState([])
   const [gscLiveProducts, setGscLiveProducts] = React.useState([])
+  const [clarityRows, setClarityRows] = React.useState([])
   React.useEffect(() => {
     supabase.from('romylabs_products')
       .select('product_id,name,accent_color,icon_ref,sort_order,lifecycle,public,app_url,marketing_url')
@@ -5068,6 +5076,41 @@ function CommandCenter() {
               </div>
             )}
           </div>
+
+          {/* Microsoft Clarity is product-scoped from traffic coverage. */}
+          {(()=> {
+            const clarity = clarityRows.find(r => r.product_id === seoProduct)
+            const connected = clarity?.status === 'live' && !!clarity?.tracking_id
+            return (
+              <div style={CC.card({padding:'22px 24px', marginTop:18})}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                  <span style={{ fontSize:16 }}>🟣</span>
+                  <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Microsoft Clarity</div>
+                  {connected
+                    ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(16,185,129,.15)', color:'#10b981', marginLeft:'auto' }}>✅ Connected</span>
+                    : <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(100,116,139,.15)', color:'#64748b', marginLeft:'auto' }}>{clarity?.status === 'configured' ? 'Configured' : 'Not connected'}</span>
+                  }
+                </div>
+                {clarity ? (
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+                    <div style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
+                      <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Project ID</div>
+                      <div style={{ fontSize:14, fontWeight:800, color:connected?'#10b981':'#94a3b8' }}>{clarity.tracking_id || '—'}</div>
+                    </div>
+                    <div style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
+                      <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Status</div>
+                      <div style={{ fontSize:14, fontWeight:800, color:connected?'#10b981':'#94a3b8', textTransform:'capitalize' }}>{clarity.status || '—'}</div>
+                    </div>
+                    <div style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
+                      <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Last verified</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:'#94a3b8' }}>{clarity.last_verified_at ? new Date(clarity.last_verified_at).toLocaleString() : '—'}</div>
+                    </div>
+                  </div>
+                ) : <div style={{ fontSize:12, color:'#475569' }}>No Clarity tracking record for this product.</div>}
+                {clarity?.destination_url && <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>{clarity.destination_url}</div>}
+              </div>
+            )
+          })()}
           </>
         </>)}
 
