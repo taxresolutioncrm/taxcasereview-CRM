@@ -68,10 +68,10 @@ async function getOAuthToken(supabase:any,settings:any){
 }
 
 async function fetchLive(token:string,siteUrl:string,productKey:string){
-  const end=new Date()
-  const start=new Date(end); start.setDate(start.getDate()-28)
+  const end=new Date(); end.setDate(end.getDate()-1)
+  const start=new Date(end); start.setDate(start.getDate()-89)
   const prevEnd=new Date(start); prevEnd.setDate(prevEnd.getDate()-1)
-  const prevStart=new Date(prevEnd); prevStart.setDate(prevStart.getDate()-28)
+  const prevStart=new Date(prevEnd); prevStart.setDate(prevStart.getDate()-89)
   const fmt=(d:Date)=>d.toISOString().slice(0,10)
   const post=async(body:any)=>{
     const r=await fetch(`${GSC_BASE}/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,{
@@ -95,6 +95,7 @@ async function fetchLive(token:string,siteUrl:string,productKey:string){
     ctr:Math.round((c.ctr||0)*1000)/10,ctrChange:Math.round(((c.ctr||0)-(p.ctr||0))*1000)/10,
     avgPosition:Math.round((c.position||0)*10)/10,posChange:Math.round(((p.position||0)-(c.position||0))*10)/10,
     topQueries:(queries.rows||[]).map((r:any)=>({query:r.keys?.[0]||'',pos:Math.round((r.position||0)*10)/10,clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0)})),
+    rangeLabel:'Last 3 months',rangeDays:90,
     dataThrough:fmt(end),syncedAt:new Date().toISOString(),authMode:'oauth'
   }
 }
@@ -119,7 +120,7 @@ async function readSnapshot(supabase:any,productKey:string,reason:string){
   }
   return {
     mock:false,connected:true,reauth_required:true,degraded:true,cached:true,dataAvailable:true,reason,
-    product_key:productKey,siteUrl:data.site_url,impressions:Number(data.impressions),impressionsChange:0,
+    product_key:productKey,siteUrl:data.site_url,rangeLabel:'Last 3 months',rangeDays:90,impressions:Number(data.impressions),impressionsChange:0,
     clicks:Number(data.clicks),clicksChange:0,ctr:Number(data.ctr),ctrChange:0,avgPosition:Number(data.avg_position),
     posChange:0,topQueries:data.top_queries||[],dataThrough:data.data_through,cachedAt:data.synced_at
   }
