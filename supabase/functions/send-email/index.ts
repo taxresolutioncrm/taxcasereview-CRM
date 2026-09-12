@@ -125,7 +125,7 @@ async function sendViaStalwartJmap(opts: { host:string, username:string, passwor
   return { submissionId:String(submission.created.sendIt.id), accountId:String(accountId) }
 }
 
-async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, username:string, password:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, username:string, password:string, fromAddress?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
   const encoder=new TextEncoder(), decoder=new TextDecoder()
   let conn:Deno.TcpConn|Deno.TlsConn
   if(opts.port===465||opts.ssl) conn=await Deno.connectTls({hostname:opts.host,port:opts.port})
@@ -144,14 +144,15 @@ async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, userna
   await write('AUTH LOGIN'); await read()
   await write(btoa(opts.username)); await read()
   await write(btoa(opts.password)); resp=await read(); expect(resp,['235'],'SMTP authentication')
-  await write(`MAIL FROM:<${opts.username}>`); resp=await read(); expect(resp,['250'],'SMTP MAIL FROM')
+  const envelopeFrom=safe(opts.fromAddress||opts.username)
+  await write(`MAIL FROM:<${envelopeFrom}>`); resp=await read(); expect(resp,['250'],'SMTP MAIL FROM')
   await write(`RCPT TO:<${opts.to}>`); resp=await read(); expect(resp,['250','251'],'SMTP recipient')
   await write('DATA'); resp=await read(); expect(resp,['354'],'SMTP DATA')
 
   const body=opts.html||opts.text||''
   const contentType=opts.html?'text/html':'text/plain'
   const headers=[
-    `From: ${enc(safe(opts.fromName))} <${safe(opts.username)}>`,
+    `From: ${enc(safe(opts.fromName))} <${envelopeFrom}>`,
     `To: ${safe(opts.to)}`,
     `Subject: ${enc(safe(opts.subject))}`,
     `Date: ${new Date().toUTCString()}`,
@@ -364,7 +365,7 @@ serve(async (req) => {
 
       const deliveries:any[]=[]
       for (const recipient of recipients) {
-        const proof=await sendViaStalwartJmap({
+        await sendSmtpRaw({
           ...transport,
           fromAddress:routedFrom,
           fromName:safe(route.display_name||from_name||registeredOffice.firm_name||'RomyLabs'),
@@ -373,7 +374,7 @@ serve(async (req) => {
           html:html?String(html):undefined,
           text:text?String(text):undefined,
         })
-        deliveries.push({recipient,...proof})
+        deliveries.push({recipient,submissionId:`smtp-${crypto.randomUUID()}`})
       }
 
       await admin.from('emails').insert(deliveries.map((delivery:any)=>({
@@ -403,13 +404,13 @@ serve(async (req) => {
           const audit=Array.isArray(signDoc.audit)?signDoc.audit:[]
           await admin.from('romylabs_office_signing_documents').update({
             status:'sent',sent_at:now,updated_at:now,
-            audit:[...audit,{event:signDoc.sent_at?'resent':'sent',at:now,actor:safe(authenticatedUser?.email||'platform-admin'),transport:'stalwart_jmap',from:routedFrom,submission_ids:deliveries.map((x:any)=>x.submissionId)}],
+            audit:[...audit,{event:signDoc.sent_at?'resent':'sent',at:now,actor:safe(authenticatedUser?.email||'platform-admin'),transport:'smtp',from:routedFrom,submission_ids:deliveries.map((x:any)=>x.submissionId)}],
           }).eq('id',signDoc.id)
         }
       }
 
       return new Response(JSON.stringify({
-        success:true,via:'stalwart_jmap',from:routedFrom,product_key:requestedProduct,
+        success:true,via:'smtp',from:routedFrom,product_key:requestedProduct,
         external_office_id:externalOfficeId,submissions:deliveries.map((x:any)=>x.submissionId),
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
