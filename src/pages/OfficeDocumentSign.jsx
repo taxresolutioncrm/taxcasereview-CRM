@@ -21,6 +21,7 @@ export default function OfficeDocumentSign(){
   const [working,setWorking]=useState(false)
   const [error,setError]=useState('')
   const [done,setDone]=useState(false)
+  const [declined,setDeclined]=useState(false)
   const canvasRef=useRef(null)
 
   async function load(){
@@ -29,6 +30,7 @@ export default function OfficeDocumentSign(){
     if(e||!data?.ok){setError(e?.message||data?.error||'Could not open signing request');setLoading(false);return}
     setDoc(data.document)
     setDone(data.document.status==='signed')
+    setDeclined(data.document.status==='declined')
     const auto={}
     for(const f of(data.document.fields||[])){
       if(f.type==='date')auto[f.id]=today()
@@ -76,6 +78,18 @@ export default function OfficeDocumentSign(){
     setValues(next)
   }
 
+  async function decline(){
+    const reason=window.prompt('Please tell the sender why you are declining to sign this document:')
+    if(reason===null)return
+    if(!reason.trim()){setError('A reason is required to decline this document.');return}
+    if(!window.confirm('Decline this document? The sender will be notified and this signing request will stop.'))return
+    setWorking(true);setError('')
+    const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_decline',token,reason:reason.trim()}})
+    setWorking(false)
+    if(e||!data?.ok){setError(e?.message||data?.error||'Could not decline document');return}
+    setDeclined(true);await load()
+  }
+
   async function finish(){
     const fields=doc?.fields||[]
     if(!consent){setError('You must consent to electronic records and signatures before finishing.');return}
@@ -99,10 +113,11 @@ export default function OfficeDocumentSign(){
   return <Shell>
     <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'start',marginBottom:16,flexWrap:'wrap'}}>
       <div><div style={{fontSize:12,fontWeight:900,color:'#4f46e5',textTransform:'uppercase',letterSpacing:'.08em'}}>Secure E-Signature</div><h1 style={{fontSize:22,margin:'5px 0 4px',color:'#0f172a'}}>{doc?.title}</h1><div style={{fontSize:13,color:'#64748b'}}>{doc?.firm_name} · Sent to {doc?.signer_email}</div></div>
-      {done?<span style={{padding:'7px 11px',borderRadius:999,background:'#dcfce7',color:'#166534',fontSize:12,fontWeight:900}}>✓ Signed</span>:<button onClick={adoptSignature} style={primaryBtn}>{signature?'Change Signature':'Adopt Signature'}</button>}
+      {done?<span style={{padding:'7px 11px',borderRadius:999,background:'#dcfce7',color:'#166534',fontSize:12,fontWeight:900}}>✓ Signed</span>:declined?<span style={{padding:'7px 11px',borderRadius:999,background:'#fee2e2',color:'#991b1b',fontSize:12,fontWeight:900}}>Declined</span>:<button onClick={adoptSignature} style={primaryBtn}>{signature?'Change Signature':'Adopt Signature'}</button>}
     </div>
 
-    {done&&<div style={{padding:'12px 14px',borderRadius:9,background:'#ecfdf5',border:'1px solid #a7f3d0',color:'#065f46',fontSize:13,fontWeight:700,marginBottom:14}}>Completed. Your signed contract is locked and stored with the office record.</div>}
+    {done&&<div style={{padding:'12px 14px',borderRadius:9,background:'#ecfdf5',border:'1px solid #a7f3d0',color:'#065f46',fontSize:13,fontWeight:700,marginBottom:14}}>Completed. Your signed contract is locked, stored with the office record, and a completion certificate has been generated.</div>}
+    {declined&&<div style={{padding:'12px 14px',borderRadius:9,background:'#fef2f2',border:'1px solid #fecaca',color:'#991b1b',fontSize:13,fontWeight:700,marginBottom:14}}>You declined this agreement. The sender can see your decline reason and audit record.</div>}
     {error&&<div style={{padding:'10px 12px',borderRadius:8,background:'#fef2f2',border:'1px solid #fecaca',color:'#b91c1c',fontSize:12,marginBottom:12}}>{error}</div>}
 
     {pdf&&<>
@@ -110,12 +125,12 @@ export default function OfficeDocumentSign(){
       <div style={{overflow:'auto',border:'1px solid #cbd5e1',borderRadius:10,background:'#e2e8f0',padding:12,textAlign:'center'}}>
         <div style={{position:'relative',display:'inline-block',background:'#fff',boxShadow:'0 8px 28px rgba(15,23,42,.12)',textAlign:'left'}}>
           <canvas ref={canvasRef} style={{display:'block'}}/>
-          {!done&&pageFields.map(f=><Field key={f.id} f={f} value={values[f.id]||''} signature={signature} signerName={doc?.signer_name||''} onChange={v=>setField(f.id,v)} onSign={adoptSignature}/>) }
+          {!done&&!declined&&pageFields.map(f=><Field key={f.id} f={f} value={values[f.id]||''} signature={signature} signerName={doc?.signer_name||''} onChange={v=>setField(f.id,v)} onSign={adoptSignature}/>) }
         </div>
       </div>
     </>}
 
-    {!done&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginTop:16,flexWrap:'wrap'}}><label style={{fontSize:11,color:'#475569',display:'flex',gap:8,alignItems:'flex-start',maxWidth:650}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} style={{marginTop:2}}/><span>I agree to use electronic records and signatures and intend the signature I adopt above to be legally binding for this document.</span></label><button disabled={working||!consent} onClick={finish} style={{...primaryBtn,background:'#059669',opacity:(working||!consent)?0.55:1}}>{working?'Applying Signature…':'Finish & Sign'}</button></div>}
+    {!done&&!declined&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginTop:16,flexWrap:'wrap'}}><label style={{fontSize:11,color:'#475569',display:'flex',gap:8,alignItems:'flex-start',maxWidth:650}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} style={{marginTop:2}}/><span>I agree to use electronic records and signatures and intend the signature I adopt above to be legally binding for this document.</span></label><div style={{display:'flex',gap:8,alignItems:'center'}}><button disabled={working} onClick={decline} style={{...primaryBtn,background:'#fff',color:'#b91c1c',border:'1px solid #fecaca'}}>Decline to Sign</button><button disabled={working||!consent} onClick={finish} style={{...primaryBtn,background:'#059669',opacity:(working||!consent)?0.55:1}}>{working?'Applying Signature…':'Finish & Sign'}</button></div></div>}
   </Shell>
 }
 
