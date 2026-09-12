@@ -2322,7 +2322,7 @@ function StatusDot({ ok }) {
 
 
 
-function ProductReportingSelector({ value, onChange, channel, gscConnected, activeGscProduct, registryProducts, marketingConnectedProducts=[], seoConnectedProducts=[] }) {
+function ProductReportingSelector({ value, onChange, channel, gscConnected, activeGscProduct, registryProducts, marketingConnectedProducts=[], seoConnectedProducts=[], clarityConnectedProducts=[] }) {
   // Derives entirely from romylabs_products registry — no hardcoded product list.
   // Integration status starts as 'pending' (setup needed) for all products.
   // Live GSC connection overrides the SEO badge when gscConnected===true for the active product.
@@ -2353,14 +2353,19 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
         // Live GSC connection overrides static label for the active product on the SEO channel
         const isGscLive = channel === 'seo' && (seoConnectedProducts.includes(p.key) || (gscConnected && p.key === activeGscProduct))
         const isMarketingLive = channel === 'marketing' && marketingConnectedProducts.includes(p.key)
+        const isClarityLive = channel === 'seo' && clarityConnectedProducts.includes(p.key)
         const statusLabel = isMarketingLive
           ? 'GA4 Connected'
+          : isGscLive && isClarityLive
+          ? 'GSC Connected · Clarity Connected'
           : isGscLive
           ? 'GSC Connected'
+          : isClarityLive
+          ? 'Clarity Connected'
           : status === 'connected' ? 'Connected'
           : status === 'implemented' ? `${channel === 'seo' ? 'SEO' : 'Marketing'} implemented · reporting pending`
           : 'Setup needed'
-        const statusColor = (status === 'connected' || isGscLive || isMarketingLive) ? '#10b981'
+        const statusColor = (status === 'connected' || isGscLive || isMarketingLive || isClarityLive) ? '#10b981'
           : status === 'implemented' ? '#a78bfa'
           : '#f59e0b'
         return (
@@ -4976,7 +4981,8 @@ function CommandCenter() {
         {tab==='search' && (<>
           <ProductReportingSelector value={seoProduct} onChange={setSeoProduct} channel="seo"
             gscConnected={gscConnected} activeGscProduct={seoProduct}
-            registryProducts={reportingProducts} seoConnectedProducts={gscLiveProducts} />
+            registryProducts={reportingProducts} seoConnectedProducts={gscLiveProducts}
+            clarityConnectedProducts={clarityRows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id)} />
           <>
 
           {/* ── Google Search Console ── */}
@@ -5077,40 +5083,6 @@ function CommandCenter() {
             )}
           </div>
 
-          {/* Microsoft Clarity is product-scoped from traffic coverage. */}
-          {(()=> {
-            const clarity = clarityRows.find(r => r.product_id === seoProduct)
-            const connected = clarity?.status === 'live' && !!clarity?.tracking_id
-            return (
-              <div style={CC.card({padding:'22px 24px', marginTop:18})}>
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-                  <span style={{ fontSize:16 }}>🟣</span>
-                  <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Microsoft Clarity</div>
-                  {connected
-                    ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(16,185,129,.15)', color:'#10b981', marginLeft:'auto' }}>✅ Connected</span>
-                    : <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(100,116,139,.15)', color:'#64748b', marginLeft:'auto' }}>{clarity?.status === 'configured' ? 'Configured' : 'Not connected'}</span>
-                  }
-                </div>
-                {clarity ? (
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
-                    <div style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
-                      <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Project ID</div>
-                      <div style={{ fontSize:14, fontWeight:800, color:connected?'#10b981':'#94a3b8' }}>{clarity.tracking_id || '—'}</div>
-                    </div>
-                    <div style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
-                      <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Status</div>
-                      <div style={{ fontSize:14, fontWeight:800, color:connected?'#10b981':'#94a3b8', textTransform:'capitalize' }}>{clarity.status || '—'}</div>
-                    </div>
-                    <div style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
-                      <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Last verified</div>
-                      <div style={{ fontSize:12, fontWeight:700, color:'#94a3b8' }}>{clarity.last_verified_at ? new Date(clarity.last_verified_at).toLocaleString() : '—'}</div>
-                    </div>
-                  </div>
-                ) : <div style={{ fontSize:12, color:'#475569' }}>No Clarity tracking record for this product.</div>}
-                {clarity?.destination_url && <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>{clarity.destination_url}</div>}
-              </div>
-            )
-          })()}
           </>
         </>)}
 
