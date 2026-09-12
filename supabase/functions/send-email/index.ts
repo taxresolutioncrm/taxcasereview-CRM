@@ -78,7 +78,8 @@ async function sendViaStalwartJmap(opts: { host:string, username:string, passwor
   const mailboxes = meta?.methodResponses?.find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list || []
   const identity = identityList.find((x:any)=>String(x?.email||'').toLowerCase()===opts.username.toLowerCase()) || identityList[0]
   const drafts = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='drafts')
-  if (!identity?.id || !drafts?.id) throw new Error('Stalwart JMAP sender identity or Drafts mailbox unavailable')
+  const sentBox = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='sent')
+  if (!identity?.id || !drafts?.id || !sentBox?.id) throw new Error('Stalwart JMAP sender identity, Drafts, or Sent mailbox unavailable')
 
   const bodyPartId='body'
   const createEmail:any = {
@@ -102,7 +103,13 @@ async function sendViaStalwartJmap(opts: { host:string, username:string, passwor
         ['EmailSubmission/set',{
           accountId,
           create:{sendIt:{emailId:'#draft',identityId:identity.id}},
-          onSuccessDestroyEmail:['#sendIt'],
+          onSuccessUpdateEmail:{
+            '#sendIt':{
+              [`mailboxIds/${drafts.id}`]:null,
+              [`mailboxIds/${sentBox.id}`]:true,
+              'keywords/$draft':null,
+            },
+          },
         },'s0'],
       ],
     }),
@@ -113,6 +120,7 @@ async function sendViaStalwartJmap(opts: { host:string, username:string, passwor
   const notCreated = submission?.notCreated?.sendIt
   if (notCreated) throw new Error(`Stalwart JMAP rejected send: ${notCreated.description || notCreated.type || 'unknown error'}`)
   if (!submission?.created?.sendIt?.id) throw new Error('Stalwart JMAP did not confirm message submission')
+  return { submissionId:String(submission.created.sendIt.id), accountId:String(accountId) }
 }
 
 async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, username:string, password:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
@@ -319,6 +327,7 @@ serve(async (req) => {
       }
       const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
       if (!recipients.length) return new Response(JSON.stringify({ error:'Contract recipient missing' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      const deliveries:any[] = []
       for (const recipient of recipients) {
         const transport = {
           host:safe(smtpSettings.smtp_host),
@@ -332,17 +341,13 @@ serve(async (req) => {
           html:html?String(html):undefined,
           text:text?String(text):undefined,
         }
-        try {
-          await sendSmtpRaw(transport)
-        } catch (smtpError) {
-          console.warn('[send-email] SMTP contract send failed; retrying through Stalwart JMAP', String((smtpError as Error)?.message || smtpError))
-          await sendViaStalwartJmap(transport)
-        }
+        const proof = await sendViaStalwartJmap(transport)
+        deliveries.push({recipient,...proof})
       }
-      await admin.from('emails').insert(recipients.map((recipient:string)=>({
+      await admin.from('emails').insert(deliveries.map((delivery:any)=>({
         tenant_id:route?.tenant_id || tenant_id || smtpSettings.tenant_id,
-        recipient,
-        recipients:[recipient],
+        recipient:delivery.recipient,
+        recipients:[delivery.recipient],
         subject:safe(subject),
         body:text?String(text):String(html||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),
         body_html:html?String(html):'',
@@ -357,8 +362,17 @@ serve(async (req) => {
         received_at:new Date().toISOString(),
         created_at:new Date().toISOString(),
         product_id:safe(body.product_key||'')||null,
+        message_id:`stalwart:${delivery.submissionId}`,
+        received_mailbox:routedFrom,
+        route_id:route?.id || null,
       })))
-      return new Response(JSON.stringify({ success:true, via:'smtp', from:routedFrom, mailbox_owner:safe(route?.inbox_owner || authenticatedUser?.email || 'info@romylabs.com') }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+      return new Response(JSON.stringify({
+        success:true,
+        via:'stalwart_jmap',
+        from:routedFrom,
+        mailbox_owner:safe(route?.inbox_owner || authenticatedUser?.email || 'info@romylabs.com'),
+        submissions:deliveries.map((x:any)=>x.submissionId),
+      }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
     const { data: gs } = await admin.from('settings').select('*').not('gmail_refresh_token', 'is', null).limit(1).maybeSingle()
