@@ -13,6 +13,22 @@ const PLATFORM_ADMIN_EMAILS=new Set(['romy@taxcasereview.org','romy@romylabs.com
 const enc=new TextEncoder()
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json'}})
 async function sha256(s:string){const b=await crypto.subtle.digest('SHA-256',enc.encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function sha256Bytes(bytes:Uint8Array){const b=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function appendEvent(admin:any,envelopeId:string,eventType:string,opts:any={}){
+  try{
+    await admin.from('romylabs_esign_events').insert({
+      envelope_id:envelopeId,
+      recipient_id:opts.recipientId||null,
+      event_type:eventType,
+      actor_email:opts.actorEmail||null,
+      actor_name:opts.actorName||null,
+      ip_address:opts.ipAddress||null,
+      user_agent:opts.userAgent||null,
+      metadata:opts.metadata||{},
+      occurred_at:opts.occurredAt||new Date().toISOString(),
+    })
+  }catch(e){console.error('[office-agreement-file] event log failed',e)}
+}
 function ip(req:Request){return req.headers.get('cf-connecting-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null}
 function safeFile(v:string){return String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')}
 
@@ -114,24 +130,40 @@ serve(async(req)=>{
     const action=String(b.action||'')
 
     // Token-scoped public signing actions. No anonymous database/storage access is exposed.
-    if(action==='esign_load'||action==='esign_sign'){
+    if(action==='esign_load'||action==='esign_sign'||action==='esign_decline'){
       const signingToken=String(b.token||'')
       if(signingToken.length<32)return json({error:'Invalid signing link'},400)
       const hash=await sha256(signingToken)
       const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('token_hash',hash).maybeSingle()
       if(de||!doc)return json({error:'Signing request not found'},404)
+      const {data:recipient}=await admin.from('romylabs_esign_recipients').select('*').eq('envelope_id',doc.id).eq('token_hash',hash).maybeSingle()
       if(doc.status==='void')return json({error:'This signing request was voided'},410)
       if(doc.expires_at&&new Date(doc.expires_at).getTime()<Date.now()&&doc.status!=='signed')return json({error:'This signing link has expired'},410)
 
       if(action==='esign_load'){
         if(doc.status==='sent'){
-          const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'viewed',at:new Date().toISOString(),ip:ip(req),user_agent:req.headers.get('user-agent')}]
-          await admin.from('romylabs_office_signing_documents').update({status:'viewed',opened_at:new Date().toISOString(),updated_at:new Date().toISOString(),audit}).eq('id',doc.id).eq('status','sent')
+          const openedAt=new Date().toISOString()
+          const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'viewed',at:openedAt,ip:ip(req),user_agent:req.headers.get('user-agent')}]
+          await admin.from('romylabs_office_signing_documents').update({status:'viewed',opened_at:openedAt,updated_at:openedAt,audit}).eq('id',doc.id).eq('status','sent')
+          if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'viewed',opened_at:openedAt,updated_at:openedAt}).eq('id',recipient.id)
+          await appendEvent(admin,doc.id,'viewed',{recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),occurredAt:openedAt})
         }
         const path=doc.status==='signed'&&doc.signed_path?doc.signed_path:doc.source_path
         const {data:u,error:ue}=await admin.storage.from(ESIGN_BUCKET).createSignedUrl(path,600)
         if(ue||!u?.signedUrl)return json({error:'Could not open document'},500)
         return json({ok:true,document:{id:doc.id,title:doc.title,firm_name:doc.firm_name,signer_name:doc.signer_name,signer_email:doc.signer_email,fields:doc.fields,status:doc.status,signed_at:doc.signed_at,expires_at:doc.expires_at,file_url:u.signedUrl}})
+      }
+
+      if(action==='esign_decline'){
+        if(!['sent','viewed'].includes(doc.status))return json({error:'Document is not available to decline'},409)
+        const reason=String(b.reason||'').trim()
+        if(!reason)return json({error:'A decline reason is required'},400)
+        const declinedAt=new Date().toISOString()
+        const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'declined',at:declinedAt,reason,email:doc.signer_email,ip:ip(req),user_agent:req.headers.get('user-agent')}]
+        await admin.from('romylabs_office_signing_documents').update({status:'declined',declined_at:declinedAt,decline_reason:reason,updated_at:declinedAt,audit}).eq('id',doc.id).in('status',['sent','viewed'])
+        if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'declined',declined_at:declinedAt,decline_reason:reason,updated_at:declinedAt}).eq('id',recipient.id)
+        await appendEvent(admin,doc.id,'declined',{recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{reason},occurredAt:declinedAt})
+        return json({ok:true,declined_at:declinedAt})
       }
 
       if(doc.status==='signed')return json({ok:true,already_signed:true,signed_at:doc.signed_at})
@@ -147,7 +179,9 @@ serve(async(req)=>{
       }
       const {data:file,error:fe}=await admin.storage.from(ESIGN_BUCKET).download(doc.source_path)
       if(fe||!file)return json({error:'Could not load source document'},500)
-      const pdf=await PDFDocument.load(new Uint8Array(await file.arrayBuffer()))
+      const sourceBytes=new Uint8Array(await file.arrayBuffer())
+      const sourceHash=await sha256Bytes(sourceBytes)
+      const pdf=await PDFDocument.load(sourceBytes)
       const regular=await pdf.embedFont(StandardFonts.Helvetica)
       const oblique=await pdf.embedFont(StandardFonts.HelveticaOblique)
       const pages=pdf.getPages()
@@ -169,14 +203,50 @@ serve(async(req)=>{
         page.drawText(text.slice(0,200),{x:x+3,y:y+Math.max(0,(boxH-size)/2),size,font:f.type==='signature'?oblique:regular,color:rgb(.05,.12,.22),maxWidth:Math.max(10,boxW-6)})
       }
       const finalBytes=await pdf.save()
+      const signedHash=await sha256Bytes(new Uint8Array(finalBytes))
       const signedPath=`${doc.product_key}/${doc.external_office_id}/${doc.id}/signed-${crypto.randomUUID()}-${safeFile(doc.source_filename)}`
       const {error:up}=await admin.storage.from(ESIGN_BUCKET).upload(signedPath,finalBytes,{contentType:'application/pdf',upsert:false})
       if(up)return json({error:'Could not save signed document: '+up.message},500)
       const now=new Date().toISOString()
       const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'signed',at:now,signer:signatureName,email:doc.signer_email,consent_to_esign:true,ip:ip(req),user_agent:req.headers.get('user-agent')}]
-      const {data:updated,error:upd}=await admin.from('romylabs_office_signing_documents').update({status:'signed',signed_path:signedPath,signed_at:now,signature_name:signatureName,signer_ip:ip(req),signer_user_agent:req.headers.get('user-agent'),audit,updated_at:now}).eq('id',doc.id).in('status',['sent','viewed']).select('id').maybeSingle()
+      const certificate=await PDFDocument.create()
+      const cp=certificate.addPage([612,792])
+      const cf=await certificate.embedFont(StandardFonts.Helvetica)
+      const cb=await certificate.embedFont(StandardFonts.HelveticaBold)
+      let cy=744
+      const line=(text:string,bold=false,size=10)=>{cp.drawText(text,{x:54,y:cy,size,font:bold?cb:cf,color:rgb(.08,.12,.18),maxWidth:504});cy-=size+9}
+      line('Certificate of Completion',true,18)
+      cy-=6
+      line('Envelope ID: '+doc.id,true,10)
+      line('Document: '+String(doc.title||''),false,10)
+      line('Office: '+String(doc.firm_name||''),false,10)
+      line('Signer: '+signatureName,false,10)
+      line('Signer Email: '+String(doc.signer_email||''),false,10)
+      line('Completed At: '+now,false,10)
+      line('IP Address: '+String(ip(req)||'Unavailable'),false,10)
+      line('User Agent: '+String(req.headers.get('user-agent')||'Unavailable').slice(0,120),false,9)
+      cy-=8
+      line('Source SHA-256',true,10); line(sourceHash,false,8)
+      line('Signed PDF SHA-256',true,10); line(signedHash,false,8)
+      cy-=8
+      line('Electronic Records & Signature Consent: Accepted',true,10)
+      line('This certificate records the signing event and document integrity hashes.',false,9)
+      const certificateBytes=await certificate.save()
+      const certificateHash=await sha256Bytes(new Uint8Array(certificateBytes))
+      const certificatePath=`${doc.product_key}/${doc.external_office_id}/${doc.id}/certificate-of-completion.pdf`
+      const {error:certUp}=await admin.storage.from(ESIGN_BUCKET).upload(certificatePath,certificateBytes,{contentType:'application/pdf',upsert:true})
+      if(certUp)return json({error:'Could not save completion certificate: '+certUp.message},500)
+
+      const {data:updated,error:upd}=await admin.from('romylabs_office_signing_documents').update({
+        status:'signed',signed_path:signedPath,signed_at:now,completed_at:now,
+        signature_name:signatureName,signer_ip:ip(req),signer_user_agent:req.headers.get('user-agent'),
+        source_sha256:sourceHash,signed_sha256:signedHash,certificate_path:certificatePath,certificate_sha256:certificateHash,
+        audit,updated_at:now
+      }).eq('id',doc.id).in('status',['sent','viewed']).select('id').maybeSingle()
       if(upd){await admin.storage.from(ESIGN_BUCKET).remove([signedPath]);return json({error:'Could not finalize signature'},500)}
-      if(!updated){await admin.storage.from(ESIGN_BUCKET).remove([signedPath]);return json({error:'This document was already signed or is no longer signable'},409)}
+      if(!updated){await admin.storage.from(ESIGN_BUCKET).remove([signedPath,certificatePath]);return json({error:'This document was already signed or is no longer signable'},409)}
+      if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'completed',completed_at:now,updated_at:now}).eq('id',recipient.id)
+      await appendEvent(admin,doc.id,'completed',{recipientId:recipient?.id,actorEmail:doc.signer_email,actorName:signatureName,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{source_sha256:sourceHash,signed_sha256:signedHash,certificate_sha256:certificateHash},occurredAt:now})
 
       let ownerCopy:any=null
       try{
