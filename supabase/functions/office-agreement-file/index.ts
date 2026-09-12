@@ -16,6 +16,92 @@ async function sha256(s:string){const b=await crypto.subtle.digest('SHA-256',enc
 function ip(req:Request){return req.headers.get('cf-connecting-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null}
 function safeFile(v:string){return String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')}
 
+async function sendSignedOwnerCopy(admin:any,doc:any,pdfBytes:Uint8Array){
+  const {data:routes}=await admin.from('romylabs_mailboxes')
+    .select('id,product_id,outbound_from,inbox_owner,tenant_id,display_name,active')
+    .eq('product_id',doc.product_key).eq('active',true).order('created_at',{ascending:true})
+  const route=(Array.isArray(routes)?routes:[]).find((r:any)=>String(r.outbound_from||'').toLowerCase().startsWith('romy@'))
+  if(!route?.outbound_from) throw new Error('No primary product mailbox registered')
+
+  const {data:t}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:doc.product_key})
+  if(!t?.ok||!t?.username||!t?.password) throw new Error('Product Stalwart credential unavailable')
+
+  const base='https://'+String(t.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
+  const auth='Basic '+btoa(String(t.username)+':'+String(t.password))
+  const sessionRes=await fetch(base+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
+  if(!sessionRes.ok) throw new Error('Stalwart session failed ('+sessionRes.status+')')
+  const session=await sessionRes.json()
+  const apiUrl=String(session.apiUrl||'').replace('{accountId}','')
+  const uploadUrl=String(session.uploadUrl||'').replace('{accountId}',String(session?.primaryAccounts?.['urn:ietf:params:jmap:mail']||Object.keys(session?.accounts||{})[0]||''))
+  const accountId=session?.primaryAccounts?.['urn:ietf:params:jmap:mail']||Object.keys(session?.accounts||{})[0]
+  if(!apiUrl||!uploadUrl||!accountId) throw new Error('Stalwart session missing upload/mail endpoints')
+
+  const metaRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+    methodCalls:[['Identity/get',{accountId},'i0'],['Mailbox/get',{accountId,properties:['id','name','role']},'m0']]
+  })})
+  if(!metaRes.ok) throw new Error('Stalwart metadata failed ('+metaRes.status+')')
+  const meta=await metaRes.json()
+  const ids=(meta.methodResponses||[]).find((x:any)=>x?.[0]==='Identity/get')?.[1]?.list||[]
+  const boxes=(meta.methodResponses||[]).find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list||[]
+  const identity=ids.find((x:any)=>String(x.email||'').toLowerCase()===String(t.username).toLowerCase())||ids[0]
+  const drafts=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='drafts')
+  const sent=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='sent')
+  if(!identity?.id||!drafts?.id||!sent?.id) throw new Error('Stalwart identity or Sent/Drafts mailbox unavailable')
+
+  const uploadRes=await fetch(uploadUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/pdf'},body:pdfBytes})
+  if(!uploadRes.ok) throw new Error('Signed PDF upload to Stalwart failed ('+uploadRes.status+')')
+  const uploaded=await uploadRes.json()
+  if(!uploaded?.blobId) throw new Error('Stalwart did not return signed PDF blob id')
+
+  const bodyId='body'
+  const subject='Signed Contract: '+String(doc.title||'Agreement')
+  const html=`<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${String(doc.firm_name||'Office')} signed ${String(doc.title||'Agreement')}</h2><p><strong>${String(doc.signer_name||doc.signer_email||'Signer')}</strong> completed the agreement.</p><p>The signed PDF is attached for your records.</p><p>RomyLabs</p></div>`
+  const sendRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+    methodCalls:[
+      ['Email/set',{accountId,create:{draft:{
+        from:[{email:String(identity.email||t.username),name:String(route.display_name||'RomyLabs')}],
+        to:[{email:String(route.outbound_from)}],
+        subject,
+        mailboxIds:{[drafts.id]:true},
+        keywords:{'$draft':true},
+        bodyValues:{[bodyId]:{value:html,charset:'utf-8'}},
+        htmlBody:[{partId:bodyId,type:'text/html'}],
+        attachments:[{blobId:uploaded.blobId,type:'application/pdf',name:'Signed - '+safeFile(String(doc.source_filename||'contract.pdf')),disposition:'attachment'}]
+      }}},'e0'],
+      ['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sent.id]:true,'keywords/$draft':null}}},'s0']
+    ]
+  })})
+  if(!sendRes.ok) throw new Error('Stalwart signed-copy send failed ('+sendRes.status+')')
+  const sentBody=await sendRes.json()
+  const sub=(sentBody.methodResponses||[]).find((x:any)=>x?.[0]==='EmailSubmission/set')?.[1]
+  if(sub?.notCreated?.sendIt) throw new Error('Stalwart rejected signed-copy send')
+  const submissionId=sub?.created?.sendIt?.id
+  if(!submissionId) throw new Error('Stalwart did not confirm signed-copy submission')
+
+  const now=new Date().toISOString()
+  await admin.from('emails').insert({
+    tenant_id:route.tenant_id,
+    recipient:route.outbound_from,
+    recipients:[route.outbound_from],
+    subject,
+    body:`${doc.signer_name||doc.signer_email||'Signer'} completed ${doc.title||'Agreement'}. Signed PDF attached.`,
+    body_html:html,
+    triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
+    sender:String(identity.email||t.username),
+    from_address:String(identity.email||t.username),
+    reply_from:String(route.outbound_from),
+    mailbox_owner:String(route.inbox_owner||'info@romylabs.com'),
+    received_at:now,created_at:now,product_id:doc.product_key,
+    message_id:'stalwart:'+String(submissionId),
+    received_mailbox:String(route.outbound_from),
+    route_id:route.id
+  })
+
+  return {submissionId:String(submissionId),recipient:String(route.outbound_from),from:String(identity.email||t.username)}
+}
+
 serve(async(req)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders})
   if(req.method!=='POST')return json({error:'POST only'},405)
@@ -91,7 +177,19 @@ serve(async(req)=>{
       const {data:updated,error:upd}=await admin.from('romylabs_office_signing_documents').update({status:'signed',signed_path:signedPath,signed_at:now,signature_name:signatureName,signer_ip:ip(req),signer_user_agent:req.headers.get('user-agent'),audit,updated_at:now}).eq('id',doc.id).in('status',['sent','viewed']).select('id').maybeSingle()
       if(upd){await admin.storage.from(ESIGN_BUCKET).remove([signedPath]);return json({error:'Could not finalize signature'},500)}
       if(!updated){await admin.storage.from(ESIGN_BUCKET).remove([signedPath]);return json({error:'This document was already signed or is no longer signable'},409)}
-      return json({ok:true,signed_at:now})
+
+      let ownerCopy:any=null
+      try{
+        ownerCopy=await sendSignedOwnerCopy(admin,doc,finalBytes)
+        const latestAudit=[...audit,{event:'owner_signed_copy_sent',at:new Date().toISOString(),recipient:ownerCopy.recipient,from:ownerCopy.from,submission_id:ownerCopy.submissionId}]
+        await admin.from('romylabs_office_signing_documents').update({audit:latestAudit,updated_at:new Date().toISOString()}).eq('id',doc.id)
+      }catch(notificationError){
+        const latestAudit=[...audit,{event:'owner_signed_copy_failed',at:new Date().toISOString(),error:String((notificationError as Error)?.message||notificationError).slice(0,240)}]
+        await admin.from('romylabs_office_signing_documents').update({audit:latestAudit,updated_at:new Date().toISOString()}).eq('id',doc.id)
+        console.error('[office-agreement-file] signed owner copy failed',notificationError)
+      }
+
+      return json({ok:true,signed_at:now,owner_copy_sent:!!ownerCopy,owner_copy_recipient:ownerCopy?.recipient||null})
     }
 
     // All management actions below require a real authenticated platform-admin JWT.
