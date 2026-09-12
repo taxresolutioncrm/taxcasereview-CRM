@@ -5018,7 +5018,7 @@ function CommandCenter() {
                   }
                 </div>
               )}
-              {gscConnected && gscData?.siteUrl && <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>Last 28 days · {gscData.siteUrl}</div>}
+              {gscConnected && gscData?.siteUrl && <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>{gscData.rangeLabel || 'Last 3 months'} · {gscData.siteUrl}</div>}
             </>)})()}
           </div>
 
