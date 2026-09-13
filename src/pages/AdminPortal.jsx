@@ -162,8 +162,8 @@ async function loadPlatformOfficeRows() {
     if (idx < 0) continue
     rows[idx] = {
       ...rows[idx],
-      client_count:Number(metrics.active_clients ?? rows[idx].client_count ?? 0),
-      lead_count:Number(metrics.active_leads ?? rows[idx].lead_count ?? 0),
+      client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
+      lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
       employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
       cases_count:Number(metrics.open_jobs ?? rows[idx].cases_count ?? 0),
       tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
@@ -674,7 +674,7 @@ function Overview() {
       <div style={S.card}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
           <thead>
-            <tr>{['Firm','Status','Plan','Seats','Clients','Cases','CRM Records','Storage','Collected','MRR','Last Activity',''].map(h=>(
+            <tr>{['Firm','Status','Plan','Seats','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map(h=>(
               <th key={h} style={S.th}>{h}</th>
             ))}</tr>
           </thead>
