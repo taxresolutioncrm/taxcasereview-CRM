@@ -16,10 +16,11 @@ async function routeForProduct(admin:any,productKey:string){
     .select('id,product_id,outbound_from,inbox_owner,tenant_id,display_name,active')
     .eq('product_id',productKey).eq('active',true).order('created_at',{ascending:true})
   if(routeError)throw routeError
-  const route=(Array.isArray(routes)?routes:[]).find((r:any)=>safe(r.outbound_from).toLowerCase().startsWith('romy@'))
-  if(!route?.outbound_from)throw new Error('No primary product mailbox registered for '+productKey)
   const {data:t}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:productKey})
   if(!t?.ok||!t?.username||!t?.password)throw new Error('Stalwart transport unavailable for '+productKey)
+  const resolvedFrom=safe(t.from_address||t.username).toLowerCase()
+  const route=(Array.isArray(routes)?routes:[]).find((r:any)=>safe(r.outbound_from).toLowerCase()===resolvedFrom)
+  if(!route?.outbound_from)throw new Error('No active mailbox route matches Stalwart identity for '+productKey)
   return {route,transport:t}
 }
 
