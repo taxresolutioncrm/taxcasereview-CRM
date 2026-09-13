@@ -74,6 +74,10 @@ for (const requiredMetricFragment of [
   ".eq('done',false)",
   ".ilike('status','active')",
   "supabase.from('cases').select('*',{count:'exact',head:true})",
+  "supabase.schema('storage').from('objects')",
+  'const computedMrr=',
+  'total_clients:totalClientCount||0',
+  'active_clients:activeClientCount||0',
   'active_staff:staffCount',
   'open_jobs:caseCount||0',
 ]) {
@@ -82,5 +86,14 @@ for (const requiredMetricFragment of [
   }
 }
 
+for (const uiNeedle of [
+  'const taxResTenantFeeds = [',
+  "brand_color: r.brand_color || '#2563EB'",
+  "'Transactions'",
+  'metrics.total_clients ?? metrics.active_clients',
+]) {
+  if (!s.includes(uiNeedle)) throw new Error(`Admin usage accuracy verification failed: ${uiNeedle}`)
+}
+
 fs.writeFileSync(path, s)
-console.log('admin metrics: hub proxy, TaxRes tenant overlays, status dots, and current-schema metrics verified')
+console.log('admin metrics: hub proxy, complete tenant usage, status dots, storage, and billing metrics verified')
