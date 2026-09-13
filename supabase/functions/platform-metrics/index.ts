@@ -25,8 +25,10 @@ Deno.serve(async (req) => {
   try {
     const now = new Date()
     const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number) => {
-      const [{ count: clientCount },{ count: leadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: storageObjects },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
+      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: storageObjects },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
+        supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
+        supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('done',false).or('deleted.is.null,deleted.eq.false'),
         supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
@@ -47,8 +49,10 @@ Deno.serve(async (req) => {
         ok:true,product,product_label:label,fetched_at:now.toISOString(),
         metrics:{
           mrr:computedMrr,arr:computedMrr*12,
-          active_clients:clientCount||0,
-          active_leads:leadCount||0,
+          total_clients:totalClientCount||0,
+          active_clients:activeClientCount||0,
+          total_leads:totalLeadCount||0,
+          active_leads:activeLeadCount||0,
           active_staff:staffCount,
           active_users:staffCount,
           open_jobs:caseCount||0,
@@ -58,10 +62,12 @@ Deno.serve(async (req) => {
         },
         offices:[{
           id:tenantId,name:label,is_active:true,mrr:computedMrr,
-          active_clients:clientCount||0,
-          client_count:clientCount||0,
-          active_leads:leadCount||0,
-          lead_count:leadCount||0,
+          total_clients:totalClientCount||0,
+          active_clients:activeClientCount||0,
+          client_count:totalClientCount||0,
+          total_leads:totalLeadCount||0,
+          active_leads:activeLeadCount||0,
+          lead_count:totalLeadCount||0,
           active_staff:staffCount,
           employee_count:staffCount,
           open_jobs:caseCount||0,
@@ -73,7 +79,7 @@ Deno.serve(async (req) => {
       }
     }
     if(view==='tcr') return new Response(JSON.stringify(await tenantView(TCR_TENANT_ID,'tax_case_review','Tax Case Review',0)),{headers:{...cors,'Content-Type':'application/json'}})
-    if(view==='nash') return new Response(JSON.stringify(await tenantView(NASH_TENANT_ID,'nashville','Nashville Tax Solutions',1625)),{headers:{...cors,'Content-Type':'application/json'}})
+    if(view==='nash') return new Response(JSON.stringify(await tenantView(NASH_TENANT_ID,'nashville','Nashville Tax Solutions',0)),{headers:{...cors,'Content-Type':'application/json'}})
     if(view==='cloudcpa') return new Response(JSON.stringify(await tenantView('ecd3d3ce-016a-4bb4-800e-f090f51e4cae','cloudcpa','CloudCPA Inc',0)),{headers:{...cors,'Content-Type':'application/json'}})
 
     const {data:tenants}=await supabase.from('tenants').select('id,firm_name,tenant_code,monthly_rate,created_at').not('tenant_code','in',`(${ADMIN_CODE},${TCR_CODE},${DEMO_CODE})`).neq('id',NASH_TENANT_ID)
