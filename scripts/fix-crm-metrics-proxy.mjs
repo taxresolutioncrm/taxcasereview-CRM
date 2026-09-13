@@ -54,9 +54,33 @@ for (const needle of [
   "functions/v1/hub-proxy",
   'fetchCrmProductMetrics(crmProduct)',
   'fetchCrmProductMetrics(key)',
+  "brand_color: r.brand_color || '#2563EB'",
+  "p.isTenant && String(p.label || '').trim().toLowerCase() === selectedName",
+  'activeTenant && crmAccountMetrics?.metrics ? crmAccountMetrics.metrics : null',
 ]) {
   if (!s.includes(needle)) throw new Error(`Metrics proxy verification failed: ${needle}`)
 }
 
+const metricsFn = fs.readFileSync('supabase/functions/platform-metrics/index.ts', 'utf8').replace(/\r\n/g, '\n')
+for (const forbiddenMetricFragment of [
+  ".eq('status','pending')",
+  ".eq('is_active',true)",
+]) {
+  if (metricsFn.includes(forbiddenMetricFragment)) {
+    throw new Error(`Stale TaxRes metrics schema reference remains: ${forbiddenMetricFragment}`)
+  }
+}
+for (const requiredMetricFragment of [
+  ".eq('done',false)",
+  ".ilike('status','active')",
+  "supabase.from('cases').select('*',{count:'exact',head:true})",
+  'active_staff:staffCount',
+  'open_jobs:caseCount||0',
+]) {
+  if (!metricsFn.includes(requiredMetricFragment)) {
+    throw new Error(`TaxRes metrics accuracy verification failed: ${requiredMetricFragment}`)
+  }
+}
+
 fs.writeFileSync(path, s)
-console.log('admin metrics: all cross-product metrics route through authenticated hub-proxy')
+console.log('admin metrics: hub proxy, TaxRes tenant overlays, status dots, and current-schema metrics verified')
