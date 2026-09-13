@@ -32,15 +32,21 @@ async function appendEvent(admin:any,envelopeId:string,eventType:string,opts:any
 function ip(req:Request){return req.headers.get('cf-connecting-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null}
 function safeFile(v:string){return String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')}
 
-async function sendSignedCopy(admin:any,doc:any,pdfBytes:Uint8Array,recipientOverride:string|null=null){
-  const {data:routes}=await admin.from('romylabs_mailboxes')
+async function resolveProductMailRoute(admin:any,productKey:string){
+  const {data:routes,error:routeError}=await admin.from('romylabs_mailboxes')
     .select('id,product_id,outbound_from,inbox_owner,tenant_id,display_name,active')
-    .eq('product_id',doc.product_key).eq('active',true).order('created_at',{ascending:true})
-  const route=(Array.isArray(routes)?routes:[]).find((r:any)=>String(r.outbound_from||'').toLowerCase().startsWith('romy@'))
-  if(!route?.outbound_from) throw new Error('No primary product mailbox registered')
+    .eq('product_id',productKey).eq('active',true).order('created_at',{ascending:true})
+  if(routeError)throw routeError
+  const {data:t}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:productKey})
+  if(!t?.ok||!t?.username||!t?.password)throw new Error('Product Stalwart credential unavailable')
+  const resolvedFrom=String(t.from_address||t.username||'').toLowerCase()
+  const route=(Array.isArray(routes)?routes:[]).find((r:any)=>String(r.outbound_from||'').toLowerCase()===resolvedFrom)
+  if(!route?.outbound_from)throw new Error('No active mailbox route matches product Stalwart identity')
+  return {route,transport:t}
+}
 
-  const {data:t}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:doc.product_key})
-  if(!t?.ok||!t?.username||!t?.password) throw new Error('Product Stalwart credential unavailable')
+async function sendSignedCopy(admin:any,doc:any,pdfBytes:Uint8Array,recipientOverride:string|null=null){
+  const {route,transport:t}=await resolveProductMailRoute(admin,String(doc.product_key))
 
   const base='https://'+String(t.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
   const auth='Basic '+btoa(String(t.username)+':'+String(t.password))
@@ -60,7 +66,8 @@ async function sendSignedCopy(admin:any,doc:any,pdfBytes:Uint8Array,recipientOve
   const meta=await metaRes.json()
   const ids=(meta.methodResponses||[]).find((x:any)=>x?.[0]==='Identity/get')?.[1]?.list||[]
   const boxes=(meta.methodResponses||[]).find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list||[]
-  const identity=ids.find((x:any)=>String(x.email||'').toLowerCase()===String(t.username).toLowerCase())||ids[0]
+  const routedFrom=String(route.outbound_from||'').toLowerCase()
+  const identity=ids.find((x:any)=>String(x.email||'').toLowerCase()===routedFrom)
   const drafts=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='drafts')
   const sent=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='sent')
   if(!identity?.id||!drafts?.id||!sent?.id) throw new Error('Stalwart identity or Sent/Drafts mailbox unavailable')
@@ -124,13 +131,7 @@ async function sendSignedCopy(admin:any,doc:any,pdfBytes:Uint8Array,recipientOve
 
 
 async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detail:string=''){
-  const {data:routes}=await admin.from('romylabs_mailboxes')
-    .select('id,product_id,outbound_from,inbox_owner,tenant_id,display_name,active')
-    .eq('product_id',doc.product_key).eq('active',true).order('created_at',{ascending:true})
-  const route=(Array.isArray(routes)?routes:[]).find((r:any)=>String(r.outbound_from||'').toLowerCase().startsWith('romy@'))
-  if(!route?.outbound_from)throw new Error('No primary product mailbox registered')
-  const {data:t}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:doc.product_key})
-  if(!t?.ok||!t?.username||!t?.password)throw new Error('Product Stalwart credential unavailable')
+  const {route,transport:t}=await resolveProductMailRoute(admin,String(doc.product_key))
   const base='https://'+String(t.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
   const auth='Basic '+btoa(String(t.username)+':'+String(t.password))
   const sessionRes=await fetch(base+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
