@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react'
+import EnvelopeDetails from './EnvelopeDetails'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -34,6 +35,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   const [loading,setLoading]=useState(true)
   const [msg,setMsg]=useState('')
   const [error,setError]=useState('')
+  const [detailDoc,setDetailDoc]=useState(null)
   const canvasRef=useRef(null)
 
   async function load(){
@@ -135,8 +137,8 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     setWorking(false)
   }
 
-  async function openFile(row,signed=false){
-    const filePath=signed?row.signed_path:row.source_path
+  async function openFile(row,kind='source'){
+    const filePath=kind==='signed'?row.signed_path:kind==='certificate'?row.certificate_path:row.source_path
     if(!filePath)return
     const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_geturl',file_path:filePath}})
     if(e||!data?.url){setError(e?.message||data?.error||'Could not open document');return}
@@ -202,9 +204,10 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       {loading?<div style={{fontSize:11,color:'#64748b'}}>Loading documents…</div>:docs.length===0?<div style={{fontSize:11,color:'#64748b'}}>No documents have been sent for signature yet.</div>:docs.map(row=>{const c=STATUS[row.status]||'#64748b';return <div key={row.id} style={{padding:11,borderRadius:9,border:'1px solid rgba(99,102,241,.1)',background:'rgba(255,255,255,.02)',marginBottom:8}}>
         <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><span style={{fontSize:9,fontWeight:900,color:c,textTransform:'uppercase'}}>{row.status}</span><strong style={{fontSize:11,color:'#e2e8f0'}}>{row.title}</strong><span style={{fontSize:10,color:'#64748b'}}>{row.signer_email}</span>{row.signed_at&&<span style={{fontSize:10,color:'#10b981',marginLeft:'auto'}}>Signed {dt(row.signed_at)}</span>}</div>
         <div style={{fontSize:9,color:'#64748b',marginTop:5}}>Sent {dt(row.sent_at)} · {row.source_filename}</div>
-        <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}><button onClick={()=>openFile(row,false)} style={smallBtn}>View Original</button>{row.status==='signed'&&row.signed_path&&<button onClick={()=>openFile(row,true)} style={{...smallBtn,color:'#34d399',borderColor:'rgba(16,185,129,.25)',background:'rgba(16,185,129,.08)'}}>Open Signed Contract</button>}{!['signed','void'].includes(row.status)&&<><button disabled={working} onClick={()=>resend(row)} style={smallBtn}>Resend</button><button disabled={working} onClick={()=>voidDoc(row)} style={{...smallBtn,color:'#f87171',borderColor:'rgba(239,68,68,.2)',background:'rgba(239,68,68,.06)'}}>Void</button></>}</div>
+        <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}><button onClick={()=>setDetailDoc(row)} style={{...smallBtn,color:'#e2e8f0'}}>Envelope Details</button><button onClick={()=>openFile(row,'source')} style={smallBtn}>View Original</button>{row.status==='signed'&&row.signed_path&&<button onClick={()=>openFile(row,'signed')} style={{...smallBtn,color:'#34d399',borderColor:'rgba(16,185,129,.25)',background:'rgba(16,185,129,.08)'}}>Open Signed Contract</button>}{row.certificate_path&&<button onClick={()=>openFile(row,'certificate')} style={{...smallBtn,color:'#fbbf24',borderColor:'rgba(245,158,11,.25)',background:'rgba(245,158,11,.08)'}}>Completion Certificate</button>}{!['signed','void'].includes(row.status)&&<><button disabled={working} onClick={()=>resend(row)} style={smallBtn}>Resend</button><button disabled={working} onClick={()=>voidDoc(row)} style={{...smallBtn,color:'#f87171',borderColor:'rgba(239,68,68,.2)',background:'rgba(239,68,68,.06)'}}>Void</button></>}</div>
       </div>})}
     </section>
+    {detailDoc&&<EnvelopeDetails supabase={supabase} row={detailDoc} brand={brand} onClose={()=>setDetailDoc(null)} onOpenFile={openFile}/>} 
   </div>
 }
 
