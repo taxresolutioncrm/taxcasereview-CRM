@@ -4334,7 +4334,7 @@ function CommandCenter() {
       if (error) { setGa4EnabledProducts([]); setGa4LiveProducts([]); return }
       const rows = data || []
       setGa4EnabledProducts(rows.filter(r => r.tracking_id && ['configured','live'].includes(r.status)).map(r => r.product_id))
-      setGa4LiveProducts(rows.filter(r => ['configured','live'].includes(r.status)).map(r => r.product_id))
+      setGa4LiveProducts(rows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id))
     })
     supabase.from('product_traffic_channels')
       .select('product_id,status,tracking_id,destination_url,last_verified_at,notes')
@@ -5106,6 +5106,8 @@ function CommandCenter() {
               <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Bing Webmaster Tools</div>
               {bingConnected
                 ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(16,185,129,.15)', color:'#10b981', marginLeft:'auto' }}>✅ Connected</span>
+                : bingData?.error === 'bing_site_not_verified'
+                ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(245,158,11,.15)', color:'#f59e0b', marginLeft:'auto' }}>Pending verification</span>
                 : <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(100,116,139,.15)', color:'#64748b', marginLeft:'auto' }}>Not connected</span>
               }
             </div>
@@ -5141,7 +5143,13 @@ function CommandCenter() {
               <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>Last 28 days · {bingData.siteUrl}</div>
             </>) : (
               <div style={{ fontSize:12, color:'#475569' }}>
-                {bingData === null ? 'Checking connection…' : 'API key configured — no data yet or site not yet indexed by Bing.'}
+                {bingData === null
+                  ? 'Checking connection…'
+                  : bingData?.error === 'bing_site_not_verified'
+                  ? (bingData?.message || 'Domain is configured but still pending verification in Bing Webmaster Tools.')
+                  : bingData?.error === 'request_failed'
+                  ? 'Bing reporting request failed. No traffic conclusion can be drawn from this state.'
+                  : (bingData?.message || 'Bing reporting is not connected for this product.')}
               </div>
             )}
           </div>
