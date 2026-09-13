@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   try {
     const now = new Date()
     const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number) => {
-      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
+      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: tenantStorage },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
@@ -33,11 +33,13 @@ Deno.serve(async (req) => {
         supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('done',false).or('deleted.is.null,deleted.eq.false'),
         supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
+        supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId}),
         supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(5),
         supabase.from('employees').select('id').eq('tenant_id',tenantId).ilike('status','active'),
         supabase.from('tenants').select('monthly_rate,per_seat_rate,billing_seats').eq('id',tenantId).maybeSingle(),
       ])
-      const totalStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
+      const documentStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
+      const totalStorage=Number(tenantStorage ?? documentStorage ?? 0)
       const staffCount=(employees||[]).length
       const computedMrr=Number(tenant?.monthly_rate || 0)
         || (Number(tenant?.per_seat_rate || 0) * Number(tenant?.billing_seats || 0))
