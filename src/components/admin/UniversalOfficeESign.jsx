@@ -7,7 +7,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorker
 
 const BRAND={
   taxres_crm:{name:'TaxRes CRM',email:'romy@taxrescrm.net'},camvella:{name:'Camvella',email:'romy@camvella.com'},
-  arcvena:{name:'Arcvena',email:'romy@arcvena.com'},bocasync:{name:'BocaSync',email:'romy@bocasync.com'},
+  arcvena:{name:'Arcvena',email:'info@arcvena.com'},bocasync:{name:'BocaSync',email:'support@bocasync.com'},
   groundivo:{name:'Groundivo',email:'romy@groundivo.com'},oculivo:{name:'Oculivo',email:'romy@oculivo.com'},
   restore_relay:{name:'RestoreRelay',email:'romy@restorerelay.com'},
   romylabs:{name:'RomyLabs',email:'info@romylabs.com'},
