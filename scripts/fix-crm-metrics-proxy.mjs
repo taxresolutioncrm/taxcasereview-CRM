@@ -91,10 +91,22 @@ for (const uiNeedle of [
   "brand_color: r.brand_color || '#2563EB'",
   "'Transactions'",
   'metrics.total_clients ?? metrics.active_clients',
+  'r.billing_seats ?? r.employee_count',
+  "'Seats / Staff'",
   'if (!offices.length) {',
 ]) {
   if (!s.includes(uiNeedle)) throw new Error(`Admin usage accuracy verification failed: ${uiNeedle}`)
 }
 
+const usageMigration = fs.readFileSync('supabase/migrations/20260913103000_admin_tenant_usage_accuracy.sql', 'utf8')
+for (const migrationNeedle of [
+  'public._admin_tenant_storage_bytes',
+  "position(p_tenant_id::text in o.name) > 0",
+  "'billing_seats',t.billing_seats",
+  "'transactions_count'",
+]) {
+  if (!usageMigration.includes(migrationNeedle)) throw new Error(`Tenant usage migration verification failed: ${migrationNeedle}`)
+}
+
 fs.writeFileSync(path, s)
-console.log('admin metrics: hub proxy, complete tenant usage, status dots, storage, and billing metrics verified')
+console.log('admin metrics: hub proxy, complete tenant usage, status dots, storage, seats/staff, and billing metrics verified')
