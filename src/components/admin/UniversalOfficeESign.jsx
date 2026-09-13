@@ -200,16 +200,81 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     </section>
 
     <section style={{background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.18)',borderRadius:12,padding:18}}>
-      <div style={{fontSize:13,fontWeight:900,color:'#fff',marginBottom:12}}>Signing Requests</div>
-      {loading?<div style={{fontSize:11,color:'#64748b'}}>Loading documents…</div>:docs.length===0?<div style={{fontSize:11,color:'#64748b'}}>No documents have been sent for signature yet.</div>:docs.map(row=>{const c=STATUS[row.status]||'#64748b';return <div key={row.id} style={{padding:11,borderRadius:9,border:'1px solid rgba(99,102,241,.1)',background:'rgba(255,255,255,.02)',marginBottom:8}}>
-        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><span style={{fontSize:9,fontWeight:900,color:c,textTransform:'uppercase'}}>{row.status}</span><strong style={{fontSize:11,color:'#e2e8f0'}}>{row.title}</strong><span style={{fontSize:10,color:'#64748b'}}>{row.signer_email}</span>{row.signed_at&&<span style={{fontSize:10,color:'#10b981',marginLeft:'auto'}}>Signed {dt(row.signed_at)}</span>}</div>
-        <div style={{fontSize:9,color:'#64748b',marginTop:5}}>Sent {dt(row.sent_at)} · {row.source_filename}</div>
-        <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}><button onClick={()=>setDetailDoc(row)} style={{...smallBtn,color:'#e2e8f0'}}>Envelope Details</button><button onClick={()=>openFile(row,'source')} style={smallBtn}>View Original</button>{row.status==='signed'&&row.signed_path&&<button onClick={()=>openFile(row,'signed')} style={{...smallBtn,color:'#34d399',borderColor:'rgba(16,185,129,.25)',background:'rgba(16,185,129,.08)'}}>Open Signed Contract</button>}{row.certificate_path&&<button onClick={()=>openFile(row,'certificate')} style={{...smallBtn,color:'#fbbf24',borderColor:'rgba(245,158,11,.25)',background:'rgba(245,158,11,.08)'}}>Completion Certificate</button>}{!['signed','void'].includes(row.status)&&<><button disabled={working} onClick={()=>resend(row)} style={smallBtn}>Resend</button><button disabled={working} onClick={()=>voidDoc(row)} style={{...smallBtn,color:'#f87171',borderColor:'rgba(239,68,68,.2)',background:'rgba(239,68,68,.06)'}}>Void</button></>}</div>
-      </div>})}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:900,color:'#fff'}}>Envelope Dashboard</div>
+          <div style={{fontSize:10,color:'#64748b',marginTop:3}}>Track every contract from sent through completion without opening another screen.</div>
+        </div>
+        <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
+          <Stat label="Total" value={docs.length}/>
+          <Stat label="Waiting" value={docs.filter(d=>['sent','viewed'].includes(d.status)).length}/>
+          <Stat label="Signed" value={docs.filter(d=>d.status==='signed').length}/>
+          <Stat label="Declined" value={docs.filter(d=>d.status==='declined').length}/>
+        </div>
+      </div>
+
+      {loading?<div style={{fontSize:11,color:'#64748b'}}>Loading envelopes…</div>:docs.length===0?<div style={{fontSize:11,color:'#64748b'}}>No documents have been sent for signature yet.</div>:docs.map(row=>{
+        const c=STATUS[row.status]||'#64748b'
+        const signedAt=row.signed_at||row.completed_at
+        const method=row.envelope_settings?.signature_method==='draw'?'Draw':'Type'
+        const daysLeft=row.expires_at?Math.max(0,Math.ceil((new Date(row.expires_at)-Date.now())/86400000)):null
+        const stages=[
+          ['Sent',!!row.sent_at,dt(row.sent_at)],
+          ['Viewed',!!row.opened_at,dt(row.opened_at)],
+          ['Signed',!!signedAt,dt(signedAt)],
+        ]
+        return <div key={row.id} style={{padding:15,borderRadius:10,border:'1px solid rgba(99,102,241,.16)',background:'rgba(15,23,42,.52)',marginBottom:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:14,alignItems:'start',flexWrap:'wrap'}}>
+            <div style={{minWidth:240,flex:'1 1 360px'}}>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <span style={{fontSize:9,fontWeight:900,color:c,textTransform:'uppercase',padding:'4px 7px',borderRadius:999,border:'1px solid '+c+'55',background:c+'14'}}>{row.status}</span>
+                <strong style={{fontSize:12,color:'#f8fafc'}}>{row.title}</strong>
+              </div>
+              <div style={{fontSize:9,color:'#64748b',marginTop:5}}>Envelope ID · {row.id}</div>
+            </div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+              <button onClick={()=>openFile(row,'source')} style={smallBtn}>Original</button>
+              {row.signed_path&&<button onClick={()=>openFile(row,'signed')} style={{...smallBtn,color:'#34d399',borderColor:'rgba(16,185,129,.28)',background:'rgba(16,185,129,.08)'}}>Signed PDF</button>}
+              {row.certificate_path&&<button onClick={()=>openFile(row,'certificate')} style={{...smallBtn,color:'#fbbf24',borderColor:'rgba(245,158,11,.28)',background:'rgba(245,158,11,.08)'}}>Certificate</button>}
+              <button onClick={()=>setDetailDoc(row)} style={{...smallBtn,color:'#e2e8f0'}}>Full Audit</button>
+            </div>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:7,marginTop:12}}>
+            <Info label="From" value={brand.email}/>
+            <Info label="Recipient" value={(row.signer_name?row.signer_name+' · ':'')+(row.signer_email||'')}/>
+            <Info label="Signature" value={method}/>
+            <Info label="Expires" value={row.expires_at?dt(row.expires_at)+(daysLeft!==null?' · '+daysLeft+'d left':''):'—'}/>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:6,marginTop:10}}>
+            {stages.map(([label,ok,time],i)=><div key={label} style={{position:'relative',padding:'9px 10px',borderRadius:8,border:'1px solid '+(ok?'rgba(16,185,129,.22)':'rgba(100,116,139,.14)'),background:ok?'rgba(16,185,129,.08)':'rgba(100,116,139,.06)'}}>
+              <div style={{fontSize:9,fontWeight:900,color:ok?'#34d399':'#64748b'}}>{ok?'✓ ':''}{label}</div>
+              <div style={{fontSize:8,color:'#64748b',marginTop:3}}>{time}</div>
+              {i<2&&<div style={{position:'absolute',right:-6,top:'50%',width:6,height:1,background:'rgba(99,102,241,.25)'}}/>}
+            </div>)}
+          </div>
+
+          <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',flexWrap:'wrap',marginTop:10,paddingTop:9,borderTop:'1px solid rgba(148,163,184,.08)'}}>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:9,color:'#64748b'}}>
+              <span>Reminders: <strong style={{color:'#cbd5e1'}}>{row.reminder_enabled?'On':'Off'}</strong></span>
+              <span>Last reminder: <strong style={{color:'#cbd5e1'}}>{dt(row.last_reminder_at)}</strong></span>
+              {row.decline_reason&&<span style={{color:'#f87171'}}>Declined: {row.decline_reason}</span>}
+            </div>
+            {!['signed','void','declined'].includes(row.status)&&<div style={{display:'flex',gap:6}}>
+              <button disabled={working} onClick={()=>resend(row)} style={smallBtn}>Resend</button>
+              <button disabled={working} onClick={()=>voidDoc(row)} style={{...smallBtn,color:'#f87171',borderColor:'rgba(239,68,68,.25)',background:'rgba(239,68,68,.06)'}}>Void</button>
+            </div>}
+          </div>
+        </div>
+      })}
     </section>
     {detailDoc&&<EnvelopeDetails supabase={supabase} row={detailDoc} brand={brand} onClose={()=>setDetailDoc(null)} onOpenFile={openFile}/>} 
   </div>
 }
+
+function Stat({label,value}){return <div style={{minWidth:64,padding:'7px 9px',borderRadius:8,border:'1px solid rgba(99,102,241,.16)',background:'rgba(99,102,241,.06)'}}><div style={{fontSize:8,fontWeight:900,color:'#64748b',textTransform:'uppercase'}}>{label}</div><div style={{fontSize:14,fontWeight:900,color:'#fff',marginTop:2}}>{value}</div></div>}
+function Info({label,value}){return <div style={{padding:'8px 9px',borderRadius:8,border:'1px solid rgba(148,163,184,.09)',background:'rgba(255,255,255,.02)'}}><div style={{fontSize:8,fontWeight:900,color:'#64748b',textTransform:'uppercase'}}>{label}</div><div style={{fontSize:9,color:'#e2e8f0',marginTop:3,wordBreak:'break-word'}}>{value||'—'}</div></div>}
 
 const inputStyle={display:'block',width:'100%',boxSizing:'border-box',marginTop:5,padding:'8px 9px',borderRadius:7,border:'1px solid rgba(99,102,241,.2)',background:'rgba(255,255,255,.035)',color:'#e2e8f0',fontSize:12}
 const smallBtn={fontSize:9,padding:'5px 8px',borderRadius:6,border:'1px solid rgba(99,102,241,.25)',background:'rgba(99,102,241,.08)',color:'#a5b4fc',cursor:'pointer'}
