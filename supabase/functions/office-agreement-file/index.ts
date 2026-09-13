@@ -32,7 +32,7 @@ async function appendEvent(admin:any,envelopeId:string,eventType:string,opts:any
 function ip(req:Request){return req.headers.get('cf-connecting-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null}
 function safeFile(v:string){return String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')}
 
-async function sendSignedOwnerCopy(admin:any,doc:any,pdfBytes:Uint8Array){
+async function sendSignedCopy(admin:any,doc:any,pdfBytes:Uint8Array,recipientOverride:string|null=null){
   const {data:routes}=await admin.from('romylabs_mailboxes')
     .select('id,product_id,outbound_from,inbox_owner,tenant_id,display_name,active')
     .eq('product_id',doc.product_key).eq('active',true).order('created_at',{ascending:true})
@@ -70,15 +70,19 @@ async function sendSignedOwnerCopy(admin:any,doc:any,pdfBytes:Uint8Array){
   const uploaded=await uploadRes.json()
   if(!uploaded?.blobId) throw new Error('Stalwart did not return signed PDF blob id')
 
+  const recipientAddress=String(recipientOverride||route.outbound_from)
+  const isSignerCopy=recipientAddress.toLowerCase()===String(doc.signer_email||'').toLowerCase()
   const bodyId='body'
-  const subject='Signed Contract: '+String(doc.title||'Agreement')
-  const html=`<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${String(doc.firm_name||'Office')} signed ${String(doc.title||'Agreement')}</h2><p><strong>${String(doc.signer_name||doc.signer_email||'Signer')}</strong> completed the agreement.</p><p>The signed PDF is attached for your records.</p><p>RomyLabs</p></div>`
+  const subject=(isSignerCopy?'Completed - ':'Signed Contract: ')+String(doc.title||'Agreement')
+  const html=isSignerCopy
+    ?'<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>Your signed document is complete</h2><p>Hi '+String(doc.signer_name||'there')+',</p><p>Your signed copy of <strong>'+String(doc.title||'Agreement')+'</strong> is attached for your records.</p><p>RomyLabs</p></div>'
+    :'<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>'+String(doc.firm_name||'Office')+' signed '+String(doc.title||'Agreement')+'</h2><p><strong>'+String(doc.signer_name||doc.signer_email||'Signer')+'</strong> completed the agreement.</p><p>The signed PDF is attached for your records.</p><p>RomyLabs</p></div>'
   const sendRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({
     using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
     methodCalls:[
       ['Email/set',{accountId,create:{draft:{
         from:[{email:String(identity.email||t.username),name:String(route.display_name||'RomyLabs')}],
-        to:[{email:String(route.outbound_from)}],
+        to:[{email:recipientAddress}],
         subject,
         mailboxIds:{[drafts.id]:true},
         keywords:{'$draft':true},
@@ -99,8 +103,8 @@ async function sendSignedOwnerCopy(admin:any,doc:any,pdfBytes:Uint8Array){
   const now=new Date().toISOString()
   await admin.from('emails').insert({
     tenant_id:route.tenant_id,
-    recipient:route.outbound_from,
-    recipients:[route.outbound_from],
+    recipient:recipientAddress,
+    recipients:[recipientAddress],
     subject,
     body:`${doc.signer_name||doc.signer_email||'Signer'} completed ${doc.title||'Agreement'}. Signed PDF attached.`,
     body_html:html,
@@ -115,7 +119,64 @@ async function sendSignedOwnerCopy(admin:any,doc:any,pdfBytes:Uint8Array){
     route_id:route.id
   })
 
-  return {submissionId:String(submissionId),recipient:String(route.outbound_from),from:String(identity.email||t.username)}
+  return {submissionId:String(submissionId),recipient:recipientAddress,from:String(identity.email||t.username)}
+}
+
+
+async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detail:string=''){
+  const {data:routes}=await admin.from('romylabs_mailboxes')
+    .select('id,product_id,outbound_from,inbox_owner,tenant_id,display_name,active')
+    .eq('product_id',doc.product_key).eq('active',true).order('created_at',{ascending:true})
+  const route=(Array.isArray(routes)?routes:[]).find((r:any)=>String(r.outbound_from||'').toLowerCase().startsWith('romy@'))
+  if(!route?.outbound_from)throw new Error('No primary product mailbox registered')
+  const {data:t}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:doc.product_key})
+  if(!t?.ok||!t?.username||!t?.password)throw new Error('Product Stalwart credential unavailable')
+  const base='https://'+String(t.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
+  const auth='Basic '+btoa(String(t.username)+':'+String(t.password))
+  const sessionRes=await fetch(base+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
+  if(!sessionRes.ok)throw new Error('Stalwart session failed ('+sessionRes.status+')')
+  const session=await sessionRes.json()
+  const apiUrl=String(session.apiUrl||'').replace('{accountId}','')
+  const accountId=session?.primaryAccounts?.['urn:ietf:params:jmap:mail']||Object.keys(session?.accounts||{})[0]
+  if(!apiUrl||!accountId)throw new Error('Stalwart mail account unavailable')
+  const metaRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+    methodCalls:[['Identity/get',{accountId},'i0'],['Mailbox/get',{accountId,properties:['id','name','role']},'m0']]
+  })})
+  if(!metaRes.ok)throw new Error('Stalwart metadata failed')
+  const meta=await metaRes.json()
+  const ids=(meta.methodResponses||[]).find((x:any)=>x?.[0]==='Identity/get')?.[1]?.list||[]
+  const boxes=(meta.methodResponses||[]).find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list||[]
+  const routedFrom=String(route.outbound_from).toLowerCase()
+  const identity=ids.find((x:any)=>String(x.email||'').toLowerCase()===routedFrom)
+  const drafts=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='drafts')
+  const sent=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='sent')
+  if(!identity?.id||!drafts?.id||!sent?.id)throw new Error('Stalwart identity or mailboxes unavailable')
+  const label=eventType==='viewed'?'Viewed':eventType==='declined'?'Declined':'Updated'
+  const subject=label+': '+String(doc.title||'Signature request')
+  const html='<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>'+label+' signature request</h2><p><strong>'+String(doc.firm_name||'Office')+'</strong> - '+String(doc.title||'Agreement')+'</p><p>Signer: '+String(doc.signer_name||doc.signer_email||'Signer')+'</p>'+(detail?'<p>'+detail+'</p>':'')+'<p>Envelope ID: '+String(doc.id)+'</p></div>'
+  const bodyId='body'
+  const sendRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+    methodCalls:[
+      ['Email/set',{accountId,create:{draft:{from:[{email:routedFrom,name:String(route.display_name||'RomyLabs')}],to:[{email:routedFrom}],subject,mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},bodyValues:{[bodyId]:{value:html,charset:'utf-8'}},htmlBody:[{partId:bodyId,type:'text/html'}]}}},'e0'],
+      ['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sent.id]:true,'keywords/$draft':null}}},'s0']
+    ]
+  })})
+  if(!sendRes.ok)throw new Error('Stalwart lifecycle send failed')
+  const sentBody=await sendRes.json()
+  const sub=(sentBody.methodResponses||[]).find((x:any)=>x?.[0]==='EmailSubmission/set')?.[1]
+  const submissionId=sub?.created?.sendIt?.id
+  if(!submissionId)throw new Error('Stalwart lifecycle submission not confirmed')
+  const stamp=new Date().toISOString()
+  await admin.from('emails').insert({
+    tenant_id:route.tenant_id,recipient:routedFrom,recipients:[routedFrom],subject,
+    body:html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),body_html:html,
+    triage:'Sent',status:'Sent',direction:'outbound',is_read:true,sender:routedFrom,from_address:routedFrom,reply_from:routedFrom,
+    mailbox_owner:String(route.inbox_owner||'info@romylabs.com'),received_at:stamp,created_at:stamp,product_id:doc.product_key,
+    message_id:'stalwart:'+String(submissionId),received_mailbox:routedFrom,route_id:route.id
+  })
+  return {submissionId:String(submissionId),recipient:routedFrom,from:routedFrom}
 }
 
 serve(async(req)=>{
@@ -147,6 +208,13 @@ serve(async(req)=>{
           await admin.from('romylabs_office_signing_documents').update({status:'viewed',opened_at:openedAt,updated_at:openedAt,audit}).eq('id',doc.id).eq('status','sent')
           if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'viewed',opened_at:openedAt,updated_at:openedAt}).eq('id',recipient.id)
           await appendEvent(admin,doc.id,'viewed',{recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),occurredAt:openedAt})
+          try{
+            const notice=await sendOwnerLifecycleNotice(admin,doc,'viewed')
+            await appendEvent(admin,doc.id,'owner_viewed_notification_sent',{metadata:{submission_id:notice.submissionId,from:notice.from},occurredAt:new Date().toISOString()})
+          }catch(notifyError){
+            console.error('[office-agreement-file] viewed notification failed',notifyError)
+            await appendEvent(admin,doc.id,'owner_viewed_notification_failed',{metadata:{error:String((notifyError as Error)?.message||notifyError).slice(0,240)}})
+          }
         }
         const path=doc.status==='signed'&&doc.signed_path?doc.signed_path:doc.source_path
         const {data:u,error:ue}=await admin.storage.from(ESIGN_BUCKET).createSignedUrl(path,600)
@@ -163,6 +231,13 @@ serve(async(req)=>{
         await admin.from('romylabs_office_signing_documents').update({status:'declined',declined_at:declinedAt,decline_reason:reason,updated_at:declinedAt,audit}).eq('id',doc.id).in('status',['sent','viewed'])
         if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'declined',declined_at:declinedAt,decline_reason:reason,updated_at:declinedAt}).eq('id',recipient.id)
         await appendEvent(admin,doc.id,'declined',{recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{reason},occurredAt:declinedAt})
+        try{
+          const notice=await sendOwnerLifecycleNotice(admin,doc,'declined','Reason: '+reason)
+          await appendEvent(admin,doc.id,'owner_declined_notification_sent',{metadata:{submission_id:notice.submissionId,from:notice.from},occurredAt:new Date().toISOString()})
+        }catch(notifyError){
+          console.error('[office-agreement-file] declined notification failed',notifyError)
+          await appendEvent(admin,doc.id,'owner_declined_notification_failed',{metadata:{error:String((notifyError as Error)?.message||notifyError).slice(0,240)}})
+        }
         return json({ok:true,declined_at:declinedAt})
       }
 
@@ -267,18 +342,28 @@ serve(async(req)=>{
       if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'completed',completed_at:now,updated_at:now}).eq('id',recipient.id)
       await appendEvent(admin,doc.id,'completed',{recipientId:recipient?.id,actorEmail:doc.signer_email,actorName:signatureName,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{source_sha256:sourceHash,signed_sha256:signedHash,certificate_sha256:certificateHash,signature_mode:signatureMode},occurredAt:now})
 
-      let ownerCopy:any=null
+      let ownerCopy:any=null,signerCopy:any=null
       try{
-        ownerCopy=await sendSignedOwnerCopy(admin,doc,finalBytes)
-        const latestAudit=[...audit,{event:'owner_signed_copy_sent',at:new Date().toISOString(),recipient:ownerCopy.recipient,from:ownerCopy.from,submission_id:ownerCopy.submissionId}]
-        await admin.from('romylabs_office_signing_documents').update({audit:latestAudit,updated_at:new Date().toISOString()}).eq('id',doc.id)
+        ownerCopy=await sendSignedCopy(admin,doc,finalBytes)
+        await appendEvent(admin,doc.id,'owner_signed_copy_sent',{metadata:{recipient:ownerCopy.recipient,submission_id:ownerCopy.submissionId,from:ownerCopy.from},occurredAt:new Date().toISOString()})
       }catch(notificationError){
-        const latestAudit=[...audit,{event:'owner_signed_copy_failed',at:new Date().toISOString(),error:String((notificationError as Error)?.message||notificationError).slice(0,240)}]
-        await admin.from('romylabs_office_signing_documents').update({audit:latestAudit,updated_at:new Date().toISOString()}).eq('id',doc.id)
         console.error('[office-agreement-file] signed owner copy failed',notificationError)
+        await appendEvent(admin,doc.id,'owner_signed_copy_failed',{metadata:{error:String((notificationError as Error)?.message||notificationError).slice(0,240)}})
       }
+      try{
+        signerCopy=await sendSignedCopy(admin,doc,finalBytes,String(doc.signer_email))
+        await appendEvent(admin,doc.id,'signer_signed_copy_sent',{metadata:{recipient:signerCopy.recipient,submission_id:signerCopy.submissionId,from:signerCopy.from},occurredAt:new Date().toISOString()})
+      }catch(notificationError){
+        console.error('[office-agreement-file] signed signer copy failed',notificationError)
+        await appendEvent(admin,doc.id,'signer_signed_copy_failed',{metadata:{error:String((notificationError as Error)?.message||notificationError).slice(0,240)}})
+      }
+      const latestAudit=[...audit,
+        {event:ownerCopy?'owner_signed_copy_sent':'owner_signed_copy_failed',at:new Date().toISOString(),recipient:ownerCopy?.recipient||null,from:ownerCopy?.from||null,submission_id:ownerCopy?.submissionId||null},
+        {event:signerCopy?'signer_signed_copy_sent':'signer_signed_copy_failed',at:new Date().toISOString(),recipient:signerCopy?.recipient||String(doc.signer_email||''),from:signerCopy?.from||null,submission_id:signerCopy?.submissionId||null}
+      ]
+      await admin.from('romylabs_office_signing_documents').update({audit:latestAudit,updated_at:new Date().toISOString()}).eq('id',doc.id)
 
-      return json({ok:true,signed_at:now,owner_copy_sent:!!ownerCopy,owner_copy_recipient:ownerCopy?.recipient||null})
+      return json({ok:true,signed_at:now,owner_copy_sent:!!ownerCopy,owner_copy_recipient:ownerCopy?.recipient||null,signer_copy_sent:!!signerCopy})
     }
 
     // All management actions below require a real authenticated platform-admin JWT.
