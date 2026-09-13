@@ -90,6 +90,7 @@ for (const uiNeedle of [
   "brand_color: r.brand_color || '#2563EB'",
   "'Transactions'",
   'metrics.total_clients ?? metrics.active_clients',
+  'if (!offices.length) {',
 ]) {
   if (!s.includes(uiNeedle)) throw new Error(`Admin usage accuracy verification failed: ${uiNeedle}`)
 }
