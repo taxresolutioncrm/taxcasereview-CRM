@@ -4,7 +4,7 @@ import UniversalOfficeESign from '../components/admin/UniversalOfficeESign'
 
 // Universal RomyLabs contract-signing workspace. Office rows come from the shared registry,
 // so newly registered product offices automatically become available here.
-const PRODUCT_LABEL={taxres_crm:'TaxRes CRM',camvella:'Camvella',arcvena:'Arcvena',bocasync:'BocaSync',groundivo:'GroundIVO',oculivo:'Oculivo'}
+const PRODUCT_LABEL={taxres_crm:'TaxRes CRM',camvella:'Camvella',arcvena:'Arcvena',bocasync:'BocaSync',groundivo:'Groundivo',oculivo:'Oculivo',restore_relay:'RestoreRelay'}
 
 export default function ESignaturesHub(){
   const [offices,setOffices]=useState([])
@@ -17,6 +17,13 @@ export default function ESignaturesHub(){
     let dead=false
     ;(async()=>{
       setLoading(true);setError('')
+      // Refresh live product offices first. Failure of one product must not block
+      // access to already-registered offices.
+      try{
+        const {data:syncData,error:syncError}=await supabase.functions.invoke('sync-product-offices',{body:{}})
+        if(syncError)console.warn('Office registry sync failed',syncError)
+        else if(syncData?.results?.some?.(r=>r?.ok===false))console.warn('Partial office registry sync',syncData.results)
+      }catch(syncErr){console.warn('Office registry sync unavailable',syncErr)}
       const {data,error:e}=await supabase.rpc('admin_romylabs_office_registry')
       if(dead)return
       if(e){setError(e.message);setOffices([])}
