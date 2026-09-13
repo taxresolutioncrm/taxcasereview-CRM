@@ -122,7 +122,11 @@ async function loadPlatformOfficeRows() {
   if (taxresError) throw taxresError
   if (billingError) throw billingError
 
-  const rows = [...(taxresRows || [])]
+  const rows = (taxresRows || []).map(r => ({
+    ...r,
+    product: r.product || 'taxres_crm',
+    brand_color: r.brand_color || '#2563EB',
+  }))
   const billingByOffice = new Map(
     (Array.isArray(billingData) ? billingData : []).map(b => [
       `${b.product_key}:${b.external_tenant_id}`,
@@ -135,6 +139,37 @@ async function loadPlatformOfficeRows() {
   const warnings = []
   const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
   const seen = new Set(rows.map(r => `taxres_crm:${r.id}`))
+
+  // Overlay each known TaxRes tenant with the same authenticated platform-metrics
+  // feed used by the CRM drilldown. admin_tenant_overview remains the directory/
+  // billing source, while platform-metrics owns usage counts and tenant storage.
+  const taxResTenantFeeds = [
+    { key:'tax_case_review', name:'Tax Case Review' },
+    { key:'nashville', name:'Nashville Tax Solutions' },
+    { key:'cloudcpa', name:'CloudCPA Inc' },
+  ]
+  const tenantFeedResults = await Promise.all(taxResTenantFeeds.map(async feed => {
+    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
+    return { ...feed, ...response }
+  }))
+  for (const result of tenantFeedResults) {
+    if (result.error || result.data?.ok === false) {
+      warnings.push(`${result.name} usage feed unavailable`)
+      continue
+    }
+    const metrics = result.data?.metrics || {}
+    const idx = rows.findIndex(r => String(r.firm_name || '').trim().toLowerCase() === result.name.toLowerCase())
+    if (idx < 0) continue
+    rows[idx] = {
+      ...rows[idx],
+      client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
+      lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
+      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      cases_count:Number(metrics.open_jobs ?? rows[idx].cases_count ?? 0),
+      tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
+      storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
+    }
+  }
 
   // Central registry is the fallback/source of truth for offices already registered with RomyLabs.
   if (!registryError && Array.isArray(registryData)) {
@@ -227,10 +262,14 @@ async function loadPlatformOfficeRows() {
     }
 
     const metrics = result.data?.metrics || {}
-    externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
-    externalMetrics.active_clients += Number(metrics.active_clients || 0)
-    externalMetrics.active_leads += Number(metrics.active_leads || 0)
-    externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
+    // Avoid double-counting product metrics that are already represented by office rows.
+    // Only carry aggregate metrics separately when the product feed has no office breakdown.
+    if (!offices.length) {
+      externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
+      externalMetrics.active_clients += Number(metrics.total_clients || metrics.active_clients || 0)
+      externalMetrics.active_leads += Number(metrics.total_leads || metrics.active_leads || 0)
+      externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
+    }
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
   }
 
@@ -593,7 +632,7 @@ function Overview() {
 
   const totalMRR     = (stats||[]).reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = (stats||[]).filter(r => r.status==='active').length
-  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.employee_count||0), 0) + externalMetrics.active_staff
+  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.billing_seats ?? r.employee_count ?? 0), 0) + externalMetrics.active_staff
   const totalClients = (stats||[]).reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
   const totalLeads   = (stats||[]).reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
   const totalStorage = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
@@ -639,12 +678,12 @@ function Overview() {
       <div style={S.card}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
           <thead>
-            <tr>{['Firm','Status','Plan','Seats','Clients','Storage','Collected','MRR','Last Activity',''].map(h=>(
+            <tr>{['Firm','Status','Plan','Seats / Staff','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map(h=>(
               <th key={h} style={S.th}>{h}</th>
             ))}</tr>
           </thead>
           <tbody>
-            {!stats ? <tr><td colSpan={9}><Spinner /></td></tr> :
+            {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
             stats.map(r => (
               <tr key={r.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/crm-admin/offices/${r.id}`)}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
@@ -653,8 +692,10 @@ function Overview() {
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{r.employee_count}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.billing_seats != null ? (Number(r.billing_seats).toLocaleString() + ' / ' + Number(r.employee_count||0).toLocaleString()) : Number(r.employee_count||0).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.client_count||0).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.cases_count||0).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.transactions_count||0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{fmtBytes(r.storage_bytes)}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected ? `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}` : '—'}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:700 }}>
@@ -4334,7 +4375,7 @@ function CommandCenter() {
       if (error) { setGa4EnabledProducts([]); setGa4LiveProducts([]); return }
       const rows = data || []
       setGa4EnabledProducts(rows.filter(r => r.tracking_id && ['configured','live'].includes(r.status)).map(r => r.product_id))
-      setGa4LiveProducts(rows.filter(r => ['configured','live'].includes(r.status)).map(r => r.product_id))
+      setGa4LiveProducts(rows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id))
     })
     supabase.from('product_traffic_channels')
       .select('product_id,status,tracking_id,destination_url,last_verified_at,notes')
@@ -4385,7 +4426,7 @@ function CommandCenter() {
     setCrmRemoteError('')
     if (crmProduct === 'taxres_crm') { setCrmRemoteData(null); return }
     const product = PRODUCT_REGISTRY.find(p => p.key === crmProduct && !p.isTenant)
-    if (!product?.metricsUrl) { setCrmRemoteData(null); return }
+    if (!product) { setCrmRemoteData(null); return }
     let cancelled = false
     setCrmRemoteLoading(true)
     fetchCrmProductMetrics(crmProduct)
@@ -4397,16 +4438,28 @@ function CommandCenter() {
 
   React.useEffect(() => {
     setCrmAccountMetrics(null)
-    if (crmProduct !== 'taxres_crm' || !String(crmAccount).startsWith('registry:')) return
-    const key = String(crmAccount).slice('registry:'.length)
+    if (crmProduct !== 'taxres_crm' || crmAccount === 'all') return
+
+    let key = null
+    if (String(crmAccount).startsWith('registry:')) {
+      key = String(crmAccount).slice('registry:'.length)
+    } else {
+      const selectedLocal = (data?.tenants || []).find(t => String(t.id) === String(crmAccount))
+      const selectedName = String(selectedLocal?.firm_name || '').trim().toLowerCase()
+      key = PRODUCT_REGISTRY.find(p =>
+        p.isTenant && String(p.label || '').trim().toLowerCase() === selectedName
+      )?.key || null
+    }
+
     const tenantProduct = PRODUCT_REGISTRY.find(p => p.isTenant && p.key === key)
-    if (!tenantProduct?.metricsUrl) return
+    if (!key || !tenantProduct) return
+
     let cancelled = false
     fetchCrmProductMetrics(key)
       .then(body => { if (!cancelled) setCrmAccountMetrics(body) })
       .catch(err => { if (!cancelled) setCrmRemoteError(String(err?.message || err)) })
     return () => { cancelled = true }
-  }, [crmProduct, crmAccount, fetchCrmProductMetrics])
+  }, [crmProduct, crmAccount, data?.tenants, fetchCrmProductMetrics])
 
   // ── GSC state + fetch ──
   const [gscData, setGscData]         = useState(null)
@@ -5106,6 +5159,8 @@ function CommandCenter() {
               <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Bing Webmaster Tools</div>
               {bingConnected
                 ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(16,185,129,.15)', color:'#10b981', marginLeft:'auto' }}>✅ Connected</span>
+                : bingData?.error === 'bing_site_not_verified'
+                ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(245,158,11,.15)', color:'#f59e0b', marginLeft:'auto' }}>Pending verification</span>
                 : <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(100,116,139,.15)', color:'#64748b', marginLeft:'auto' }}>Not connected</span>
               }
             </div>
@@ -5141,7 +5196,13 @@ function CommandCenter() {
               <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>Last 28 days · {bingData.siteUrl}</div>
             </>) : (
               <div style={{ fontSize:12, color:'#475569' }}>
-                {bingData === null ? 'Checking connection…' : 'API key configured — no data yet or site not yet indexed by Bing.'}
+                {bingData === null
+                  ? 'Checking connection…'
+                  : bingData?.error === 'bing_site_not_verified'
+                  ? (bingData?.message || 'Domain is configured but still pending verification in Bing Webmaster Tools.')
+                  : bingData?.error === 'request_failed'
+                  ? 'Bing reporting request failed. No traffic conclusion can be drawn from this state.'
+                  : (bingData?.message || 'Bing reporting is not connected for this product.')}
               </div>
             )}
           </div>
@@ -5173,7 +5234,7 @@ function CommandCenter() {
             const crmTenants = crmProduct === 'taxres_crm' ? mergedTaxRes : remoteOffices
             const activeTenant = crmAccount === 'all' ? null : crmTenants.find(t=>String(t.id)===String(crmAccount))
             const productMetrics = crmProduct === 'taxres_crm' ? null : (crmRemoteData?.metrics || {})
-            const selectedMetrics = activeTenant?.registryOnly ? (crmAccountMetrics?.metrics || {}) : null
+            const selectedMetrics = activeTenant && crmAccountMetrics?.metrics ? crmAccountMetrics.metrics : null
             const metricValue = (tenantKey, productKey, taxresFallback) => {
               if (selectedMetrics) return selectedMetrics[productKey] ?? '—'
               if (activeTenant) return activeTenant[tenantKey] ?? '—'

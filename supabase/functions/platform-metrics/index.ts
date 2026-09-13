@@ -24,20 +24,61 @@ Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   try {
     const now = new Date()
-    const tenantView = async (tenantId:string, product:string, label:string, mrr:number) => {
-      const [{ count: clientCount },{ count: leadCount },{ count: taskCount },{ data: docs },{ data: recentActivity },{ data: employees }] = await Promise.all([
+    const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number) => {
+      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: tenantStorage },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
+        supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
-        supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('status','pending'),
+        supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
+        supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('done',false).or('deleted.is.null,deleted.eq.false'),
+        supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
+        supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId}),
         supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(5),
-        supabase.from('employees').select('id').eq('tenant_id',tenantId).eq('is_active',true),
+        supabase.from('employees').select('id').eq('tenant_id',tenantId).ilike('status','active'),
+        supabase.from('tenants').select('monthly_rate,per_seat_rate,billing_seats').eq('id',tenantId).maybeSingle(),
       ])
-      const totalStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
-      return {ok:true,product,product_label:label,fetched_at:now.toISOString(),metrics:{mrr,arr:mrr*12,active_clients:clientCount||0,active_leads:leadCount||0,pending_tasks:taskCount||0,storage_bytes:totalStorage,active_offices:1,total_offices:1,active_users:(employees||[]).length},offices:[{id:tenantId,name:label,is_active:true,mrr}],recent_activity:(recentActivity||[]).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))}
+      const documentStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
+      const totalStorage=Number(tenantStorage ?? documentStorage ?? 0)
+      const staffCount=(employees||[]).length
+      const computedMrr=Number(tenant?.monthly_rate || 0)
+        || (Number(tenant?.per_seat_rate || 0) * Number(tenant?.billing_seats || 0))
+        || mrrFallback
+      return {
+        ok:true,product,product_label:label,fetched_at:now.toISOString(),
+        metrics:{
+          mrr:computedMrr,arr:computedMrr*12,
+          total_clients:totalClientCount||0,
+          active_clients:activeClientCount||0,
+          total_leads:totalLeadCount||0,
+          active_leads:activeLeadCount||0,
+          active_staff:staffCount,
+          active_users:staffCount,
+          open_jobs:caseCount||0,
+          pending_tasks:taskCount||0,
+          storage_bytes:totalStorage,
+          active_offices:1,total_offices:1
+        },
+        offices:[{
+          id:tenantId,name:label,is_active:true,mrr:computedMrr,
+          total_clients:totalClientCount||0,
+          active_clients:activeClientCount||0,
+          client_count:totalClientCount||0,
+          total_leads:totalLeadCount||0,
+          active_leads:activeLeadCount||0,
+          lead_count:totalLeadCount||0,
+          active_staff:staffCount,
+          employee_count:staffCount,
+          open_jobs:caseCount||0,
+          job_count:caseCount||0,
+          pending_tasks:taskCount||0,
+          storage_bytes:totalStorage
+        }],
+        recent_activity:(recentActivity||[]).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))
+      }
     }
     if(view==='tcr') return new Response(JSON.stringify(await tenantView(TCR_TENANT_ID,'tax_case_review','Tax Case Review',0)),{headers:{...cors,'Content-Type':'application/json'}})
-    if(view==='nash') return new Response(JSON.stringify(await tenantView(NASH_TENANT_ID,'nashville','Nashville Tax Solutions',1625)),{headers:{...cors,'Content-Type':'application/json'}})
+    if(view==='nash') return new Response(JSON.stringify(await tenantView(NASH_TENANT_ID,'nashville','Nashville Tax Solutions',0)),{headers:{...cors,'Content-Type':'application/json'}})
     if(view==='cloudcpa') return new Response(JSON.stringify(await tenantView('ecd3d3ce-016a-4bb4-800e-f090f51e4cae','cloudcpa','CloudCPA Inc',0)),{headers:{...cors,'Content-Type':'application/json'}})
 
     const {data:tenants}=await supabase.from('tenants').select('id,firm_name,tenant_code,monthly_rate,created_at').not('tenant_code','in',`(${ADMIN_CODE},${TCR_CODE},${DEMO_CODE})`).neq('id',NASH_TENANT_ID)
@@ -46,7 +87,7 @@ Deno.serve(async (req) => {
     const [{count:clientCount},{count:leadCount},{count:taskCount},{data:docs},{data:recentActivity},{data:employees}] = await Promise.all([
       scoped(supabase.from('clients').select('*',{count:'exact',head:true})),
       scoped(supabase.from('leads').select('*',{count:'exact',head:true})),
-      scoped(supabase.from('tasks').select('*',{count:'exact',head:true}).eq('status','pending')),
+      scoped(supabase.from('tasks').select('*',{count:'exact',head:true}).eq('done',false).or('deleted.is.null,deleted.eq.false')),
       scoped(supabase.from('documents').select('file_size')),
       scoped(supabase.from('activity_log').select('description,created_at,employee_email')).order('created_at',{ascending:false}).limit(5),
       scoped(supabase.from('employees').select('id')).limit(200)
