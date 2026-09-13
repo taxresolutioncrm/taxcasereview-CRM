@@ -52,10 +52,19 @@ async function fetchProduct(product:string,userJwt:string|null){
     headers['x-hub-secret']=s
   }else{
     const envKey=SUPPORT_SECRET_ENV[product]
-    const s=envKey?Deno.env.get(envKey)||'':''
-    if(!s)return {ok:false,error:(envKey||'support secret')+' missing'}
-    if(product==='arcvena')headers['x-arcvena-support-secret']=s
-    else headers['x-romylabs-support-secret']=s
+    const productSecret=envKey?Deno.env.get(envKey)||'':''
+    const hubSecret=Deno.env.get('HUB_METRICS_SECRET')||''
+    if(product==='arcvena'){
+      const s=productSecret||hubSecret
+      if(!s)return {ok:false,error:'Arcvena metrics credential missing'}
+      if(productSecret)headers['x-arcvena-support-secret']=productSecret
+      else headers['x-hub-secret']=hubSecret
+    }else{
+      const s=productSecret||hubSecret
+      if(!s)return {ok:false,error:(envKey||'metrics credential')+' missing'}
+      if(productSecret)headers['x-romylabs-support-secret']=productSecret
+      else headers['x-hub-secret']=hubSecret
+    }
   }
   try{
     const res=await fetch(ENDPOINTS[product],{method:'GET',headers})
