@@ -24,22 +24,29 @@ Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   try {
     const now = new Date()
-    const tenantView = async (tenantId:string, product:string, label:string, mrr:number) => {
-      const [{ count: clientCount },{ count: leadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: recentActivity },{ data: employees }] = await Promise.all([
+    const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number) => {
+      const [{ count: clientCount },{ count: leadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: storageObjects },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('done',false).or('deleted.is.null,deleted.eq.false'),
         supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
+        supabase.schema('storage').from('objects').select('metadata').ilike('name',`%${tenantId}%`),
         supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(5),
         supabase.from('employees').select('id').eq('tenant_id',tenantId).ilike('status','active'),
+        supabase.from('tenants').select('monthly_rate,per_seat_rate,billing_seats').eq('id',tenantId).maybeSingle(),
       ])
-      const totalStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
+      const trackedDocumentStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
+      const objectStorage=(storageObjects||[]).reduce((s:number,o:any)=>s+Number(o?.metadata?.size||0),0)
+      const totalStorage=objectStorage > 0 ? objectStorage : trackedDocumentStorage
       const staffCount=(employees||[]).length
+      const computedMrr=Number(tenant?.monthly_rate || 0)
+        || (Number(tenant?.per_seat_rate || 0) * Number(tenant?.billing_seats || 0))
+        || mrrFallback
       return {
         ok:true,product,product_label:label,fetched_at:now.toISOString(),
         metrics:{
-          mrr,arr:mrr*12,
+          mrr:computedMrr,arr:computedMrr*12,
           active_clients:clientCount||0,
           active_leads:leadCount||0,
           active_staff:staffCount,
@@ -50,7 +57,7 @@ Deno.serve(async (req) => {
           active_offices:1,total_offices:1
         },
         offices:[{
-          id:tenantId,name:label,is_active:true,mrr,
+          id:tenantId,name:label,is_active:true,mrr:computedMrr,
           active_clients:clientCount||0,
           client_count:clientCount||0,
           active_leads:leadCount||0,
