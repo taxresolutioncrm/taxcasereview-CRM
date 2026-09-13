@@ -324,14 +324,16 @@ serve(async (req) => {
       if (routeError) return new Response(JSON.stringify({ error:'Contract mailbox route lookup failed' }), { status:500, headers:{...corsHeaders,'Content-Type':'application/json'} })
 
       const routeList=Array.isArray(routes)?routes:[]
-      const route=routeList.find((r:any)=>safe(r.outbound_from).toLowerCase().startsWith('romy@'))
+      let route=routeList.find((r:any)=>safe(r.outbound_from).toLowerCase().startsWith('romy@'))||routeList[0]
       if (!route) {
-        return new Response(JSON.stringify({ error:`No primary RomyLabs sender is registered for ${requestedProduct}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        return new Response(JSON.stringify({ error:`No active RomyLabs sender is registered for ${requestedProduct}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
       }
-      const routedFrom=safe(route.outbound_from).toLowerCase()
+      let routedFrom=safe(route.outbound_from).toLowerCase()
 
-      // Prefer the encrypted product Stalwart credential in Vault. Exact legacy
-      // settings remain a back-compat path only for products not yet mirrored there.
+      // Prefer the encrypted product Stalwart credential in Vault. The credential
+      // resolver also identifies which active mailbox route belongs to that login.
+      // This allows products whose real Stalwart identity is info@ or support@
+      // without weakening same-domain routing.
       let transport:any=null
       const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:requestedProduct})
       if (vaultTransport?.ok) {
@@ -342,6 +344,13 @@ serve(async (req) => {
           username:safe(vaultTransport.username),
           password:String(vaultTransport.password||''),
         }
+        const resolvedFrom=safe(vaultTransport.from_address||vaultTransport.username).toLowerCase()
+        const credentialRoute=routeList.find((r:any)=>safe(r.outbound_from).toLowerCase()===resolvedFrom)
+        if (!credentialRoute) {
+          return new Response(JSON.stringify({ error:`No active mailbox route matches the Stalwart credential for ${requestedProduct}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        }
+        route=credentialRoute
+        routedFrom=safe(route.outbound_from).toLowerCase()
       } else {
         const { data: smtpSettings } = await admin.from('settings')
           .select('smtp_host,smtp_port,smtp_email,smtp_password,smtp_encryption')
@@ -357,7 +366,7 @@ serve(async (req) => {
         }
       }
       if (!transport?.username || !transport?.password) {
-        return new Response(JSON.stringify({ error:`Stalwart credential is not available to the Admin Portal for ${routedFrom}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        return new Response(JSON.stringify({ error:`Stalwart credential is not available to the Admin Portal for ${requestedProduct}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
       }
 
       const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
