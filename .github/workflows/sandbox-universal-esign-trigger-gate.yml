@@ -1,0 +1,30 @@
+name: Sandbox Universal E-Sign Trigger Gate
+
+on:
+  push:
+    branches:
+      - sandbox/universal-esign-notification-triggers-20260913
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Full app build
+        run: |
+          npm run build
+          git diff --exit-code -- . ':!package-lock.json'
+      - name: Parse changed Edge Functions
+        run: |
+          npx --yes esbuild supabase/functions/esign-reminders/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/esign-reminders.js
+          npx --yes esbuild supabase/functions/office-agreement-file/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/office-agreement-file.js
