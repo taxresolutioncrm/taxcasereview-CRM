@@ -169,8 +169,12 @@ serve(async(req)=>{
       if(doc.status==='signed')return json({ok:true,already_signed:true,signed_at:doc.signed_at})
       if(!['sent','viewed'].includes(doc.status))return json({error:'Document is not available for signing'},409)
       const signatureName=String(b.signature_name||'').trim()
+      const signatureMode=String(b.signature_mode||'type').toLowerCase()==='draw'?'draw':'type'
+      const signatureDataUrl=String(b.signature_data_url||'')
       const values=b.values&&typeof b.values==='object'?b.values:{}
       if(!signatureName)return json({error:'Signature name is required'},400)
+      if(signatureMode==='draw'&&!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(signatureDataUrl))return json({error:'A drawn PNG signature is required'},400)
+      if(signatureMode==='draw'&&signatureDataUrl.length>2_500_000)return json({error:'Drawn signature is too large'},413)
       if(b.consent!==true)return json({error:'Electronic signature consent is required'},400)
       const fields=Array.isArray(doc.fields)?doc.fields:[]
       for(const f of fields){
@@ -184,6 +188,12 @@ serve(async(req)=>{
       const pdf=await PDFDocument.load(sourceBytes)
       const regular=await pdf.embedFont(StandardFonts.Helvetica)
       const oblique=await pdf.embedFont(StandardFonts.HelveticaOblique)
+      let signatureImage:any=null
+      if(signatureMode==='draw'){
+        const b64=signatureDataUrl.split(',')[1]||''
+        const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0))
+        signatureImage=await pdf.embedPng(bytes)
+      }
       const pages=pdf.getPages()
       for(const f of fields){
         const page=pages[Math.max(0,Math.min(pages.length-1,Number(f.page||1)-1))]
@@ -195,6 +205,13 @@ serve(async(req)=>{
         const top=Math.max(0,Math.min(1,Number(f.y||0)))*height
         const y=Math.max(3,height-top-boxH+Math.min(3,boxH*.1))
         let text=String(values[f.id]??'').trim()
+        if(f.type==='signature'&&signatureMode==='draw'&&signatureImage){
+          const scale=Math.min((boxW-6)/signatureImage.width,(boxH-4)/signatureImage.height)
+          const drawW=Math.max(8,signatureImage.width*scale)
+          const drawH=Math.max(6,signatureImage.height*scale)
+          page.drawImage(signatureImage,{x:x+3,y:y+Math.max(0,(boxH-drawH)/2),width:drawW,height:drawH})
+          continue
+        }
         if(f.type==='signature')text=signatureName
         if(f.type==='initials'&&!text)text=signatureName.split(/\s+/).filter(Boolean).map((p:string)=>p[0]).join('').slice(0,4).toUpperCase()
         if(f.type==='date')text=new Date().toLocaleDateString('en-US',{timeZone:'America/New_York'})
@@ -208,7 +225,7 @@ serve(async(req)=>{
       const {error:up}=await admin.storage.from(ESIGN_BUCKET).upload(signedPath,finalBytes,{contentType:'application/pdf',upsert:false})
       if(up)return json({error:'Could not save signed document: '+up.message},500)
       const now=new Date().toISOString()
-      const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'signed',at:now,signer:signatureName,email:doc.signer_email,consent_to_esign:true,ip:ip(req),user_agent:req.headers.get('user-agent')}]
+      const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'signed',at:now,signer:signatureName,email:doc.signer_email,signature_mode:signatureMode,consent_to_esign:true,ip:ip(req),user_agent:req.headers.get('user-agent')}]
       const certificate=await PDFDocument.create()
       const cp=certificate.addPage([612,792])
       const cf=await certificate.embedFont(StandardFonts.Helvetica)
@@ -222,6 +239,7 @@ serve(async(req)=>{
       line('Office: '+String(doc.firm_name||''),false,10)
       line('Signer: '+signatureName,false,10)
       line('Signer Email: '+String(doc.signer_email||''),false,10)
+      line('Signature Method: '+(signatureMode==='draw'?'Drawn signature':'Typed signature'),false,10)
       line('Completed At: '+now,false,10)
       line('IP Address: '+String(ip(req)||'Unavailable'),false,10)
       line('User Agent: '+String(req.headers.get('user-agent')||'Unavailable').slice(0,120),false,9)
@@ -241,12 +259,13 @@ serve(async(req)=>{
         status:'signed',signed_path:signedPath,signed_at:now,completed_at:now,
         signature_name:signatureName,signer_ip:ip(req),signer_user_agent:req.headers.get('user-agent'),
         source_sha256:sourceHash,signed_sha256:signedHash,certificate_path:certificatePath,certificate_sha256:certificateHash,
+        envelope_settings:{...(doc.envelope_settings&&typeof doc.envelope_settings==='object'?doc.envelope_settings:{}),signature_method:signatureMode},
         audit,updated_at:now
       }).eq('id',doc.id).in('status',['sent','viewed']).select('id').maybeSingle()
       if(upd){await admin.storage.from(ESIGN_BUCKET).remove([signedPath]);return json({error:'Could not finalize signature'},500)}
       if(!updated){await admin.storage.from(ESIGN_BUCKET).remove([signedPath,certificatePath]);return json({error:'This document was already signed or is no longer signable'},409)}
       if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'completed',completed_at:now,updated_at:now}).eq('id',recipient.id)
-      await appendEvent(admin,doc.id,'completed',{recipientId:recipient?.id,actorEmail:doc.signer_email,actorName:signatureName,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{source_sha256:sourceHash,signed_sha256:signedHash,certificate_sha256:certificateHash},occurredAt:now})
+      await appendEvent(admin,doc.id,'completed',{recipientId:recipient?.id,actorEmail:doc.signer_email,actorName:signatureName,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{source_sha256:sourceHash,signed_sha256:signedHash,certificate_sha256:certificateHash,signature_mode:signatureMode},occurredAt:now})
 
       let ownerCopy:any=null
       try{
