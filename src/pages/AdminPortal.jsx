@@ -140,6 +140,37 @@ async function loadPlatformOfficeRows() {
   const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
   const seen = new Set(rows.map(r => `taxres_crm:${r.id}`))
 
+  // Overlay each known TaxRes tenant with the same authenticated platform-metrics
+  // feed used by the CRM drilldown. admin_tenant_overview remains the directory/
+  // billing source, while platform-metrics owns usage counts and tenant storage.
+  const taxResTenantFeeds = [
+    { key:'tax_case_review', name:'Tax Case Review' },
+    { key:'nashville', name:'Nashville Tax Solutions' },
+    { key:'cloudcpa', name:'CloudCPA Inc' },
+  ]
+  const tenantFeedResults = await Promise.all(taxResTenantFeeds.map(async feed => {
+    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
+    return { ...feed, ...response }
+  }))
+  for (const result of tenantFeedResults) {
+    if (result.error || result.data?.ok === false) {
+      warnings.push(`${result.name} usage feed unavailable`)
+      continue
+    }
+    const metrics = result.data?.metrics || {}
+    const idx = rows.findIndex(r => String(r.firm_name || '').trim().toLowerCase() === result.name.toLowerCase())
+    if (idx < 0) continue
+    rows[idx] = {
+      ...rows[idx],
+      client_count:Number(metrics.active_clients ?? rows[idx].client_count ?? 0),
+      lead_count:Number(metrics.active_leads ?? rows[idx].lead_count ?? 0),
+      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      cases_count:Number(metrics.open_jobs ?? rows[idx].cases_count ?? 0),
+      tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
+      storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
+    }
+  }
+
   // Central registry is the fallback/source of truth for offices already registered with RomyLabs.
   if (!registryError && Array.isArray(registryData)) {
     for (const office of registryData) {
@@ -643,12 +674,12 @@ function Overview() {
       <div style={S.card}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
           <thead>
-            <tr>{['Firm','Status','Plan','Seats','Clients','Storage','Collected','MRR','Last Activity',''].map(h=>(
+            <tr>{['Firm','Status','Plan','Seats','Clients','Cases','CRM Records','Storage','Collected','MRR','Last Activity',''].map(h=>(
               <th key={h} style={S.th}>{h}</th>
             ))}</tr>
           </thead>
           <tbody>
-            {!stats ? <tr><td colSpan={9}><Spinner /></td></tr> :
+            {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
             stats.map(r => (
               <tr key={r.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/crm-admin/offices/${r.id}`)}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
@@ -658,7 +689,9 @@ function Overview() {
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.employee_count}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.client_count||0).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.cases_count||0).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.transactions_count||0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{fmtBytes(r.storage_bytes)}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected ? `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}` : '—'}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:700 }}>
