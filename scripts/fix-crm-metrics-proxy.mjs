@@ -74,6 +74,7 @@ for (const requiredMetricFragment of [
   ".eq('done',false)",
   ".ilike('status','active')",
   "supabase.from('cases').select('*',{count:'exact',head:true})",
+  "supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId})",
   'const computedMrr=',
   'total_clients:totalClientCount||0',
   'active_clients:activeClientCount||0',
