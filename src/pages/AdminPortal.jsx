@@ -122,7 +122,11 @@ async function loadPlatformOfficeRows() {
   if (taxresError) throw taxresError
   if (billingError) throw billingError
 
-  const rows = [...(taxresRows || [])]
+  const rows = (taxresRows || []).map(r => ({
+    ...r,
+    product: r.product || 'taxres_crm',
+    brand_color: r.brand_color || '#2563EB',
+  }))
   const billingByOffice = new Map(
     (Array.isArray(billingData) ? billingData : []).map(b => [
       `${b.product_key}:${b.external_tenant_id}`,
@@ -4397,16 +4401,28 @@ function CommandCenter() {
 
   React.useEffect(() => {
     setCrmAccountMetrics(null)
-    if (crmProduct !== 'taxres_crm' || !String(crmAccount).startsWith('registry:')) return
-    const key = String(crmAccount).slice('registry:'.length)
+    if (crmProduct !== 'taxres_crm' || crmAccount === 'all') return
+
+    let key = null
+    if (String(crmAccount).startsWith('registry:')) {
+      key = String(crmAccount).slice('registry:'.length)
+    } else {
+      const selectedLocal = (data?.tenants || []).find(t => String(t.id) === String(crmAccount))
+      const selectedName = String(selectedLocal?.firm_name || '').trim().toLowerCase()
+      key = PRODUCT_REGISTRY.find(p =>
+        p.isTenant && String(p.label || '').trim().toLowerCase() === selectedName
+      )?.key || null
+    }
+
     const tenantProduct = PRODUCT_REGISTRY.find(p => p.isTenant && p.key === key)
-    if (!tenantProduct?.metricsUrl) return
+    if (!key || !tenantProduct?.metricsUrl) return
+
     let cancelled = false
     fetchCrmProductMetrics(key)
       .then(body => { if (!cancelled) setCrmAccountMetrics(body) })
       .catch(err => { if (!cancelled) setCrmRemoteError(String(err?.message || err)) })
     return () => { cancelled = true }
-  }, [crmProduct, crmAccount, fetchCrmProductMetrics])
+  }, [crmProduct, crmAccount, data?.tenants, fetchCrmProductMetrics])
 
   // ── GSC state + fetch ──
   const [gscData, setGscData]         = useState(null)
@@ -5181,7 +5197,7 @@ function CommandCenter() {
             const crmTenants = crmProduct === 'taxres_crm' ? mergedTaxRes : remoteOffices
             const activeTenant = crmAccount === 'all' ? null : crmTenants.find(t=>String(t.id)===String(crmAccount))
             const productMetrics = crmProduct === 'taxres_crm' ? null : (crmRemoteData?.metrics || {})
-            const selectedMetrics = activeTenant?.registryOnly ? (crmAccountMetrics?.metrics || {}) : null
+            const selectedMetrics = activeTenant && crmAccountMetrics?.metrics ? crmAccountMetrics.metrics : null
             const metricValue = (tenantKey, productKey, taxresFallback) => {
               if (selectedMetrics) return selectedMetrics[productKey] ?? '—'
               if (activeTenant) return activeTenant[tenantKey] ?? '—'
