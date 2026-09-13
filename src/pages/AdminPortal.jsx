@@ -632,7 +632,7 @@ function Overview() {
 
   const totalMRR     = (stats||[]).reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = (stats||[]).filter(r => r.status==='active').length
-  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.employee_count||0), 0) + externalMetrics.active_staff
+  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.billing_seats ?? r.employee_count ?? 0), 0) + externalMetrics.active_staff
   const totalClients = (stats||[]).reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
   const totalLeads   = (stats||[]).reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
   const totalStorage = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
@@ -678,7 +678,7 @@ function Overview() {
       <div style={S.card}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
           <thead>
-            <tr>{['Firm','Status','Plan','Seats','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map(h=>(
+            <tr>{['Firm','Status','Plan','Seats / Staff','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map(h=>(
               <th key={h} style={S.th}>{h}</th>
             ))}</tr>
           </thead>
@@ -692,7 +692,7 @@ function Overview() {
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{r.employee_count}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.billing_seats != null ? (Number(r.billing_seats).toLocaleString() + ' / ' + Number(r.employee_count||0).toLocaleString()) : Number(r.employee_count||0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.client_count||0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.cases_count||0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.transactions_count||0).toLocaleString()}</td>
