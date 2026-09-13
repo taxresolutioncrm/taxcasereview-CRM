@@ -365,8 +365,10 @@ serve(async (req) => {
 
       const deliveries:any[]=[]
       for (const recipient of recipients) {
-        await sendSmtpRaw({
-          ...transport,
+        const result=await sendViaStalwartJmap({
+          host:transport.host,
+          username:transport.username,
+          password:transport.password,
           fromAddress:routedFrom,
           fromName:safe(route.display_name||from_name||registeredOffice.firm_name||'RomyLabs'),
           to:recipient,
@@ -374,7 +376,7 @@ serve(async (req) => {
           html:html?String(html):undefined,
           text:text?String(text):undefined,
         })
-        deliveries.push({recipient,submissionId:`smtp-${crypto.randomUUID()}`})
+        deliveries.push({recipient,submissionId:result.submissionId})
       }
 
       await admin.from('emails').insert(deliveries.map((delivery:any)=>({
@@ -404,13 +406,13 @@ serve(async (req) => {
           const audit=Array.isArray(signDoc.audit)?signDoc.audit:[]
           await admin.from('romylabs_office_signing_documents').update({
             status:'sent',sent_at:now,updated_at:now,
-            audit:[...audit,{event:signDoc.sent_at?'resent':'sent',at:now,actor:safe(authenticatedUser?.email||'platform-admin'),transport:'smtp',from:routedFrom,submission_ids:deliveries.map((x:any)=>x.submissionId)}],
+            audit:[...audit,{event:signDoc.sent_at?'resent':'sent',at:now,actor:safe(authenticatedUser?.email||'platform-admin'),transport:'stalwart_jmap',from:routedFrom,submission_ids:deliveries.map((x:any)=>x.submissionId)}],
           }).eq('id',signDoc.id)
         }
       }
 
       return new Response(JSON.stringify({
-        success:true,via:'smtp',from:routedFrom,product_key:requestedProduct,
+        success:true,via:'stalwart_jmap',from:routedFrom,product_key:requestedProduct,
         external_office_id:externalOfficeId,submissions:deliveries.map((x:any)=>x.submissionId),
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
