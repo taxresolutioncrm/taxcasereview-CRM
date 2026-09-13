@@ -25,16 +25,45 @@ Deno.serve(async (req) => {
   try {
     const now = new Date()
     const tenantView = async (tenantId:string, product:string, label:string, mrr:number) => {
-      const [{ count: clientCount },{ count: leadCount },{ count: taskCount },{ data: docs },{ data: recentActivity },{ data: employees }] = await Promise.all([
-        supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
-        supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
-        supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('status','pending'),
+      const [{ count: clientCount },{ count: leadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: recentActivity },{ data: employees }] = await Promise.all([
+        supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
+        supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
+        supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('done',false).or('deleted.is.null,deleted.eq.false'),
+        supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
         supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(5),
-        supabase.from('employees').select('id').eq('tenant_id',tenantId).eq('is_active',true),
+        supabase.from('employees').select('id').eq('tenant_id',tenantId).ilike('status','active'),
       ])
       const totalStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
-      return {ok:true,product,product_label:label,fetched_at:now.toISOString(),metrics:{mrr,arr:mrr*12,active_clients:clientCount||0,active_leads:leadCount||0,pending_tasks:taskCount||0,storage_bytes:totalStorage,active_offices:1,total_offices:1,active_users:(employees||[]).length},offices:[{id:tenantId,name:label,is_active:true,mrr}],recent_activity:(recentActivity||[]).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))}
+      const staffCount=(employees||[]).length
+      return {
+        ok:true,product,product_label:label,fetched_at:now.toISOString(),
+        metrics:{
+          mrr,arr:mrr*12,
+          active_clients:clientCount||0,
+          active_leads:leadCount||0,
+          active_staff:staffCount,
+          active_users:staffCount,
+          open_jobs:caseCount||0,
+          pending_tasks:taskCount||0,
+          storage_bytes:totalStorage,
+          active_offices:1,total_offices:1
+        },
+        offices:[{
+          id:tenantId,name:label,is_active:true,mrr,
+          active_clients:clientCount||0,
+          client_count:clientCount||0,
+          active_leads:leadCount||0,
+          lead_count:leadCount||0,
+          active_staff:staffCount,
+          employee_count:staffCount,
+          open_jobs:caseCount||0,
+          job_count:caseCount||0,
+          pending_tasks:taskCount||0,
+          storage_bytes:totalStorage
+        }],
+        recent_activity:(recentActivity||[]).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))
+      }
     }
     if(view==='tcr') return new Response(JSON.stringify(await tenantView(TCR_TENANT_ID,'tax_case_review','Tax Case Review',0)),{headers:{...cors,'Content-Type':'application/json'}})
     if(view==='nash') return new Response(JSON.stringify(await tenantView(NASH_TENANT_ID,'nashville','Nashville Tax Solutions',1625)),{headers:{...cors,'Content-Type':'application/json'}})
@@ -46,7 +75,7 @@ Deno.serve(async (req) => {
     const [{count:clientCount},{count:leadCount},{count:taskCount},{data:docs},{data:recentActivity},{data:employees}] = await Promise.all([
       scoped(supabase.from('clients').select('*',{count:'exact',head:true})),
       scoped(supabase.from('leads').select('*',{count:'exact',head:true})),
-      scoped(supabase.from('tasks').select('*',{count:'exact',head:true}).eq('status','pending')),
+      scoped(supabase.from('tasks').select('*',{count:'exact',head:true}).eq('done',false).or('deleted.is.null,deleted.eq.false')),
       scoped(supabase.from('documents').select('file_size')),
       scoped(supabase.from('activity_log').select('description,created_at,employee_email')).order('created_at',{ascending:false}).limit(5),
       scoped(supabase.from('employees').select('id')).limit(200)
