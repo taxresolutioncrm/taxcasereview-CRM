@@ -262,10 +262,14 @@ async function loadPlatformOfficeRows() {
     }
 
     const metrics = result.data?.metrics || {}
-    externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
-    externalMetrics.active_clients += Number(metrics.active_clients || 0)
-    externalMetrics.active_leads += Number(metrics.active_leads || 0)
-    externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
+    // Avoid double-counting product metrics that are already represented by office rows.
+    // Only carry aggregate metrics separately when the product feed has no office breakdown.
+    if (!offices.length) {
+      externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
+      externalMetrics.active_clients += Number(metrics.total_clients || metrics.active_clients || 0)
+      externalMetrics.active_leads += Number(metrics.total_leads || metrics.active_leads || 0)
+      externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
+    }
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
   }
 
