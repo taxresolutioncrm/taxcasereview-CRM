@@ -130,7 +130,7 @@ async function sendSignedCopy(admin:any,doc:any,pdfBytes:Uint8Array,recipientOve
 }
 
 
-async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detail:string=''){
+async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detail:string='',recipientOverride:string|null=null){
   const {route,transport:t}=await resolveProductMailRoute(admin,String(doc.product_key))
   const base='https://'+String(t.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
   const auth='Basic '+btoa(String(t.username)+':'+String(t.password))
@@ -153,14 +153,14 @@ async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detai
   const drafts=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='drafts')
   const sent=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='sent')
   if(!identity?.id||!drafts?.id||!sent?.id)throw new Error('Stalwart identity or mailboxes unavailable')
-  const label=eventType==='viewed'?'Viewed':eventType==='declined'?'Declined':'Updated'
+  const label=eventType==='viewed'?'Viewed':eventType==='declined'?'Declined':eventType==='voided'?'Voided':eventType==='expired'?'Expired':'Updated'
   const subject=label+': '+String(doc.title||'Signature request')
   const html='<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>'+label+' signature request</h2><p><strong>'+String(doc.firm_name||'Office')+'</strong> - '+String(doc.title||'Agreement')+'</p><p>Signer: '+String(doc.signer_name||doc.signer_email||'Signer')+'</p>'+(detail?'<p>'+detail+'</p>':'')+'<p>Envelope ID: '+String(doc.id)+'</p></div>'
   const bodyId='body'
   const sendRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({
     using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
     methodCalls:[
-      ['Email/set',{accountId,create:{draft:{from:[{email:routedFrom,name:String(route.display_name||'RomyLabs')}],to:[{email:routedFrom}],subject,mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},bodyValues:{[bodyId]:{value:html,charset:'utf-8'}},htmlBody:[{partId:bodyId,type:'text/html'}]}}},'e0'],
+      ['Email/set',{accountId,create:{draft:{from:[{email:routedFrom,name:String(route.display_name||'RomyLabs')}],to:[{email:String(recipientOverride||routedFrom)}],subject,mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},bodyValues:{[bodyId]:{value:html,charset:'utf-8'}},htmlBody:[{partId:bodyId,type:'text/html'}]}}},'e0'],
       ['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sent.id]:true,'keywords/$draft':null}}},'s0']
     ]
   })})
@@ -171,13 +171,13 @@ async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detai
   if(!submissionId)throw new Error('Stalwart lifecycle submission not confirmed')
   const stamp=new Date().toISOString()
   await admin.from('emails').insert({
-    tenant_id:route.tenant_id,recipient:routedFrom,recipients:[routedFrom],subject,
+    tenant_id:route.tenant_id,recipient:String(recipientOverride||routedFrom),recipients:[String(recipientOverride||routedFrom)],subject,
     body:html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),body_html:html,
     triage:'Sent',status:'Sent',direction:'outbound',is_read:true,sender:routedFrom,from_address:routedFrom,reply_from:routedFrom,
     mailbox_owner:String(route.inbox_owner||'info@romylabs.com'),received_at:stamp,created_at:stamp,product_id:doc.product_key,
     message_id:'stalwart:'+String(submissionId),received_mailbox:routedFrom,route_id:route.id
   })
-  return {submissionId:String(submissionId),recipient:routedFrom,from:routedFrom}
+  return {submissionId:String(submissionId),recipient:String(recipientOverride||routedFrom),from:routedFrom}
 }
 
 serve(async(req)=>{
@@ -229,7 +229,26 @@ serve(async(req)=>{
         recipient=rr.data
       }
       if(doc.status==='void')return json({error:'This signing request was voided'},410)
-      if(doc.expires_at&&new Date(doc.expires_at).getTime()<Date.now()&&doc.status!=='signed')return json({error:'This signing link has expired'},410)
+      if(doc.expires_at&&new Date(doc.expires_at).getTime()<Date.now()&&doc.status!=='signed'){
+        const expiredAt=new Date().toISOString()
+        const expiredAudit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'expired',at:expiredAt,actor:'system',source:'public_link'}]
+        const {data:expiredRow}=await admin.from('romylabs_office_signing_documents')
+          .update({status:'expired',updated_at:expiredAt,audit:expiredAudit})
+          .eq('id',doc.id).in('status',['pending','sent','viewed']).select('id').maybeSingle()
+        if(expiredRow){
+          await admin.from('romylabs_esign_recipients')
+            .update({status:'skipped',updated_at:expiredAt})
+            .eq('envelope_id',doc.id).in('status',['pending','sent','viewed'])
+          await appendEvent(admin,doc.id,'expired',{recipientId:recipient?.id,metadata:{source:'public_link'},occurredAt:expiredAt})
+          try{
+            const notice=await sendOwnerLifecycleNotice(admin,doc,'expired')
+            await appendEvent(admin,doc.id,'owner_expired_notification_sent',{metadata:{submission_id:notice.submissionId,from:notice.from},occurredAt:new Date().toISOString()})
+          }catch(notifyError){
+            await appendEvent(admin,doc.id,'owner_expired_notification_failed',{metadata:{error:String((notifyError as Error)?.message||notifyError).slice(0,240)}})
+          }
+        }
+        return json({error:'This signing link has expired'},410)
+      }
 
       if(action==='esign_load'){
         if(doc.status==='sent'){
@@ -404,6 +423,23 @@ serve(async(req)=>{
     if(userErr||!user?.email)return json({error:'Invalid session'},401)
     const email=user.email.toLowerCase()
     if(!PLATFORM_ADMIN_EMAILS.has(email))return json({error:'Not authorized'},403)
+
+    if(action==='esign_void'){
+      const documentId=String(b.document_id||'')
+      if(!documentId)return json({error:'document_id is required'},400)
+      const {data:before,error:be}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
+      if(be||!before)return json({error:'Signing request not found'},404)
+      const reason=String(b.reason||'').trim()
+      const {data:result,error:re}=await asCaller.rpc('admin_romylabs_void_office_signing_document',{p_document_id:documentId,p_reason:reason||null})
+      if(re||!result?.ok)return json({error:re?.message||result?.error||'Void failed'},400)
+      try{
+        const notice=await sendOwnerLifecycleNotice(admin,before,'voided',reason?('Reason: '+reason):'',String(before.signer_email||''))
+        await appendEvent(admin,documentId,'signer_void_notification_sent',{actorEmail:user.email,metadata:{recipient:notice.recipient,submission_id:notice.submissionId,from:notice.from}})
+      }catch(notifyError){
+        await appendEvent(admin,documentId,'signer_void_notification_failed',{actorEmail:user.email,metadata:{error:String((notifyError as Error)?.message||notifyError).slice(0,240)}})
+      }
+      return json(result)
+    }
 
     if(action==='esign_geturl'){
       const path=String(b.file_path||'')

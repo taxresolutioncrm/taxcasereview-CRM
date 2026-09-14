@@ -132,7 +132,13 @@ serve(async(req)=>{
         if(expiresAt&&expiresAt.getTime()<=now.getTime()){
           const stamp=nowIso()
           const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'expired',at:stamp,actor:'system'}]
-          await admin.from('romylabs_office_signing_documents').update({status:'expired',updated_at:stamp,audit}).eq('id',doc.id).in('status',['sent','viewed'])
+          const {data:expiredRow}=await admin.from('romylabs_office_signing_documents')
+            .update({status:'expired',updated_at:stamp,audit})
+            .eq('id',doc.id).in('status',['sent','viewed']).select('id').maybeSingle()
+          if(!expiredRow){skipped++;continue}
+          await admin.from('romylabs_esign_recipients')
+            .update({status:'skipped',updated_at:stamp})
+            .eq('envelope_id',doc.id).in('status',['pending','sent','viewed'])
           await appendEvent(admin,doc,'expired')
           const {route}=await routeForProduct(admin,String(doc.product_key))
           await sendViaStalwart(admin,doc,String(route.outbound_from),'Expired: '+String(doc.title||'Signature request'),
