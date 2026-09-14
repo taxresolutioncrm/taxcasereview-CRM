@@ -54,6 +54,8 @@ jobs:
 
           create table public.romylabs_office_signing_documents(
             id uuid primary key default gen_random_uuid(),
+            firm_name text not null default 'Test Firm',
+            title text not null default 'Test Agreement',
             signer_name text,
             signer_email text not null,
             token_hash text not null unique,
