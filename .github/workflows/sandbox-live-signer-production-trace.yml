@@ -11,35 +11,39 @@ permissions:
 jobs:
   trace:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Trace all live admin JS assets
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build current source and identify signer chunk
         shell: bash
         run: |
           set -euo pipefail
-          base='https://admin.romylabs.com'
-          ts=$(date +%s)
-          curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$base/?trace=$ts" -o /tmp/live.html
-          echo '=== SCRIPT SOURCES ==='
-          grep -oE 'src="[^"]+\.js[^"]*"' /tmp/live.html | sed -E 's/^src="//;s/"$//' | tee /tmp/scripts.txt
-          found=0
-          while IFS= read -r js; do
-            [ -n "$js" ] || continue
-            [[ "$js" == http* ]] || js="$base$js"
-            name=$(basename "${js%%\?*}")
-            echo "=== FETCH $name ==="
-            curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$js&trace=$ts" -o "/tmp/$name" || curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$js?trace=$ts" -o "/tmp/$name"
-            count=$(grep -o 'mpxgxfqdbquzkrvvejkh' "/tmp/$name" | wc -l || true)
-            echo "canonical_ref_count=$count"
-            if [ "$count" -gt 0 ]; then
-              found=1
-              echo "CANONICAL_PROJECT_FOUND_IN=$name"
-            fi
-            grep -oE '[a-z]{20}\.supabase\.co' "/tmp/$name" | sort -u || true
-          done < /tmp/scripts.txt
-          if [ "$found" -ne 1 ]; then
-            echo 'LIVE_APP_BUNDLE_CANONICAL_REF=NO'
+          npm ci --ignore-scripts
+          npx vite build
+          signer=$(grep -rl 'mpxgxfqdbquzkrvvejkh' dist/assets | head -1 || true)
+          echo "LOCAL_SIGNER_CHUNK=$signer"
+          test -n "$signer"
+          grep -q 'office-agreement-file' "$signer"
+          cp "$signer" /tmp/local-signer.js
+          name=$(basename "$signer")
+          echo "SIGNER_NAME=$name" >> "$GITHUB_ENV"
+      - name: Compare live signer chunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://admin.romylabs.com/assets/$SIGNER_NAME"
+          code=$(curl -sS -o /tmp/live-signer.js -w '%{http_code}' --max-time 20 -H 'Cache-Control: no-cache' "$url?trace=$(date +%s)" || true)
+          echo "LIVE_SIGNER_HTTP=$code"
+          if [ "$code" != "200" ]; then
+            echo 'LIVE_SIGNER_CHUNK_MISSING'
             exit 1
           fi
-          echo 'LIVE_APP_BUNDLE_CANONICAL_REF=YES'
+          echo "LIVE_CANONICAL_COUNT=$(grep -o 'mpxgxfqdbquzkrvvejkh' /tmp/live-signer.js | wc -l || true)"
+          echo "LOCAL_SHA=$(sha256sum /tmp/local-signer.js | awk '{print $1}')"
+          echo "LIVE_SHA=$(sha256sum /tmp/live-signer.js | awk '{print $1}')"
+          cmp -s /tmp/local-signer.js /tmp/live-signer.js
+          echo 'LIVE_SIGNER_CHUNK_MATCH=YES'
