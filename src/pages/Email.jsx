@@ -355,7 +355,7 @@ export default function Email() {
   }
 
   async function send() {
-    if (!form.clientName || !form.subject || !form.body) { showToast('Client, subject and body required'); return }
+    if (!form.subject || !form.body) { showToast('Subject and body required'); return }
     if (!form.recipient) { showToast('Recipient email address required to send'); return }
     setSaving(true)
     let status = 'Logged'
@@ -1036,7 +1036,7 @@ export default function Email() {
             </div>
 
             <div className="field" style={{ position: 'relative' }}>
-              <label>Client Name *</label>
+              <label>Client Name (optional)</label>
               <input value={form.clientName} onChange={e => searchClient(e.target.value)} placeholder="Search client…" autoComplete="off" onBlur={() => setTimeout(() => setSug([]), 150)} />
               {sug.length > 0 && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--s3)', border: '1px solid var(--br)', borderRadius: 7, zIndex: 100 }}>
