@@ -32,6 +32,56 @@ async function appendEvent(admin:any,envelopeId:string,eventType:string,opts:any
 function ip(req:Request){return req.headers.get('cf-connecting-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null}
 function safeFile(v:string){return String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')}
 
+async function archiveCompletedOfficeDocuments(admin:any,doc:any,signedBytes?:Uint8Array|null,certificateBytes?:Uint8Array|null){
+  const tenantId=String(doc.external_office_id||'')
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)){
+    return {ok:false,skipped:true,reason:'office_not_central_tenant'}
+  }
+  const {data:tenant}=await admin.from('tenants').select('id,firm_name').eq('id',tenantId).maybeSingle()
+  if(!tenant?.id)return {ok:false,skipped:true,reason:'tenant_not_found'}
+
+  const signedName='Signed - '+safeFile(String(doc.source_filename||doc.title||'Agreement.pdf'))
+  const certName='Certificate of Completion - '+safeFile(String(doc.title||'Agreement'))+'.pdf'
+  const signedOfficePath=`${tenantId}/esign/${doc.id}/signed-${safeFile(String(doc.source_filename||'agreement.pdf'))}`
+  const certOfficePath=`${tenantId}/esign/${doc.id}/certificate-of-completion.pdf`
+
+  const ensureBytes=async(path:string,provided?:Uint8Array|null)=>{
+    if(provided?.length)return provided
+    const {data,error}=await admin.storage.from(ESIGN_BUCKET).download(path)
+    if(error||!data)throw new Error('Could not read completed e-sign file: '+String(error?.message||'missing file'))
+    return new Uint8Array(await data.arrayBuffer())
+  }
+
+  const signed=await ensureBytes(String(doc.signed_path||''),signedBytes)
+  const cert=await ensureBytes(String(doc.certificate_path||''),certificateBytes)
+
+  const uploadOne=async(path:string,bytes:Uint8Array)=>{
+    const {error}=await admin.storage.from(LEGACY_BUCKET).upload(path,bytes,{contentType:'application/pdf',upsert:true})
+    if(error)throw error
+  }
+  await uploadOne(signedOfficePath,signed)
+  await uploadOne(certOfficePath,cert)
+
+  const ensureRow=async(filePath:string,fileName:string,label:string,size:number)=>{
+    const {data:existing,error:findError}=await admin.from('office_agreements').select('id').eq('tenant_id',tenantId).eq('file_path',filePath).maybeSingle()
+    if(findError)throw findError
+    if(existing?.id){
+      const {error}=await admin.from('office_agreements').update({file_name:fileName,file_size:size,label,uploaded_by:'universal-esign'}).eq('id',existing.id)
+      if(error)throw error
+      return existing.id
+    }
+    const {data:created,error}=await admin.from('office_agreements').insert({
+      tenant_id:tenantId,file_name:fileName,file_path:filePath,file_size:size,label,uploaded_by:'universal-esign'
+    }).select('id').single()
+    if(error)throw error
+    return created.id
+  }
+
+  const signedId=await ensureRow(signedOfficePath,signedName,String(doc.title||'Signed Agreement'),signed.length)
+  const certId=await ensureRow(certOfficePath,certName,String(doc.title||'Agreement')+' — Completion Certificate',cert.length)
+  return {ok:true,tenant_id:tenantId,signed_agreement_id:signedId,certificate_agreement_id:certId,signed_path:signedOfficePath,certificate_path:certOfficePath}
+}
+
 async function resolveProductMailRoute(admin:any,productKey:string){
   const {data:routes,error:routeError}=await admin.from('romylabs_mailboxes')
     .select('id,product_id,outbound_from,inbox_owner,tenant_id,display_name,active')
@@ -190,6 +240,27 @@ serve(async(req)=>{
     const admin=createClient(url,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}})
     const b=await req.json().catch(()=>({}))
     const action=String(b.action||'')
+
+    if(action==='archive_completed_esign_internal'){
+      const internalToken=req.headers.get('x-internal-cron-token')||''
+      const {data:authorized,error:authErr}=internalToken
+        ?await admin.rpc('verify_internal_cron_token',{provided:internalToken})
+        :{data:false,error:null}
+      if(authErr||authorized!==true)return json({error:'Unauthorized'},401)
+      const documentId=String(b.document_id||'')
+      if(!documentId)return json({error:'document_id is required'},400)
+      const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
+      if(de||!doc)return json({error:'Signing request not found'},404)
+      if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
+      try{
+        const archived=await archiveCompletedOfficeDocuments(admin,doc)
+        if(archived?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{actorName:'System',metadata:{...archived,backfill:true},occurredAt:new Date().toISOString()})
+        return json(archived?.ok?archived:{ok:false,...archived},archived?.ok?200:422)
+      }catch(e){
+        await appendEvent(admin,doc.id,'office_documents_archive_failed',{actorName:'System',metadata:{error:String((e as Error)?.message||e).slice(0,240),backfill:true}})
+        return json({error:String((e as Error)?.message||e)},500)
+      }
+    }
 
     // Token-scoped public signing actions. No anonymous database/storage access is exposed.
     if(action==='esign_load'||action==='esign_sign'||action==='esign_decline'){
@@ -398,6 +469,15 @@ serve(async(req)=>{
       if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'completed',completed_at:now,updated_at:now}).eq('id',recipient.id)
       await appendEvent(admin,doc.id,'completed',{recipientId:recipient?.id,actorEmail:doc.signer_email,actorName:signatureName,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{source_sha256:sourceHash,signed_sha256:signedHash,certificate_sha256:certificateHash,signature_mode:signatureMode},occurredAt:now})
 
+      let officeArchive:any=null
+      try{
+        officeArchive=await archiveCompletedOfficeDocuments(admin,{...doc,signed_path:signedPath,certificate_path:certificatePath},finalBytes,new Uint8Array(certificateBytes))
+        if(officeArchive?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{metadata:officeArchive,occurredAt:new Date().toISOString()})
+      }catch(archiveError){
+        console.error('[office-agreement-file] office archive failed',archiveError)
+        await appendEvent(admin,doc.id,'office_documents_archive_failed',{metadata:{error:String((archiveError as Error)?.message||archiveError).slice(0,240)},occurredAt:new Date().toISOString()})
+      }
+
       let ownerCopy:any=null,signerCopy:any=null
       try{
         ownerCopy=await sendSignedCopy(admin,doc,finalBytes)
@@ -430,6 +510,22 @@ serve(async(req)=>{
     if(userErr||!user?.email)return json({error:'Invalid session'},401)
     const email=user.email.toLowerCase()
     if(!PLATFORM_ADMIN_EMAILS.has(email))return json({error:'Not authorized'},403)
+
+    if(action==='archive_completed_esign'){
+      const documentId=String(b.document_id||'')
+      if(!documentId)return json({error:'document_id is required'},400)
+      const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
+      if(de||!doc)return json({error:'Signing request not found'},404)
+      if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
+      try{
+        const archived=await archiveCompletedOfficeDocuments(admin,doc)
+        if(archived?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{actorEmail:user.email,metadata:{...archived,backfill:true},occurredAt:new Date().toISOString()})
+        return json(archived?.ok?archived:{ok:false,...archived},archived?.ok?200:422)
+      }catch(e){
+        await appendEvent(admin,doc.id,'office_documents_archive_failed',{actorEmail:user.email,metadata:{error:String((e as Error)?.message||e).slice(0,240),backfill:true}})
+        return json({error:String((e as Error)?.message||e)},500)
+      }
+    }
 
     if(action==='esign_void'){
       const documentId=String(b.document_id||'')
