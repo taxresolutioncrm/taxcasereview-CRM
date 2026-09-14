@@ -109,17 +109,10 @@ const EXTERNAL_OFFICE_PRODUCTS = {
   restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/' },
 }
 
-const HUB_METRICS_TIMEOUT_MS = 4500
 let platformOverviewCache = null
 
 async function invokeHubMetrics(productKey) {
-  return Promise.race([
-    supabase.functions.invoke('hub-proxy', { body:{ product:productKey } }),
-    new Promise(resolve => setTimeout(
-      () => resolve({ data:null, error:new Error(`${productKey} metrics timeout`) }),
-      HUB_METRICS_TIMEOUT_MS
-    )),
-  ])
+  return supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
 }
 
 async function loadPlatformOfficeSnapshot() {
@@ -638,6 +631,7 @@ function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
+  const [metricsReady, setMetricsReady] = useState(false)
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -652,6 +646,7 @@ function Overview() {
       hasRenderedData=true
       setStats(platformOverviewCache.rows)
       setExternalMetrics(platformOverviewCache.externalMetrics)
+      setMetricsReady(true)
     }
 
     ;(async()=>{
@@ -662,12 +657,14 @@ function Overview() {
         // First paint: central office directory + billing. Do not wait for every CRM.
         hasRenderedData=true
         setStats(snapshot.rows)
+        setMetricsReady(false)
         setLoadError('')
 
         const hydrated = await hydratePlatformOfficeRows(snapshot.rows, snapshot.billingByOffice)
         if(cancelled) return
         setStats(hydrated.rows)
         setExternalMetrics(hydrated.externalMetrics)
+        setMetricsReady(true)
         platformOverviewCache = {
           at:Date.now(),
           rows:hydrated.rows,
@@ -679,7 +676,8 @@ function Overview() {
           setStats([])
           setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
         }
-        setLoadError(error?.message || 'Unable to load platform offices')
+        setMetricsReady(false)
+        setLoadError(error?.message || 'Unable to load full platform metrics')
       }
     })()
 
@@ -699,12 +697,12 @@ function Overview() {
   const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
 
   const KPI = [
-    { label:'Monthly Recurring', val: `$${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981' },
-    { label:'Active Offices',    val: activeOff, sub:`${(stats||[]).length} total`, color:'#6366f1' },
-    { label:'Total Seats',       val: totalSeats, sub:'across all firms', color:'#f59e0b' },
-    { label:'Total Clients',     val: totalClients.toLocaleString(), sub:`${totalLeads} leads`, color:'#0ea5e9' },
-    { label:'Storage Used',      val: fmtBytes(totalStorage), sub:'documents', color:'#8b5cf6' },
-    { label:'Total Collected',    val: `$${totalCollected.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:`${totalTx.toLocaleString()} transactions`, color:'#10b981' },
+    { label:'Monthly Recurring', val: `${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981', ready:true },
+    { label:'Active Offices',    val: activeOff, sub:`${(stats||[]).length} total`, color:'#6366f1', ready:metricsReady },
+    { label:'Total Seats',       val: totalSeats, sub:'across all firms', color:'#f59e0b', ready:metricsReady },
+    { label:'Total Clients',     val: totalClients.toLocaleString(), sub:`${totalLeads} leads`, color:'#0ea5e9', ready:metricsReady },
+    { label:'Storage Used',      val: fmtBytes(totalStorage), sub:'documents', color:'#8b5cf6', ready:metricsReady },
+    { label:'Total Collected',   val: `${totalCollected.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:`${totalTx.toLocaleString()} transactions`, color:'#10b981', ready:true },
   ]
 
   return (
@@ -723,8 +721,8 @@ function Overview() {
         {KPI.map(k => (
           <div key={k.label} style={{ ...S.card, padding:'20px 18px' }}>
             <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>{k.label}</div>
-            <div style={{ fontSize:28, fontWeight:900, color:k.color, lineHeight:1 }}>{stats===null?'…':k.val}</div>
-            <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>{k.sub}</div>
+            <div style={{ fontSize:k.ready===false?16:28, fontWeight:900, color:k.color, lineHeight:1 }}>{stats===null?'…':(k.ready===false?'Updating…':k.val)}</div>
+            <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>{k.ready===false?'Loading live CRM data':k.sub}</div>
           </div>
         ))}
       </div>
