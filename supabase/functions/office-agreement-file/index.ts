@@ -241,6 +241,27 @@ serve(async(req)=>{
     const b=await req.json().catch(()=>({}))
     const action=String(b.action||'')
 
+    if(action==='archive_completed_esign_internal'){
+      const internalToken=req.headers.get('x-internal-cron-token')||''
+      const {data:authorized,error:authErr}=internalToken
+        ?await admin.rpc('verify_internal_cron_token',{provided:internalToken})
+        :{data:false,error:null}
+      if(authErr||authorized!==true)return json({error:'Unauthorized'},401)
+      const documentId=String(b.document_id||'')
+      if(!documentId)return json({error:'document_id is required'},400)
+      const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
+      if(de||!doc)return json({error:'Signing request not found'},404)
+      if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
+      try{
+        const archived=await archiveCompletedOfficeDocuments(admin,doc)
+        if(archived?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{actorName:'System',metadata:{...archived,backfill:true},occurredAt:new Date().toISOString()})
+        return json(archived?.ok?archived:{ok:false,...archived},archived?.ok?200:422)
+      }catch(e){
+        await appendEvent(admin,doc.id,'office_documents_archive_failed',{actorName:'System',metadata:{error:String((e as Error)?.message||e).slice(0,240),backfill:true}})
+        return json({error:String((e as Error)?.message||e)},500)
+      }
+    }
+
     // Token-scoped public signing actions. No anonymous database/storage access is exposed.
     if(action==='esign_load'||action==='esign_sign'||action==='esign_decline'){
       const rawSigningToken=String(b.token||'').trim()
