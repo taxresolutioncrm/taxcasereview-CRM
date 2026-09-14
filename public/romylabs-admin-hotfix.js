@@ -14,7 +14,7 @@
   // Only the validated Jump In landing route may preserve ?imp=1. A stale
   // mobile /login?imp=1 or /crm-admin?imp=1 must never boot a tenant/demo CRM.
   var isActiveImpersonation = path === '/' && params.get('imp') === '1' && storedImpersonation;
-  var publicPrefixes = ['/meet/', '/screenshare', '/screenshare-host', '/book', '/sign/', '/portal/', '/clockin', '/kiosk', '/employee', '/financial-intake/', '/organizer/'];
+  var publicPrefixes = ['/meet/', '/screenshare', '/screenshare-host', '/book', '/sign/', '/agreement/', '/office-sign/', '/portal/', '/clockin', '/kiosk', '/employee', '/financial-intake/', '/organizer/'];
   var isPublicRoute = publicPrefixes.some(function (prefix) {
     return prefix.endsWith('/') ? path.indexOf(prefix) === 0 : (path === prefix || path.indexOf(prefix + '/') === 0);
   });
@@ -39,7 +39,11 @@
     var liveStoredImp = false;
     try { liveStoredImp = !!sessionStorage.getItem('admin_impersonation'); } catch (_) {}
     var liveActiveImp = livePath === '/' && liveParams.get('imp') === '1' && liveStoredImp;
-    if (livePath.indexOf('/meet/') === 0 || livePath === '/impersonate' || liveActiveImp) return;
+    var livePublicPrefixes = ['/meet/', '/screenshare', '/screenshare-host', '/book', '/sign/', '/agreement/', '/office-sign/', '/portal/', '/clockin', '/kiosk', '/employee', '/financial-intake/', '/organizer/'];
+    var livePublicRoute = livePublicPrefixes.some(function (prefix) {
+      return prefix.endsWith('/') ? livePath.indexOf(prefix) === 0 : (livePath === prefix || livePath.indexOf(prefix + '/') === 0);
+    });
+    if (livePublicRoute || livePath === '/impersonate' || liveActiveImp) return;
     window.location.replace('/crm-admin?fresh=' + Date.now());
   });
 
