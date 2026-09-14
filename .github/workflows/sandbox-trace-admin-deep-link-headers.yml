@@ -1,0 +1,25 @@
+name: Trace Admin Deep Link Headers
+
+on:
+  push:
+    branches:
+      - sandbox/admin-deep-link-header-trace-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Compare root and deep-link headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in 'https://admin.romylabs.com/' 'https://admin.romylabs.com/office-sign/testtoken' 'https://748c3ddc.taxcasereview-crm.pages.dev/' 'https://748c3ddc.taxcasereview-crm.pages.dev/office-sign/testtoken'; do
+            echo "===== $url ====="
+            curl -sS -o /dev/null -D - -H 'Cache-Control: no-cache' "$url" | grep -Ei '^(HTTP/|server:|cf-cache-status:|cf-ray:|content-type:|cache-control:|etag:|location:)' || true
+          done
+          echo '===== DNS ====='
+          getent ahosts admin.romylabs.com || true
