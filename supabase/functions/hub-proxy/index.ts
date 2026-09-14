@@ -39,7 +39,7 @@ const PRODUCT_ENDPOINTS: Record<string, string> = {
   // Keys must match PRODUCT_REGISTRY key values in AdminPortal.jsx
   taxres_crm:        'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=saas',
   tax_case_review:   'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=tcr',
-  nashville:         'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=nash',
+  nashville:         'https://ydrvncdedgjtcprczwpu.supabase.co/functions/v1/platform-metrics',
   cloudcpa:          'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=cloudcpa',
   camvella:          'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/platform-metrics',
   arcvena:           'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/platform-metrics',
