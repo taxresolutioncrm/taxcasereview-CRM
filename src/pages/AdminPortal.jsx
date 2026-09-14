@@ -714,7 +714,7 @@ function Overview() {
         <div style={{ fontSize:26, fontWeight:800, color:'#fff', marginBottom:4 }}>
           {h<12?'Good morning':h<17?'Good afternoon':'Good evening'}, Romy 👋
         </div>
-        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — {(stats||[]).length} offices</div>
+        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — {metricsReady ? `${(stats||[]).length} offices` : 'loading live office totals…'}</div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:14, marginBottom:32 }}>
