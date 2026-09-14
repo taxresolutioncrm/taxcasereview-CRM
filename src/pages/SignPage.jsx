@@ -42,16 +42,6 @@ function isPoaAttachment(att) {
   )
 }
 
-const IRS_DOC_TYPES = [
-  'Form 2848 — Power of Attorney',
-  'Form 8821 — Tax Info Auth',
-  '9465 Installment Agreement',
-  '9465 Installment Agreement Consent',
-  'OIC Application (656)',
-  'Form 433-A Collection Info',
-  'Form 433-B Business Collection Info',
-  'CDP Hearing Request',
-]
 
 const isPoaDocType = value => {
   const v = String(value || '').toLowerCase()
@@ -371,7 +361,7 @@ export default function SignPage() {
             ${FIRM.name} has been notified.
           </div>
           <div style={{ background:'#0a2540', border:'1px solid #166534', borderRadius:10, padding:'14px 16px', fontSize:12, color:'#86efac', textAlign:'left', lineHeight:2, fontFamily:'monospace' }}>
-            <strong>CERTIFICATE OF COMPLETION</strong><br/>
+            <strong>SIGNING AUDIT</strong><br/>
             Document: {doc?.doc_type}<br/>
             Client: {doc?.client_name}<br/>
             Signed By: {doc?.signed_name}<br/>
