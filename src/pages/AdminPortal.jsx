@@ -109,7 +109,20 @@ const EXTERNAL_OFFICE_PRODUCTS = {
   restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/' },
 }
 
-async function loadPlatformOfficeRows() {
+const HUB_METRICS_TIMEOUT_MS = 4500
+let platformOverviewCache = null
+
+async function invokeHubMetrics(productKey) {
+  return Promise.race([
+    supabase.functions.invoke('hub-proxy', { body:{ product:productKey } }),
+    new Promise(resolve => setTimeout(
+      () => resolve({ data:null, error:new Error(`${productKey} metrics timeout`) }),
+      HUB_METRICS_TIMEOUT_MS
+    )),
+  ])
+}
+
+async function loadPlatformOfficeSnapshot() {
   const [
     { data: taxresRows, error: taxresError },
     { data: registryData, error: registryError },
@@ -137,41 +150,10 @@ async function loadPlatformOfficeRows() {
     ])
   )
   const warnings = []
-  const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
   const seen = new Set(rows.map(r => `taxres_crm:${r.id}`))
 
-  // Overlay each known TaxRes tenant with the same authenticated platform-metrics
-  // feed used by the CRM drilldown. admin_tenant_overview remains the directory/
-  // billing source, while platform-metrics owns usage counts and tenant storage.
-  const taxResTenantFeeds = [
-    { key:'tax_case_review', name:'Tax Case Review' },
-    { key:'nashville', name:'Nashville Tax Solutions' },
-    { key:'cloudcpa', name:'CloudCPA Inc' },
-  ]
-  const tenantFeedResults = await Promise.all(taxResTenantFeeds.map(async feed => {
-    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
-    return { ...feed, ...response }
-  }))
-  for (const result of tenantFeedResults) {
-    if (result.error || result.data?.ok === false) {
-      warnings.push(`${result.name} usage feed unavailable`)
-      continue
-    }
-    const metrics = result.data?.metrics || {}
-    const idx = rows.findIndex(r => String(r.firm_name || '').trim().toLowerCase() === result.name.toLowerCase())
-    if (idx < 0) continue
-    rows[idx] = {
-      ...rows[idx],
-      client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
-      lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
-      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
-      cases_count:Number(metrics.open_jobs ?? rows[idx].cases_count ?? 0),
-      tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
-      storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
-    }
-  }
-
-  // Central registry is the fallback/source of truth for offices already registered with RomyLabs.
+  // Render registered external offices immediately. Live product metrics hydrate
+  // these rows after first paint instead of blocking the entire Overview page.
   if (!registryError && Array.isArray(registryData)) {
     for (const office of registryData) {
       if (!office?.product_key || office.product_key === 'taxres_crm' || !office.external_office_id) continue
@@ -201,13 +183,68 @@ async function loadPlatformOfficeRows() {
     warnings.push('RomyLabs office registry unavailable')
   }
 
-  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
-  const results = await Promise.all(productKeys.map(async productKey => {
-    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
-    return { productKey, ...response }
-  }))
+  // Revenue is central data, so it can be shown on the first paint too.
+  for (let i=0; i<rows.length; i++) {
+    const row = rows[i]
+    const productKey = row.product || 'taxres_crm'
+    const externalId = row.source_id || row.id
+    const billing = billingByOffice.get(`${productKey}:${externalId}`)
+    rows[i] = {
+      ...row,
+      total_collected:Number(billing?.total_collected || 0),
+      transaction_count:Number(billing?.transaction_count || 0),
+    }
+  }
 
-  for (const result of results) {
+  return { rows, warnings, billingByOffice }
+}
+
+async function hydratePlatformOfficeRows(snapshotRows, billingByOffice) {
+  const rows = snapshotRows.map(r => ({ ...r }))
+  const warnings = []
+  const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
+
+  const taxResTenantFeeds = [
+    { key:'tax_case_review', name:'Tax Case Review' },
+    { key:'nashville', name:'Nashville Tax Solutions' },
+    { key:'cloudcpa', name:'CloudCPA Inc' },
+  ]
+  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
+
+  // All nine remote CRM calls start together. A slow/unavailable CRM is capped
+  // so it cannot hold the entire Overview page hostage.
+  const [tenantFeedResults, productResults] = await Promise.all([
+    Promise.all(taxResTenantFeeds.map(async feed => {
+      const response = await invokeHubMetrics(feed.key)
+      return { ...feed, ...response }
+    })),
+    Promise.all(productKeys.map(async productKey => {
+      const response = await invokeHubMetrics(productKey)
+      return { productKey, ...response }
+    })),
+  ])
+
+  for (const result of tenantFeedResults) {
+    if (result.error || result.data?.ok === false) {
+      warnings.push(`${result.name} usage feed unavailable`)
+      continue
+    }
+    const metrics = result.data?.metrics || {}
+    const idx = rows.findIndex(r => String(r.firm_name || '').trim().toLowerCase() === result.name.toLowerCase())
+    if (idx < 0) continue
+    rows[idx] = {
+      ...rows[idx],
+      client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
+      lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
+      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      cases_count:Number(metrics.open_jobs ?? rows[idx].cases_count ?? 0),
+      tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
+      storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
+    }
+  }
+
+  const registrySyncJobs = []
+  for (const result of productResults) {
     const cfg = EXTERNAL_OFFICE_PRODUCTS[result.productKey]
     const offices = Array.isArray(result.data?.offices) ? result.data.offices : null
     if (result.error || !offices) {
@@ -228,8 +265,6 @@ async function loadPlatformOfficeRows() {
         client_count:Number(office.client_count || 0),
         lead_count:Number(office.lead_count || 0),
         storage_bytes:Number(office.storage_bytes || 0),
-        // Platform revenue is owned by the central RomyLabs billing ledger,
-        // never by a product CRM's client-payment totals.
         total_collected:0,
         transaction_count:0,
         status:office.status || (office.is_active === false ? 'inactive' : 'active'),
@@ -239,32 +274,27 @@ async function loadPlatformOfficeRows() {
       }
       if (existing >= 0) rows[existing] = { ...rows[existing], ...normalized }
       else rows.push(normalized)
-      seen.add(key)
 
-      // Any office successfully loaded into Admin Portal is also registered
-      // for the universal contract/e-sign engine. This keeps sender routing,
-      // document history, and future contract sends product-aware without
-      // requiring manual registry rows.
-      const { error: registrySyncError } = await supabase.rpc('admin_romylabs_upsert_office_registry', {
-        p_product_key:result.productKey,
-        p_external_office_id:String(office.id),
-        p_firm_name:normalized.firm_name,
-        p_status:normalized.status,
-        p_seats:normalized.employee_count || null,
-        p_monthly_amount:normalized.effective_monthly || null,
-        p_metadata:{
-          source:'hub-proxy',
-          last_activity:normalized.last_activity,
-          synced_at:new Date().toISOString(),
-        },
-      })
-      if (registrySyncError) warnings.push(`${cfg.label} office registry sync failed`)
+      // Registry maintenance is not part of the read path. Start it in the
+      // background so office discovery stays current without delaying Overview.
+      registrySyncJobs.push(
+        supabase.rpc('admin_romylabs_upsert_office_registry', {
+          p_product_key:result.productKey,
+          p_external_office_id:String(office.id),
+          p_firm_name:normalized.firm_name,
+          p_status:normalized.status,
+          p_seats:normalized.employee_count || null,
+          p_monthly_amount:normalized.effective_monthly || null,
+          p_metadata:{
+            source:'hub-proxy',
+            last_activity:normalized.last_activity,
+            synced_at:new Date().toISOString(),
+          },
+        })
+      )
     }
 
     const metrics = result.data?.metrics || {}
-    // Product feeds may report storage only at the aggregate product level even when
-    // office rows are present. Count office storage first, then add only the unrepresented
-    // remainder from the aggregate metric so Overview storage is complete without double-counting.
     const officeStorageSum = offices.reduce((sum, office) => sum + Number(office?.storage_bytes || 0), 0)
     const aggregateStorage = Number(metrics.storage_bytes || 0)
     if (!offices.length) {
@@ -276,9 +306,9 @@ async function loadPlatformOfficeRows() {
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
   }
 
-  // Final revenue overlay: every product/office gets subscription collections
-  // exclusively from the central RomyLabs billing ledger. This prevents an
-  // office's own client revenue from ever appearing as RomyLabs collections.
+  // Do not await these writes. They are maintenance, not page data.
+  if (registrySyncJobs.length) void Promise.allSettled(registrySyncJobs)
+
   for (let i=0; i<rows.length; i++) {
     const row = rows[i]
     const productKey = row.product || 'taxres_crm'
@@ -614,22 +644,45 @@ function Overview() {
   useEffect(() => {
     if (!user) return
     let cancelled=false
+    let hasRenderedData=false
+
+    // Re-visiting Overview should feel immediate while a fresh snapshot replaces
+    // the short-lived cache in the background.
+    if (platformOverviewCache && Date.now() - platformOverviewCache.at < 60000) {
+      hasRenderedData=true
+      setStats(platformOverviewCache.rows)
+      setExternalMetrics(platformOverviewCache.externalMetrics)
+    }
+
     ;(async()=>{
       try {
-        const { rows, warnings, externalMetrics: productMetrics } = await loadPlatformOfficeRows()
+        const snapshot = await loadPlatformOfficeSnapshot()
         if(cancelled) return
-        setStats(rows)
-        setExternalMetrics(productMetrics)
-        // Partial external metrics failures must not present as a fatal Overview error
-        // because the central RomyLabs registry remains the office-directory fallback.
+
+        // First paint: central office directory + billing. Do not wait for every CRM.
+        hasRenderedData=true
+        setStats(snapshot.rows)
         setLoadError('')
+
+        const hydrated = await hydratePlatformOfficeRows(snapshot.rows, snapshot.billingByOffice)
+        if(cancelled) return
+        setStats(hydrated.rows)
+        setExternalMetrics(hydrated.externalMetrics)
+        platformOverviewCache = {
+          at:Date.now(),
+          rows:hydrated.rows,
+          externalMetrics:hydrated.externalMetrics,
+        }
       } catch(error) {
         if(cancelled) return
-        setStats([])
-        setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
+        if (!hasRenderedData) {
+          setStats([])
+          setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
+        }
         setLoadError(error?.message || 'Unable to load platform offices')
       }
     })()
+
     return()=>{cancelled=true}
   }, [user])
 
