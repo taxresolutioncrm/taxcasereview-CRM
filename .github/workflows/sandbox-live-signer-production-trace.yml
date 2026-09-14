@@ -18,20 +18,20 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Build current source and identify signer chunk
+      - name: Build and identify exact signer chunk
         shell: bash
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
           npx vite build
-          signer=$(grep -rl 'mpxgxfqdbquzkrvvejkh' dist/assets | head -1 || true)
+          signer=$(find dist/assets -maxdepth 1 -type f -name 'OfficeDocumentSign-*.js' | head -1)
           echo "LOCAL_SIGNER_CHUNK=$signer"
           test -n "$signer"
           grep -q 'office-agreement-file' "$signer"
+          grep -q 'mpxgxfqdbquzkrvvejkh' "$signer"
           cp "$signer" /tmp/local-signer.js
-          name=$(basename "$signer")
-          echo "SIGNER_NAME=$name" >> "$GITHUB_ENV"
-      - name: Compare live signer chunk
+          echo "SIGNER_NAME=$(basename "$signer")" >> "$GITHUB_ENV"
+      - name: Compare exact live signer chunk
         shell: bash
         run: |
           set -euo pipefail
@@ -43,6 +43,7 @@ jobs:
             exit 1
           fi
           echo "LIVE_CANONICAL_COUNT=$(grep -o 'mpxgxfqdbquzkrvvejkh' /tmp/live-signer.js | wc -l || true)"
+          echo "LIVE_HAS_OFFICE_AGREEMENT_FILE=$(grep -q 'office-agreement-file' /tmp/live-signer.js && echo yes || echo no)"
           echo "LOCAL_SHA=$(sha256sum /tmp/local-signer.js | awk '{print $1}')"
           echo "LIVE_SHA=$(sha256sum /tmp/live-signer.js | awk '{print $1}')"
           cmp -s /tmp/local-signer.js /tmp/live-signer.js
