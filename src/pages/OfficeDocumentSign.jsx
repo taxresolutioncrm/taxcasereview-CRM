@@ -2,19 +2,22 @@ import { useEffect,useMemo,useRef,useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { SUPABASE_URL,SUPABASE_ANON_KEY } from '../lib/supabase'
+
 
 pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorker
+
+const UNIVERSAL_ESIGN_URL='https://mpxgxfqdbquzkrvvejkh.supabase.co'
+const UNIVERSAL_ESIGN_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1weGd4ZnFkYnF1emtydnZlamtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTk5MzksImV4cCI6MjA5NDg3NTkzOX0.puvhU1MV5nGOykizeTkwCpRR7NKKaGsVpA8oqjVjmu4'
 
 const autoInitials=name=>String(name||'').split(/\s+/).filter(Boolean).map(x=>x[0]).join('').slice(0,4).toUpperCase()
 const today=()=>new Date().toLocaleDateString('en-US',{timeZone:'America/New_York'})
 
 async function invokePublicSigner(body){
-  const res=await fetch(`${SUPABASE_URL}/functions/v1/office-agreement-file`,{
+  const res=await fetch(`${UNIVERSAL_ESIGN_URL}/functions/v1/office-agreement-file`,{
     method:'POST',
     headers:{
       'Content-Type':'application/json',
-      'apikey':SUPABASE_ANON_KEY,
+      'apikey':UNIVERSAL_ESIGN_ANON_KEY,
     },
     body:JSON.stringify(body),
   })
