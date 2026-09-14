@@ -16,8 +16,7 @@ create table if not exists public.romylabs_office_documents (
 );
 
 create unique index if not exists romylabs_office_documents_envelope_kind_uidx
-on public.romylabs_office_documents(source_envelope_id,document_kind)
-where source_envelope_id is not null;
+on public.romylabs_office_documents(source_envelope_id,document_kind);
 
 create index if not exists romylabs_office_documents_office_idx
 on public.romylabs_office_documents(product_key,external_office_id,created_at desc);
