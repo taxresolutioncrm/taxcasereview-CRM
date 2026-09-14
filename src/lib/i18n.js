@@ -584,42 +584,9 @@ function translateNode(node, language) {
   for (const child of el.childNodes || []) translateNode(child, language)
 }
 
-let observer = null
-let activeLanguage = 'en'
-let applying = false
-let rescanFrame = 0
-
-function observeDocument() {
-  if (observer && document.body) observer.observe(document.body, { childList: true, subtree: true, characterData: true })
-}
-
-function translateWholeDocument() {
-  if (typeof document === 'undefined' || !document.body || applying) return
-  applying = true
-  observer?.disconnect()
-  try { translateNode(document.body, activeLanguage) } finally {
-    applying = false
-    observeDocument()
-  }
-}
-
-function scheduleDocumentTranslation() {
-  if (typeof window === 'undefined') return
-  if (rescanFrame) window.cancelAnimationFrame(rescanFrame)
-  rescanFrame = window.requestAnimationFrame(() => {
-    rescanFrame = 0
-    translateWholeDocument()
-  })
-}
-
 export function applyDocumentLanguage(language = 'en') {
-  activeLanguage = language === 'es' ? 'es' : 'en'
-  if (typeof document === 'undefined') return
-  document.documentElement.lang = activeLanguage
-  observer?.disconnect()
-  observer = new MutationObserver(() => scheduleDocumentTranslation())
-  translateWholeDocument()
-  scheduleDocumentTranslation()
+  const activeLanguage = language === 'es' ? 'es' : 'en'
+  if (typeof document !== 'undefined') document.documentElement.lang = activeLanguage
 }
 
 export function getStoredLanguage() {

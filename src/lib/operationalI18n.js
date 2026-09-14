@@ -3,7 +3,7 @@
 // free-form/user content so email bodies, notes, chat messages, etc. are never
 // rewritten by the EN/ES toggle.
 
-const EN_ES_EXTRA = {
+export const EN_ES_EXTRA = {
   // Payments / billing
   'Total Collected': 'Total cobrado',
   'Payments': 'Pagos',
@@ -245,43 +245,4 @@ function translateTree(root, language) {
       translateElement(node, language)
     }
   }
-}
-
-if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-  let applying = false
-  const apply = () => {
-    if (applying) return
-    applying = true
-    try {
-      const language = document.documentElement.lang?.toLowerCase().startsWith('es') ? 'es' : 'en'
-      translateTree(document.body, language)
-    } finally {
-      applying = false
-    }
-  }
-
-  const start = () => {
-    apply()
-    const observer = new MutationObserver(mutations => {
-      if (applying) return
-      const language = document.documentElement.lang?.toLowerCase().startsWith('es') ? 'es' : 'en'
-      applying = true
-      try {
-        for (const mutation of mutations) {
-          if (mutation.type === 'attributes' && mutation.target === document.documentElement) {
-            translateTree(document.body, language)
-            continue
-          }
-          if (mutation.type === 'characterData') translateTree(mutation.target, language)
-          for (const node of mutation.addedNodes || []) translateTree(node, language)
-        }
-      } finally {
-        applying = false
-      }
-    })
-    observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['lang'] })
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true })
-  else start()
 }

@@ -1,4 +1,5 @@
 import { EN_ES, getStoredLanguage } from './i18n'
+import { EN_ES_EXTRA } from './operationalI18n'
 
 const EXTRA_ES = {
   'Compose': 'Redactar',
@@ -31,7 +32,7 @@ const EXTRA_ES = {
   'All Clients': 'Todos los clientes',
 }
 
-const ES = { ...EN_ES, ...EXTRA_ES }
+const ES = { ...EN_ES, ...EN_ES_EXTRA, ...EXTRA_ES }
 const EN = Object.fromEntries(Object.entries(ES).map(([en, es]) => [es, en]))
 const PROTECTED = 'script,style,textarea,code,pre,[contenteditable="true"],[data-no-translate],.email-body,.message-body,.chat-message,.note-body,.user-content,.ql-editor'
 
@@ -121,6 +122,9 @@ function translateTree(root, lang) {
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   let applying = false
   let lang = getStoredLanguage()
+  let frame = 0
+  let fullScan = false
+  const pending = new Set()
 
   const apply = target => {
     if (applying) return
@@ -128,14 +132,36 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     try { translateTree(target || document.body, lang) } finally { applying = false }
   }
 
+  const schedule = (target, forceFull = false) => {
+    if (forceFull) {
+      fullScan = true
+      pending.clear()
+    } else if (!fullScan && target) {
+      pending.add(target)
+    }
+    if (frame) return
+    frame = window.requestAnimationFrame(() => {
+      frame = 0
+      if (fullScan) {
+        fullScan = false
+        pending.clear()
+        apply(document.body)
+        return
+      }
+      const roots = [...pending]
+      pending.clear()
+      for (const root of roots) apply(root)
+    })
+  }
+
   const start = () => {
     apply(document.body)
     const observer = new MutationObserver(mutations => {
       if (applying) return
       for (const mutation of mutations) {
-        if (mutation.type === 'characterData') apply(mutation.target)
-        else if (mutation.type === 'attributes') apply(mutation.target)
-        else for (const node of mutation.addedNodes || []) apply(node)
+        if (mutation.type === 'characterData') schedule(mutation.target)
+        else if (mutation.type === 'attributes') schedule(mutation.target)
+        else for (const node of mutation.addedNodes || []) schedule(node)
       }
     })
     observer.observe(document.body, {
@@ -148,7 +174,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 
     window.addEventListener('taxres-language-change', e => {
       lang = e?.detail?.language === 'es' ? 'es' : 'en'
-      apply(document.body)
+      schedule(document.body, true)
     })
   }
 

@@ -18,7 +18,6 @@ import ReactDOM from 'react-dom/client'
 import './index.css'
 import './manual-premium.css'
 import './lib/routePrefetch'
-import './lib/operationalI18n'
 import './lib/spanishUiParity'
 import './polish.css'
 import './theme-scrollbars.css'
@@ -43,8 +42,8 @@ globalThis.useMemo = React.useMemo
     const msg = String(value?.message || value?.reason?.message || value?.reason || value || '')
     return /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk|dynamically imported module|Unable to preload CSS|Failed to fetch.*assets\/.+\.(?:js|css)|error loading dynamically imported module/i.test(msg)
   }
-  const recover = value => {
-    if (!matchesChunkFailure(value)) return
+  const recover = (value, force = false) => {
+    if (!force && !matchesChunkFailure(value)) return
     try {
       const last = Number(sessionStorage.getItem(KEY) || 0)
       const now = Date.now()
@@ -53,6 +52,10 @@ globalThis.useMemo = React.useMemo
     } catch {}
     window.location.reload()
   }
+  window.addEventListener('vite:preloadError', event => {
+    event.preventDefault()
+    recover(event.payload || event, true)
+  })
   window.addEventListener('unhandledrejection', event => recover(event.reason))
   window.addEventListener('error', event => recover(event.error || event.message))
 })()
