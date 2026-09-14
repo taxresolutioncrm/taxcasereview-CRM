@@ -1,0 +1,272 @@
+name: Sandbox E-Sign DocuSign Lifecycle Gate
+
+on:
+  push:
+    branches:
+      - sandbox/esign-docusign-lifecycle-hardening-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: esign_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d esign_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full app build
+        run: |
+          npm run build
+          git diff --exit-code -- . ':!package-lock.json'
+
+      - name: Parse changed Edge Functions
+        run: |
+          npx --yes esbuild supabase/functions/office-agreement-file/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/office-agreement-file.js
+          npx --yes esbuild supabase/functions/esign-reminders/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/esign-reminders.js
+
+      - name: Parse lifecycle migration
+        run: |
+          python -m pip install --quiet pglast
+          python - <<'PY'
+          from pathlib import Path
+          from pglast import parse_sql
+          parse_sql(Path('supabase/migrations/20260914093000_esign_docusign_lifecycle_hardening.sql').read_text())
+          print('PASS: lifecycle migration parses')
+          PY
+
+      - name: Bootstrap ephemeral e-sign database
+        shell: bash
+        run: |
+          psql -h 127.0.0.1 -U postgres -d esign_test -v ON_ERROR_STOP=1 <<'SQL'
+          create extension if not exists pgcrypto;
+          create schema if not exists auth;
+          create or replace function auth.jwt() returns jsonb language sql stable as $$
+            select '{"email":"romy@romylabs.com"}'::jsonb
+          $$;
+          create schema if not exists extensions;
+          create or replace function public._is_platform_admin() returns boolean language sql stable as $$ select true $$;
+
+          create table public.romylabs_office_signing_documents(
+            id uuid primary key default gen_random_uuid(),
+            product_key text not null default 'taxres_crm',
+            external_office_id text not null default 'test-office',
+            firm_name text not null default 'Test Firm',
+            title text not null default 'Test Agreement',
+            source_filename text not null default 'test.pdf',
+            source_path text not null default 'taxres_crm/test-office/test.pdf',
+            signer_name text,
+            signer_email text not null,
+            fields jsonb not null default '[]'::jsonb,
+            token_hash text not null unique,
+            status text not null check(status in ('draft','pending','sent','viewed','signed','declined','void','expired')),
+            sent_at timestamptz,
+            opened_at timestamptz,
+            signed_at timestamptz,
+            voided_at timestamptz,
+            expires_at timestamptz,
+            completed_at timestamptz,
+            declined_at timestamptz,
+            decline_reason text,
+            corrected_at timestamptz,
+            corrected_by text,
+            audit jsonb not null default '[]'::jsonb,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz not null default now()
+          );
+
+          create table public.romylabs_esign_recipients(
+            id uuid primary key default gen_random_uuid(),
+            envelope_id uuid not null references public.romylabs_office_signing_documents(id) on delete cascade,
+            recipient_order integer not null default 1,
+            role text not null default 'signer',
+            name text,
+            email text not null,
+            status text not null check(status in ('pending','sent','viewed','completed','declined','skipped')),
+            token_hash text,
+            auth_method text default 'email',
+            fields jsonb not null default '[]'::jsonb,
+            sent_at timestamptz,
+            opened_at timestamptz,
+            completed_at timestamptz,
+            declined_at timestamptz,
+            decline_reason text,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz not null default now()
+          );
+
+          create table public.romylabs_esign_events(
+            id uuid primary key default gen_random_uuid(),
+            envelope_id uuid not null references public.romylabs_office_signing_documents(id) on delete cascade,
+            recipient_id uuid references public.romylabs_esign_recipients(id) on delete set null,
+            event_type text not null,
+            actor_email text,
+            actor_name text,
+            metadata jsonb not null default '{}'::jsonb,
+            occurred_at timestamptz not null default now()
+          );
+
+          create table public.romylabs_esign_token_aliases(
+            token_hash text primary key,
+            envelope_id uuid not null references public.romylabs_office_signing_documents(id) on delete cascade,
+            recipient_id uuid references public.romylabs_esign_recipients(id) on delete set null,
+            source text not null default 'rotation',
+            created_at timestamptz not null default now(),
+            revoked_at timestamptz
+          );
+
+          create or replace function public.romylabs_revoke_esign_token_aliases()
+          returns trigger language plpgsql as $$
+          begin
+            if new.status in ('signed','declined','void','expired') and old.status is distinct from new.status then
+              update public.romylabs_esign_token_aliases
+              set revoked_at=coalesce(revoked_at,now())
+              where envelope_id=new.id and revoked_at is null;
+            end if;
+            return new;
+          end $$;
+          create trigger trg_romylabs_revoke_esign_token_aliases
+          after update of status on public.romylabs_office_signing_documents
+          for each row execute function public.romylabs_revoke_esign_token_aliases();
+
+          create or replace function public.prevent_romylabs_esign_event_mutation()
+          returns trigger language plpgsql as $$
+          begin raise exception 'e-sign audit events are immutable'; end $$;
+          create trigger romylabs_esign_events_immutable_update
+          before update or delete on public.romylabs_esign_events
+          for each row execute function public.prevent_romylabs_esign_event_mutation();
+          SQL
+
+      - name: Apply lifecycle migration in sandbox DB
+        run: |
+          psql -h 127.0.0.1 -U postgres -d esign_test -v ON_ERROR_STOP=1 -f supabase/migrations/20260914093000_esign_docusign_lifecycle_hardening.sql
+
+      - name: Verify lifecycle state machine behavior
+        shell: bash
+        run: |
+          psql -h 127.0.0.1 -U postgres -d esign_test -v ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          declare
+            d uuid;
+            r uuid;
+            old_hash text:=encode(digest('old-token','sha256'),'hex');
+            res jsonb;
+            new_hash text;
+          begin
+            insert into public.romylabs_office_signing_documents(
+              signer_name,signer_email,token_hash,status
+            ) values('Old Signer','old@example.test',old_hash,'pending') returning id into d;
+            insert into public.romylabs_esign_recipients(
+              envelope_id,name,email,status,token_hash
+            ) values(d,'Old Signer','old@example.test','pending',old_hash) returning id into r;
+
+            res:=public.admin_romylabs_mark_office_signing_sent(d,'sent');
+            if coalesce((res->>'ok')::boolean,false) is not true then raise exception 'mark sent failed: %',res; end if;
+            if (select status from public.romylabs_office_signing_documents where id=d) <> 'sent' then raise exception 'document not sent'; end if;
+            if (select status from public.romylabs_esign_recipients where id=r) <> 'sent' then raise exception 'recipient not sent'; end if;
+            if not exists(select 1 from public.romylabs_esign_events where envelope_id=d and event_type='sent') then raise exception 'sent event missing'; end if;
+
+            update public.romylabs_office_signing_documents set status='declined' where id=d;
+            update public.romylabs_esign_recipients set status='declined' where id=r;
+            res:=public.admin_romylabs_mark_office_signing_sent(d,'sent');
+            if coalesce((res->>'ok')::boolean,true) is not false then raise exception 'declined envelope reopened'; end if;
+            if (select status from public.romylabs_office_signing_documents where id=d) <> 'declined' then raise exception 'declined status changed'; end if;
+
+            delete from public.romylabs_esign_events where false;
+          end $$;
+
+          do $$
+          declare
+            d uuid;
+            r uuid;
+            h text:=encode(digest('void-token','sha256'),'hex');
+            res jsonb;
+          begin
+            insert into public.romylabs_office_signing_documents(signer_name,signer_email,token_hash,status)
+            values('Void Signer','void@example.test',h,'viewed') returning id into d;
+            insert into public.romylabs_esign_recipients(envelope_id,name,email,status,token_hash)
+            values(d,'Void Signer','void@example.test','viewed',h) returning id into r;
+            insert into public.romylabs_esign_token_aliases(token_hash,envelope_id,recipient_id,source)
+            values(encode(digest('older-void-token','sha256'),'hex'),d,r,'test');
+
+            res:=public.admin_romylabs_void_office_signing_document(d,'test void');
+            if coalesce((res->>'ok')::boolean,false) is not true then raise exception 'void failed: %',res; end if;
+            if (select status from public.romylabs_office_signing_documents where id=d) <> 'void' then raise exception 'document not void'; end if;
+            if (select status from public.romylabs_esign_recipients where id=r) <> 'skipped' then raise exception 'recipient not skipped'; end if;
+            if not exists(select 1 from public.romylabs_esign_events where envelope_id=d and event_type='voided') then raise exception 'void event missing'; end if;
+            if exists(select 1 from public.romylabs_esign_token_aliases where envelope_id=d and revoked_at is null) then raise exception 'void aliases still active'; end if;
+          end $$;
+
+          do $$
+          declare
+            d uuid;
+            r uuid;
+            old_hash text:=encode(digest('correction-token','sha256'),'hex');
+            alias_hash text:=encode(digest('correction-alias','sha256'),'hex');
+            res jsonb;
+            current_hash text;
+          begin
+            insert into public.romylabs_office_signing_documents(signer_name,signer_email,token_hash,status,sent_at,opened_at)
+            values('Wrong Name','wrong@example.test',old_hash,'viewed',now(),now()) returning id into d;
+            insert into public.romylabs_esign_recipients(envelope_id,name,email,status,token_hash,sent_at,opened_at)
+            values(d,'Wrong Name','wrong@example.test','viewed',old_hash,now(),now()) returning id into r;
+            insert into public.romylabs_esign_token_aliases(token_hash,envelope_id,recipient_id,source)
+            values(alias_hash,d,r,'test');
+
+            res:=public.admin_romylabs_esign_correct_recipient(d,r,'Correct Name','correct@example.test');
+            if coalesce((res->>'ok')::boolean,false) is not true then raise exception 'correction failed: %',res; end if;
+            if (select status from public.romylabs_office_signing_documents where id=d) <> 'pending' then raise exception 'corrected envelope not pending'; end if;
+            if (select signer_email from public.romylabs_office_signing_documents where id=d) <> 'correct@example.test' then raise exception 'document signer email not corrected'; end if;
+            if (select email from public.romylabs_esign_recipients where id=r) <> 'correct@example.test' then raise exception 'recipient email not corrected'; end if;
+            if (select status from public.romylabs_esign_recipients where id=r) <> 'pending' then raise exception 'recipient not reset pending'; end if;
+            select token_hash into current_hash from public.romylabs_office_signing_documents where id=d;
+            if current_hash=old_hash then raise exception 'token was not rotated'; end if;
+            if current_hash <> (select token_hash from public.romylabs_esign_recipients where id=r) then raise exception 'document/recipient token mismatch'; end if;
+            if exists(select 1 from public.romylabs_esign_token_aliases where envelope_id=d and revoked_at is null) then raise exception 'old correction tokens still active'; end if;
+            if not exists(select 1 from public.romylabs_esign_events where envelope_id=d and event_type='recipient_corrected') then raise exception 'correction event missing'; end if;
+          end $$;
+
+          do $$
+          declare e uuid;
+          begin
+            select id into e from public.romylabs_esign_events limit 1;
+            begin
+              update public.romylabs_esign_events set event_type='tampered' where id=e;
+              raise exception 'immutable event update unexpectedly succeeded';
+            exception when others then
+              if sqlerrm='immutable event update unexpectedly succeeded' then raise; end if;
+            end;
+          end $$;
+
+          select 'PASS: lifecycle state-machine behavior' as result;
+          SQL
+
+      - name: Verify code invariants
+        run: |
+          ! grep -q "signature||doc?.signer_name" src/pages/OfficeDocumentSign.jsx
+          grep -q "action:'esign_void'" src/components/admin/UniversalOfficeESign.jsx
+          grep -q "signer_void_notification_sent" supabase/functions/office-agreement-file/index.ts
+          grep -q "owner_expired_notification_sent" supabase/functions/office-agreement-file/index.ts
+          grep -q "status:'skipped'" supabase/functions/esign-reminders/index.ts
