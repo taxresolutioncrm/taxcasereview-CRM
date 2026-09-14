@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
   }
 
   // ── Step 3: Parse product key from request body ──────────────────────────
-  let body: { product?: string; action?: string; payload?: Record<string, unknown> }
+  let body: { product?: string; products?: string[]; action?: string; payload?: Record<string, unknown> }
   try {
     body = await req.json()
   } catch {
@@ -144,22 +144,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  const productKey = body.product
-  if (!productKey) {
-    return new Response(JSON.stringify({ error: 'Missing product key' }), {
-      status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
-    })
-  }
-
-  // ── Step 4: Look up endpoint from server-side allowlist ──────────────────
-  const targetUrl = PRODUCT_ENDPOINTS[productKey]
-  if (!targetUrl) {
-    return new Response(JSON.stringify({ error: `Unknown product: ${productKey}` }), {
-      status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
-    })
-  }
-
-  // ── Step 5: Proxy request to product endpoint with server-side secret ────
+  // ── Step 4: Proxy product metrics with one authenticated caller check ─────
   const hubSecret = Deno.env.get('HUB_METRICS_SECRET')
   if (!hubSecret) {
     console.error('hub-proxy: HUB_METRICS_SECRET not configured')
@@ -168,50 +153,80 @@ Deno.serve(async (req) => {
     })
   }
 
-  try {
-    const productHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
+  async function fetchProductMetrics(productKey: string) {
+    const targetUrl = PRODUCT_ENDPOINTS[productKey]
+    if (!targetUrl) {
+      return { status: 400, data: null, error: `Unknown product: ${productKey}` }
     }
-    if (productKey === 'arcvena') {
-      const arcvenaSupportSecret = Deno.env.get('ARCVENA_SUPPORT_SECRET')
-      if (!arcvenaSupportSecret) {
-        return new Response(JSON.stringify({ ok: false, error: 'Arcvena proxy credential not configured' }), {
-          status: 503, headers: { ...cors, 'Content-Type': 'application/json' }
-        })
+
+    try {
+      const productHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
       }
-      productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
-    } else if (
-      productKey === 'camvella' ||
-      productKey === 'nashville' ||
-      productKey === 'bocasync' ||
-      productKey === 'groundivo' ||
-      productKey === 'oculivo' ||
-      productKey === 'restore_relay'
-    ) {
-      // Product metrics validate the authenticated RomyLabs owner session directly.
-      // This keeps all cross-project metrics on one signed-user contract and avoids
-      // per-product shared-secret drift.
-      productHeaders['Authorization'] = `Bearer ${jwt}`
-    } else {
-      productHeaders['x-hub-secret'] = hubSecret
+      if (productKey === 'arcvena') {
+        const arcvenaSupportSecret = Deno.env.get('ARCVENA_SUPPORT_SECRET')
+        if (!arcvenaSupportSecret) {
+          return { status: 503, data: null, error: 'Arcvena proxy credential not configured' }
+        }
+        productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
+      } else if (
+        productKey === 'camvella' ||
+        productKey === 'nashville' ||
+        productKey === 'bocasync' ||
+        productKey === 'groundivo' ||
+        productKey === 'oculivo' ||
+        productKey === 'restore_relay'
+      ) {
+        productHeaders['Authorization'] = `Bearer ${jwt}`
+      } else {
+        productHeaders['x-hub-secret'] = hubSecret
+      }
+
+      const productRes = await fetch(targetUrl, {
+        method: 'GET',
+        headers: productHeaders,
+      })
+      const productData = await productRes.json().catch(() => null)
+      const productError = productRes.ok && productData?.ok !== false
+        ? null
+        : (productData?.error || `Metrics request failed (${productRes.status})`)
+      return { status: productRes.status, data: productData, error: productError }
+    } catch (err) {
+      console.error(`hub-proxy: failed to fetch ${productKey}:`, err)
+      return { status: 502, data: null, error: 'Product endpoint unavailable' }
     }
+  }
 
-    const productRes = await fetch(targetUrl, {
-      method: 'GET',
-      headers: productHeaders,
-    })
-
-    const productData = await productRes.json()
-
-    // Forward the response — never relay the hub secret back to the browser
-    return new Response(JSON.stringify(productData), {
-      status: productRes.status,
-      headers: { ...cors, 'Content-Type': 'application/json' }
-    })
-  } catch (err) {
-    console.error(`hub-proxy: failed to fetch ${productKey}:`, err)
-    return new Response(JSON.stringify({ ok: false, error: 'Product endpoint unavailable' }), {
-      status: 502, headers: { ...cors, 'Content-Type': 'application/json' }
+  if (body.action === 'metrics_batch') {
+    const requested = Array.from(new Set(Array.isArray(body.products) ? body.products : []))
+    if (!requested.length || requested.length > 20) {
+      return new Response(JSON.stringify({ error: 'Batch requires 1-20 product keys' }), {
+        status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
+      })
+    }
+    const pairs = await Promise.all(requested.map(async productKey => [
+      productKey,
+      await fetchProductMetrics(productKey),
+    ] as const))
+    return new Response(JSON.stringify({
+      ok: true,
+      results: Object.fromEntries(pairs),
+    }), {
+      status: 200,
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
+
+  const productKey = body.product
+  if (!productKey) {
+    return new Response(JSON.stringify({ error: 'Missing product key' }), {
+      status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
+    })
+  }
+
+  const result = await fetchProductMetrics(productKey)
+  return new Response(JSON.stringify(result.data ?? { ok: false, error: result.error }), {
+    status: result.status,
+    headers: { ...cors, 'Content-Type': 'application/json' },
+  })
 })
