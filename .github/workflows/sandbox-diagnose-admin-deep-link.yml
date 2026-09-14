@@ -1,0 +1,55 @@
+name: Diagnose Admin Deep Link Routing
+
+on:
+  push:
+    branches:
+      - sandbox/admin-deep-link-root-cause-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build and verify SPA fallback artifact
+        run: |
+          npm ci --ignore-scripts
+          npx vite build
+          test -f dist/_redirects
+          echo 'DIST_REDIRECTS_PRESENT=yes'
+          cat dist/_redirects
+      - name: Inspect live custom-domain status
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== LIVE STATUS ==='
+          root_code=$(curl -sS -o /tmp/root.html -w '%{http_code}' -H 'Cache-Control: no-cache' 'https://admin.romylabs.com/?diag=1' || true)
+          deep_code=$(curl -sS -o /tmp/deep.html -w '%{http_code}' -H 'Cache-Control: no-cache' 'https://admin.romylabs.com/office-sign/testtoken?diag=1' || true)
+          echo "ROOT_HTTP=$root_code"
+          echo "DEEP_HTTP=$deep_code"
+          echo '=== CLOUDFLARE PAGES PROJECT ==='
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/taxcasereview-crm" > /tmp/project.json
+            python - <<'PY'
+import json
+p=json.load(open('/tmp/project.json'))
+r=p.get('result') or {}
+print('CF_SUCCESS=',p.get('success'))
+print('CF_NAME=',r.get('name'))
+print('CF_SUBDOMAIN=',r.get('subdomain'))
+print('CF_DOMAINS=',r.get('domains'))
+print('CF_PRODUCTION_BRANCH=',r.get('production_branch'))
+PY
+          else
+            echo 'CF_CREDS_AVAILABLE=no'
+          fi
