@@ -1,0 +1,78 @@
+name: Sandbox Public Signer Redirect Regression
+
+on:
+  push:
+    branches:
+      - sandbox/public-office-sign-route-fix-r2-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Full app build
+        run: |
+          npm run build
+          git diff --exit-code -- . ':!package-lock.json'
+      - name: Execute pre-React admin guard regression
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),vm=require('vm')
+          const src=fs.readFileSync('public/romylabs-admin-hotfix.js','utf8')
+          function run(path){
+            const redirects=[]
+            const storage=()=>({
+              length:0,key:()=>null,getItem:()=>null,setItem:()=>{},removeItem:()=>{}
+            })
+            const window={
+              location:{
+                hostname:'admin.romylabs.com',
+                pathname:path,
+                search:'',
+                href:'https://admin.romylabs.com'+path,
+                replace:(u)=>redirects.push(u)
+              },
+              addEventListener:()=>{},
+              setInterval:()=>1,
+              clearInterval:()=>{},
+              history:{replaceState:()=>{}}
+            }
+            const document={
+              body:{},
+              readyState:'loading',
+              addEventListener:()=>{},
+              querySelectorAll:()=>[]
+            }
+            const ctx={
+              window,document,
+              localStorage:storage(),sessionStorage:storage(),
+              URLSearchParams,URL,
+              console,
+              atob:(v)=>Buffer.from(v,'base64').toString('binary'),
+              setInterval:()=>1,clearInterval:()=>{}
+            }
+            vm.runInNewContext(src,ctx)
+            return redirects
+          }
+          for(const path of ['/office-sign/testtoken','/agreement/testtoken']){
+            const redirects=run(path)
+            if(redirects.some(x=>String(x).startsWith('/crm-admin'))){
+              throw new Error(path+' redirected to admin: '+JSON.stringify(redirects))
+            }
+          }
+          console.log('PASS: public signer routes bypass pre-React admin redirect')
+          NODE
+      - name: Verify React public routes remain wired
+        run: |
+          grep -q 'path="/office-sign/:token"' src/App.jsx
+          grep -q 'path="/agreement/:token"' src/App.jsx
