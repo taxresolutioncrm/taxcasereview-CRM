@@ -31,8 +31,68 @@ async function appendEvent(admin:any,envelopeId:string,eventType:string,opts:any
 }
 function ip(req:Request){return req.headers.get('cf-connecting-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null}
 function safeFile(v:string){return String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')}
+function isPoaDocument(doc:any){
+  const haystack=[
+    doc?.title,
+    doc?.source_filename,
+    doc?.document_type,
+    doc?.doc_type,
+    doc?.type,
+  ].map(v=>String(v||'').toLowerCase()).join(' ')
 
-async function registerUniversalFirmDocuments(admin:any,doc:any,signedSize:number|null=null,certificateSize:number|null=null){
+  // All POAs are excluded from contract-style completion stamping:
+  // IRS Form 2848, state POAs, state powers of attorney, and any generic POA naming.
+  return (
+    /\b2848\b/.test(haystack) ||
+    /\bpoa\b/.test(haystack) ||
+    /power\s+of\s+attorney/.test(haystack) ||
+    /state[_\s-]*poa/.test(haystack) ||
+    /state[_\s-]*power\s+of\s+attorney/.test(haystack) ||
+    /tax\s+power\s+of\s+attorney/.test(haystack)
+  )
+}
+
+async function stampCompletionOnDocument(pdfBytes:Uint8Array,doc:any,signatureName:string,completedAt:string,sourceHash:string,signedHash:string,certificateHash:string){
+  if(isPoaDocument(doc))return pdfBytes
+  const pdf=await PDFDocument.load(pdfBytes)
+  const pages=pdf.getPages()
+  if(!pages.length)return pdfBytes
+  const page=pages[pages.length-1]
+  const regular=await pdf.embedFont(StandardFonts.Helvetica)
+  const bold=await pdf.embedFont(StandardFonts.HelveticaBold)
+  const {width}=page.getSize()
+
+  const boxW=Math.min(230,width-48)
+  const boxH=88
+  const x=Math.max(24,width-boxW-24)
+  const y=24
+
+  page.drawRectangle({
+    x,y,width:boxW,height:boxH,
+    borderWidth:0.7,
+    borderColor:rgb(.55,.60,.68),
+    color:rgb(.97,.98,.99),
+    opacity:.94,
+  })
+  page.drawText('E-SIGNATURE COMPLETION',{
+    x:x+10,y:y+boxH-18,size:8.5,font:bold,color:rgb(.08,.12,.18),
+  })
+  page.drawText('Signed by: '+String(signatureName||doc?.signer_name||'Signer').slice(0,42),{
+    x:x+10,y:y+boxH-33,size:7.5,font:regular,color:rgb(.10,.15,.22),maxWidth:boxW-20,
+  })
+  page.drawText('Completed: '+completedAt,{
+    x:x+10,y:y+boxH-47,size:7,font:regular,color:rgb(.18,.22,.30),maxWidth:boxW-20,
+  })
+  page.drawText('Envelope: '+String(doc?.id||'').slice(0,36),{
+    x:x+10,y:y+boxH-61,size:6.5,font:regular,color:rgb(.25,.30,.38),maxWidth:boxW-20,
+  })
+  page.drawText('Integrity verified • Full audit retained in RomyLabs',{
+    x:x+10,y:y+10,size:6.2,font:regular,color:rgb(.30,.34,.42),maxWidth:boxW-20,
+  })
+  return new Uint8Array(await pdf.save())
+}
+
+async function registerUniversalFirmDocuments(admin:any,doc:any,completedBytes:Uint8Array,completedPath:string){
   const base={
     product_key:String(doc.product_key||'romylabs'),
     external_office_id:String(doc.external_office_id||''),
@@ -43,31 +103,25 @@ async function registerUniversalFirmDocuments(admin:any,doc:any,signedSize:numbe
     updated_at:new Date().toISOString(),
   }
   if(!base.external_office_id)throw new Error('Missing external office id for firm document archive')
-  const rows=[
-    {
-      ...base,
-      name:'Signed - '+String(doc.source_filename||doc.title||'Agreement.pdf'),
-      file_path:String(doc.signed_path||''),
-      file_size:signedSize,
-      document_kind:'signed_agreement',
-    },
-    {
-      ...base,
-      name:'Certificate of Completion - '+String(doc.title||'Agreement')+'.pdf',
-      file_path:String(doc.certificate_path||''),
-      file_size:certificateSize,
-      document_kind:'completion_certificate',
-    },
-  ]
-  for(const row of rows){
-    if(!row.file_path)throw new Error('Completed e-sign file path missing')
-    const {error}=await admin.from('romylabs_office_documents').upsert(row,{onConflict:'source_envelope_id,document_kind'})
-    if(error)throw error
+  const row={
+    ...base,
+    name:'Signed - '+String(doc.source_filename||doc.title||'Agreement.pdf'),
+    file_path:completedPath,
+    file_size:completedBytes.length,
+    document_kind:'signed_agreement',
   }
-  return {ok:true,product_key:base.product_key,external_office_id:base.external_office_id,registered:2}
+  const {error}=await admin.from('romylabs_office_documents').upsert(row,{onConflict:'source_envelope_id,document_kind'})
+  if(error)throw error
+
+  await admin.from('romylabs_office_documents')
+    .delete()
+    .eq('source_envelope_id',doc.id)
+    .eq('document_kind','completion_certificate')
+
+  return {ok:true,product_key:base.product_key,external_office_id:base.external_office_id,registered:1,file_path:completedPath}
 }
 
-async function archiveCompletedOfficeDocuments(admin:any,doc:any,signedBytes?:Uint8Array|null,certificateBytes?:Uint8Array|null){
+async function archiveCompletedOfficeDocuments(admin:any,doc:any,completedBytes:Uint8Array){
   const tenantId=String(doc.external_office_id||'')
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)){
     return {ok:false,skipped:true,reason:'office_not_central_tenant'}
@@ -75,46 +129,33 @@ async function archiveCompletedOfficeDocuments(admin:any,doc:any,signedBytes?:Ui
   const {data:tenant}=await admin.from('tenants').select('id,firm_name').eq('id',tenantId).maybeSingle()
   if(!tenant?.id)return {ok:false,skipped:true,reason:'tenant_not_found'}
 
-  const signedName='Signed - '+safeFile(String(doc.source_filename||doc.title||'Agreement.pdf'))
-  const certName='Certificate of Completion - '+safeFile(String(doc.title||'Agreement'))+'.pdf'
-  const signedOfficePath=`${tenantId}/esign/${doc.id}/signed-${safeFile(String(doc.source_filename||'agreement.pdf'))}`
+  const completedName='Signed - '+safeFile(String(doc.source_filename||doc.title||'Agreement.pdf'))
+  const completedPath=`${tenantId}/esign/${doc.id}/signed-${safeFile(String(doc.source_filename||'agreement.pdf'))}`
+  const {error:uploadError}=await admin.storage.from(LEGACY_BUCKET).upload(completedPath,completedBytes,{contentType:'application/pdf',upsert:true})
+  if(uploadError)throw uploadError
+
   const certOfficePath=`${tenantId}/esign/${doc.id}/certificate-of-completion.pdf`
+  const {data:existing,error:findError}=await admin.from('office_agreements').select('id').eq('tenant_id',tenantId).eq('file_path',completedPath).maybeSingle()
+  if(findError)throw findError
 
-  const ensureBytes=async(path:string,provided?:Uint8Array|null)=>{
-    if(provided?.length)return provided
-    const {data,error}=await admin.storage.from(ESIGN_BUCKET).download(path)
-    if(error||!data)throw new Error('Could not read completed e-sign file: '+String(error?.message||'missing file'))
-    return new Uint8Array(await data.arrayBuffer())
-  }
-
-  const signed=await ensureBytes(String(doc.signed_path||''),signedBytes)
-  const cert=await ensureBytes(String(doc.certificate_path||''),certificateBytes)
-
-  const uploadOne=async(path:string,bytes:Uint8Array)=>{
-    const {error}=await admin.storage.from(LEGACY_BUCKET).upload(path,bytes,{contentType:'application/pdf',upsert:true})
+  let completedId=existing?.id||null
+  if(completedId){
+    const {error}=await admin.from('office_agreements').update({
+      file_name:completedName,file_size:completedBytes.length,label:String(doc.title||'Signed Agreement'),uploaded_by:'universal-esign'
+    }).eq('id',completedId)
     if(error)throw error
-  }
-  await uploadOne(signedOfficePath,signed)
-  await uploadOne(certOfficePath,cert)
-
-  const ensureRow=async(filePath:string,fileName:string,label:string,size:number)=>{
-    const {data:existing,error:findError}=await admin.from('office_agreements').select('id').eq('tenant_id',tenantId).eq('file_path',filePath).maybeSingle()
-    if(findError)throw findError
-    if(existing?.id){
-      const {error}=await admin.from('office_agreements').update({file_name:fileName,file_size:size,label,uploaded_by:'universal-esign'}).eq('id',existing.id)
-      if(error)throw error
-      return existing.id
-    }
+  }else{
     const {data:created,error}=await admin.from('office_agreements').insert({
-      tenant_id:tenantId,file_name:fileName,file_path:filePath,file_size:size,label,uploaded_by:'universal-esign'
+      tenant_id:tenantId,file_name:completedName,file_path:completedPath,file_size:completedBytes.length,
+      label:String(doc.title||'Signed Agreement'),uploaded_by:'universal-esign'
     }).select('id').single()
     if(error)throw error
-    return created.id
+    completedId=created.id
   }
 
-  const signedId=await ensureRow(signedOfficePath,signedName,String(doc.title||'Signed Agreement'),signed.length)
-  const certId=await ensureRow(certOfficePath,certName,String(doc.title||'Agreement')+' — Completion Certificate',cert.length)
-  return {ok:true,tenant_id:tenantId,signed_agreement_id:signedId,certificate_agreement_id:certId,signed_path:signedOfficePath,certificate_path:certOfficePath}
+  await admin.from('office_agreements').delete().eq('tenant_id',tenantId).eq('file_path',certOfficePath)
+  try{await admin.storage.from(LEGACY_BUCKET).remove([certOfficePath])}catch(_){}
+  return {ok:true,tenant_id:tenantId,signed_agreement_id:completedId,signed_path:completedPath}
 }
 
 async function resolveProductMailRoute(admin:any,productKey:string){
@@ -288,12 +329,23 @@ serve(async(req)=>{
       if(de||!doc)return json({error:'Signing request not found'},404)
       if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
       try{
-        const {data:signedObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.signed_path))
-        const {data:certObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.certificate_path))
-        const signedSize=signedObj?Number((await signedObj.arrayBuffer()).byteLength):null
-        const certificateSize=certObj?Number((await certObj.arrayBuffer()).byteLength):null
-        const universal=await registerUniversalFirmDocuments(admin,doc,signedSize,certificateSize)
-        const archived=await archiveCompletedOfficeDocuments(admin,doc)
+        const {data:signedObj,error:signedErr}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.signed_path))
+        if(signedErr||!signedObj)throw new Error('Could not load signed agreement')
+        const signedBytes=new Uint8Array(await signedObj.arrayBuffer())
+        const officeFacingSignedBytes=await stampCompletionOnDocument(
+          signedBytes,
+          doc,
+          String(doc.signature_name||doc.signer_name||'Signer'),
+          String(doc.completed_at||doc.signed_at||new Date().toISOString()),
+          String(doc.source_sha256||''),
+          String(doc.signed_sha256||''),
+          String(doc.certificate_sha256||'')
+        )
+        const officeFacingPath=`${doc.product_key}/${doc.external_office_id}/${doc.id}/completed-signed-${safeFile(String(doc.source_filename||'agreement.pdf'))}`
+        const {error:officeFacingUp}=await admin.storage.from(ESIGN_BUCKET).upload(officeFacingPath,officeFacingSignedBytes,{contentType:'application/pdf',upsert:true})
+        if(officeFacingUp)throw officeFacingUp
+        const universal=await registerUniversalFirmDocuments(admin,doc,officeFacingSignedBytes,officeFacingPath)
+        const archived=await archiveCompletedOfficeDocuments(admin,doc,officeFacingSignedBytes)
         await appendEvent(admin,doc.id,'office_documents_archived',{actorName:'System',metadata:{universal,legacy:archived,backfill:true},occurredAt:new Date().toISOString()})
         return json({ok:true,universal,legacy:archived})
       }catch(e){
@@ -496,6 +548,18 @@ serve(async(req)=>{
       const certificatePath=`${doc.product_key}/${doc.external_office_id}/${doc.id}/certificate-of-completion.pdf`
       const {error:certUp}=await admin.storage.from(ESIGN_BUCKET).upload(certificatePath,certificateBytes,{contentType:'application/pdf',upsert:true})
       if(certUp)return json({error:'Could not save completion certificate: '+certUp.message},500)
+      const officeFacingSignedBytes=await stampCompletionOnDocument(
+        new Uint8Array(finalBytes),
+        doc,
+        signatureName,
+        now,
+        sourceHash,
+        signedHash,
+        certificateHash
+      )
+      const officeFacingPath=`${doc.product_key}/${doc.external_office_id}/${doc.id}/completed-signed-${safeFile(String(doc.source_filename||'agreement.pdf'))}`
+      const {error:officeFacingUp}=await admin.storage.from(ESIGN_BUCKET).upload(officeFacingPath,officeFacingSignedBytes,{contentType:'application/pdf',upsert:true})
+      if(officeFacingUp)return json({error:'Could not save completed signed document: '+officeFacingUp.message},500)
 
       const {data:updated,error:upd}=await admin.from('romylabs_office_signing_documents').update({
         status:'signed',signed_path:signedPath,signed_at:now,completed_at:now,
@@ -514,10 +578,10 @@ serve(async(req)=>{
         const universalArchive=await registerUniversalFirmDocuments(
           admin,
           {...doc,signed_path:signedPath,certificate_path:certificatePath},
-          finalBytes.length,
-          certificateBytes.length
+          officeFacingSignedBytes,
+          officeFacingPath
         )
-        officeArchive=await archiveCompletedOfficeDocuments(admin,{...doc,signed_path:signedPath,certificate_path:certificatePath},finalBytes,new Uint8Array(certificateBytes))
+        officeArchive=await archiveCompletedOfficeDocuments(admin,{...doc,signed_path:signedPath,certificate_path:certificatePath},officeFacingSignedBytes)
         await appendEvent(admin,doc.id,'office_documents_archived',{metadata:{universal:universalArchive,legacy:officeArchive},occurredAt:new Date().toISOString()})
       }catch(archiveError){
         console.error('[office-agreement-file] office archive failed',archiveError)
@@ -526,14 +590,14 @@ serve(async(req)=>{
 
       let ownerCopy:any=null,signerCopy:any=null
       try{
-        ownerCopy=await sendSignedCopy(admin,doc,finalBytes)
+        ownerCopy=await sendSignedCopy(admin,doc,officeFacingSignedBytes)
         await appendEvent(admin,doc.id,'owner_signed_copy_sent',{metadata:{recipient:ownerCopy.recipient,submission_id:ownerCopy.submissionId,from:ownerCopy.from},occurredAt:new Date().toISOString()})
       }catch(notificationError){
         console.error('[office-agreement-file] signed owner copy failed',notificationError)
         await appendEvent(admin,doc.id,'owner_signed_copy_failed',{metadata:{error:String((notificationError as Error)?.message||notificationError).slice(0,240)}})
       }
       try{
-        signerCopy=await sendSignedCopy(admin,doc,finalBytes,String(doc.signer_email))
+        signerCopy=await sendSignedCopy(admin,doc,officeFacingSignedBytes,String(doc.signer_email))
         await appendEvent(admin,doc.id,'signer_signed_copy_sent',{metadata:{recipient:signerCopy.recipient,submission_id:signerCopy.submissionId,from:signerCopy.from},occurredAt:new Date().toISOString()})
       }catch(notificationError){
         console.error('[office-agreement-file] signed signer copy failed',notificationError)
