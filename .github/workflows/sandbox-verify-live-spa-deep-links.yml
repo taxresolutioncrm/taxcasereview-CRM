@@ -1,0 +1,30 @@
+name: Verify Live SPA Deep Links
+
+on:
+  push:
+    branches:
+      - sandbox/live-deeplink-postfix-verify-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify Pages and custom-domain deep links
+        shell: bash
+        run: |
+          set -euo pipefail
+          preview='https://9c2686f8.taxcasereview-crm.pages.dev/office-sign/testtoken'
+          live='https://admin.romylabs.com/office-sign/testtoken'
+          preview_code=$(curl -sS -o /tmp/preview.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$preview?verify=$(date +%s)")
+          live_code=$(curl -sS -o /tmp/live.html -w '%{http_code}' -H 'Cache-Control: no-cache' "$live?verify=$(date +%s)")
+          echo "PREVIEW_HTTP=$preview_code"
+          echo "LIVE_HTTP=$live_code"
+          test "$preview_code" = '200'
+          test "$live_code" = '200'
+          grep -q '<div id="root"></div>' /tmp/preview.html
+          grep -q '<div id="root"></div>' /tmp/live.html
+          echo 'LIVE_SPA_DEEP_LINK_GATE=PASS'
