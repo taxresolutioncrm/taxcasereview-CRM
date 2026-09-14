@@ -193,12 +193,41 @@ serve(async(req)=>{
 
     // Token-scoped public signing actions. No anonymous database/storage access is exposed.
     if(action==='esign_load'||action==='esign_sign'||action==='esign_decline'){
-      const signingToken=String(b.token||'')
-      if(signingToken.length<32)return json({error:'Invalid signing link'},400)
+      const rawSigningToken=String(b.token||'').trim()
+      const tokenMatch=rawSigningToken.match(/[A-Fa-f0-9]{64}/)
+      const signingToken=tokenMatch?.[0]||''
+      if(signingToken.length!==64)return json({error:'Invalid signing link'},400)
       const hash=await sha256(signingToken)
-      const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('token_hash',hash).maybeSingle()
+
+      let {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('token_hash',hash).maybeSingle()
+      let aliasRecipientId:string|null=null
+
+      // Resends/reminders rotate the current token, but every previously emailed
+      // legitimate token remains valid for the same envelope until terminal state.
+      if(!doc&&!de){
+        const {data:alias,error:aliasError}=await admin.from('romylabs_esign_token_aliases')
+          .select('envelope_id,recipient_id').eq('token_hash',hash).is('revoked_at',null).maybeSingle()
+        if(aliasError)return json({error:'Could not validate signing link'},500)
+        if(alias?.envelope_id){
+          const resolved=await admin.from('romylabs_office_signing_documents').select('*').eq('id',alias.envelope_id).maybeSingle()
+          doc=resolved.data
+          de=resolved.error
+          aliasRecipientId=alias.recipient_id||null
+        }
+      }
+
       if(de||!doc)return json({error:'Signing request not found'},404)
-      const {data:recipient}=await admin.from('romylabs_esign_recipients').select('*').eq('envelope_id',doc.id).eq('token_hash',hash).maybeSingle()
+
+      let recipient:any=null
+      if(aliasRecipientId){
+        const rr=await admin.from('romylabs_esign_recipients').select('*').eq('id',aliasRecipientId).maybeSingle()
+        recipient=rr.data
+      }
+      if(!recipient){
+        const rr=await admin.from('romylabs_esign_recipients').select('*')
+          .eq('envelope_id',doc.id).eq('role','signer').order('recipient_order',{ascending:true}).limit(1).maybeSingle()
+        recipient=rr.data
+      }
       if(doc.status==='void')return json({error:'This signing request was voided'},410)
       if(doc.expires_at&&new Date(doc.expires_at).getTime()<Date.now()&&doc.status!=='signed')return json({error:'This signing link has expired'},410)
 

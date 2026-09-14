@@ -86,12 +86,29 @@ async function appendEvent(admin:any,doc:any,eventType:string,metadata:any={}){
 }
 
 async function rotateSigningToken(admin:any,doc:any){
+  const {data:recipient}=await admin.from('romylabs_esign_recipients')
+    .select('id,token_hash').eq('envelope_id',doc.id).eq('role','signer')
+    .in('status',['pending','sent','viewed']).order('recipient_order',{ascending:true}).limit(1).maybeSingle()
+
+  // Preserve the previous legitimate link before rotating to a fresh reminder token.
+  if(doc.token_hash){
+    const {error:aliasError}=await admin.from('romylabs_esign_token_aliases').upsert({
+      token_hash:String(doc.token_hash),
+      envelope_id:doc.id,
+      recipient_id:recipient?.id||null,
+      source:'scheduled_reminder',
+      revoked_at:null,
+    },{onConflict:'token_hash'})
+    if(aliasError)throw aliasError
+  }
+
   const bytes=crypto.getRandomValues(new Uint8Array(32))
   const token=[...bytes].map(x=>x.toString(16).padStart(2,'0')).join('')
   const tokenHash=await sha256(token)
   await admin.from('romylabs_office_signing_documents').update({token_hash:tokenHash,updated_at:nowIso()}).eq('id',doc.id)
-  await admin.from('romylabs_esign_recipients').update({token_hash:tokenHash,updated_at:nowIso()})
-    .eq('envelope_id',doc.id).eq('role','signer').in('status',['pending','sent','viewed'])
+  if(recipient?.id){
+    await admin.from('romylabs_esign_recipients').update({token_hash:tokenHash,updated_at:nowIso()}).eq('id',recipient.id)
+  }
   return token
 }
 
