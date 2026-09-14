@@ -1,0 +1,48 @@
+name: Sandbox Universal E-Sign Token History Gate
+
+on:
+  push:
+    branches:
+      - sandbox/universal-esign-token-history-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Full app build
+        run: |
+          npm run build
+          git diff --exit-code -- . ':!package-lock.json'
+      - name: Parse changed Edge Functions
+        run: |
+          npx --yes esbuild supabase/functions/office-agreement-file/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/office-agreement-file.js
+          npx --yes esbuild supabase/functions/esign-reminders/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/esign-reminders.js
+      - name: Parse migration SQL
+        run: |
+          python -m pip install --quiet pglast
+          python - <<'PY'
+          from pathlib import Path
+          from pglast import parse_sql
+          sql=Path('supabase/migrations/20260914052500_universal_esign_token_history.sql').read_text()
+          parse_sql(sql)
+          print('PASS: migration SQL parses')
+          PY
+      - name: Verify token-history invariants
+        run: |
+          grep -q "romylabs_esign_token_aliases" supabase/functions/office-agreement-file/index.ts
+          grep -q "romylabs_esign_token_aliases" supabase/functions/esign-reminders/index.ts
+          grep -q "historical_email" supabase/migrations/20260914052500_universal_esign_token_history.sql
+          grep -q "manual_resend" supabase/migrations/20260914052500_universal_esign_token_history.sql
+          grep -q "scheduled_reminder" supabase/functions/esign-reminders/index.ts
+          grep -q "signed','declined','void','expired" supabase/migrations/20260914052500_universal_esign_token_history.sql
