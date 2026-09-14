@@ -644,10 +644,12 @@ function Overview() {
   useEffect(() => {
     if (!user) return
     let cancelled=false
+    let hasRenderedData=false
 
     // Re-visiting Overview should feel immediate while a fresh snapshot replaces
     // the short-lived cache in the background.
     if (platformOverviewCache && Date.now() - platformOverviewCache.at < 60000) {
+      hasRenderedData=true
       setStats(platformOverviewCache.rows)
       setExternalMetrics(platformOverviewCache.externalMetrics)
     }
@@ -658,6 +660,7 @@ function Overview() {
         if(cancelled) return
 
         // First paint: central office directory + billing. Do not wait for every CRM.
+        hasRenderedData=true
         setStats(snapshot.rows)
         setLoadError('')
 
@@ -672,7 +675,7 @@ function Overview() {
         }
       } catch(error) {
         if(cancelled) return
-        if (!stats) {
+        if (!hasRenderedData) {
           setStats([])
           setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
         }
