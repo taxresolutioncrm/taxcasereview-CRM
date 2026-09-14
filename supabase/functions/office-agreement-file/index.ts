@@ -32,6 +32,41 @@ async function appendEvent(admin:any,envelopeId:string,eventType:string,opts:any
 function ip(req:Request){return req.headers.get('cf-connecting-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null}
 function safeFile(v:string){return String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')}
 
+async function registerUniversalFirmDocuments(admin:any,doc:any,signedSize:number|null=null,certificateSize:number|null=null){
+  const base={
+    product_key:String(doc.product_key||'romylabs'),
+    external_office_id:String(doc.external_office_id||''),
+    firm_name:String(doc.firm_name||'Office'),
+    source_envelope_id:doc.id,
+    uploaded_by:'universal-esign',
+    mime_type:'application/pdf',
+    updated_at:new Date().toISOString(),
+  }
+  if(!base.external_office_id)throw new Error('Missing external office id for firm document archive')
+  const rows=[
+    {
+      ...base,
+      name:'Signed - '+String(doc.source_filename||doc.title||'Agreement.pdf'),
+      file_path:String(doc.signed_path||''),
+      file_size:signedSize,
+      document_kind:'signed_agreement',
+    },
+    {
+      ...base,
+      name:'Certificate of Completion - '+String(doc.title||'Agreement')+'.pdf',
+      file_path:String(doc.certificate_path||''),
+      file_size:certificateSize,
+      document_kind:'completion_certificate',
+    },
+  ]
+  for(const row of rows){
+    if(!row.file_path)throw new Error('Completed e-sign file path missing')
+    const {error}=await admin.from('romylabs_office_documents').upsert(row,{onConflict:'source_envelope_id,document_kind'})
+    if(error)throw error
+  }
+  return {ok:true,product_key:base.product_key,external_office_id:base.external_office_id,registered:2}
+}
+
 async function archiveCompletedOfficeDocuments(admin:any,doc:any,signedBytes?:Uint8Array|null,certificateBytes?:Uint8Array|null){
   const tenantId=String(doc.external_office_id||'')
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)){
@@ -253,9 +288,14 @@ serve(async(req)=>{
       if(de||!doc)return json({error:'Signing request not found'},404)
       if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
       try{
+        const {data:signedObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.signed_path))
+        const {data:certObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.certificate_path))
+        const signedSize=signedObj?Number((await signedObj.arrayBuffer()).byteLength):null
+        const certificateSize=certObj?Number((await certObj.arrayBuffer()).byteLength):null
+        const universal=await registerUniversalFirmDocuments(admin,doc,signedSize,certificateSize)
         const archived=await archiveCompletedOfficeDocuments(admin,doc)
-        if(archived?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{actorName:'System',metadata:{...archived,backfill:true},occurredAt:new Date().toISOString()})
-        return json(archived?.ok?archived:{ok:false,...archived},archived?.ok?200:422)
+        await appendEvent(admin,doc.id,'office_documents_archived',{actorName:'System',metadata:{universal,legacy:archived,backfill:true},occurredAt:new Date().toISOString()})
+        return json({ok:true,universal,legacy:archived})
       }catch(e){
         await appendEvent(admin,doc.id,'office_documents_archive_failed',{actorName:'System',metadata:{error:String((e as Error)?.message||e).slice(0,240),backfill:true}})
         return json({error:String((e as Error)?.message||e)},500)
@@ -471,8 +511,14 @@ serve(async(req)=>{
 
       let officeArchive:any=null
       try{
+        const universalArchive=await registerUniversalFirmDocuments(
+          admin,
+          {...doc,signed_path:signedPath,certificate_path:certificatePath},
+          finalBytes.length,
+          certificateBytes.length
+        )
         officeArchive=await archiveCompletedOfficeDocuments(admin,{...doc,signed_path:signedPath,certificate_path:certificatePath},finalBytes,new Uint8Array(certificateBytes))
-        if(officeArchive?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{metadata:officeArchive,occurredAt:new Date().toISOString()})
+        await appendEvent(admin,doc.id,'office_documents_archived',{metadata:{universal:universalArchive,legacy:officeArchive},occurredAt:new Date().toISOString()})
       }catch(archiveError){
         console.error('[office-agreement-file] office archive failed',archiveError)
         await appendEvent(admin,doc.id,'office_documents_archive_failed',{metadata:{error:String((archiveError as Error)?.message||archiveError).slice(0,240)},occurredAt:new Date().toISOString()})
@@ -521,6 +567,27 @@ serve(async(req)=>{
         const archived=await archiveCompletedOfficeDocuments(admin,doc)
         if(archived?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{actorEmail:user.email,metadata:{...archived,backfill:true},occurredAt:new Date().toISOString()})
         return json(archived?.ok?archived:{ok:false,...archived},archived?.ok?200:422)
+      }catch(e){
+        await appendEvent(admin,doc.id,'office_documents_archive_failed',{actorEmail:user.email,metadata:{error:String((e as Error)?.message||e).slice(0,240),backfill:true}})
+        return json({error:String((e as Error)?.message||e)},500)
+      }
+    }
+
+    if(action==='archive_completed_esign'){
+      const documentId=String(b.document_id||'')
+      if(!documentId)return json({error:'document_id is required'},400)
+      const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
+      if(de||!doc)return json({error:'Signing request not found'},404)
+      if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
+      try{
+        const {data:signedObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.signed_path))
+        const {data:certObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.certificate_path))
+        const signedSize=signedObj?Number((await signedObj.arrayBuffer()).byteLength):null
+        const certificateSize=certObj?Number((await certObj.arrayBuffer()).byteLength):null
+        const universal=await registerUniversalFirmDocuments(admin,doc,signedSize,certificateSize)
+        const legacy=await archiveCompletedOfficeDocuments(admin,doc)
+        await appendEvent(admin,doc.id,'office_documents_archived',{actorEmail:user.email,metadata:{universal,legacy,backfill:true},occurredAt:new Date().toISOString()})
+        return json({ok:true,universal,legacy})
       }catch(e){
         await appendEvent(admin,doc.id,'office_documents_archive_failed',{actorEmail:user.email,metadata:{error:String((e as Error)?.message||e).slice(0,240),backfill:true}})
         return json({error:String((e as Error)?.message||e)},500)
