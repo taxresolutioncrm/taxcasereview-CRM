@@ -99,7 +99,6 @@ export default function EnvelopeDetails({supabase,row,brand,onClose,onOpenFile})
       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:14}}>
         <button onClick={()=>onOpenFile(row,'source')} style={smallBtn}>Original</button>
         {row.signed_path&&<button onClick={()=>onOpenFile(row,'signed')} style={goodBtn}>Signed Contract</button>}
-        {row.certificate_path&&<button onClick={()=>onOpenFile(row,'certificate')} style={certBtn}>Completion Certificate</button>}
       </div>
     </>}
   </section>
