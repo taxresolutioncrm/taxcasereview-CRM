@@ -341,7 +341,10 @@ serve(async(req)=>{
           String(doc.signed_sha256||''),
           String(doc.certificate_sha256||'')
         )
-        const universal=await registerUniversalFirmDocuments(admin,doc,officeFacingSignedBytes,String(doc.signed_path))
+        const officeFacingPath=`${doc.product_key}/${doc.external_office_id}/${doc.id}/completed-signed-${safeFile(String(doc.source_filename||'agreement.pdf'))}`
+        const {error:officeFacingUp}=await admin.storage.from(ESIGN_BUCKET).upload(officeFacingPath,officeFacingSignedBytes,{contentType:'application/pdf',upsert:true})
+        if(officeFacingUp)throw officeFacingUp
+        const universal=await registerUniversalFirmDocuments(admin,doc,officeFacingSignedBytes,officeFacingPath)
         const archived=await archiveCompletedOfficeDocuments(admin,doc,officeFacingSignedBytes)
         await appendEvent(admin,doc.id,'office_documents_archived',{actorName:'System',metadata:{universal,legacy:archived,backfill:true},occurredAt:new Date().toISOString()})
         return json({ok:true,universal,legacy:archived})
@@ -554,6 +557,9 @@ serve(async(req)=>{
         signedHash,
         certificateHash
       )
+      const officeFacingPath=`${doc.product_key}/${doc.external_office_id}/${doc.id}/completed-signed-${safeFile(String(doc.source_filename||'agreement.pdf'))}`
+      const {error:officeFacingUp}=await admin.storage.from(ESIGN_BUCKET).upload(officeFacingPath,officeFacingSignedBytes,{contentType:'application/pdf',upsert:true})
+      if(officeFacingUp)return json({error:'Could not save completed signed document: '+officeFacingUp.message},500)
 
       const {data:updated,error:upd}=await admin.from('romylabs_office_signing_documents').update({
         status:'signed',signed_path:signedPath,signed_at:now,completed_at:now,
@@ -573,7 +579,7 @@ serve(async(req)=>{
           admin,
           {...doc,signed_path:signedPath,certificate_path:certificatePath},
           officeFacingSignedBytes,
-          signedPath
+          officeFacingPath
         )
         officeArchive=await archiveCompletedOfficeDocuments(admin,{...doc,signed_path:signedPath,certificate_path:certificatePath},officeFacingSignedBytes)
         await appendEvent(admin,doc.id,'office_documents_archived',{metadata:{universal:universalArchive,legacy:officeArchive},occurredAt:new Date().toISOString()})
@@ -584,14 +590,14 @@ serve(async(req)=>{
 
       let ownerCopy:any=null,signerCopy:any=null
       try{
-        ownerCopy=await sendSignedCopy(admin,doc,finalBytes)
+        ownerCopy=await sendSignedCopy(admin,doc,officeFacingSignedBytes)
         await appendEvent(admin,doc.id,'owner_signed_copy_sent',{metadata:{recipient:ownerCopy.recipient,submission_id:ownerCopy.submissionId,from:ownerCopy.from},occurredAt:new Date().toISOString()})
       }catch(notificationError){
         console.error('[office-agreement-file] signed owner copy failed',notificationError)
         await appendEvent(admin,doc.id,'owner_signed_copy_failed',{metadata:{error:String((notificationError as Error)?.message||notificationError).slice(0,240)}})
       }
       try{
-        signerCopy=await sendSignedCopy(admin,doc,finalBytes,String(doc.signer_email))
+        signerCopy=await sendSignedCopy(admin,doc,officeFacingSignedBytes,String(doc.signer_email))
         await appendEvent(admin,doc.id,'signer_signed_copy_sent',{metadata:{recipient:signerCopy.recipient,submission_id:signerCopy.submissionId,from:signerCopy.from},occurredAt:new Date().toISOString()})
       }catch(notificationError){
         console.error('[office-agreement-file] signed signer copy failed',notificationError)
