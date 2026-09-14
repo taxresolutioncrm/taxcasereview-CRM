@@ -173,7 +173,7 @@ export default function OfficeDocumentSign(){
   async function finish(){
     const fields=doc?.fields||[]
     if(!consent){setError('You must consent to electronic records and signatures before finishing.');return}
-    let sig=String(signature||doc?.signer_name||'').trim()
+    const sig=String(signature||'').trim()
     if(!sig){setError('Enter your full legal name before signing.');return}
     if(signatureMode==='draw'&&!drawnSignature){setError('Draw your signature before finishing.');return}
     for(const f of fields){
