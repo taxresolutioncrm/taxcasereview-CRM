@@ -62,8 +62,8 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d esign_test -v ON_ERROR_STOP=1 <<'SQL'
           create extension if not exists pgcrypto;
-          do $ begin create role anon; exception when duplicate_object then null; end $;
-          do $ begin create role authenticated; exception when duplicate_object then null; end $;
+          create role anon;
+          create role authenticated;
           create schema if not exists auth;
           create or replace function auth.jwt() returns jsonb language sql stable as $$
             select '{"email":"romy@romylabs.com"}'::jsonb
