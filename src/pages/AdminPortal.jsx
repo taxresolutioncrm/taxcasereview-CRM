@@ -150,18 +150,36 @@ async function loadPlatformOfficeRows() {
   ]
   const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
 
-  // Start every remote metrics request together, but still wait for the complete
-  // set before Overview renders. This preserves the known-good reporting model
-  // while removing the old two-wave network delay.
-  const tenantFeedPromise = Promise.all(taxResTenantFeeds.map(async feed => {
-    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
-    return { ...feed, ...response }
-  }))
-  const productFeedPromise = Promise.all(productKeys.map(async productKey => {
-    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
-    return { productKey, ...response }
-  }))
-  const [tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
+  // One authenticated hub call fetches all products concurrently server-side.
+  // If the batch path is unavailable for any reason, fall back to the existing
+  // per-product parallel calls so reporting behavior never depends on batching.
+  const requestedProducts = [...taxResTenantFeeds.map(feed => feed.key), ...productKeys]
+  const { data: batchData, error: batchError } = await supabase.functions.invoke('hub-proxy', {
+    body:{ action:'metrics_batch', products:requestedProducts },
+  })
+
+  let tenantFeedResults
+  let results
+  if (!batchError && batchData?.ok && batchData?.results) {
+    tenantFeedResults = taxResTenantFeeds.map(feed => {
+      const item = batchData.results[feed.key] || {}
+      return { ...feed, data:item.data, error:item.error ? new Error(item.error) : null }
+    })
+    results = productKeys.map(productKey => {
+      const item = batchData.results[productKey] || {}
+      return { productKey, data:item.data, error:item.error ? new Error(item.error) : null }
+    })
+  } else {
+    const tenantFeedPromise = Promise.all(taxResTenantFeeds.map(async feed => {
+      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
+      return { ...feed, ...response }
+    }))
+    const productFeedPromise = Promise.all(productKeys.map(async productKey => {
+      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
+      return { productKey, ...response }
+    }))
+    ;[tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
+  }
 
   for (const result of tenantFeedResults) {
     if (result.error || result.data?.ok === false) {
