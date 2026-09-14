@@ -1,5 +1,28 @@
--- Repair Admin Portal office detail RPC after a later migration regressed
--- recent_actions back to the removed public.admin_audit_log relation.
+-- Repair Admin Portal office detail RPC after later migration regressions.
+-- Restore the storage helper that a later office-detail definition references.
+create or replace function public._admin_tenant_storage_bytes(p_tenant_id uuid)
+returns bigint
+language sql
+security definer
+set search_path = public, pg_temp
+as $function$
+  select greatest(
+    coalesce((
+      select sum(coalesce(d.file_size,0))::bigint
+      from public.documents d
+      where d.tenant_id = p_tenant_id
+    ),0),
+    coalesce((
+      select sum(coalesce((o.metadata->>'size')::bigint,0))::bigint
+      from storage.objects o
+      where position(p_tenant_id::text in o.name) > 0
+    ),0)
+  );
+$function$;
+
+revoke all on function public._admin_tenant_storage_bytes(uuid) from public, anon, authenticated;
+grant execute on function public._admin_tenant_storage_bytes(uuid) to service_role;
+
 create or replace function public.get_office_full(p_tenant_id uuid)
 returns jsonb
 language plpgsql
