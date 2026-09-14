@@ -262,14 +262,17 @@ async function loadPlatformOfficeRows() {
     }
 
     const metrics = result.data?.metrics || {}
-    // Avoid double-counting product metrics that are already represented by office rows.
-    // Only carry aggregate metrics separately when the product feed has no office breakdown.
+    // Product feeds may report storage only at the aggregate product level even when
+    // office rows are present. Count office storage first, then add only the unrepresented
+    // remainder from the aggregate metric so Overview storage is complete without double-counting.
+    const officeStorageSum = offices.reduce((sum, office) => sum + Number(office?.storage_bytes || 0), 0)
+    const aggregateStorage = Number(metrics.storage_bytes || 0)
     if (!offices.length) {
       externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
       externalMetrics.active_clients += Number(metrics.total_clients || metrics.active_clients || 0)
       externalMetrics.active_leads += Number(metrics.total_leads || metrics.active_leads || 0)
-      externalMetrics.storage_bytes += Number(metrics.storage_bytes || 0)
     }
+    externalMetrics.storage_bytes += Math.max(0, aggregateStorage - officeStorageSum)
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
   }
 
