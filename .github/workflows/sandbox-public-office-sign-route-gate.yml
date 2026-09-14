@@ -1,0 +1,32 @@
+name: Sandbox Public Office Sign Route Gate
+
+on:
+  push:
+    branches:
+      - sandbox/public-office-sign-route-fix-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Full app build
+        run: |
+          npm run build
+          git diff --exit-code -- . ':!package-lock.json'
+      - name: Verify public signer routes bypass admin redirect
+        run: |
+          grep -q "'/office-sign/'" public/romylabs-admin-hotfix.js
+          grep -q "'/agreement/'" public/romylabs-admin-hotfix.js
+          grep -q "livePublicPrefixes" public/romylabs-admin-hotfix.js
+          grep -q 'path="/office-sign/:token"' src/App.jsx
