@@ -405,24 +405,49 @@ serve(async (req) => {
         route_id:route.id,
       })))
 
+      let esignStateSync:any=null
       const signMatch=String(html||'').match(/\/office-sign\/([a-f0-9]{64})/i)
       if (signMatch?.[1]) {
         const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(signMatch[1]))
         const tokenHash=Array.from(new Uint8Array(digest)).map((b:number)=>b.toString(16).padStart(2,'0')).join('')
-        const { data: signDoc }=await admin.from('romylabs_office_signing_documents').select('id,sent_at,audit,status').eq('token_hash',tokenHash).maybeSingle()
-        if (signDoc && !['signed','void'].includes(String(signDoc.status||''))) {
-          const now=new Date().toISOString()
-          const audit=Array.isArray(signDoc.audit)?signDoc.audit:[]
-          await admin.from('romylabs_office_signing_documents').update({
-            status:'sent',sent_at:now,updated_at:now,
-            audit:[...audit,{event:signDoc.sent_at?'resent':'sent',at:now,actor:safe(authenticatedUser?.email||'platform-admin'),transport:'stalwart_jmap',from:routedFrom,submission_ids:deliveries.map((x:any)=>x.submissionId)}],
-          }).eq('id',signDoc.id)
+        const { data: signDoc }=await admin.from('romylabs_office_signing_documents').select('id,status').eq('token_hash',tokenHash).maybeSingle()
+        if (signDoc) {
+          const requestedEvent=safe(body.esign_event).toLowerCase()==='resent'?'resent':'sent'
+          const syncOnce=()=>admin.rpc('admin_romylabs_mark_office_signing_sent',{
+            p_document_id:signDoc.id,
+            p_event:requestedEvent,
+          })
+          let sync=await syncOnce()
+          if(sync.error||!sync.data?.ok) sync=await syncOnce()
+          if(sync.error||!sync.data?.ok){
+            esignStateSync={
+              ok:false,
+              error:safe(sync.error?.message||sync.data?.error||'delivery_state_sync_failed'),
+              envelope_id:signDoc.id,
+            }
+          }else{
+            esignStateSync={ok:true,envelope_id:signDoc.id,event:requestedEvent}
+            await admin.from('romylabs_esign_events').insert({
+              envelope_id:signDoc.id,
+              event_type:'delivery_confirmed',
+              actor_email:safe(authenticatedUser?.email||'platform-admin'),
+              actor_name:safe(authenticatedUser?.email||'platform-admin'),
+              metadata:{
+                transport:'stalwart_jmap',
+                from:routedFrom,
+                event:requestedEvent,
+                submission_ids:deliveries.map((x:any)=>x.submissionId),
+              },
+              occurred_at:new Date().toISOString(),
+            })
+          }
         }
       }
 
       return new Response(JSON.stringify({
         success:true,via:'stalwart_jmap',from:routedFrom,product_key:requestedProduct,
         external_office_id:externalOfficeId,submissions:deliveries.map((x:any)=>x.submissionId),
+        esign_state_sync:esignStateSync,
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
