@@ -34,27 +34,33 @@ jobs:
       - name: Build stamp helper test module from production source
         shell: bash
         run: |
-          npm install --no-save --ignore-scripts pdf-lib@1.17.1
+          rm -rf /tmp/pdf-test
+          mkdir -p /tmp/pdf-test
+          cd /tmp/pdf-test
+          npm init -y >/dev/null 2>&1
+          npm install --silent --ignore-scripts pdf-lib@1.17.1 esbuild@0.25.9
+          cd "$GITHUB_WORKSPACE"
           python - <<'PY'
           from pathlib import Path
           s=Path('supabase/functions/office-agreement-file/index.ts').read_text()
           start=s.index('function isPoaDocument')
           end=s.index('async function registerUniversalFirmDocuments',start)
           snippet=s[start:end]
-          Path('/tmp/stamp-helper.ts').write_text(
+          Path('/tmp/pdf-test/stamp-helper.ts').write_text(
               "import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'\n"
               + snippet
               + "\nexport { isPoaDocument, stampCompletionOnDocument }\n"
           )
           PY
-          npx --yes esbuild /tmp/stamp-helper.ts --bundle --platform=node --format=cjs --outfile=/tmp/stamp-helper.cjs
+          cd /tmp/pdf-test
+          ./node_modules/.bin/esbuild stamp-helper.ts --bundle --platform=node --format=cjs --outfile=stamp-helper.cjs
 
       - name: Verify embedded stamp and all-POA exclusion
         shell: bash
         run: |
           node <<'NODE'
-          const {PDFDocument}=require('pdf-lib')
-          const {isPoaDocument,stampCompletionOnDocument}=require('/tmp/stamp-helper.cjs')
+          const {PDFDocument}=require('/tmp/pdf-test/node_modules/pdf-lib')
+          const {isPoaDocument,stampCompletionOnDocument}=require('/tmp/pdf-test/stamp-helper.cjs')
 
           ;(async()=>{
             const src=await PDFDocument.create()
