@@ -288,7 +288,6 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
             <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
               <button onClick={()=>openFile(row,'source')} style={smallBtn}>Original</button>
               {row.signed_path&&<button onClick={()=>openFile(row,'signed')} style={{...smallBtn,color:'#34d399',borderColor:'rgba(16,185,129,.28)',background:'rgba(16,185,129,.08)'}}>Signed PDF</button>}
-              {row.certificate_path&&<button onClick={()=>openFile(row,'certificate')} style={{...smallBtn,color:'#fbbf24',borderColor:'rgba(245,158,11,.28)',background:'rgba(245,158,11,.08)'}}>Certificate</button>}
               <button onClick={()=>setDetailDoc(row)} style={{...smallBtn,color:'#e2e8f0'}}>Full Audit</button>
             </div>
           </div>
@@ -330,12 +329,12 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       </div>
       <div style={{background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.18)',borderRadius:12,padding:16}}>
         {firmDocs.length===0
-          ? <div style={{padding:'28px 12px',textAlign:'center',color:'#475569',fontSize:11}}>No documents uploaded yet. Signed agreements and completion certificates will appear here automatically.</div>
+          ? <div style={{padding:'28px 12px',textAlign:'center',color:'#475569',fontSize:11}}>No documents uploaded yet. Completed signed documents will appear here automatically.</div>
           : <div style={{display:'grid',gap:8}}>
               {firmDocs.map(row=><div key={row.id} style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',padding:'10px 11px',borderRadius:8,border:'1px solid rgba(99,102,241,.12)',background:'rgba(15,23,42,.45)'}}>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:900,color:'#e2e8f0',wordBreak:'break-word'}}>{row.name}</div>
-                  <div style={{fontSize:9,color:'#64748b',marginTop:3}}>{row.document_kind==='signed_agreement'?'Signed Agreement':row.document_kind==='completion_certificate'?'Completion Certificate':'Firm Document'}{row.file_size?` · ${Math.max(1,Math.round(Number(row.file_size)/1024))} KB`:''}{row.created_at?` · ${dt(row.created_at)}`:''}</div>
+                  <div style={{fontSize:9,color:'#64748b',marginTop:3}}>{row.document_kind==='signed_agreement'?'Signed Agreement':'Firm Document'}{row.file_size?` · ${Math.max(1,Math.round(Number(row.file_size)/1024))} KB`:''}{row.created_at?` · ${dt(row.created_at)}`:''}</div>
                 </div>
                 <div style={{display:'flex',gap:6,flexShrink:0}}>
                   <button onClick={()=>openFirmDocument(row)} style={smallBtn}>Open</button>
