@@ -14,23 +14,32 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Trace live root bundle
+      - name: Trace all live admin JS assets
         shell: bash
         run: |
           set -euo pipefail
           base='https://admin.romylabs.com'
           ts=$(date +%s)
-          html=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$base/?trace=$ts")
-          printf '%s' "$html" > /tmp/live.html
-          js=$(printf '%s' "$html" | grep -oE 'src="[^"]+\.js[^"]*"' | head -1 | sed -E 's/^src="//;s/"$//')
-          echo "LIVE_MAIN_JS=$js"
-          [[ "$js" == http* ]] || js="$base$js"
-          curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$js?trace=$ts" -o /tmp/live.js
-          echo "CANONICAL_REF_COUNT=$(grep -o 'mpxgxfqdbquzkrvvejkh' /tmp/live.js | wc -l)"
-          echo "OTHER_SUPABASE_REFS:"
-          grep -oE '[a-z]{20}\.supabase\.co' /tmp/live.js | sort -u || true
-          if ! grep -q 'mpxgxfqdbquzkrvvejkh' /tmp/live.js; then
-            echo 'LIVE_BUNDLE_CANONICAL_REF=NO'
+          curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$base/?trace=$ts" -o /tmp/live.html
+          echo '=== SCRIPT SOURCES ==='
+          grep -oE 'src="[^"]+\.js[^"]*"' /tmp/live.html | sed -E 's/^src="//;s/"$//' | tee /tmp/scripts.txt
+          found=0
+          while IFS= read -r js; do
+            [ -n "$js" ] || continue
+            [[ "$js" == http* ]] || js="$base$js"
+            name=$(basename "${js%%\?*}")
+            echo "=== FETCH $name ==="
+            curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$js&trace=$ts" -o "/tmp/$name" || curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$js?trace=$ts" -o "/tmp/$name"
+            count=$(grep -o 'mpxgxfqdbquzkrvvejkh' "/tmp/$name" | wc -l || true)
+            echo "canonical_ref_count=$count"
+            if [ "$count" -gt 0 ]; then
+              found=1
+              echo "CANONICAL_PROJECT_FOUND_IN=$name"
+            fi
+            grep -oE '[a-z]{20}\.supabase\.co' "/tmp/$name" | sort -u || true
+          done < /tmp/scripts.txt
+          if [ "$found" -ne 1 ]; then
+            echo 'LIVE_APP_BUNDLE_CANONICAL_REF=NO'
             exit 1
           fi
-          echo 'LIVE_BUNDLE_CANONICAL_REF=YES'
+          echo 'LIVE_APP_BUNDLE_CANONICAL_REF=YES'
