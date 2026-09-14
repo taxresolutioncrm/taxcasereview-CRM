@@ -161,9 +161,9 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   async function voidDoc(row){
     const reason=window.prompt('Reason for voiding this signing request?');if(reason===null)return
     setWorking(true);setError('');setMsg('')
-    const {data,error:e}=await supabase.rpc('admin_romylabs_void_office_signing_document',{p_document_id:row.id,p_reason:reason||null})
+    const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_void',document_id:row.id,reason:reason||null}})
     setWorking(false)
-    if(e||!data?.ok)setError(e?.message||data?.error||'Void failed');else{setMsg('Signing request voided');await load()}
+    if(e||!data?.ok)setError(e?.message||data?.error||'Void failed');else{setMsg('Signing request voided and recipient notified ✓');await load()}
   }
 
   const currentFields=useMemo(()=>fields.filter(f=>f.page===page),[fields,page])
