@@ -632,6 +632,7 @@ function Overview() {
   const [loadError, setLoadError] = useState('')
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
   const [metricsReady, setMetricsReady] = useState(false)
+  const [metricsWarnings, setMetricsWarnings] = useState([])
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -646,7 +647,8 @@ function Overview() {
       hasRenderedData=true
       setStats(platformOverviewCache.rows)
       setExternalMetrics(platformOverviewCache.externalMetrics)
-      setMetricsReady(true)
+      setMetricsWarnings(platformOverviewCache.warnings || [])
+      setMetricsReady(!(platformOverviewCache.warnings || []).length)
     }
 
     ;(async()=>{
@@ -657,6 +659,7 @@ function Overview() {
         // First paint: central office directory + billing. Do not wait for every CRM.
         hasRenderedData=true
         setStats(snapshot.rows)
+        setMetricsWarnings([])
         setMetricsReady(false)
         setLoadError('')
 
@@ -664,11 +667,13 @@ function Overview() {
         if(cancelled) return
         setStats(hydrated.rows)
         setExternalMetrics(hydrated.externalMetrics)
-        setMetricsReady(true)
+        setMetricsWarnings(hydrated.warnings || [])
+        setMetricsReady(!(hydrated.warnings || []).length)
         platformOverviewCache = {
           at:Date.now(),
           rows:hydrated.rows,
           externalMetrics:hydrated.externalMetrics,
+          warnings:hydrated.warnings || [],
         }
       } catch(error) {
         if(cancelled) return
@@ -677,6 +682,7 @@ function Overview() {
           setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
         }
         setMetricsReady(false)
+        setMetricsWarnings([error?.message || 'Unable to load full platform metrics'])
         setLoadError(error?.message || 'Unable to load full platform metrics')
       }
     })()
@@ -695,6 +701,11 @@ function Overview() {
 
   const h = new Date().getHours()
   const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
+  const metricsPartial = metricsWarnings.length > 0
+  const metricsDisplay = metricsReady ? null : (metricsPartial ? 'Partial' : 'Updating…')
+  const metricsSub = metricsPartial
+    ? `${metricsWarnings.length} live CRM feed${metricsWarnings.length===1?'':'s'} unavailable`
+    : 'Loading live CRM data'
 
   const KPI = [
     { label:'Monthly Recurring', val: `${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981', ready:true },
@@ -714,15 +725,15 @@ function Overview() {
         <div style={{ fontSize:26, fontWeight:800, color:'#fff', marginBottom:4 }}>
           {h<12?'Good morning':h<17?'Good afternoon':'Good evening'}, Romy 👋
         </div>
-        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — {metricsReady ? `${(stats||[]).length} offices` : 'loading live office totals…'}</div>
+        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — {metricsReady ? `${(stats||[]).length} offices` : (metricsPartial ? 'partial live office data' : 'loading live office totals…')}</div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:14, marginBottom:32 }}>
         {KPI.map(k => (
           <div key={k.label} style={{ ...S.card, padding:'20px 18px' }}>
             <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>{k.label}</div>
-            <div style={{ fontSize:k.ready===false?16:28, fontWeight:900, color:k.color, lineHeight:1 }}>{stats===null?'…':(k.ready===false?'Updating…':k.val)}</div>
-            <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>{k.ready===false?'Loading live CRM data':k.sub}</div>
+            <div style={{ fontSize:k.ready===false?16:28, fontWeight:900, color:k.color, lineHeight:1 }}>{stats===null?'…':(k.ready===false?metricsDisplay:k.val)}</div>
+            <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>{k.ready===false?metricsSub:k.sub}</div>
           </div>
         ))}
       </div>
