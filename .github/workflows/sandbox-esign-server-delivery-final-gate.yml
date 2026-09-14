@@ -1,0 +1,44 @@
+name: Sandbox E-Sign Server Delivery Final Gate
+
+on:
+  push:
+    branches:
+      - sandbox/esign-server-delivery-confirmation-final-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Full app build
+        run: |
+          npm run build
+          git diff --exit-code -- . ':!package-lock.json'
+      - name: Parse changed Edge Functions
+        run: |
+          npx --yes esbuild supabase/functions/send-email/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/send-email.js
+          npx --yes esbuild supabase/functions/office-agreement-file/index.ts --bundle --platform=neutral --format=esm --external:* --outfile=/tmp/office-agreement-file.js
+      - name: Verify server-authoritative delivery invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -q "async function markDelivered" src/components/admin/UniversalOfficeESign.jsx
+          ! grep -q "await markDelivered" src/components/admin/UniversalOfficeESign.jsx
+          grep -q "esign_event:eventName" src/components/admin/UniversalOfficeESign.jsx
+          grep -q "sendMail(signUrl,signer,title.trim(),'sent')" src/components/admin/UniversalOfficeESign.jsx
+          grep -q "row.title,'resent')" src/components/admin/UniversalOfficeESign.jsx
+          grep -q "admin_romylabs_mark_office_signing_sent" supabase/functions/send-email/index.ts
+          grep -q "delivery_confirmed" supabase/functions/send-email/index.ts
+          grep -q "esign_state_sync" supabase/functions/send-email/index.ts
+          grep -q "\['pending','sent'\].includes(String(doc.status" supabase/functions/office-agreement-file/index.ts
+          grep -q "source_status:sourceStatus" supabase/functions/office-agreement-file/index.ts
