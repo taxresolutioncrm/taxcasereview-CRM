@@ -88,8 +88,15 @@ Deno.serve(async (req) => {
   )
   const { data: authUser } = await serviceClient.auth.admin.getUserById(user.id)
   const role = authUser?.user?.app_metadata?.role
-  if (role !== 'platform_admin') {
-    return new Response(JSON.stringify({ error: 'Forbidden: platform_admin role required' }), {
+  const email = String(authUser?.user?.email || user.email || '').toLowerCase()
+  const ownerEmails = new Set([
+    'info@romylabs.com',
+    'romy@romylabs.com',
+    'romy@taxrescrm.net',
+    'romy@taxcasereview.org',
+  ])
+  if (role !== 'platform_admin' && !ownerEmails.has(email)) {
+    return new Response(JSON.stringify({ error: 'Forbidden: RomyLabs platform admin required' }), {
       status: 403, headers: { ...cors, 'Content-Type': 'application/json' }
     })
   }
