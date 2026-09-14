@@ -1,0 +1,50 @@
+name: Trace Live Universal Signer
+
+on:
+  push:
+    branches:
+      - sandbox/live-signer-production-trace-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trace live admin signer bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN='c2882ddbc37fc91be2a3584063c0d5548febb0cbbc3feae2a150b7f3fcf8ecd2'
+          URL="https://admin.romylabs.com/office-sign/$TOKEN"
+          rm -rf /tmp/live && mkdir -p /tmp/live
+          curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$URL?trace=$(date +%s)" -o /tmp/live/index.html
+          echo '=== LIVE HTML HEAD ==='
+          head -c 1200 /tmp/live/index.html
+          echo
+          mapfile -t ASSETS < <(grep -oE 'src="[^"]+\.js[^"]*"' /tmp/live/index.html | sed -E 's/src="([^"]+)"/\1/' | sort -u)
+          echo "assets=${#ASSETS[@]}"
+          found=0
+          for asset in "${ASSETS[@]}"; do
+            case "$asset" in
+              http*) asset_url="$asset" ;;
+              *) asset_url="https://admin.romylabs.com$asset" ;;
+            esac
+            out="/tmp/live/$(basename "${asset%%\?*}")"
+            curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$asset_url?trace=$(date +%s)" -o "$out"
+            if grep -q 'mpxgxfqdbquzkrvvejkh' "$out"; then
+              echo "CANONICAL_PROJECT_FOUND_IN=$(basename "$out")"
+              found=1
+            fi
+            if grep -q 'Signing request not found' "$out"; then
+              echo "SIGNER_ERROR_STRING_FOUND_IN=$(basename "$out")"
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo 'ERROR: live custom domain bundle does not contain canonical e-sign project ref'
+            exit 1
+          fi
+          echo 'LIVE_CUSTOM_DOMAIN_CANONICAL_SIGNER_BUNDLE=PASS'
