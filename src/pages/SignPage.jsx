@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { stampSignature, buildCertificatePage, addTearDropStamp, appendPdfPages } from '../lib/irsFormUtils'
+import { stampSignature, addTearDropStamp } from '../lib/irsFormUtils'
 import { FIRM, loadFirmBrandingPublic } from '../lib/firmBranding'
 
 // Mirrors docUtils.js — tenant-resolved firm name and contact email so the
@@ -31,6 +31,17 @@ const SIGNED_DOC_FOLDER = {
   'cc_auth': 'Agreements',
 }
 
+function isPoaAttachment(att) {
+  const formType = String(att?.formType || '').toLowerCase()
+  const label = String(att?.label || '').toLowerCase()
+  return (
+    formType.startsWith('2848') ||
+    formType.startsWith('state_poa') ||
+    /\bpoa\b/.test(label) ||
+    /power\s+of\s+attorney/.test(label)
+  )
+}
+
 const IRS_DOC_TYPES = [
   'Form 2848 — Power of Attorney',
   'Form 8821 — Tax Info Auth',
@@ -41,6 +52,11 @@ const IRS_DOC_TYPES = [
   'Form 433-B Business Collection Info',
   'CDP Hearing Request',
 ]
+
+const isPoaDocType = value => {
+  const v = String(value || '').toLowerCase()
+  return /\b2848\b/.test(v) || /\bpoa\b/.test(v) || /power\s+of\s+attorney/.test(v) || /state[_\s-]*poa/.test(v)
+}
 
 function printCancellationNotice(doc) {
   const w = window.open('', '_blank', 'width=700,height=900')
@@ -208,12 +224,6 @@ export default function SignPage() {
     // client_notes/documents, which is no longer possible once those
     // tables get locked down like the rest of the RLS work.
 
-    // ── Build Certificate of Completion page ─────────────────────────────
-    const certBytes = await buildCertificatePage({
-      docType: doc.doc_type, clientName: doc.client_name,
-      signedBy: fullname, ip, signedAt,
-    }).catch(() => null)
-
     // Stamp signature onto each pre-filled IRS PDF attached to this package
     const pdfAttachments = Array.isArray(doc.pdf_attachments) ? doc.pdf_attachments : []
     const signatureText = (mode === 'type' ? typedSig.trim() : fullname.trim())
@@ -227,10 +237,16 @@ export default function SignPage() {
           bytes, att.formType, signatureText, signedDate,
           mode === 'draw' ? sigImage : null
         )
-        // Internal copy: append certificate as final page
-        if (certBytes) signedBytes = await appendPdfPages(signedBytes, certBytes).catch(() => signedBytes)
-        // Client copy: teardrop stamp on last page
-        const clientBytes = await addTearDropStamp(signedBytes, { signedBy: fullname, signedAt, ip }).catch(() => signedBytes)
+        const completionStamped = !isPoaAttachment(att)
+        if (completionStamped) {
+          signedBytes = await addTearDropStamp(signedBytes, {
+            signedBy: fullname,
+            signedAt,
+            ip,
+            envelopeId: id,
+          }).catch(() => signedBytes)
+        }
+        const clientBytes = signedBytes
 
         const path = `docs/${safeName}/signed/${att.formType}_signed.pdf`
         await supabase.storage.from('documents')
@@ -247,21 +263,11 @@ export default function SignPage() {
           url: urlData?.signedUrl || '', clientUrl: clientUrlData?.signedUrl || '',
           fileSize: signedBytes.byteLength,
           folder: SIGNED_DOC_FOLDER[att.formType] || null,
+          completionStamped,
         })
       } catch (e) {
         console.error('Failed to stamp', att.formType, e)
       }
-    }
-
-    // Save certificate as standalone doc record
-    let certUrl = null
-    if (certBytes) {
-      const certPath = `docs/${safeName}/signed/certificate_${Date.now()}.pdf`
-      await supabase.storage.from('documents')
-        .upload(certPath, new Blob([certBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
-        .catch(() => {})
-      const { data: certUrlData } = await supabase.storage.from('documents').createSignedUrl(certPath, 94608000)
-      certUrl = certUrlData?.signedUrl || null
     }
 
     // Everything that used to be scattered leads/tasks/lead_notes/
@@ -274,9 +280,9 @@ export default function SignPage() {
       p_signer_ip:       ip,
       p_signed_at:       signedAt,
       p_saved_doc_type:  savedDocType,
-      p_cert_url:        certUrl,
+      p_cert_url:        null,
       p_attachments:     signedAttachments,
-      p_cert_size:       certBytes ? certBytes.length : null,
+      p_cert_size:       null,
     })
 
     // esign_finalize files every attachment under a single doc type. Re-sort
@@ -369,7 +375,7 @@ export default function SignPage() {
             Document: {doc?.doc_type}<br/>
             Client: {doc?.client_name}<br/>
             Signed By: {doc?.signed_name}<br/>
-            {!IRS_DOC_TYPES.includes(doc?.doc_type) && <>IP Address: {doc?.signer_ip || 'Recorded'}<br/>Timestamp: {doc?.signed_at ? new Date(doc.signed_at).toLocaleString() : new Date().toLocaleString()}</>}
+            {!isPoaDocType(doc?.doc_type) && <>IP Address: {doc?.signer_ip || 'Recorded'}<br/>Timestamp: {doc?.signed_at ? new Date(doc.signed_at).toLocaleString() : new Date().toLocaleString()}</>}
           </div>
           <div style={{ marginTop:16, fontSize:11, color:'#475569' }}>A copy has been saved to your file. You may close this window.</div>
           {doc?.doc_type === 'Tax Service Agreement' && (
