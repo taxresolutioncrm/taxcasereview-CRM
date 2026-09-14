@@ -173,7 +173,10 @@ Deno.serve(async (req) => {
         })
       }
       productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
-    } else if (productKey === 'camvella') {
+    } else if (productKey === 'camvella' || productKey === 'nashville') {
+      // Camvella and Nashville validate the authenticated RomyLabs admin session directly.
+      // Nashville previously depended on HUB_METRICS_SECRET, but its production project had
+      // no matching secret configured, causing the Admin Portal to silently fall back to stale storage.
       productHeaders['Authorization'] = `Bearer ${jwt}`
     } else if (productKey === 'groundivo' || productKey === 'oculivo' || productKey === 'restore_relay') {
       const secretKey = productKey === 'groundivo'
