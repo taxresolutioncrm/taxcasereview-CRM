@@ -180,24 +180,18 @@ Deno.serve(async (req) => {
         })
       }
       productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
-    } else if (productKey === 'camvella' || productKey === 'nashville') {
-      // Camvella and Nashville validate the authenticated RomyLabs admin session directly.
-      // Nashville previously depended on HUB_METRICS_SECRET, but its production project had
-      // no matching secret configured, causing the Admin Portal to silently fall back to stale storage.
+    } else if (
+      productKey === 'camvella' ||
+      productKey === 'nashville' ||
+      productKey === 'bocasync' ||
+      productKey === 'groundivo' ||
+      productKey === 'oculivo' ||
+      productKey === 'restore_relay'
+    ) {
+      // Product metrics validate the authenticated RomyLabs owner session directly.
+      // This keeps all cross-project metrics on one signed-user contract and avoids
+      // per-product shared-secret drift.
       productHeaders['Authorization'] = `Bearer ${jwt}`
-    } else if (productKey === 'groundivo' || productKey === 'oculivo' || productKey === 'restore_relay') {
-      const secretKey = productKey === 'groundivo'
-        ? 'GROUNDIVO_SUPPORT_SECRET'
-        : productKey === 'oculivo'
-          ? 'OCULIVO_SUPPORT_SECRET'
-          : 'RESTORE_RELAY_SUPPORT_SECRET'
-      const productSecret = Deno.env.get(secretKey)
-      if (!productSecret) {
-        return new Response(JSON.stringify({ ok: false, error: `${productKey} proxy credential not configured` }), {
-          status: 503, headers: { ...cors, 'Content-Type': 'application/json' }
-        })
-      }
-      productHeaders['x-romylabs-support-secret'] = productSecret
     } else {
       productHeaders['x-hub-secret'] = hubSecret
     }
