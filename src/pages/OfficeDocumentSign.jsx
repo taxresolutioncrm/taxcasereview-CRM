@@ -2,12 +2,30 @@ import { useEffect,useMemo,useRef,useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { supabase } from '../lib/supabase'
+import { SUPABASE_URL,SUPABASE_ANON_KEY } from '../lib/supabase'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc=pdfWorker
 
 const autoInitials=name=>String(name||'').split(/\s+/).filter(Boolean).map(x=>x[0]).join('').slice(0,4).toUpperCase()
 const today=()=>new Date().toLocaleDateString('en-US',{timeZone:'America/New_York'})
+
+async function invokePublicSigner(body){
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/office-agreement-file`,{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'apikey':SUPABASE_ANON_KEY,
+    },
+    body:JSON.stringify(body),
+  })
+  let data=null
+  try{data=await res.json()}catch(_){}
+  if(!res.ok){
+    const message=data?.error||`Signer service returned HTTP ${res.status}`
+    throw new Error(message)
+  }
+  return data
+}
 
 export default function OfficeDocumentSign(){
   const {token}=useParams()
@@ -30,8 +48,10 @@ export default function OfficeDocumentSign(){
 
   async function load(){
     setLoading(true);setError('')
-    const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_load',token}})
-    if(e||!data?.ok){setError(e?.message||data?.error||'Could not open signing request');setLoading(false);return}
+    let data
+    try{data=await invokePublicSigner({action:'esign_load',token})}
+    catch(e){setError(e?.message||'Could not open signing request');setLoading(false);return}
+    if(!data?.ok){setError(data?.error||'Could not open signing request');setLoading(false);return}
     setDoc(data.document)
     setDone(data.document.status==='signed')
     setDeclined(data.document.status==='declined')
@@ -139,9 +159,11 @@ export default function OfficeDocumentSign(){
     if(!reason.trim()){setError('A reason is required to decline this document.');return}
     if(!window.confirm('Decline this document? The sender will be notified and this signing request will stop.'))return
     setWorking(true);setError('')
-    const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_decline',token,reason:reason.trim()}})
+    let data
+    try{data=await invokePublicSigner({action:'esign_decline',token,reason:reason.trim()})}
+    catch(e){setWorking(false);setError(e?.message||'Could not decline document');return}
     setWorking(false)
-    if(e||!data?.ok){setError(e?.message||data?.error||'Could not decline document');return}
+    if(!data?.ok){setError(data?.error||'Could not decline document');return}
     setDeclined(true);await load()
   }
 
@@ -156,12 +178,14 @@ export default function OfficeDocumentSign(){
     }
     if(!window.confirm('Finish signing this document? Your electronic signature will be applied to the contract.'))return
     setWorking(true);setError('')
-    const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{
+    let data
+    try{data=await invokePublicSigner({
       action:'esign_sign',token,signature_name:sig,signature_mode:signatureMode,
       signature_data_url:signatureMode==='draw'?drawnSignature:null,values,consent:true
-    }})
+    })}
+    catch(e){setWorking(false);setError(e?.message||'Could not complete signature');return}
     setWorking(false)
-    if(e||!data?.ok){setError(e?.message||data?.error||'Could not complete signature');return}
+    if(!data?.ok){setError(data?.error||'Could not complete signature');return}
     setDone(true);await load()
   }
 
