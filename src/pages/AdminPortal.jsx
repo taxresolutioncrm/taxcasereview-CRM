@@ -148,10 +148,21 @@ async function loadPlatformOfficeRows() {
     { key:'nashville', name:'Nashville Tax Solutions' },
     { key:'cloudcpa', name:'CloudCPA Inc' },
   ]
-  const tenantFeedResults = await Promise.all(taxResTenantFeeds.map(async feed => {
+  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
+
+  // Start every remote metrics request together, but still wait for the complete
+  // set before Overview renders. This preserves the known-good reporting model
+  // while removing the old two-wave network delay.
+  const tenantFeedPromise = Promise.all(taxResTenantFeeds.map(async feed => {
     const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
     return { ...feed, ...response }
   }))
+  const productFeedPromise = Promise.all(productKeys.map(async productKey => {
+    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
+    return { productKey, ...response }
+  }))
+  const [tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
+
   for (const result of tenantFeedResults) {
     if (result.error || result.data?.ok === false) {
       warnings.push(`${result.name} usage feed unavailable`)
@@ -201,11 +212,7 @@ async function loadPlatformOfficeRows() {
     warnings.push('RomyLabs office registry unavailable')
   }
 
-  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
-  const results = await Promise.all(productKeys.map(async productKey => {
-    const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
-    return { productKey, ...response }
-  }))
+  const registrySyncJobs = []
 
   for (const result of results) {
     const cfg = EXTERNAL_OFFICE_PRODUCTS[result.productKey]
@@ -245,20 +252,22 @@ async function loadPlatformOfficeRows() {
       // for the universal contract/e-sign engine. This keeps sender routing,
       // document history, and future contract sends product-aware without
       // requiring manual registry rows.
-      const { error: registrySyncError } = await supabase.rpc('admin_romylabs_upsert_office_registry', {
-        p_product_key:result.productKey,
-        p_external_office_id:String(office.id),
-        p_firm_name:normalized.firm_name,
-        p_status:normalized.status,
-        p_seats:normalized.employee_count || null,
-        p_monthly_amount:normalized.effective_monthly || null,
-        p_metadata:{
-          source:'hub-proxy',
-          last_activity:normalized.last_activity,
-          synced_at:new Date().toISOString(),
-        },
+      registrySyncJobs.push({
+        label:cfg.label,
+        promise:supabase.rpc('admin_romylabs_upsert_office_registry', {
+          p_product_key:result.productKey,
+          p_external_office_id:String(office.id),
+          p_firm_name:normalized.firm_name,
+          p_status:normalized.status,
+          p_seats:normalized.employee_count || null,
+          p_monthly_amount:normalized.effective_monthly || null,
+          p_metadata:{
+            source:'hub-proxy',
+            last_activity:normalized.last_activity,
+            synced_at:new Date().toISOString(),
+          },
+        }),
       })
-      if (registrySyncError) warnings.push(`${cfg.label} office registry sync failed`)
     }
 
     const metrics = result.data?.metrics || {}
@@ -274,6 +283,13 @@ async function loadPlatformOfficeRows() {
     }
     externalMetrics.storage_bytes += Math.max(0, aggregateStorage - officeStorageSum)
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
+  }
+
+  if (registrySyncJobs.length) {
+    const registrySyncResults = await Promise.all(registrySyncJobs.map(job => job.promise))
+    registrySyncResults.forEach((syncResult, index) => {
+      if (syncResult?.error) warnings.push(`${registrySyncJobs[index].label} office registry sync failed`)
+    })
   }
 
   // Final revenue overlay: every product/office gets subscription collections
