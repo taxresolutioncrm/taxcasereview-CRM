@@ -18,33 +18,33 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Build and identify exact signer chunk
+      - name: Build current source
         shell: bash
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
           npx vite build
           signer=$(find dist/assets -maxdepth 1 -type f -name 'OfficeDocumentSign-*.js' | head -1)
-          echo "LOCAL_SIGNER_CHUNK=$signer"
-          test -n "$signer"
-          grep -q 'office-agreement-file' "$signer"
-          grep -q 'mpxgxfqdbquzkrvvejkh' "$signer"
-          cp "$signer" /tmp/local-signer.js
-          echo "SIGNER_NAME=$(basename "$signer")" >> "$GITHUB_ENV"
-      - name: Compare exact live signer chunk
+          echo "LOCAL_SIGNER=$(basename "$signer")"
+          echo "LOCAL_SIGNER_NAME=$(basename "$signer")" >> "$GITHUB_ENV"
+          main=$(grep -oE 'src="/assets/index-[^"]+\.js"' dist/index.html | head -1 | sed -E 's#src="/assets/##;s/"$//')
+          echo "LOCAL_MAIN=$main"
+          echo "LOCAL_MAIN_NAME=$main" >> "$GITHUB_ENV"
+          grep -oE 'OfficeDocumentSign-[A-Za-z0-9_-]+\.js' "dist/assets/$main" | sort -u || true
+      - name: Inspect live main import mapping
         shell: bash
         run: |
           set -euo pipefail
-          url="https://admin.romylabs.com/assets/$SIGNER_NAME"
-          code=$(curl -sS -o /tmp/live-signer.js -w '%{http_code}' --max-time 20 -H 'Cache-Control: no-cache' "$url?trace=$(date +%s)" || true)
-          echo "LIVE_SIGNER_HTTP=$code"
-          if [ "$code" != "200" ]; then
-            echo 'LIVE_SIGNER_CHUNK_MISSING'
+          base='https://admin.romylabs.com'
+          ts=$(date +%s)
+          curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$base/?trace=$ts" -o /tmp/live.html
+          live_main=$(grep -oE 'src="/assets/index-[^"]+\.js"' /tmp/live.html | head -1 | sed -E 's#src="/assets/##;s/"$//')
+          echo "LIVE_MAIN=$live_main"
+          curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$base/assets/$live_main?trace=$ts" -o /tmp/live-main.js
+          echo 'LIVE_SIGNER_IMPORTS:'
+          grep -oE 'OfficeDocumentSign-[A-Za-z0-9_-]+\.js' /tmp/live-main.js | sort -u || true
+          if ! grep -q "$LOCAL_SIGNER_NAME" /tmp/live-main.js; then
+            echo "LIVE_MAIN_POINTS_TO_CURRENT_SIGNER=NO"
             exit 1
           fi
-          echo "LIVE_CANONICAL_COUNT=$(grep -o 'mpxgxfqdbquzkrvvejkh' /tmp/live-signer.js | wc -l || true)"
-          echo "LIVE_HAS_OFFICE_AGREEMENT_FILE=$(grep -q 'office-agreement-file' /tmp/live-signer.js && echo yes || echo no)"
-          echo "LOCAL_SHA=$(sha256sum /tmp/local-signer.js | awk '{print $1}')"
-          echo "LIVE_SHA=$(sha256sum /tmp/live-signer.js | awk '{print $1}')"
-          cmp -s /tmp/local-signer.js /tmp/live-signer.js
-          echo 'LIVE_SIGNER_CHUNK_MATCH=YES'
+          echo "LIVE_MAIN_POINTS_TO_CURRENT_SIGNER=YES"
