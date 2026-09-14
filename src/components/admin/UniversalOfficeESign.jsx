@@ -23,6 +23,7 @@ const clean=v=>String(v||'document.pdf').replace(/[^a-zA-Z0-9._-]/g,'_')
 export default function UniversalOfficeESign({supabase,productKey,externalOfficeId,firmName,contactName='',contactEmail='',contactPhone=''}){
   const brand=BRAND[productKey]||BRAND.romylabs
   const [docs,setDocs]=useState([])
+  const [firmDocs,setFirmDocs]=useState([])
   const [file,setFile]=useState(null)
   const [pdf,setPdf]=useState(null)
   const [page,setPage]=useState(1)
@@ -37,12 +38,17 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   const [error,setError]=useState('')
   const [detailDoc,setDetailDoc]=useState(null)
   const canvasRef=useRef(null)
+  const firmDocInputRef=useRef(null)
 
   async function load(){
     if(!productKey||!externalOfficeId)return
     setLoading(true);setError('')
-    const {data,error:e}=await supabase.rpc('admin_romylabs_office_signing_documents',{p_product_key:productKey,p_external_office_id:String(externalOfficeId)})
-    if(e){setError(e.message);setDocs([])}else setDocs(Array.isArray(data)?data:[])
+    const [{data:esignData,error:esignError},{data:firmData,error:firmError}]=await Promise.all([
+      supabase.rpc('admin_romylabs_office_signing_documents',{p_product_key:productKey,p_external_office_id:String(externalOfficeId)}),
+      supabase.rpc('admin_romylabs_office_documents',{p_product_key:productKey,p_external_office_id:String(externalOfficeId)}),
+    ])
+    if(esignError){setError(esignError.message);setDocs([])}else setDocs(Array.isArray(esignData)?esignData:[])
+    if(firmError){setError(v=>v||firmError.message);setFirmDocs([])}else setFirmDocs(Array.isArray(firmData)?firmData:[])
     setLoading(false)
   }
   useEffect(()=>{load()},[productKey,externalOfficeId])
@@ -137,6 +143,60 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_geturl',file_path:filePath}})
     if(e||!data?.url){setError(e?.message||data?.error||'Could not open document');return}
     window.open(data.url,'_blank','noopener,noreferrer')
+  }
+
+
+  async function openFirmDocument(row){
+    if(!row?.file_path)return
+    const {data,error:e}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_geturl',file_path:row.file_path}})
+    if(e||!data?.url){setError(e?.message||data?.error||'Could not open document');return}
+    window.open(data.url,'_blank','noopener,noreferrer')
+  }
+
+  async function uploadFirmDocument(e){
+    const f=e.target.files?.[0]
+    e.target.value=''
+    if(!f)return
+    if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){setError('Firm documents must be PDF files.');return}
+    if(f.size>25*1024*1024){setError('PDF must be 25 MB or smaller.');return}
+    setWorking(true);setError('');setMsg('')
+    const path=\`\${productKey}/\${externalOfficeId}/firm-documents/\${Date.now()}-\${clean(f.name)}\`
+    try{
+      const up=await supabase.storage.from('romylabs-esign').upload(path,f,{contentType:'application/pdf',upsert:false})
+      if(up.error)throw up.error
+      const {error:dbError}=await supabase.from('romylabs_office_documents').insert({
+        product_key:productKey,
+        external_office_id:String(externalOfficeId),
+        firm_name:firmName,
+        name:f.name,
+        file_path:path,
+        file_size:f.size,
+        mime_type:'application/pdf',
+        document_kind:'manual',
+        uploaded_by:'platform-admin',
+      })
+      if(dbError){
+        try{await supabase.storage.from('romylabs-esign').remove([path])}catch(_){}
+        throw dbError
+      }
+      setMsg('Firm document uploaded ✓')
+      await load()
+    }catch(err){setError(err.message||String(err))}
+    setWorking(false)
+  }
+
+  async function deleteFirmDocument(row){
+    if(!window.confirm(\`Remove “\${row.name}” from this office?\`))return
+    setWorking(true);setError('');setMsg('')
+    try{
+      const {error:storageError}=await supabase.storage.from('romylabs-esign').remove([row.file_path])
+      if(storageError)throw storageError
+      const {error:dbError}=await supabase.from('romylabs_office_documents').delete().eq('id',row.id)
+      if(dbError)throw dbError
+      setMsg('Firm document removed')
+      await load()
+    }catch(err){setError(err.message||String(err))}
+    setWorking(false)
   }
 
   async function resend(row){
@@ -261,6 +321,29 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
           </div>
         </div>
       })}
+    </section>
+    <section style={{marginTop:24}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:12,flexWrap:'wrap'}}>
+        <div style={{fontSize:12,fontWeight:900,color:'#64748b',textTransform:'uppercase',letterSpacing:'.08em'}}>Firm Documents</div>
+        <button disabled={working} onClick={()=>firmDocInputRef.current?.click()} style={{padding:'9px 14px',borderRadius:9,border:'none',background:'#7c3aed',color:'#fff',fontSize:11,fontWeight:900,cursor:'pointer'}}>📎 Upload Document</button>
+        <input ref={firmDocInputRef} type="file" accept="application/pdf,.pdf" onChange={uploadFirmDocument} style={{display:'none'}}/>
+      </div>
+      <div style={{background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.18)',borderRadius:12,padding:16}}>
+        {firmDocs.length===0
+          ? <div style={{padding:'28px 12px',textAlign:'center',color:'#475569',fontSize:11}}>No documents uploaded yet. Signed agreements and completion certificates will appear here automatically.</div>
+          : <div style={{display:'grid',gap:8}}>
+              {firmDocs.map(row=><div key={row.id} style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',padding:'10px 11px',borderRadius:8,border:'1px solid rgba(99,102,241,.12)',background:'rgba(15,23,42,.45)'}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:900,color:'#e2e8f0',wordBreak:'break-word'}}>{row.name}</div>
+                  <div style={{fontSize:9,color:'#64748b',marginTop:3}}>{row.document_kind==='signed_agreement'?'Signed Agreement':row.document_kind==='completion_certificate'?'Completion Certificate':'Firm Document'}{row.file_size?\` · \${Math.max(1,Math.round(Number(row.file_size)/1024))} KB\`:''}{row.created_at?\` · \${dt(row.created_at)}\`:''}</div>
+                </div>
+                <div style={{display:'flex',gap:6,flexShrink:0}}>
+                  <button onClick={()=>openFirmDocument(row)} style={smallBtn}>Open</button>
+                  {row.document_kind==='manual'&&<button disabled={working} onClick={()=>deleteFirmDocument(row)} style={{...smallBtn,color:'#f87171',borderColor:'rgba(239,68,68,.25)',background:'rgba(239,68,68,.06)'}}>Remove</button>}
+                </div>
+              </div>)}
+            </div>}
+      </div>
     </section>
     {detailDoc&&<EnvelopeDetails supabase={supabase} row={detailDoc} brand={brand} onClose={()=>setDetailDoc(null)} onOpenFile={openFile}/>} 
   </div>
