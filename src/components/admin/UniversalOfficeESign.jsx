@@ -160,7 +160,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     if(f.type!=='application/pdf'&&!f.name.toLowerCase().endsWith('.pdf')){setError('Firm documents must be PDF files.');return}
     if(f.size>25*1024*1024){setError('PDF must be 25 MB or smaller.');return}
     setWorking(true);setError('');setMsg('')
-    const path=\`\${productKey}/\${externalOfficeId}/firm-documents/\${Date.now()}-\${clean(f.name)}\`
+    const path=`${productKey}/${externalOfficeId}/firm-documents/${Date.now()}-${clean(f.name)}`
     try{
       const up=await supabase.storage.from('romylabs-esign').upload(path,f,{contentType:'application/pdf',upsert:false})
       if(up.error)throw up.error
@@ -186,7 +186,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   }
 
   async function deleteFirmDocument(row){
-    if(!window.confirm(\`Remove “\${row.name}” from this office?\`))return
+    if(!window.confirm(`Remove “${row.name}” from this office?`))return
     setWorking(true);setError('');setMsg('')
     try{
       const {error:storageError}=await supabase.storage.from('romylabs-esign').remove([row.file_path])
@@ -335,7 +335,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
               {firmDocs.map(row=><div key={row.id} style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',padding:'10px 11px',borderRadius:8,border:'1px solid rgba(99,102,241,.12)',background:'rgba(15,23,42,.45)'}}>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:11,fontWeight:900,color:'#e2e8f0',wordBreak:'break-word'}}>{row.name}</div>
-                  <div style={{fontSize:9,color:'#64748b',marginTop:3}}>{row.document_kind==='signed_agreement'?'Signed Agreement':row.document_kind==='completion_certificate'?'Completion Certificate':'Firm Document'}{row.file_size?\` · \${Math.max(1,Math.round(Number(row.file_size)/1024))} KB\`:''}{row.created_at?\` · \${dt(row.created_at)}\`:''}</div>
+                  <div style={{fontSize:9,color:'#64748b',marginTop:3}}>{row.document_kind==='signed_agreement'?'Signed Agreement':row.document_kind==='completion_certificate'?'Completion Certificate':'Firm Document'}{row.file_size?` · ${Math.max(1,Math.round(Number(row.file_size)/1024))} KB`:''}{row.created_at?` · ${dt(row.created_at)}`:''}</div>
                 </div>
                 <div style={{display:'flex',gap:6,flexShrink:0}}>
                   <button onClick={()=>openFirmDocument(row)} style={smallBtn}>Open</button>
