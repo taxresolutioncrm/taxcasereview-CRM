@@ -40,16 +40,7 @@ jobs:
           echo '=== CLOUDFLARE PAGES PROJECT ==='
           if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
             curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/taxcasereview-crm" > /tmp/project.json
-            python - <<'PY'
-import json
-p=json.load(open('/tmp/project.json'))
-r=p.get('result') or {}
-print('CF_SUCCESS=',p.get('success'))
-print('CF_NAME=',r.get('name'))
-print('CF_SUBDOMAIN=',r.get('subdomain'))
-print('CF_DOMAINS=',r.get('domains'))
-print('CF_PRODUCTION_BRANCH=',r.get('production_branch'))
-PY
+            python -c "import json; p=json.load(open('/tmp/project.json')); r=p.get('result') or {}; print('CF_SUCCESS=',p.get('success')); print('CF_NAME=',r.get('name')); print('CF_SUBDOMAIN=',r.get('subdomain')); print('CF_DOMAINS=',r.get('domains')); print('CF_PRODUCTION_BRANCH=',r.get('production_branch'))"
           else
             echo 'CF_CREDS_AVAILABLE=no'
           fi
