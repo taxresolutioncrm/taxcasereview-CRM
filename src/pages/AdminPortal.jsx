@@ -701,6 +701,11 @@ function Overview() {
 
   const h = new Date().getHours()
   const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
+  const metricsPartial = metricsWarnings.length > 0
+  const metricsDisplay = metricsReady ? null : (metricsPartial ? 'Partial' : 'Updating…')
+  const metricsSub = metricsPartial
+    ? `${metricsWarnings.length} live CRM feed${metricsWarnings.length===1?'':'s'} unavailable`
+    : 'Loading live CRM data'
 
   const KPI = [
     { label:'Monthly Recurring', val: `${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981', ready:true },
