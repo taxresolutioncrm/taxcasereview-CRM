@@ -251,18 +251,25 @@ serve(async(req)=>{
       }
 
       if(action==='esign_load'){
-        if(doc.status==='sent'){
+        if(['pending','sent'].includes(String(doc.status||''))){
           const openedAt=new Date().toISOString()
-          const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'viewed',at:openedAt,ip:ip(req),user_agent:req.headers.get('user-agent')}]
-          await admin.from('romylabs_office_signing_documents').update({status:'viewed',opened_at:openedAt,updated_at:openedAt,audit}).eq('id',doc.id).eq('status','sent')
-          if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'viewed',opened_at:openedAt,updated_at:openedAt}).eq('id',recipient.id)
-          await appendEvent(admin,doc.id,'viewed',{recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),occurredAt:openedAt})
-          try{
-            const notice=await sendOwnerLifecycleNotice(admin,doc,'viewed')
-            await appendEvent(admin,doc.id,'owner_viewed_notification_sent',{metadata:{submission_id:notice.submissionId,from:notice.from},occurredAt:new Date().toISOString()})
-          }catch(notifyError){
-            console.error('[office-agreement-file] viewed notification failed',notifyError)
-            await appendEvent(admin,doc.id,'owner_viewed_notification_failed',{metadata:{error:String((notifyError as Error)?.message||notifyError).slice(0,240)}})
+          const sourceStatus=String(doc.status||'')
+          const audit=[...(Array.isArray(doc.audit)?doc.audit:[]),{event:'viewed',at:openedAt,ip:ip(req),user_agent:req.headers.get('user-agent'),source_status:sourceStatus}]
+          const {data:viewedRow}=await admin.from('romylabs_office_signing_documents')
+            .update({status:'viewed',opened_at:openedAt,updated_at:openedAt,audit})
+            .eq('id',doc.id).in('status',['pending','sent']).select('id').maybeSingle()
+          if(viewedRow){
+            if(recipient?.id)await admin.from('romylabs_esign_recipients').update({status:'viewed',opened_at:openedAt,updated_at:openedAt}).eq('id',recipient.id).in('status',['pending','sent'])
+            await appendEvent(admin,doc.id,'viewed',{recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),userAgent:req.headers.get('user-agent'),metadata:{source_status:sourceStatus},occurredAt:openedAt})
+            try{
+              const notice=await sendOwnerLifecycleNotice(admin,doc,'viewed')
+              await appendEvent(admin,doc.id,'owner_viewed_notification_sent',{metadata:{submission_id:notice.submissionId,from:notice.from},occurredAt:new Date().toISOString()})
+            }catch(notifyError){
+              console.error('[office-agreement-file] viewed notification failed',notifyError)
+              await appendEvent(admin,doc.id,'owner_viewed_notification_failed',{metadata:{error:String((notifyError as Error)?.message||notifyError).slice(0,240)}})
+            }
+            doc={...doc,status:'viewed',opened_at:openedAt,updated_at:openedAt,audit}
+            if(recipient)recipient={...recipient,status:'viewed',opened_at:openedAt,updated_at:openedAt}
           }
         }
         const path=doc.status==='signed'&&doc.signed_path?doc.signed_path:doc.source_path
