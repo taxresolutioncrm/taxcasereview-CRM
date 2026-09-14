@@ -2303,7 +2303,7 @@ export async function buildCertificatePage({ docType, clientName, signedBy, ip, 
 // ── Teardrop timestamp stamp ──────────────────────────────────────────────────
 // Adds a small teardrop/badge stamp in the bottom-right corner of the LAST page
 // of a PDF. Shows on the client's signed copy only.
-export async function addTearDropStamp(pdfBytes, { signedBy, signedAt, ip }) {
+export async function addTearDropStamp(pdfBytes, { signedBy, signedAt, ip, envelopeId }) {
   const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib')
   const doc   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true })
   const pages = doc.getPages()
@@ -2312,8 +2312,8 @@ export async function addTearDropStamp(pdfBytes, { signedBy, signedAt, ip }) {
   const fontB = await doc.embedFont(StandardFonts.HelveticaBold)
   const { width } = page.getSize()
 
-  const x = width - 175, y = 15
-  const bw = 162, bh = 52
+  const x = width - 190, y = 14
+  const bw = 177, bh = 64
 
   // Badge background
   page.drawRectangle({ x, y, width:bw, height:bh, color:rgb(0.04,0.09,0.19), borderColor:rgb(0.13,0.74,0.38), borderWidth:1.5, opacity:0.93 })
@@ -2323,10 +2323,11 @@ export async function addTearDropStamp(pdfBytes, { signedBy, signedAt, ip }) {
 
   // Badge text
   const ts = signedAt ? new Date(signedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}) : ''
-  page.drawText('✓ ELECTRONICALLY SIGNED', { x:x+6, y:y+39, size:6.5, font:fontB, color:rgb(0.58,0.76,0.98), characterSpacing:0.5 })
-  page.drawText('By: ' + (signedBy||'').slice(0,28), { x:x+6, y:y+27, size:7.5, font:fontB, color:rgb(1,1,1) })
-  page.drawText(ts, { x:x+6, y:y+16, size:7, font, color:rgb(0.7,0.85,1) })
-  page.drawText('IP: ' + (ip||'').slice(0,24), { x:x+6, y:y+6, size:6.5, font, color:rgb(0.4,0.55,0.7) })
+  page.drawText('✓ E-SIGNATURE COMPLETION', { x:x+6, y:y+51, size:6.5, font:fontB, color:rgb(0.58,0.76,0.98), characterSpacing:0.45 })
+  page.drawText('By: ' + (signedBy||'').slice(0,30), { x:x+6, y:y+39, size:7.3, font:fontB, color:rgb(1,1,1) })
+  page.drawText(ts, { x:x+6, y:y+28, size:6.8, font, color:rgb(0.7,0.85,1) })
+  page.drawText('IP: ' + (ip||'').slice(0,25), { x:x+6, y:y+17, size:6.2, font, color:rgb(0.4,0.55,0.7) })
+  if (envelopeId) page.drawText('Envelope: ' + String(envelopeId).slice(0,36), { x:x+6, y:y+6, size:5.8, font, color:rgb(0.4,0.55,0.7), maxWidth:bw-12 })
 
   return await doc.save()
 }
