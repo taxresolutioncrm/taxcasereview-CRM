@@ -158,6 +158,9 @@ begin
   v_tenant:=current_tenant_id();
   if v_tenant is null then raise exception 'No tenant context'; end if;
   if current_employee_permission('perm_reports')<2 then raise exception 'Reports edit permission required'; end if;
+  if v_tenant='489ace07-1a6b-4864-833a-4f8420568b40'::uuid then
+    raise exception 'Nashville Book Whip is managed in the Nashville CRM';
+  end if;
   return public.refresh_book_whip_tenant(v_tenant,p_month);
 end;
 $$;
@@ -171,6 +174,7 @@ security definer
 set search_path=public
 as $$
 begin
+  if new.tenant_id='489ace07-1a6b-4864-833a-4f8420568b40'::uuid then return new; end if;
   if new.deleted_at is null and lower(coalesce(new.status,'active')) not in ('inactive','archived','deleted') then
     insert into public.book_whip_rows(
       tenant_id,snapshot_month,client_id,client_name,client_since,client_owner,
@@ -223,7 +227,9 @@ set search_path=public
 as $$
 declare r record; v_total integer:=0;
 begin
-  for r in select id from public.tenants where lower(coalesce(status,'')) in ('active','trial') loop
+  for r in select id from public.tenants
+    where lower(coalesce(status,'')) in ('active','trial')
+      and id<>'489ace07-1a6b-4864-833a-4f8420568b40'::uuid loop
     v_total:=v_total+public.refresh_book_whip_tenant(r.id,current_date);
   end loop;
   return v_total;
