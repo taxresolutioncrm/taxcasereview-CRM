@@ -8,6 +8,7 @@ import { useWebRTCRoom } from '../lib/webrtcRoom'
 import { useVideoBackground } from '../lib/videoBackground'
 import VirtualBackground from '../components/VirtualBackground'
 import VideoTile from '../components/VideoTile'
+import SlackEmojiPicker from '../components/SlackEmojiPicker'
 
 // Channels are now loaded from the chat_channels table (per-tenant, persistent) [v2]
 // CHANNELS is kept as a fallback only for the very first render before the DB loads
@@ -1273,32 +1274,16 @@ export default function Chat() {
           </div>
         )}
 
-        {/* Input bar */}
-        <div style={{ padding: '10px 16px 14px', borderTop: '1px solid var(--br)', background: 'var(--sf)', flexShrink: 0 }}>
-          {showEmoji && (
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 10, padding: '8px 10px', marginBottom: 8 }}>
-              {ALL_EMOJIS.map(e => (
-                <span key={e} onClick={() => { setInput(i => i+e); setShowEmoji(false); inputRef.current?.focus() }}
-                  style={{ fontSize: 18, cursor: 'pointer', padding: '2px 3px', borderRadius: 4 }}
-                  onMouseEnter={ev => ev.target.style.background='var(--b2c)'}
-                  onMouseLeave={ev => ev.target.style.background='transparent'}>{e}</span>
-              ))}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 0, alignItems: 'flex-end', background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 12, overflow: 'hidden' }}>
-            <button onClick={() => fileRef.current?.click()} title="Attach file" style={{ padding: '0 12px', height: 44, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', display: 'flex', alignItems: 'center', flexShrink: 0 }}
-              onMouseEnter={e => e.currentTarget.style.color='var(--t2)'}
-              onMouseLeave={e => e.currentTarget.style.color='var(--t3)'}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            </button>
-            <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={sendFile}/>
+        {/* Input bar — Slack-style composer */}
+        <div style={{ padding: '10px 16px 14px', borderTop: '1px solid var(--br)', background: 'var(--sf)', flexShrink: 0, position:'relative' }}>
+          {showEmoji && <SlackEmojiPicker onPick={emoji => { setInput(v => v + emoji); setShowEmoji(false); inputRef.current?.focus() }} />}
+          <div style={{ background:'var(--s2)', border:'1px solid var(--br)', borderRadius:10, overflow:'visible', position:'relative' }}>
             {mentionQuery !== null && (
-              <div style={{ position: 'absolute', bottom: 60, left: 16, background: 'var(--s2)', border: '1px solid var(--b2)', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 100, minWidth: 220, maxHeight: 240, overflowY: 'auto', padding: '4px 0' }}>
+              <div style={{ position: 'absolute', bottom: 58, left: 10, background: 'var(--s2)', border: '1px solid var(--b2)', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 310, minWidth: 220, maxHeight: 240, overflowY: 'auto', padding: '4px 0' }}>
                 <div style={{ padding: '6px 14px 4px', fontSize: 11, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 1 }}>Mention someone</div>
                 {TEAM.filter(t => t.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 8).map(t => (
                   <div key={t.empId} onClick={() => {
-                    // Replace the @query with @Name
-                    setInput(prev => prev.replace(/@\w*$/, '@' + t.name + ' '))
+                    setInput(prev => prev.replace(/@\\w*$/, '@' + t.name + ' '))
                     setMentionQuery(null)
                     inputRef.current?.focus()
                   }} style={{ padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}
@@ -1311,27 +1296,32 @@ export default function Chat() {
                     {t.role && <span style={{ color: 'var(--t3)', fontSize: 12 }}>{t.role}</span>}
                   </div>
                 ))}
-                {TEAM.filter(t => t.name.toLowerCase().includes(mentionQuery.toLowerCase())).length === 0 && (
-                  <div style={{ padding: '8px 14px', color: 'var(--t3)', fontSize: 13 }}>No match for "@{mentionQuery}"</div>
-                )}
               </div>
             )}
             <textarea ref={inputRef} value={input} onChange={e => {
-                  const val = e.target.value
-                  setInput(val)
-                  // Detect @ mention: find @ followed by word chars at end of text
-                  const match = val.match(/@(\w*)$/)
-                  setMentionQuery(match ? match[1] : null)
-                }} onKeyDown={handleKey}
-              placeholder={`Message ${isChannel ? '#'+active.label : active.name}…`}
-              rows={1}
-              style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent', color: 'var(--tx)', fontSize: 14, lineHeight: 1.5, padding: '12px 8px', fontFamily: 'inherit', minHeight: 44, maxHeight: 160 }}/>
-            <button onClick={() => setShowEmoji(s => !s)} style={{ padding: '0 10px', height: 44, background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', flexShrink: 0 }}>😊</button>
-            <button onClick={send} disabled={sending || !input.trim()} style={{ padding: '0 16px', height: 44, background: input.trim() ? '#1d4ed8' : 'transparent', color: input.trim() ? '#fff' : 'var(--t3)', border: 'none', cursor: input.trim() ? 'pointer' : 'default', fontSize: 16, transition: 'all .15s', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '0 10px 10px 0' }}>
-              {sending ? '…' : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>}
-            </button>
+                const val=e.target.value; setInput(val); const match=val.match(/@(\\w*)$/); setMentionQuery(match?match[1]:null)
+              }} onKeyDown={handleKey}
+              placeholder={`Message ${isChannel ? '#'+active.label : active.name}`}
+              rows={2}
+              style={{ width:'100%', resize:'none', border:'none', outline:'none', background:'transparent', color:'var(--tx)', fontSize:15, lineHeight:1.5, padding:'10px 12px 4px', fontFamily:'inherit', minHeight:52, maxHeight:160, boxSizing:'border-box' }}/>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'4px 7px 7px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:2}}>
+                <button onClick={() => fileRef.current?.click()} title="Add attachment" style={{width:30,height:30,borderRadius:'50%',border:'none',background:'var(--s3)',color:'var(--tx)',cursor:'pointer',fontSize:20,lineHeight:1}}>+</button>
+                <input ref={fileRef} type="file" style={{ display:'none' }} onChange={sendFile}/>
+                <button title="Formatting" style={{height:30,border:0,background:'transparent',color:'var(--t2)',cursor:'default',fontSize:14,padding:'0 7px'}}>Aa</button>
+                <button onClick={() => setShowEmoji(v=>!v)} title="Emoji" style={{height:30,border:0,background:'transparent',cursor:'pointer',fontSize:18,padding:'0 6px'}}>☺</button>
+                <button onClick={() => { setInput(v=>v+'@'); setMentionQuery(''); inputRef.current?.focus() }} title="Mention" style={{height:30,border:0,background:'transparent',color:'var(--t2)',cursor:'pointer',fontSize:17,padding:'0 6px'}}>@</button>
+                <button title="More actions" style={{height:30,border:0,background:'transparent',color:'var(--t2)',cursor:'default',fontSize:18,padding:'0 6px'}}>…</button>
+              </div>
+              <div style={{display:'flex',alignItems:'center'}}>
+                <button onClick={send} disabled={sending || !input.trim()} title="Send message" style={{width:36,height:30,border:0,borderRadius:'6px 0 0 6px',background:input.trim()?'#007a5a':'transparent',color:input.trim()?'#fff':'var(--t3)',cursor:input.trim()?'pointer':'default',fontSize:16}}>
+                  {sending ? '…' : '➤'}
+                </button>
+                <button disabled={!input.trim()} title="Send options" style={{width:24,height:30,border:0,borderLeft:'1px solid rgba(255,255,255,.18)',borderRadius:'0 6px 6px 0',background:input.trim()?'#007a5a':'transparent',color:input.trim()?'#fff':'var(--t3)',fontSize:12}}>⌄</button>
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 5, paddingLeft: 4 }}>Enter to send · Shift+Enter for new line · 📎 to attach</div>
+          <div style={{ fontSize:11, color:'var(--t3)', marginTop:5, paddingLeft:4 }}>Enter to send · Shift+Enter for new line</div>
         </div>
       </>
       )}
