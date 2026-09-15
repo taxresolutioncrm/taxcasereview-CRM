@@ -613,6 +613,70 @@ serve(async (req) => {
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
+    // RomyLabs appointment / booking mail must use the RomyLabs Stalwart identity.
+    // Do not route these messages through the generic Gmail transport.
+    const normalizedFrom = safe(from_email).toLowerCase()
+    const isRomyLabsMail =
+      normalizedFrom.endsWith('@romylabs.com') ||
+      (BOOKING_KINDS.has(body.kind) && normalizedFrom === 'romy@romylabs.com')
+
+    if (isRomyLabsMail) {
+      const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product', {
+        p_product_key: 'romylabs',
+      })
+      if (!vaultTransport?.ok) {
+        return new Response(JSON.stringify({ error:'RomyLabs Stalwart transport unavailable' }), {
+          status: 409,
+          headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+
+      const transport = {
+        host: safe(vaultTransport.host || 'mail.taxrescrm.net'),
+        username: safe(vaultTransport.username),
+        password: String(vaultTransport.password || ''),
+        fromAddress: safe(vaultTransport.from_address || vaultTransport.username).toLowerCase(),
+      }
+      if (!transport.username || !transport.password || !transport.fromAddress) {
+        return new Response(JSON.stringify({ error:'RomyLabs Stalwart credential incomplete' }), {
+          status:409,
+          headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+
+      const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
+      if (!recipients.length) {
+        return new Response(JSON.stringify({ error:'Recipient missing' }), {
+          status:422,
+          headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+
+      const submissions:any[]=[]
+      for (const recipient of recipients) {
+        const result=await sendViaStalwartJmap({
+          host: transport.host,
+          username: transport.username,
+          password: transport.password,
+          fromAddress: transport.fromAddress,
+          fromName: safe(from_name || 'RomyLabs'),
+          to: recipient,
+          subject: safe(subject),
+          html: html ? String(html) : undefined,
+          text: text ? String(text) : undefined,
+        })
+        submissions.push({recipient,submissionId:result.submissionId})
+      }
+
+      return new Response(JSON.stringify({
+        success:true,
+        via:'stalwart_jmap',
+        from:transport.fromAddress,
+        product_key:'romylabs',
+        submissions:submissions.map((x:any)=>x.submissionId),
+      }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+    }
+
     const { data: gs } = await admin.from('settings').select('*').not('gmail_refresh_token', 'is', null).limit(1).maybeSingle()
     if (!gs?.gmail_refresh_token) return new Response(JSON.stringify({ error: 'No Gmail OAuth configured' }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
