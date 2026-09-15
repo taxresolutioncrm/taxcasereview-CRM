@@ -206,6 +206,7 @@ export default function Chat() {
   const dmPair = (a, b) => 'dm_' + [String(a), String(b)].sort().join('__')
   const isChannel = !active.id.startsWith('dm_')
   const channelId = (!isChannel && active.empId && myEmpId) ? dmPair(myEmpId, active.empId) : active.id
+  const chatTenantId = messages.find(m=>m?.tenant_id)?.tenant_id || FIRM.tenantId
 
   // ── load channels from DB on mount ── [v3 - cache busted]
   useEffect(() => {
@@ -443,7 +444,7 @@ export default function Chat() {
   }, [messages])
 
   useEffect(() => {
-    if (!messages.length || !FIRM.tenantId) { setReactions({}); setMyReactions(new Set()); return }
+    if (!messages.length || !chatTenantId) { setReactions({}); setMyReactions(new Set()); return }
     const ids = messages.map(m=>m.id).filter(Boolean).filter(id=>id !== 'sys')
     if (!ids.length) return
     let cancelled=false
@@ -465,14 +466,14 @@ export default function Chat() {
       .on('postgres_changes',{event:'*',schema:'public',table:'chat_reactions'},loadReactionState)
       .subscribe()
     return()=>{cancelled=true;supabase.removeChannel(rt)}
-  }, [messages, myName, channelId])
+  }, [messages, myName, channelId, chatTenantId])
 
   useEffect(() => {
-    if (!messages.length || !FIRM.tenantId || !myName || myName==='You') return
+    if (!messages.length || !chatTenantId || !myName || myName==='You') return
     const last=[...messages].reverse().find(m=>m.id && m.id!=='sys')
     if(!last) return
     supabase.from('chat_read_state').upsert({
-      tenant_id:FIRM.tenantId, viewer_name:myName, conv_id:channelId,
+      tenant_id:chatTenantId, viewer_name:myName, conv_id:channelId,
       last_read_message_id:last.id, last_read_at:new Date().toISOString()
     },{onConflict:'tenant_id,viewer_name,conv_id'}).then(()=>{})
   }, [messages, myName, channelId])
@@ -524,14 +525,14 @@ export default function Chat() {
   }
 
   async function addReaction(msgId, emoji) {
-    if (!FIRM.tenantId || !msgId || msgId==='sys') return
+    if (!chatTenantId || !msgId || msgId==='sys') return
     const key=msgId+'|'+emoji
     if(myReactions.has(key)){
       await supabase.from('chat_reactions').delete()
         .eq('message_id',msgId).eq('user_name',myName).eq('emoji',emoji)
     }else{
       await supabase.from('chat_reactions').upsert({
-        tenant_id:FIRM.tenantId,message_id:msgId,user_name:myName,emoji
+        tenant_id:chatTenantId,message_id:msgId,user_name:myName,emoji
       },{onConflict:'message_id,user_name,emoji'})
     }
     setReacting(null)
