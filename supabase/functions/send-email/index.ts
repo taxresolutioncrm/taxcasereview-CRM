@@ -291,6 +291,22 @@ serve(async (req) => {
           password:String(vaultTransport.password||''),
         }
       } else {
+        // If RomyLabs is configured as an authorized Stalwart identity on the
+        // existing TaxRes login, JMAP will allow the real info@romylabs.com
+        // sender. sendViaStalwartJmap rejects it if Stalwart does not authorize it.
+        const { data: sharedTransport } = await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'taxres_crm'})
+        if (sharedTransport?.ok) {
+          transport = {
+            host:safe(sharedTransport.host||'mail.taxrescrm.net'),
+            port:Number(sharedTransport.port||465),
+            ssl:true,
+            username:safe(sharedTransport.username),
+            password:String(sharedTransport.password||''),
+          }
+        }
+      }
+
+      if (!transport) {
         const { data: account } = await admin.from('email_accounts')
           .select('smtp_host,smtp_port,email_address,encrypted_password,use_ssl')
           .eq('tenant_id',route.tenant_id)
