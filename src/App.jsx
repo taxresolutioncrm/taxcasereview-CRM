@@ -9,6 +9,7 @@ import { ScreenShareProvider } from './context/ScreenShareContext'
 import Sidebar  from './components/layout/Sidebar'
 import AIAssistant from './components/AIAssistant'
 import TopBar   from './components/layout/TopBar'
+import GlobalTeamChatNotifier from './components/GlobalTeamChatNotifier'
 import { Modal, Toast } from './components/ui'
 import ActiveCallBar from './components/calling/ActiveCallBar'
 import ImpersonationBanner from './components/ImpersonationBanner'
@@ -194,6 +195,7 @@ function Shell() {
     <CallProvider>
     <GmailSyncProvider>
     <div className="app-shell">
+      <GlobalTeamChatNotifier />
       <Sidebar />
       <div className="main-area">
         <TopBar onNew={handleNew} />
