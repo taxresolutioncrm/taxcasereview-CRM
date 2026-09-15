@@ -8,6 +8,8 @@ create table if not exists public.romylabs_office_notes (
     check (note_type in ('General','Outreach','Meeting','Follow-up')),
   note_text text not null check (length(trim(note_text)) > 0),
   activity_at timestamptz not null default now(),
+  follow_up_at timestamptz,
+  completed_at timestamptz,
   created_by text,
   created_at timestamptz not null default now()
 );
@@ -31,5 +33,13 @@ create policy romylabs_office_notes_admin_insert
   to authenticated
   with check (public._is_platform_admin());
 
+drop policy if exists romylabs_office_notes_admin_update on public.romylabs_office_notes;
+create policy romylabs_office_notes_admin_update
+  on public.romylabs_office_notes
+  for update
+  to authenticated
+  using (public._is_platform_admin())
+  with check (public._is_platform_admin());
+
 revoke all on public.romylabs_office_notes from anon;
-grant select, insert on public.romylabs_office_notes to authenticated;
+grant select, insert, update on public.romylabs_office_notes to authenticated;
