@@ -34,73 +34,62 @@ const CARD_COLORS = {
 // remounted every card each tick. A remount mid-drag swallowed dragend, left
 // dragIdx stuck non-null, and the stuck guard silently killed tile clicks.
 function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCardClick }) {
-    const { label, val, sub, color, to, icon } = card
-    const borderColor = CARD_COLORS[label] || 'var(--blue)'
-    return (
-      <div
-        draggable
-        data-card-idx={idx}
-        onDragStart={e => { e.currentTarget.style.opacity = '0.4'; onDragStart(e, idx) }}
-        onDragOver={e => onDragOver(e, idx)}
-        onDrop={e => { e.currentTarget.style.opacity = '1'; onDrop(e, idx) }}
-        onDragEnd={e => { e.currentTarget.style.opacity = '1'; onDragEnd() }}
-        onClick={() => onCardClick(to)}
-        title="Drag to rearrange"
-        style={{
-          background: `radial-gradient(circle at 82% -8%, ${borderColor}33 0%, ${borderColor}12 30%, transparent 58%), linear-gradient(180deg, rgba(23,48,75,.97), rgba(13,31,50,.99))`,
-          border: `1px solid ${borderColor}58`,
-          borderTop: 'none',
-          borderRadius: '0 0 12px 12px',
-          padding: '18px 20px',
-          cursor: 'grab',
-          transition: 'transform .16s ease, box-shadow .16s ease, border-color .16s ease, filter .16s ease',
-          position: 'relative',
-          overflow: 'hidden',
-          minHeight: 122,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          userSelect: 'none',
-          boxShadow: `0 10px 28px rgba(0,0,0,.24), 0 0 28px ${borderColor}2b, inset 0 1px 0 ${borderColor}24`,
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.transform = 'translateY(-3px)'
-          e.currentTarget.style.boxShadow = `0 16px 38px rgba(0,0,0,.30), 0 0 42px ${borderColor}55, inset 0 1px 0 ${borderColor}40`
-          e.currentTarget.style.filter = 'brightness(1.06)'
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.transform = ''
-          e.currentTarget.style.boxShadow = `0 10px 28px rgba(0,0,0,.24), 0 0 28px ${borderColor}2b, inset 0 1px 0 ${borderColor}24`
-          e.currentTarget.style.filter = ''
-        }}
-      >
-        {/* Thick colored top bar */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: borderColor, boxShadow: `0 0 16px ${borderColor}, 0 3px 14px ${borderColor}66` }}/>
-        {/* Drag handle hint */}
-        <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--t3)', opacity: 0.5, lineHeight: 1, letterSpacing: 1 }}>⠿</div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', paddingTop: 6 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
+  const { label, val, sub, color, to, icon } = card
+  const borderColor = CARD_COLORS[label] || 'var(--blue)'
+  return (
+    <div
+      draggable
+      data-card-idx={idx}
+      onDragStart={e => { e.currentTarget.style.opacity = '0.4'; onDragStart(e, idx) }}
+      onDragOver={e => onDragOver(e, idx)}
+      onDrop={e => { e.currentTarget.style.opacity = '1'; onDrop(e, idx) }}
+      onDragEnd={e => { e.currentTarget.style.opacity = '1'; onDragEnd() }}
+      onClick={() => onCardClick(to)}
+      title="Drag to rearrange"
+      style={{
+        background: '#10283f',
+        border: '1px solid #24435f',
+        borderTop: 'none',
+        borderRadius: '0 0 12px 12px',
+        padding: '16px 14px',
+        cursor: 'grab',
+        transition: 'transform .15s, box-shadow .15s',
+        position: 'relative',
+        overflow: 'hidden',
+        minHeight: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        userSelect: 'none',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 6px 24px ${borderColor}40` }}
+      onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
+    >
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: borderColor }}/>
+      <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--t3)', opacity: 0.5, lineHeight: 1, letterSpacing: 1 }}>⠿</div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', paddingTop: 6 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
             fontSize: 10, color: 'var(--t3)', fontWeight: 700, textTransform: 'uppercase',
             letterSpacing: '.06em', marginBottom: 8, lineHeight: 1.25,
             minHeight: 25, maxWidth: 'calc(100% - 10px)',
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             overflow: 'hidden', overflowWrap: 'anywhere'
           }}>{label}</div>
-            <div style={{
-            fontSize: 28, fontWeight: 900, color: color || 'var(--tx)', lineHeight: 1,
-            minHeight: 30, overflowWrap: 'normal', whiteSpace: 'nowrap'
+          <div style={{
+            fontSize: 'clamp(22px, 1.55vw, 28px)', fontWeight: 900, color: color || 'var(--tx)', lineHeight: 1,
+            minHeight: 30, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip', letterSpacing: '-.02em'
           }}>{val ?? '—'}</div>
-            {sub && <div style={{
+          {sub && <div style={{
             fontSize: 11, color: 'var(--t3)', marginTop: 6, lineHeight: 1.35,
             minHeight: 15, maxWidth: '100%', overflowWrap: 'anywhere'
           }}>{sub}</div>}
-          </div>
-          {icon && <div style={{ fontSize: 28, opacity: .28, flexShrink: 0, marginLeft: 10, filter: `drop-shadow(0 0 8px ${borderColor}55)` }}>{icon}</div>}
         </div>
+        {icon && <div style={{ fontSize: 28, opacity: .15, flexShrink: 0, marginLeft: 10 }}>{icon}</div>}
       </div>
-    )
-  }
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const navigate = useNavigate()
