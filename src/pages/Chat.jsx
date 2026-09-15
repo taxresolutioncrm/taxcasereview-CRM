@@ -117,7 +117,23 @@ export default function Chat() {
   const [showHuddleReactPicker, setShowHuddleReactPicker] = useState(false)
   const floatReactionTimers = useRef({})
   const [chatToast, setChatToast] = useState('')
+  const [notifyPermission,setNotifyPermission] = useState(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   function showToast(msg) { setChatToast(msg); setTimeout(() => setChatToast(''), 4000) }
+
+  useEffect(() => {
+    try {
+      const params=new URLSearchParams(window.location.search)
+      const room=params.get('huddle')
+      if(room) setIncomingHuddle({from:params.get('from') || 'Team member',huddleId:room})
+    } catch (_) {}
+  }, [])
+
+  async function enableDesktopNotifications(){
+    if(typeof Notification==='undefined') return
+    const result=await Notification.requestPermission()
+    setNotifyPermission(result)
+    showToast(result==='granted' ? 'Desktop Team Chat notifications enabled' : 'Desktop notifications were not enabled')
+  }
 
   // Floating emoji reactions in huddle
   function fireHuddleReaction(emoji) {
@@ -800,6 +816,11 @@ export default function Chat() {
 
         {/* Huddle button */}
         <div style={{ padding: '10px 10px 6px', flexShrink: 0 }}>
+          {notifyPermission === 'default' && (
+            <button onClick={enableDesktopNotifications} style={{width:'100%',marginBottom:6,padding:'6px 10px',borderRadius:7,border:'1px solid var(--br)',background:'transparent',color:'var(--t2)',fontSize:11,cursor:'pointer'}}>
+              🔔 Enable Team Chat notifications
+            </button>
+          )}
           {!huddle ? (
             <button onClick={startHuddle} style={{ width: '100%', padding: '7px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'var(--s2)', color: 'var(--tx)', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13, transition: 'background .15s' }}
               onMouseEnter={e => e.currentTarget.style.background='var(--s3)'}
