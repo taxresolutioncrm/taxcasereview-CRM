@@ -20,6 +20,7 @@ const legacy = [
   'radial-gradient(circle at 82% -8%',
   '0 16px 38px rgba(0,0,0,.30)',
   'drop-shadow(0 0 8px',
+  'boxShadow: `0 0 16px ${borderColor}',
 ]
 
 const missing = required.filter(token => !d.includes(token))
