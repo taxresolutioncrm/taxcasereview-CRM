@@ -1,5 +1,5 @@
 import { validateFile, maybeCompressImage } from '../lib/uploadUtils'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useCall } from '../context/CallContext'
@@ -165,6 +165,7 @@ export default function Chat() {
     setHuddleThreadInput('')
   }
   const [showEmoji, setShowEmoji]   = useState(false)
+  const [customEmojis,setCustomEmojis] = useState([])
   const [showAllEmoji, setShowAllEmoji] = useState(false)
   const [hoverMsg, setHoverMsg]   = useState(null)
   const [reacting, setReacting]   = useState(null) // msg id
@@ -223,6 +224,53 @@ export default function Chat() {
   const isChannel = !active.id.startsWith('dm_')
   const channelId = (!isChannel && active.empId && myEmpId) ? dmPair(myEmpId, active.empId) : active.id
   const chatTenantId = messages.find(m=>m?.tenant_id)?.tenant_id || FIRM.tenantId
+
+  const customEmojiMap = useMemo(() => Object.fromEntries(customEmojis.map(e=>[':'+e.name+':',e])), [customEmojis])
+
+  function renderChatText(text){
+    if(!text) return null
+    return String(text).split(/(:[a-z0-9_+-]{2,40}:)/g).map((part,i)=>{
+      const custom=customEmojiMap[part]
+      return custom
+        ? <img key={i} src={custom.url} alt={part} title={part} style={{width:24,height:24,objectFit:'contain',verticalAlign:'middle',margin:'0 2px'}}/>
+        : <span key={i}>{part}</span>
+    })
+  }
+
+  function renderReactionToken(token){
+    const custom=customEmojiMap[token]
+    return custom ? <img src={custom.url} alt={token} title={token} style={{width:18,height:18,objectFit:'contain'}}/> : token
+  }
+
+  const loadCustomEmojis = useCallback(async () => {
+    if(!chatTenantId) return
+    const { data, error } = await supabase.from('chat_custom_emojis').select('id,name,image_path,created_by,created_at').order('name')
+    if(error) return
+    const rows=await Promise.all((data||[]).map(async e=>{
+      const { data:urlData }=await supabase.storage.from('documents').createSignedUrl(e.image_path,31536000)
+      return {...e,url:urlData?.signedUrl||''}
+    }))
+    setCustomEmojis(rows.filter(e=>e.url))
+  }, [chatTenantId])
+
+  useEffect(() => { loadCustomEmojis() }, [loadCustomEmojis])
+
+  async function createCustomEmoji(file,name){
+    if(!chatTenantId || !file) return
+    if(file.size > 1024*1024){ showToast('Custom emoji must be 1 MB or smaller'); return }
+    const ext=(file.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'') || 'png'
+    const path=`chat/custom-emojis/${chatTenantId}/${Date.now()}_${name}.${ext}`
+    const { error:upErr }=await supabase.storage.from('documents').upload(path,file,{upsert:false,contentType:file.type||undefined})
+    if(upErr){ showToast('Custom emoji upload failed: '+upErr.message); return }
+    const { error:dbErr }=await supabase.from('chat_custom_emojis').insert([{name,image_path:path,created_by:myName}])
+    if(dbErr){
+      await supabase.storage.from('documents').remove([path])
+      showToast(dbErr.code==='23505' ? ':'+name+': already exists' : 'Custom emoji save failed: '+dbErr.message)
+      return
+    }
+    await loadCustomEmojis()
+    showToast('Custom emoji :'+name+': added')
+  }
 
   // ── load channels from DB on mount ── [v3 - cache busted]
   useEffect(() => {
@@ -531,6 +579,7 @@ export default function Chat() {
   }
 
   function handleKey(e) {
+    if (e.key === 'Escape' && mentionQuery !== null) { e.preventDefault(); setMentionQuery(null); return }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
@@ -1278,7 +1327,7 @@ export default function Chat() {
                       <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 3, paddingLeft: 8, borderLeft: '2px solid #334155' }}>↩ Reply</div>
                     )}
                     {item.text && (
-                      <div style={{ fontSize: 16, lineHeight: 1.6, color: 'var(--tx)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.text}</div>
+                      <div style={{ fontSize: 16, lineHeight: 1.6, color: 'var(--tx)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderChatText(item.text)}</div>
                     )}
                     {item.attachment_url && (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 8, padding: '8px 14px', marginTop: 4, maxWidth: 340 }}>
@@ -1291,19 +1340,15 @@ export default function Chat() {
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                         {Object.entries(msgReactions).map(([emoji, count]) => (
                           <span key={emoji} onClick={() => addReaction(item.id, emoji)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(79,142,247,.12)', border: '1px solid rgba(79,142,247,.3)', borderRadius: 12, padding: '1px 8px', fontSize: 13, cursor: 'pointer', color: '#93c5fd' }}>
-                            {emoji} <span style={{ fontSize: 11, fontWeight: 700 }}>{count}</span>
+                            {renderReactionToken(emoji)} <span style={{ fontSize: 11, fontWeight: 700 }}>{count}</span>
                           </span>
                         ))}
                       </div>
                     )}
                     {/* Full emoji picker */}
                     {reacting === item.id && (
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 10, padding: '8px 10px', marginTop: 6, maxWidth: 320 }}>
-                        {ALL_EMOJIS.map(e => (
-                          <span key={e} onClick={() => addReaction(item.id, e)} style={{ fontSize: 18, cursor: 'pointer', padding: '2px 3px', borderRadius: 4 }}
-                            onMouseEnter={ev => ev.target.style.background='var(--b2c)'}
-                            onMouseLeave={ev => ev.target.style.background='transparent'}>{e}</span>
-                        ))}
+                      <div style={{position:'relative',height:1,marginTop:6}}>
+                        <SlackEmojiPicker customEmojis={customEmojis} onCreateCustom={createCustomEmoji} onPick={emoji => addReaction(item.id, emoji)} />
                       </div>
                     )}
                   </div>
@@ -1346,7 +1391,7 @@ export default function Chat() {
 
         {/* Input bar — Slack-style composer */}
         <div style={{ padding: '10px 16px 14px', borderTop: '1px solid var(--br)', background: 'var(--sf)', flexShrink: 0, position:'relative' }}>
-          {showEmoji && <SlackEmojiPicker onPick={emoji => { setInput(v => v + emoji); setShowEmoji(false); inputRef.current?.focus() }} />}
+          {showEmoji && <SlackEmojiPicker customEmojis={customEmojis} onCreateCustom={createCustomEmoji} onPick={emoji => { setInput(v => v + emoji); setShowEmoji(false); inputRef.current?.focus() }} />}
           <div style={{ background:'var(--s2)', border:'1px solid var(--br)', borderRadius:10, overflow:'visible', position:'relative' }}>
             {mentionQuery !== null && (
               <div style={{ position: 'absolute', bottom: 58, left: 10, background: 'var(--s2)', border: '1px solid var(--b2)', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 310, minWidth: 220, maxHeight: 240, overflowY: 'auto', padding: '4px 0' }}>
@@ -1380,7 +1425,16 @@ export default function Chat() {
                 <input ref={fileRef} type="file" style={{ display:'none' }} onChange={sendFile}/>
                 <button title="Formatting" style={{height:30,border:0,background:'transparent',color:'var(--t2)',cursor:'default',fontSize:14,padding:'0 7px'}}>Aa</button>
                 <button onClick={() => setShowEmoji(v=>!v)} title="Emoji" style={{height:30,border:0,background:'transparent',cursor:'pointer',fontSize:18,padding:'0 6px'}}>☺</button>
-                <button onClick={() => { setInput(v=>v+'@'); setMentionQuery(''); inputRef.current?.focus() }} title="Mention" style={{height:30,border:0,background:'transparent',color:'var(--t2)',cursor:'pointer',fontSize:17,padding:'0 6px'}}>@</button>
+                <button onClick={() => {
+                  if (mentionQuery !== null) {
+                    setMentionQuery(null)
+                    setInput(v=>v.replace(/@[\\w]*$/,''))
+                  } else {
+                    setInput(v=>/@[\\w]*$/.test(v) ? v : v+'@')
+                    setMentionQuery('')
+                  }
+                  inputRef.current?.focus()
+                }} title="Mention" style={{height:30,border:0,background:'transparent',color:'var(--t2)',cursor:'pointer',fontSize:17,padding:'0 6px'}}>@</button>
                 <button title="More actions" style={{height:30,border:0,background:'transparent',color:'var(--t2)',cursor:'default',fontSize:18,padding:'0 6px'}}>…</button>
               </div>
               <div style={{display:'flex',alignItems:'center'}}>
