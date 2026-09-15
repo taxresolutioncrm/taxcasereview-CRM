@@ -169,7 +169,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path=public
-as $
+as $$
 begin
   if new.deleted_at is null and lower(coalesce(new.status,'active')) not in ('inactive','archived','deleted') then
     insert into public.book_whip_rows(
@@ -179,77 +179,11 @@ begin
     )
     values(
       new.tenant_id,date_trunc('month',current_date)::date,new.id,
-      regexp_replace(coalesce(new.name,''),'\s+[0-9]{5}
-
-drop trigger if exists trg_book_whip_client_upsert on public.clients;
-create trigger trg_book_whip_client_upsert
-after insert or update of status,deleted_at,"assignedTo",assignedto,"taxAssociate","pipelineStage",pipelinestage,"contractFee",tags
-on public.clients
-for each row execute function public.book_whip_client_upsert();
-
-create or replace function public.system_refresh_all_book_whips()
-returns integer
-language plpgsql
-security definer
-set search_path=public
-as $$
-declare r record; v_total integer:=0;
-begin
-  for r in select id from public.tenants where lower(coalesce(status,'')) in ('active','trial') loop
-    v_total:=v_total+public.refresh_book_whip_tenant(r.id,current_date);
-  end loop;
-  return v_total;
-end;
-$$;
-revoke all on function public.system_refresh_all_book_whips() from public,anon,authenticated;
-
-do $$
-begin
-  if exists(select 1 from pg_extension where extname='pg_cron') then
-    perform cron.unschedule(jobid) from cron.job where jobname='taxres-book-whip-hourly';
-    perform cron.unschedule(jobid) from cron.job where jobname='taxres-book-whip-monthly';
-    perform cron.schedule('taxres-book-whip-hourly','17 * * * *','select public.system_refresh_all_book_whips();');
-    perform cron.schedule('taxres-book-whip-monthly','5 5 1 * *','select public.system_refresh_all_book_whips();');
-  end if;
-end $$;
-,'','g'),
+      regexp_replace(coalesce(new.name,''),'\s+[0-9]{5}$','','g'),
       coalesce(new."clientSince",new.clientsince),
       coalesce(new."salesRep",new.assignedto,new."assignedTo"),
       new.created_at,new.tags,coalesce(new."spouseName",new.spousename),
-      regexp_replace(coalesce(new.name,''),'\s+[0-9]{5}
-
-drop trigger if exists trg_book_whip_client_upsert on public.clients;
-create trigger trg_book_whip_client_upsert
-after insert or update of status,deleted_at,"assignedTo",assignedto,"taxAssociate","pipelineStage",pipelinestage,"contractFee",tags
-on public.clients
-for each row execute function public.book_whip_client_upsert();
-
-create or replace function public.system_refresh_all_book_whips()
-returns integer
-language plpgsql
-security definer
-set search_path=public
-as $$
-declare r record; v_total integer:=0;
-begin
-  for r in select id from public.tenants where lower(coalesce(status,'')) in ('active','trial') loop
-    v_total:=v_total+public.refresh_book_whip_tenant(r.id,current_date);
-  end loop;
-  return v_total;
-end;
-$$;
-revoke all on function public.system_refresh_all_book_whips() from public,anon,authenticated;
-
-do $$
-begin
-  if exists(select 1 from pg_extension where extname='pg_cron') then
-    perform cron.unschedule(jobid) from cron.job where jobname='taxres-book-whip-hourly';
-    perform cron.unschedule(jobid) from cron.job where jobname='taxres-book-whip-monthly';
-    perform cron.schedule('taxres-book-whip-hourly','17 * * * *','select public.system_refresh_all_book_whips();');
-    perform cron.schedule('taxres-book-whip-monthly','5 5 1 * *','select public.system_refresh_all_book_whips();');
-  end if;
-end $$;
-,'','g'),
+      regexp_replace(coalesce(new.name,''),'\s+[0-9]{5}$','','g'),
       coalesce(new."taxAssociate",new.assignedto,new."assignedTo"),
       coalesce(new."stateStatus",new."irsOrState"),
       case when new."contractFee" is not null then new."contractFee"::text else null end,
@@ -273,7 +207,7 @@ end $$;
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists trg_book_whip_client_upsert on public.clients;
 create trigger trg_book_whip_client_upsert
