@@ -918,6 +918,7 @@ function OfficePage() {
   const [noteType, setNoteType] = useState('General')
   const [noteText, setNoteText] = useState('')
   const [noteActivityAt, setNoteActivityAt] = useState(()=>new Date().toISOString().slice(0,16))
+  const [noteFollowUpAt, setNoteFollowUpAt] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
 
   const toast_ = (msg, type='ok') => { setToast({msg,type}); setTimeout(()=>setToast(null),3500) }
@@ -1018,6 +1019,7 @@ function OfficePage() {
       note_type: noteType,
       note_text: text,
       activity_at: activity,
+      follow_up_at: noteFollowUpAt ? new Date(noteFollowUpAt).toISOString() : null,
       created_by: userData?.user?.email || 'RomyLabs Admin',
     }]).select('*').single()
     setNoteSaving(false)
@@ -1026,7 +1028,17 @@ function OfficePage() {
     setNoteText('')
     setNoteType('General')
     setNoteActivityAt(new Date().toISOString().slice(0,16))
+    setNoteFollowUpAt('')
     toast_('✅ Internal note added')
+  }
+
+
+  async function completeOfficeFollowUp(noteId) {
+    const completedAt = new Date().toISOString()
+    const { error } = await supabase.from('romylabs_office_notes').update({ completed_at: completedAt }).eq('id', noteId).eq('tenant_id', id)
+    if (error) { toast_('❌ ' + error.message, 'error'); return }
+    setOfficeNotes(prev => prev.map(n => n.id===noteId ? {...n, completed_at:completedAt} : n))
+    toast_('✅ Follow-up marked complete')
   }
 
 
@@ -1331,7 +1343,7 @@ function OfficePage() {
             <div style={{ fontSize:12,color:'#64748b',lineHeight:1.5,marginBottom:14 }}>
               Keep outreach, meetings, follow-ups, and internal office history here. These notes are for RomyLabs admins only.
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1.25fr', gap:10, marginBottom:12 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1.2fr 1.2fr', gap:10, marginBottom:12 }}>
               <div>
                 <label style={{ fontSize:10,fontWeight:800,color:'#6366f1',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:6 }}>Type</label>
                 <select value={noteType} onChange={e=>setNoteType(e.target.value)}
@@ -1342,6 +1354,11 @@ function OfficePage() {
               <div>
                 <label style={{ fontSize:10,fontWeight:800,color:'#6366f1',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:6 }}>Activity Date</label>
                 <input type="datetime-local" value={noteActivityAt} onChange={e=>setNoteActivityAt(e.target.value)}
+                  style={{ width:'100%',padding:'9px 10px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'#1a1830',color:'#e2e8f0',fontSize:12,boxSizing:'border-box' }}/>
+              </div>
+              <div>
+                <label style={{ fontSize:10,fontWeight:800,color:'#6366f1',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:6 }}>Follow-up</label>
+                <input type="datetime-local" value={noteFollowUpAt} onChange={e=>setNoteFollowUpAt(e.target.value)}
                   style={{ width:'100%',padding:'9px 10px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'#1a1830',color:'#e2e8f0',fontSize:12,boxSizing:'border-box' }}/>
               </div>
             </div>
@@ -1363,8 +1380,10 @@ function OfficePage() {
                   <span style={{fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:999,background:'rgba(99,102,241,.12)',color:'#a5b4fc'}}>{n.note_type||'General'}</span>
                   <span style={{fontSize:11,color:'#64748b'}}>{new Date(n.activity_at||n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</span>
                   <span style={{fontSize:11,color:'#475569'}}>· {n.created_by||'RomyLabs Admin'}</span>
+                  {n.follow_up_at && <span style={{fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:999,background:n.completed_at?'rgba(16,185,129,.12)':'rgba(245,158,11,.12)',color:n.completed_at?'#6ee7b7':'#fbbf24'}}>Follow-up {n.completed_at?'done':new Date(n.follow_up_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>}
                 </div>
                 <div style={{fontSize:13,color:'#e2e8f0',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{n.note_text}</div>
+                {n.follow_up_at && !n.completed_at && <button onClick={()=>completeOfficeFollowUp(n.id)} style={{...S.btn('ghost'),fontSize:10,padding:'5px 9px',marginTop:9}}>✓ Mark Follow-up Done</button>}
               </div>
             ))}
           </div>
