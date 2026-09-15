@@ -203,6 +203,162 @@ serve(async (req) => {
     }
 
     let { to, subject, html, text, attachments, tenant_id, from_email, from_name } = body
+    const requestOrigin = safe(req.headers.get('origin')).toLowerCase()
+    const isAdminPortalOrigin = requestOrigin === 'https://admin.romylabs.com'
+
+    // Booking invitations sent from the RomyLabs Admin Portal are a RomyLabs
+    // communication. Never allow them to inherit TaxRes branding or transport.
+    const looksLikeBookingInvite =
+      authenticated &&
+      isAdminPortalOrigin &&
+      /^Schedule Your Appointment/i.test(safe(subject)) &&
+      String(html || '').includes('Choose a Time')
+
+    if (looksLikeBookingInvite) {
+      const { data: isPlatformAdmin } = await authClient.rpc('_is_platform_admin')
+      if (!isPlatformAdmin) {
+        return new Response(JSON.stringify({ error:'Platform admin required for RomyLabs booking email' }), {
+          status:403, headers:{...corsHeaders,'Content-Type':'application/json'}
+        })
+      }
+
+      const recipient = safe(Array.isArray(to) ? to[0] : to)
+      if (!recipient) {
+        return new Response(JSON.stringify({ error:'Booking recipient missing' }), {
+          status:422, headers:{...corsHeaders,'Content-Type':'application/json'}
+        })
+      }
+
+      const firstMatch = String(html || '').match(/Hi\s*<strong>([^<]+)<\/strong>/i)
+      const firstName = safe(firstMatch?.[1] || 'there')
+      const linkMatch = String(html || '').match(/href="([^"]+)"[^>]*>📅\s*Choose a Time/i)
+      let bookingLink = safe(linkMatch?.[1] || 'https://admin.romylabs.com/book')
+      try {
+        const bookingUrl = new URL(bookingLink, 'https://admin.romylabs.com')
+        bookingUrl.searchParams.set('product','romylabs')
+        bookingLink = bookingUrl.toString()
+      } catch {
+        bookingLink = 'https://admin.romylabs.com/book?product=romylabs'
+      }
+
+      const romylabsLogo = 'https://admin.romylabs.com/romylabs-logo.png'
+      const romylabsFrom = 'info@romylabs.com'
+      from_name = 'RomyLabs'
+      from_email = romylabsFrom
+      subject = 'Schedule Your Appointment — RomyLabs'
+      html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)">
+<tr><td style="background:#090816;padding:28px 40px;text-align:center">
+<img src="${romylabsLogo}" alt="RomyLabs" style="max-height:64px;max-width:220px;object-fit:contain;display:block;margin:0 auto 10px"/>
+<div style="font-size:13px;font-weight:800;color:#C6FF00;letter-spacing:.12em;text-transform:uppercase">ROMYLABS</div>
+</td></tr>
+<tr><td style="padding:36px 40px;color:#111827;font-size:14px;line-height:1.7">
+<p>Hi <strong>${esc(firstName)}</strong>,</p>
+<p>Pick whichever time works best for you — it takes less than a minute:</p>
+<p style="text-align:center;margin:24px 0"><a href="${esc(bookingLink)}" style="background:#2563eb;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block">📅 Choose a Time</a></p>
+<p>You'll see our live availability and get an instant confirmation. If nothing there works, just reply to this email.</p>
+<p style="margin-top:20px">Talk soon,<br><strong>RomyLabs</strong></p>
+</td></tr>
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 40px;text-align:center">
+<p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.8">RomyLabs<br>✉️ info@romylabs.com</p>
+</td></tr></table></td></tr></table></body></html>`
+
+      const { data: routes } = await admin.from('romylabs_mailboxes')
+        .select('id,product_id,email_address,outbound_from,inbox_owner,tenant_id,display_name,active')
+        .eq('product_id','romylabs')
+        .eq('active',true)
+        .order('created_at',{ascending:true})
+
+      const routeList = Array.isArray(routes) ? routes : []
+      const route = routeList.find((r:any)=>safe(r.outbound_from).toLowerCase()===romylabsFrom)
+      if (!route) {
+        return new Response(JSON.stringify({ error:'RomyLabs outbound mailbox route is not configured' }), {
+          status:409, headers:{...corsHeaders,'Content-Type':'application/json'}
+        })
+      }
+
+      // RomyLabs booking mail must use a real RomyLabs SMTP identity. Do not
+      // silently fall back to the TaxRes Gmail OAuth account.
+      let transport:any = null
+      const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'romylabs'})
+      if (vaultTransport?.ok) {
+        transport = {
+          host:safe(vaultTransport.host||'mail.taxrescrm.net'),
+          port:Number(vaultTransport.port||465),
+          ssl:true,
+          username:safe(vaultTransport.username),
+          password:String(vaultTransport.password||''),
+        }
+      } else {
+        const { data: account } = await admin.from('email_accounts')
+          .select('smtp_host,smtp_port,email_address,encrypted_password,use_ssl')
+          .eq('tenant_id',route.tenant_id)
+          .ilike('email_address',romylabsFrom)
+          .eq('is_active',true)
+          .limit(1)
+          .maybeSingle()
+        if (account?.encrypted_password) {
+          const encryptKey = Deno.env.get('EMAIL_ENCRYPT_KEY')
+          if (encryptKey) {
+            const { data: password } = await admin.rpc('decrypt_email_password',{
+              p_encrypted:account.encrypted_password,
+              p_key:encryptKey,
+            })
+            if (password) {
+              transport = {
+                host:safe(account.smtp_host),
+                port:Number(account.smtp_port||465),
+                ssl:Boolean(account.use_ssl),
+                username:safe(account.email_address),
+                password:String(password),
+              }
+            }
+          }
+        }
+      }
+
+      if (!transport?.username || !transport?.password) {
+        return new Response(JSON.stringify({
+          error:'RomyLabs outbound email credential is not configured. TaxRes fallback is blocked.'
+        }), {
+          status:409, headers:{...corsHeaders,'Content-Type':'application/json'}
+        })
+      }
+
+      const sendResult = await sendViaStalwartJmap({
+        host:transport.host,
+        username:transport.username,
+        password:transport.password,
+        fromAddress:romylabsFrom,
+        fromName:'RomyLabs',
+        to:recipient,
+        subject:safe(subject),
+        html:String(html),
+      })
+
+      await admin.from('emails').insert([{
+        tenant_id:route.tenant_id||resolvedTenantId,
+        recipient,
+        recipients:[recipient],
+        subject:safe(subject),
+        body:String(html).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),
+        body_html:String(html),
+        triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
+        sender:romylabsFrom,from_address:romylabsFrom,reply_from:romylabsFrom,
+        mailbox_owner:safe(route.inbox_owner||'info@romylabs.com'),
+        received_at:new Date().toISOString(),created_at:new Date().toISOString(),
+        product_id:'romylabs',
+        message_id:`stalwart:${sendResult.submissionId}`,
+        received_mailbox:romylabsFrom,
+        route_id:route.id,
+      }])
+
+      return new Response(JSON.stringify({
+        success:true, via:'romylabs_stalwart', from:romylabsFrom, product:'romylabs'
+      }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+    }
+
     if (authenticated) {
       if (!resolvedTenantId) return new Response(JSON.stringify({ error: 'No active office context' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       const { data: isPlatformAdmin } = await authClient.rpc('_is_platform_admin')
