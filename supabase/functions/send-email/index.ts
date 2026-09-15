@@ -222,9 +222,14 @@ serve(async (req) => {
         })
       }
 
-      const recipient = safe(Array.isArray(to) ? to[0] : to)
+      const recipient = safe(Array.isArray(to) ? to[0] : to).toLowerCase()
       if (!recipient) {
         return new Response(JSON.stringify({ error:'Booking recipient missing' }), {
+          status:422, headers:{...corsHeaders,'Content-Type':'application/json'}
+        })
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient) || /@(gamil|gmial|gmai|gmail\.co)$/i.test(recipient)) {
+        return new Response(JSON.stringify({ error:'Booking recipient email looks mistyped' }), {
           status:422, headers:{...corsHeaders,'Content-Type':'application/json'}
         })
       }
@@ -235,6 +240,7 @@ serve(async (req) => {
       let bookingLink = safe(linkMatch?.[1] || 'https://admin.romylabs.com/book')
       try {
         const bookingUrl = new URL(bookingLink, 'https://admin.romylabs.com')
+        bookingUrl.searchParams.delete('t')
         bookingUrl.searchParams.set('product','romylabs')
         bookingLink = bookingUrl.toString()
       } catch {
