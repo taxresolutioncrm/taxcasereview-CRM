@@ -1,6 +1,9 @@
 name: Admin Portal Final Certification
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - sandbox/admin-office-notes-tab
 
 permissions:
   contents: read
