@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { FIRM } from '../lib/firmBranding'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
@@ -24,6 +25,7 @@ const TABS = [
 
 export default function Reports() {
   const { user } = useApp()
+  const navigate = useNavigate()
   const [tab, setTab] = useState('overview')
   const [loading, setLoading] = useState(true)
   const [dateRange, setDateRange] = useState('all')
@@ -366,7 +368,12 @@ export default function Reports() {
              <table style={{borderCollapse:'collapse',fontSize:11,minWidth:3000,width:'max-content'}}>
                <thead style={{position:'sticky',top:0,zIndex:2,background:'var(--s1)'}}><tr>{bookWhipHeaders.map(h=><th key={h} style={{textAlign:'left',padding:'8px 7px',borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
                <tbody>{filteredBookWhip.map(r=><tr key={r.id}>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',fontWeight:700,minWidth:210,whiteSpace:'nowrap',position:'sticky',left:0,background:'var(--s1)',zIndex:1}}>{cleanBookWhipName(r)||'—'}</td>
+                 <td style={{padding:7,borderBottom:'1px solid var(--br)',fontWeight:700,minWidth:210,whiteSpace:'nowrap',position:'sticky',left:0,background:'var(--s1)',zIndex:1}}>
+                   <button type="button" onClick={()=>r.client_id&&navigate(`/clients/${r.client_id}`)} title="Open client"
+                     style={{all:'unset',cursor:r.client_id?'pointer':'default',color:r.client_id?'var(--blue)':'var(--tx)',fontWeight:700}}>
+                     {cleanBookWhipName(r)||'—'}
+                   </button>
+                 </td>
                  <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{fmtBookWhipDate(r.client_since)}</td>
                  <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{r.client_owner||'—'}</td>
                  <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{fmtBookWhipDate(r.source_created_on)}</td>
