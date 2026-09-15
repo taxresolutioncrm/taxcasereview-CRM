@@ -153,6 +153,7 @@ export default function Chat() {
   const [hoverMsg, setHoverMsg]   = useState(null)
   const [reacting, setReacting]   = useState(null) // msg id
   const [reactions, setReactions] = useState({})   // { msgId: { emoji: count } }
+  const [myReactions, setMyReactions] = useState(new Set())
   const [showMembers, setShowMembers] = useState(false)
   const [showChannelsMobile, setShowChannelsMobile] = useState(false)
   const [newChanName, setNewChanName] = useState('')
@@ -421,8 +422,12 @@ export default function Chat() {
     // The channel name includes channelId so it rebuilds automatically when switching conversations.
     const rt = supabase.channel('chat-active-' + channelId)
     rt.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages',
-      filter: `channel=eq.${channelId}` }, () => {
+      filter: `channel=eq.${channelId}` }, ({ new: msg }) => {
       loadMessages(true)
+      if (msg?.sender && msg.sender !== myName && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const title = msg.sender === '🔔 System' ? 'Team Chat' : msg.sender
+        new Notification(title,{ body:(msg.text || 'Sent an attachment').slice(0,160), tag:'teamchat-'+channelId })
+      }
     }).subscribe()
     // 60-second heartbeat as a fallback for any missed realtime events.
     clearInterval(pollerRef.current)
@@ -436,6 +441,43 @@ export default function Chat() {
   useEffect(() => {
     if (!showSearch) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    if (!messages.length || !FIRM.tenantId) { setReactions({}); setMyReactions(new Set()); return }
+    const ids = messages.map(m=>m.id).filter(Boolean).filter(id=>id !== 'sys')
+    if (!ids.length) return
+    let cancelled=false
+    const loadReactionState=async()=>{
+      const { data, error } = await supabase.from('chat_reactions')
+        .select('message_id,user_name,emoji').in('message_id', ids)
+      if (cancelled || error) return
+      const counts={}
+      const mine=new Set()
+      ;(data||[]).forEach(r=>{
+        counts[r.message_id] ||= {}
+        counts[r.message_id][r.emoji]=(counts[r.message_id][r.emoji]||0)+1
+        if(r.user_name===myName) mine.add(r.message_id+'|'+r.emoji)
+      })
+      setReactions(counts); setMyReactions(mine)
+    }
+    loadReactionState()
+    const rt=supabase.channel('chat-reactions-'+channelId)
+      .on('postgres_changes',{event:'*',schema:'public',table:'chat_reactions'},loadReactionState)
+      .subscribe()
+    return()=>{cancelled=true;supabase.removeChannel(rt)}
+  }, [messages, myName, channelId])
+
+  useEffect(() => {
+    if (!messages.length || !FIRM.tenantId || !myName || myName==='You') return
+    const last=[...messages].reverse().find(m=>m.id && m.id!=='sys')
+    if(!last) return
+    supabase.from('chat_read_state').upsert({
+      tenant_id:FIRM.tenantId, viewer_name:myName, conv_id:channelId,
+      last_read_message_id:last.id, last_read_at:new Date().toISOString()
+    },{onConflict:'tenant_id,viewer_name,conv_id'}).then(()=>{})
+  }, [messages, myName, channelId])
+
+
 
   async function send() {
     const text = input.trim()
@@ -481,11 +523,17 @@ export default function Chat() {
     setShowChannelsMobile(false)
   }
 
-  function addReaction(msgId, emoji) {
-    setReactions(r => {
-      const cur = r[msgId] || {}
-      return { ...r, [msgId]: { ...cur, [emoji]: (cur[emoji] || 0) + 1 } }
-    })
+  async function addReaction(msgId, emoji) {
+    if (!FIRM.tenantId || !msgId || msgId==='sys') return
+    const key=msgId+'|'+emoji
+    if(myReactions.has(key)){
+      await supabase.from('chat_reactions').delete()
+        .eq('message_id',msgId).eq('user_name',myName).eq('emoji',emoji)
+    }else{
+      await supabase.from('chat_reactions').upsert({
+        tenant_id:FIRM.tenantId,message_id:msgId,user_name:myName,emoji
+      },{onConflict:'message_id,user_name,emoji'})
+    }
     setReacting(null)
   }
 
