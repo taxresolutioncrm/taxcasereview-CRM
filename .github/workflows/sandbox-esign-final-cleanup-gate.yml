@@ -31,8 +31,8 @@ jobs:
           set -euo pipefail
           test "$(grep -o "if(action==='archive_completed_esign')" supabase/functions/office-agreement-file/index.ts | wc -l)" -eq 1
           grep -q "function isPoaDocument" supabase/functions/office-agreement-file/index.ts
-          grep -q "\\b2848\\b" supabase/functions/office-agreement-file/index.ts
-          grep -q "power\\s+of\\s+attorney" supabase/functions/office-agreement-file/index.ts
+          grep -Fq "/\\b2848\\b/" supabase/functions/office-agreement-file/index.ts
+          grep -Fq "/power\\s+of\\s+attorney/" supabase/functions/office-agreement-file/index.ts
           grep -q "if(isPoaDocument(doc))return pdfBytes" supabase/functions/office-agreement-file/index.ts
           grep -q "stampCompletionOnDocument" supabase/functions/office-agreement-file/index.ts
           grep -q "document_kind:'signed_agreement'" supabase/functions/office-agreement-file/index.ts
