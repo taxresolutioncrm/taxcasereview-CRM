@@ -65,7 +65,7 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 6px 24px ${borderColor}40` }}
       onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
     >
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: borderColor }}/>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: borderColor, boxShadow: `0 0 16px ${borderColor}, 0 3px 14px ${borderColor}66` }}/>
       <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, color: 'var(--t3)', opacity: 0.5, lineHeight: 1, letterSpacing: 1 }}>⠿</div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', paddingTop: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
