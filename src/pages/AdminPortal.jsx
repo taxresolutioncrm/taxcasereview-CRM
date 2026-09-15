@@ -914,6 +914,11 @@ function OfficePage() {
   const [impersonating, setImpersonating] = useState(false)
   const [offDocs, setOffDocs]     = useState([])
   const [docUploading, setDocUploading] = useState(false)
+  const [officeNotes, setOfficeNotes] = useState([])
+  const [noteType, setNoteType] = useState('General')
+  const [noteText, setNoteText] = useState('')
+  const [noteActivityAt, setNoteActivityAt] = useState(()=>new Date().toISOString().slice(0,16))
+  const [noteSaving, setNoteSaving] = useState(false)
 
   const toast_ = (msg, type='ok') => { setToast({msg,type}); setTimeout(()=>setToast(null),3500) }
 
@@ -938,6 +943,11 @@ function OfficePage() {
         // Load office documents
         supabase.from('office_documents').select('*').eq('tenant_id', id).order('created_at', { ascending: false })
           .then(({ data: docs }) => setOffDocs(docs || []))
+        supabase.from('romylabs_office_notes').select('*').eq('tenant_id', id).order('activity_at', { ascending: false }).order('created_at', { ascending: false })
+          .then(({ data: notes, error: notesError }) => {
+            if (notesError) console.error('Could not load office notes:', notesError)
+            setOfficeNotes(notes || [])
+          })
       })
   }, [id])
 
@@ -997,6 +1007,29 @@ function OfficePage() {
     loadOfficePayments(id)
   }
 
+  async function saveOfficeNote() {
+    const text = noteText.trim()
+    if (!text) { toast_('Enter a note first', 'error'); return }
+    setNoteSaving(true)
+    const { data: userData } = await supabase.auth.getUser()
+    const activity = noteActivityAt ? new Date(noteActivityAt).toISOString() : new Date().toISOString()
+    const { data: row, error } = await supabase.from('romylabs_office_notes').insert([{
+      tenant_id: id,
+      note_type: noteType,
+      note_text: text,
+      activity_at: activity,
+      created_by: userData?.user?.email || 'RomyLabs Admin',
+    }]).select('*').single()
+    setNoteSaving(false)
+    if (error) { toast_('❌ ' + error.message, 'error'); return }
+    setOfficeNotes(prev => [row, ...prev].sort((a,b)=>new Date(b.activity_at||b.created_at)-new Date(a.activity_at||a.created_at)))
+    setNoteText('')
+    setNoteType('General')
+    setNoteActivityAt(new Date().toISOString().slice(0,16))
+    toast_('✅ Internal note added')
+  }
+
+
   function resetDemo() {
     toast_('Demo reset is disabled until a secured server-side reset endpoint is deployed.', 'error')
   }
@@ -1019,7 +1052,7 @@ function OfficePage() {
 
   const t = data.tenant
   const employees = data.employees || []
-  const TABS = ['overview','employees','billing','actions','documents']
+  const TABS = ['overview','employees','billing','actions','documents','notes']
 
   return (
     <div style={{ padding:'28px 36px', maxWidth:1050 }}>
@@ -1288,6 +1321,53 @@ function OfficePage() {
             ))}
           </div>
           {docUploading && <div style={{ fontSize:12, color:'#6366f1', marginTop:8, textAlign:'center' }}>Uploading…</div>}
+        </div>
+      )}
+
+      {tab==='notes' && (
+        <div style={{ display:'grid', gridTemplateColumns:'minmax(300px, 380px) 1fr', gap:16, alignItems:'start' }}>
+          <div style={{ ...S.card, padding:20 }}>
+            <div style={{ fontSize:12,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:14 }}>Add Internal Note</div>
+            <div style={{ fontSize:12,color:'#64748b',lineHeight:1.5,marginBottom:14 }}>
+              Keep outreach, meetings, follow-ups, and internal office history here. These notes are for RomyLabs admins only.
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1.25fr', gap:10, marginBottom:12 }}>
+              <div>
+                <label style={{ fontSize:10,fontWeight:800,color:'#6366f1',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:6 }}>Type</label>
+                <select value={noteType} onChange={e=>setNoteType(e.target.value)}
+                  style={{ width:'100%',padding:'9px 10px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'#1a1830',color:'#e2e8f0',fontSize:12 }}>
+                  {['General','Outreach','Meeting','Follow-up'].map(x=><option key={x} value={x}>{x}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize:10,fontWeight:800,color:'#6366f1',textTransform:'uppercase',letterSpacing:'.05em',display:'block',marginBottom:6 }}>Activity Date</label>
+                <input type="datetime-local" value={noteActivityAt} onChange={e=>setNoteActivityAt(e.target.value)}
+                  style={{ width:'100%',padding:'9px 10px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'#1a1830',color:'#e2e8f0',fontSize:12,boxSizing:'border-box' }}/>
+              </div>
+            </div>
+            <textarea value={noteText} onChange={e=>setNoteText(e.target.value)} rows={7}
+              placeholder="Example: Spoke with owner after demo. Interested in 12 seats. Follow up Friday about onboarding timeline."
+              style={{ width:'100%',padding:'11px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(255,255,255,.04)',color:'#e2e8f0',fontSize:13,lineHeight:1.5,boxSizing:'border-box',resize:'vertical',fontFamily:'inherit' }}/>
+            <button onClick={saveOfficeNote} disabled={noteSaving||!noteText.trim()}
+              style={{ ...S.btn('primary'),width:'100%',justifyContent:'center',marginTop:12,opacity:noteSaving||!noteText.trim()?.5:1 }}>
+              {noteSaving ? 'Saving…' : '＋ Add Note'}
+            </button>
+          </div>
+          <div style={S.card}>
+            <div style={{ padding:'14px 18px',borderBottom:'1px solid rgba(99,102,241,.12)',fontSize:12,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.05em' }}>Internal Notes History</div>
+            {officeNotes.length===0 ? (
+              <div style={{padding:'30px 20px',textAlign:'center',color:'#475569',fontSize:13}}>No internal notes yet.</div>
+            ) : officeNotes.map(n=>(
+              <div key={n.id} style={{padding:'14px 18px',borderBottom:'1px solid rgba(99,102,241,.08)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7,flexWrap:'wrap'}}>
+                  <span style={{fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:999,background:'rgba(99,102,241,.12)',color:'#a5b4fc'}}>{n.note_type||'General'}</span>
+                  <span style={{fontSize:11,color:'#64748b'}}>{new Date(n.activity_at||n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+                  <span style={{fontSize:11,color:'#475569'}}>· {n.created_by||'RomyLabs Admin'}</span>
+                </div>
+                <div style={{fontSize:13,color:'#e2e8f0',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{n.note_text}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
