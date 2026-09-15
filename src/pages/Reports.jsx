@@ -41,6 +41,7 @@ export default function Reports() {
   const [bookWhipSearch,setBookWhipSearch] = useState('')
   const [bookWhipAssociate,setBookWhipAssociate] = useState('all')
   const [bookWhipFilter,setBookWhipFilter] = useState('all')
+  const [bookWhipSort,setBookWhipSort] = useState({key:'client_name',direction:'asc'})
 
   // Guard: wait for auth — every office remains tenant-scoped.
   useEffect(() => { if (user) loadAll() }, [user?.id])
@@ -283,8 +284,33 @@ export default function Reports() {
     if(bookWhipFilter==='contact') return !String(r.last_contact_date||'').trim()
     return true
   })
-  const bookWhipHeaders=['Client Name','Client Since','Client Owner','Created On','Tags','Spouse Name','Client','Assigned Associate','Financials','Last Payment','Transcripts','State Res/Hold','Hold Date','Notes','Quote','Return Quote','Resolution Step','Chris','Johnny','Last Contact Date']
-  const bookWhipExportRows=filteredBookWhip.map(r=>[
+  const bookWhipColumns=[
+    ['client_name','Client Name'],['client_since','Client Since'],['client_owner','Client Owner'],['source_created_on','Created On'],
+    ['tags','Tags'],['spouse_name','Spouse Name'],['client_display','Client'],['assigned_associate','Assigned Associate'],
+    ['financials','Financials'],['last_payment','Last Payment'],['transcripts','Transcripts'],['state_res_hold','State Res/Hold'],
+    ['hold_date','Hold Date'],['notes','Notes'],['quote','Quote'],['return_quote','Return Quote'],['resolution_step','Resolution Step'],
+    ['chris_flag','Chris'],['johnny_flag','Johnny'],['last_contact_date','Last Contact Date']
+  ]
+  const bookWhipHeaders=bookWhipColumns.map(([,label])=>label)
+  const sortBookWhipValue=(r,key)=>{
+    if(key==='client_name'||key==='client_display') return cleanBookWhipName(r).toLowerCase()
+    if(['client_since','source_created_on','hold_date','last_contact_date'].includes(key)){
+      const d=new Date(r[key]||'')
+      return Number.isNaN(d.getTime()) ? String(r[key]||'').toLowerCase() : d.getTime()
+    }
+    if(['quote','return_quote'].includes(key)){
+      const n=Number(String(r[key]||'').replace(/[^0-9.-]/g,''))
+      return Number.isFinite(n)?n:String(r[key]||'').toLowerCase()
+    }
+    return String(r[key]||'').toLowerCase()
+  }
+  const sortedBookWhip=[...filteredBookWhip].sort((a,b)=>{
+    const av=sortBookWhipValue(a,bookWhipSort.key),bv=sortBookWhipValue(b,bookWhipSort.key)
+    const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),undefined,{numeric:true,sensitivity:'base'})
+    return bookWhipSort.direction==='asc'?cmp:-cmp
+  })
+  const toggleBookWhipSort=key=>setBookWhipSort(s=>s.key===key?{key,direction:s.direction==='asc'?'desc':'asc'}:{key,direction:'asc'})
+  const bookWhipExportRows=sortedBookWhip.map(r=>[
     cleanBookWhipName(r),r.client_since,r.client_owner,fmtBookWhipDate(r.source_created_on),r.tags,r.spouse_name,cleanBookWhipName(r),
     r.assigned_associate,r.financials,r.last_payment,r.transcripts,r.state_res_hold,r.hold_date,r.notes,r.quote,r.return_quote,r.resolution_step,r.chris_flag,r.johnny_flag,r.last_contact_date
   ])
@@ -341,7 +367,7 @@ export default function Reports() {
                 {bookWhipAssociates.map(a=><option key={a} value={a}>{a}</option>)}
               </select>
               <button className="btn sec" disabled={bookWhipLoading} onClick={createBookWhipMonth}>＋ Create / Refresh Month</button>
-              <button className="btn sec" disabled={!filteredBookWhip.length} onClick={()=>exportExcel([bookWhipHeaders,...bookWhipExportRows],`Book_Whip_${bookWhipMonth.slice(0,7)}`)}>📊 Excel</button>
+              <button className="btn sec" disabled={!sortedBookWhip.length} onClick={()=>exportExcel([bookWhipHeaders,...bookWhipExportRows],`Book_Whip_${bookWhipMonth.slice(0,7)}`)}>📊 Excel</button>
             </div>
           </div>
 
@@ -363,11 +389,11 @@ export default function Reports() {
           </div>
 
           {bookWhipLoading ? <div style={{padding:40,textAlign:'center',color:'var(--t3)'}}>Loading Book Whip…</div> :
-           filteredBookWhip.length===0 ? <div className="card"><Empty msg="No Book Whip rows match this filter."/></div> :
+           sortedBookWhip.length===0 ? <div className="card"><Empty msg="No Book Whip rows match this filter."/></div> :
            <div className="card" style={{overflowX:'auto',overflowY:'auto',maxHeight:'68vh'}}>
              <table style={{borderCollapse:'collapse',fontSize:11,minWidth:3000,width:'max-content'}}>
-               <thead style={{position:'sticky',top:0,zIndex:2,background:'var(--s1)'}}><tr>{bookWhipHeaders.map(h=><th key={h} style={{textAlign:'left',padding:'8px 7px',borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
-               <tbody>{filteredBookWhip.map(r=><tr key={r.id}>
+               <thead style={{position:'sticky',top:0,zIndex:2,background:'var(--s1)'}}><tr>{bookWhipColumns.map(([key,label])=><th key={key} style={{textAlign:'left',padding:'8px 7px',borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}><button type="button" onClick={()=>toggleBookWhipSort(key)} style={{background:'none',border:0,padding:0,color:'inherit',font:'inherit',fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}} title={`Sort ${label} ${bookWhipSort.key===key&&bookWhipSort.direction==='asc'?'descending':'ascending'}`}>{label}<span style={{fontSize:9,opacity:bookWhipSort.key===key?1:.35}}>{bookWhipSort.key===key?(bookWhipSort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead>
+               <tbody>{sortedBookWhip.map(r=><tr key={r.id}>
                  <td style={{padding:7,borderBottom:'1px solid var(--br)',fontWeight:700,minWidth:210,whiteSpace:'nowrap',position:'sticky',left:0,background:'var(--s1)',zIndex:1}}>
                    <button type="button" onClick={()=>r.client_id&&navigate(`/clients/${r.client_id}`)} title="Open client"
                      style={{all:'unset',cursor:r.client_id?'pointer':'default',color:r.client_id?'var(--blue)':'var(--tx)',fontWeight:700}}>
