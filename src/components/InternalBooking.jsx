@@ -13,9 +13,14 @@ export default function InternalBooking({ onClose }) {
   const [copied, setCopied] = useState(false)
 
   async function send() {
-    if (!form.email.trim()) return
+    const email = form.email.trim().toLowerCase()
+    if (!email) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /@(gamil|gmial|gmai|gmail\.co)$/i.test(email)) {
+      setState('invalid')
+      return
+    }
     setState('sending')
-    const ok = await sendBookingInvite({ name: form.name, email: form.email.trim() })
+    const ok = await sendBookingInvite({ name: form.name, email })
     setState(ok ? 'sent' : 'error')
   }
 
@@ -66,6 +71,11 @@ export default function InternalBooking({ onClose }) {
                 </div>
               </div>
 
+              {state === 'invalid' && (
+                <div style={{ color: '#fca5a5', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginTop: 12 }}>
+                  Check the email address — it looks mistyped.
+                </div>
+              )}
               {state === 'error' && (
                 <div style={{ color: '#fca5a5', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginTop: 12 }}>
                   Send failed — check the address and try again.
