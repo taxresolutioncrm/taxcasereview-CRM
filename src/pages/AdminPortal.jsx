@@ -1349,7 +1349,7 @@ function OfficePage() {
               placeholder="Example: Spoke with owner after demo. Interested in 12 seats. Follow up Friday about onboarding timeline."
               style={{ width:'100%',padding:'11px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(255,255,255,.04)',color:'#e2e8f0',fontSize:13,lineHeight:1.5,boxSizing:'border-box',resize:'vertical',fontFamily:'inherit' }}/>
             <button onClick={saveOfficeNote} disabled={noteSaving||!noteText.trim()}
-              style={{ ...S.btn('primary'),width:'100%',justifyContent:'center',marginTop:12,opacity:noteSaving||!noteText.trim()?.5:1 }}>
+              style={{ ...S.btn('primary'),width:'100%',justifyContent:'center',marginTop:12,opacity: noteSaving || !noteText.trim() ? .5 : 1 }}>
               {noteSaving ? 'Saving…' : '＋ Add Note'}
             </button>
           </div>
