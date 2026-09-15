@@ -1,0 +1,121 @@
+/* Final Tax Office KPI card parity layer.
+   Nashville dashboard screenshot is the visual source of truth.
+   Loaded LAST so older polish/shared !important rules cannot mask it. */
+
+.page-content div:has(> [data-card-idx]) {
+  gap: 14px !important;
+}
+
+[data-card-idx] {
+  height: 133px !important;
+  min-height: 133px !important;
+  padding: 16px 14px !important;
+  border-radius: 14px !important;
+  border: 1px solid #24435f !important;
+  background: #10283f !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease !important;
+}
+
+[data-card-idx]:hover {
+  transform: translateY(-2px) !important;
+  border-color: #315877 !important;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18) !important;
+  filter: none !important;
+}
+
+[data-card-idx] > div:first-child {
+  top: 0 !important;
+  left: 16px !important;
+  right: 16px !important;
+  height: 3px !important;
+  border-radius: 0 0 4px 4px !important;
+  box-shadow: none !important;
+}
+
+[data-card-idx] > div:nth-child(2) {
+  top: 9px !important;
+  right: 9px !important;
+  font-size: 10px !important;
+  opacity: .28 !important;
+}
+
+[data-card-idx] > div:nth-child(3) {
+  padding-top: 6px !important;
+  gap: 12px !important;
+  align-items: center !important;
+}
+
+[data-card-idx] > div:nth-child(3) > div:first-child > div:first-child {
+  margin-bottom: 8px !important;
+  min-height: 25px !important;
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+  font-weight: 700 !important;
+  letter-spacing: .06em !important;
+  color: var(--t3) !important;
+}
+
+[data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
+  min-height: 30px !important;
+  font-size: clamp(22px, 1.55vw, 28px) !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+  letter-spacing: -.02em !important;
+  text-shadow: none !important;
+}
+
+[data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(3) {
+  margin-top: 6px !important;
+  min-height: 15px !important;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  color: var(--t3) !important;
+}
+
+[data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  margin-left: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,.045) !important;
+  border: 1px solid rgba(255,255,255,.055) !important;
+  opacity: .55 !important;
+  transform: none !important;
+  filter: none !important;
+  font-size: 23px !important;
+}
+
+html.light [data-card-idx] {
+  background: #fff !important;
+  border-color: #dbe5ef !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 1100px) {
+  .page-content div:has(> [data-card-idx]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  [data-card-idx] {
+    height: auto !important;
+    min-height: 118px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-content div:has(> [data-card-idx]) {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  [data-card-idx] {
+    height: auto !important;
+    min-height: 106px !important;
+    padding: 17px !important;
+    border-radius: 12px !important;
+  }
+}
