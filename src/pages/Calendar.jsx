@@ -61,6 +61,8 @@ function scOf(ev) {
 
 export default function Calendar() {
   const { user } = useApp()
+  const isRomyLabsAdmin = window.location.hostname.toLowerCase() === 'admin.romylabs.com'
+  const adminCalendarOwner = 'Romy Cruz'
   const [events,        setEvents]        = useState([])
   const [clients,       setClients]       = useState([])
   const [employees,     setEmployees]     = useState([])
@@ -80,7 +82,7 @@ export default function Calendar() {
   const [confirmDel,    setConfirmDel]    = useState(null)
 
   const [form, setForm] = useState({
-    title: '', clientName: '', client_id: '', assignedTo: '', date: '', time: '',
+    title: '', clientName: '', client_id: '', assignedTo: isRomyLabsAdmin ? adminCalendarOwner : '', date: '', time: '',
     endTime: '', eventType: 'Consultation Call', color: 'bb',
     notes: '', recurring: 'none', status: 'scheduled'
   })
@@ -133,7 +135,9 @@ export default function Calendar() {
     const [{ data: ev }, { data: cl }, { data: em }, { data: dl }] = await Promise.all([
       supabase.from('calevents').select('*').order('date', { ascending: true }),
       supabase.from('clients').select('id,name,email,address'),
-      supabase.from('employees').select('id,name').order('name'),
+      isRomyLabsAdmin
+        ? Promise.resolve({ data:[{ id:'romy-admin-calendar-owner', name:adminCalendarOwner }] })
+        : supabase.from('employees').select('id,name').order('name'),
       supabase.from('deadlines').select('id,title,dueDate,clientName,client_id,status').neq('status', 'Completed'),
     ])
     setEvents(ev || [])
@@ -204,7 +208,7 @@ export default function Calendar() {
   async function saveEvent() {
     if (!form.title || !form.date) { showToast('Title and date required'); return }
     setSaving(true)
-    let payload = { ...form, updated_at: new Date().toISOString() }
+    let payload = { ...form, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : form.assignedTo, updated_at: new Date().toISOString() }
     let error
     // Retry loop: strip unknown columns if PostgREST rejects them (same pattern as Clients.jsx)
     for (let attempt = 0; attempt < 12; attempt++) {
@@ -244,7 +248,7 @@ export default function Calendar() {
         await supabase.from('client_notes').insert({ clientname: form.clientName, text: noteText, author: actorCal, visible_to_client: false }).catch(()=>{})
       }
     }
-    setShowForm(false); setForm({ title:'',clientName:'',client_id:'',assignedTo:'',date:'',time:'',endTime:'',eventType:'Consultation Call',color:'bb',notes:'',recurring:'none',status:'scheduled' })
+    setShowForm(false); setForm({ title:'',clientName:'',client_id:'',assignedTo:isRomyLabsAdmin ? adminCalendarOwner : '',date:'',time:'',endTime:'',eventType:'Consultation Call',color:'bb',notes:'',recurring:'none',status:'scheduled' })
     load()
   }
 
@@ -325,13 +329,14 @@ export default function Calendar() {
       ...f,
       title: '', date: date.toISOString().slice(0, 10),
       time: `${String(d.getHours()).padStart(2,'0')}:00`,
+      assignedTo: isRomyLabsAdmin ? adminCalendarOwner : '',
       id: undefined
     }))
     setShowForm(true); setDayMenuPos(null); setDayMenuDate(null)
   }
 
   function openEditForm(ev) {
-    setForm({ ...ev })
+    setForm({ ...ev, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : (ev.assignedTo || '') })
     setShowForm(true); setSelectedEvent(null)
   }
 
@@ -498,7 +503,7 @@ export default function Calendar() {
                 }}>{v.charAt(0).toUpperCase() + v.slice(1)}</button>
               ))}
             </div>
-            <button onClick={() => { setForm(f => ({...f, date: new Date().toISOString().slice(0,10), id: undefined})); setShowForm(true) }} style={{ padding: '8px 18px', background: '#16a34a', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={() => { setForm(f => ({...f, date: new Date().toISOString().slice(0,10), assignedTo: isRomyLabsAdmin ? adminCalendarOwner : '', id: undefined})); setShowForm(true) }} style={{ padding: '8px 18px', background: '#16a34a', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               + Add Event
             </button>
             <button onClick={() => setShowUnscheduled(s => !s)} style={{ padding: '7px 12px', background: showUnscheduled ? 'rgba(74,222,128,.15)' : 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8, color: showUnscheduled ? '#4ade80' : 'var(--t3)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -737,9 +742,15 @@ export default function Calendar() {
                   <input type="time" style={inp} value={form.endTime} onChange={e => fld('endTime', e.target.value)} />
                 </div>
                 <div><label style={lbl}>Assigned To</label>
-                  <select style={inp} value={form.assignedTo} onChange={e => fld('assignedTo', e.target.value)}>
-                    <option value="">— Anyone —</option>
-                    {employees.map(em => <option key={em.id} value={em.name}>{em.name}</option>)}
+                  <select style={inp} value={form.assignedTo} onChange={e => fld('assignedTo', e.target.value)} disabled={isRomyLabsAdmin}>
+                    {isRomyLabsAdmin ? (
+                      <option value={adminCalendarOwner}>{adminCalendarOwner}</option>
+                    ) : (
+                      <>
+                        <option value="">— Anyone —</option>
+                        {employees.map(em => <option key={em.id} value={em.name}>{em.name}</option>)}
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
