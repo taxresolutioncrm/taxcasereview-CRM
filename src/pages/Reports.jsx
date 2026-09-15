@@ -291,7 +291,7 @@ export default function Reports() {
     : <input defaultValue={r[field]||''} onBlur={e=>saveBookWhipField(r.id,field,e.target.value)} style={{width,fontSize:11,padding:'5px 6px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:5,color:'var(--tx)'}}/>
 
   return (
-    <div style={{padding:'20px 24px',maxWidth:1100,margin:'0 auto'}}>
+    <div style={{padding:'20px 24px',maxWidth:tab==='bookwhip'?'none':1100,margin:'0 auto',boxSizing:'border-box'}}>
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>📊 Reports & Analytics</h2>
@@ -313,10 +313,10 @@ export default function Reports() {
       </div>
 
       {/* Tab Bar */}
-      <div style={{display:'flex',gap:0,borderBottom:'1px solid var(--br)',marginBottom:16}}>
+      <div style={{display:'flex',gap:4,flexWrap:'wrap',borderBottom:'1px solid var(--br)',marginBottom:16,paddingBottom:6}}>
         {TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
-            style={{flex:1,padding:'10px 2px',fontSize:13,fontWeight:tab===t.key?700:500,
+            style={{flex:'0 0 auto',padding:'10px 10px',fontSize:13,fontWeight:tab===t.key?700:500,
               borderBottom:tab===t.key?'3px solid var(--blue)':'3px solid transparent',
               background:'none',border:'none',
               color:tab===t.key?'var(--blue)':'var(--t2)',cursor:'pointer',whiteSpace:'nowrap',paddingBottom:10,
