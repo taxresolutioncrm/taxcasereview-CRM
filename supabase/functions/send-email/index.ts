@@ -51,7 +51,7 @@ function raw(o: any) {
   return `${h}\r\n\r\n${o.body}`
 }
 
-async function sendViaStalwartJmap(opts: { host:string, username:string, password:string, fromAddress?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+async function sendViaStalwartJmap(opts: { host:string, username:string, password:string, fromAddress?:string, replyTo?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
   const base = `https://${opts.host.replace(/^https?:\/\//,'').replace(/\/$/,'')}`
   const auth = 'Basic ' + btoa(`${opts.username}:${opts.password}`)
   const sessionRes = await fetch(`${base}/.well-known/jmap`, { headers:{ Authorization:auth, Accept:'application/json' } })
@@ -87,6 +87,7 @@ async function sendViaStalwartJmap(opts: { host:string, username:string, passwor
   const createEmail:any = {
     from:[{email:fromAddress,name:opts.fromName||undefined}],
     to:[{email:opts.to}],
+    ...(opts.replyTo ? {replyTo:[{email:opts.replyTo}]} : {}),
     subject:opts.subject,
     mailboxIds:{[drafts.id]:true},
     keywords:{'$draft':true},
@@ -284,10 +285,11 @@ serve(async (req) => {
         })
       }
 
-      // RomyLabs booking mail must use a real RomyLabs SMTP identity. Do not
-      // silently fall back to the TaxRes Gmail OAuth account.
+      // Use the proven TaxRes Stalwart transport for delivery while keeping
+      // RomyLabs branding and Reply-To. This avoids the broken RomyLabs-domain
+      // outbound-auth path without falling back to Gmail.
       let transport:any = null
-      const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'romylabs'})
+      const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'taxres_crm'})
       if (vaultTransport?.ok) {
         transport = {
           host:safe(vaultTransport.host||'mail.taxrescrm.net'),
@@ -295,6 +297,7 @@ serve(async (req) => {
           ssl:true,
           username:safe(vaultTransport.username),
           password:String(vaultTransport.password||''),
+          fromAddress:safe(vaultTransport.from_address||vaultTransport.username).toLowerCase(),
         }
       } else {
         const { data: account } = await admin.from('email_accounts')
@@ -336,7 +339,8 @@ serve(async (req) => {
         host:transport.host,
         username:transport.username,
         password:transport.password,
-        fromAddress:romylabsFrom,
+        fromAddress:safe(transport.fromAddress||transport.username).toLowerCase(),
+        replyTo:romylabsFrom,
         fromName:'RomyLabs',
         to:recipient,
         subject:safe(subject),
@@ -351,17 +355,17 @@ serve(async (req) => {
         body:String(html).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),
         body_html:String(html),
         triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
-        sender:romylabsFrom,from_address:romylabsFrom,reply_from:romylabsFrom,
+        sender:safe(transport.fromAddress||transport.username).toLowerCase(),from_address:safe(transport.fromAddress||transport.username).toLowerCase(),reply_from:romylabsFrom,
         mailbox_owner:safe(route.inbox_owner||'info@romylabs.com'),
         received_at:new Date().toISOString(),created_at:new Date().toISOString(),
         product_id:'romylabs',
         message_id:`stalwart:${sendResult.submissionId}`,
-        received_mailbox:romylabsFrom,
+        received_mailbox:safe(transport.fromAddress||transport.username).toLowerCase(),
         route_id:route.id,
       }])
 
       return new Response(JSON.stringify({
-        success:true, via:'romylabs_stalwart', from:romylabsFrom, product:'romylabs'
+        success:true, via:'stalwart_proven_route', from:safe(transport.fromAddress||transport.username).toLowerCase(), reply_to:romylabsFrom, product:'romylabs'
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
@@ -622,7 +626,7 @@ serve(async (req) => {
 
     if (isRomyLabsMail) {
       const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product', {
-        p_product_key: 'romylabs',
+        p_product_key: 'taxres_crm',
       })
       if (!vaultTransport?.ok) {
         return new Response(JSON.stringify({ error:'RomyLabs Stalwart transport unavailable' }), {
@@ -659,6 +663,7 @@ serve(async (req) => {
           username: transport.username,
           password: transport.password,
           fromAddress: transport.fromAddress,
+          replyTo: 'info@romylabs.com',
           fromName: safe(from_name || 'RomyLabs'),
           to: recipient,
           subject: safe(subject),
