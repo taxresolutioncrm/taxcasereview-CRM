@@ -628,22 +628,6 @@ serve(async(req)=>{
       if(de||!doc)return json({error:'Signing request not found'},404)
       if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
       try{
-        const archived=await archiveCompletedOfficeDocuments(admin,doc)
-        if(archived?.ok)await appendEvent(admin,doc.id,'office_documents_archived',{actorEmail:user.email,metadata:{...archived,backfill:true},occurredAt:new Date().toISOString()})
-        return json(archived?.ok?archived:{ok:false,...archived},archived?.ok?200:422)
-      }catch(e){
-        await appendEvent(admin,doc.id,'office_documents_archive_failed',{actorEmail:user.email,metadata:{error:String((e as Error)?.message||e).slice(0,240),backfill:true}})
-        return json({error:String((e as Error)?.message||e)},500)
-      }
-    }
-
-    if(action==='archive_completed_esign'){
-      const documentId=String(b.document_id||'')
-      if(!documentId)return json({error:'document_id is required'},400)
-      const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
-      if(de||!doc)return json({error:'Signing request not found'},404)
-      if(doc.status!=='signed'||!doc.signed_path||!doc.certificate_path)return json({error:'Envelope is not completed'},409)
-      try{
         const {data:signedObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.signed_path))
         const {data:certObj}=await admin.storage.from(ESIGN_BUCKET).download(String(doc.certificate_path))
         const signedSize=signedObj?Number((await signedObj.arrayBuffer()).byteLength):null
