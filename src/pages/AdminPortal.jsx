@@ -2543,7 +2543,7 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
     marketing: 'pending',
   }))]
   return (
-    <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:22 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))', gap:8, marginBottom:18 }}>
       {mapped.map(p => {
         const status = p[channel]
         // Live GSC connection overrides static label for the active product on the SEO channel
@@ -2553,7 +2553,7 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
         const statusLabel = isMarketingLive
           ? 'GA4 Connected'
           : isGscLive && isClarityLive
-          ? 'GSC Connected · Clarity Connected'
+          ? 'GSC + Clarity'
           : isGscLive
           ? 'GSC Connected'
           : isClarityLive
@@ -2566,15 +2566,16 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
           : '#f59e0b'
         return (
           <button key={p.key} onClick={() => onChange(p.key)} style={{
-            minWidth:190, textAlign:'left', padding:'12px 14px', borderRadius:10, cursor:'pointer',
+            minWidth:0, textAlign:'left', padding:'9px 10px', borderRadius:9, cursor:'pointer',
             background:value===p.key ? p.color+'20' : 'rgba(255,255,255,.025)',
             border:value===p.key ? `1px solid ${p.color}` : '1px solid rgba(255,255,255,.08)',
             color:'#fff'
           }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
-              <span>{p.icon}</span><span style={{ fontSize:13, fontWeight:800 }}>{p.label}</span>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3, minWidth:0 }}>
+              <span style={{ fontSize:12, flex:'0 0 auto' }}>{p.icon}</span>
+              <span style={{ fontSize:12, fontWeight:800, lineHeight:1.15, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.label}</span>
             </div>
-            <div style={{ fontSize:10, color:statusColor }}>● {statusLabel}</div>
+            <div style={{ fontSize:9, lineHeight:1.2, color:statusColor, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>● {statusLabel}</div>
 
           </button>
         )
