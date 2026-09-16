@@ -96,6 +96,94 @@ async function sendViaSMTP(opts: {
   await write('QUIT'); conn.close()
 }
 
+
+async function sendViaStalwartJmap(opts: {
+  host: string, username: string, password: string, fromAddress: string, fromName: string,
+  to: string[], subject: string, textBody: string, htmlBody?: string,
+  messageId: string, inReplyTo?: string, references?: string,
+}) {
+  const base = `https://${String(opts.host || '').replace(/^https?:\/\//,'').replace(/\/$/,'')}`
+  const auth = 'Basic ' + btoa(`${opts.username}:${opts.password}`)
+  const sessionRes = await fetch(`${base}/.well-known/jmap`, { headers:{ Authorization:auth, Accept:'application/json' } })
+  if (!sessionRes.ok) throw new Error(`Stalwart JMAP session failed (${sessionRes.status})`)
+  const session = await sessionRes.json()
+  const apiUrl = String(session?.apiUrl || '').replace('{accountId}','')
+  const accountId = session?.primaryAccounts?.['urn:ietf:params:jmap:mail'] || Object.keys(session?.accounts || {})[0]
+  if (!apiUrl || !accountId) throw new Error('Stalwart JMAP session missing mail account')
+
+  const metaRes = await fetch(apiUrl, {
+    method:'POST',
+    headers:{ Authorization:auth, 'Content-Type':'application/json', Accept:'application/json' },
+    body:JSON.stringify({
+      using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+      methodCalls:[
+        ['Identity/get',{accountId},'i0'],
+        ['Mailbox/get',{accountId,properties:['id','name','role']},'m0'],
+      ],
+    }),
+  })
+  if (!metaRes.ok) throw new Error(`Stalwart JMAP metadata failed (${metaRes.status})`)
+  const meta = await metaRes.json()
+  const identities = meta?.methodResponses?.find((x:any)=>x?.[0]==='Identity/get')?.[1]?.list || []
+  const mailboxes = meta?.methodResponses?.find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list || []
+  const exactFrom = normalizeEmail(opts.fromAddress)
+  const identity = identities.find((x:any)=>normalizeEmail(x?.email)===exactFrom)
+  if (!identity?.id) throw new Error(`Stalwart does not authorize sender identity ${exactFrom}`)
+  const drafts = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='drafts')
+  const sent = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='sent')
+  if (!drafts?.id || !sent?.id) throw new Error('Stalwart Drafts or Sent mailbox unavailable')
+
+  const partId = 'body'
+  const createEmail:any = {
+    from:[{email:exactFrom,name:opts.fromName||undefined}],
+    to:opts.to.map(email=>({email})),
+    subject:opts.subject,
+    mailboxIds:{[drafts.id]:true},
+    keywords:{'$draft':true},
+    bodyValues:{[partId]:{value:opts.htmlBody || opts.textBody || '',charset:'utf-8'}},
+    'header:Message-ID:asMessageIds':[stripAngles(opts.messageId)],
+  }
+  if (opts.inReplyTo) createEmail['header:In-Reply-To:asMessageIds']=[stripAngles(opts.inReplyTo)]
+  const refs = String(opts.references || '').match(/<([^>]+)>|([^\s]+)/g)?.map((v:string)=>stripAngles(v)) || []
+  if (refs.length) createEmail['header:References:asMessageIds']=refs
+  if (opts.htmlBody) createEmail.htmlBody=[{partId,type:'text/html'}]
+  else createEmail.textBody=[{partId,type:'text/plain'}]
+
+  const sendRes = await fetch(apiUrl, {
+    method:'POST',
+    headers:{ Authorization:auth, 'Content-Type':'application/json', Accept:'application/json' },
+    body:JSON.stringify({
+      using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+      methodCalls:[
+        ['Email/set',{accountId,create:{draft:createEmail}},'e0'],
+        ['EmailSubmission/set',{
+          accountId,
+          create:{sendIt:{emailId:'#draft',identityId:identity.id}},
+          onSuccessUpdateEmail:{'#sendIt':{
+            [`mailboxIds/${drafts.id}`]:null,
+            [`mailboxIds/${sent.id}`]:true,
+            'keywords/$draft':null,
+          }},
+        },'s0'],
+      ],
+    }),
+  })
+  if (!sendRes.ok) throw new Error(`Stalwart JMAP send failed (${sendRes.status})`)
+  const result = await sendRes.json()
+  const emailSet = result?.methodResponses?.find((x:any)=>x?.[0]==='Email/set')?.[1]
+  const emailError = emailSet?.notCreated?.draft
+  if (emailError) throw new Error(`Stalwart JMAP draft rejected: ${emailError.description || emailError.type || 'unknown error'}`)
+  const submission = result?.methodResponses?.find((x:any)=>x?.[0]==='EmailSubmission/set')?.[1]
+  const submissionError = submission?.notCreated?.sendIt
+  if (submissionError) throw new Error(`Stalwart JMAP rejected send: ${submissionError.description || submissionError.type || 'unknown error'}`)
+  if (!submission?.created?.sendIt?.id) throw new Error('Stalwart JMAP did not confirm message submission')
+  return {
+    submissionId:String(submission.created.sendIt.id),
+    emailId:String(emailSet?.created?.draft?.id || ''),
+    threadId:String(emailSet?.created?.draft?.threadId || ''),
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -109,11 +197,7 @@ serve(async (req) => {
     if (!callerEmail) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
     const {data:tenantId}=await userClient.rpc('current_tenant_id')
-    if(!tenantId) return new Response(JSON.stringify({error:'No active office context'}),{status:403,headers:{...corsHeaders,'Content-Type':'application/json'}})
-    const {data:employee}=await svc.from('employees').select('status,perm_comms,tenant_id').eq('tenant_id',tenantId).ilike('email',callerEmail).limit(1).maybeSingle()
     const {data:isPlatformAdmin}=await userClient.rpc('_is_platform_admin')
-    const active=employee&&String(employee.status||'Active').toLowerCase()==='active'
-    if(!isPlatformAdmin&&(!active||Number(employee?.perm_comms||0)<2)) return new Response(JSON.stringify({error:'Email permission denied'}),{status:403,headers:{...corsHeaders,'Content-Type':'application/json'}})
 
     const {
       account_id, route_id, to, subject, text_body, html_body, from_name,
@@ -123,30 +207,88 @@ serve(async (req) => {
     const toList = (Array.isArray(to) ? to : [to]).map((x: unknown) => safeHeader(x)).filter(validEmail).slice(0, 25)
     if (!toList.length || !safeHeader(subject)) throw new Error('Recipient and subject are required')
 
-    let route: any = null
-    let accountQuery = svc.from('email_accounts').select('*').eq('is_active', true).eq('tenant_id',tenantId)
-
+    // RomyLabs Admin routed replies are platform-level and use the exact Stalwart
+    // identity registered on the route. They do not depend on legacy email_accounts.
     if (route_id) {
-      if (!ROMYLABS_ADMINS.has(callerEmail)) return new Response(JSON.stringify({ error: 'Not authorized for RomyLabs routed email' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-      const { data, error } = await svc.from('romylabs_mailboxes')
+      if (!isPlatformAdmin || !ROMYLABS_ADMINS.has(callerEmail)) {
+        return new Response(JSON.stringify({ error:'Not authorized for RomyLabs routed email' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      }
+
+      const { data: route, error: routeError } = await svc.from('romylabs_mailboxes')
         .select('id,email_address,outbound_from,display_name,product_id,tenant_id,inbox_owner,active')
-        .eq('id', route_id).eq('tenant_id',tenantId).eq('active', true).maybeSingle()
-      if (error || !data) throw new Error('Mailbox route not found')
-      route = data
-      accountQuery = accountQuery.ilike('email_address', route.outbound_from)
-    } else if (account_id) {
-      accountQuery = accountQuery.eq('id', account_id).ilike('employee_email', callerEmail)
-    } else {
-      accountQuery = accountQuery.ilike('employee_email', callerEmail)
+        .eq('id', route_id).eq('active', true).maybeSingle()
+      if (routeError || !route) throw new Error('Mailbox route not found')
+
+      const exactFrom = normalizeEmail(route.outbound_from || route.email_address)
+      if (!validEmail(exactFrom)) throw new Error('Mailbox route has no valid outbound identity')
+
+      const { data: transport, error: transportError } = await svc.rpc('romylabs_stalwart_transport_for_product', { p_product_key: route.product_id })
+      if (transportError) throw transportError
+      if (!transport?.ok || !transport?.host || !transport?.username || !transport?.password) {
+        throw new Error(`Stalwart transport unavailable for ${route.product_id}: ${transport?.error || 'credential missing'}`)
+      }
+
+      const msgId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@${exactFrom.split('@')[1] || 'romylabs.com'}>`
+      const sent = await sendViaStalwartJmap({
+        host:String(transport.host),
+        username:String(transport.username),
+        password:String(transport.password),
+        fromAddress:exactFrom,
+        fromName:from_name || route.display_name || exactFrom,
+        to:toList,
+        subject:safeHeader(subject),
+        textBody:String(text_body || ''),
+        htmlBody:html_body ? String(html_body) : undefined,
+        messageId:msgId,
+        inReplyTo:stripAngles(in_reply_to),
+        references:safeHeader(references),
+      })
+
+      const storedThreadId = thread_id || stripAngles(in_reply_to) || sent.threadId || msgId
+      const { error: logError } = await svc.from('emails').insert([{
+        tenant_id: route.tenant_id,
+        message_id: msgId,
+        thread_id: storedThreadId,
+        mailbox_owner: route.inbox_owner || 'info@romylabs.com',
+        sender: exactFrom,
+        from_address: exactFrom,
+        recipients: toList,
+        recipient: toList[0],
+        subject: safeHeader(subject),
+        body: String(text_body || ''),
+        body_html: html_body ? String(html_body) : '',
+        direction: 'outbound',
+        triage: 'Sent',
+        status: 'Sent',
+        is_read: true,
+        client_id,
+        case_id,
+        received_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        received_mailbox: route.email_address,
+        reply_from: exactFrom,
+        product_id: route.product_id,
+        in_reply_to: cleanNullable(in_reply_to),
+        references_header: cleanNullable(references),
+        route_id: route.id,
+      }])
+      if (logError) throw logError
+
+      return new Response(JSON.stringify({ ok:true, message_id:msgId, from:exactFrom, submission_id:sent.submissionId }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
+
+    if(!tenantId) return new Response(JSON.stringify({error:'No active office context'}),{status:403,headers:{...corsHeaders,'Content-Type':'application/json'}})
+    const {data:employee}=await svc.from('employees').select('status,perm_comms,tenant_id').eq('tenant_id',tenantId).ilike('email',callerEmail).limit(1).maybeSingle()
+    const active=employee&&String(employee.status||'Active').toLowerCase()==='active'
+    if(!isPlatformAdmin&&(!active||Number(employee?.perm_comms||0)<2)) return new Response(JSON.stringify({error:'Email permission denied'}),{status:403,headers:{...corsHeaders,'Content-Type':'application/json'}})
+
+    let accountQuery = svc.from('email_accounts').select('*').eq('is_active', true).eq('tenant_id',tenantId)
+    if (account_id) accountQuery = accountQuery.eq('id', account_id).ilike('employee_email', callerEmail)
+    else accountQuery = accountQuery.ilike('employee_email', callerEmail)
 
     const { data: account, error: accountError } = await accountQuery.limit(1).maybeSingle()
     if (accountError) throw accountError
-    if (!account) {
-      const identity = route?.outbound_from || callerEmail
-      return new Response(JSON.stringify({ error: `No active SMTP account configured for ${identity}` }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
-    if (route && normalizeEmail(account.email_address) !== normalizeEmail(route.outbound_from)) throw new Error('SMTP identity does not match routed mailbox')
+    if (!account) return new Response(JSON.stringify({ error: `No active SMTP account configured for ${callerEmail}` }), { status:409, headers:{...corsHeaders,'Content-Type':'application/json'} })
 
     const { data: password, error: decryptError } = await svc.rpc('decrypt_email_password', { p_encrypted: account.encrypted_password, p_key: ENCRYPT_KEY })
     if (decryptError || !password) throw new Error('Could not decrypt email password')
@@ -154,7 +296,7 @@ serve(async (req) => {
     const msgId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@${String(account.email_address).split('@')[1] || 'romylabs.com'}>`
     const rawEmail = buildRawEmail({
       from: account.email_address,
-      fromName: from_name || route?.display_name || account.display_name || account.email_address,
+      fromName: from_name || account.display_name || account.email_address,
       to: toList,
       subject: safeHeader(subject),
       textBody: String(text_body || ''),
@@ -170,11 +312,11 @@ serve(async (req) => {
     })
 
     await svc.from('emails').insert([{
-      tenant_id: route?.tenant_id || account.tenant_id,
+      tenant_id: account.tenant_id,
       email_account_id: account.id,
       message_id: msgId,
       thread_id: thread_id || stripAngles(in_reply_to) || msgId,
-      mailbox_owner: route?.inbox_owner || account.employee_email,
+      mailbox_owner: account.employee_email,
       sender: account.email_address,
       from_address: account.email_address,
       recipients: toList,
@@ -190,12 +332,6 @@ serve(async (req) => {
       case_id,
       received_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
-      received_mailbox: route?.email_address || null,
-      reply_from: account.email_address,
-      product_id: route?.product_id || null,
-      in_reply_to: cleanNullable(in_reply_to),
-      references_header: cleanNullable(references),
-      route_id: route?.id || null,
     }])
 
     return new Response(JSON.stringify({ ok: true, message_id: msgId, from: account.email_address }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

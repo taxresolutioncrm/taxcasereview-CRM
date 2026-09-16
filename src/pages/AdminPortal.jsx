@@ -332,7 +332,7 @@ async function loadPlatformOfficeRows() {
 // Operational items only — Marketing/Content/LinkedIn/Search/System live in Command Center tabs
 const NAV = [
   { path:'/crm-admin',                label:'Overview',        icon:'📊' },
-  { path:'/crm-admin/email',          label:'Email',           icon:'📧' },
+  { path:'/crm-admin/email',          label:'Inbox',           icon:'📧' },
   { path:'/crm-admin/command-center', label:'Command Center',  icon:'⚡' },
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
@@ -1950,22 +1950,119 @@ function Search() {
   )
 }
 
-// ── Email (SnappyMail embed) ─────────────────────────────────────────────────
-const WEBMAIL_URL = 'https://webmail.taxrescrm.net:7443'
+// ── Email — native RomyLabs unified Stalwart JMAP inbox ─────────────────────
+function Email(){
+  const [messages,setMessages]=useState([])
+  const [selected,setSelected]=useState(null)
+  const [detail,setDetail]=useState(null)
+  const [loading,setLoading]=useState(true)
+  const [opening,setOpening]=useState(false)
+  const [error,setError]=useState('')
+  const [replyBody,setReplyBody]=useState('')
+  const [sending,setSending]=useState(false)
+  const [filter,setFilter]=useState('all')
 
-function Email(){return(
-  <div style={{display:'flex',flexDirection:'column',height:'100vh'}}>
-    <div style={{padding:'16px 28px 10px',borderBottom:'1px solid #1e293b',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-      <span style={{fontSize:18,fontWeight:800,color:'#fff'}}>📧 Email</span>
-      <span style={{fontSize:13,color:'#475569'}}>romy@taxrescrm.net — powered by Stalwart</span>
-      <a href={WEBMAIL_URL} target="_blank" rel="noreferrer"
-        style={{marginLeft:'auto',fontSize:12,color:'#6366f1',textDecoration:'none'}}>Open in new tab ↗</a>
+  const loadMailbox=useCallback(async()=>{
+    setLoading(true);setError('')
+    const {data,error}=await supabase.functions.invoke('romylabs-mailbox',{body:{action:'list',limit:150}})
+    if(error||!data?.ok){setError(data?.error||error?.message||'Unable to load RomyLabs inbox');setMessages([])}
+    else setMessages(data.messages||[])
+    setLoading(false)
+  },[])
+
+  useEffect(()=>{loadMailbox()},[loadMailbox])
+
+  async function openMessage(message){
+    setSelected(message);setOpening(true);setError('');setReplyBody('')
+    const {data,error}=await supabase.functions.invoke('romylabs-mailbox',{body:{action:'get',emailId:message.id}})
+    if(error||!data?.ok){setError(data?.error||error?.message||'Unable to open message');setDetail(null)}
+    else setDetail(data.message)
+    setOpening(false)
+  }
+
+  async function sendReply(){
+    if(!detail?.id||!replyBody.trim()||sending)return
+    setSending(true);setError('')
+    const {data,error}=await supabase.functions.invoke('romylabs-mailbox',{body:{action:'reply',emailId:detail.id,body:replyBody.trim()}})
+    setSending(false)
+    if(error||!data?.ok){setError(data?.error||error?.message||'Reply failed');return}
+    setReplyBody('')
+    await loadMailbox()
+    alert('Reply sent from '+data.from)
+  }
+
+  const brands=[...new Set(messages.map(m=>m.productId).filter(Boolean))]
+  const visible=filter==='all'?messages:messages.filter(m=>m.productId===filter)
+  const fromLabel=m=>m?.from?.[0]?.name||m?.from?.[0]?.email||'Unknown sender'
+  const fromEmail=m=>m?.from?.[0]?.email||''
+  const unread=m=>!(m?.keywords&&m.keywords['$seen'])
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%',minHeight:0,background:'#0d0c1a'}}>
+      <div style={{padding:'16px 24px',borderBottom:'1px solid rgba(99,102,241,.16)',display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
+        <div>
+          <div style={{fontSize:20,fontWeight:900,color:'#fff'}}>📧 RomyLabs Inbox</div>
+          <div style={{fontSize:11,color:'#64748b',marginTop:2}}>One inbox · direct Stalwart JMAP · replies use the address that received the conversation</div>
+        </div>
+        <button onClick={loadMailbox} disabled={loading} style={{...S.btn('ghost'),marginLeft:'auto',padding:'7px 12px',fontSize:11}}>{loading?'Refreshing…':'Refresh'}</button>
+      </div>
+
+      {error&&<div style={{margin:'10px 18px 0',padding:'9px 12px',borderRadius:8,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',fontSize:12}}>{error}</div>}
+
+      <div style={{padding:'10px 18px',display:'flex',gap:7,flexWrap:'wrap',borderBottom:'1px solid rgba(99,102,241,.1)'}}>
+        <button onClick={()=>setFilter('all')} style={{...S.btn(filter==='all'?'primary':'ghost'),padding:'6px 10px',fontSize:10}}>All ({messages.length})</button>
+        {brands.map(key=>{
+          const sample=messages.find(m=>m.productId===key)
+          const count=messages.filter(m=>m.productId===key).length
+          return <button key={key} onClick={()=>setFilter(key)} style={{...S.btn(filter===key?'primary':'ghost'),padding:'6px 10px',fontSize:10}}>{sample?.brandName||key} ({count})</button>
+        })}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'minmax(300px,38%) 1fr',flex:1,minHeight:0}}>
+        <div style={{borderRight:'1px solid rgba(99,102,241,.12)',overflowY:'auto'}}>
+          {loading?<Spinner/>:visible.length===0?<div style={{padding:36,textAlign:'center',color:'#475569',fontSize:12}}>No messages in this view.</div>:visible.map(m=><button key={m.id} onClick={()=>openMessage(m)} style={{
+            width:'100%',border:'none',borderBottom:'1px solid rgba(99,102,241,.08)',padding:'12px 14px',textAlign:'left',cursor:'pointer',
+            background:selected?.id===m.id?'rgba(99,102,241,.13)':unread(m)?'rgba(255,255,255,.035)':'transparent',color:'#fff'
+          }}>
+            <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+              {unread(m)&&<span style={{width:7,height:7,borderRadius:'50%',background:'#6366f1',flex:'0 0 auto'}}/>}
+              <span style={{fontSize:12,fontWeight:unread(m)?900:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fromLabel(m)}</span>
+              <span style={{marginLeft:'auto',fontSize:9,color:'#475569',flex:'0 0 auto'}}>{m.receivedAt?fmtAgo(m.receivedAt):''}</span>
+            </div>
+            <div style={{fontSize:11,fontWeight:700,color:'#cbd5e1',marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.subject||'(no subject)'}</div>
+            <div style={{fontSize:10,color:'#64748b',marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.preview||''}</div>
+            <div style={{display:'flex',gap:6,marginTop:6,alignItems:'center'}}>
+              {m.replyFrom&&<span style={{fontSize:9,color:'#22c55e',background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.18)',borderRadius:20,padding:'2px 6px'}}>To: {m.replyFrom}</span>}
+              {m.brandName&&<span style={{fontSize:9,color:'#a5b4fc'}}>{m.brandName}</span>}
+            </div>
+          </button>)}
+        </div>
+
+        <div style={{overflowY:'auto',padding:detail?'20px 24px':0}}>
+          {!selected&&!loading&&<div style={{height:'100%',display:'grid',placeItems:'center',color:'#475569',fontSize:13}}>Select an email to read it.</div>}
+          {opening&&<Spinner/>}
+          {detail&&!opening&&<>
+            <div style={{fontSize:20,fontWeight:900,color:'#fff',marginBottom:12}}>{detail.subject||'(no subject)'}</div>
+            <div style={{...S.card,padding:'12px 14px',marginBottom:16}}>
+              <div style={{fontSize:12,color:'#e2e8f0'}}><strong>From:</strong> {fromLabel(detail)} {fromEmail(detail)&&<span style={{color:'#64748b'}}>&lt;{fromEmail(detail)}&gt;</span>}</div>
+              <div style={{fontSize:11,color:'#64748b',marginTop:4}}><strong style={{color:'#94a3b8'}}>Received by:</strong> {detail.replyFrom||'Unknown'}{detail.brandName?' · '+detail.brandName:''}</div>
+              <div style={{fontSize:10,color:'#475569',marginTop:4}}>{detail.receivedAt?new Date(detail.receivedAt).toLocaleString():''}</div>
+            </div>
+            <div style={{whiteSpace:'pre-wrap',fontSize:13,lineHeight:1.65,color:'#cbd5e1',minHeight:150,paddingBottom:20}}>{detail.body||detail.preview||''}</div>
+            <div style={{...S.card,padding:14,marginTop:8}}>
+              <div style={{fontSize:10,fontWeight:900,color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em'}}>Reply identity</div>
+              <div style={{fontSize:13,fontWeight:900,color:'#22c55e',margin:'4px 0 10px'}}>From: {detail.replyFrom||'No matching identity'}</div>
+              <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} placeholder="Write your reply…" rows={7} style={{width:'100%',boxSizing:'border-box',resize:'vertical',borderRadius:9,border:'1px solid rgba(99,102,241,.25)',background:'rgba(255,255,255,.03)',color:'#fff',padding:12,fontFamily:'inherit',fontSize:13,outline:'none'}}/>
+              <div style={{display:'flex',justifyContent:'flex-end',marginTop:10}}>
+                <button onClick={sendReply} disabled={sending||!replyBody.trim()||!detail.replyFrom} style={{...S.btn('primary'),opacity:(sending||!replyBody.trim()||!detail.replyFrom)?0.7:1}}>{sending?'Sending…':'Send Reply'}</button>
+              </div>
+            </div>
+          </>}
+        </div>
+      </div>
     </div>
-    <iframe src={WEBMAIL_URL} title="SnappyMail"
-      style={{flex:1,border:'none',width:'100%',background:'#0f172a'}}
-      allow="clipboard-read; clipboard-write" />
-  </div>
-)}
+  )
+}
 
 // ── Training (screen-share training, admin context) ──────────────────────────
 // Stamps FIRM with RomyLabs platform branding — never loads TCR practice tenant.
@@ -7277,7 +7374,7 @@ export default function AdminPortal() {
             <Route path="/employees"      element={<AdminRouteErrorBoundary><EmployeeLookup/></AdminRouteErrorBoundary>}/>
             <Route path="/audit"          element={<AdminRouteErrorBoundary><AuditLog/></AdminRouteErrorBoundary>}/>
             <Route path="/support"        element={<div style={{padding:8}}><Support/></div>}/>
-            <Route path="/email"          element={<div/>}/>
+            <Route path="/email"          element={<AdminRouteErrorBoundary><Email/></AdminRouteErrorBoundary>}/>
             <Route path="/dialer"         element={<AdminRouteErrorBoundary><AdminDialer/></AdminRouteErrorBoundary>}/>
             <Route path="/calendar"       element={<AdminRouteErrorBoundary><AdminCalendar/></AdminRouteErrorBoundary>}/>
             <Route path="/meet"           element={<AdminRouteErrorBoundary><AdminTraining/></AdminRouteErrorBoundary>}/>
