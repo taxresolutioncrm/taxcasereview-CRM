@@ -107,7 +107,7 @@ export default function Calendar() {
     }
     const ch = supabase.channel('calevents-booking-sync')
     ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calevents' }, ({ new: row }) => {
-      if (isRomyLabsAdmin && row.assignedTo !== adminCalendarOwner) return
+      if (isRomyLabsAdmin && row.assignedTo !== adminCalendarOwner && String(row.product_id || '').toLowerCase() !== 'romylabs') return
       setEvents(prev => prev.some(e => e.id === row.id) ? prev : [...prev, row])
       if (row.source === 'booking_widget' || row.source === 'online') {
         const who = row.clientName || row.title || 'New appointment'
@@ -135,7 +135,7 @@ export default function Calendar() {
     setLoading(true)
     const [{ data: ev }, { data: cl }, { data: em }, { data: dl }] = await Promise.all([
       isRomyLabsAdmin
-        ? supabase.from('calevents').select('*').eq('assignedTo', adminCalendarOwner).order('date', { ascending: true })
+        ? supabase.from('calevents').select('*').or(`assignedTo.eq.${adminCalendarOwner},product_id.eq.romylabs`).order('date', { ascending: true })
         : supabase.from('calevents').select('*').order('date', { ascending: true }),
       isRomyLabsAdmin
         ? Promise.resolve({ data:[] })
