@@ -63,6 +63,32 @@ function Avatar({ name, size = 36, color, avatarUrl }) {
   )
 }
 
+function ChatAttachmentLink({ url, name }) {
+  const [href, setHref] = useState(() => String(url || '').startsWith('storage://') ? '' : url)
+
+  useEffect(() => {
+    let cancelled = false
+    const raw = String(url || '')
+    if (!raw.startsWith('storage://')) { setHref(raw); return }
+    const rest = raw.slice('storage://'.length)
+    const slash = rest.indexOf('/')
+    if (slash < 1) { setHref(''); return }
+    const bucket = rest.slice(0, slash)
+    const path = rest.slice(slash + 1)
+    supabase.storage.from(bucket).createSignedUrl(path, 15 * 60).then(({ data, error }) => {
+      if (!cancelled) setHref(!error && data?.signedUrl ? data.signedUrl : '')
+    })
+    return () => { cancelled = true }
+  }, [url])
+
+  return (
+    <a href={href || undefined} target="_blank" rel="noreferrer"
+      style={{ fontSize: 13, color: '#4f8ef7', fontWeight: 600, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: href ? 'pointer' : 'default' }}>
+      {name || 'Attachment'}
+    </a>
+  )
+}
+
 export default function Chat() {
   const { user, role } = useApp()
   const { calling, active: activeCall } = useCall()
@@ -144,6 +170,7 @@ export default function Chat() {
       setFloatReactions(r => r.filter(i => i.id !== id))
       delete floatReactionTimers.current[id]
     }, 3000)
+    webrtc.broadcastHuddleEvent?.({ type:'reaction', emoji, sender:myName, eventId:String(id) })
     setShowHuddleReactPicker(false)
   }
 
@@ -151,7 +178,7 @@ export default function Chat() {
     const next = !raisedHand
     setRaisedHand(next)
     setRaisedHands(h => ({ ...h, [myName]: next }))
-    // Broadcast to huddle thread so others see it
+    webrtc.broadcastHuddleEvent?.({ type:'raise-hand', sender:myName, raised:next })
     if (next) {
       const msg = { id: Date.now(), sender: myName, text: `✋ ${myName} raised their hand`, ts: new Date().toISOString(), system: true }
       setHuddleThread(t => [...t, msg])
@@ -162,6 +189,7 @@ export default function Chat() {
     if (!huddleThreadInput.trim()) return
     const msg = { id: Date.now(), sender: myName, text: huddleThreadInput.trim(), ts: new Date().toISOString() }
     setHuddleThread(t => [...t, msg])
+    webrtc.broadcastHuddleEvent?.({ type:'thread', msg })
     setHuddleThreadInput('')
   }
   const [showEmoji, setShowEmoji]   = useState(false)
@@ -213,6 +241,37 @@ export default function Chat() {
   const pollerRef = useRef(null)
 
   const myName = myRealName || user?.user_metadata?.name || user?.email?.split('@')[0] || 'You'
+
+  useEffect(() => {
+    if (!webrtc.onHuddleEventRef) return
+    webrtc.onHuddleEventRef.current = payload => {
+      if (!payload || typeof payload !== 'object') return
+      if (payload.type === 'reaction' && payload.emoji) {
+        const id = payload.eventId || (Date.now() + Math.random())
+        const x = 10 + Math.random() * 80
+        setFloatReactions(r => [...r, { id, emoji:payload.emoji, x }])
+        floatReactionTimers.current[id] = setTimeout(() => {
+          setFloatReactions(r => r.filter(i => i.id !== id))
+          delete floatReactionTimers.current[id]
+        }, 3000)
+      } else if (payload.type === 'thread' && payload.msg) {
+        setHuddleThread(t => t.some(m => String(m.id) === String(payload.msg.id)) ? t : [...t, payload.msg])
+      } else if (payload.type === 'raise-hand' && payload.sender) {
+        setRaisedHands(h => ({ ...h, [payload.sender]: !!payload.raised }))
+        if (payload.raised) {
+          const msg = {
+            id: 'raise-' + payload.sender + '-' + Date.now(),
+            sender: payload.sender,
+            text: `✋ ${payload.sender} raised their hand`,
+            ts: new Date().toISOString(),
+            system: true
+          }
+          setHuddleThread(t => [...t, msg])
+        }
+      }
+    }
+    return () => { if (webrtc.onHuddleEventRef) webrtc.onHuddleEventRef.current = null }
+  }, [webrtc.onHuddleEventRef])
   // Use DB channels if loaded, otherwise the single fallback CHANNELS entry
   const allChannels = dbChannels.length > 0 ? dbChannels : CHANNELS
   // A DM lives in ONE symmetric channel keyed by BOTH employee ids (sorted),
@@ -247,7 +306,7 @@ export default function Chat() {
     const { data, error } = await supabase.from('chat_custom_emojis').select('id,name,image_path,created_by,created_at').order('name')
     if(error) return
     const rows=await Promise.all((data||[]).map(async e=>{
-      const { data:urlData }=await supabase.storage.from('documents').createSignedUrl(e.image_path,31536000)
+      const { data:urlData }=await supabase.storage.from('chat-emojis').createSignedUrl(e.image_path,31536000)
       return {...e,url:urlData?.signedUrl||''}
     }))
     setCustomEmojis(rows.filter(e=>e.url))
@@ -259,12 +318,12 @@ export default function Chat() {
     if(!chatTenantId || !file) return
     if(file.size > 1024*1024){ showToast('Custom emoji must be 1 MB or smaller'); return }
     const ext=(file.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'') || 'png'
-    const path=`chat/custom-emojis/${chatTenantId}/${Date.now()}_${name}.${ext}`
-    const { error:upErr }=await supabase.storage.from('documents').upload(path,file,{upsert:false,contentType:file.type||undefined})
+    const path=`${chatTenantId}/${Date.now()}_${name}.${ext}`
+    const { error:upErr }=await supabase.storage.from('chat-emojis').upload(path,file,{upsert:false,contentType:file.type||undefined})
     if(upErr){ showToast('Custom emoji upload failed: '+upErr.message); return }
     const { error:dbErr }=await supabase.from('chat_custom_emojis').insert([{name,image_path:path,created_by:myName}])
     if(dbErr){
-      await supabase.storage.from('documents').remove([path])
+      await supabase.storage.from('chat-emojis').remove([path])
       showToast(dbErr.code==='23505' ? ':'+name+': already exists' : 'Custom emoji save failed: '+dbErr.message)
       return
     }
@@ -489,10 +548,6 @@ export default function Chat() {
     rt.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages',
       filter: `channel=eq.${channelId}` }, ({ new: msg }) => {
       loadMessages(true)
-      if (msg?.sender && msg.sender !== myName && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        const title = msg.sender === '🔔 System' ? 'Team Chat' : msg.sender
-        new Notification(title,{ body:(msg.text || 'Sent an attachment').slice(0,160), tag:'teamchat-'+channelId })
-      }
     }).subscribe()
     // 60-second heartbeat as a fallback for any missed realtime events.
     clearInterval(pollerRef.current)
@@ -566,15 +621,21 @@ export default function Chat() {
     const _v = validateFile(file)
     if (!_v.ok) { alert('❌ ' + _v.error); return }
     if (_v.warn) showToast('⚠️ ' + _v.warn)
-    const path = `chat/${Date.now()}_${file.name}`
-    const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
+    if (!chatTenantId) { alert('Upload failed: tenant could not be resolved'); return }
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_')
+    const path = `${chatTenantId}/${Date.now()}_${safeName}`
+    const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, file, { upsert: false })
     if (upErr) { alert('Upload failed: ' + upErr.message); return }
-    const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-    await supabase.from('chat_messages').insert([{
-      channel: channelId, sender: myName, text: null,
-      attachment_url: urlData?.signedUrl || '', attachment_name: file.name,
+    const { error: msgErr } = await supabase.from('chat_messages').insert([{
+      channel: channelId, sender: myName, text: '',
+      attachment_url: 'storage://chat-attachments/' + path, attachment_name: file.name,
       created_at: new Date().toISOString()
     }])
+    if (msgErr) {
+      await supabase.storage.from('chat-attachments').remove([path]).catch(() => {})
+      alert('Attachment message failed: ' + msgErr.message)
+      return
+    }
     loadMessages(true); e.target.value = ''
   }
 
@@ -692,6 +753,11 @@ export default function Chat() {
     setIsHuddleHost(false)
     setHuddleId(null)
     setShowHuddleInvite(false)
+    setRaisedHand(false)
+    setRaisedHands({})
+    setHuddleThread([])
+    setHuddleThreadInput('')
+    setFloatReactions([])
   }
 
   async function startHuddleScreenShare() {
@@ -1332,7 +1398,7 @@ export default function Chat() {
                     {item.attachment_url && (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 8, padding: '8px 14px', marginTop: 4, maxWidth: 340 }}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4f8ef7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        <a href={item.attachment_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: '#4f8ef7', fontWeight: 600, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.attachment_name || 'Attachment'}</a>
+                        <ChatAttachmentLink url={item.attachment_url} name={item.attachment_name} />
                       </div>
                     )}
                     {/* Reactions */}
@@ -1398,7 +1464,7 @@ export default function Chat() {
                 <div style={{ padding: '6px 14px 4px', fontSize: 11, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: 1 }}>Mention someone</div>
                 {TEAM.filter(t => t.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 8).map(t => (
                   <div key={t.empId} onClick={() => {
-                    setInput(prev => prev.replace(/@\\w*$/, '@' + t.name + ' '))
+                    setInput(prev => prev.replace(/@\w*$/, '@' + t.name + ' '))
                     setMentionQuery(null)
                     inputRef.current?.focus()
                   }} style={{ padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}
@@ -1414,7 +1480,7 @@ export default function Chat() {
               </div>
             )}
             <textarea ref={inputRef} value={input} onChange={e => {
-                const val=e.target.value; setInput(val); const match=val.match(/@(\\w*)$/); setMentionQuery(match?match[1]:null)
+                const val=e.target.value; setInput(val); const match=val.match(/@(\w*)$/); setMentionQuery(match?match[1]:null)
               }} onKeyDown={handleKey}
               placeholder={`Message ${isChannel ? '#'+active.label : active.name}`}
               rows={2}
@@ -1428,9 +1494,9 @@ export default function Chat() {
                 <button onClick={() => {
                   if (mentionQuery !== null) {
                     setMentionQuery(null)
-                    setInput(v=>v.replace(/@[\\w]*$/,''))
+                    setInput(v=>v.replace(/@[\w]*$/,''))
                   } else {
-                    setInput(v=>/@[\\w]*$/.test(v) ? v : v+'@')
+                    setInput(v=>/@[\w]*$/.test(v) ? v : v+'@')
                     setMentionQuery('')
                   }
                   inputRef.current?.focus()
