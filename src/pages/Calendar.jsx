@@ -281,8 +281,16 @@ export default function Calendar() {
   }
 
   async function deleteEvent(id) {
-    const { error } = await supabase.from('calevents').delete().eq('id', id)
+    const target = selectedEvent || events.find(e => e.id === id)
+    const result = isRomyLabsAdmin
+      ? await supabase.rpc('admin_delete_product_calendar_event', {
+          p_event_id: id,
+          p_product_id: target?.product_id || 'romylabs',
+        })
+      : await supabase.from('calevents').delete().eq('id', id)
+    const { data, error } = result
     if (error) { showToast('Error: ' + error.message); setConfirmDel(null); return }
+    if (isRomyLabsAdmin && data !== true) { showToast('Event was not deleted'); setConfirmDel(null); return }
     setEvents(prev => prev.filter(e => e.id !== id)); setSelectedEvent(null); setConfirmDel(null); showToast('Deleted')
   }
 
