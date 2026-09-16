@@ -332,7 +332,7 @@ async function loadPlatformOfficeRows() {
 // Operational items only — Marketing/Content/LinkedIn/Search/System live in Command Center tabs
 const NAV = [
   { path:'/crm-admin',                label:'Overview',        icon:'📊' },
-  { path:'/crm-admin/email',          label:'Email',           icon:'📧' },
+  { path:'/crm-admin/email',          label:'Inbox',           icon:'📧' },
   { path:'/crm-admin/command-center', label:'Command Center',  icon:'⚡' },
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
@@ -7374,7 +7374,7 @@ export default function AdminPortal() {
             <Route path="/employees"      element={<AdminRouteErrorBoundary><EmployeeLookup/></AdminRouteErrorBoundary>}/>
             <Route path="/audit"          element={<AdminRouteErrorBoundary><AuditLog/></AdminRouteErrorBoundary>}/>
             <Route path="/support"        element={<div style={{padding:8}}><Support/></div>}/>
-            <Route path="/email"          element={<div/>}/>
+            <Route path="/email"          element={<AdminRouteErrorBoundary><Email/></AdminRouteErrorBoundary>}/>
             <Route path="/dialer"         element={<AdminRouteErrorBoundary><AdminDialer/></AdminRouteErrorBoundary>}/>
             <Route path="/calendar"       element={<AdminRouteErrorBoundary><AdminCalendar/></AdminRouteErrorBoundary>}/>
             <Route path="/meet"           element={<AdminRouteErrorBoundary><AdminTraining/></AdminRouteErrorBoundary>}/>
