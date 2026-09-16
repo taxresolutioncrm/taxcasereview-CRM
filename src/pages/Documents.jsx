@@ -57,6 +57,9 @@ export default function Documents() {
   const [viewMode,     setViewMode]      = useState(() => localStorage.getItem('docs_view') || 'grid') // 'grid' | 'list' | 'table'
   const [sortCol,      setSortCol]       = useState('created_at')
   const [sortDir,      setSortDir]       = useState('desc')
+  const [previewDoc,   setPreviewDoc]    = useState(null)
+  const [previewUrl,   setPreviewUrl]    = useState('')
+  const [previewLoading,setPreviewLoading] = useState(false)
 
   function changeView(v) { setViewMode(v); localStorage.setItem('docs_view', v) }
   function toggleSort(col) {
@@ -187,10 +190,60 @@ export default function Documents() {
     loadAll()
   }
 
+  function documentName(doc) { return doc?.file_name || doc?.filename || doc?.name || 'Document' }
+  function previewKind(doc) {
+    const ext = (documentName(doc).split('.').pop() || '').toLowerCase()
+    const mime = String(doc?.mime_type || doc?.canopy_mimetype || '').toLowerCase()
+    if (mime === 'application/pdf' || ext === 'pdf') return 'pdf'
+    if (mime.startsWith('image/') || ['jpg','jpeg','png','gif','webp','tif','tiff'].includes(ext)) return 'image'
+    if (mime.startsWith('audio/') || ['mp3','wav','m4a','ogg'].includes(ext)) return 'audio'
+    if (mime.startsWith('text/') || ['txt','csv','html','htm'].includes(ext)) return 'frame'
+    return 'download'
+  }
+
+  async function previewDocument(doc) {
+    if (!doc?.file_url && !doc?.storage_path) return
+    setPreviewDoc(doc)
+    setPreviewUrl('')
+    setPreviewLoading(true)
+    try {
+      let url = ''
+      if (doc.storage_path) {
+        const { data, error } = await supabase.storage.from('documents').createSignedUrl(doc.storage_path, 3600)
+        if (error) throw error
+        url = data?.signedUrl || ''
+      } else {
+        url = await getDocumentUrl(supabase, doc.file_url)
+      }
+      if (!url) throw new Error('Document URL unavailable')
+      setPreviewUrl(url)
+    } catch (e) {
+      setPreviewDoc(null)
+      showToast('Could not preview document: ' + (e?.message || e))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   async function openDocument(doc) {
-    if (!doc?.file_url) return
-    const url = await getDocumentUrl(supabase, doc.file_url)
-    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    if (!doc?.file_url && !doc?.storage_path) return
+    const tab = window.open('about:blank', '_blank')
+    if (tab) tab.opener = null
+    try {
+      let url = previewDoc?.id === doc?.id && previewUrl ? previewUrl : ''
+      if (!url && doc.storage_path) {
+        const { data, error } = await supabase.storage.from('documents').createSignedUrl(doc.storage_path, 3600)
+        if (error) throw error
+        url = data?.signedUrl || ''
+      }
+      if (!url) url = await getDocumentUrl(supabase, doc.file_url)
+      if (!url) throw new Error('Document URL unavailable')
+      if (tab) tab.location.href = url
+      else showToast('Your browser blocked the new tab. Allow pop-ups to open documents.')
+    } catch (e) {
+      if (tab) tab.close()
+      showToast('Could not open document: ' + (e?.message || e))
+    }
   }
 
   const needle = search.toLowerCase()
@@ -263,7 +316,7 @@ export default function Documents() {
             {filtered.map(d=><tr key={d.id}>
               <td><span style={{marginRight:8}}>{fileIcon(d.file_name)}</span><strong>{d.name || 'Untitled document'}</strong></td>
               <td>{d.client||'—'}</td><td>{d.docType||'—'}</td><td>{fmtSize(d.file_size)}</td><td>{fmtDate(d.created_at)}</td>
-              <td><div style={{display:'flex',gap:5}}>{d.file_url&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}<button className="btn sm" onClick={()=>addNote(d)}>✏️</button>{isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}</div></td>
+              <td><div style={{display:'flex',gap:5}}>{d.file_url&&<button className="btn sm" onClick={()=>previewDocument(d)}>Preview</button>}<button className="btn sm" onClick={()=>addNote(d)}>✏️</button>{isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}</div></td>
             </tr>)}
           </tbody></table>
         </div>
@@ -272,7 +325,7 @@ export default function Documents() {
           {filtered.map(d=><div key={d.id} className="card" style={{padding:'10px 14px',display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:24}}>{fileIcon(d.file_name)}</span>
             <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,color:'var(--tx)'}}>{d.name || 'Untitled document'}</div><div style={{fontSize:11,color:'var(--t3)'}}>{d.client||'General'} · {d.docType||'Unfiled'} · {fmtSize(d.file_size)} · {fmtDate(d.created_at)}</div></div>
-            {d.file_url&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}
+            {d.file_url&&<button className="btn sm" onClick={()=>previewDocument(d)}>Preview</button>}
             <button className="btn sm" onClick={()=>addNote(d)}>✏️</button>
             {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}
           </div>)}
@@ -287,13 +340,36 @@ export default function Documents() {
             {d.notes&&<div style={{fontSize:10,color:'var(--t3)',marginTop:8,fontStyle:'italic'}}>{d.notes}</div>}
             <div style={{fontSize:10,color:'var(--t3)',marginTop:10}}>{fmtSize(d.file_size)} · {fmtDate(d.created_at)}</div>
             <div style={{display:'flex',gap:5,marginTop:10}}>
-              {d.file_url&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}
+              {d.file_url&&<button className="btn sm" onClick={()=>previewDocument(d)}>Preview</button>}
               <button className="btn sm" onClick={()=>addNote(d)}>✏️</button>
               {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}
             </div>
           </div>)}
         </div>
       )}
+
+      {previewDoc&&<div className="modal-overlay" onClick={()=>setPreviewDoc(null)}>
+        <div className="modal" onClick={e=>e.stopPropagation()} style={{width:'min(1100px,94vw)',height:'min(820px,88vh)',display:'flex',flexDirection:'column',padding:0,overflow:'hidden'}}>
+          <div className="modal-header" style={{padding:'10px 14px'}}>
+            <div style={{minWidth:0}}>
+              <h2 style={{margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{documentName(previewDoc)}</h2>
+              <div style={{fontSize:11,color:'var(--t3)',marginTop:2}}>{previewDoc.client||'General'} · {previewDoc.docType||'Unfiled'}{previewDoc.file_size?` · ${fmtSize(previewDoc.file_size)}`:''}</div>
+            </div>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              {previewUrl&&<button className="btn sm" onClick={()=>openDocument(previewDoc)}>Open ↗</button>}
+              <button className="modal-close" onClick={()=>setPreviewDoc(null)}>×</button>
+            </div>
+          </div>
+          <div style={{flex:1,minHeight:0,background:'#e5e7eb',position:'relative'}}>
+            {previewLoading ? <div style={{padding:40,textAlign:'center',color:'#475569'}}>Loading secure preview…</div>
+            : !previewUrl ? <div style={{padding:40,textAlign:'center',color:'#475569'}}>Secure preview unavailable for this document.</div>
+            : previewKind(previewDoc)==='pdf' || previewKind(previewDoc)==='frame' ? <iframe title={documentName(previewDoc)} src={previewUrl} style={{width:'100%',height:'100%',border:0,background:'#fff'}}/>
+            : previewKind(previewDoc)==='image' ? <div style={{width:'100%',height:'100%',overflow:'auto',textAlign:'center',padding:16}}><img src={previewUrl} alt={documentName(previewDoc)} style={{maxWidth:'100%',height:'auto',boxShadow:'0 4px 20px rgba(0,0,0,.18)'}}/></div>
+            : previewKind(previewDoc)==='audio' ? <div style={{padding:30}}><audio controls src={previewUrl} style={{width:'100%'}}/></div>
+            : <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:30,textAlign:'center',color:'#475569'}}><div><div style={{fontSize:60,marginBottom:12}}>{fileIcon(documentName(previewDoc))}</div><div style={{fontWeight:800,marginBottom:6}}>Preview not available for this file type</div><div style={{fontSize:12,marginBottom:14}}>Use Open to view the original file.</div><button className="btn primary" onClick={()=>openDocument(previewDoc)}>Open Document</button></div></div>}
+          </div>
+        </div>
+      </div>}
 
       {modal&&<div className="modal-overlay" onClick={()=>setModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-header"><h2>Upload Document</h2><button className="modal-close" onClick={()=>setModal(false)}>×</button></div>
