@@ -218,6 +218,7 @@ async function saveInvite(inv:any,m:any,dryRun:boolean){
     inv.url?('Meeting link: '+inv.url):'',
     marker,
     'ICS-Sequence:'+String(inv.sequence||0),
+    inv.sourceProduct?('Mailbox product: '+inv.sourceProduct):'',
   ].filter(Boolean).join('\n')
   const id='ics-'+fnv1a(uid)
   const payload:any={
@@ -260,7 +261,18 @@ Deno.serve(async(req)=>{
     const body=await req.json().catch(()=>({}))
     const dryRun=body?.dry_run===true
     const limit=Math.min(Math.max(Number(body?.limit)||40,1),100)
-    const products=Array.isArray(body?.products)&&body.products.length?body.products.map((x:any)=>String(x)):['romylabs','taxres_crm']
+    let products:string[]=[]
+    if(Array.isArray(body?.products)&&body.products.length){
+      products=[...new Set(body.products.map((x:any)=>String(x)).filter(Boolean))]
+    }else{
+      const {data:configured,error:configuredError}=await db.from('credential_vault_entries')
+        .select('product_id,service')
+        .ilike('service','Stalwart')
+        .not('product_id','is',null)
+      if(configuredError)throw configuredError
+      products=[...new Set((configured||[]).map((x:any)=>String(x.product_id||'')).filter(Boolean))]
+      if(!products.length)products=['romylabs']
+    }
     const allDiagnostics:any[]=[]
     const changes:any[]=[]
     let scanned=0
@@ -293,6 +305,7 @@ Deno.serve(async(req)=>{
           try{
             const inv=await extractInvite(j,m)
             if(!inv)continue
+            inv.sourceProduct=product
             const result=await saveInvite(inv,m,dryRun)
             changes.push({product,emailId:m.id,subject:m.subject,receivedAt:m.receivedAt,invite:{uid:inv.uid,summary:inv.summary,date:inv.start.date,time:inv.start.time,endTime:inv.endTime,url:inv.url,cancelled:inv.cancelled},...result})
           }catch(e){changes.push({product,emailId:m.id,subject:m.subject,error:e instanceof Error?e.message:String(e)})}
