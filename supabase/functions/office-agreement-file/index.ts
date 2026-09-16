@@ -675,16 +675,32 @@ serve(async(req)=>{
       return json({ok:true,signed_at:now,owner_copy_sent:!!ownerCopy,owner_copy_recipient:ownerCopy?.recipient||null,signer_copy_sent:!!signerCopy})
     }
 
-    // All management actions below require a real authenticated platform-admin JWT.
+    // Management actions require a real authenticated JWT. Platform admins can
+    // manage every office; TaxRes office managers are limited to their own tenant.
     const token=(req.headers.get('Authorization')||'').replace('Bearer ','')
     if(!token)return json({error:'Missing authorization'},401)
     const asCaller=createClient(url,anonKey,{global:{headers:{Authorization:`Bearer ${token}`}}})
     const {data:{user},error:userErr}=await asCaller.auth.getUser()
     if(userErr||!user?.email)return json({error:'Invalid session'},401)
     const email=user.email.toLowerCase()
-    if(!PLATFORM_ADMIN_EMAILS.has(email))return json({error:'Not authorized'},403)
+    const isPlatformAdmin=PLATFORM_ADMIN_EMAILS.has(email)
+
+    async function canManageOffice(productKey:string,externalOfficeId:string){
+      if(isPlatformAdmin)return true
+      if(String(productKey||'').toLowerCase()!=='taxres_crm')return false
+      if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(externalOfficeId||'')))return false
+      const {data:emp}=await admin.from('employees')
+        .select('access,role,perm_documents,status')
+        .eq('tenant_id',externalOfficeId).ilike('email',email).maybeSingle()
+      return !!emp&&String(emp.status||'Active')==='Active'&&(
+        ['Super Admin','Admin','Manager'].includes(String(emp.access||''))||
+        ['Super Admin','Admin','Manager'].includes(String(emp.role||''))||
+        Number(emp.perm_documents||0)>=2
+      )
+    }
 
     if(action==='archive_completed_esign'){
+      if(!isPlatformAdmin)return json({error:'Not authorized'},403)
       const documentId=String(b.document_id||'')
       if(!documentId)return json({error:'document_id is required'},400)
       const {data:doc,error:de}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
@@ -710,6 +726,7 @@ serve(async(req)=>{
       if(!documentId)return json({error:'document_id is required'},400)
       const {data:before,error:be}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
       if(be||!before)return json({error:'Signing request not found'},404)
+      if(!(await canManageOffice(before.product_key,before.external_office_id)))return json({error:'Not authorized'},403)
       const reason=String(b.reason||'').trim()
       const {data:result,error:re}=await asCaller.rpc('admin_romylabs_void_office_signing_document',{p_document_id:documentId,p_reason:reason||null})
       if(re||!result?.ok)return json({error:re?.message||result?.error||'Void failed'},400)
@@ -722,15 +739,43 @@ serve(async(req)=>{
       return json(result)
     }
 
+    if(action==='esign_detail'){
+      const documentId=String(b.document_id||'')
+      if(!documentId)return json({error:'document_id is required'},400)
+      const {data:document,error:docError}=await admin.from('romylabs_office_signing_documents').select('*').eq('id',documentId).maybeSingle()
+      if(docError||!document)return json({error:'Signing request not found'},404)
+      if(!(await canManageOffice(document.product_key,document.external_office_id)))return json({error:'Not authorized'},403)
+      const [rec,evt]=await Promise.all([
+        admin.from('romylabs_esign_recipients')
+          .select('id,recipient_order,role,name,email,status,auth_method,sent_at,opened_at,completed_at,declined_at,decline_reason,created_at,updated_at')
+          .eq('envelope_id',documentId).order('recipient_order',{ascending:true}),
+        admin.from('romylabs_esign_events')
+          .select('id,recipient_id,event_type,actor_email,actor_name,ip_address,user_agent,metadata,occurred_at')
+          .eq('envelope_id',documentId).order('occurred_at',{ascending:true})
+      ])
+      if(rec.error||evt.error)return json({error:rec.error?.message||evt.error?.message||'Could not load signing audit'},500)
+      return json({ok:true,document,recipients:rec.data||[],events:evt.data||[]})
+    }
+
     if(action==='esign_geturl'){
       const path=String(b.file_path||'')
       if(!path)return json({error:'file_path is required'},400)
+      const [sourceMatch,signedMatch,certMatch,firmMatch]=await Promise.all([
+        admin.from('romylabs_office_signing_documents').select('product_key,external_office_id').eq('source_path',path).limit(1).maybeSingle(),
+        admin.from('romylabs_office_signing_documents').select('product_key,external_office_id').eq('signed_path',path).limit(1).maybeSingle(),
+        admin.from('romylabs_office_signing_documents').select('product_key,external_office_id').eq('certificate_path',path).limit(1).maybeSingle(),
+        admin.from('romylabs_office_documents').select('product_key,external_office_id').eq('file_path',path).limit(1).maybeSingle()
+      ])
+      const owner=sourceMatch.data||signedMatch.data||certMatch.data||firmMatch.data
+      if(!owner)return json({error:'Document is not available to this office e-sign tool'},403)
+      if(!(await canManageOffice(owner.product_key,owner.external_office_id)))return json({error:'Not authorized'},403)
       const {data,error}=await admin.storage.from(ESIGN_BUCKET).createSignedUrl(path,300)
       if(error)return json({error:error.message},400)
       return json({url:data.signedUrl})
     }
 
-    // Legacy office-agreement file actions retained.
+    // Legacy office-agreement file actions retained for platform admin only.
+    if(!isPlatformAdmin)return json({error:'Not authorized'},403)
     if(action==='upload'){
       const {tenant_id,file_name,file_base64,content_type,label}=b
       if(!tenant_id||!file_name||!file_base64)return json({error:'tenant_id, file_name, and file_base64 are required'},400)

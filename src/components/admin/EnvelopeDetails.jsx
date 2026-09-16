@@ -12,19 +12,18 @@ export default function EnvelopeDetails({supabase,row,brand,onClose,onOpenFile})
     let live=true
     async function load(){
       setLoading(true);setError('')
-      const [rec,evt]=await Promise.all([
-        supabase.from('romylabs_esign_recipients')
-          .select('id,recipient_order,role,name,email,status,auth_method,sent_at,opened_at,completed_at,declined_at,decline_reason,created_at,updated_at')
-          .eq('envelope_id',row.id).order('recipient_order',{ascending:true}),
-        supabase.from('romylabs_esign_events')
-          .select('id,recipient_id,event_type,actor_email,actor_name,ip_address,user_agent,metadata,occurred_at')
-          .eq('envelope_id',row.id).order('occurred_at',{ascending:true}),
-      ])
+      const {data,error}=await supabase.functions.invoke('office-agreement-file',{body:{action:'esign_detail',document_id:row.id}})
       if(!live)return
-      if(rec.error||evt.error)setError(rec.error?.message||evt.error?.message||'Could not load envelope details')
-      setRecipients(rec.data||[]);setEvents(evt.data||[]);setLoading(false)
+      if(error||!data?.ok){
+        setError(error?.message||data?.error||'Could not load envelope details')
+        setRecipients([]);setEvents([])
+      }else{
+        setRecipients(data.recipients||[])
+        setEvents(data.events||[])
+      }
+      setLoading(false)
     }
-    load()
+    load().catch(e=>{if(live){setError(e?.message||String(e));setLoading(false)}})
     return()=>{live=false}
   },[row.id,supabase])
 
