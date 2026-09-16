@@ -8,6 +8,7 @@ import { advanceLeadStatus } from '../lib/leadStatus'
 import { FIRM } from '../lib/firmBranding'
 import { sendGmailEmail } from '../lib/gmailUtils'
 import InternalBooking from '../components/InternalBooking'
+import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
 
 const STATUS_COLORS = {
   scheduled:   { bg: '#1e3a5f', border: '#3b82f6', text: '#93c5fd' },
@@ -27,18 +28,19 @@ const COLOR_MAP = {
 const DAYS  = ['SUN','MON','TUE','WED','THU','FRI','SAT']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-const PRODUCT_IDENTITIES = {
-  taxres_crm: { label: 'TaxRes CRM', logo: '/taxrescrm-logo.png' },
-  romylabs:   { label: 'RomyLabs',   logo: '/romylabs-favicon-32.png' },
-  camvella:   { label: 'Camvella',   logo: '/camvella-logo.svg' },
-  arcvena:    { label: 'Arcvena',    logo: '/arcvena-favicon-64.png' },
-  bocasync:   { label: 'BocaSync',   logo: '/bocasync-logo.svg' },
-}
-
 function productIdentity(ev) {
-  if (ev?.product_id && PRODUCT_IDENTITIES[ev.product_id]) return PRODUCT_IDENTITIES[ev.product_id]
-  const label = (ev?.title || '').match(/^\[([^\]]+)\]/)?.[1]
-  return Object.values(PRODUCT_IDENTITIES).find(product => product.label === label) || null
+  const byId = ev?.product_id ? PRODUCT_BOOKING_CONFIGS[ev.product_id] : null
+  if (byId) return { label: byId.name, logo: byId.logo }
+
+  const titleLabel = (ev?.title || '').match(/^\[([^\]]+)\]/)?.[1]?.trim().toLowerCase()
+  if (!titleLabel) return null
+
+  const match = Object.values(PRODUCT_BOOKING_CONFIGS).find(cfg => {
+    const name = String(cfg?.name || '').trim().toLowerCase()
+    const calendarLabel = String(cfg?.calendarLabel || '').replace(/^\[|\]$/g,'').trim().toLowerCase()
+    return titleLabel === name || titleLabel === calendarLabel
+  })
+  return match ? { label: match.name, logo: match.logo } : null
 }
 
 function fmtTime(d) {
