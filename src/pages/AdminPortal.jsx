@@ -2577,7 +2577,7 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
           : isClarityLive
           ? 'Clarity Connected'
           : status === 'connected' ? 'Connected'
-          : status === 'implemented' ? `${channel === 'seo' ? 'SEO' : 'Marketing'} implemented · reporting pending`
+          : status === 'implemented' ? `${channel === 'seo' ? 'SEO' : 'Analytics'} implemented · reporting pending`
           : 'Setup needed'
         const statusColor = isMarketingBlocked ? '#ef4444'
           : (status === 'connected' || isGscLive || isMarketingLive || isClarityLive) ? '#10b981'
@@ -2607,8 +2607,8 @@ function ProductReportingSetup({ productKey, channel, registryProduct }) {
   // Registry-driven: no hardcoded REPORTING_PRODUCTS lookup.
   const label = registryProduct?.name || productKey
   const icon  = registryProduct?.icon_ref || '📦'
-  const title = channel === 'marketing' ? 'Product usage analytics' : 'SEO reporting'
-  const details = `${label} does not have a dedicated ${channel === 'marketing' ? 'GA4 product-usage connection' : 'Search Console data connection'} in the RomyLabs reporting hub yet.`
+  const title = channel === 'marketing' ? 'Google Analytics 4 reporting' : 'SEO reporting'
+  const details = `${label} does not have a dedicated ${channel === 'marketing' ? 'GA4 Data API connection' : 'Search Console data connection'} in the RomyLabs reporting hub yet.`
   return (
     <div style={{ ...CC.card(), padding:'30px', maxWidth:780 }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
@@ -4735,6 +4735,13 @@ function CommandCenter() {
     try {
       const { data: syncResult, error: syncInvokeError } = await supabase.functions.invoke('ga4-sync', { body: { product_id: marketingProduct } })
       const syncProblem = syncInvokeError?.message || (syncResult?.ok === false ? syncResult?.error : '')
+      if (syncProblem) {
+        setGa4LiveProducts(prev => prev.filter(id => id !== marketingProduct))
+        setGa4BlockedProducts(prev => prev.includes(marketingProduct) ? prev : [...prev, marketingProduct])
+      } else if (syncResult?.ok) {
+        setGa4BlockedProducts(prev => prev.filter(id => id !== marketingProduct))
+        setGa4LiveProducts(prev => prev.includes(marketingProduct) ? prev : [...prev, marketingProduct])
+      }
 
       const utcToday = new Date().toISOString().slice(0,10)
       const [{ data: traffic }, { data: pages }, { data: syncLog }] = await Promise.all([
