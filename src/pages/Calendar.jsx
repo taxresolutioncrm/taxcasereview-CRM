@@ -139,7 +139,7 @@ export default function Calendar() {
     setLoading(true)
     const [{ data: ev }, { data: cl }, { data: em }, { data: dl }] = await Promise.all([
       isRomyLabsAdmin
-        ? supabase.rpc('admin_product_calendar_events', { p_product_id:'romylabs' }).then(({ data, error }) => ({
+        ? supabase.rpc('admin_product_calendar_events', { p_product_id:'all' }).then(({ data, error }) => ({
             data: error ? [] : (data || []).map(row => ({
               id: row.id,
               title: row.title,
