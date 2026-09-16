@@ -34,6 +34,23 @@ function fmtAgo(ts) {
   return Math.floor(s / 86400) + 'd ago'
 }
 
+async function hydrateChatAttachment(row) {
+  if (!row || typeof row !== 'object') return row
+  const raw = String(row.attachment_url || '')
+  if (!raw.startsWith('storage://')) return row
+  const rest = raw.slice('storage://'.length)
+  const slash = rest.indexOf('/')
+  if (slash < 1) return { ...row, attachment_url: null }
+  const bucket = rest.slice(0, slash)
+  const path = rest.slice(slash + 1)
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 15 * 60)
+  return { ...row, attachment_url: !error && data?.signedUrl ? data.signedUrl : null }
+}
+
+async function hydrateChatAttachments(rows) {
+  return Promise.all((rows || []).map(hydrateChatAttachment))
+}
+
 function Avatar({ name, size = 32, avatarUrl }) {
   const bg = colorFor(name)
   if (avatarUrl) return (
@@ -75,10 +92,11 @@ export default function AdminChat() {
   // Real-time subscription to ALL chat_messages (admin has cross-tenant access)
   useEffect(() => {
     const rt = supabase.channel('admin-chat-all')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, ({ new: msg }) => {
-        setAllRecent(prev => [msg, ...prev].slice(0, 300))
-        if (selectedOffice && selectedChan && msg.channel === selectedChan) {
-          setMessages(prev => [...prev, msg])
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, async ({ new: msg }) => {
+        const hydrated = await hydrateChatAttachment(msg)
+        setAllRecent(prev => [hydrated, ...prev].slice(0, 300))
+        if (selectedOffice && selectedChan && hydrated.channel === selectedChan) {
+          setMessages(prev => [...prev, hydrated])
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
         }
       })
@@ -90,7 +108,7 @@ export default function AdminChat() {
   async function loadInbox() {
     setLoading(true)
     const { data } = await supabase.rpc('admin_get_all_chat_messages', { p_limit: 300 })
-    setAllRecent(data || [])
+    setAllRecent(await hydrateChatAttachments(data || []))
     setLoading(false)
   }
 
@@ -124,7 +142,8 @@ export default function AdminChat() {
       p_tenant_id: officeId || selectedOffice?.id || null,
     })
     // RPC returns DESC, reverse for chronological display
-    setMessages((data || []).reverse())
+    const hydrated = await hydrateChatAttachments(data || [])
+    setMessages(hydrated.reverse())
     setLoading(false)
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }
