@@ -4590,6 +4590,7 @@ function CommandCenter() {
 
     const tenantId = crmAccount === 'all' ? null : crmAccount
     let cancelled = false
+    setTaxresScopeData(null)
     setTaxresScopeLoading(true)
     setTaxresScopeError('')
     supabase.rpc('admin_taxres_crm_scope_metrics', { p_tenant_id: tenantId })
