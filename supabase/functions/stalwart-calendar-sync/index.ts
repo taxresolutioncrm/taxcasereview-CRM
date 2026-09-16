@@ -222,7 +222,8 @@ async function saveInvite(inv:any,m:any,dryRun:boolean){
   ].filter(Boolean).join('\n')
   const id='ics-'+fnv1a(uid)
   const payload:any={
-    id,title:inv.summary||'Calendar Invite',date:inv.start.date,time:inv.start.time,'endTime':inv.endTime||'',
+    id,title:inv.summary||'Calendar Invite',"clientName":inv.organizerName||((inv.organizerEmail||sender||'').split('@')[0]||'').replace(/[._-]+/g,' ').replace(/\b\w/g,(m:string)=>m.toUpperCase())||null,
+    date:inv.start.date,time:inv.start.time,'endTime':inv.endTime||'',
     'eventType':inv.cancelled?'Meeting':'Pending',status:inv.cancelled?'cancelled':'pending',
     notes,source:'ics_auto','assignedTo':ADMIN_OWNER,contact_email:inv.organizerEmail||sender||null,
     product_id:ADMIN_PRODUCT,tenant_id:ADMIN_TENANT,updated_at:new Date().toISOString(),
