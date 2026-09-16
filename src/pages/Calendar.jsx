@@ -183,7 +183,22 @@ export default function Calendar() {
   // entry point. No Google/Zoom account or paid service involved; the
   // link itself (tied to this event's id) is the only access control,
   // same pattern as the e-sign and client portal links.
+  function externalMeetingLinkFor(ev) {
+    if (!ev || ev.source !== 'ics_auto') return ''
+    const notes = String(ev.notes || '')
+    const explicit = notes.match(/(?:^|\n)Meeting link:\s*(https?:\/\/\S+)/i)?.[1]
+    if (explicit) return explicit.replace(/[),.;]+$/, '')
+    const preferred = notes.match(/https?:\/\/(?:teams\.microsoft\.com|meet\.google\.com|[^\s/]*zoom\.us|[^\s/]*webex\.com)[^\s<]*/i)?.[0]
+    return preferred ? preferred.replace(/[),.;]+$/, '') : ''
+  }
+
   function meetingLinkFor(ev) {
+    // Calendar invites imported from email keep the organizer's actual
+    // Teams/Google/Zoom/Webex link. Never replace an external invite with
+    // an internal CRM meeting room.
+    const external = externalMeetingLinkFor(ev)
+    if (external) return external
+
     // window.location.origin alone is missing the GitHub Pages project
     // path (this app deploys under /, not the bare
     // domain root) -- import.meta.env.BASE_URL is Vite's own resolved
