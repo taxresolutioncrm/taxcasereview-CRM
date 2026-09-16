@@ -296,11 +296,10 @@ export default function Calendar() {
   }
 
   async function deleteEvent(id) {
-    const target = selectedEvent || events.find(e => e.id === id)
     const result = isRomyLabsAdmin
       ? await supabase.rpc('admin_delete_product_calendar_event', {
           p_event_id: id,
-          p_product_id: target?.product_id || 'romylabs',
+          p_product_id: null,
         })
       : await supabase.from('calevents').delete().eq('id', id)
     const { data, error } = result
@@ -457,7 +456,11 @@ export default function Calendar() {
                 showToast('✅ Invite accepted')
               }} style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✅ Accept</button>
               <button onClick={async () => {
-                await supabase.from('calevents').delete().eq('id', selectedEvent.id)
+                const result = isRomyLabsAdmin
+                  ? await supabase.rpc('admin_delete_product_calendar_event',{ p_event_id:selectedEvent.id, p_product_id:null })
+                  : await supabase.from('calevents').delete().eq('id', selectedEvent.id)
+                if(result.error){ showToast('Error: '+result.error.message); return }
+                if(isRomyLabsAdmin && result.data !== true){ showToast('Invite was not removed'); return }
                 setEvents(evs => evs.filter(e => e.id !== selectedEvent.id))
                 setSelectedEvent(null)
                 showToast('❌ Invite declined and removed')
