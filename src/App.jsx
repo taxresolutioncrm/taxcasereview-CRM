@@ -13,6 +13,7 @@ import GlobalTeamChatNotifier from './components/GlobalTeamChatNotifier'
 import { Modal, Toast } from './components/ui'
 import ActiveCallBar from './components/calling/ActiveCallBar'
 import ImpersonationBanner from './components/ImpersonationBanner'
+import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
 
 
@@ -389,7 +390,7 @@ function AuthRouter() {
       <Route path="/book" element={<BookAppointment />} />
       <Route path="/book/manage/:token" element={<ManageBooking />} />
       <Route path="/clockin" element={<ClockIn />} />
-      <Route path="/sign/:id" element={<SignPage />} />
+      <Route path="/sign/:id" element={<PageErrorBoundary><><EsignAuditBridge/><SignPage/></></PageErrorBoundary>} />
       <Route path="/agreement/:token" element={<RomyLabsAgreementSign />} />
       <Route path="/office-sign/:token" element={<OfficeDocumentSign />} />
       <Route path="/meet/:id"          element={<MeetingRoom />} />

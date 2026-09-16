@@ -3,6 +3,7 @@ import Esign from './Esign'
 import UniversalOfficeESign from '../components/admin/UniversalOfficeESign'
 import { supabase } from '../lib/supabase'
 import { FIRM, loadFirmBranding } from '../lib/firmBranding'
+import EsignManagerAuditBridge from '../components/EsignManagerAuditBridge'
 
 // Shared by Tax Case Review, Nashville, demo tenants, current TaxRes offices,
 // and future TaxRes offices. The original tax-specific signing workflow stays
@@ -32,6 +33,7 @@ export default function TaxOfficeEsign(){
 
   return (
     <div>
+      <EsignManagerAuditBridge />
       <div style={{padding:'16px 24px 0',maxWidth:1100,margin:'0 auto'}}>
         <div style={{display:'flex',gap:8,flexWrap:'wrap',padding:6,border:'1px solid var(--br)',borderRadius:10,background:'var(--s2)',width:'fit-content'}}>
           <button className={`btn ${mode==='tax'?'pri':'sec'}`} onClick={()=>setMode('tax')} style={{fontWeight:800}}>Tax Forms & Agreements</button>

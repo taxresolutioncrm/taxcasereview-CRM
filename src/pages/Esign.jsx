@@ -138,6 +138,9 @@ export default function Esign() {
       due_date: form.dueDate || null,
       status: 'Awaiting',
       sent_at: new Date().toISOString(),
+      sent_by: user?.email || null,
+      signing_origin: window.location.origin,
+      reminder_count: 0,
       created_at: new Date().toISOString()
     }]).select().single()
     setSaving(false)
@@ -301,7 +304,7 @@ export default function Esign() {
         )}
       </div>
 
-      {modal && <div className="modal-bg" onMouseDown={e => { if (e.target===e.currentTarget) setModal(false) }}>
+      {modal && <div className="modal-bg open" onMouseDown={e => { if (e.target===e.currentTarget) setModal(false) }}>
         <div className="modal" style={{ maxWidth:560 }}>
           <div className="modal-head"><span>New Signing Request</span><button className="x" onClick={() => setModal(false)}>×</button></div>
           <div className="modal-body" style={{ display:'grid', gap:12 }}>
