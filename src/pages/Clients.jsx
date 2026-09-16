@@ -725,7 +725,9 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
   const [form,       setForm]       = useState({ name:'', docType:'IRS Docs', notes:'' })
   const [file,       setFile]       = useState(null)
   const [saving,     setSaving]     = useState(false)
-  const [preview,    setPreview]    = useState(null)
+  const [selectedDoc, setSelectedDoc] = useState(null)
+  const [previewUrl,  setPreviewUrl]  = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
   const fileRef = useRef(null)
 
   useEffect(() => { loadDocs() }, [clientName])
@@ -760,6 +762,64 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
     if (onLogged) await onLogged(`📁 Document added: "${loggedName}" (${loggedType})`)
   }
 
+  function displayName(doc) { return doc?.file_name || doc?.filename || doc?.name || 'Document' }
+  function previewKind(doc) {
+    const ext = (displayName(doc).split('.').pop() || '').toLowerCase()
+    const mime = String(doc?.mime_type || doc?.canopy_mimetype || '').toLowerCase()
+    if (mime === 'application/pdf' || ext === 'pdf') return 'pdf'
+    if (mime.startsWith('image/') || ['jpg','jpeg','png','gif','webp','tif','tiff'].includes(ext)) return 'image'
+    if (mime.startsWith('audio/') || ['mp3','wav','m4a','ogg'].includes(ext)) return 'audio'
+    if (mime.startsWith('text/') || ['txt','csv','html','htm'].includes(ext)) return 'frame'
+    return 'download'
+  }
+
+  async function resolveDocumentUrl(doc) {
+    const storagePath = doc?.storage_path ||
+      (String(doc?.file_url || '').startsWith('storage://documents/')
+        ? String(doc.file_url).replace('storage://documents/','')
+        : '')
+    if (storagePath) {
+      const { data, error } = await supabase.storage.from('documents').createSignedUrl(storagePath, 3600)
+      if (error || !data?.signedUrl) throw error || new Error('Could not create secure document preview')
+      return data.signedUrl
+    }
+    return doc?.file_url || ''
+  }
+
+  async function openPreview(doc) {
+    if (!doc?.file_url && !doc?.storage_path) {
+      showToast('This document has no file attached')
+      return
+    }
+    setSelectedDoc(doc)
+    setPreviewUrl('')
+    setPreviewLoading(true)
+    try {
+      const url = await resolveDocumentUrl(doc)
+      if (!url) throw new Error('Document URL unavailable')
+      setPreviewUrl(url)
+    } catch (e) {
+      setSelectedDoc(null)
+      showToast('Could not preview document: ' + (e?.message || e))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  async function openDocumentNewTab(doc) {
+    const tab = window.open('about:blank', '_blank')
+    if (tab) tab.opener = null
+    try {
+      const url = selectedDoc?.id === doc?.id && previewUrl ? previewUrl : await resolveDocumentUrl(doc)
+      if (!url) throw new Error('Document URL unavailable')
+      if (tab) tab.location.href = url
+      else showToast('Your browser blocked the new tab. Allow pop-ups to open documents.')
+    } catch (e) {
+      if (tab) tab.close()
+      showToast('Could not open document: ' + (e?.message || e))
+    }
+  }
+
   async function delDoc(doc) {
     if (doc.file_name) {
       const path = doc.file_url?.split('/documents/')[1]
@@ -767,6 +827,7 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
     }
     const { error } = await supabase.from('documents').delete().eq('id', doc.id)
     if (error) { showToast('Error: ' + error.message); return }
+    if (selectedDoc?.id === doc.id) { setSelectedDoc(null); setPreviewUrl('') }
     showToast('Deleted'); loadDocs()
     if (onLogged) await onLogged(`🗑️ Document deleted: "${doc.name}"`)
   }
@@ -861,11 +922,12 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>
               {visible.map(d=>(
                 <div key={d.id}
+                  onClick={()=>openPreview(d)}
                   style={{border:'1px solid var(--br)',borderRadius:10,padding:'12px 12px',background:'var(--sf)',
-                    cursor:'pointer',transition:'all .15s ease',position:'relative',boxShadow:'0 1px 2px rgba(0,0,0,.08)'}}
+                    cursor:(d.file_url||d.storage_path)?'pointer':'default',transition:'all .15s ease',position:'relative',boxShadow:'0 1px 2px rgba(0,0,0,.08)'}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--blue)';e.currentTarget.style.transform='translateY(-3px)';e.currentTarget.style.boxShadow='0 8px 16px rgba(0,0,0,.18)'}}
                   onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--br)';e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 1px 2px rgba(0,0,0,.08)'}}>
-                  <div style={{fontSize:34,textAlign:'center',marginBottom:7}}>{FILE_EXT_ICON(d.file_name||d.name)}</div>
+                  <div style={{fontSize:34,textAlign:'center',marginBottom:7}}>{FILE_EXT_ICON(displayName(d))}</div>
                   <div style={{fontSize:12,fontWeight:600,lineHeight:1.3,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',
                     display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>
                     {d.name}
@@ -874,12 +936,12 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
                     {d.created_at?.slice(0,10)}{d.file_size?` · ${fmt(d.file_size)}`:''}
                   </div>
                   <div style={{display:'flex',gap:4}}>
-                    {d.file_url && (
-                      <a href={d.file_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
-                        style={{flex:1,padding:'3px 0',background:'var(--blue)',color:'#fff',borderRadius:5,
-                          fontSize:9,fontWeight:700,textAlign:'center',textDecoration:'none'}}>
-                        View
-                      </a>
+                    {(d.file_url || d.storage_path) && (
+                      <button onClick={e=>{e.stopPropagation();openPreview(d)}}
+                        style={{flex:1,padding:'3px 0',background:'var(--blue)',color:'#fff',border:'none',borderRadius:5,
+                          fontSize:9,fontWeight:700,textAlign:'center',cursor:'pointer'}}>
+                        Preview
+                      </button>
                     )}
                     <button onClick={e=>{e.stopPropagation();delDoc(d)}}
                       style={{padding:'3px 6px',background:'var(--bad)',color:'#fff',border:'none',
@@ -893,6 +955,31 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
           )}
         </div>
       </div>
+
+      {selectedDoc && (
+        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setSelectedDoc(null)}>
+          <div className="modal" style={{width:'min(1100px,94vw)',height:'min(820px,88vh)',display:'flex',flexDirection:'column',padding:0,overflow:'hidden'}}>
+            <div className="mh" style={{padding:'10px 14px'}}>
+              <div style={{minWidth:0}}>
+                <div className="mt" style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{displayName(selectedDoc)}</div>
+                <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>{selectedDoc.docType || 'Document'}{selectedDoc.file_size?` · ${fmt(selectedDoc.file_size)}`:''}</div>
+              </div>
+              <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                {previewUrl && <button className="btn sec" style={{fontSize:10,padding:'4px 8px'}} onClick={()=>openDocumentNewTab(selectedDoc)}>Open ↗</button>}
+                <button className="xbtn" onClick={()=>setSelectedDoc(null)}>&times;</button>
+              </div>
+            </div>
+            <div style={{flex:1,minHeight:0,background:'#e5e7eb',position:'relative'}}>
+              {previewLoading ? <div style={{padding:40,textAlign:'center',color:'#475569'}}>Loading secure preview…</div>
+              : !previewUrl ? <div style={{padding:40,textAlign:'center',color:'#475569'}}>Secure preview unavailable for this document.</div>
+              : previewKind(selectedDoc)==='pdf' || previewKind(selectedDoc)==='frame' ? <iframe title={displayName(selectedDoc)} src={previewUrl} style={{width:'100%',height:'100%',border:0,background:'#fff'}}/>
+              : previewKind(selectedDoc)==='image' ? <div style={{width:'100%',height:'100%',overflow:'auto',textAlign:'center',padding:16}}><img src={previewUrl} alt={displayName(selectedDoc)} style={{maxWidth:'100%',height:'auto',boxShadow:'0 4px 20px rgba(0,0,0,.18)'}}/></div>
+              : previewKind(selectedDoc)==='audio' ? <div style={{padding:30}}><audio controls src={previewUrl} style={{width:'100%'}}/></div>
+              : <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:30,textAlign:'center',color:'#475569'}}><div><div style={{fontSize:60,marginBottom:12}}>{FILE_EXT_ICON(displayName(selectedDoc))}</div><div style={{fontWeight:800,marginBottom:6}}>Preview not available for this file type</div><div style={{fontSize:12,marginBottom:14}}>Use Open to view the original file.</div><button className="btn pri" onClick={()=>openDocumentNewTab(selectedDoc)}>Open Document</button></div></div>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
