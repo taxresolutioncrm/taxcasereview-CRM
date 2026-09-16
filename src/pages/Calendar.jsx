@@ -107,8 +107,12 @@ export default function Calendar() {
     }
     const ch = supabase.channel('calevents-booking-sync')
     ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calevents' }, ({ new: row }) => {
-      if (isRomyLabsAdmin && row.assignedTo !== adminCalendarOwner && String(row.product_id || '').toLowerCase() !== 'romylabs') return
-      setEvents(prev => prev.some(e => e.id === row.id) ? prev : [...prev, row])
+      if (isRomyLabsAdmin) {
+        if (String(row.product_id || '').toLowerCase() !== 'romylabs' && row.assignedTo !== adminCalendarOwner) return
+        load()
+      } else {
+        setEvents(prev => prev.some(e => e.id === row.id) ? prev : [...prev, row])
+      }
       if (row.source === 'booking_widget' || row.source === 'online') {
         const who = row.clientName || row.title || 'New appointment'
         showToast(`📅 New appointment booked: ${who} — ${row.date} ${row.time || ''}`)
@@ -135,7 +139,24 @@ export default function Calendar() {
     setLoading(true)
     const [{ data: ev }, { data: cl }, { data: em }, { data: dl }] = await Promise.all([
       isRomyLabsAdmin
-        ? supabase.from('calevents').select('*').or(`assignedTo.eq.${adminCalendarOwner},product_id.eq.romylabs`).order('date', { ascending: true })
+        ? supabase.rpc('admin_product_calendar_events', { p_product_id:'romylabs' }).then(({ data, error }) => ({
+            data: error ? [] : (data || []).map(row => ({
+              id: row.id,
+              title: row.title,
+              date: row.event_date,
+              time: row.event_time,
+              endTime: row.end_time,
+              eventType: row.event_type,
+              clientName: row.client_name,
+              contact_email: row.contact_email,
+              notes: row.notes,
+              source: row.source,
+              status: row.status,
+              product_id: row.product_id,
+              created_at: row.created_at,
+              assignedTo: adminCalendarOwner,
+            }))
+          }))
         : supabase.from('calevents').select('*').order('date', { ascending: true }),
       isRomyLabsAdmin
         ? Promise.resolve({ data:[] })
