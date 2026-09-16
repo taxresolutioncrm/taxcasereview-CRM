@@ -28,7 +28,7 @@ const DAYS  = ['SUN','MON','TUE','WED','THU','FRI','SAT']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 const PRODUCT_IDENTITIES = {
-  taxres_crm: { label: 'TaxRes CRM', logo: '/taxrescrm-favicon.png' },
+  taxres_crm: { label: 'TaxRes CRM', logo: '/taxrescrm-logo.png' },
   romylabs:   { label: 'RomyLabs',   logo: '/romylabs-favicon-32.png' },
   camvella:   { label: 'Camvella',   logo: '/camvella-logo.svg' },
   arcvena:    { label: 'Arcvena',    logo: '/arcvena-favicon-64.png' },
