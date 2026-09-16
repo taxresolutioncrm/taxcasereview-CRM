@@ -184,3 +184,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.romylabs-billing-enforce]
 verify_jwt = false
+
+# Internal Stalwart calendar invite scanner. pg_cron authenticates with
+# x-internal-cron-token; the function verifies that token itself.
+[functions.stalwart-calendar-sync]
+verify_jwt = false
