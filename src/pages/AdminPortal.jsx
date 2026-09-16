@@ -689,7 +689,7 @@ function Overview() {
   ]
 
   return (
-    <div style={{ padding:'32px 36px', maxWidth:1100 }}>
+    <div style={{ padding:'32px 36px', width:'100%', maxWidth:'none', minWidth:0, boxSizing:'border-box' }}>
       <div style={{ marginBottom:28 }}>
         <img src="/romylabs-logo.png" alt="RomyLabs"
           style={{ height:44, objectFit:'contain', display:'block', marginBottom:16 }}
@@ -712,11 +712,20 @@ function Overview() {
 
       {loadError && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:16}}>Unable to load platform offices: {loadError}</div>}
       <div style={{ fontSize:12, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>All Offices</div>
-      <div style={S.card}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+      <div style={{ ...S.card, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch' }}>
+        <table style={{ width:'100%', minWidth:1180, borderCollapse:'separate', borderSpacing:0, fontSize:13 }}>
           <thead>
-            <tr>{['Firm','Status','Plan','Seats / Staff','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map(h=>(
-              <th key={h} style={S.th}>{h}</th>
+            <tr>{['Firm','Status','Plan','Seats / Staff','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map((h,index,headers)=>(
+              <th key={h || 'actions'} style={{
+                ...S.th,
+                whiteSpace:'nowrap',
+                ...(index===headers.length-1 ? {
+                  position:'sticky', right:0, zIndex:3,
+                  background:'#171625',
+                  boxShadow:'-8px 0 12px rgba(8,7,20,.35)',
+                  minWidth:90,
+                } : {})
+              }}>{h}</th>
             ))}</tr>
           </thead>
           <tbody>
@@ -739,7 +748,13 @@ function Overview() {
                   {r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—'}
                 </td>
                 <td style={{ ...S.td, color:'#475569' }}>{fmtAgo(r.last_activity)}</td>
-                <td style={S.td}>
+                <td style={{
+                  ...S.td,
+                  position:'sticky', right:0, zIndex:2,
+                  background:'#12111f',
+                  boxShadow:'-8px 0 12px rgba(8,7,20,.35)',
+                  whiteSpace:'nowrap',
+                }}>
                   <button onClick={e=>{e.stopPropagation();openOffice(r)}}
                     style={{ ...S.btn('ghost'), padding:'5px 12px', fontSize:11 }}>View →</button>
                 </td>
