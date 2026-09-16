@@ -46,7 +46,10 @@ serve(async (req) => {
       { startDate: '30daysAgo', endDate: 'yesterday' },
     ]
 
-    const results = await Promise.all(ranges.map(r => fetchGA4Report(token, propertyId, r)))
+    const [results, totalsReport] = await Promise.all([
+      Promise.all(ranges.map(r => fetchGA4Report(token, propertyId, r))),
+      fetchGA4Totals(token, propertyId),
+    ])
     const trafficByKey = new Map<string, any>()
     for (const result of results) {
       for (const row of result?.rows || []) {
@@ -61,7 +64,7 @@ serve(async (req) => {
           sessions: Number(mets[0]?.value || 0),
           users: Number(mets[1]?.value || 0),
           new_users: Number(mets[2]?.value || 0),
-          returning_users: Number(mets[1]?.value || 0) - Number(mets[2]?.value || 0),
+          returning_users: Math.max(0, Number(mets[1]?.value || 0) - Number(mets[2]?.value || 0)),
           page_views: Number(mets[3]?.value || 0),
           bounce_rate: Number(mets[4]?.value || 0),
           avg_session_sec: Number(mets[5]?.value || 0),
@@ -69,6 +72,29 @@ serve(async (req) => {
           synced_at: new Date().toISOString(),
         })
       }
+    }
+
+    // Store one authoritative daily property-total row. Headline metrics in the
+    // Admin Portal use this row so users, bounce rate, and pages/session are not
+    // reconstructed from channel buckets (which can double-count users and skew ratios).
+    for (const row of totalsReport?.rows || []) {
+      const dims = row.dimensionValues || []
+      const mets = row.metricValues || []
+      const date = dims[0]?.value || new Date().toISOString().slice(0,10)
+      trafficByKey.set(`${productId}|${date}|__TOTAL__`, {
+        product_id: productId,
+        date,
+        channel: '__TOTAL__',
+        sessions: Number(mets[0]?.value || 0),
+        users: Number(mets[1]?.value || 0),
+        new_users: Number(mets[2]?.value || 0),
+        returning_users: Math.max(0, Number(mets[1]?.value || 0) - Number(mets[2]?.value || 0)),
+        page_views: Number(mets[3]?.value || 0),
+        bounce_rate: Number(mets[4]?.value || 0),
+        avg_session_sec: Number(mets[5]?.value || 0),
+        pages_per_session: Number(mets[6]?.value || 0),
+        synced_at: new Date().toISOString(),
+      })
     }
     const rows = Array.from(trafficByKey.values())
 
@@ -78,13 +104,19 @@ serve(async (req) => {
     }
 
     const pagesReport = await fetchGA4Pages(token, propertyId)
+    const latestReportingDate = (totalsReport?.rows || []).reduce((latest:string, row:any) => {
+      const date = row?.dimensionValues?.[0]?.value || ''
+      return !latest || date > latest ? date : latest
+    }, '') || new Date().toISOString().slice(0,10)
     const pageRows:any[] = []
     for (const row of pagesReport?.rows || []) {
       const dims = row.dimensionValues || []
       const mets = row.metricValues || []
       pageRows.push({
         product_id: productId,
-        date: new Date().toISOString().slice(0,10),
+        // This is a 7-day aggregate snapshot; use the property's reporting date
+        // instead of UTC so the UI can identify the latest snapshot consistently.
+        date: latestReportingDate,
         page_path: dims[0]?.value || '/',
         sessions: Number(mets[0]?.value || 0),
         users: Number(mets[1]?.value || 0),
@@ -106,6 +138,13 @@ serve(async (req) => {
     console.error('GA4 sync error:', err)
     const errorText = err instanceof Error ? err.message : JSON.stringify(err)
     await supabase.from('marketing_sync_log').insert({ product_id:productId, source:'ga4', status:'error', error_msg:errorText, synced_at:new Date().toISOString() })
+    // A configured property that Google currently rejects is not "live".
+    // Keep the property ID, but surface the integration as blocked until a
+    // successful sync proves access again.
+    await supabase.from('product_traffic_channels')
+      .update({ status:'blocked', updated_at:new Date().toISOString() })
+      .eq('product_id', productId)
+      .eq('channel_key','ga4')
     return Response.json({ ok:false, product_id:productId, error:errorText }, { status:500, headers: corsHeaders })
   }
 })
@@ -138,6 +177,15 @@ function fetchGA4Report(token:string, propertyId:string, range:{startDate:string
   return ga4Request(token, propertyId, {
     dateRanges:[range], dimensions:[{name:'date'},{name:'sessionDefaultChannelGroup'}],
     metrics:[{name:'sessions'},{name:'totalUsers'},{name:'newUsers'},{name:'screenPageViews'},{name:'bounceRate'},{name:'averageSessionDuration'},{name:'screenPageViewsPerSession'}], limit:100
+  })
+}
+
+function fetchGA4Totals(token:string, propertyId:string) {
+  return ga4Request(token, propertyId, {
+    dateRanges:[{startDate:'30daysAgo',endDate:'today'}],
+    dimensions:[{name:'date'}],
+    metrics:[{name:'sessions'},{name:'totalUsers'},{name:'newUsers'},{name:'screenPageViews'},{name:'bounceRate'},{name:'averageSessionDuration'},{name:'screenPageViewsPerSession'}],
+    limit:100
   })
 }
 
