@@ -359,7 +359,10 @@ export function AppProvider({ children }) {
       // in for the whole channel's lifetime even after the real name loaded.
       const liveName = myRealNameRef.current || user?.user_metadata?.name || user?.email?.split('@')[0] || 'You'
       if (msg.huddle_id && msg.sender === '🔔 System') {
+        // Huddle visual/browser notifications are handled by GlobalTeamChatNotifier
+        // so the Join action carries the room id and we do not emit duplicates.
         playSound('huddle')
+        return
       } else if (msg.sender === '🔔 System') {
         playSound('lead') // new lead / appointment / payment notifications from LeadFlow etc.
       } else if (msg.sender !== liveName) {
