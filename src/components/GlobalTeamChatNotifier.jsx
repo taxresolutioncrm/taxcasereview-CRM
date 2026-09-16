@@ -18,12 +18,15 @@ export default function GlobalTeamChatNotifier(){
         if(msg.invite_to && msg.invite_to!==me) return
 
         const isHuddle=!!msg.huddle_id
+        // Normal Team Chat messages are handled globally by AppContext.
+        // This component is the huddle-specific join UI only.
+        if(!isHuddle) return
         const caller=(msg.text||'').replace(/^📞\s*/,'').replace(/ is calling you.*/,'').replace(/ invited .*/,'') || msg.sender || 'Team member'
         const target=isHuddle
           ? '/chat?huddle='+encodeURIComponent(msg.huddle_id)+'&from='+encodeURIComponent(caller)+'&c='+encodeURIComponent(msg.channel||'general')
           : '/chat?c='+encodeURIComponent(msg.channel||'general')
 
-        if(isHuddle || !location.pathname.includes('/chat')){
+        if(!location.pathname.includes('/chat') || isHuddle){
           setNotice({
             title:isHuddle?'Incoming huddle':(msg.sender||'Team Chat'),
             body:isHuddle?(caller+' is inviting you to a huddle'):(msg.text||'Sent an attachment'),
