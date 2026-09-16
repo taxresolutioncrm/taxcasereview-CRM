@@ -48,6 +48,7 @@ export default function OfficeDocumentSign(){
   const [declined,setDeclined]=useState(false)
   const canvasRef=useRef(null)
   const sigCanvasRef=useRef(null)
+  const progressKeyRef=useRef('')
 
   async function load(){
     setLoading(true);setError('')
@@ -90,6 +91,35 @@ export default function OfficeDocumentSign(){
   },[pdf,page])
 
   function setField(id,value){setValues(v=>({...v,[id]:value}))}
+
+  function isFieldComplete(f){
+    const value=String(values[f.id]??'').trim()
+    if(f.type==='signature')return String(signature||'').trim().length>1
+    if(f.type==='date')return Boolean(value||today())
+    if(f.type==='name')return Boolean(value||doc?.signer_name||signature)
+    if(f.type==='initials')return Boolean(value||autoInitials(signature||doc?.signer_name||''))
+    return Boolean(value)
+  }
+
+  useEffect(()=>{
+    if(!doc||!token||done||declined)return
+    const fields=Array.isArray(doc.fields)?doc.fields:[]
+    const completedFieldIds=fields.filter(isFieldComplete).map(f=>String(f.id))
+    const pageCount=Math.max(1,Number(pdf?.numPages||Math.max(1,...fields.map(f=>Number(f.page||1)||1))))
+    const key=JSON.stringify({page,pageCount,completedFieldIds})
+    if(progressKeyRef.current===key)return
+    const timer=setTimeout(async()=>{
+      try{
+        const data=await invokePublicSigner({
+          action:'esign_progress',token,current_page:page,page_count:pageCount,
+          completed_field_ids:completedFieldIds
+        })
+        if(data?.ok)progressKeyRef.current=key
+      }catch(_){}
+    },700)
+    return()=>clearTimeout(timer)
+  },[doc,token,page,pdf,values,signature,done,declined])
+
 
   function applySignatureName(name){
     const trimmed=String(name||'').trim()

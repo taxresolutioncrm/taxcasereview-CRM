@@ -279,7 +279,7 @@ async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detai
   const drafts=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='drafts')
   const sent=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='sent')
   if(!identity?.id||!drafts?.id||!sent?.id)throw new Error('Stalwart identity or mailboxes unavailable')
-  const label=eventType==='viewed'?'Viewed':eventType==='declined'?'Declined':eventType==='voided'?'Voided':eventType==='expired'?'Expired':'Updated'
+  const label=eventType==='viewed'?'Viewed':eventType==='reopened'?'Viewed Again':eventType==='declined'?'Declined':eventType==='voided'?'Voided':eventType==='expired'?'Expired':'Updated'
   const subject=label+': '+String(doc.title||'Signature request')
   const html='<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>'+label+' signature request</h2><p><strong>'+String(doc.firm_name||'Office')+'</strong> - '+String(doc.title||'Agreement')+'</p><p>Signer: '+String(doc.signer_name||doc.signer_email||'Signer')+'</p>'+(detail?'<p>'+detail+'</p>':'')+'<p>Envelope ID: '+String(doc.id)+'</p></div>'
   const bodyId='body'
@@ -355,7 +355,7 @@ serve(async(req)=>{
     }
 
     // Token-scoped public signing actions. No anonymous database/storage access is exposed.
-    if(action==='esign_load'||action==='esign_sign'||action==='esign_decline'){
+    if(action==='esign_load'||action==='esign_progress'||action==='esign_sign'||action==='esign_decline'){
       const rawSigningToken=String(b.token||'').trim()
       const tokenMatch=rawSigningToken.match(/[A-Fa-f0-9]{64}/)
       const signingToken=tokenMatch?.[0]||''
@@ -435,10 +435,73 @@ serve(async(req)=>{
             if(recipient)recipient={...recipient,status:'viewed',opened_at:openedAt,updated_at:openedAt}
           }
         }
+        if(String(doc.status||'')==='viewed'){
+          const cutoff=new Date(Date.now()-30*60*1000).toISOString()
+          const {data:recentReopen}=await admin.from('romylabs_esign_events')
+            .select('id').eq('envelope_id',doc.id).eq('event_type','reopened')
+            .gte('occurred_at',cutoff).limit(1).maybeSingle()
+          if(!recentReopen){
+            const reopenedAt=new Date().toISOString()
+            await appendEvent(admin,doc.id,'reopened',{
+              recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),
+              userAgent:req.headers.get('user-agent'),metadata:{current_status:String(doc.status||'')},occurredAt:reopenedAt
+            })
+            try{
+              const notice=await sendOwnerLifecycleNotice(admin,doc,'reopened','The signer returned to the document after the original open.')
+              await appendEvent(admin,doc.id,'owner_reopened_notification_sent',{metadata:{submission_id:notice.submissionId,from:notice.from},occurredAt:new Date().toISOString()})
+            }catch(notifyError){
+              await appendEvent(admin,doc.id,'owner_reopened_notification_failed',{metadata:{error:String((notifyError as Error)?.message||notifyError).slice(0,240)}})
+            }
+          }
+        }
         const path=doc.status==='signed'&&doc.signed_path?doc.signed_path:doc.source_path
         const {data:u,error:ue}=await admin.storage.from(ESIGN_BUCKET).createSignedUrl(path,600)
         if(ue||!u?.signedUrl)return json({error:'Could not open document'},500)
         return json({ok:true,document:{id:doc.id,title:doc.title,firm_name:doc.firm_name,signer_name:doc.signer_name,signer_email:doc.signer_email,fields:doc.fields,status:doc.status,signed_at:doc.signed_at,expires_at:doc.expires_at,file_url:u.signedUrl}})
+      }
+
+      if(action==='esign_progress'){
+        if(!['sent','viewed'].includes(String(doc.status||'')))return json({ok:true,terminal:true,status:doc.status})
+        const fields=Array.isArray(doc.fields)?doc.fields:[]
+        const validIds=new Set(fields.map((f:any)=>String(f.id||'')).filter(Boolean))
+        const completedInput=Array.isArray(b.completed_field_ids)?b.completed_field_ids.map((x:any)=>String(x||'')):[]
+        const completedIds=[...new Set(completedInput.filter((id:string)=>validIds.has(id)))]
+        const completedSet=new Set(completedIds)
+        const required=fields.filter((f:any)=>f?.required!==false)
+        const incomplete=required
+          .filter((f:any)=>!completedSet.has(String(f.id||'')))
+          .map((f:any)=>({
+            id:String(f.id||''),
+            label:String(f.label||f.type||'Required field').slice(0,120),
+            type:String(f.type||'text').slice(0,40),
+            page:Math.max(1,Number(f.page||1)||1)
+          }))
+        const pageCount=Math.max(1,Math.min(500,Number(b.page_count||1)||1))
+        const currentPage=Math.max(1,Math.min(pageCount,Number(b.current_page||1)||1))
+        const requiredTotal=required.length
+        const requiredCompleted=Math.max(0,requiredTotal-incomplete.length)
+        const completionPercent=requiredTotal?Math.round(requiredCompleted/requiredTotal*100):100
+        const incompletePages=[...new Set(incomplete.map((x:any)=>x.page))].sort((a:any,b:any)=>a-b)
+        const metadata={
+          current_page:currentPage,page_count:pageCount,
+          required_total:requiredTotal,required_completed:requiredCompleted,
+          completion_percent:completionPercent,completed_field_ids:completedIds,
+          incomplete_fields:incomplete,incomplete_pages:incompletePages
+        }
+        const {data:lastProgress}=await admin.from('romylabs_esign_events')
+          .select('metadata').eq('envelope_id',doc.id).eq('event_type','progress')
+          .order('occurred_at',{ascending:false}).limit(1).maybeSingle()
+        const prev=lastProgress?.metadata&&typeof lastProgress.metadata==='object'?lastProgress.metadata:{}
+        const changed=Number(prev.completion_percent??-1)!==completionPercent ||
+          Number(prev.current_page??-1)!==currentPage ||
+          JSON.stringify(prev.incomplete_pages||[])!==JSON.stringify(incompletePages)
+        if(changed){
+          await appendEvent(admin,doc.id,'progress',{
+            recipientId:recipient?.id,actorEmail:doc.signer_email,ipAddress:ip(req),
+            userAgent:req.headers.get('user-agent'),metadata,occurredAt:new Date().toISOString()
+          })
+        }
+        return json({ok:true,...metadata})
       }
 
       if(action==='esign_decline'){

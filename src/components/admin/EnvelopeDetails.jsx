@@ -35,6 +35,14 @@ export default function EnvelopeDetails({supabase,row,brand,onClose,onOpenFile})
     ['Signed',!!(row.signed_at||row.completed_at)],
   ],[events,row])
 
+  const latestProgress=useMemo(()=>{
+    const evt=[...events].reverse().find(e=>String(e.event_type||'').toLowerCase()==='progress')
+    return evt?.metadata&&typeof evt.metadata==='object'?evt.metadata:null
+  },[events])
+  const incompleteFields=Array.isArray(latestProgress?.incomplete_fields)?latestProgress.incomplete_fields:[]
+  const incompletePages=Array.isArray(latestProgress?.incomplete_pages)?latestProgress.incomplete_pages:[]
+  const exactPercent=latestProgress?Math.max(0,Math.min(100,Number(latestProgress.completion_percent||0))):null
+
   const resendCount=events.filter(e=>String(e.event_type||'').toLowerCase()==='resent').length
   const signatureMethod=row.envelope_settings?.signature_method==='draw'?'Draw':'Type'
 
@@ -62,6 +70,8 @@ export default function EnvelopeDetails({supabase,row,brand,onClose,onOpenFile})
         <Meta k="Reminders" v={row.reminder_enabled?'On · '+String(row.reminder_delay_days||0)+'d delay · every '+String(row.reminder_frequency_days||0)+'d':'Off'}/>
         <Meta k="Last Reminder" v={dt(row.last_reminder_at)}/>
         <Meta k="Resends" v={String(resendCount)}/>
+        <Meta k="Required Fields" v={latestProgress?`${latestProgress.required_completed||0} / ${latestProgress.required_total||0}`:'—'}/>
+        <Meta k="Current Page" v={latestProgress?`${latestProgress.current_page||1} / ${latestProgress.page_count||1}`:'—'}/>
         <Meta k="Signer IP" v={row.signer_ip||'—'}/>
         <Meta k="Browser / Device" v={row.signer_user_agent||'—'}/>
       </div>
@@ -70,6 +80,27 @@ export default function EnvelopeDetails({supabase,row,brand,onClose,onOpenFile})
       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
         {progress.map(([label,ok])=><span key={label} style={{padding:'6px 9px',borderRadius:999,fontSize:9,fontWeight:900,background:ok?'rgba(16,185,129,.14)':'rgba(100,116,139,.12)',color:ok?'#34d399':'#64748b',border:'1px solid '+(ok?'rgba(16,185,129,.22)':'rgba(100,116,139,.16)')}}>{ok?'✓ ':''}{label}</span>)}
       </div>
+
+      {latestProgress&&<>
+        <Label>Signing Completion</Label>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:9}}>
+          <div style={{flex:1,maxWidth:420,height:8,borderRadius:999,background:'rgba(100,116,139,.18)',overflow:'hidden'}}>
+            <div style={{width:`${exactPercent}%`,height:'100%',background:exactPercent===100?'#10b981':'#6366f1'}}/>
+          </div>
+          <strong style={{fontSize:11,color:'#e2e8f0'}}>{exactPercent}%</strong>
+        </div>
+        <div style={{fontSize:10,color:'#94a3b8',marginBottom:8}}>
+          Page {latestProgress.current_page||1} of {latestProgress.page_count||1} · {latestProgress.required_completed||0} of {latestProgress.required_total||0} required fields completed
+        </div>
+        {incompletePages.length>0&&<div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:8}}>
+          <span style={{fontSize:9,color:'#94a3b8',padding:'4px 0'}}>Incomplete pages:</span>
+          {incompletePages.map(p=><span key={p} style={{padding:'4px 7px',borderRadius:999,fontSize:9,fontWeight:800,background:'rgba(245,158,11,.12)',color:'#fbbf24',border:'1px solid rgba(245,158,11,.2)'}}>Page {p}</span>)}
+        </div>}
+        {incompleteFields.length>0&&<div style={{padding:'9px 10px',borderRadius:8,background:'rgba(245,158,11,.06)',border:'1px solid rgba(245,158,11,.14)',marginBottom:14}}>
+          <div style={{fontSize:9,fontWeight:900,color:'#fbbf24',marginBottom:5}}>Still required</div>
+          {incompleteFields.map(f=><div key={f.id} style={{fontSize:9,color:'#cbd5e1',padding:'2px 0'}}>Page {f.page} · {f.label||f.type}</div>)}
+        </div>}
+      </>}
 
       {recipients.length>0&&<>
         <Label>Recipients</Label>
