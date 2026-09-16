@@ -226,7 +226,7 @@ async function saveInvite(inv:any,m:any,dryRun:boolean){
     date:inv.start.date,time:inv.start.time,'endTime':inv.endTime||'',
     'eventType':inv.cancelled?'Meeting':'Pending',status:inv.cancelled?'cancelled':'pending',
     notes,source:'ics_auto','assignedTo':ADMIN_OWNER,contact_email:inv.organizerEmail||sender||null,
-    product_id:ADMIN_PRODUCT,tenant_id:ADMIN_TENANT,updated_at:new Date().toISOString(),
+    product_id:inv.sourceProduct||ADMIN_PRODUCT,tenant_id:ADMIN_TENANT,updated_at:new Date().toISOString(),
   }
   if(dryRun)return {action:'dry_run',payload}
   const {data:exact}=await db.from('calevents').select('id,notes,date,title,contact_email').eq('id',id).maybeSingle()
