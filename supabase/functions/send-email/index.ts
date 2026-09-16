@@ -126,7 +126,7 @@ async function sendViaStalwartJmap(opts: { host:string, username:string, passwor
   return { submissionId:String(submission.created.sendIt.id), accountId:String(accountId) }
 }
 
-async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, username:string, password:string, fromAddress?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, username:string, password:string, fromAddress?:string, replyTo?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
   const encoder=new TextEncoder(), decoder=new TextDecoder()
   let conn:Deno.TcpConn|Deno.TlsConn
   if(opts.port===465||opts.ssl) conn=await Deno.connectTls({hostname:opts.host,port:opts.port})
@@ -155,6 +155,7 @@ async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, userna
   const headers=[
     `From: ${enc(safe(opts.fromName))} <${envelopeFrom}>`,
     `To: ${safe(opts.to)}`,
+    ...(opts.replyTo ? [`Reply-To: ${safe(opts.replyTo)}`] : []),
     `Subject: ${enc(safe(opts.subject))}`,
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
@@ -164,6 +165,24 @@ async function sendSmtpRaw(opts: { host:string, port:number, ssl:boolean, userna
   await write(payload+'\r\n.'); resp=await read(); expect(resp,['250'],'SMTP message acceptance')
   await write('QUIT')
   conn.close()
+}
+
+async function sendViaStalwartNoSent(opts: { host:string, port?:number, username:string, password:string, fromAddress?:string, replyTo?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+  await sendSmtpRaw({
+    host:opts.host,
+    port:Number(opts.port||465),
+    ssl:Number(opts.port||465)===465,
+    username:opts.username,
+    password:opts.password,
+    fromAddress:opts.fromAddress,
+    replyTo:opts.replyTo,
+    fromName:opts.fromName,
+    to:opts.to,
+    subject:opts.subject,
+    html:opts.html,
+    text:opts.text,
+  })
+  return { submissionId:`smtp-${crypto.randomUUID()}` }
 }
 
 async function normalizeDocUrl(admin: any, baseUrl: string, input: string) {
@@ -335,8 +354,9 @@ serve(async (req) => {
         })
       }
 
-      const sendResult = await sendViaStalwartJmap({
+      const sendResult = await sendViaStalwartNoSent({
         host:transport.host,
+        port:transport.port,
         username:transport.username,
         password:transport.password,
         fromAddress:safe(transport.fromAddress||transport.username).toLowerCase(),
@@ -658,8 +678,9 @@ serve(async (req) => {
 
       const submissions:any[]=[]
       for (const recipient of recipients) {
-        const result=await sendViaStalwartJmap({
+        const result=await sendViaStalwartNoSent({
           host: transport.host,
+          port: Number(vaultTransport.port||465),
           username: transport.username,
           password: transport.password,
           fromAddress: transport.fromAddress,
