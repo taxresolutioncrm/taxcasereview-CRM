@@ -2054,7 +2054,7 @@ function Email(){
               <div style={{fontSize:13,fontWeight:900,color:'#22c55e',margin:'4px 0 10px'}}>From: {detail.replyFrom||'No matching identity'}</div>
               <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} placeholder="Write your reply…" rows={7} style={{width:'100%',boxSizing:'border-box',resize:'vertical',borderRadius:9,border:'1px solid rgba(99,102,241,.25)',background:'rgba(255,255,255,.03)',color:'#fff',padding:12,fontFamily:'inherit',fontSize:13,outline:'none'}}/>
               <div style={{display:'flex',justifyContent:'flex-end',marginTop:10}}>
-                <button onClick={sendReply} disabled={sending||!replyBody.trim()||!detail.replyFrom} style={{...S.btn('primary'),opacity:sending||!replyBody.trim()||!detail.replyFrom?.7:1}}>{sending?'Sending…':'Send Reply'}</button>
+                <button onClick={sendReply} disabled={sending||!replyBody.trim()||!detail.replyFrom} style={{...S.btn('primary'),opacity:(sending||!replyBody.trim()||!detail.replyFrom)?0.7:1}}>{sending?'Sending…':'Send Reply'}</button>
               </div>
             </div>
           </>}
