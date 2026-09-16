@@ -158,8 +158,8 @@ function outlookLink(url:string){
     return {uid:'outlook-'+fnv1a(url),summary:u.searchParams.get('subject')||'Calendar Invite',start,end,endTime:end.time,description:desc,location:loc,url:meetingUrl(desc+' '+loc),organizerEmail:'',organizerName:'',method:'REQUEST',sequence:0,cancelled:false}
   }catch{return null}
 }
-async function transport(){
-  const {data,error}=await db.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'romylabs'})
+async function transport(product:string){
+  const {data,error}=await db.rpc('romylabs_stalwart_transport_for_product',{p_product_key:product})
   if(error)throw error
   if(!data?.ok)throw new Error(data?.error||'Stalwart transport unavailable')
   return data
@@ -260,36 +260,47 @@ Deno.serve(async(req)=>{
     const body=await req.json().catch(()=>({}))
     const dryRun=body?.dry_run===true
     const limit=Math.min(Math.max(Number(body?.limit)||40,1),100)
-    const t=await transport(),j=await session(t)
-    const meta=await call(j,[['Mailbox/get',{accountId:j.accountId,properties:['id','role','name']},'m']])
-    const inbox=response(meta,'Mailbox/get','m')?.list?.find((x:any)=>lower(x.role)==='inbox')
-    if(!inbox?.id)throw new Error('Stalwart Inbox unavailable')
-    const q=await call(j,[['Email/query',{accountId:j.accountId,filter:{inMailbox:inbox.id},sort:[{property:'receivedAt',isAscending:false}],limit},'q']])
-    const ids=response(q,'Email/query','q')?.ids||[]
-    if(!ids.length)return json({ok:true,scanned:0,candidates:0,changes:[]})
-    const g=await call(j,[['Email/get',{accountId:j.accountId,ids,properties:['id','threadId','from','to','subject','receivedAt','bodyStructure','textBody','htmlBody','bodyValues'],fetchAllBodyValues:true,maxBodyValueBytes:1000000},'g']])
-    const list=response(g,'Email/get','g')?.list||[]
-    if(body?.debug===true){
-      const diagnostics=list.map((m:any)=>({
-        emailId:m.id,
-        subject:m.subject,
-        receivedAt:m.receivedAt,
-        from:m.from?.[0]?.email||'',
-        parts:traversePart(m.bodyStructure).map((p:any)=>({partId:p.partId||'',type:p.type||'',name:p.name||'',disposition:p.disposition||'',hasInlineValue:!!m.bodyValues?.[p.partId]?.value,blobId:!!p.blobId})),
-        urls:findUrls([...(m.textBody||[]),...(m.htmlBody||[])].map((p:any)=>String(m.bodyValues?.[p.partId]?.value||'')).join('\n')).slice(0,10),
-      }))
-      return json({ok:true,dryRun:true,debug:true,scanned:list.length,diagnostics})
-    }
+    const products=Array.isArray(body?.products)&&body.products.length?body.products.map((x:any)=>String(x)):['romylabs','taxres_crm']
+    const allDiagnostics:any[]=[]
     const changes:any[]=[]
-    for(const m of list){
+    let scanned=0
+    const mailboxErrors:any[]=[]
+    for(const product of products){
       try{
-        const inv=await extractInvite(j,m)
-        if(!inv)continue
-        const result=await saveInvite(inv,m,dryRun)
-        changes.push({emailId:m.id,subject:m.subject,receivedAt:m.receivedAt,invite:{uid:inv.uid,summary:inv.summary,date:inv.start.date,time:inv.start.time,endTime:inv.endTime,url:inv.url,cancelled:inv.cancelled},...result})
-      }catch(e){changes.push({emailId:m.id,subject:m.subject,error:e instanceof Error?e.message:String(e)})}
+        const t=await transport(product),j=await session(t)
+        const meta=await call(j,[['Mailbox/get',{accountId:j.accountId,properties:['id','role','name']},'m']])
+        const inbox=response(meta,'Mailbox/get','m')?.list?.find((x:any)=>lower(x.role)==='inbox')
+        if(!inbox?.id)throw new Error('Stalwart Inbox unavailable')
+        const q=await call(j,[['Email/query',{accountId:j.accountId,filter:{inMailbox:inbox.id},sort:[{property:'receivedAt',isAscending:false}],limit},'q']])
+        const ids=response(q,'Email/query','q')?.ids||[]
+        if(!ids.length)continue
+        const g=await call(j,[['Email/get',{accountId:j.accountId,ids,properties:['id','threadId','from','to','subject','receivedAt','bodyStructure','textBody','htmlBody','bodyValues'],fetchAllBodyValues:true,maxBodyValueBytes:1000000},'g']])
+        const list=response(g,'Email/get','g')?.list||[]
+        scanned+=list.length
+        if(body?.debug===true){
+          allDiagnostics.push(...list.map((m:any)=>({
+            product,
+            emailId:m.id,
+            subject:m.subject,
+            receivedAt:m.receivedAt,
+            from:m.from?.[0]?.email||'',
+            parts:traversePart(m.bodyStructure).map((p:any)=>({partId:p.partId||'',type:p.type||'',name:p.name||'',disposition:p.disposition||'',hasInlineValue:!!m.bodyValues?.[p.partId]?.value,blobId:!!p.blobId})),
+            urls:findUrls([...(m.textBody||[]),...(m.htmlBody||[])].map((p:any)=>String(m.bodyValues?.[p.partId]?.value||'')).join('\n')).slice(0,10),
+          })))
+          continue
+        }
+        for(const m of list){
+          try{
+            const inv=await extractInvite(j,m)
+            if(!inv)continue
+            const result=await saveInvite(inv,m,dryRun)
+            changes.push({product,emailId:m.id,subject:m.subject,receivedAt:m.receivedAt,invite:{uid:inv.uid,summary:inv.summary,date:inv.start.date,time:inv.start.time,endTime:inv.endTime,url:inv.url,cancelled:inv.cancelled},...result})
+          }catch(e){changes.push({product,emailId:m.id,subject:m.subject,error:e instanceof Error?e.message:String(e)})}
+        }
+      }catch(e){mailboxErrors.push({product,error:e instanceof Error?e.message:String(e)})}
     }
-    return json({ok:true,dryRun,scanned:list.length,candidates:changes.length,changes})
+    if(body?.debug===true)return json({ok:mailboxErrors.length===0,dryRun:true,debug:true,scanned,diagnostics:allDiagnostics,mailboxErrors})
+    return json({ok:mailboxErrors.length===0,dryRun,scanned,candidates:changes.length,changes,mailboxErrors},mailboxErrors.length?207:200)
   }catch(e){
     console.error('stalwart-calendar-sync',e)
     return json({ok:false,error:e instanceof Error?e.message:String(e)},500)
