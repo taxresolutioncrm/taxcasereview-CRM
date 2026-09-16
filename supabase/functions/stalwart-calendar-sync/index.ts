@@ -269,6 +269,17 @@ Deno.serve(async(req)=>{
     if(!ids.length)return json({ok:true,scanned:0,candidates:0,changes:[]})
     const g=await call(j,[['Email/get',{accountId:j.accountId,ids,properties:['id','threadId','from','to','subject','receivedAt','bodyStructure','textBody','htmlBody','bodyValues'],fetchAllBodyValues:true,maxBodyValueBytes:1000000},'g']])
     const list=response(g,'Email/get','g')?.list||[]
+    if(body?.debug===true){
+      const diagnostics=list.map((m:any)=>({
+        emailId:m.id,
+        subject:m.subject,
+        receivedAt:m.receivedAt,
+        from:m.from?.[0]?.email||'',
+        parts:traversePart(m.bodyStructure).map((p:any)=>({partId:p.partId||'',type:p.type||'',name:p.name||'',disposition:p.disposition||'',hasInlineValue:!!m.bodyValues?.[p.partId]?.value,blobId:!!p.blobId})),
+        urls:findUrls([...(m.textBody||[]),...(m.htmlBody||[])].map((p:any)=>String(m.bodyValues?.[p.partId]?.value||'')).join('\n')).slice(0,10),
+      }))
+      return json({ok:true,dryRun:true,debug:true,scanned:list.length,diagnostics})
+    }
     const changes:any[]=[]
     for(const m of list){
       try{
