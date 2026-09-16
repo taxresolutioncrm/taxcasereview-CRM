@@ -333,11 +333,11 @@ async function loadPlatformOfficeRows() {
 const NAV = [
   { path:'/crm-admin',                label:'Overview',        icon:'📊' },
   { path:'/crm-admin/email',          label:'Email',           icon:'📧' },
+  { path:'/crm-admin/calendar',       label:'Calendar',        icon:'📅' },
   { path:'/crm-admin/command-center', label:'Command Center',  icon:'⚡' },
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
-  { path:'/crm-admin/dialer',         label:'Communications', icon:'📞' },
-  { path:'/crm-admin/calendar',       label:'Calendar',       icon:'📅' },
+  { path:'/crm-admin/dialer',         label:'Communications',  icon:'📞' },
   { path:'/crm-admin/meet',           label:'Meet & Training', icon:'🎥' },
   { path:'/crm-admin/chat',           label:'Chat (All)',      icon:'💬' },
   { path:'/crm-admin/provision',      label:'+ New Office',   icon:'➕' },
