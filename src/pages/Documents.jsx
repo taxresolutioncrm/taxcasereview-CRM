@@ -57,6 +57,10 @@ export default function Documents() {
   const [viewMode,     setViewMode]      = useState(() => localStorage.getItem('docs_view') || 'grid') // 'grid' | 'list' | 'table'
   const [sortCol,      setSortCol]       = useState('created_at')
   const [sortDir,      setSortDir]       = useState('desc')
+  const [previewDoc,   setPreviewDoc]    = useState(null)
+  const [previewUrl,   setPreviewUrl]    = useState('')
+  const [previewLoading,setPreviewLoading]= useState(false)
+  const [cardPreviewUrls,setCardPreviewUrls] = useState({})
 
   function changeView(v) { setViewMode(v); localStorage.setItem('docs_view', v) }
   function toggleSort(col) {
@@ -84,7 +88,9 @@ export default function Documents() {
     if (clientFilter) q = q.ilike('client', `%${clientFilter}%`)
     if (folder !== 'All') q = q.eq('docType', folder)
     const { data: docsData } = await q
-    setDocs(Array.isArray(docsData) ? docsData : [])
+    const nextDocs = Array.isArray(docsData) ? docsData : []
+    setDocs(nextDocs)
+    loadCardPreviews(nextDocs).catch(()=>{})
 
     // Load clients + leads for autocomplete
     const [{ data: cl }, { data: ld }] = await Promise.all([
@@ -107,6 +113,43 @@ export default function Documents() {
   }
 
   function showToast(msg) { setToast(String(msg || '')); setTimeout(()=>setToast(''),3000) }
+
+  function docDisplayName(doc) { return doc?.file_name || doc?.name || 'Document' }
+  function docExt(doc) { return (docDisplayName(doc).split('.').pop() || '').toLowerCase() }
+  function docPreviewKind(doc) {
+    const ext = docExt(doc)
+    if (ext === 'pdf') return 'pdf'
+    if (['jpg','jpeg','png','gif','webp','tif','tiff'].includes(ext)) return 'image'
+    return 'other'
+  }
+  async function resolveDocUrl(doc) {
+    if (!doc?.file_url) return ''
+    return (await getDocumentUrl(supabase, doc.file_url)) || ''
+  }
+  async function previewDocument(doc) {
+    if (!doc?.file_url) return
+    setPreviewDoc(doc)
+    setPreviewUrl('')
+    setPreviewLoading(true)
+    try {
+      const url = await resolveDocUrl(doc)
+      if (!url) throw new Error('Document URL unavailable')
+      setPreviewUrl(url)
+    } catch (e) {
+      setPreviewDoc(null)
+      showToast('Could not preview document: ' + (e?.message || e))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+  async function loadCardPreviews(rows) {
+    const candidates=(rows||[]).filter(doc=>doc?.file_url && ['pdf','image'].includes(docPreviewKind(doc))).slice(0,40)
+    if(!candidates.length){ setCardPreviewUrls({}); return }
+    const pairs=await Promise.all(candidates.map(async doc=>{
+      try{return [doc.id,await resolveDocUrl(doc)]}catch{return [doc.id,'']}
+    }))
+    setCardPreviewUrls(Object.fromEntries(pairs.filter(([,url])=>url)))
+  }
 
   async function saveCustomFolder() {
     const name = String(newFolderName || '').trim()
@@ -189,8 +232,17 @@ export default function Documents() {
 
   async function openDocument(doc) {
     if (!doc?.file_url) return
-    const url = await getDocumentUrl(supabase, doc.file_url)
-    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    const tab = window.open('about:blank','_blank')
+    if (tab) tab.opener = null
+    try {
+      const url = previewDoc?.id===doc?.id && previewUrl ? previewUrl : await resolveDocUrl(doc)
+      if (!url) throw new Error('Document URL unavailable')
+      if (tab) tab.location.href = url
+      else showToast('Allow pop-ups to open documents')
+    } catch (e) {
+      if (tab) tab.close()
+      showToast('Could not open document: ' + (e?.message || e))
+    }
   }
 
   const needle = search.toLowerCase()
@@ -278,20 +330,75 @@ export default function Documents() {
           </div>)}
         </div>
       ) : (
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:12}}>
-          {filtered.map(d=><div key={d.id} className="card" style={{padding:16,position:'relative'}}>
-            <div style={{fontSize:34,marginBottom:10}}>{fileIcon(d.file_name)}</div>
-            <div style={{fontWeight:700,color:'var(--tx)',fontSize:14,marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}} title={d.name || 'Untitled document'}>{d.name || 'Untitled document'}</div>
-            <div style={{fontSize:11,color:'var(--t3)',marginBottom:3}}>{d.client||'General'}</div>
-            <span className="badge blue" style={{fontSize:9}}>{d.docType||'Unfiled'}</span>
-            {d.notes&&<div style={{fontSize:10,color:'var(--t3)',marginTop:8,fontStyle:'italic'}}>{d.notes}</div>}
-            <div style={{fontSize:10,color:'var(--t3)',marginTop:10}}>{fmtSize(d.file_size)} · {fmtDate(d.created_at)}</div>
-            <div style={{display:'flex',gap:5,marginTop:10}}>
-              {d.file_url&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}
-              <button className="btn sm" onClick={()=>addNote(d)}>✏️</button>
-              {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:'22px 28px',alignItems:'start'}}>
+          {filtered.map(doc=>{
+            const cardUrl=cardPreviewUrls[doc.id]||''
+            const isPdf=docPreviewKind(doc)==='pdf'
+            const isImage=docPreviewKind(doc)==='image'
+            return (
+              <div key={doc.id} style={{minWidth:0}}>
+                <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:8,marginBottom:6}}>
+                  <div style={{fontSize:12,fontWeight:800,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{doc.name||docDisplayName(doc)}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',whiteSpace:'nowrap'}}>{fmtDate(doc.created_at)}</div>
+                </div>
+                <div style={{border:'1px solid var(--br)',borderRadius:4,overflow:'hidden',background:'#fff',boxShadow:'0 1px 2px rgba(0,0,0,.08)'}}>
+                  <div style={{height:28,display:'flex',alignItems:'center',gap:7,padding:'0 9px',background:'#69b8ee',color:'#fff',fontSize:10,fontWeight:800}}>
+                    <span style={{width:9,height:9,border:'1px solid rgba(255,255,255,.75)',display:'inline-block'}}/>
+                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{doc.docType||'Document'}</span>
+                    <span style={{marginLeft:'auto',fontSize:10}}>{docExt(doc).toUpperCase()}</span>
+                  </div>
+                  <button type="button" onClick={()=>previewDocument(doc)} style={{display:'block',width:'100%',height:295,padding:0,border:0,background:'#fff',cursor:doc.file_url?'pointer':'default',position:'relative',overflow:'hidden'}}>
+                    {isPdf&&cardUrl ? (
+                      <iframe src={cardUrl+'#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH'} title={'Document thumbnail '+doc.id} style={{width:'100%',height:'100%',border:0,pointerEvents:'none',background:'#fff'}}/>
+                    ) : isImage&&cardUrl ? (
+                      <img src={cardUrl} alt={docDisplayName(doc)} style={{width:'100%',height:'100%',objectFit:'contain',pointerEvents:'none',background:'#fff'}}/>
+                    ) : (
+                      <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#7b8794'}}>
+                        <div style={{fontSize:40}}>{fileIcon(docDisplayName(doc))}</div>
+                        <div style={{fontSize:11,fontWeight:700}}>{doc.file_url?'Document preview':'No file attached'}</div>
+                      </div>
+                    )}
+                  </button>
+                  <div style={{minHeight:32,display:'flex',alignItems:'center',gap:7,padding:'0 9px',background:'#f3f5fb',borderTop:'1px solid #e1e5ec',fontSize:10,color:'#394150'}}>
+                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{doc.client||'General'}</span>
+                    <span style={{marginLeft:'auto'}}>{doc.file_size?fmtSize(doc.file_size):''}</span>
+                  </div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5,marginTop:7,flexWrap:'wrap'}}>
+                  {doc.file_url&&<>
+                    <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewDocument(doc)}>Preview</button>
+                    <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openDocument(doc)}>Open ↗</button>
+                  </>}
+                  <button className="btn sm" onClick={()=>addNote(doc)}>✏️</button>
+                  {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(doc)}>🗑</button>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}}
+
+      {previewDoc&&(
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setPreviewDoc(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{width:'min(1100px,94vw)',height:'min(820px,88vh)',display:'flex',flexDirection:'column',padding:0,overflow:'hidden'}}>
+            <div className="modal-header" style={{padding:'10px 14px'}}>
+              <div style={{minWidth:0}}>
+                <h2 style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>{docDisplayName(previewDoc)}</h2>
+                <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>{previewDoc.client||'General'} · {previewDoc.docType||'Other'}{previewDoc.file_size?` · ${fmtSize(previewDoc.file_size)}`:''}</div>
+              </div>
+              <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                {previewUrl&&<button className="btn sm" onClick={()=>openDocument(previewDoc)}>Open ↗</button>}
+                <button className="modal-close" onClick={()=>setPreviewDoc(null)}>×</button>
+              </div>
             </div>
-          </div>)}
+            <div style={{flex:1,minHeight:0,background:'#222',position:'relative'}}>
+              {previewLoading?<div style={{padding:40,textAlign:'center',color:'#fff'}}>Loading secure preview…</div>
+              :!previewUrl?<div style={{padding:40,textAlign:'center',color:'#fff'}}>Preview unavailable.</div>
+              :docPreviewKind(previewDoc)==='pdf'?<iframe title={docDisplayName(previewDoc)} src={previewUrl} style={{width:'100%',height:'100%',border:0,background:'#fff'}}/>
+              :docPreviewKind(previewDoc)==='image'?<div style={{width:'100%',height:'100%',overflow:'auto',textAlign:'center',padding:16}}><img src={previewUrl} alt={docDisplayName(previewDoc)} style={{maxWidth:'100%',height:'auto'}}/></div>
+              :<div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:30,textAlign:'center',color:'#fff'}}><div><div style={{fontSize:60,marginBottom:12}}>{fileIcon(docDisplayName(previewDoc))}</div><div style={{fontWeight:800,marginBottom:12}}>Preview not available for this file type</div><button className="btn primary" onClick={()=>openDocument(previewDoc)}>Open Document</button></div></div>}
+            </div>
+          </div>
         </div>
       )}
 
