@@ -2533,7 +2533,7 @@ function StatusDot({ ok }) {
 
 
 
-function ProductReportingSelector({ value, onChange, channel, gscConnected, activeGscProduct, registryProducts, marketingConnectedProducts=[], seoConnectedProducts=[], clarityConnectedProducts=[] }) {
+function ProductReportingSelector({ value, onChange, channel, gscConnected, activeGscProduct, registryProducts, marketingConnectedProducts=[], marketingBlockedProducts=[], seoConnectedProducts=[], clarityConnectedProducts=[] }) {
   // Derives entirely from romylabs_products registry — no hardcoded product list.
   // Integration status starts as 'pending' (setup needed) for all products.
   // Live GSC connection overrides the SEO badge when gscConnected===true for the active product.
@@ -2564,9 +2564,12 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
         // Live GSC connection overrides static label for the active product on the SEO channel
         const isGscLive = channel === 'seo' && (seoConnectedProducts.includes(p.key) || (gscConnected && p.key === activeGscProduct))
         const isMarketingLive = channel === 'marketing' && marketingConnectedProducts.includes(p.key)
+        const isMarketingBlocked = channel === 'marketing' && marketingBlockedProducts.includes(p.key)
         const isClarityLive = channel === 'seo' && clarityConnectedProducts.includes(p.key)
         const statusLabel = isMarketingLive
           ? 'GA4 Connected'
+          : isMarketingBlocked
+          ? 'GA4 Needs Access'
           : isGscLive && isClarityLive
           ? 'GSC + Clarity'
           : isGscLive
@@ -2576,7 +2579,8 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
           : status === 'connected' ? 'Connected'
           : status === 'implemented' ? `${channel === 'seo' ? 'SEO' : 'Marketing'} implemented · reporting pending`
           : 'Setup needed'
-        const statusColor = (status === 'connected' || isGscLive || isMarketingLive || isClarityLive) ? '#10b981'
+        const statusColor = isMarketingBlocked ? '#ef4444'
+          : (status === 'connected' || isGscLive || isMarketingLive || isClarityLive) ? '#10b981'
           : status === 'implemented' ? '#a78bfa'
           : '#f59e0b'
         return (
@@ -4527,10 +4531,11 @@ function CommandCenter() {
       setGscLiveProducts((data || []).filter(r => r.status === 'live').map(r => r.product_id))
     })
     supabase.from('product_traffic_channels').select('product_id,status,tracking_id').eq('channel_key','ga4').then(({ data, error }) => {
-      if (error) { setGa4EnabledProducts([]); setGa4LiveProducts([]); return }
+      if (error) { setGa4EnabledProducts([]); setGa4LiveProducts([]); setGa4BlockedProducts([]); return }
       const rows = data || []
-      setGa4EnabledProducts(rows.filter(r => r.tracking_id && ['configured','live'].includes(r.status)).map(r => r.product_id))
+      setGa4EnabledProducts(rows.filter(r => r.tracking_id && ['configured','live','blocked'].includes(r.status)).map(r => r.product_id))
       setGa4LiveProducts(rows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id))
+      setGa4BlockedProducts(rows.filter(r => r.status === 'blocked' && r.tracking_id).map(r => r.product_id))
     })
     supabase.from('product_traffic_channels')
       .select('product_id,status,tracking_id,destination_url,last_verified_at,notes')
@@ -4544,6 +4549,7 @@ function CommandCenter() {
   const [reportingProducts, setReportingProducts] = React.useState([])
   const [ga4EnabledProducts, setGa4EnabledProducts] = React.useState([])
   const [ga4LiveProducts, setGa4LiveProducts] = React.useState([])
+  const [ga4BlockedProducts, setGa4BlockedProducts] = React.useState([])
   const [gscLiveProducts, setGscLiveProducts] = React.useState([])
   const [clarityRows, setClarityRows] = React.useState([])
   React.useEffect(() => {
@@ -4727,43 +4733,56 @@ function CommandCenter() {
   async function loadGA4() {
     setGa4Loading(true)
     try {
-      // Trigger a fresh sync first (no-op if fn not yet deployed)
-      await supabase.functions.invoke('ga4-sync', { body: { product_id: marketingProduct } }).catch(() => {})
+      const { data: syncResult, error: syncInvokeError } = await supabase.functions.invoke('ga4-sync', { body: { product_id: marketingProduct } })
+      const syncProblem = syncInvokeError?.message || (syncResult?.ok === false ? syncResult?.error : '')
 
-      // Read results from cache tables
       const utcToday = new Date().toISOString().slice(0,10)
       const [{ data: traffic }, { data: pages }, { data: syncLog }] = await Promise.all([
-        supabase.from('marketing_ga4_traffic').select('*').eq('product_id', marketingProduct).gte('date', new Date(Date.now()-7*86400000).toISOString().slice(0,10)).order('date',{ascending:false}),
+        supabase.from('marketing_ga4_traffic').select('*').eq('product_id', marketingProduct).gte('date', new Date(Date.now()-31*86400000).toISOString().slice(0,10)).order('date',{ascending:false}),
         supabase.from('marketing_ga4_pages').select('*').eq('product_id', marketingProduct).gte('date', new Date(Date.now()-8*86400000).toISOString().slice(0,10)).order('date',{ascending:false}).order('sessions',{ascending:false}).limit(100),
         supabase.from('marketing_sync_log').select('*').eq('product_id', marketingProduct).eq('source','ga4').order('synced_at',{ascending:false}).limit(1),
       ])
 
-      // GA4 report dates follow each property's configured timezone, which may differ from UTC.
-      // Always use the latest date actually returned by GA4 instead of filtering against UTC "today".
-      const reportingDate = (traffic || []).reduce((latest, r) => (!latest || r.date > latest ? r.date : latest), '') || utcToday
+      const allTraffic = traffic || []
+      const totalRows = allTraffic.filter(r => r.channel === '__TOTAL__')
+      const channelRows = allTraffic.filter(r => r.channel !== '__TOTAL__')
+      const reportingDate = totalRows.reduce((latest, r) => (!latest || r.date > latest ? r.date : latest), '')
+        || channelRows.reduce((latest, r) => (!latest || r.date > latest ? r.date : latest), '')
+        || utcToday
       const latestPageDate = (pages || []).reduce((latest, r) => (!latest || r.date > latest ? r.date : latest), '')
       const latestPages = (pages || []).filter(r => !latestPageDate || r.date === latestPageDate).slice(0, 10)
-      const todayRows = (traffic||[]).filter(r=>r.date===reportingDate)
-      const totalSessions   = todayRows.reduce((s,r)=>s+Number(r.sessions||0),0)
-      const totalUsers      = todayRows.reduce((s,r)=>s+Number(r.users||0),0)
-      const totalNewUsers   = todayRows.reduce((s,r)=>s+Number(r.new_users||0),0)
-      const totalPageViews  = todayRows.reduce((s,r)=>s+Number(r.page_views||0),0)
-      const avgBounce       = todayRows.length ? todayRows.reduce((s,r)=>s+Number(r.bounce_rate||0),0)/todayRows.length : 0
-      const avgPages        = todayRows.length ? todayRows.reduce((s,r)=>s+Number(r.pages_per_session||0),0)/todayRows.length : 0
+      const todayTotal = totalRows.find(r => r.date === reportingDate)
+      const todayRows = channelRows.filter(r => r.date === reportingDate)
 
-      // Yesterday comparison
-      const yest = new Date(Date.now()-86400000).toISOString().slice(0,10)
-      const yestRows = (traffic||[]).filter(r=>r.date===yest)
-      const yestSessions = yestRows.reduce((s,r)=>s+Number(r.sessions||0),0)
-      const sessionChange = yestSessions>0 ? Math.round(((totalSessions-yestSessions)/yestSessions)*100) : 0
+      const fallbackSessions = todayRows.reduce((sum,r)=>sum+Number(r.sessions||0),0)
+      const fallbackPageViews = todayRows.reduce((sum,r)=>sum+Number(r.page_views||0),0)
+      const totalSessions = todayTotal ? Number(todayTotal.sessions||0) : fallbackSessions
+      const totalUsers = todayTotal ? Number(todayTotal.users||0) : todayRows.reduce((sum,r)=>sum+Number(r.users||0),0)
+      const totalNewUsers = todayTotal ? Number(todayTotal.new_users||0) : todayRows.reduce((sum,r)=>sum+Number(r.new_users||0),0)
+      const totalPageViews = todayTotal ? Number(todayTotal.page_views||0) : fallbackPageViews
+      const avgBounce = todayTotal
+        ? Number(todayTotal.bounce_rate||0)
+        : (fallbackSessions ? todayRows.reduce((sum,r)=>sum+(Number(r.bounce_rate||0)*Number(r.sessions||0)),0)/fallbackSessions : 0)
+      const avgPages = todayTotal
+        ? Number(todayTotal.pages_per_session||0)
+        : (fallbackSessions ? fallbackPageViews/fallbackSessions : 0)
 
-      // Channel breakdown
+      const previousDateObj = new Date(reportingDate + 'T12:00:00Z')
+      previousDateObj.setUTCDate(previousDateObj.getUTCDate()-1)
+      const previousDate = previousDateObj.toISOString().slice(0,10)
+      const previousTotal = totalRows.find(r => r.date === previousDate)
+      const previousRows = channelRows.filter(r => r.date === previousDate)
+      const previousSessions = previousTotal
+        ? Number(previousTotal.sessions||0)
+        : previousRows.reduce((sum,r)=>sum+Number(r.sessions||0),0)
+      const sessionChange = previousSessions>0 ? Math.round(((totalSessions-previousSessions)/previousSessions)*100) : 0
+
       const channels = []
       const channelMap = {}
       for (const r of todayRows) {
         channelMap[r.channel||'Direct'] = (channelMap[r.channel||'Direct']||0) + Number(r.sessions||0)
       }
-      const totalCh = Object.values(channelMap).reduce((s,v)=>s+v,0)||1
+      const totalCh = Object.values(channelMap).reduce((sum,v)=>sum+v,0)||1
       const COLORS = {
         'Organic Search':'#6366f1','Direct':'#0ea5e9','Referral':'#10b981',
         'Organic Social':'#f59e0b','Email':'#ec4899','Paid Search':'#8b5cf6','Unassigned':'#64748b'
@@ -4773,21 +4792,32 @@ function CommandCenter() {
       }
 
       const lastSync = syncLog?.[0]
-      setGa4Data({
-        sessions: totalSessions,
-        users: totalUsers,
-        newUsers: totalNewUsers,
-        pageViews: totalPageViews,
-        bounceRate: avgBounce.toFixed(1),
-        pagesPerSession: avgPages.toFixed(1),
-        sessionChange,
-        channels: channels.length ? channels : [{ label:'No data yet', pct:100, color:'#334155' }],
-        topPages: latestPages.map(p=>({ path:p.page_path, views:p.sessions, avgTime: Math.round(p.avg_time_sec||0)+'s' })),
-        lastSync: lastSync ? new Date(lastSync.synced_at).toLocaleTimeString() : 'never',
-        status: lastSync?.status || 'pending',
-      })
+      if (syncProblem && !todayTotal && todayRows.length===0) {
+        setGa4Data({
+          error: syncProblem,
+          lastSync: lastSync ? new Date(lastSync.synced_at).toLocaleTimeString() : 'never',
+          status:'error',
+        })
+      } else {
+        setGa4Data({
+          sessions: totalSessions,
+          users: totalUsers,
+          newUsers: totalNewUsers,
+          pageViews: totalPageViews,
+          bounceRate: avgBounce.toFixed(1),
+          pagesPerSession: avgPages.toFixed(1),
+          sessionChange,
+          channels: channels.length ? channels : [{ label:'No session source data yet', pct:100, color:'#334155' }],
+          topPages: latestPages.map(p=>({ path:p.page_path, views:p.sessions, avgTime: Math.round(p.avg_time_sec||0)+'s' })),
+          lastSync: lastSync ? new Date(lastSync.synced_at).toLocaleTimeString() : 'never',
+          status: lastSync?.status || 'pending',
+          syncWarning: syncProblem || '',
+          reportingDate,
+        })
+      }
     } catch(e) {
       console.error('GA4 load error:', e)
+      setGa4Data({ error:String(e?.message || e), status:'error', lastSync:'never' })
     }
     setGa4Loading(false)
   }
@@ -4827,7 +4857,7 @@ function CommandCenter() {
     { key:'overview',  label:'Overview'  },
     { key:'support',   label:'Support'   },
     { key:'products',  label:'Products'  },
-    { key:'marketing', label:'Product Usage' },
+    { key:'marketing', label:'Analytics' },
     { key:'search',    label:'SEO'       },
     { key:'linkedin',  label:'LinkedIn'  },
     { key:'content',   label:'Content'   },
@@ -5192,14 +5222,14 @@ function CommandCenter() {
 
         </>)}
 
-        {/* ═══ PRODUCT USAGE TAB ═══ */}
+        {/* ═══ ANALYTICS TAB — GOOGLE ANALYTICS 4 ═══ */}
         {tab==='marketing' && (<>
           <div style={{ marginBottom:16, padding:'12px 16px', borderRadius:10, background:'rgba(14,165,233,.07)', border:'1px solid rgba(14,165,233,.18)' }}>
-            <div style={{ fontSize:12, fontWeight:800, color:'#7dd3fc', marginBottom:4 }}>Product Usage · GA4 tracked activity</div>
-            <div style={{ fontSize:11, color:'#64748b', lineHeight:1.5 }}>These metrics show tracked website/app sessions and route activity. They are not the same as marketing leads or SEO performance. Use SEO for organic search visibility and Sales for lead/demo conversion.</div>
+            <div style={{ fontSize:12, fontWeight:800, color:'#7dd3fc', marginBottom:4 }}>Analytics · Google Analytics 4 (GA4)</div>
+            <div style={{ fontSize:11, color:'#64748b', lineHeight:1.5 }}>Live GA4 traffic and behavior metrics for each RomyLabs product. SEO remains separate for organic search visibility; Sales remains separate for leads and demos.</div>
           </div>
           <ProductReportingSelector value={marketingProduct} onChange={setMarketingProduct} channel="marketing"
-            registryProducts={reportingProducts} marketingConnectedProducts={ga4LiveProducts} />
+            registryProducts={reportingProducts} marketingConnectedProducts={ga4LiveProducts} marketingBlockedProducts={ga4BlockedProducts} />
           {ga4EnabledProducts.includes(marketingProduct) ? <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
             <div style={{ fontSize:11, color:'#475569' }}>
@@ -5215,13 +5245,20 @@ function CommandCenter() {
               <div style={{ fontSize:28, marginBottom:12 }}>📊</div>
               <div>Pulling data from Google Analytics…</div>
             </div>
+          ) : ga4Data?.error ? (
+            <div style={{ ...CC.card(), padding:'24px', border:'1px solid rgba(239,68,68,.25)' }}>
+              <div style={{fontSize:13,fontWeight:800,color:'#fca5a5',marginBottom:6}}>GA4 data unavailable</div>
+              <div style={{fontSize:11,color:'#94a3b8',lineHeight:1.5}}>{ga4Data.error}</div>
+              <div style={{fontSize:10,color:'#475569',marginTop:8}}>Last attempt: {ga4Data.lastSync}</div>
+            </div>
           ) : ga4Data ? (<>
+            {ga4Data.syncWarning && <div style={{marginBottom:14,padding:'10px 12px',borderRadius:8,background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.2)',color:'#fbbf24',fontSize:11}}>Latest Google sync failed; showing the most recent cached GA4 data.</div>}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
               {[
-                { label:'Tracked Sessions Today',    value: ga4Data.sessions.toLocaleString(), sub: ga4Data.sessionChange!==0 ? `${ga4Data.sessionChange>0?'↑':'↓'} ${Math.abs(ga4Data.sessionChange)}% vs yesterday` : 'vs yesterday', icon:'📊', color:'#6366f1' },
-                { label:'Active Users Today',       value: ga4Data.users.toLocaleString(),    sub:`${ga4Data.newUsers.toLocaleString()} new`,   icon:'👥', color:'#0ea5e9' },
-                { label:'Bounce Rate',       value:`${ga4Data.bounceRate}%`,            sub:'avg today',     icon:'↩️', color:'#10b981' },
-                { label:'Pages / Session',   value: ga4Data.pagesPerSession,            sub:'avg today',     icon:'📄', color:'#f59e0b' },
+                { label:'Sessions Today',    value: ga4Data.sessions.toLocaleString(), sub: ga4Data.sessionChange!==0 ? `${ga4Data.sessionChange>0?'↑':'↓'} ${Math.abs(ga4Data.sessionChange)}% vs yesterday` : 'vs yesterday', icon:'📊', color:'#6366f1' },
+                { label:'Users Today',       value: ga4Data.users.toLocaleString(),    sub:`${ga4Data.newUsers.toLocaleString()} new`,   icon:'👥', color:'#0ea5e9' },
+                { label:'Bounce Rate',       value:`${ga4Data.bounceRate}%`,            sub:'GA4 today',     icon:'↩️', color:'#10b981' },
+                { label:'Pages / Session',   value: ga4Data.pagesPerSession,            sub:'GA4 today',     icon:'📄', color:'#f59e0b' },
               ].map(k => <KPICard key={k.label} {...k} />)}
             </div>
 
@@ -5238,7 +5275,7 @@ function CommandCenter() {
               </div>
 
               <div style={CC.card({padding:'22px 24px'})}>
-                <div style={CC.sectionLabel}>Most-used routes — last 7 days</div>
+                <div style={CC.sectionLabel}>Top pages — last 7 days</div>
                 {ga4Data.topPages.length===0
                   ? <div style={{ fontSize:13, color:'#475569' }}>No page data yet.</div>
                   : ga4Data.topPages.map((p,i) => (
@@ -5246,7 +5283,7 @@ function CommandCenter() {
                     padding:'9px 0', borderBottom: i<ga4Data.topPages.length-1?'1px solid rgba(99,102,241,.1)':'none' }}>
                     <div style={{ fontSize:12, color:'#e2e8f0', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:240 }}>{p.path}</div>
                     <div style={{ display:'flex', gap:12, flexShrink:0 }}>
-                      <span style={{ fontSize:12, color:'#94a3b8' }}>{p.views} tracked sessions</span>
+                      <span style={{ fontSize:12, color:'#94a3b8' }}>{p.views} sessions</span>
                       <span style={{ fontSize:11, color:'#475569' }}>{p.avgTime}</span>
                     </div>
                   </div>
