@@ -42,21 +42,38 @@ serve(async(req)=>{
     ])
     if(!inConf&&!outConf) return json({error:'Conference does not belong to this calling context.'},403)
 
-    let requestedSource: 'admin_dialer'|'cleanup_after_disconnect'
+    const spaceDomain=settings.sw_space_url.replace(/^https?:\/\//,'')
+    const providerAuth='Basic '+btoa(`${settings.sw_project_id}:${settings.sw_api_token}`)
+    const base=`https://${spaceDomain}/api/laml/2010-04-01/Accounts/${settings.sw_project_id}`
+
+    let requestedSource: 'admin_dialer'|'cleanup_after_disconnect'|'unknown'
     if(terminationSource==='admin_dialer') requestedSource='admin_dialer'
     else if(terminationSource==='cleanup_after_disconnect') requestedSource='cleanup_after_disconnect'
     else if(outConf?.provider_status||outConf?.ended_at) requestedSource='cleanup_after_disconnect'
-    else {
-      // Current clients do not yet send an explicit termination source. Give
-      // the provider terminal callback a brief chance to land before deciding.
-      // A remote hangup should classify itself here; an explicit End click has
-      // no provider terminal callback until this function starts teardown.
-      await sleep(900)
-      const {data:latest}=outConf?.id
-        ? await db.from('outbound_calls').select('provider_status,ended_at').eq('id',outConf.id).eq('tenant_id',tenantId).maybeSingle()
-        : {data:null}
-      requestedSource=(latest?.provider_status||latest?.ended_at)?'cleanup_after_disconnect':'admin_dialer'
-    }
+    else if(outConf?.provider_call_sid){
+      // Existing clients do not send an explicit source. Inspect the destination
+      // leg BEFORE issuing any hangup command: already terminal = remote/provider;
+      // still active = this authenticated teardown request is the initiator.
+      let observedStatus=''
+      let probeSucceeded=false
+      for(let attempt=0;attempt<3;attempt++){
+        if(attempt) await sleep(250)
+        try{
+          const probe=await fetch(`${base}/Calls/${encodeURIComponent(String(outConf.provider_call_sid))}.json`,{headers:{Authorization:providerAuth}})
+          if(!probe.ok) continue
+          const data=await probe.json()
+          observedStatus=String(data?.status||'').toLowerCase()
+          probeSucceeded=true
+          break
+        }catch(e){console.warn('end-conference preflight call-state probe failed',e)}
+      }
+      if(probeSucceeded) requestedSource=TERMINAL_CALL_STATUSES.has(observedStatus)?'cleanup_after_disconnect':'admin_dialer'
+      else {
+        // Do not invent an initiator if the provider cannot be read. Teardown
+        // still proceeds for safety, but the audit record remains explicitly unknown.
+        requestedSource='unknown'
+      }
+    }else requestedSource='unknown'
 
     const requestedAt=new Date().toISOString()
     if(outConf?.id&&requestedSource==='admin_dialer'){
@@ -72,9 +89,6 @@ serve(async(req)=>{
       }
     }
 
-    const spaceDomain=settings.sw_space_url.replace(/^https?:\/\//,'')
-    const providerAuth='Basic '+btoa(`${settings.sw_project_id}:${settings.sw_api_token}`)
-    const base=`https://${spaceDomain}/api/laml/2010-04-01/Accounts/${settings.sw_project_id}`
     const providerCallSids=new Set<string>()
     if(inConf?.callsid)providerCallSids.add(String(inConf.callsid))
     if(outConf?.provider_call_sid)providerCallSids.add(String(outConf.provider_call_sid))
@@ -136,7 +150,7 @@ serve(async(req)=>{
 
     if(providerFailure){
       if(outConf?.id) await db.from('outbound_calls').update({
-        disconnect_reason:requestedSource==='admin_dialer'?'admin_end_not_fully_confirmed':(outConf.disconnect_reason||'cleanup_not_fully_confirmed'),
+        disconnect_reason:requestedSource==='admin_dialer'?'admin_end_not_fully_confirmed':(requestedSource==='cleanup_after_disconnect'?(outConf.disconnect_reason||'cleanup_not_fully_confirmed'):'termination_source_unknown'),
         disconnect_details:{cleanup_source:requestedSource,cleanup_requested_at:requestedAt,terminated_call_sids:terminatedCallSids,provider_terminal_states:providerTerminalStates},
       }).eq('id',outConf.id).eq('tenant_id',tenantId)
       return json({error:'Could not confirm every SignalWire call leg ended.',terminated_call_sids:terminatedCallSids},502)
@@ -154,13 +168,18 @@ serve(async(req)=>{
         payload.disconnect_source='admin_dialer'
         payload.disconnect_initiator=user.email
         payload.disconnect_reason='admin_end_confirmed'
+      }else if(requestedSource==='cleanup_after_disconnect'){
+        if(!providerAlreadyClassified){
+          payload.disconnect_source='remote_or_provider'
+          payload.disconnect_reason='provider_leg_already_terminal_before_cleanup'
+        }
       }else if(!providerAlreadyClassified){
-        payload.disconnect_source='browser_or_remote_disconnect'
-        payload.disconnect_reason='cleanup_after_disconnect'
+        payload.disconnect_source='unknown'
+        payload.disconnect_reason='provider_state_unavailable_before_cleanup'
       }
       await db.from('outbound_calls').update(payload).eq('id',outConf.id).eq('tenant_id',tenantId)
     }
     await db.from('incoming_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
-    return json({ok:true,terminated_call_sids:terminatedCallSids,conference_found:!!conferenceSid})
+    return json({ok:true,terminated_call_sids:terminatedCallSids,conference_found:!!conferenceSid,termination_source:requestedSource})
   }catch(err){console.error('end-conference error:',err);return json({error:'Unable to end conference.'},500)}
 })
