@@ -7,6 +7,7 @@ const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
 
 function b64url(bytes: Uint8Array) { let s = ''; bytes.forEach(b => { s += String.fromCharCode(b) }); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '') }
 function b64urlJson(value: unknown) { return b64url(new TextEncoder().encode(JSON.stringify(value))) }
+function escapeHtml(value: unknown) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c)) }
 
 async function importPrivateKey() {
   const body = env('IRS_TDS_JWT_PRIVATE_KEY_PEM').replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s+/g, '')
@@ -22,7 +23,7 @@ async function createClientAssertion() {
 }
 async function tokenKey() { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env('SUPABASE_SERVICE_ROLE_KEY') + ':irs-tds-session:v2')); return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt']) }
 async function encryptText(value: string) { const iv = new Uint8Array(12); crypto.getRandomValues(iv); const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await tokenKey(), new TextEncoder().encode(value))); return `${b64url(iv)}.${b64url(cipher)}` }
-function html(title: string, message: string, status = 200) { return new Response(`<!doctype html><html><body style="font-family:system-ui;padding:32px"><h2>${title}</h2><p>${message}</p>${status < 400 ? '<script>setTimeout(()=>window.close(),1200)</script>' : ''}</body></html>`, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }) }
+function html(title: string, message: string, status = 200) { return new Response(`<!doctype html><html><body style="font-family:system-ui;padding:32px"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p>${status < 400 ? '<script>setTimeout(()=>window.close(),1200)</script>' : ''}</body></html>`, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } }) }
 
 serve(async (req) => {
   if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 })
