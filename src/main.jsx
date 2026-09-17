@@ -24,6 +24,7 @@ import './theme-scrollbars.css'
 import './taxres-mobile.css'
 import './taxres-dashboard.css'
 import './tax-office-dashboard-cards.css'
+import './tax-office-shell-parity.css'
 import App from './App.jsx'
 import { getModel } from './lib/leadStatus'
 
