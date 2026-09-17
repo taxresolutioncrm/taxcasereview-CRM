@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const BOOK_MANAGE = "https://taxrescrm.app/book/manage/";
+const DEMO_TENANT = "a0000000-0000-0000-0000-000000000001";
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store"}});
 
 Deno.serve(async (req) => {
@@ -24,8 +25,9 @@ Deno.serve(async (req) => {
     if(!r.reminder_1_sent&&minsAway>0&&minsAway<=65)kind="1h";else if(!r.reminder_24_sent&&minsAway>65&&minsAway<=1440)kind="24h";if(!kind)continue;
     const whenLabel=new Date(y,m-1,d,hh,mm).toLocaleString("en-US",{weekday:"long",month:"long",day:"numeric",hour:"numeric",minute:"2-digit"})+" (Eastern)";
     const first=(String(r.clientName||"").trim().split(" ")[0])||"there",manage=r.booking_token?BOOK_MANAGE+r.booking_token:null;
-    const resp=await fetch(Deno.env.get("SUPABASE_URL")+"/functions/v1/send-email",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`},body:JSON.stringify({to:r.contact_email,tenant_id:r.tenant_id||undefined,subject:kind==="1h"?`See you soon — ${r.eventType} at ${new Date(y,m-1,d,hh,mm).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} ET`:`Reminder — ${r.eventType} tomorrow`,html:`<p>Hi <strong>${first}</strong>,</p><p>${kind==="1h"?"Your appointment is coming up within the hour:":"A quick reminder about your appointment:"}</p><p style="line-height:1.9"><strong>${r.eventType}</strong><br>${whenLabel}</p>${manage?`<p>Need to change it? <a href="${manage}">Reschedule</a> · <a href="${manage}?cancel=1">Cancel</a></p>`:`<p>Need to change it? Reply to this email or give us a call.</p>`}`})});
-    if(resp.ok){await supabase.from("calevents").update(kind==="1h"?{reminder_1_sent:true}:{reminder_24_sent:true}).eq("id",r.id).eq("tenant_id",r.tenant_id);sent++;}else console.error("[booking-reminders] send-email failed",resp.status);
+    const mailFn=String(r.tenant_id||"")===DEMO_TENANT?"demo-send-email":"send-email";
+    const resp=await fetch(Deno.env.get("SUPABASE_URL")+`/functions/v1/${mailFn}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`},body:JSON.stringify({to:r.contact_email,tenant_id:r.tenant_id||undefined,subject:kind==="1h"?`See you soon — ${r.eventType} at ${new Date(y,m-1,d,hh,mm).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} ET`:`Reminder — ${r.eventType} tomorrow`,html:`<p>Hi <strong>${first}</strong>,</p><p>${kind==="1h"?"Your appointment is coming up within the hour:":"A quick reminder about your appointment:"}</p><p style="line-height:1.9"><strong>${r.eventType}</strong><br>${whenLabel}</p>${manage?`<p>Need to change it? <a href="${manage}">Reschedule</a> · <a href="${manage}?cancel=1">Cancel</a></p>`:`<p>Need to change it? Reply to this email or give us a call.</p>`}`})});
+    if(resp.ok){await supabase.from("calevents").update(kind==="1h"?{reminder_1_sent:true}:{reminder_24_sent:true}).eq("id",r.id).eq("tenant_id",r.tenant_id);sent++;}else console.error("[booking-reminders] mail failed",mailFn,resp.status);
   }
   return json({ok:true,sent});
 });
