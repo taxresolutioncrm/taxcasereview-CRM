@@ -5,16 +5,10 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+const env = (name: string) => (Deno.env.get(name) || '').trim()
+const configured = () => Boolean(env('IRS_TDS_WIRE_VERSION') && env('IRS_TDS_CLIENT_ID') && env('IRS_TDS_REQUEST_URL') && env('IRS_TDS_REQUEST_TEMPLATE') && env('IRS_TDS_STATUS_URL_TEMPLATE'))
 
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-  status,
-  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-})
-
-function env(name: string) { return (Deno.env.get(name) || '').trim() }
-function configured() {
-  return Boolean(env('IRS_TDS_WIRE_VERSION') && env('IRS_TDS_CLIENT_ID') && env('IRS_TDS_REQUEST_URL') && env('IRS_TDS_REQUEST_TEMPLATE') && env('IRS_TDS_STATUS_URL_TEMPLATE'))
-}
 function getPath(obj: any, path: string) {
   if (!path) return undefined
   return path.split('.').reduce((v, k) => v == null ? undefined : v[k], obj)
@@ -27,14 +21,18 @@ function renderValue(value: any, ctx: Record<string, any>): any {
   if (exact) return ctx[exact[1]] ?? null
   return value.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_, k) => String(ctx[k] ?? ''))
 }
-function renderTemplate(raw: string, ctx: Record<string, any>) { return renderValue(JSON.parse(raw), ctx) }
-function renderUrl(raw: string, ctx: Record<string, any>) {
-  return raw.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_, k) => encodeURIComponent(String(ctx[k] ?? '')))
+const renderTemplate = (raw: string, ctx: Record<string, any>) => renderValue(JSON.parse(raw), ctx)
+const renderUrl = (raw: string, ctx: Record<string, any>) => raw.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_, k) => encodeURIComponent(String(ctx[k] ?? '')))
+
+async function sha256Hex(bytes: Uint8Array) {
+  const copy = bytes.slice().buffer
+  const hash = await crypto.subtle.digest('SHA-256', copy)
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 async function authHeaders() {
   const mode = env('IRS_TDS_AUTH_MODE') || 'none'
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Accept': 'application/json, application/pdf' }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json, application/pdf' }
   const clientHeader = env('IRS_TDS_CLIENT_ID_HEADER')
   if (clientHeader) headers[clientHeader] = env('IRS_TDS_CLIENT_ID')
   const extra = env('IRS_TDS_EXTRA_HEADERS_JSON')
@@ -44,8 +42,7 @@ async function authHeaders() {
     if (!token) throw new Error('IRS TDS bearer token is not configured.')
     headers.Authorization = `Bearer ${token}`
   } else if (mode === 'oauth2-client-credentials') {
-    const tokenUrl = env('IRS_TDS_TOKEN_URL')
-    const secret = env('IRS_TDS_CLIENT_SECRET')
+    const tokenUrl = env('IRS_TDS_TOKEN_URL'), secret = env('IRS_TDS_CLIENT_SECRET')
     if (!tokenUrl || !secret) throw new Error('IRS TDS OAuth credentials are incomplete.')
     const form = new URLSearchParams({ grant_type: 'client_credentials', client_id: env('IRS_TDS_CLIENT_ID'), client_secret: secret })
     const scope = env('IRS_TDS_OAUTH_SCOPE')
@@ -55,19 +52,17 @@ async function authHeaders() {
     const body = await r.json()
     if (!body?.access_token) throw new Error('IRS TDS token response did not include access_token.')
     headers.Authorization = `Bearer ${body.access_token}`
-  } else if (mode !== 'none') {
-    throw new Error(`Unsupported IRS_TDS_AUTH_MODE: ${mode}`)
-  }
+  } else if (mode !== 'none') throw new Error(`Unsupported IRS_TDS_AUTH_MODE: ${mode}`)
   return headers
 }
 
 async function readBody(resp: Response) {
   const type = (resp.headers.get('content-type') || '').toLowerCase()
-  if (type.includes('application/pdf')) return { kind: 'pdf', bytes: new Uint8Array(await resp.arrayBuffer()) }
+  if (type.includes('application/pdf')) return { kind: 'pdf', bytes: new Uint8Array(await resp.arrayBuffer()) } as const
   const text = await resp.text()
-  let data: any = null
+  let data: any
   try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text } }
-  return { kind: 'json', data }
+  return { kind: 'json', data } as const
 }
 
 async function resolveContext(userDb: any, pull: any) {
@@ -133,8 +128,7 @@ serve(async (req) => {
     if (action === 'submitDraft') {
       const pull = body?.request || null
       if (!pull?.id) return json({ error: 'Draft request id is required' }, 400)
-      const ctx = await resolveContext(userDb, pull)
-      const externalId = await submitWire(ctx)
+      const externalId = await submitWire(await resolveContext(userDb, pull))
       return json({ ok: true, providerRequestId: externalId, status: 'Submitted', submittedAt: new Date().toISOString() })
     }
 
@@ -146,22 +140,39 @@ serve(async (req) => {
 
     if (action === 'submit') {
       const externalId = await submitWire(ctx)
-      await userDb.from('transcript_pull_requests').update({ provider_request_id: externalId, provider_status: 'Submitted', provider_error: null, provider_submitted_at: new Date().toISOString(), provider_last_checked_at: new Date().toISOString(), status: 'In Progress' }).eq('id', requestId)
+      const { error } = await userDb.from('transcript_pull_requests').update({
+        provider_request_id: externalId,
+        provider_status: 'Submitted',
+        provider_error: null,
+        provider_submitted_at: new Date().toISOString(),
+        provider_last_checked_at: new Date().toISOString(),
+        status: 'In Progress',
+      }).eq('id', requestId)
+      if (error) throw new Error(error.message)
       return json({ ok: true, providerRequestId: externalId, status: 'Submitted' })
     }
 
     if (action === 'status') {
-      if (pull.provider_status === 'Filed') return json({ ok: true, status: 'Filed', filePath: pull.provider_file_path || null })
-      if (pull.provider_status === 'Delivered' && pull.provider_file_path) {
-        const { data: signed } = await service.storage.from('documents').createSignedUrl(pull.provider_file_path, 900)
-        return json({ ok: true, status: 'Delivered', filePath: pull.provider_file_path, signedUrl: signed?.signedUrl || null })
+      if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
+
+      const resultKeys: string[] = pull.provider_result_keys || []
+      const filePaths: string[] = pull.provider_file_paths || []
+      const filedKeys: string[] = pull.provider_filed_keys || []
+      const pendingIndex = resultKeys.findIndex((k: string) => !filedKeys.includes(k))
+      if (pendingIndex >= 0 && filePaths[pendingIndex]) {
+        const filePath = filePaths[pendingIndex]
+        const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(filePath, 900)
+        if (signErr || !signed?.signedUrl) throw new Error('Could not create secure transcript link.')
+        return json({ ok: true, status: 'Delivered', resultKey: resultKeys[pendingIndex], filePath, signedUrl: signed.signedUrl })
       }
+
       if (!pull.provider_request_id) return json({ error: 'This request has not been submitted to IRS TDS yet.' }, 409)
       ctx.providerRequestId = pull.provider_request_id
       const headers = await authHeaders()
       const resp = await fetch(renderUrl(env('IRS_TDS_STATUS_URL_TEMPLATE'), ctx), { method: env('IRS_TDS_STATUS_METHOD') || 'GET', headers })
       const parsed = await readBody(resp)
       if (!resp.ok) return json({ error: `IRS TDS status request failed (${resp.status}).` }, 502)
+
       let pdfBytes: Uint8Array | null = parsed.kind === 'pdf' ? parsed.bytes : null
       let remoteStatus = 'In Progress'
       if (parsed.kind === 'json') {
@@ -178,15 +189,35 @@ serve(async (req) => {
           }
         }
       }
+
       if (pdfBytes?.length) {
-        const filePath = `tds-direct/${pull.tenant_id}/${pull.id}/${crypto.randomUUID()}.pdf`
+        const resultKey = await sha256Hex(pdfBytes)
+        const existingIndex = resultKeys.indexOf(resultKey)
+        if (existingIndex >= 0) {
+          await userDb.from('transcript_pull_requests').update({ provider_status: remoteStatus, provider_error: null, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
+          return json({ ok: true, status: remoteStatus, duplicate: true, resultKey })
+        }
+        const filePath = `tds-direct/${pull.tenant_id}/${pull.id}/${resultKey}.pdf`
         const { error: uploadErr } = await service.storage.from('documents').upload(filePath, pdfBytes, { contentType: 'application/pdf', upsert: false })
         if (uploadErr) throw new Error(`Could not store IRS transcript: ${uploadErr.message}`)
-        const { data: signed } = await service.storage.from('documents').createSignedUrl(filePath, 900)
-        await userDb.from('transcript_pull_requests').update({ provider_status: 'Delivered', provider_error: null, provider_last_checked_at: new Date().toISOString(), provider_file_path: filePath }).eq('id', requestId)
-        return json({ ok: true, status: 'Delivered', filePath, signedUrl: signed?.signedUrl || null })
+        const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(filePath, 900)
+        if (signErr || !signed?.signedUrl) throw new Error('Could not create secure transcript link.')
+        const nextKeys = [...resultKeys, resultKey]
+        const nextPaths = [...filePaths, filePath]
+        const { error: updateErr } = await userDb.from('transcript_pull_requests').update({
+          provider_status: 'Delivered',
+          provider_error: null,
+          provider_last_checked_at: new Date().toISOString(),
+          provider_file_path: filePath,
+          provider_result_keys: nextKeys,
+          provider_file_paths: nextPaths,
+        }).eq('id', requestId)
+        if (updateErr) throw new Error(updateErr.message)
+        return json({ ok: true, status: 'Delivered', resultKey, filePath, signedUrl: signed.signedUrl })
       }
-      await userDb.from('transcript_pull_requests').update({ provider_status: remoteStatus, provider_error: null, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
+
+      const { error: updateErr } = await userDb.from('transcript_pull_requests').update({ provider_status: remoteStatus, provider_error: null, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
+      if (updateErr) throw new Error(updateErr.message)
       return json({ ok: true, status: remoteStatus })
     }
     return json({ error: 'Unknown action' }, 400)
