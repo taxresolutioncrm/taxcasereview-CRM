@@ -64,7 +64,7 @@ serve(async (req) => {
     let event
     try {
       event = await stripe.webhooks.constructEventAsync(rawBody, sig, STRIPE_WEBHOOK_SECRET, undefined, cryptoProvider)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Webhook signature verification failed:', err.message)
       return new Response('Webhook signature verification failed', { status: 400 })
     }
@@ -84,10 +84,6 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // ── Pay-to-book: the appointment was deliberately NOT created until
-    // payment cleared. This path MUST carry the canonical tenant stamped by
-    // booking-checkout. Missing/invalid tenant metadata fails closed — never
-    // fall back to TCR or any other office. ────────────────────────────────
     if (purpose === 'booking_payment') {
       const m = session.metadata || {}
       const tenantId = (m.tenant_id || '').toString().trim()
@@ -124,10 +120,6 @@ serve(async (req) => {
       const booked = created && created.ok !== false
       const when = `${m.b_date} at ${m.b_time} (Eastern)`
       const paidAmt = (session.amount_total || 0) / 100
-
-      // Route confirmation/office notification through the canonical booking
-      // token path. send-email resolves tenant + branding + physical transport
-      // from the booking instead of accepting an unscoped arbitrary sender.
       const bookingToken = booked ? created?.booking_token : null
       if (bookingToken) {
         const mailResults = await Promise.allSettled([
@@ -143,8 +135,6 @@ serve(async (req) => {
         }
       }
 
-      // Log the payment to the SAME tenant that owned the booking config and
-      // appointment. Never use a hard-coded TCR tenant here.
       const { error: paymentError } = await supabase.from('payments').insert([{
         clientName: m.b_name || session.customer_details?.name || '',
         amount: paidAmt,
@@ -162,8 +152,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({ received: true, booked }), { headers: { 'Content-Type': 'application/json' } })
     }
 
-    // Forward-only pipeline advance — mirrors src/lib/leadStatus.js. Kept as
-    // a separate inline copy since this runs in Deno, not the React app.
     const STATUS_ORDER = [
       'New Lead', 'Contacted', 'Consultation Scheduled', 'Consultation Completed',
       'Tax Inv Agreement Sent', 'Tax Inv Agreement Signed', 'Tax Inv Fee Paid',
@@ -182,12 +170,6 @@ serve(async (req) => {
           await supabase.from('leads').update({ status: 'Tax Inv Fee Paid' }).eq('id', recordId)
         }
 
-        // Both conditions met (agreement already signed + fee now paid) —
-        // auto-advance straight to Tax Investigation Active and fire the
-        // same call-IRS task creation the manual status change does in
-        // Leads.jsx. curIdx >= signedIdx covers leads that were already
-        // sitting at "Tax Inv Agreement Signed" (or anywhere past it) the
-        // moment this webhook fires.
         if (curIdx >= signedIdx && curIdx < activeIdx) {
           await supabase.from('leads').update({ status: 'Tax Investigation Active' }).eq('id', recordId)
 
@@ -244,8 +226,6 @@ serve(async (req) => {
         created_at: new Date().toISOString(),
       }])
 
-      // Save the card/bank on file too, same safe display-only info the
-      // embedded SetupIntent flow saves.
       if (session.payment_intent) {
         try {
           const intent = await stripeGet(`payment_intents/${session.payment_intent}?expand[]=payment_method`)
@@ -259,9 +239,7 @@ serve(async (req) => {
               payment_method_last4: isCard ? (pm.card?.last4 || '') : (pm.us_bank_account?.last4 || ''),
             }).eq('id', recordId)
           }
-        } catch (pmErr) {
-          // Payment already succeeded and is logged above either way --
-          // failing to save the reusable payment method shouldn't mask that.
+        } catch (pmErr: any) {
           console.error('stripe-checkout-webhook: payment method save failed:', pmErr.message)
         }
       }
@@ -269,7 +247,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ received: true }), { headers: { 'Content-Type': 'application/json' } })
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('stripe-checkout-webhook error:', err)
     return new Response(JSON.stringify({ error: err.message || 'Webhook handling failed' }), { status: 500 })
   }
