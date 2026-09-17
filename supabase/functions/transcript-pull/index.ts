@@ -25,8 +25,7 @@ const renderTemplate = (raw: string, ctx: Record<string, any>) => renderValue(JS
 const renderUrl = (raw: string, ctx: Record<string, any>) => raw.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_, k) => encodeURIComponent(String(ctx[k] ?? '')))
 
 async function sha256Hex(bytes: Uint8Array) {
-  const copy = bytes.slice().buffer
-  const hash = await crypto.subtle.digest('SHA-256', copy)
+  const hash = await crypto.subtle.digest('SHA-256', bytes.slice().buffer)
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
@@ -65,17 +64,27 @@ async function readBody(resp: Response) {
   return { kind: 'json', data } as const
 }
 
-async function resolveContext(userDb: any, pull: any) {
+async function requireIrsWrite(service: any, user: any, tenantId: string) {
+  const email = String(user?.email || '').trim()
+  if (!email) throw new Error('Signed-in employee email is required.')
+  const { data: employee, error } = await service.from('employees').select('perm_irs').eq('tenant_id', tenantId).ilike('email', email).maybeSingle()
+  if (error || !employee || Number(employee.perm_irs || 0) < 2) throw new Error('IRS write permission is required for direct TDS pulls.')
+}
+
+async function resolveContext(service: any, pull: any) {
   if (!pull || pull.provider !== 'irs_a2a') throw new Error('This request is not configured for direct IRS TDS.')
-  const { data: poa, error: poaErr } = await userDb.from('poa_records').select('id,status,form_type,tax_years').eq('id', pull.poa_record_id).maybeSingle()
+  const tenantId = String(pull.tenant_id || '')
+  if (!tenantId) throw new Error('Transcript pull request is missing tenant scope.')
+  const { data: poa, error: poaErr } = await service.from('poa_records').select('id,status,form_type,tax_years').eq('tenant_id', tenantId).eq('id', pull.poa_record_id).maybeSingle()
   if (poaErr || !poa || poa.status !== 'On File') throw new Error('A valid POA/TIA with status On File is required.')
-  const { data: clients, error: clientErr } = await userDb.from('clients').select('id,name,ssn,ein').eq('name', pull.client_name).limit(2)
+  const { data: clients, error: clientErr } = await service.from('clients').select('id,name,ssn,ein').eq('tenant_id', tenantId).eq('name', pull.client_name).limit(2)
   if (clientErr) throw new Error(clientErr.message)
   if (!clients || clients.length !== 1) throw new Error('Direct TDS requires exactly one matching client record.')
   const client = clients[0]
   const tin = String(client.ein || client.ssn || '').replace(/\D/g, '')
   if (!tin) throw new Error('Client SSN/EIN is required for direct TDS.')
-  const { data: settings } = await userDb.from('settings').select('caf_number').limit(1).maybeSingle()
+  const { data: settings, error: settingsErr } = await service.from('settings').select('caf_number').eq('tenant_id', tenantId).limit(1).maybeSingle()
+  if (settingsErr) throw new Error(settingsErr.message)
   const caf = String(settings?.caf_number || '').trim()
   if (!caf) throw new Error('Office CAF number is required for direct TDS.')
   return {
@@ -125,31 +134,31 @@ serve(async (req) => {
     if (action === 'capabilities') return json({ directConfigured: configured(), wireVersion: configured() ? env('IRS_TDS_WIRE_VERSION') : null })
     if (!configured()) return json({ error: 'IRS TDS direct connection is not configured yet.', code: 'TDS_NOT_CONFIGURED' }, 409)
 
-    if (action === 'submitDraft') {
-      const pull = body?.request || null
-      if (!pull?.id) return json({ error: 'Draft request id is required' }, 400)
-      const externalId = await submitWire(await resolveContext(userDb, pull))
-      return json({ ok: true, providerRequestId: externalId, status: 'Submitted', submittedAt: new Date().toISOString() })
-    }
-
     const requestId = String(body?.requestId || '').trim()
     if (!requestId) return json({ error: 'requestId is required' }, 400)
     const { data: pull, error: pullErr } = await userDb.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle()
     if (pullErr || !pull) return json({ error: 'Transcript pull request not found or not authorized' }, 404)
-    const ctx = await resolveContext(userDb, pull)
+    await requireIrsWrite(service, userData.user, pull.tenant_id)
+    const ctx = await resolveContext(service, pull)
 
     if (action === 'submit') {
-      const externalId = await submitWire(ctx)
-      const { error } = await userDb.from('transcript_pull_requests').update({
-        provider_request_id: externalId,
-        provider_status: 'Submitted',
-        provider_error: null,
-        provider_submitted_at: new Date().toISOString(),
-        provider_last_checked_at: new Date().toISOString(),
-        status: 'In Progress',
-      }).eq('id', requestId)
-      if (error) throw new Error(error.message)
-      return json({ ok: true, providerRequestId: externalId, status: 'Submitted' })
+      try {
+        const externalId = await submitWire(ctx)
+        const { error } = await userDb.from('transcript_pull_requests').update({
+          provider_request_id: externalId,
+          provider_status: 'Submitted',
+          provider_error: null,
+          provider_submitted_at: new Date().toISOString(),
+          provider_last_checked_at: new Date().toISOString(),
+          status: 'In Progress',
+        }).eq('id', requestId)
+        if (error) throw new Error(error.message)
+        return json({ ok: true, providerRequestId: externalId, status: 'Submitted' })
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'IRS TDS submission failed.'
+        await userDb.from('transcript_pull_requests').update({ provider_status: 'Error', provider_error: message, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
+        return json({ error: message }, 502)
+      }
     }
 
     if (action === 'status') {
