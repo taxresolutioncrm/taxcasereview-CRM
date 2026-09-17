@@ -25,12 +25,13 @@ serve(async(req)=>{
 
     const body=await req.text()
     const form=new URLSearchParams(body)
+    const callbackFields:Record<string,string>={}
+    for(const[k,v]of form)callbackFields[k]=v
+
     const swSecret=Deno.env.get('SW_SIGNING_SECRET')??''
     if(swSecret){
       const sig=req.headers.get('x-signalwire-signature')??''
-      const params:Record<string,string>={}
-      for(const[k,v]of form)params[k]=v
-      if(!await verifySW(swSecret,req.url,params,sig))return new Response('Unauthorized',{status:403})
+      if(!await verifySW(swSecret,req.url,callbackFields,sig))return new Response('Unauthorized',{status:403})
     }else console.warn('[outbound-call-status] SW_SIGNING_SECRET absent; restricted structural validation only')
 
     const rawStatus=(form.get('CallStatus')||form.get('CallState')||'').toLowerCase()
@@ -38,20 +39,42 @@ serve(async(req)=>{
     if(rawStatus==='in-progress'||rawStatus==='answered')status='answered'
     else if(rawStatus==='queued'||rawStatus==='initiated')status='pending'
     else if(rawStatus==='ringing')status='ringing'
-    else if(['completed','busy','failed','no-answer','canceled'].includes(rawStatus))status='completed'
+    else if(['completed','busy','failed','no-answer','canceled','cancelled'].includes(rawStatus))status='completed'
     else if(!rawStatus)status='completed'
     else return new Response('Bad Request',{status:400})
 
+    const terminal=['completed','busy','failed','no-answer','canceled','cancelled'].includes(rawStatus)||!rawStatus
     const supabase=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
     const cutoff=new Date(Date.now()-24*60*60*1000).toISOString()
-    let q=supabase.from('outbound_calls').select('id,status,created_at,tenant_id').eq('conference_name',conf).gte('created_at',cutoff)
+    let q=supabase.from('outbound_calls')
+      .select('id,status,created_at,tenant_id,end_requested_at,end_requested_by,disconnect_source')
+      .eq('conference_name',conf).gte('created_at',cutoff)
     if(tenant)q=q.eq('tenant_id',tenant)
     const {data:row,error:findErr}=await q.limit(1).maybeSingle()
     if(findErr)throw findErr
     if(!row)return new Response('Not Found',{status:404})
-    if(row.status==='completed')return new Response('ok')
 
-    let upd=supabase.from('outbound_calls').update({status}).eq('id',row.id).neq('status','completed')
+    const callSid=form.get('CallSid')||form.get('CallSid'.toLowerCase())||null
+    const providerReason=form.get('HangupCause')||form.get('ErrorMessage')||form.get('ErrorCode')||form.get('SipResponseCode')||null
+    const adminRequested=!!row.end_requested_at
+    const disconnectSource=terminal
+      ? (adminRequested?'admin_dialer':(['failed','busy','no-answer','canceled','cancelled'].includes(rawStatus)?'provider_failure':'remote_or_provider'))
+      : row.disconnect_source
+
+    const updatePayload:Record<string,unknown>={
+      status,
+      provider_status:rawStatus||'completed',
+      disconnect_details:callbackFields,
+    }
+    if(callSid) updatePayload.provider_call_sid=callSid
+    if(terminal){
+      updatePayload.ended_at=new Date().toISOString()
+      updatePayload.disconnect_source=disconnectSource
+      updatePayload.disconnect_initiator=adminRequested?(row.end_requested_by||'admin_dialer'):null
+      updatePayload.disconnect_reason=providerReason||(rawStatus||'completed')
+    }
+
+    let upd=supabase.from('outbound_calls').update(updatePayload).eq('id',row.id)
     if(tenant)upd=upd.eq('tenant_id',tenant)
     const {error}=await upd
     if(error)throw error
