@@ -15,25 +15,23 @@
 // EMAIL ARCHITECTURE:
 //   notifyEmail  — internal address that receives "New booking" alerts
 //   replyTo      — Reply-To header on customer confirmation emails
-//   fromName     — display name in the From: header (physical sender is
-//                  always the Gmail OAuth account on TCR Supabase)
+//   fromName     — display name in the From: header
 //
-//   Camvella and Arcvena currently route through info@romylabs.com as a
-//   CENTRALIZED FALLBACK. These are marked // CENTRALIZED_FALLBACK so
-//   switching to product-specific mailboxes is a config change here only.
+// TaxRes uses the proven taxrescrm.net mailbox identity. Product-specific
+// RomyLabs apps use their configured product/fallback inboxes below.
 
 export const PRODUCT_BOOKING_CONFIGS = {
   taxres_crm: {
     key:           'taxres_crm',
     name:          'TaxRes CRM',
-    logo:          '/taxrescrm-logo.png',
+    logo:          'https://taxrescrm.app/taxrescrm-logo.png',
     favicon:       '/taxrescrm-favicon.png',
     logoAlt:       'TaxRes CRM',
     headline:      'Schedule an Appointment',
     types:         ['Free Consultation', 'Product Demo', 'Follow-Up Call'],
     calendarLabel: '[TaxRes CRM]',
-    notifyEmail:   'romy@taxcasereview.org',
-    replyTo:       'romy@taxcasereview.org',
+    notifyEmail:   'romy@taxrescrm.net',
+    replyTo:       'romy@taxrescrm.net',
     fromName:      'TaxRes CRM',
     inactive:      false,
   },
@@ -60,8 +58,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
     headline:      'Schedule a Camvella Demo',
     types:         ['Product Demo', 'HOA / Community Management Consultation', 'Follow-Up Call'],
     calendarLabel: '[Camvella]',
-    notifyEmail:   'info@romylabs.com',   // CENTRALIZED_FALLBACK — update to camvella mailbox when ready
-    replyTo:       'info@romylabs.com',   // CENTRALIZED_FALLBACK
+    notifyEmail:   'info@romylabs.com',
+    replyTo:       'info@romylabs.com',
     fromName:      'Camvella',
     inactive:      false,
   },
@@ -74,8 +72,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
     headline:      'Schedule an Arcvena Demo',
     types:         ['Product Demo', 'Field Service Consultation', 'Follow-Up Call'],
     calendarLabel: '[Arcvena]',
-    notifyEmail:   'info@romylabs.com',   // CENTRALIZED_FALLBACK — update to arcvena mailbox when ready
-    replyTo:       'info@romylabs.com',   // CENTRALIZED_FALLBACK
+    notifyEmail:   'info@romylabs.com',
+    replyTo:       'info@romylabs.com',
     fromName:      'Arcvena',
     inactive:      false,
   },
@@ -88,8 +86,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
     headline:      'Schedule a BocaSync Demo',
     types:         ['BocaSync Product Demo', 'Dental Practice Consultation', 'BocaSync Follow-Up Call'],
     calendarLabel: '[BocaSync]',
-    notifyEmail:   'info@romylabs.com',   // CENTRALIZED_FALLBACK
-    replyTo:       'info@romylabs.com',   // CENTRALIZED_FALLBACK
+    notifyEmail:   'info@romylabs.com',
+    replyTo:       'info@romylabs.com',
     fromName:      'BocaSync',
     inactive:      false,
   },
@@ -137,20 +135,12 @@ export const PRODUCT_BOOKING_CONFIGS = {
   },
 }
 
-/**
- * Resolve a ?product= URL param against the allowlist.
- * Unknown or missing values → taxres_crm (safe fallback, preserves existing behavior).
- * Inactive products → taxres_crm (never expose an inactive product's booking page).
- */
 export function resolveProductConfig(productParam) {
   const cfg = PRODUCT_BOOKING_CONFIGS[productParam]
   if (!cfg || cfg.inactive) return PRODUCT_BOOKING_CONFIGS.taxres_crm
   return cfg
 }
 
-/**
- * Badge color per product — used in Admin Portal calendar tiles.
- */
 export const PRODUCT_BADGE_COLORS = {
   taxres_crm: { bg: '#1e3a5f', text: '#60a5fa', label: 'TaxRes CRM' },
   romylabs:   { bg: '#1a1a1a', text: '#C6FF00', label: 'RomyLabs'   },
@@ -158,7 +148,7 @@ export const PRODUCT_BADGE_COLORS = {
   arcvena:    { bg: '#1a0a2e', text: '#a78bfa', label: 'Arcvena'    },
   bocasync:   { bg: '#1a2e1a', text: '#34d399', label: 'BocaSync'   },
   groundivo:  { bg: '#17351f', text: '#9bdc34', label: 'GroundIVO'  },
-  oculivo:     { bg: '#312e81', text: '#67e8f9', label: 'Oculivo'    },
+  oculivo:    { bg: '#312e81', text: '#67e8f9', label: 'Oculivo'    },
   restore_relay: { bg: '#164e63', text: '#f59e0b', label: 'Restore Relay' },
 }
 
