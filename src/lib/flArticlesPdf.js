@@ -1,22 +1,9 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
 // ─── FL Articles of Organization (LLC) → PDF ──────────────────────────────────
-// Mirrors the field structure of the Florida Division of Corporations
-// "Articles of Organization for Florida Limited Liability Company" form as
-// posted at https://dos.fl.gov/media/704383/cr2e047.pdf — Article-by-Article,
-// same headings, same signature blocks. It's NOT a literal fillable copy of
-// their PDF (their template is a scanned image), it's a typewritten version
-// carrying the exact fields Sunbiz accepts.
-//
-// A filer can either:
-//   (a) upload this PDF as documentation alongside their manual Sunbiz e-file, OR
-//   (b) hand-copy the values into sunbiz.org's online form.
-//
-// It is NOT itself a filing. Path 3 explicitly — the packet is prepared here,
-// the submission still happens through sunbiz.org until we wire path 2.
-//
-// Callers pass the FormaCorp case shape. Missing fields render blanks so a
-// half-filled packet is still legible.
+// Prepares a typewritten Florida LLC filing packet from the FormaCorp case.
+// This is NOT an electronic filing. The client/firm still submits through
+// Sunbiz (or by mail) and must provide any required signatures/consents.
 
 const PAGE_W = 612
 const PAGE_H = 792
@@ -45,15 +32,6 @@ function wrap(text, font, size, maxWidth) {
 function safe(v, fallback = '__________________________') {
   const s = String(v ?? '').trim()
   return s || fallback
-}
-
-// Split "First M Last" into a naive "Last, First M" for the officer block.
-// Sunbiz accepts either but the online form defaults to "Last, First".
-function nameLast(full) {
-  const parts = String(full || '').trim().split(/\s+/)
-  if (parts.length < 2) return safe(full)
-  const last = parts.pop()
-  return `${last}, ${parts.join(' ')}`
 }
 
 export async function buildFlArticlesPdf(c) {
@@ -105,7 +83,6 @@ export async function buildFlArticlesPdf(c) {
   }
   function gap(n = 6) { y -= n }
 
-  // ── Title block ─────────────────────────────────────────────────────────
   page.drawText('FLORIDA DIVISION OF CORPORATIONS', {
     x: MARGIN, y, size: 9, font: bold, color: muted,
   })
@@ -129,22 +106,19 @@ export async function buildFlArticlesPdf(c) {
   )
   gap(10)
 
-  // ── ARTICLE I — Name ─────────────────────────────────────────────────────
   heading('ARTICLE I — Name')
   label('Name of Limited Liability Company')
   body(safe(c.entity_name))
   gap(6)
 
-  // ── ARTICLE II — Principal Place of Business ────────────────────────────
   heading('ARTICLE II — Principal Place of Business')
   label('Street Address (P.O. Box not acceptable)')
   body(safe(c.principal_address || c.business_address))
   gap(2)
-  label('Mailing Address (if different from Principal)')
-  body(safe(c.mailing_address, '(same as principal address)'))
+  label('Mailing Address (P.O. Box acceptable)')
+  body(safe(c.mailing_address || c.principal_address || c.business_address))
   gap(6)
 
-  // ── ARTICLE III — Registered Agent ──────────────────────────────────────
   heading('ARTICLE III — Registered Agent Name and Address')
   label('Name of Registered Agent')
   body(safe(c.registered_agent))
@@ -161,52 +135,55 @@ export async function buildFlArticlesPdf(c) {
     'accept the obligations of my position as registered agent.',
     { size: 8.5 }
   )
-  gap(18)
-  label('Registered Agent Signature')
+  gap(14)
+  label('Registered Agent Signature (required for paper filing)')
   ensure(30)
   page.drawLine({
     start: { x: MARGIN, y }, end: { x: MARGIN + 300, y },
     thickness: 0.6, color: ink,
   })
-  y -= 22
-
-  // ── ARTICLE IV — Authorized Representative(s) ───────────────────────────
-  heading('ARTICLE IV — Name and Address of Person(s) Authorized to Manage LLC')
+  y -= 10
   body(
-    'Title designations: MGR = Manager · MGRM = Managing Member · AMBR = Authorized Member',
+    c.registered_agent_accepted
+      ? 'CRM confirmation: registered agent acceptance/permission has been confirmed. This confirmation is not a signature.'
+      : 'CRM confirmation: registered agent acceptance/permission has NOT been confirmed.',
+    { size: 7.5, font: ital }
+  )
+  gap(8)
+
+  heading('MANAGER / AUTHORIZED REPRESENTATIVE (optional public listing)')
+  body(
+    'Florida currently uses MGR for Manager and AR for Authorized Representative. ' +
+    'The manager/authorized-representative listing is optional; this packet does not ' +
+    'invent a street address for that optional public listing.',
     { size: 8, font: ital }
   )
   gap(4)
-  const owners = String(c.owners || '')
-    .split(/[,\n;]/)
-    .map(s => s.trim())
-    .filter(Boolean)
-  if (owners.length === 0) {
-    label('Title / Name / Address')
-    body('__________________________')
-  } else {
-    for (const o of owners) {
-      label('Title / Name / Address')
-      body(`${safe(c.default_owner_title || 'MGRM')}  —  ${nameLast(o)}`)
-      body(safe(c.principal_address || c.business_address, '(address on file)'), { size: 9 })
-      gap(4)
-    }
-  }
-  gap(4)
+  label('Title / Name')
+  const repTitle = safe(c.authorized_representative_title, 'AR')
+  const repName = safe(c.authorized_representative)
+  body(`${repTitle} — ${repName}`)
+  gap(8)
 
-  // ── ARTICLE V — Effective Date ──────────────────────────────────────────
-  heading('ARTICLE V — Effective Date')
-  const effective = safe(c.formation_date, 'Upon filing')
+  heading('EFFECTIVE DATE')
+  const effective = safe(c.effective_date, 'Upon filing')
   body(`Effective date of this filing: ${effective}`)
   body(
     '(An effective date may be specified up to five business days prior to, or ' +
-    'ninety days after, the date this document is filed by the Division of Corporations.)',
+    'ninety days after, the date the document is received by the Division of Corporations.)',
     { size: 8, font: ital }
   )
   gap(10)
 
-  // ── Signature of Authorized Representative ──────────────────────────────
-  heading('Signature of Member or Authorized Representative')
+  heading('CORRESPONDENCE')
+  label('Correspondence Name')
+  body(safe(c.client_name || c.authorized_representative))
+  gap(2)
+  label('Correspondence Email')
+  body(safe(c.correspondence_email))
+  gap(10)
+
+  heading('Signature of Authorized Representative')
   gap(20)
   page.drawLine({
     start: { x: MARGIN, y }, end: { x: MARGIN + 300, y },
@@ -215,32 +192,29 @@ export async function buildFlArticlesPdf(c) {
   y -= 12
   page.drawText('Signature', { x: MARGIN, y, size: 8, font: reg, color: muted })
   y -= 24
-  page.drawText(safe(owners[0] || c.client_name), {
+  page.drawText(safe(c.authorized_representative || c.client_name), {
     x: MARGIN, y, size: 10, font: reg, color: ink,
   })
   y -= 12
-  page.drawText('Printed Name', { x: MARGIN, y, size: 8, font: reg, color: muted })
+  page.drawText('Typed / Printed Name', { x: MARGIN, y, size: 8, font: reg, color: muted })
   y -= 24
 
-  // ── Filing fee note ─────────────────────────────────────────────────────
-  ensure(60)
+  ensure(76)
   rule()
   gap(4)
-  page.drawText('FILING FEE', { x: MARGIN, y, size: 9, font: bold, color: muted })
+  page.drawText('FILING FEES', { x: MARGIN, y, size: 9, font: bold, color: muted })
   y -= 12
+  body('$125.00 required base filing ($100 Articles + $25 registered agent designation).', { size: 9 })
+  body('Optional: Certified Copy $30.00; Certificate of Status $5.00.', { size: 8.5 })
   body(
-    '$125.00 total ($100 filing fee + $25 registered agent designation).',
-    { size: 9 }
-  )
-  body(
-    'Make check payable to: Florida Department of State. Mail with these Articles to: ' +
-    'Registration Section, Division of Corporations, P.O. Box 6327, Tallahassee, FL 32314.',
+    'For filing by mail: make payment payable to Florida Department of State and mail to ' +
+    'New Filing Section, Division of Corporations, P.O. Box 6327, Tallahassee, FL 32314.',
     { size: 8.5 }
   )
   gap(4)
   body(
     'This packet was prepared by ' + safe(c.prepared_by || 'the firm') +
-    ' and is provided for the client to review and file. It is not itself a filing.',
+    ' for review. It is not itself a filing and does not represent Sunbiz acceptance.',
     { size: 7.5, font: ital }
   )
 
