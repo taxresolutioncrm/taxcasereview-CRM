@@ -84,6 +84,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Pay-to-book must preserve the tenant selected on the public booking page.
+    // Missing or invalid tenant metadata fails closed; there is no cross-office fallback.
     if (purpose === 'booking_payment') {
       const m = session.metadata || {}
       const tenantId = (m.tenant_id || '').toString().trim()
@@ -152,6 +154,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ received: true, booked }), { headers: { 'Content-Type': 'application/json' } })
     }
 
+    // Existing investigation/payment behavior below is intentionally unchanged.
     const STATUS_ORDER = [
       'New Lead', 'Contacted', 'Consultation Scheduled', 'Consultation Completed',
       'Tax Inv Agreement Sent', 'Tax Inv Agreement Signed', 'Tax Inv Fee Paid',
