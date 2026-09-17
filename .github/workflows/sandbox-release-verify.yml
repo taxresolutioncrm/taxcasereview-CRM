@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -25,3 +25,12 @@ jobs:
         run: npm ci
       - name: Full application build and invariant checks
         run: npm run build
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check changed Edge Functions
+        run: |
+          deno check --no-lock supabase/functions/demo-send-email/index.ts
+          deno check --no-lock supabase/functions/booking-checkout/index.ts
+          deno check --no-lock supabase/functions/stripe-checkout-webhook/index.ts
