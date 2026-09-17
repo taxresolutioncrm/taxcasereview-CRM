@@ -6,7 +6,6 @@ const DEMO_LOGIN='demo@taxrescrm.net'
 const FROM='romy@taxrescrm.net'
 const BRAND='TaxRes CRM'
 const LOGO='https://taxrescrm.app/taxrescrm-logo.png'
-const APP='https://taxrescrm.app'
 const cors={
   'Access-Control-Allow-Origin':'*',
   'Access-Control-Allow-Headers':'authorization,x-client-info,apikey,content-type,x-internal-cron-token',
@@ -122,7 +121,7 @@ function bookingHtml(kind:string,ev:any){
   return {to:FROM,subject:`New booking: ${safe(ev.clientName||'Client')}`,html:`<p><strong>${name}</strong> just booked online:</p><p><strong>${typ}</strong><br>${esc(when)}<br>Email: ${esc(ev.contact_email||'—')}</p>`}
 }
 
-serve(async(req=>{
+serve(async(req)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
   if(req.method!=='POST')return json({error:'Method not allowed'},405)
   try{
@@ -134,9 +133,7 @@ serve(async(req=>{
     const user=await authenticatedDemo(req,url,anon,admin)
     const internal=await internalAuthorized(req,admin)
 
-    if(user){
-      return json(await deliver(admin,body.to,body.subject,body.html,body.text))
-    }
+    if(user)return json(await deliver(admin,body.to,body.subject,body.html,body.text))
 
     if(kind.startsWith('booking_')&&body.booking_token){
       const {data:ev,error}=await admin.from('calevents').select('booking_token,clientName,eventType,date,time,contact_email,tenant_id,product_id,status').eq('booking_token',safe(body.booking_token)).maybeSingle()
@@ -166,13 +163,11 @@ serve(async(req=>{
       return json(await deliver(admin,FROM,`Time off request — ${safe(s.employee_name||'Employee')}`,html,''))
     }
 
-    if(internal&&String(body.tenant_id||'')===DEMO_TENANT){
-      return json(await deliver(admin,body.to,body.subject,body.html,body.text))
-    }
+    if(internal&&String(body.tenant_id||'')===DEMO_TENANT)return json(await deliver(admin,body.to,body.subject,body.html,body.text))
 
     return json({passthrough:true},409)
   }catch(e){
     console.error('[demo-send-email]',e)
     return json({error:e?.message||'Demo email send failed'},500)
   }
-}))
+})
