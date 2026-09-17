@@ -91,7 +91,7 @@ export async function parseTranscriptFile(file) {
   return parseIrsTranscript(text)
 }
 
-export async function storeTranscriptAnalysis(file, clientName, a) {
+export async function storeTranscriptAnalysis(file, clientName, a, existing = null) {
   const client = clientName.trim()
   if (!client) throw new Error('Client name is required before filing a transcript.')
   if (!file) throw new Error('Transcript PDF is required.')
@@ -102,16 +102,22 @@ export async function storeTranscriptAnalysis(file, clientName, a) {
 
   const safeClient = client.replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 100) || 'client'
   const safeFile = String(file.name || 'transcript.pdf').replace(/[\\/\r\n]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 140) || 'transcript.pdf'
-  const filePath = `transcripts/${safeClient}/${crypto.randomUUID()}-${safeFile}`
+  const uploadedHere = !existing?.filePath
+  const filePath = existing?.filePath || `transcripts/${safeClient}/${crypto.randomUUID()}-${safeFile}`
 
-  const { error: uploadErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
-  if (uploadErr) throw new Error(`Transcript PDF upload failed: ${uploadErr.message}`)
+  if (uploadedHere) {
+    const { error: uploadErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
+    if (uploadErr) throw new Error(`Transcript PDF upload failed: ${uploadErr.message}`)
+  }
 
   let analysisId = null
   try {
-    const { data: signed, error: signErr } = await supabase.storage.from('documents').createSignedUrl(filePath, 900)
-    if (signErr || !signed?.signedUrl) throw new Error(`Secure transcript link failed: ${signErr?.message || 'No signed URL returned'}`)
-    const fileUrl = signed.signedUrl
+    let fileUrl = existing?.signedUrl || null
+    if (!fileUrl) {
+      const { data: signed, error: signErr } = await supabase.storage.from('documents').createSignedUrl(filePath, 900)
+      if (signErr || !signed?.signedUrl) throw new Error(`Secure transcript link failed: ${signErr?.message || 'No signed URL returned'}`)
+      fileUrl = signed.signedUrl
+    }
 
     const { data: analysis, error: analysisErr } = await supabase.from('transcript_analyses').insert({
       client_name: client,
@@ -150,7 +156,9 @@ export async function storeTranscriptAnalysis(file, clientName, a) {
     if (analysisId) {
       try { await supabase.from('transcript_analyses').delete().eq('id', analysisId) } catch { /* best-effort rollback */ }
     }
-    try { await supabase.storage.from('documents').remove([filePath]) } catch { /* best-effort rollback */ }
+    if (uploadedHere) {
+      try { await supabase.storage.from('documents').remove([filePath]) } catch { /* best-effort rollback */ }
+    }
     throw e
   }
 }
