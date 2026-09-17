@@ -20,7 +20,6 @@ serve(async(req)=>{
     if(userErr||!user?.email) return json({error:'Unauthorized'},401)
     const {conferenceName,phoneContext,terminationSource}=await req.json()
     if(!conferenceName||!/^[A-Za-z0-9_-]+$/.test(conferenceName)) return json({error:'valid conferenceName required'},400)
-    const requestedSource=terminationSource==='admin_dialer'?'admin_dialer':'cleanup_after_disconnect'
 
     const db=createClient(SUPABASE_URL,SERVICE_KEY)
     const {data:isPlatformAdmin}=await authClient.rpc('_is_platform_admin')
@@ -42,6 +41,22 @@ serve(async(req)=>{
         .order('created_at',{ascending:false}).limit(1).maybeSingle(),
     ])
     if(!inConf&&!outConf) return json({error:'Conference does not belong to this calling context.'},403)
+
+    let requestedSource: 'admin_dialer'|'cleanup_after_disconnect'
+    if(terminationSource==='admin_dialer') requestedSource='admin_dialer'
+    else if(terminationSource==='cleanup_after_disconnect') requestedSource='cleanup_after_disconnect'
+    else if(outConf?.provider_status||outConf?.ended_at) requestedSource='cleanup_after_disconnect'
+    else {
+      // Current clients do not yet send an explicit termination source. Give
+      // the provider terminal callback a brief chance to land before deciding.
+      // A remote hangup should classify itself here; an explicit End click has
+      // no provider terminal callback until this function starts teardown.
+      await sleep(900)
+      const {data:latest}=outConf?.id
+        ? await db.from('outbound_calls').select('provider_status,ended_at').eq('id',outConf.id).eq('tenant_id',tenantId).maybeSingle()
+        : {data:null}
+      requestedSource=(latest?.provider_status||latest?.ended_at)?'cleanup_after_disconnect':'admin_dialer'
+    }
 
     const requestedAt=new Date().toISOString()
     if(outConf?.id&&requestedSource==='admin_dialer'){
