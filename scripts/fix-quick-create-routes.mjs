@@ -85,7 +85,10 @@ patch('src/pages/Books.jsx', s => {
   return insertBeforeFirstEffect(s, inject, 'Books')
 })
 
-patch('src/pages/FormaCorp.jsx', s => {
+// FormaCorp now has a thin shared wrapper plus the preserved legacy tracker.
+// Keep the quick-create contract on the legacy tracker because it owns the
+// original new-formation modal and state.
+patch('src/pages/FormaCorpLegacy.jsx', s => {
   if (!s.includes("from 'react-router-dom'")) {
     s = s.replace(/import \{ useState, useEffect, useRef \} from 'react'\s*\n/, "import { useState, useEffect, useRef } from 'react'\nimport { useLocation } from 'react-router-dom'\n")
   }
@@ -105,7 +108,7 @@ const assertions = [
   ['src/pages/Transcripts.jsx', ["get('new') === '1'", 'const location = useLocation()']],
   ['src/pages/IRSPortal.jsx', ["get('new') === '1'", "setTab('pull')", 'const location = useLocation()']],
   ['src/pages/Books.jsx', ["params.get('new') === '1'"]],
-  ['src/pages/FormaCorp.jsx', ["get('new') === '1'", 'const location = useLocation()']],
+  ['src/pages/FormaCorpLegacy.jsx', ["get('new') === '1'", 'const location = useLocation()']],
 ]
 for (const [path, needles] of assertions) {
   const text = fs.readFileSync(path, 'utf8')
