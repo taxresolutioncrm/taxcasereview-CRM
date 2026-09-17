@@ -124,6 +124,16 @@ serve(async (req) => {
       throw new Error('Shared mailbox sender returned a non-canonical Demo identity')
     }
 
+    const clientName = safe(body.clientName) || to
+    if (routed.message_id) {
+      const { error: metaError } = await admin.from('emails')
+        .update({ clientName, clientname: clientName })
+        .eq('tenant_id', DEMO_TENANT_ID)
+        .eq('route_id', route.id)
+        .eq('message_id', routed.message_id)
+      if (metaError) console.error('[demo-send-email] Sent metadata enrichment failed', metaError)
+    }
+
     return new Response(JSON.stringify({
       success: true,
       // Preserve the existing Email.jsx response contract while transport is now shared.
