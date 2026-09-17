@@ -199,7 +199,7 @@ serve(async (req) => {
     if (logError) throw new Error(`Delivery confirmed but CRM Sent log failed: ${logError.message}`)
 
     return new Response(JSON.stringify({ success: true, via: 'stalwart_jmap', from: PHYSICAL_FROM, mailbox_owner: DEMO_MAILBOX, submission_id: submissionId }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-  } catch (e) {
+  } catch (e: any) {
     console.error('[demo-send-email]', e)
     return new Response(JSON.stringify({ error: e?.message || 'Demo email send failed' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
