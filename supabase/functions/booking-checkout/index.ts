@@ -5,8 +5,9 @@
 // stripe-checkout-webhook once payment actually completes (purpose =
 // 'booking_payment'), so we never create an unpaid booking.
 //
-// The amount and label are read SERVER-SIDE from settings.booking_config.payment
-// (the client value is ignored) so a visitor can't tamper with the price.
+// The amount and label are read SERVER-SIDE from the canonical tenant's
+// settings.booking_config.payment (the client value is ignored) so a visitor
+// can't tamper with the price or accidentally read another tenant's config.
 //
 // Needs Edge Function secrets: STRIPE_SECRET_KEY, SUPABASE_URL,
 // SUPABASE_SERVICE_ROLE_KEY.
@@ -22,6 +23,8 @@ const corsHeaders = {
 }
 
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') ?? ''
+const TAXRESCRM_TENANT = 'a0000000-0000-0000-0000-000000000001'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 async function stripeRequest(path: string, body: Record<string, string>) {
   const res = await fetch(`https://api.stripe.com/v1/${path}`, {
@@ -47,9 +50,16 @@ serve(async (req) => {
       })
     }
 
-    const { name, email, phone, event_type, date, time, notes, success_url, cancel_url } = await req.json()
+    const { name, email, phone, event_type, date, time, notes, tenant, success_url, cancel_url } = await req.json()
     if (!email || !date || !time) {
       return new Response(JSON.stringify({ error: 'Missing booking details.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const tenantId = (tenant || TAXRESCRM_TENANT).toString().trim()
+    if (!UUID_RE.test(tenantId)) {
+      return new Response(JSON.stringify({ error: 'Invalid booking tenant.' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
@@ -59,9 +69,22 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Read the real amount + label from config — never trust the client.
-    const { data: settings } = await supabase.from('settings').select('booking_config').limit(1).maybeSingle()
-    const pay = settings?.booking_config?.payment || {}
+    // Read ONLY this tenant's real amount + label. Never fall back to another
+    // settings row: a missing/disabled tenant must fail closed.
+    const { data: settings, error: settingsError } = await supabase
+      .from('settings')
+      .select('booking_config')
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    if (settingsError) throw settingsError
+    if (!settings?.booking_config) {
+      return new Response(JSON.stringify({ error: 'Online booking is not configured for this office.' }), {
+        status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const pay = settings.booking_config?.payment || {}
     if (!pay.required) {
       return new Response(JSON.stringify({ error: 'Payment is not required for booking.' }), {
         status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -84,6 +107,7 @@ serve(async (req) => {
       'line_items[0][price_data][unit_amount]': String(amountCents),
       'line_items[0][price_data][product_data][name]': label,
       'metadata[purpose]': 'booking_payment',
+      'metadata[tenant_id]': tenantId,
       'metadata[b_name]': (name || '').toString().slice(0, 120),
       'metadata[b_email]': email.toString().slice(0, 160),
       'metadata[b_phone]': (phone || '').toString().slice(0, 40),
@@ -91,7 +115,7 @@ serve(async (req) => {
       'metadata[b_date]': date.toString().slice(0, 10),
       'metadata[b_time]': time.toString().slice(0, 8),
       'metadata[b_notes]': (notes || '').toString().slice(0, 480),
-      success_url: (success_url || 'https://taxrescrm.app/') ,
+      success_url: (success_url || 'https://taxrescrm.app/'),
       cancel_url: (cancel_url || 'https://taxrescrm.app/'),
     })
 
