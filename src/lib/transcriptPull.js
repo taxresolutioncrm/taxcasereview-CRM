@@ -42,17 +42,12 @@ export function getProvider(id, providers = PULL_PROVIDERS) {
 export async function submitToProvider(providerId, requestRow) {
   if (providerId === 'manual') return { status: 'Requested' }
   if (providerId !== 'irs_a2a') throw new Error('Unsupported transcript provider.')
-  if (!requestRow?.id) requestRow.id = crypto.randomUUID()
+  if (!requestRow?.id) throw new Error('Direct IRS TDS requires a saved pull request.')
   const { data, error } = await supabase.functions.invoke('transcript-pull', {
-    body: { action: 'submitDraft', request: requestRow },
+    body: { action: 'submit', requestId: requestRow.id },
   })
   if (error) throw error
   if (data?.error) throw new Error(data.error)
-  requestRow.provider_request_id = data.providerRequestId
-  requestRow.provider_status = data.status || 'Submitted'
-  requestRow.provider_submitted_at = data.submittedAt || new Date().toISOString()
-  requestRow.provider_last_checked_at = new Date().toISOString()
-  requestRow.status = 'In Progress'
   if (typeof window !== 'undefined') setTimeout(() => startDirectPolling(requestRow.id), 2000)
   return data
 }
