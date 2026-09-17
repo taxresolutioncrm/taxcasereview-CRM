@@ -24,6 +24,21 @@ function renderValue(value: any, ctx: Record<string, any>): any {
 const renderTemplate = (raw: string, ctx: Record<string, any>) => renderValue(JSON.parse(raw), ctx)
 const renderUrl = (raw: string, ctx: Record<string, any>) => raw.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_, k) => encodeURIComponent(String(ctx[k] ?? '')))
 
+function parseYears(value: any) {
+  const out = new Set<string>()
+  const s = String(value || '')
+  const ranges = s.match(/((?:19|20)\d{2})\s*[-–—]\s*((?:19|20)\d{2})/g) || []
+  for (const r of ranges) {
+    const nums = r.match(/(?:19|20)\d{2}/g)?.map(Number) || []
+    if (nums.length === 2) {
+      for (let y = Math.min(nums[0], nums[1]); y <= Math.max(nums[0], nums[1]); y++) out.add(String(y))
+    }
+  }
+  const rest = s.replace(/((?:19|20)\d{2})\s*[-–—]\s*((?:19|20)\d{2})/g, ' ')
+  for (const y of rest.match(/(?:19|20)\d{2}/g) || []) out.add(y)
+  return out
+}
+
 async function sha256Hex(bytes: Uint8Array) {
   const hash = await crypto.subtle.digest('SHA-256', bytes.slice().buffer)
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -77,6 +92,13 @@ async function resolveContext(service: any, pull: any) {
   if (!tenantId) throw new Error('Transcript pull request is missing tenant scope.')
   const { data: poa, error: poaErr } = await service.from('poa_records').select('id,status,form_type,tax_years').eq('tenant_id', tenantId).eq('id', pull.poa_record_id).maybeSingle()
   if (poaErr || !poa || poa.status !== 'On File') throw new Error('A valid POA/TIA with status On File is required.')
+  const requestedYears = parseYears(pull.tax_years)
+  if (requestedYears.size > 0) {
+    const authorizedYears = parseYears(poa.tax_years)
+    if (authorizedYears.size === 0 || [...requestedYears].some(y => !authorizedYears.has(y))) {
+      throw new Error('The recorded POA/TIA does not cover every requested tax year.')
+    }
+  }
   const { data: clients, error: clientErr } = await service.from('clients').select('id,name,ssn,ein').eq('tenant_id', tenantId).eq('name', pull.client_name).limit(2)
   if (clientErr) throw new Error(clientErr.message)
   if (!clients || clients.length !== 1) throw new Error('Direct TDS requires exactly one matching client record.')
@@ -96,7 +118,7 @@ async function resolveContext(service: any, pull: any) {
     caf,
     poaId: poa.id,
     poaFormType: poa.form_type,
-    taxYears: String(pull.tax_years || '').match(/(?:19|20)\d{2}/g) || [],
+    taxYears: [...requestedYears],
     transcriptTypes: pull.transcript_types || [],
     requestedBy: pull.requested_by || '',
     providerRequestId: pull.provider_request_id || '',
@@ -163,7 +185,6 @@ serve(async (req) => {
 
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
-
       const resultKeys: string[] = pull.provider_result_keys || []
       const filePaths: string[] = pull.provider_file_paths || []
       const filedKeys: string[] = pull.provider_filed_keys || []
@@ -174,14 +195,12 @@ serve(async (req) => {
         if (signErr || !signed?.signedUrl) throw new Error('Could not create secure transcript link.')
         return json({ ok: true, status: 'Delivered', resultKey: resultKeys[pendingIndex], filePath, signedUrl: signed.signedUrl })
       }
-
       if (!pull.provider_request_id) return json({ error: 'This request has not been submitted to IRS TDS yet.' }, 409)
       ctx.providerRequestId = pull.provider_request_id
       const headers = await authHeaders()
       const resp = await fetch(renderUrl(env('IRS_TDS_STATUS_URL_TEMPLATE'), ctx), { method: env('IRS_TDS_STATUS_METHOD') || 'GET', headers })
       const parsed = await readBody(resp)
       if (!resp.ok) return json({ error: `IRS TDS status request failed (${resp.status}).` }, 502)
-
       let pdfBytes: Uint8Array | null = parsed.kind === 'pdf' ? parsed.bytes : null
       let remoteStatus = 'In Progress'
       if (parsed.kind === 'json') {
@@ -198,7 +217,6 @@ serve(async (req) => {
           }
         }
       }
-
       if (pdfBytes?.length) {
         const resultKey = await sha256Hex(pdfBytes)
         const existingIndex = resultKeys.indexOf(resultKey)
@@ -214,17 +232,12 @@ serve(async (req) => {
         const nextKeys = [...resultKeys, resultKey]
         const nextPaths = [...filePaths, filePath]
         const { error: updateErr } = await userDb.from('transcript_pull_requests').update({
-          provider_status: 'Delivered',
-          provider_error: null,
-          provider_last_checked_at: new Date().toISOString(),
-          provider_file_path: filePath,
-          provider_result_keys: nextKeys,
-          provider_file_paths: nextPaths,
+          provider_status: 'Delivered', provider_error: null, provider_last_checked_at: new Date().toISOString(), provider_file_path: filePath,
+          provider_result_keys: nextKeys, provider_file_paths: nextPaths,
         }).eq('id', requestId)
         if (updateErr) throw new Error(updateErr.message)
         return json({ ok: true, status: 'Delivered', resultKey, filePath, signedUrl: signed.signedUrl })
       }
-
       const { error: updateErr } = await userDb.from('transcript_pull_requests').update({ provider_status: remoteStatus, provider_error: null, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
       if (updateErr) throw new Error(updateErr.message)
       return json({ ok: true, status: remoteStatus })
