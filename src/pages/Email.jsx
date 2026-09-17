@@ -390,9 +390,26 @@ export default function Email() {
       }
     } else if (gmailConnected) {
       if (isDemoMailbox) {
-        // Demo-safe send: write the message into the sandbox Sent folder but
-        // never deliver it outside TaxRes CRM.
-        status = 'Sent'
+        try {
+          const { data, error } = await supabase.functions.invoke('demo-send-email', {
+            body: {
+              to: form.recipient,
+              subject: form.subject,
+              text: form.body,
+              clientName: form.clientName || undefined,
+            },
+          })
+          if (error) throw error
+          if (!data?.success || data?.via !== 'stalwart_jmap' || data?.from !== 'romy@taxrescrm.net' || data?.mailbox_owner !== 'demo@taxrescrm.net') {
+            throw new Error(data?.error || 'Demo mail delivery was not confirmed by TaxRes Stalwart')
+          }
+          status = 'Sent'
+          alreadyStored = true
+        } catch (e) {
+          setSaving(false)
+          showToast('Demo email not sent: ' + (e?.message || e))
+          return
+        }
       } else {
         try {
           await sendGmailEmail(supabase, { to: form.recipient, subject: form.subject, body: form.body, senderEmployeeEmail: user?.email })
@@ -437,7 +454,7 @@ export default function Email() {
       })
     }
 
-    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent — sandbox only' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ Gmail is not connected — this was only saved as a log entry, nothing was emailed')
+    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via TaxRes CRM' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ Gmail is not connected — this was only saved as a log entry, nothing was emailed')
     setForm(BLANK); setView('inbox'); load()
   }
 
