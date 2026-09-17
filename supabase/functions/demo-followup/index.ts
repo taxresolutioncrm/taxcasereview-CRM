@@ -21,10 +21,10 @@ async function isInternal(req:Request, sb:any){
 }
 
 async function sendEmail(to:string,subject:string,html:string){
-  const res=await fetch(`${URL}/functions/v1/send-email`,{
+  const res=await fetch(`${URL}/functions/v1/demo-send-email`,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':`Bearer ${SERVICE}`},
-    body:JSON.stringify({to,subject,html,from_name:FROM_NAME,from_email:FROM_EMAIL,tenant_id:ADMIN_TENANT})
+    body:JSON.stringify({to,subject,html,tenant_id:ADMIN_TENANT})
   })
   if(!res.ok) console.error('[demo-followup] send failed',res.status,await res.text())
   return res.ok
