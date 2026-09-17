@@ -193,7 +193,9 @@ async function loadPlatformOfficeRows() {
       ...rows[idx],
       client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
       lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
-      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      // TaxRes staff count is authoritative from admin_tenant_overview() / employees.
+      // Do not let a secondary usage feed overwrite it with stale or zero counts.
+      employee_count:Number(rows[idx].employee_count ?? 0),
       cases_count:Number(metrics.open_jobs ?? rows[idx].cases_count ?? 0),
       tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
       storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
@@ -738,7 +740,7 @@ function Overview() {
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{r.billing_seats != null ? (Number(r.billing_seats).toLocaleString() + ' / ' + Number(r.employee_count||0).toLocaleString()) : Number(r.employee_count||0).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.billing_seats ?? r.employee_count ?? 0).toLocaleString() + ' / ' + Number(r.employee_count ?? 0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.client_count||0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.cases_count||0).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.transactions_count||0).toLocaleString()}</td>
