@@ -19,7 +19,7 @@ for (const {label,path} of newItems) {
 const expectedNew = {
   'New Case': ['/cases','src/pages/Cases.jsx',"get('new') === '1'"],
   'New Client': ['/clients','src/pages/Clients.jsx',"get('new') === '1'"],
-  'New Corp': ['/formacorp','src/pages/FormaCorp.jsx',"get('new') === '1'"],
+  'New Corp': ['/formacorp','src/pages/FormaCorpLegacy.jsx',"get('new') === '1'"],
   'New Document': ['/documents','src/pages/Documents.jsx',"get('new') === '1'"],
   'New E-Sign': ['/esign','src/pages/Esign.jsx',"get('new') === '1'"],
   'New Email': ['/email','src/pages/Email.jsx',"get('new') === '1'"],
