@@ -1,16 +1,23 @@
 # Direct IRS TDS baseline for Tax Res CRM offices
 
-This repository is the baseline for TCR and future tax-office clones.
+This repository is the canonical baseline for TCR and future tax-office clones.
 
 ## Required behavior
 
-- Manual IRS e-Services/TDS download remains the fallback path.
-- Direct IRS TDS activates only when the office/project has an approved IRS e-Services API Client ID and the official TDS/SOR product contract is configured.
-- The browser never receives or stores IRS API secrets.
-- The direct path resolves client SSN/EIN, office CAF, POA/TIA status, requested tax years, and transcript types server-side.
+- Direct IRS TDS is the preferred provider when an office has an approved IRS e-Services API Client ID and the official TDS/SOR product contract is configured.
+- Manual IRS e-Services/TDS download remains available only as the fallback path.
+- Direct mode must never appear connected unless the server-side IRS wire configuration is actually present.
+- The browser never receives or stores IRS API secrets, IRS usernames/passwords, MFA codes, cookies, or session tokens.
+- Client SSN/EIN, office CAF, POA/TIA state, requested tax years, and transcript types are resolved server-side and tenant-scoped.
+- A signed-in employee must have IRS write permission (`perm_irs >= 2`) for direct submit/status operations.
+- The POA/TIA must be `On File`, and every requested tax year must be inside the recorded POA/TIA year scope before a request is sent to the IRS.
+- The CRM pull-request row is persisted before IRS submission. If submission fails, the same row stays available for retry; never create an untracked/orphan IRS transaction by submitting before persistence.
 - Direct requests are tracked on `transcript_pull_requests` with provider transaction/status fields.
-- The browser resumes outstanding direct requests when the IRS Portal loads, polls at 30-second intervals, securely downloads delivered PDFs, parses them, files them under the client, and updates request coverage/status.
-- Manual watched-folder import stays available as fallback.
+- Delivered PDFs are stored in the private `documents` bucket and keyed by SHA-256 result hashes so the same transcript cannot be filed twice.
+- Multiple delivered PDFs are supported for one request. Outstanding direct requests resume after the IRS Portal is reopened and poll at 30-second intervals while work remains.
+- Each delivered PDF is parsed, filed under the client, attached to the pull request, and counted only toward that request's coverage.
+- Completion requires the requested year/transcript-type coverage for that pull request; unrelated older client transcripts do not satisfy the request.
+- Manual watched-folder import remains available as fallback and must use the same request-coverage rules.
 
 ## Edge Function
 
@@ -19,13 +26,16 @@ This repository is the baseline for TCR and future tax-office clones.
 Supported actions:
 
 - `capabilities` — reports whether the IRS wire contract is configured; never returns secrets.
-- `submitDraft` — validates the CRM request and submits to IRS before the CRM row is inserted, returning the provider transaction id.
-- `submit` — submits an already-saved direct request.
-- `status` — checks IRS delivery status and stores the delivered PDF in the private `documents` bucket.
+- `submit` — submits an already-persisted direct request after authorization, POA/TIA, tenant, client TIN, CAF, and year-scope validation.
+- `status` — checks IRS delivery status, de-duplicates returned PDFs, stores them in the private `documents` bucket, and returns the next unfiled result to the CRM.
+
+## Database tracking
+
+`supabase/migrations/20260917_tds_direct_adapter.sql` adds provider transaction/status fields plus arrays for delivered result hashes, stored file paths, and filed-result hashes. This supports retries, multiple results, reload recovery, and duplicate prevention.
 
 ## Required server-side configuration
 
-Populate these from the official IRS TDS/SOR product guide. Do not guess or hard-code unpublished endpoints/contracts.
+Populate these only from the official IRS TDS/SOR product guide. Do not guess or hard-code unpublished endpoints/contracts.
 
 Required:
 
@@ -51,12 +61,12 @@ Authentication/response settings are configured as required by the official guid
 - `IRS_TDS_PDF_BASE64_PATH`
 - `IRS_TDS_DOWNLOAD_URL_PATH`
 
-Only the settings required by the IRS product guide should be populated.
+Only settings actually required by the official IRS product contract should be populated.
 
-## IRS prerequisites
+## IRS prerequisite
 
-The IRS requires an API Client ID for e-Services APIs including Transcript Delivery System (TDS) and Secure Object Repository (SOR). The TDS/SOR product user guide is obtained through the IRS e-Help Desk. Direct mode must remain unavailable until that approval/configuration exists.
+An IRS-issued e-Services API Client ID and the official TDS/SOR product guide/authorization are external prerequisites for a real IRS round-trip test. Direct mode must remain unavailable until those are issued and configured.
 
 ## Future-office rule
 
-A new tax office must inherit this adapter, migration, security model, and fallback behavior. Do not fork a separate office-specific TDS implementation unless an IRS contract requirement makes it necessary.
+Every future tax office must inherit this adapter, migration, security model, saved-first submission flow, POA year-scope validation, result de-duplication, request-specific coverage logic, and manual fallback. Do not fork an office-specific TDS implementation unless the official IRS contract requires a real difference.
