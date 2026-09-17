@@ -105,6 +105,11 @@ verify_jwt = false
 [functions.booking-reminders]
 verify_jwt = false
 
+# Demo mail gateway accepts three custom-auth paths: authenticated Demo staff,
+# opaque public booking/e-sign tokens, and internal cron/service calls.
+[functions.demo-send-email]
+verify_jwt = false
+
 [functions.trigger-workflow]
 verify_jwt = false
 [functions.sunbiz-search]
