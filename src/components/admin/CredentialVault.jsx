@@ -166,7 +166,7 @@ export default function CredentialVault() {
   }
 
   return (
-    <div className="rl-vault" style={{ padding:'28px 32px', maxWidth:1200 }}>
+    <div className="rl-vault" style={{ padding:'28px 32px', maxWidth:1600, width:'100%', boxSizing:'border-box' }}>
       <style>{`
         /* VAULT_MOBILE_POLISH_V1_20260830 */
         @media (max-width:768px){
@@ -244,7 +244,7 @@ export default function CredentialVault() {
       {loading ? <div style={{ color:'#64748b', padding:30 }}>Loading vault…</div> : filtered.length===0 ? (
         <div style={{ ...CARD, padding:38, textAlign:'center', color:'#64748b' }}>No credentials yet. Click <b style={{color:'#a5b4fc'}}>+ Add Credential</b> to store the first one.</div>
       ) : (
-        <div className="rl-vault-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,280px))', gap:8, alignItems:'start' }}>
+        <div className="rl-vault-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:8, alignItems:'start' }}>
           {filtered.map(e => {
             const value = revealed[e.id]
             return <div className="rl-vault-card" key={e.id} style={{ ...CARD, padding:'8px 9px', minWidth:0, borderRadius:10 }}>
