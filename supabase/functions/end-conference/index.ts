@@ -18,8 +18,9 @@ serve(async(req)=>{
     const authClient=createClient(SUPABASE_URL,ANON_KEY,{global:{headers:{Authorization:`Bearer ${token}`}}})
     const {data:{user},error:userErr}=await authClient.auth.getUser(token)
     if(userErr||!user?.email) return json({error:'Unauthorized'},401)
-    const {conferenceName,phoneContext}=await req.json()
+    const {conferenceName,phoneContext,terminationSource}=await req.json()
     if(!conferenceName||!/^[A-Za-z0-9_-]+$/.test(conferenceName)) return json({error:'valid conferenceName required'},400)
+    const requestedSource=terminationSource==='admin_dialer'?'admin_dialer':'cleanup_after_disconnect'
 
     const db=createClient(SUPABASE_URL,SERVICE_KEY)
     const {data:isPlatformAdmin}=await authClient.rpc('_is_platform_admin')
@@ -37,13 +38,13 @@ serve(async(req)=>{
     const [{data:inConf},{data:outConf}]=await Promise.all([
       db.from('incoming_calls').select('id,callsid,status').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
         .order('created_at',{ascending:false}).limit(1).maybeSingle(),
-      db.from('outbound_calls').select('id,provider_call_sid,status').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
+      db.from('outbound_calls').select('id,provider_call_sid,status,provider_status,disconnect_source,disconnect_reason,ended_at').eq('tenant_id',tenantId).eq('conference_name',conferenceName)
         .order('created_at',{ascending:false}).limit(1).maybeSingle(),
     ])
     if(!inConf&&!outConf) return json({error:'Conference does not belong to this calling context.'},403)
 
     const requestedAt=new Date().toISOString()
-    if(outConf?.id){
+    if(outConf?.id&&requestedSource==='admin_dialer'){
       const {error:markErr}=await db.from('outbound_calls').update({
         end_requested_at:requestedAt,
         end_requested_by:user.email,
@@ -120,21 +121,30 @@ serve(async(req)=>{
 
     if(providerFailure){
       if(outConf?.id) await db.from('outbound_calls').update({
-        disconnect_reason:'admin_end_not_fully_confirmed',
-        disconnect_details:{admin_end_requested_at:requestedAt,terminated_call_sids:terminatedCallSids,provider_terminal_states:providerTerminalStates},
+        disconnect_reason:requestedSource==='admin_dialer'?'admin_end_not_fully_confirmed':(outConf.disconnect_reason||'cleanup_not_fully_confirmed'),
+        disconnect_details:{cleanup_source:requestedSource,cleanup_requested_at:requestedAt,terminated_call_sids:terminatedCallSids,provider_terminal_states:providerTerminalStates},
       }).eq('id',outConf.id).eq('tenant_id',tenantId)
       return json({error:'Could not confirm every SignalWire call leg ended.',terminated_call_sids:terminatedCallSids},502)
     }
 
     const endedAt=new Date().toISOString()
-    if(outConf?.id) await db.from('outbound_calls').update({
-      status:'completed',
-      ended_at:endedAt,
-      disconnect_source:'admin_dialer',
-      disconnect_initiator:user.email,
-      disconnect_reason:'admin_end_confirmed',
-      disconnect_details:{admin_end_requested_at:requestedAt,terminated_call_sids:terminatedCallSids,provider_terminal_states:providerTerminalStates,conference_found:!!conferenceSid},
-    }).eq('id',outConf.id).eq('tenant_id',tenantId)
+    if(outConf?.id){
+      const providerAlreadyClassified=!!outConf.provider_status||!!outConf.ended_at
+      const payload:Record<string,unknown>={
+        status:'completed',
+        ended_at:outConf.ended_at||endedAt,
+        disconnect_details:{cleanup_source:requestedSource,cleanup_requested_at:requestedAt,terminated_call_sids:terminatedCallSids,provider_terminal_states:providerTerminalStates,conference_found:!!conferenceSid},
+      }
+      if(requestedSource==='admin_dialer'){
+        payload.disconnect_source='admin_dialer'
+        payload.disconnect_initiator=user.email
+        payload.disconnect_reason='admin_end_confirmed'
+      }else if(!providerAlreadyClassified){
+        payload.disconnect_source='browser_or_remote_disconnect'
+        payload.disconnect_reason='cleanup_after_disconnect'
+      }
+      await db.from('outbound_calls').update(payload).eq('id',outConf.id).eq('tenant_id',tenantId)
+    }
     await db.from('incoming_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
     return json({ok:true,terminated_call_sids:terminatedCallSids,conference_found:!!conferenceSid})
   }catch(err){console.error('end-conference error:',err);return json({error:'Unable to end conference.'},500)}
