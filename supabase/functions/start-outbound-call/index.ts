@@ -75,8 +75,6 @@ serve(async (req) => {
     const fromNumber = romylabsContext ? romylabsNumber : (requestedCallerId || localNumber || tollFreeNumber)
     if (!fromNumber) return json({ error: romylabsContext ? 'RomyLabs phone number is not configured.' : 'Configured outbound caller ID is invalid.' }, 422)
 
-    // Real production authorization/provider validation, but guaranteed no call,
-    // no outbound_calls insert and no SignalWire request.
     if (qa_certification === true && dry_run === true) {
       return json({ success: true, dry_run: true, delivery: false, provider: 'signalwire', tenant_id: effectiveTenantId })
     }
@@ -122,6 +120,11 @@ serve(async (req) => {
       } catch {}
       await db.from('outbound_calls').update({
         status: 'failed',
+        provider_status: 'failed',
+        ended_at: new Date().toISOString(),
+        disconnect_source: 'provider_failure',
+        disconnect_reason: providerMessage || `HTTP ${resp.status}`,
+        disconnect_details: { provider_http_status: resp.status, provider_response: text.slice(0, 2000) },
         provider_http_status: resp.status,
         provider_error: providerMessage || text.slice(0, 1000),
       }).eq('tenant_id', effectiveTenantId).eq('conference_name', conferenceName)
