@@ -11,9 +11,16 @@ const AUTHORIZE_URL = () => env('IRS_TDS_ISP_AUTHORIZE_URL') || 'https://api.www
 const TOKEN_URL = () => env('IRS_TDS_ISP_TOKEN_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/token'
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
 
-const sessionSetupConfigured = () => Boolean(
-  env('IRS_TDS_CLIENT_ID') && env('IRS_TDS_JWT_KID') && env('IRS_TDS_JWT_PRIVATE_KEY_PEM') &&
-  env('IRS_TDS_REDIRECT_URI') && env('IRS_TDS_REQUEST_URL') && env('IRS_TDS_REQUEST_TEMPLATE') && env('IRS_TDS_STATUS_URL_TEMPLATE')
+const authorizationConfigured = () => Boolean(
+  env('IRS_TDS_CLIENT_ID') &&
+  env('IRS_TDS_JWT_KID') &&
+  env('IRS_TDS_JWT_PRIVATE_KEY_PEM') &&
+  env('IRS_TDS_REDIRECT_URI')
+)
+const transcriptContractConfigured = () => Boolean(
+  env('IRS_TDS_REQUEST_URL') &&
+  env('IRS_TDS_REQUEST_TEMPLATE') &&
+  env('IRS_TDS_STATUS_URL_TEMPLATE')
 )
 
 function getPath(obj: any, path: string) { if (!path) return undefined; return path.split('.').reduce((v, k) => v == null ? undefined : v[k], obj) }
@@ -114,13 +121,26 @@ serve(async (req) => {
     const userDb = createClient(url, anon, { global: { headers: { Authorization: auth } } }), service = createClient(url, serviceKey)
     const { data: userData, error: userErr } = await userDb.auth.getUser(); if (userErr || !userData?.user) return json({ error: 'Authentication required' }, 401)
     const employee = await resolveEmployee(userDb, userData.user), body = await req.json().catch(() => ({})), action = String(body?.action || 'capabilities'), session = await getSession(service, employee.tenant_id, userData.user.id)
-    if (action === 'capabilities') { const active = sessionSetupConfigured() && sessionWindowActive(session); return json({ directConfigured: active, sessionSetupConfigured: sessionSetupConfigured(), sessionActive: active, expiresAt: active ? session.session_expires_at : null, accessExpiresAt: active ? session.access_expires_at : null, organizationName: active ? session.organization_name : null }) }
+    if (action === 'capabilities') {
+      const authReady = authorizationConfigured(), contractReady = transcriptContractConfigured(), sessionActive = authReady && sessionWindowActive(session)
+      return json({
+        directConfigured: authReady && contractReady && sessionActive,
+        sessionSetupConfigured: authReady,
+        authorizationConfigured: authReady,
+        transcriptContractConfigured: contractReady,
+        sessionActive,
+        expiresAt: sessionActive ? session.session_expires_at : null,
+        accessExpiresAt: sessionActive ? session.access_expires_at : null,
+        organizationName: sessionActive ? session.organization_name : null,
+      })
+    }
     if (action === 'begin-session') {
-      if (!sessionSetupConfigured()) return json({ error: 'IRS TDS ISP authorization is not configured yet.', code: 'IRS_ISP_NOT_CONFIGURED' }, 409)
+      if (!authorizationConfigured()) return json({ error: 'IRS TDS ISP authorization is not configured yet.', code: 'IRS_ISP_NOT_CONFIGURED' }, 409)
       const state = randomToken(32), { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' }); if (error) throw new Error(error.message)
       const u = new URL(AUTHORIZE_URL()); u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID')); u.searchParams.set('response_type', 'code'); u.searchParams.set('state', state); return json({ ok: true, authorizationUrl: u.toString(), redirectUri: env('IRS_TDS_REDIRECT_URI') })
     }
     if (action === 'end-session') { await service.from('irs_tds_sessions').update({ access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, state: null, state_expires_at: null, updated_at: new Date().toISOString() }).eq('tenant_id', employee.tenant_id).eq('user_id', userData.user.id); return json({ ok: true }) }
+    if (!transcriptContractConfigured()) return json({ error: 'IRS TDS transcript request contract is not configured yet.', code: 'TDS_CONTRACT_NOT_CONFIGURED' }, 409)
     const requestId = String(body?.requestId || '').trim(); if (!requestId) return json({ error: 'requestId is required' }, 400)
     const { data: pull, error: pullErr } = await userDb.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle(); if (pullErr || !pull) return json({ error: 'Transcript pull request not found or not authorized' }, 404); if (String(pull.tenant_id) !== String(employee.tenant_id)) return json({ error: 'Transcript pull request tenant mismatch' }, 403)
     const activeSession = await requireActiveSession(service, employee.tenant_id, userData.user.id), ctx = await resolveContext(service, pull)
