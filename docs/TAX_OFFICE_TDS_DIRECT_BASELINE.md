@@ -16,8 +16,8 @@ This repository is the canonical baseline for TCR and future tax-office clones.
 - Delivered PDFs are stored in the private `documents` bucket and keyed by SHA-256 result hashes so the same transcript cannot be filed twice.
 - Multiple delivered PDFs are supported for one request. Outstanding direct requests resume after the IRS Portal is reopened and poll at 30-second intervals while work remains.
 - Each delivered PDF is parsed, filed under the client, attached to the pull request, and counted only toward that request's coverage.
-- Completion requires the requested year/transcript-type coverage for that pull request; unrelated older client transcripts do not satisfy the request.
-- Manual watched-folder import remains available as fallback and must use the same request-coverage rules.
+- Direct completion requires the requested year/transcript-type coverage for that pull request; unrelated older client transcripts do not satisfy the request.
+- Manual watched-folder import remains available as the fallback path.
 
 ## Edge Function
 
@@ -69,4 +69,4 @@ An IRS-issued e-Services API Client ID and the official TDS/SOR product guide/au
 
 ## Future-office rule
 
-Every future tax office must inherit this adapter, migration, security model, saved-first submission flow, POA year-scope validation, result de-duplication, request-specific coverage logic, and manual fallback. Do not fork an office-specific TDS implementation unless the official IRS contract requires a real difference.
+Every future tax office must inherit this adapter, migration, security model, saved-first submission flow, POA year-scope validation, result de-duplication, direct request-specific coverage logic, and manual fallback. Do not fork an office-specific TDS implementation unless the official IRS contract requires a real difference.
