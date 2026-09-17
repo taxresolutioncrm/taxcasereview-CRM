@@ -2,13 +2,15 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const DAYS=[1,2,4]
+const DEMO_TENANT='a0000000-0000-0000-0000-000000000001'
 const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{'Content-Type':'application/json'}})
 const esc=(v:any)=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]||m))
 const validEmail=(v:any)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim())
 
 async function mail(url:string,key:string,body:any){
-  const r=await fetch(url+'/functions/v1/send-email',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'apikey':key},body:JSON.stringify(body)})
-  if(!r.ok) throw new Error('send-email failed '+r.status)
+  const mailFn=String(body?.tenant_id||'')===DEMO_TENANT?'demo-send-email':'send-email'
+  const r=await fetch(url+`/functions/v1/${mailFn}`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'apikey':key},body:JSON.stringify(body)})
+  if(!r.ok) throw new Error(mailFn+' failed '+r.status)
 }
 
 serve(async(req)=>{
