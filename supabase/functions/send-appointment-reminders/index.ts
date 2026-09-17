@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, x-internal-cron-token'}
 const REMINDER_MINUTES_BEFORE=30,WINDOW_MINUTES=5
+const DEMO_TENANT='a0000000-0000-0000-0000-000000000001'
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json','Cache-Control':'no-store'}})
 function esc(v:unknown){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))}
 function easternWallClockToUTC(dateStr:string,timeStr:string){const guess=new Date(`${dateStr}T${timeStr}:00Z`),parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(guess),get=(t:string)=>parts.find(p=>p.type===t)?.value,asIfUTC=new Date(`${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}Z`);return new Date(guess.getTime()+(guess.getTime()-asIfUTC.getTime()))}
@@ -29,8 +30,9 @@ serve(async(req)=>{
       const empInfo=emailByName[ev.assignedTo]||null,recipientEmail=empInfo?.email||null;if(!recipientEmail)continue
       const tenantId=ev.tenant_id||empInfo?.tenant_id;if(!tenantId)continue
       const s=settingsByTenant[tenantId],firmName=s?.name||s?.firmname||'TaxRes CRM',firmEmail=s?.email||s?.firmemail||'',firmPhone=s?.phone||s?.firmphone||''
-      const emailRes=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`},body:JSON.stringify({to:recipientEmail,tenant_id:tenantId,subject:`📅 Reminder: ${ev.title||'Appointment'} at ${fmtTime(ev.time)}`,html:`<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto"><h2>Appointment in ${REMINDER_MINUTES_BEFORE} minutes</h2><p><strong>${esc(ev.clientName||ev.title||'—')}</strong></p><p>${esc(ev.eventType||'Appointment')} · ${esc(fmtDate(ev.date))} · ${esc(fmtTime(ev.time))} ET</p>${ev.notes?`<p>${esc(ev.notes)}</p>`:''}<p style="font-size:12px;color:#64748b">${esc(firmName)}${firmEmail?` · ${esc(firmEmail)}`:''}${firmPhone?` · ${esc(firmPhone)}`:''}</p></div>`})})
-      if(!emailRes.ok){console.error('[send-appointment-reminders] send-email failed',emailRes.status);continue}
+      const mailFn=String(tenantId)===DEMO_TENANT?'demo-send-email':'send-email'
+      const emailRes=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/${mailFn}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`},body:JSON.stringify({to:recipientEmail,tenant_id:tenantId,subject:`📅 Reminder: ${ev.title||'Appointment'} at ${fmtTime(ev.time)}`,html:`<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto"><h2>Appointment in ${REMINDER_MINUTES_BEFORE} minutes</h2><p><strong>${esc(ev.clientName||ev.title||'—')}</strong></p><p>${esc(ev.eventType||'Appointment')} · ${esc(fmtDate(ev.date))} · ${esc(fmtTime(ev.time))} ET</p>${ev.notes?`<p>${esc(ev.notes)}</p>`:''}<p style="font-size:12px;color:#64748b">${esc(firmName)}${firmEmail?` · ${esc(firmEmail)}`:''}${firmPhone?` · ${esc(firmPhone)}`:''}</p></div>`})})
+      if(!emailRes.ok){console.error('[send-appointment-reminders] mail failed',mailFn,emailRes.status);continue}
       await supabase.from('calevents').update({reminder_sent:true}).eq('id',ev.id).eq('tenant_id',tenantId);sent++
     }
     return json({success:true,sent})
