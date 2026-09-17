@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,x-client-info,apikey,content-type','Content-Type':'application/json'}
+const DEMO_TENANT='a0000000-0000-0000-0000-000000000001'
 const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:cors})
 const esc=(v:any)=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]||m))
 const validEmail=(v:any)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim())
@@ -54,7 +55,8 @@ serve(async(req)=>{
       <p style="font-size:12px;color:#64748b">You can review opens, sessions and signing progress in ${esc(firm)} → E-Signatures → Signing Audit.</p>
     </div>`
 
-    const resp=await fetch(url+'/functions/v1/send-email',{
+    const mailFn=String(doc.tenant_id)===DEMO_TENANT?'demo-send-email':'send-email'
+    const resp=await fetch(url+`/functions/v1/${mailFn}`,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'apikey':key},
       body:JSON.stringify({tenant_id:doc.tenant_id,to:staff,subject,html})
