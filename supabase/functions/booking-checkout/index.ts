@@ -123,7 +123,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('booking-checkout error:', err)
     return new Response(JSON.stringify({ error: err.message || 'Could not start checkout.' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
