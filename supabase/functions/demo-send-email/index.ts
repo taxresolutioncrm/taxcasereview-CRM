@@ -5,6 +5,7 @@ const DEMO_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 const DEMO_MAILBOX = 'demo@taxrescrm.net'
 const PHYSICAL_FROM = 'romy@taxrescrm.net'
 const BRAND_NAME = 'TaxRes CRM'
+const BRAND_LOGO = 'https://taxrescrm.app/taxrescrm-logo.png'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +13,23 @@ const corsHeaders = {
 }
 
 const safe = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ').trim()
+const esc = (v: unknown) => String(v ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+function bodyHtml(text: string) {
+  const message = esc(text).replace(/\n/g, '<br>')
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 16px"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">
+<tr><td style="padding:22px 32px;text-align:center;background:#fff;border-bottom:1px solid #e2e8f0"><img src="${BRAND_LOGO}" alt="${BRAND_NAME}" style="max-height:58px;max-width:220px;display:block;margin:0 auto"><div style="margin-top:8px;font-size:18px;font-weight:800;color:#0f172a">${BRAND_NAME}</div></td></tr>
+<tr><td style="padding:30px 34px;color:#111827;font-size:14px;line-height:1.7">${message}</td></tr>
+<tr><td style="padding:16px 34px;background:#f8fafc;border-top:1px solid #e2e8f0;color:#64748b;font-size:11px;text-align:center">${BRAND_NAME} · ${DEMO_MAILBOX}</td></tr>
+</table></td></tr></table></body></html>`
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -92,6 +110,7 @@ serve(async (req) => {
         to,
         subject,
         text_body: text,
+        html_body: bodyHtml(text),
         from_name: BRAND_NAME,
       }),
     })
@@ -107,7 +126,9 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      via: 'shared_routed_mailbox',
+      // Preserve the existing Email.jsx response contract while transport is now shared.
+      via: 'stalwart_jmap',
+      transport: 'shared_routed_mailbox',
       from: PHYSICAL_FROM,
       reply_to: DEMO_MAILBOX,
       mailbox_owner: DEMO_MAILBOX,
