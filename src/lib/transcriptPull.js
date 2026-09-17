@@ -167,15 +167,17 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
 }
 
 async function finalizeDirectDelivery(req, result) {
-  if (!result?.signedUrl || !result?.filePath) throw new Error('IRS TDS delivered a transcript without a secure file reference.')
+  if (!result?.signedUrl || !result?.filePath || !result?.resultKey) throw new Error('IRS TDS delivered a transcript without a complete secure result reference.')
   const response = await fetch(result.signedUrl)
   if (!response.ok) throw new Error(`Could not download delivered IRS transcript (${response.status}).`)
   const blob = await response.blob()
-  const file = new File([blob], `IRS-TDS-${req.id}.pdf`, { type: 'application/pdf' })
+  const file = new File([blob], `IRS-TDS-${req.id}-${result.resultKey.slice(0, 12)}.pdf`, { type: 'application/pdf' })
   const analysis = await parseTranscriptFile(file)
   const analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl })
   const ids = new Set(req.result_analysis_ids || [])
   ids.add(analysisId)
+  const filedKeys = new Set(req.provider_filed_keys || [])
+  filedKeys.add(result.resultKey)
   const wanted = parseYearSpec(req.tax_years)
   let completed = wanted.size === 0
   if (wanted.size > 0) {
@@ -186,7 +188,8 @@ async function finalizeDirectDelivery(req, result) {
   }
   const { error } = await supabase.from('transcript_pull_requests').update({
     result_analysis_ids: [...ids],
-    provider_status: 'Filed',
+    provider_filed_keys: [...filedKeys],
+    provider_status: completed ? 'Filed' : 'In Progress',
     provider_error: null,
     provider_last_checked_at: new Date().toISOString(),
     status: completed ? 'Completed' : 'In Progress',
@@ -194,19 +197,17 @@ async function finalizeDirectDelivery(req, result) {
     updated_at: new Date().toISOString(),
   }).eq('id', req.id)
   if (error) throw new Error(error.message)
+  return completed
 }
 
 async function pollDirectOnce(requestId) {
   const { data: req, error } = await supabase.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle()
   if (error || !req) return true
-  if (req.status === 'Canceled' || req.provider_status === 'Filed') return true
+  if (req.status === 'Canceled' || (req.provider_status === 'Filed' && req.status === 'Completed')) return true
   try {
     const result = await checkDirectPull(requestId)
     if (result?.status === 'Filed') return true
-    if (result?.status === 'Delivered') {
-      await finalizeDirectDelivery(req, result)
-      return true
-    }
+    if (result?.status === 'Delivered') return await finalizeDirectDelivery(req, result)
     return false
   } catch (e) {
     await supabase.from('transcript_pull_requests').update({ provider_error: e?.message || 'IRS TDS status check failed.', provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
@@ -233,7 +234,7 @@ async function resumeDirectPulls() {
       .select('id')
       .eq('provider', 'irs_a2a')
       .not('provider_request_id', 'is', null)
-      .neq('provider_status', 'Filed')
+      .or('provider_status.neq.Filed,status.neq.Completed')
     for (const row of data || []) startDirectPolling(row.id)
   } catch { /* page can still use the manual path */ }
 }
