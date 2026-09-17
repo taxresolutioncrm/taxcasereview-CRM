@@ -1,0 +1,54 @@
+/* Shared Tax Office Book Whip parity layer.
+   Nashville is the interaction reference: persistent scrollbars, full-width editable grid. */
+
+.page-content .card:has(> table[style*="min-width: 3000px"]) {
+  overflow-x: scroll !important;
+  overflow-y: auto !important;
+  max-height: 68vh !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  scrollbar-gutter: stable both-edges !important;
+  scrollbar-width: auto !important;
+  scrollbar-color: #64748b #d9dee7 !important;
+}
+
+.page-content .card:has(> table[style*="min-width: 3000px"])::-webkit-scrollbar {
+  height: 16px !important;
+  width: 12px !important;
+}
+
+.page-content .card:has(> table[style*="min-width: 3000px"])::-webkit-scrollbar-track {
+  background: #d9dee7 !important;
+  border-radius: 8px !important;
+}
+
+.page-content .card:has(> table[style*="min-width: 3000px"])::-webkit-scrollbar-thumb {
+  background: #64748b !important;
+  border-radius: 8px !important;
+  border: 3px solid #d9dee7 !important;
+}
+
+.page-content .card:has(> table[style*="min-width: 3000px"])::-webkit-scrollbar-thumb:hover {
+  background: #475569 !important;
+}
+
+/* Preserve the spreadsheet-style editing experience across the entire row. */
+.page-content table[style*="min-width: 3000px"] input,
+.page-content table[style*="min-width: 3000px"] select,
+.page-content table[style*="min-width: 3000px"] textarea {
+  min-width: 100px !important;
+  box-sizing: border-box !important;
+}
+
+.page-content table[style*="min-width: 3000px"] thead {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 3 !important;
+}
+
+@media (max-width: 900px) {
+  .page-content .card:has(> table[style*="min-width: 3000px"]) {
+    max-height: 72vh !important;
+  }
+}
