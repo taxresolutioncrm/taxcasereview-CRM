@@ -182,13 +182,16 @@ export default function Email() {
     const { data } = await supabase.from('settings').select('gmail_client_id,email_signature,email_signature_logo_url').not('gmail_client_id', 'is', null).limit(1).maybeSingle()
     if (data?.gmail_client_id) setGmailClientId(data.gmail_client_id)
     if (user?.email) {
-      const { data: acct } = await supabase.from('employee_gmail_accounts')
-        .select('gmail_refresh_token,gmail_connected_email').eq('employee_email', user.email).maybeSingle()
-      // The sales-demo account intentionally uses a sandbox mailbox instead of
-      // a real external Gmail token. It still behaves like a connected inbox
-      // so prospects can see the complete email workflow without sending live mail.
-      setGmailConnected(isDemoMailbox || !!acct?.gmail_refresh_token)
-      setGmailConnectedEmail(isDemoMailbox ? 'demo@taxrescrm.net' : (acct?.gmail_connected_email || ''))
+      if (isDemoMailbox) {
+        // Demo is a first-class Stalwart mailbox. Do not query or depend on Gmail OAuth state.
+        setGmailConnected(false)
+        setGmailConnectedEmail('')
+      } else {
+        const { data: acct } = await supabase.from('employee_gmail_accounts')
+          .select('gmail_refresh_token,gmail_connected_email').eq('employee_email', user.email).maybeSingle()
+        setGmailConnected(!!acct?.gmail_refresh_token)
+        setGmailConnectedEmail(acct?.gmail_connected_email || '')
+      }
       // Check M365 connection
       const { data: m365Acct } = await supabase.from('employee_m365_accounts')
         .select('m365_refresh_token,m365_email').eq('employee_email', user.email).maybeSingle()
@@ -388,20 +391,36 @@ export default function Email() {
         showToast('Reply not sent: ' + (e?.message || e))
         return
       }
-    } else if (gmailConnected) {
-      if (isDemoMailbox) {
-        // Demo-safe send: write the message into the sandbox Sent folder but
-        // never deliver it outside TaxRes CRM.
-        status = 'Sent'
-      } else {
-        try {
-          await sendGmailEmail(supabase, { to: form.recipient, subject: form.subject, body: form.body, senderEmployeeEmail: user?.email })
-          status = 'Sent'
-        } catch (e) {
-          setSaving(false)
-          showToast('Gmail send failed: ' + e.message)
-          return
+    } else if (isDemoMailbox) {
+      // Demo uses Stalwart directly and never evaluates Gmail connection state.
+      try {
+        const { data, error } = await supabase.functions.invoke('demo-send-email', {
+          body: {
+            to: form.recipient,
+            subject: form.subject,
+            text: form.body,
+            clientName: form.clientName || undefined,
+          },
+        })
+        if (error) throw error
+        if (!data?.success || data?.via !== 'stalwart_jmap' || data?.from !== 'romy@taxrescrm.net' || data?.mailbox_owner !== 'demo@taxrescrm.net') {
+          throw new Error(data?.error || 'Demo mail delivery was not confirmed by Stalwart')
         }
+        status = 'Sent'
+        alreadyStored = true
+      } catch (e) {
+        setSaving(false)
+        showToast('Demo email not sent: ' + (e?.message || e))
+        return
+      }
+    } else if (gmailConnected) {
+      try {
+        await sendGmailEmail(supabase, { to: form.recipient, subject: form.subject, body: form.body, senderEmployeeEmail: user?.email })
+        status = 'Sent'
+      } catch (e) {
+        setSaving(false)
+        showToast('Gmail send failed: ' + e.message)
+        return
       }
     }
 
@@ -410,7 +429,8 @@ export default function Email() {
       const emailRow = { ...loggableForm, status, created_at: new Date().toISOString(), mailbox_owner: centralMailboxOwner || user?.email || null }
       if (isDemoMailbox) {
         emailRow.tenant_id = DEMO_TENANT_ID
-        emailRow.from_address = 'demo@taxrescrm.net'
+        emailRow.from_address = 'romy@taxrescrm.net'
+        emailRow.reply_from = 'demo@taxrescrm.net'
         emailRow.direction = 'outbound'
         emailRow.received_at = emailRow.created_at
         emailRow.is_read = true
@@ -437,7 +457,7 @@ export default function Email() {
       })
     }
 
-    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent — sandbox only' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ Gmail is not connected — this was only saved as a log entry, nothing was emailed')
+    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via Stalwart' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ Gmail is not connected — this was only saved as a log entry, nothing was emailed')
     setForm(BLANK); setView('inbox'); load()
   }
 
@@ -665,21 +685,38 @@ export default function Email() {
           </button>
         </div>
 
-        {/* Gmail connect banner */}
-        {gmailConnected ? (
+        {/* Email provider connect banner */}
+        {isDemoMailbox ? (
           <div style={{ margin: '0 10px 10px', padding: '8px 12px', background: 'rgba(34,197,94,.12)', borderRadius: 8, border: '1px solid rgba(34,197,94,.3)', fontSize: 11, fontWeight: 700, color: 'var(--ok)' }}>
-            {isDemoMailbox ? '✅ Demo Mailbox' : '✅ Gmail Connected'}{gmailConnectedEmail ? ` — ${gmailConnectedEmail}` : ''}
+            ✅ Stalwart Connected — demo@taxrescrm.net
+            <div style={{ marginTop: 4, fontSize: 10, fontWeight: 400, color: 'var(--t3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+              <span>TaxRes CRM mailbox ready</span>
+              <button
+                className="btn"
+                onClick={async () => {
+                  await load()
+                  showToast('✅ Stalwart inbox refreshed')
+                }}
+                style={{ padding:'4px 8px', fontSize:10, fontWeight:700, whiteSpace:'nowrap' }}
+              >
+                ↻ Refresh Email
+              </button>
+            </div>
+          </div>
+        ) : gmailConnected ? (
+          <div style={{ margin: '0 10px 10px', padding: '8px 12px', background: 'rgba(34,197,94,.12)', borderRadius: 8, border: '1px solid rgba(34,197,94,.3)', fontSize: 11, fontWeight: 700, color: 'var(--ok)' }}>
+            ✅ Gmail Connected{gmailConnectedEmail ? ` — ${gmailConnectedEmail}` : ''}
             <div style={{ marginTop: 4, fontSize: 10, fontWeight: 400, color: 'var(--t3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
               <span>
-                {isDemoMailbox ? 'Sandbox inbox ready' : syncing ? '🔄 Syncing…' : lastSyncAt ? `Synced ${Math.max(0, Math.round((Date.now() - lastSyncAt.getTime()) / 1000))}s ago` : 'Starting sync…'}
+                {syncing ? '🔄 Syncing…' : lastSyncAt ? `Synced ${Math.max(0, Math.round((Date.now() - lastSyncAt.getTime()) / 1000))}s ago` : 'Starting sync…'}
               </span>
               <button
                 className="btn"
-                disabled={!isDemoMailbox && syncing}
+                disabled={syncing}
                 onClick={async () => {
-                  if (!isDemoMailbox) await syncNow()
+                  await syncNow()
                   await load()
-                  showToast(isDemoMailbox ? '✅ Demo inbox refreshed' : lastError ? 'Email sync error: ' + lastError : '✅ Email refreshed')
+                  showToast(lastError ? 'Email sync error: ' + lastError : '✅ Email refreshed')
                 }}
                 style={{ padding:'4px 8px', fontSize:10, fontWeight:700, whiteSpace:'nowrap' }}
               >
@@ -699,7 +736,7 @@ export default function Email() {
               </button>
             )}
           </div>
-        ) : !gmailConnected && (
+        ) : (
           <div style={{ margin: '0 10px 10px', padding: '10px 12px', background: 'rgba(26,127,212,.12)', borderRadius: 8, border: '1px solid rgba(26,127,212,.3)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', marginBottom: 4 }}>📧 Connect Gmail</div>
             <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 8, lineHeight: 1.5 }}>Link your Gmail account to send & receive emails directly.</div>
@@ -1086,7 +1123,7 @@ export default function Email() {
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: 'var(--t3)', padding: '10px 14px', background: 'var(--s2)', borderRadius: 8 }}>
-                  No signature set yet — <a href="/settings" style={{ color: 'var(--blue)' }}>add one in Settings</a> and it'll be appended to every email sent through Gmail.
+                  No signature set yet — <a href="/settings" style={{ color: 'var(--blue)' }}>add one in Settings</a> and it'll be appended to every email sent through {isDemoMailbox ? 'Stalwart' : 'Gmail'}.
                 </div>
               )}
             </div>
@@ -1102,7 +1139,7 @@ export default function Email() {
               </button>
             </div>
             <div style={{ marginTop: 10, fontSize: 11, color: 'var(--t3)', textAlign: 'center' }}>
-              Connect Gmail in the sidebar to send directly. Until then, emails are logged for tracking.
+              {isDemoMailbox ? 'TaxRes CRM email is connected through Stalwart.' : 'Connect Gmail in the sidebar to send directly. Until then, emails are logged for tracking.'}
             </div>
           </div>
         )}
