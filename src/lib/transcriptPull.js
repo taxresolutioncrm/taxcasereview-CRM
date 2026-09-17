@@ -75,6 +75,28 @@ export function parseYearSpec(spec) {
   return out
 }
 
+function typeKey(v) {
+  return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function sameTranscriptType(a, b) {
+  const x = typeKey(a), y = typeKey(b)
+  if (!x || !y) return false
+  return x === y || x.includes(y) || y.includes(x)
+}
+
+export function requestCoverageSatisfied(req, rows) {
+  const wantedYears = parseYearSpec(req?.tax_years)
+  const wantedTypes = (req?.transcript_types || []).filter(Boolean)
+  const have = rows || []
+  if (wantedYears.size === 0 && wantedTypes.length === 0) return have.length > 0
+  if (wantedYears.size > 0 && wantedTypes.length > 0) {
+    return [...wantedYears].every(year => wantedTypes.every(type => have.some(r => String(r.tax_year || '') === year && sameTranscriptType(r.transcript_type, type))))
+  }
+  if (wantedYears.size > 0) return [...wantedYears].every(year => have.some(r => String(r.tax_year || '') === year))
+  return wantedTypes.every(type => have.some(r => sameTranscriptType(r.transcript_type, type)))
+}
+
 export function nameKey(s) {
   return String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -173,16 +195,12 @@ async function finalizeDirectDelivery(req, result) {
   ids.add(analysisId)
   const filedKeys = new Set(req.provider_filed_keys || [])
   filedKeys.add(result.resultKey)
-  const wanted = parseYearSpec(req.tax_years)
-  let completed = wanted.size === 0
-  if (wanted.size > 0) {
-    const { data, error } = await supabase.from('transcript_analyses').select('tax_year').eq('client_name', req.client_name)
-    if (error) throw new Error(error.message)
-    const have = new Set((data || []).map(r => String(r.tax_year || '')))
-    completed = [...wanted].every(y => have.has(y))
-  }
+  const idList = [...ids]
+  const { data: coveredRows, error: coveredErr } = await supabase.from('transcript_analyses').select('id,tax_year,transcript_type').in('id', idList)
+  if (coveredErr) throw new Error(coveredErr.message)
+  const completed = requestCoverageSatisfied(req, coveredRows || [])
   const { error } = await supabase.from('transcript_pull_requests').update({
-    result_analysis_ids: [...ids],
+    result_analysis_ids: idList,
     provider_filed_keys: [...filedKeys],
     provider_status: completed ? 'Filed' : 'In Progress',
     provider_error: null,
@@ -197,7 +215,8 @@ async function finalizeDirectDelivery(req, result) {
 
 async function pollDirectOnce(requestId) {
   const { data: req, error } = await supabase.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle()
-  if (error || !req) return true
+  if (error) return false
+  if (!req) return true
   if (req.status === 'Canceled' || (req.provider_status === 'Filed' && req.status === 'Completed')) return true
   try {
     const result = await checkDirectPull(requestId)
