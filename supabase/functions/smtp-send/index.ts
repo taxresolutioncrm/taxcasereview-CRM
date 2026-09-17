@@ -1,7 +1,7 @@
 // smtp-send — authenticated SMTP sender with mailbox-safe RomyLabs reply routing.
-// Normal staff may only use their own email_accounts rows. RomyLabs routed replies
-// additionally require an approved romylabs_mailboxes route and must send from that
-// route's exact outbound identity.
+// Normal staff may only use their own email_accounts rows. Routed Stalwart mailboxes
+// may be used by the exact mailbox owner inside the same tenant, while RomyLabs
+// platform admins retain access to central multi-brand routes.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -96,11 +96,10 @@ async function sendViaSMTP(opts: {
   await write('QUIT'); conn.close()
 }
 
-
 async function sendViaStalwartJmap(opts: {
   host: string, username: string, password: string, fromAddress: string, fromName: string,
   to: string[], subject: string, textBody: string, htmlBody?: string,
-  messageId: string, inReplyTo?: string, references?: string,
+  messageId: string, inReplyTo?: string, references?: string, replyTo?: string,
 }) {
   const base = `https://${String(opts.host || '').replace(/^https?:\/\//,'').replace(/\/$/,'')}`
   const auth = 'Basic ' + btoa(`${opts.username}:${opts.password}`)
@@ -134,9 +133,11 @@ async function sendViaStalwartJmap(opts: {
   if (!drafts?.id || !sent?.id) throw new Error('Stalwart Drafts or Sent mailbox unavailable')
 
   const partId = 'body'
+  const replyTo = normalizeEmail(opts.replyTo)
   const createEmail:any = {
     from:[{email:exactFrom,name:opts.fromName||undefined}],
     to:opts.to.map(email=>({email})),
+    ...(validEmail(replyTo) ? { replyTo:[{email:replyTo}] } : {}),
     subject:opts.subject,
     mailboxIds:{[drafts.id]:true},
     keywords:{'$draft':true},
@@ -207,20 +208,37 @@ serve(async (req) => {
     const toList = (Array.isArray(to) ? to : [to]).map((x: unknown) => safeHeader(x)).filter(validEmail).slice(0, 25)
     if (!toList.length || !safeHeader(subject)) throw new Error('Recipient and subject are required')
 
-    // RomyLabs Admin routed replies are platform-level and use the exact Stalwart
-    // identity registered on the route. They do not depend on legacy email_accounts.
     if (route_id) {
-      if (!isPlatformAdmin || !ROMYLABS_ADMINS.has(callerEmail)) {
-        return new Response(JSON.stringify({ error:'Not authorized for RomyLabs routed email' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
-      }
-
       const { data: route, error: routeError } = await svc.from('romylabs_mailboxes')
         .select('id,email_address,outbound_from,display_name,product_id,tenant_id,inbox_owner,active')
         .eq('id', route_id).eq('active', true).maybeSingle()
       if (routeError || !route) throw new Error('Mailbox route not found')
 
+      const platformRouteAccess = !!isPlatformAdmin && ROMYLABS_ADMINS.has(callerEmail)
+      const routeOwner = normalizeEmail(route.inbox_owner)
+      const tenantRouteAccess = !!tenantId && route.tenant_id === tenantId && routeOwner === callerEmail
+
+      if (!platformRouteAccess && !tenantRouteAccess) {
+        return new Response(JSON.stringify({ error:'Not authorized for routed email' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
+      }
+
+      if (!platformRouteAccess) {
+        const { data: employee } = await svc.from('employees')
+          .select('status,perm_comms,tenant_id')
+          .eq('tenant_id', tenantId)
+          .ilike('email', callerEmail)
+          .limit(1)
+          .maybeSingle()
+        const active = employee && String(employee.status || 'Active').toLowerCase() === 'active'
+        if (!active || Number(employee?.perm_comms || 0) < 2) {
+          return new Response(JSON.stringify({ error:'Email permission denied' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        }
+      }
+
       const exactFrom = normalizeEmail(route.outbound_from || route.email_address)
+      const replyToAddress = normalizeEmail(route.email_address || exactFrom)
       if (!validEmail(exactFrom)) throw new Error('Mailbox route has no valid outbound identity')
+      if (!validEmail(replyToAddress)) throw new Error('Mailbox route has no valid reply identity')
 
       const { data: transport, error: transportError } = await svc.rpc('romylabs_stalwart_transport_for_product', { p_product_key: route.product_id })
       if (transportError) throw transportError
@@ -242,6 +260,7 @@ serve(async (req) => {
         messageId:msgId,
         inReplyTo:stripAngles(in_reply_to),
         references:safeHeader(references),
+        replyTo:replyToAddress,
       })
 
       const storedThreadId = thread_id || stripAngles(in_reply_to) || sent.threadId || msgId
@@ -249,7 +268,7 @@ serve(async (req) => {
         tenant_id: route.tenant_id,
         message_id: msgId,
         thread_id: storedThreadId,
-        mailbox_owner: route.inbox_owner || 'info@romylabs.com',
+        mailbox_owner: route.inbox_owner || callerEmail,
         sender: exactFrom,
         from_address: exactFrom,
         recipients: toList,
@@ -266,7 +285,7 @@ serve(async (req) => {
         received_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         received_mailbox: route.email_address,
-        reply_from: exactFrom,
+        reply_from: replyToAddress,
         product_id: route.product_id,
         in_reply_to: cleanNullable(in_reply_to),
         references_header: cleanNullable(references),
@@ -274,7 +293,15 @@ serve(async (req) => {
       }])
       if (logError) throw logError
 
-      return new Response(JSON.stringify({ ok:true, message_id:msgId, from:exactFrom, submission_id:sent.submissionId }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+      return new Response(JSON.stringify({
+        ok:true,
+        message_id:msgId,
+        from:exactFrom,
+        reply_to:replyToAddress,
+        mailbox_owner:route.inbox_owner || callerEmail,
+        route_id:route.id,
+        submission_id:sent.submissionId,
+      }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
     if(!tenantId) return new Response(JSON.stringify({error:'No active office context'}),{status:403,headers:{...corsHeaders,'Content-Type':'application/json'}})
