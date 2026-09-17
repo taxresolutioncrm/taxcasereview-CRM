@@ -42,6 +42,20 @@ serve(async(req)=>{
     ])
     if(!inConf&&!outConf) return json({error:'Conference does not belong to this calling context.'},403)
 
+    const requestedAt=new Date().toISOString()
+    if(outConf?.id){
+      const {error:markErr}=await db.from('outbound_calls').update({
+        end_requested_at:requestedAt,
+        end_requested_by:user.email,
+        disconnect_source:'admin_dialer',
+        disconnect_initiator:user.email,
+      }).eq('id',outConf.id).eq('tenant_id',tenantId)
+      if(markErr){
+        console.error('end-conference could not mark admin end request',markErr)
+        return json({error:'Could not persist call termination audit marker.'},500)
+      }
+    }
+
     const spaceDomain=settings.sw_space_url.replace(/^https?:\/\//,'')
     const providerAuth='Basic '+btoa(`${settings.sw_project_id}:${settings.sw_api_token}`)
     const base=`https://${spaceDomain}/api/laml/2010-04-01/Accounts/${settings.sw_project_id}`
@@ -70,6 +84,7 @@ serve(async(req)=>{
 
     let providerFailure=false
     const terminatedCallSids:string[]=[]
+    const providerTerminalStates:Record<string,string>={}
     for(const callSid of providerCallSids){
       try{
         const kill=await fetch(`${base}/Calls/${encodeURIComponent(callSid)}.json`,{
@@ -86,6 +101,7 @@ serve(async(req)=>{
           if(!check.ok){console.error('end-conference call status check failed',callSid,check.status,await check.text());continue}
           const data=await check.json()
           const status=String(data?.status||'').toLowerCase()
+          providerTerminalStates[callSid]=status
           if(TERMINAL_CALL_STATUSES.has(status)){terminal=true;terminatedCallSids.push(callSid);break}
         }
         if(!terminal){providerFailure=true;console.error('end-conference call still active after termination request',callSid)}
@@ -102,9 +118,23 @@ serve(async(req)=>{
       }catch(e){providerFailure=true;console.error('end-conference conference termination error',e)}
     }
 
-    if(providerFailure) return json({error:'Could not confirm every SignalWire call leg ended.',terminated_call_sids:terminatedCallSids},502)
+    if(providerFailure){
+      if(outConf?.id) await db.from('outbound_calls').update({
+        disconnect_reason:'admin_end_not_fully_confirmed',
+        disconnect_details:{admin_end_requested_at:requestedAt,terminated_call_sids:terminatedCallSids,provider_terminal_states:providerTerminalStates},
+      }).eq('id',outConf.id).eq('tenant_id',tenantId)
+      return json({error:'Could not confirm every SignalWire call leg ended.',terminated_call_sids:terminatedCallSids},502)
+    }
 
-    await db.from('outbound_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
+    const endedAt=new Date().toISOString()
+    if(outConf?.id) await db.from('outbound_calls').update({
+      status:'completed',
+      ended_at:endedAt,
+      disconnect_source:'admin_dialer',
+      disconnect_initiator:user.email,
+      disconnect_reason:'admin_end_confirmed',
+      disconnect_details:{admin_end_requested_at:requestedAt,terminated_call_sids:terminatedCallSids,provider_terminal_states:providerTerminalStates,conference_found:!!conferenceSid},
+    }).eq('id',outConf.id).eq('tenant_id',tenantId)
     await db.from('incoming_calls').update({status:'completed'}).eq('tenant_id',tenantId).eq('conference_name',conferenceName).neq('status','completed')
     return json({ok:true,terminated_call_sids:terminatedCallSids,conference_found:!!conferenceSid})
   }catch(err){console.error('end-conference error:',err);return json({error:'Unable to end conference.'},500)}
