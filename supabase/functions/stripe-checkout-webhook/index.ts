@@ -31,6 +31,7 @@ const corsHeaders = {
 
 const STRIPE_SECRET_KEY     = Deno.env.get('STRIPE_SECRET_KEY') ?? ''
 const STRIPE_WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET') ?? ''
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: '2023-10-16',
@@ -84,53 +85,79 @@ serve(async (req) => {
     )
 
     // ── Pay-to-book: the appointment was deliberately NOT created until
-    // payment cleared. Create it now via the same booking_create RPC the
-    // public page uses (unchanged), then confirm the client. ────────────────
+    // payment cleared. This path MUST carry the canonical tenant stamped by
+    // booking-checkout. Missing/invalid tenant metadata fails closed — never
+    // fall back to TCR or any other office. ────────────────────────────────
     if (purpose === 'booking_payment') {
       const m = session.metadata || {}
-      let created: any = null
-      try {
-        const { data } = await supabase.rpc('booking_create', {
-          p_name: m.b_name || '', p_email: m.b_email || '', p_phone: m.b_phone || '',
-          p_event_type: m.b_type || '', p_date: m.b_date || '', p_time: m.b_time || '',
-          p_notes: m.b_notes || '',
+      const tenantId = (m.tenant_id || '').toString().trim()
+      if (!UUID_RE.test(tenantId)) {
+        console.error('booking_payment: missing or invalid tenant_id metadata', { session_id: session.id })
+        return new Response(JSON.stringify({ error: 'Invalid booking tenant metadata' }), {
+          status: 422, headers: { 'Content-Type': 'application/json' }
         })
-        created = data
-      } catch (e) {
-        console.error('booking_payment: booking_create failed:', (e as any)?.message)
+      }
+
+      const { data: tenantExists, error: tenantError } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('id', tenantId)
+        .maybeSingle()
+      if (tenantError) throw tenantError
+      if (!tenantExists) {
+        console.error('booking_payment: unknown tenant_id metadata', { session_id: session.id, tenant_id: tenantId })
+        return new Response(JSON.stringify({ error: 'Unknown booking tenant' }), {
+          status: 422, headers: { 'Content-Type': 'application/json' }
+        })
+      }
+
+      const { data: created, error: bookingError } = await supabase.rpc('booking_create', {
+        p_name: m.b_name || '', p_email: m.b_email || '', p_phone: m.b_phone || '',
+        p_event_type: m.b_type || '', p_date: m.b_date || '', p_time: m.b_time || '',
+        p_notes: m.b_notes || '', p_tenant: tenantId,
+      })
+      if (bookingError) {
+        console.error('booking_payment: booking_create failed:', bookingError.message)
+        throw bookingError
       }
 
       const booked = created && created.ok !== false
       const when = `${m.b_date} at ${m.b_time} (Eastern)`
       const paidAmt = (session.amount_total || 0) / 100
 
-      // Confirm to the client either way — booked, or "we'll call you" if the
-      // slot was taken during checkout (rare; payment still succeeded).
-      if (m.b_email) {
-        const subject = booked
-          ? `Appointment Confirmed & Payment Received — ${m.b_type || 'Appointment'}`
-          : `Payment Received — we'll call to confirm your time`
-        const body = booked
-          ? `<p>Hi ${m.b_name || 'there'},</p><p>Your payment of <strong>$${paidAmt.toFixed(2)}</strong> was received and your appointment is confirmed:</p><p><strong>${m.b_type || 'Appointment'}</strong><br>${when}</p><p>We look forward to speaking with you.</p>`
-          : `<p>Hi ${m.b_name || 'there'},</p><p>We received your payment of <strong>$${paidAmt.toFixed(2)}</strong>, but the ${when} slot was just taken. Our team will call you shortly to lock in a new time that works — no need to pay again.</p>`
-        try {
-          await supabase.functions.invoke('send-email', { body: { to: m.b_email, subject, html: body } })
-        } catch (_) { /* best-effort */ }
+      // Route confirmation/office notification through the canonical booking
+      // token path. send-email resolves tenant + branding + physical transport
+      // from the booking instead of accepting an unscoped arbitrary sender.
+      const bookingToken = booked ? created?.booking_token : null
+      if (bookingToken) {
+        const mailResults = await Promise.allSettled([
+          supabase.functions.invoke('send-email', {
+            body: { kind: 'booking_confirmation', booking_token: bookingToken }
+          }),
+          supabase.functions.invoke('send-email', {
+            body: { kind: 'booking_firm_notification', booking_token: bookingToken }
+          }),
+        ])
+        for (const result of mailResults) {
+          if (result.status === 'rejected') console.error('booking_payment: booking email invocation failed:', result.reason)
+        }
       }
 
-      // Log the payment
-      await supabase.from('payments').insert([{
+      // Log the payment to the SAME tenant that owned the booking config and
+      // appointment. Never use a hard-coded TCR tenant here.
+      const { error: paymentError } = await supabase.from('payments').insert([{
         clientName: m.b_name || session.customer_details?.name || '',
         amount: paidAmt,
         method: 'Stripe Checkout',
         status: 'Cleared',
-        tenant_id: '61a89aef-0e7e-4ea2-b222-44ab2024655a',
+        tenant_id: tenantId,
         date: new Date().toISOString().slice(0, 10),
         notes: booked ? `Booking payment — ${m.b_type || ''} ${when}` : `Booking payment — SLOT TAKEN, needs reschedule (${when})`,
         stripe_payment_intent_id: session.payment_intent || null,
         source: 'booking',
         created_at: new Date().toISOString(),
       }])
+      if (paymentError) throw paymentError
 
       return new Response(JSON.stringify({ received: true, booked }), { headers: { 'Content-Type': 'application/json' } })
     }
