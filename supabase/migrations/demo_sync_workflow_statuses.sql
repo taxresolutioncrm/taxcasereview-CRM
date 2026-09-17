@@ -1,12 +1,17 @@
 -- Demo tenant sync: workflow status categories + statuses
 -- Run after any demo reset to restore full TCR parity.
--- Safe to run multiple times (ON CONFLICT DO NOTHING).
+-- Canonical showcase tenant only. Never point this at Nashville or production.
 
 DO $$
 DECLARE
-  v_demo uuid := '489ace07-1a6b-4864-833a-4f8420568b40';
+  v_demo uuid := 'a0000000-0000-0000-0000-000000000001';
+  v_tcr  uuid := '61a89aef-0e7e-4ea2-b222-44ab2024655a';
+  v_nash uuid := '489ace07-1a6b-4864-833a-4f8420568b40';
 BEGIN
-  -- Categories
+  IF v_demo = v_tcr OR v_demo = v_nash OR v_demo::text <> 'a0000000-0000-0000-0000-000000000001' THEN
+    RAISE EXCEPTION 'ABORT: canonical Demo tenant guard failed: %', v_demo;
+  END IF;
+
   INSERT INTO workflow_status_categories (id, name, sort_order, tenant_id) VALUES
     (gen_random_uuid(), 'Planned',        0, v_demo),
     (gen_random_uuid(), 'Ready to Start', 1, v_demo),
@@ -15,7 +20,6 @@ BEGIN
     (gen_random_uuid(), 'Completed',      4, v_demo)
   ON CONFLICT (name, tenant_id) DO NOTHING;
 
-  -- Statuses
   INSERT INTO workflow_statuses (id, label, sort_order, category_id, tenant_id)
   SELECT gen_random_uuid(), s.label, s.sort_order, c.id, v_demo
   FROM (VALUES
