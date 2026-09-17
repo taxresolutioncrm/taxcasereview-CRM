@@ -13,7 +13,6 @@ const ENTITY_ICONS = {
 }
 const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 const STAGES = ['Consultation','Documents Prep','State Filing','EIN Application','Operating Agreement','Bank Account Setup','Complete']
-
 const FL_FIELDS = {
   principal_address:'', mailing_address:'', registered_agent_address:'',
   authorized_representative:'', authorized_representative_title:'AMBR',
@@ -54,6 +53,7 @@ export default function FormaCorp() {
   const [wForm,    setWForm]    = useState(WIZ_BLANK)
   const [wSugg,    setWSugg]    = useState([])
   const [wShowSug, setWShowSug] = useState(false)
+
   const [nameCheck, setNameCheck] = useState({ state:'idle', input:'', result:null })
   const nameCheckTimer = useRef(null)
   const [lookup, setLookup] = useState({ open:false, query:'', running:false, result:null })
@@ -68,7 +68,9 @@ export default function FormaCorp() {
     if (nameCheckTimer.current) clearTimeout(nameCheckTimer.current)
     nameCheckTimer.current = setTimeout(async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('sunbiz-search', { body: { mode:'name-check', name } })
+        const { data, error } = await supabase.functions.invoke('sunbiz-search', {
+          body: { mode:'name-check', name }
+        })
         if (error || !data?.ok) {
           setNameCheck({ state:'unavailable', input:name, result:null })
           return
@@ -84,7 +86,9 @@ export default function FormaCorp() {
     if (!lookup.query || lookup.query.trim().length < 3) return
     setLookup(l => ({ ...l, running:true, result:null }))
     try {
-      const { data, error } = await supabase.functions.invoke('sunbiz-search', { body: { mode:'lookup', query: lookup.query.trim() } })
+      const { data, error } = await supabase.functions.invoke('sunbiz-search', {
+        body: { mode:'lookup', query: lookup.query.trim() }
+      })
       if (error || !data?.ok) {
         setLookup(l => ({ ...l, running:false, result:{ ok:false, reason: data?.reason || 'sunbiz_unavailable' } }))
         return
@@ -95,12 +99,21 @@ export default function FormaCorp() {
     }
   }
 
+  function validateFloridaFiling(v) {
+    if (v.state !== 'FL') return null
+    if (!v.principal_address?.trim()) return 'Principal office street address is required for a Florida LLC.'
+    if (!v.registered_agent?.trim()) return 'Registered agent name is required for a Florida LLC.'
+    if (!v.registered_agent_address?.trim()) return 'Registered agent Florida street address is required.'
+    if (!v.authorized_representative?.trim()) return 'Authorized representative is required for the Florida filing.'
+    if (!v.correspondence_email?.trim()) return 'Correspondence email is required for the Florida filing.'
+    if (!v.registered_agent_accepted) return 'Confirm the registered agent has accepted the appointment.'
+    return null
+  }
+
   async function downloadArticlesPdf(c) {
     if (pdfBusy) return
-    if (c.state === 'FL' && (!c.principal_address || !c.registered_agent_address || !c.authorized_representative || !c.correspondence_email || !c.registered_agent_accepted)) {
-      showToast('Complete the Florida filing fields before generating the Articles packet.', 'err')
-      return
-    }
+    const flError = validateFloridaFiling(c)
+    if (flError) { showToast(flError, 'err'); return }
     setPdfBusy(true)
     try {
       const blob = await buildFlArticlesPdf(c)
@@ -154,17 +167,6 @@ export default function FormaCorp() {
     setWForm(WIZ_BLANK)
     setWStep(1)
     setWizard(true)
-  }
-
-  function validateFloridaFiling(v) {
-    if (v.state !== 'FL') return null
-    if (!v.principal_address?.trim()) return 'Principal office street address is required for a Florida LLC.'
-    if (!v.registered_agent?.trim()) return 'Registered agent name is required for a Florida LLC.'
-    if (!v.registered_agent_address?.trim()) return 'Registered agent Florida street address is required.'
-    if (!v.authorized_representative?.trim()) return 'Authorized representative is required for the Florida filing.'
-    if (!v.correspondence_email?.trim()) return 'Correspondence email is required for the Florida filing.'
-    if (!v.registered_agent_accepted) return 'Confirm the registered agent has accepted the appointment.'
-    return null
   }
 
   async function createFromWizard() {
@@ -326,14 +328,10 @@ export default function FormaCorp() {
           <div className="card" style={{padding:'12px 16px',marginBottom:10}}>
             <div className="stitle" style={{marginBottom:8}}>Florida Filing Details</div>
             {[
-              ['Principal Office',c.principal_address||'—'],
-              ['Mailing Address',c.mailing_address||c.principal_address||'—'],
-              ['Registered Agent Address',c.registered_agent_address||'—'],
-              ['Authorized Representative',c.authorized_representative||'—'],
-              ['Representative Title',c.authorized_representative_title||'—'],
-              ['Correspondence Email',c.correspondence_email||'—'],
-              ['Requested Effective Date',c.effective_date||'Upon filing'],
-              ['Registered Agent Accepted',c.registered_agent_accepted?'✅ Confirmed':'⚠️ Not confirmed']
+              ['Principal Office',c.principal_address||'—'],['Mailing Address',c.mailing_address||c.principal_address||'—'],
+              ['Registered Agent Address',c.registered_agent_address||'—'],['Authorized Representative',c.authorized_representative||'—'],
+              ['Representative Title',c.authorized_representative_title||'—'],['Correspondence Email',c.correspondence_email||'—'],
+              ['Requested Effective Date',c.effective_date||'Upon filing'],['Registered Agent Accepted',c.registered_agent_accepted?'✅ Confirmed':'⚠️ Not confirmed']
             ].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}
           </div>
         )}
@@ -346,7 +344,9 @@ export default function FormaCorp() {
               <div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[c.state].processing_time||'—'}</span></div>
               <div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[c.state].annual_report_fee||'—'}</span></div>
             </div>
-            {stateReqs[c.state].notes && <div style={{fontSize:12,color:'var(--t3)',marginTop:8,lineHeight:1.5,paddingTop:8,borderTop:'1px solid var(--br)'}}>ℹ️ {stateReqs[c.state].notes}</div>}
+            {stateReqs[c.state].notes && (
+              <div style={{fontSize:12,color:'var(--t3)',marginTop:8,lineHeight:1.5,paddingTop:8,borderTop:'1px solid var(--br)'}}>ℹ️ {stateReqs[c.state].notes}</div>
+            )}
           </div>
         )}
 
@@ -382,13 +382,31 @@ export default function FormaCorp() {
 
   return (
     <div style={{maxWidth:1000}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}><h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2><div style={{display:'flex',gap:8}}><button className="btn pri" onClick={openWizard} style={{display:'flex',alignItems:'center',gap:6}}>🚀 Start a Business</button><button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>+ New Formation Case</button></div></div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
+        <h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn pri" onClick={openWizard} style={{display:'flex',alignItems:'center',gap:6}}>🚀 Start a Business</button>
+          <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>+ New Formation Case</button>
+        </div>
+      </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8,marginBottom:14}}>{[['Total Cases', cases.length, 'var(--tx)'],['In Progress', cases.filter(c=>c.stage!=='Complete').length, 'var(--warn)'],['Complete', cases.filter(c=>c.stage==='Complete').length, 'var(--ok)'],['EIN Filed', cases.filter(c=>c.ein).length, 'var(--b2)']].map(([l,v,color])=><div key={l} className="card" style={{padding:'10px 14px',textAlign:'center'}}><div style={{fontWeight:800,fontSize:20,color}}>{v}</div><div style={{fontSize:10,color:'var(--t3)',marginTop:2,textTransform:'uppercase',letterSpacing:'.05em'}}>{l}</div></div>)}</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8,marginBottom:14}}>
+        {[
+          ['Total Cases', cases.length, 'var(--tx)'],['In Progress', cases.filter(c=>c.stage!=='Complete').length, 'var(--warn)'],
+          ['Complete', cases.filter(c=>c.stage==='Complete').length, 'var(--ok)'],['EIN Filed', cases.filter(c=>c.ein).length, 'var(--b2)']
+        ].map(([l,v,color])=><div key={l} className="card" style={{padding:'10px 14px',textAlign:'center'}}><div style={{fontWeight:800,fontSize:20,color}}>{v}</div><div style={{fontSize:10,color:'var(--t3)',marginTop:2,textTransform:'uppercase',letterSpacing:'.05em'}}>{l}</div></div>)}
+      </div>
 
-      <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search client or entity…" style={{flex:1,minWidth:180,padding:'7px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}/><select value={stageFilter} onChange={e=>setSF(e.target.value)} style={{padding:'7px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}><option value="All">All Stages</option>{STAGES.map(s=><option key={s}>{s}</option>)}</select></div>
+      <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search client or entity…" style={{flex:1,minWidth:180,padding:'7px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}/>
+        <select value={stageFilter} onChange={e=>setSF(e.target.value)} style={{padding:'7px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}><option value="All">All Stages</option>{STAGES.map(s=><option key={s}>{s}</option>)}</select>
+      </div>
 
-      {filtered.length === 0 ? <div className="card" style={{padding:32,textAlign:'center',color:'var(--t3)'}}><div style={{fontSize:36,marginBottom:10}}>🏢</div><div style={{fontWeight:700,fontSize:15,color:'var(--tx)',marginBottom:4}}>No formation cases yet</div><div style={{fontSize:13}}>Click "🚀 Start a Business" for a guided setup, or "+ New Formation Case" for a quick manual entry.</div></div> : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:10}}>{filtered.map(c=><div key={c.id} className="card" style={{padding:'14px 16px',cursor:'pointer',borderTop:`3px solid ${stageColor[c.stage]||'var(--br)'}`}} onClick={()=>setDetail(c)}><div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontSize:14,fontWeight:800,marginBottom:2}}>{c.entity_name}</div><div style={{fontSize:12,color:'var(--t3)'}}><ClientLink name={c.client_name} /></div></div><span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:stageColor[c.stage]+'22',color:stageColor[c.stage],border:`1px solid ${stageColor[c.stage]}44`,fontWeight:600,whiteSpace:'nowrap'}}>{c.stage}</span></div><div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}</div><div style={{display:'flex',gap:3,marginTop:10,alignItems:'center'}}>{STAGES.map((s,i)=><div key={s} style={{flex:1,height:4,borderRadius:2,background:i <= STAGES.indexOf(c.stage)?stageColor[c.stage]:'var(--s3)'}}/>)}</div><div style={{fontSize:9,color:'var(--t3)',marginTop:3}}>Step {STAGES.indexOf(c.stage)+1} of {STAGES.length}: {c.stage}</div></div>)}</div>}
+      {filtered.length === 0 ? (
+        <div className="card" style={{padding:32,textAlign:'center',color:'var(--t3)'}}><div style={{fontSize:36,marginBottom:10}}>🏢</div><div style={{fontWeight:700,fontSize:15,color:'var(--tx)',marginBottom:4}}>No formation cases yet</div><div style={{fontSize:13}}>Click "🚀 Start a Business" for a guided setup, or "+ New Formation Case" for a quick manual entry.</div></div>
+      ) : (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:10}}>{filtered.map(c=><div key={c.id} className="card" style={{padding:'14px 16px',cursor:'pointer',borderTop:`3px solid ${stageColor[c.stage]||'var(--br)'}`}} onClick={()=>setDetail(c)}><div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontSize:14,fontWeight:800,marginBottom:2}}>{c.entity_name}</div><div style={{fontSize:12,color:'var(--t3)'}}><ClientLink name={c.client_name} /></div></div><span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:stageColor[c.stage]+'22',color:stageColor[c.stage],border:`1px solid ${stageColor[c.stage]}44`,fontWeight:600,whiteSpace:'nowrap'}}>{c.stage}</span></div><div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}</div><div style={{display:'flex',gap:3,marginTop:10,alignItems:'center'}}>{STAGES.map((s,i)=><div key={s} style={{flex:1,height:4,borderRadius:2,background:i<=STAGES.indexOf(c.stage)?stageColor[c.stage]:'var(--s3)'}}/>)}</div><div style={{fontSize:9,color:'var(--t3)',marginTop:3}}>Step {STAGES.indexOf(c.stage)+1} of {STAGES.length}: {c.stage}</div></div>)}</div>
+      )}
 
       {modal && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setModal(false)}>
@@ -421,15 +439,13 @@ export default function FormaCorp() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>
           <div className="modal" style={{width:620,maxHeight:'90vh',overflowY:'auto'}}>
             <div className="mh"><span className="mt">🚀 Start a Business</span><button className="xbtn" onClick={()=>setWizard(false)}>&times;</button></div>
-            <div style={{display:'flex',alignItems:'center',gap:0,marginBottom:20}}>{['Entity Type','State','Details','Review'].map((label,i)=>{const step=i+1,done=step<wStep,active=step===wStep;return <div key={label} style={{display:'flex',alignItems:'center',flex:1}}><div style={{display:'flex',flexDirection:'column',alignItems:'center',flex:1}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background:done||active?'var(--blue)':'var(--s3)',color:done||active?'#fff':'var(--t3)',border:`2px solid ${done||active?'var(--blue)':'var(--br)'}`}}>{done?'✓':step}</div><div style={{fontSize:10,marginTop:4,color:done||active?'var(--tx)':'var(--t3)',whiteSpace:'nowrap'}}>{label}</div></div>{step<4 && <div style={{height:2,flex:1,background:done?'var(--blue)':'var(--br)',marginBottom:16}}/>}</div>})}</div>
+            <div style={{display:'flex',alignItems:'center',gap:0,marginBottom:20}}>{['Entity Type','State','Details','Review'].map((label,i)=>{const step=i+1;const done=step<wStep;const active=step===wStep;return <div key={label} style={{display:'flex',alignItems:'center',flex:1}}><div style={{display:'flex',flexDirection:'column',alignItems:'center',flex:1}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background:done||active?'var(--blue)':'var(--s3)',color:done||active?'#fff':'var(--t3)',border:`2px solid ${done||active?'var(--blue)':'var(--br)'}`}}>{done?'✓':step}</div><div style={{fontSize:10,marginTop:4,color:done||active?'var(--tx)':'var(--t3)',whiteSpace:'nowrap'}}>{label}</div></div>{step<4&&<div style={{height:2,flex:1,background:done?'var(--blue)':'var(--br)',marginBottom:16}}/>}</div>})}</div>
 
             {wStep === 1 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>What type of business entity does your client want to form?</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>{ENTITY_TYPES.map(t=><div key={t} onClick={()=>wFld('entity_type',t)} style={{padding:'16px 14px',borderRadius:8,border:`2px solid ${wForm.entity_type===t?'var(--blue)':'var(--br)'}`,background:wForm.entity_type===t?'var(--blt)':'var(--s2)',cursor:'pointer',fontWeight:600,fontSize:13,display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:18}}>{ENTITY_ICONS[t]||'🏢'}</span> {t}</div>)}</div></div>}
-
-            {wStep === 2 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Which state will {wForm.entity_type || 'the business'} be formed in?</div><select value={wForm.state} onChange={e=>wFld('state',e.target.value)} style={{width:'100%',padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:14,marginBottom:14}}><option value="">— Select a state —</option>{STATES.map(s=><option key={s} value={s}>{stateReqs[s]?.state_name || s} ({s})</option>)}</select>{wForm.state && stateReqs[wForm.state] && <div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📍 {stateReqs[wForm.state].state_name}</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}</div>}
-
+            {wStep === 2 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Which state will {wForm.entity_type || 'the business'} be formed in?</div><select value={wForm.state} onChange={e=>wFld('state',e.target.value)} style={{width:'100%',padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:14,marginBottom:14}}><option value="">— Select a state —</option>{STATES.map(s=><option key={s} value={s}>{stateReqs[s]?.state_name || s} ({s})</option>)}</select>{wForm.state&&stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📍 {stateReqs[wForm.state].state_name}</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}</div>}
             {wStep === 3 && <div>
               <div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Tell us about the business.</div>
-              <div style={{position:'relative'}} className="field"><label>Client *</label><input value={wForm.client_name} onChange={e=>wSearchClient(e.target.value)} placeholder="Search or type client name…"/>{wShowSug && wSugg.length>0 && <div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--sf)',border:'1px solid var(--br)',borderRadius:6,zIndex:50,maxHeight:160,overflowY:'auto'}}>{wSugg.map(c=><div key={c.id} onClick={()=>{wFld('client_name',c.name);setWSugg([]);setWShowSug(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13}}>{c.name}</div>)}</div>}</div>
+              <div style={{position:'relative'}} className="field"><label>Client *</label><input value={wForm.client_name} onChange={e=>wSearchClient(e.target.value)} placeholder="Search or type client name…"/>{wShowSug&&wSugg.length>0&&<div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--sf)',border:'1px solid var(--br)',borderRadius:6,zIndex:50,maxHeight:160,overflowY:'auto'}}>{wSugg.map(c=><div key={c.id} onClick={()=>{wFld('client_name',c.name);setWSugg([]);setWShowSug(false)}} style={{padding:'8px 12px',cursor:'pointer',fontSize:13}}>{c.name}</div>)}</div>}</div>
               <div className="field"><label>Entity Name *</label><input value={wForm.entity_name} onChange={e=>{wFld('entity_name',e.target.value);checkNameSoon(e.target.value,wForm.state)}} placeholder="e.g. Smith Holdings LLC"/>{wForm.state==='FL'&&wForm.entity_name.length>=3&&<div style={{marginTop:6,fontSize:12}}>{nameCheck.state==='pending'&&<span style={{color:'var(--t3)'}}>⏳ Checking with Sunbiz…</span>}{nameCheck.state==='unavailable'&&<span style={{color:'var(--t3)'}}>ℹ️ Sunbiz unavailable — verify manually before filing.</span>}{nameCheck.state==='done'&&nameCheck.result?.available&&<span style={{color:'var(--ok)'}}>✅ No exact match found — Sunbiz makes the final availability decision at filing.</span>}{nameCheck.state==='done'&&nameCheck.result&&!nameCheck.result.available&&<span style={{color:'var(--warn)'}}>⚠️ An exact matching Florida entity already exists.</span>}</div>}</div>
               <div className="field"><label>Owners / Members (names & %)</label><input value={wForm.owners} onChange={e=>wFld('owners',e.target.value)} placeholder="e.g. John Smith 100%"/></div>
               <div className="field"><label>Registered Agent *</label><input value={wForm.registered_agent} onChange={e=>wFld('registered_agent',e.target.value)} placeholder="Individual or company name"/></div>
@@ -443,8 +459,12 @@ export default function FormaCorp() {
               </>}
               <div className="field"><label>Business Purpose</label><input value={wForm.business_purpose} onChange={e=>wFld('business_purpose',e.target.value)} placeholder="e.g. Software development and related lawful business activities"/></div>
             </div>}
-
-            {wStep === 4 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],...(wForm.state==='FL'?[['Principal Office',wForm.principal_address||'—'],['Registered Agent Address',wForm.registered_agent_address||'—'],['Authorized Representative',wForm.authorized_representative||'—'],['Correspondence Email',wForm.correspondence_email||'—'],['Effective Date',wForm.effective_date||'Upon filing'],['Agent Accepted',wForm.registered_agent_accepted?'Yes':'No']]:[]),['Business Purpose',wForm.business_purpose||'—']].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div></div>}
+            {wStep === 4 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[
+              ['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],
+              ['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],
+              ...(wForm.state==='FL'?[['Principal Office',wForm.principal_address||'—'],['Registered Agent Address',wForm.registered_agent_address||'—'],['Authorized Representative',wForm.authorized_representative||'—'],['Correspondence Email',wForm.correspondence_email||'—'],['Effective Date',wForm.effective_date||'Upon filing'],['Agent Accepted',wForm.registered_agent_accepted?'Yes':'No']]:[]),
+              ['Business Purpose',wForm.business_purpose||'—']
+            ].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div></div>}
 
             <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:20,paddingTop:16,borderTop:'1px solid var(--br)'}}><button className="btn" onClick={()=>wStep===1?setWizard(false):setWStep(s=>s-1)}>{wStep===1?'Cancel':'← Back'}</button>{wStep<4?<button className="btn pri" disabled={(wStep===1&&!wForm.entity_type)||(wStep===2&&!wForm.state)||(wStep===3&&(!wForm.client_name||!wForm.entity_name||!!validateFloridaFiling(wForm)))} onClick={()=>setWStep(s=>s+1)}>Continue →</button>:<button className="btn pri" onClick={createFromWizard} disabled={saving}>{saving?'Creating…':'🏢 Create Formation Case'}</button>}</div>
           </div>
