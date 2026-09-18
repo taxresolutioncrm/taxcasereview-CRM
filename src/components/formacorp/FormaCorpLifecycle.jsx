@@ -173,7 +173,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     const path=`formacorp/${caseRecord.id}/${pathSuffix}`
     const {error:upErr}=await supabase.storage.from('documents').upload(path,blob,{upsert:true,contentType:'application/pdf'})
     if(upErr) throw upErr
-    const {data:urlData,error:urlErr}=await supabase.storage.from('documents').createSignedUrl(path,60*60*24*30)
+    const {data:urlData,error:urlErr}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
     if(urlErr) throw urlErr
     const url=urlData?.signedUrl || ''
     const fileName=pathSuffix.split('/').pop()
@@ -213,7 +213,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         case_id:caseRecord.id,document_type:docType,file_name:file.name,storage_path:path,source:'Uploaded'
       }]).select().single()
       if(idxErr)throw idxErr
-      const {data:urlData}=await supabase.storage.from('documents').createSignedUrl(path,60*60*24*30)
+      const {data:urlData}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
       try {
         await supabase.from('documents').insert([{
           clientname:caseRecord.client_name,client:caseRecord.client_name,type:'FormaCorp',docType:'Business Formation',
