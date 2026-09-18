@@ -477,9 +477,13 @@ export default function FormaCorp() {
     }, 'Florida filing moved to the filing queue', `Queued for Florida submission via ${method==='prepaid_fax'?'Prepaid Sunbiz E-File fax':'Sunbiz online'}`)
   }
 
-  async function openFloridaOnline(c) {
+  async function queueFormaCorpFulfillment(c) {
     const ok = await queueFloridaFiling(c, 'sunbiz_online')
     if (!ok) return
+    showToast('✅ Filing queued for FormaCorp fulfillment — the customer does not re-enter the application on Sunbiz.')
+  }
+
+  function openFloridaOnlineStaff(c) {
     window.open(FL_ONLINE_URL, '_blank', 'noopener,noreferrer')
   }
 
@@ -735,22 +739,27 @@ export default function FormaCorp() {
               <button className="btn sm" onClick={()=>openFloridaEdit(c, [])}>✏️ Edit Filing Details</button>
               <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
               {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
-              {['Ready to Submit','Filing Queue','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>openFloridaOnline(c)}>🏛️ Open Official Sunbiz Filing</button>}
-              {['Filing Queue','Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>}
+              {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>queueFormaCorpFulfillment(c)}>📬 Send to FormaCorp Filing Queue</button>}
+              {c.fl_filing_status==='Filing Queue' && <button className="btn sm" onClick={()=>openFloridaOnlineStaff(c)}>🏛️ Staff: Open Sunbiz Card Filing</button>}
+              {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Staff: Record State Submission</button>}
               {c.fl_filing_status==='Submitted to Florida' && <button className="btn sm" onClick={()=>markFloridaReview(c)}>⏳ Mark Under Review</button>}
               {['Submitted to Florida','Under State Review'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>approveFlorida(c)}>✅ Record Approval</button>}
               {['Submitted to Florida','Under State Review'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>rejectFlorida(c)}>⚠️ Record Rejection</button>}
             </div>
 
+            {['Ready to Submit','Filing Queue','Submitted to Florida','Under State Review','Action Required'].includes(c.fl_filing_status) && <div style={{marginTop:10,padding:'9px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:10.5,lineHeight:1.55}}>
+              <strong>One-entry fulfillment:</strong> the customer is finished after intake, authorization, and payment. FormaCorp staff completes the state submission from this filing record; the customer is not sent to Sunbiz to re-enter the LLC application.
+            </div>}
+
             <div style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--br)'}}>
-              <div style={{fontSize:11,fontWeight:700,marginBottom:6}}>Prepaid Sunbiz E-File / Fax submission</div>
-              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>For a frequent-filer Sunbiz account: generate the official Electronic Filing Cover Sheet in Sunbiz, attach it with the signed Articles, enter the fax number printed on that cover sheet, and FormaCorp will combine the PDFs and send the filing through the CRM fax service. Unsigned Articles are blocked from fax submission.</div>
+              <div style={{fontSize:11,fontWeight:700,marginBottom:6}}>Internal fulfillment — Prepaid Sunbiz E-File / Fax</div>
+              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>Staff-only filing path for a frequent-filer Sunbiz account: generate the official Electronic Filing Cover Sheet in Sunbiz, attach it with the signed Articles, enter the fax number printed on that cover sheet, and FormaCorp will combine the PDFs and send the filing through the CRM fax service. The customer does not re-enter the application. Unsigned Articles are blocked from fax submission.</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
                 <input value={flSubmit.faxNumber} onChange={e=>setFlSubmit(x=>({...x,faxNumber:e.target.value}))} placeholder="Florida fax # from cover sheet" style={{width:'100%'}}/>
                 <label style={{fontSize:10,color:'var(--t3)'}}>Electronic Filing Cover Sheet<input type="file" accept="application/pdf" onChange={e=>setFlSubmit(x=>({...x,coverSheet:e.target.files?.[0]||null}))} style={{width:'100%',fontSize:11,marginTop:3}}/></label>
                 <label style={{fontSize:10,color:'var(--t3)'}}>Signed Florida Articles PDF<input type="file" accept="application/pdf" onChange={e=>setFlSubmit(x=>({...x,signedArticles:e.target.files?.[0]||null}))} style={{width:'100%',fontSize:11,marginTop:3}}/></label>
               </div>
-              <button className="btn sm" style={{marginTop:8}} onClick={()=>submitFloridaFax(c)} disabled={flSubmit.busy || flSubmitMissing.length>0}>{flSubmit.busy?'⏳ Sending…':'📠 Submit via Prepaid Sunbiz Fax'}</button>
+              <button className="btn sm" style={{marginTop:8}} onClick={()=>submitFloridaFax(c)} disabled={flSubmit.busy || flSubmitMissing.length>0}>{flSubmit.busy?'⏳ Sending…':'📠 Staff: Submit via Prepaid Sunbiz Fax'}</button>
             </div>
           </div>
         )}
