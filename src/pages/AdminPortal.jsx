@@ -25,9 +25,12 @@ const CalendarPage = lazy(() => import('./Calendar'))
 const TrainingPage = lazy(() => import('./MeetTrainingHub'))
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const TCR_TENANT      = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
-const DEMO_TENANT     = '489ace07-1a6b-4864-833a-4f8420568b40'
-const TAXRESCRM_TENANT = 'a0000000-0000-0000-0000-000000000001'
+const TCR_TENANT            = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
+const NASH_TENANT           = '489ace07-1a6b-4864-833a-4f8420568b40'
+const DEMO_DIRECTORY_TENANT = '518808b4-10dd-47fd-900e-6c3fc1ff2e7e'
+const DEMO_RUNTIME_TENANT   = 'a0000000-0000-0000-0000-000000000001'
+const DEMO_TENANT           = DEMO_RUNTIME_TENANT
+const TAXRESCRM_TENANT      = DEMO_RUNTIME_TENANT
 const STATUS_COLOR = { active:'#10b981', trial:'#f59e0b', past_due:'#f97316', cancelled:'#ef4444', suspended:'#ef4444' }
 const TIER_COLOR   = { starter:'#6366f1', growth:'#0ea5e9', pro:'#10b981' }
 
@@ -133,6 +136,9 @@ async function loadPlatformOfficeRows() {
       {
         total_collected:Number(b.collected_cents || 0) / 100,
         transaction_count:Number(b.payment_count || 0),
+        effective_monthly:Number(b.monthly_amount_cents || 0) / 100,
+        billing_seats:b.seat_count == null ? null : Number(b.seat_count),
+        per_seat_rate:b.per_seat_amount_cents == null ? null : Number(b.per_seat_amount_cents) / 100,
       },
     ])
   )
@@ -147,6 +153,7 @@ async function loadPlatformOfficeRows() {
     { key:'tax_case_review', name:'Tax Case Review' },
     { key:'nashville', name:'Nashville Tax Solutions' },
     { key:'cloudcpa', name:'CloudCPA Inc' },
+    { key:'demo', name:'Tax Res CRM Demo' },
   ]
   const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
 
@@ -193,12 +200,14 @@ async function loadPlatformOfficeRows() {
       ...rows[idx],
       client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
       lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
-      // TaxRes staff count is authoritative from admin_tenant_overview() / employees.
-      // Do not let a secondary usage feed overwrite it with stale or zero counts.
-      employee_count:Number(rows[idx].employee_count ?? 0),
-      cases_count:Number(metrics.open_jobs ?? rows[idx].cases_count ?? 0),
+      // Prefer the live product's staff/case totals whenever it supplies them.
+      // The central directory remains a fallback only; Nashville in particular
+      // lives in its own CRM database and must not inherit stale legacy counts.
+      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      cases_count:Number(metrics.open_jobs ?? metrics.active_cases ?? rows[idx].cases_count ?? 0),
       tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
       storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
+      last_activity:metrics.last_activity ?? result.data?.offices?.[0]?.last_activity ?? rows[idx].last_activity ?? null,
     }
   }
 
@@ -225,7 +234,9 @@ async function loadPlatformOfficeRows() {
         status:office.status || 'active',
         plan_tier:cfg.label,
         effective_monthly:Number(office.monthly_amount || 0),
-        last_activity:office.updated_at || office.created_at || null,
+        // Registry timestamps describe registry maintenance, not CRM usage.
+        // Never present them as user activity.
+        last_activity:office.metadata?.last_activity || null,
       })
     }
   } else if (registryError) {
@@ -242,6 +253,15 @@ async function loadPlatformOfficeRows() {
       continue
     }
 
+    const metrics = result.data?.metrics || {}
+    const singleOffice = offices.length === 1
+    const aggregateLastActivity =
+      metrics.last_activity ||
+      result.data?.recent_activity?.[0]?.at ||
+      result.data?.recent_activity?.[0]?.ts ||
+      null
+    const valueOrNull = (value) => value === null || value === undefined ? null : Number(value)
+
     for (const office of offices) {
       const key = `${result.productKey}:${office.id}`
       const existing = rows.findIndex(r => r.id === key)
@@ -251,10 +271,28 @@ async function loadPlatformOfficeRows() {
         product:result.productKey,
         firm_name:office.name || `${cfg.label} Office`,
         brand_color:cfg.color,
-        employee_count:Number(office.employee_count || office.staff_count || 0),
-        client_count:Number(office.client_count || 0),
-        lead_count:Number(office.lead_count || 0),
-        storage_bytes:Number(office.storage_bytes || 0),
+        // If a product has exactly one real office, aggregate product metrics are
+        // authoritative for that office. For multi-office products, missing
+        // per-office values stay unknown instead of being fabricated as zero.
+        employee_count:valueOrNull(
+          office.employee_count ?? office.active_staff ?? office.staff_count ??
+          (singleOffice ? (metrics.active_staff ?? metrics.active_users) : null)
+        ),
+        client_count:valueOrNull(
+          office.client_count ?? office.active_clients ?? office.customer_count ??
+          (singleOffice ? (metrics.total_clients ?? metrics.active_clients) : null)
+        ),
+        lead_count:valueOrNull(
+          office.lead_count ?? office.active_leads ??
+          (singleOffice ? (metrics.total_leads ?? metrics.active_leads) : null)
+        ),
+        cases_count:valueOrNull(
+          office.open_jobs ?? office.job_count ?? office.active_cases ??
+          (singleOffice ? (metrics.open_jobs ?? metrics.active_cases) : null)
+        ),
+        storage_bytes:valueOrNull(
+          office.storage_bytes ?? (singleOffice ? metrics.storage_bytes : null)
+        ),
         // Platform revenue is owned by the central RomyLabs billing ledger,
         // never by a product CRM's client-payment totals.
         total_collected:0,
@@ -262,7 +300,8 @@ async function loadPlatformOfficeRows() {
         status:office.status || (office.is_active === false ? 'inactive' : 'active'),
         plan_tier:office.plan || office.subscription_status || cfg.label,
         effective_monthly:Number(office.mrr || 0),
-        last_activity:office.last_activity || office.since || null,
+        // Never use office creation/registry timestamps as user activity.
+        last_activity:office.last_activity || (singleOffice ? aggregateLastActivity : null),
       }
       if (existing >= 0) rows[existing] = { ...rows[existing], ...normalized }
       else rows.push(normalized)
@@ -290,18 +329,21 @@ async function loadPlatformOfficeRows() {
       })
     }
 
-    const metrics = result.data?.metrics || {}
-    // Product feeds may report storage only at the aggregate product level even when
-    // office rows are present. Count office storage first, then add only the unrepresented
-    // remainder from the aggregate metric so Overview storage is complete without double-counting.
-    const officeStorageSum = offices.reduce((sum, office) => sum + Number(office?.storage_bytes || 0), 0)
-    const aggregateStorage = Number(metrics.storage_bytes || 0)
-    if (!offices.length) {
-      externalMetrics.active_staff += Number(metrics.active_staff || metrics.active_users || 0)
-      externalMetrics.active_clients += Number(metrics.total_clients || metrics.active_clients || 0)
-      externalMetrics.active_leads += Number(metrics.total_leads || metrics.active_leads || 0)
-    }
-    externalMetrics.storage_bytes += Math.max(0, aggregateStorage - officeStorageSum)
+    // Add only aggregate metrics that are not already represented by office rows.
+    // This preserves accurate portfolio totals without double-counting.
+    const productRows = rows.filter(row => row.product === result.productKey)
+    const representedStaff = productRows.reduce((sum,row)=>sum+Number(row.employee_count ?? 0),0)
+    const representedClients = productRows.reduce((sum,row)=>sum+Number(row.client_count ?? 0),0)
+    const representedLeads = productRows.reduce((sum,row)=>sum+Number(row.lead_count ?? 0),0)
+    const representedStorage = productRows.reduce((sum,row)=>sum+Number(row.storage_bytes ?? 0),0)
+    const aggregateStaff = Number(metrics.active_staff ?? metrics.active_users ?? 0)
+    const aggregateClients = Number(metrics.total_clients ?? metrics.active_clients ?? 0)
+    const aggregateLeads = Number(metrics.total_leads ?? metrics.active_leads ?? 0)
+    const aggregateStorage = Number(metrics.storage_bytes ?? 0)
+    externalMetrics.active_staff += Math.max(0, aggregateStaff - representedStaff)
+    externalMetrics.active_clients += Math.max(0, aggregateClients - representedClients)
+    externalMetrics.active_leads += Math.max(0, aggregateLeads - representedLeads)
+    externalMetrics.storage_bytes += Math.max(0, aggregateStorage - representedStorage)
     if (result.data?.ok === false) warnings.push(`${cfg.label} metrics are partial`)
   }
 
@@ -322,8 +364,16 @@ async function loadPlatformOfficeRows() {
     const billing = billingByOffice.get(`${productKey}:${externalId}`)
     rows[i] = {
       ...row,
-      total_collected:Number(billing?.total_collected || 0),
-      transaction_count:Number(billing?.transaction_count || 0),
+      // Distinguish a real zero-payment billing account from no billing account.
+      total_collected:billing ? Number(billing.total_collected || 0) : null,
+      transaction_count:billing ? Number(billing.transaction_count || 0) : null,
+      // The RomyLabs billing ledger is authoritative for subscription MRR/seats
+      // when an account exists. CRM usage data must never overwrite billing.
+      effective_monthly:billing
+        ? Number(billing.effective_monthly || 0)
+        : Number(row.effective_monthly || 0),
+      billing_seats:billing?.billing_seats ?? row.billing_seats ?? null,
+      per_seat_rate:billing?.per_seat_rate ?? row.per_seat_rate ?? null,
     }
   }
 
@@ -740,12 +790,16 @@ function Overview() {
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.billing_seats ?? r.employee_count ?? 0).toLocaleString() + ' / ' + Number(r.employee_count ?? 0).toLocaleString()}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.client_count||0).toLocaleString()}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.cases_count||0).toLocaleString()}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{Number(r.transactions_count||0).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{
+                  (r.billing_seats == null && r.employee_count == null)
+                    ? '—'
+                    : `${r.billing_seats == null ? '—' : Number(r.billing_seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()}`
+                }</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.transaction_count == null ? '—' : Number(r.transaction_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{fmtBytes(r.storage_bytes)}</td>
-                <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected ? `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}` : '—'}</td>
+                <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected == null ? '—' : `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}`}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:700 }}>
                   {r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—'}
                 </td>
@@ -1173,7 +1227,7 @@ function OfficePage() {
                 </div>
               ))}
             </div>
-            {t.id === DEMO_TENANT && (
+            {t.id === DEMO_DIRECTORY_TENANT && (
               <div style={{ ...S.card, padding:18, border:'1px solid rgba(251,146,60,.3)' }}>
                 <div style={{ fontSize:12,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:10 }}>🎭 Demo Controls</div>
                 <div style={{ fontSize:12,color:'#475569',marginBottom:12 }}>Reset this tenant to a clean demo state before showing to a prospect.</div>
@@ -2066,7 +2120,7 @@ function LiveDemo() {
     toast_(`✅ Demo opened for ${firmName} — token valid 15 min`)
   }
 
-  const DEMO_TENANT = '489ace07-1a6b-4864-833a-4f8420568b40'
+  const DEMO_TENANT = DEMO_RUNTIME_TENANT
 
   return (
     <div style={{ padding:'28px 36px', maxWidth:900 }}>
@@ -2099,9 +2153,9 @@ function LiveDemo() {
             <div style={{ display:'flex', alignItems:'center', gap:14 }}>
               <div style={{ fontSize:32 }}>🎭</div>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:16, fontWeight:800, color:'#fff', marginBottom:2 }}>Nashville Tax Solutions</div>
+                <div style={{ fontSize:16, fontWeight:800, color:'#fff', marginBottom:2 }}>TaxRes CRM Demo</div>
                 <div style={{ fontSize:13, color:'#64748b' }}>
-                  Primary demo tenant · {demo.client_count} demo clients · {demo.employee_count} seats · Last active {fmtAgo(demo.last_activity)}
+                  Canonical TaxRes Demo · {demo.client_count} demo clients · {demo.employee_count} seats · Last active {fmtAgo(demo.last_activity)}
                 </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
@@ -4862,6 +4916,9 @@ function CommandCenter() {
     </div>
   )
 
+  const crmUpcomingDemos = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_demos || []) : []
+  const crmUpcomingDeadlines = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_deadlines || []) : []
+
   const TABS = [
     { key:'overview',  label:'Overview'  },
     { key:'support',   label:'Support'   },
@@ -5454,8 +5511,6 @@ function CommandCenter() {
             const realObjs   = data.kpis.realStorageObjects
             const taxresMetrics = taxresScopeData?.metrics || {}
             const taxresStorageMB = (Number(taxresMetrics.storage_bytes || 0) / 1048576).toFixed(2)
-            const crmUpcomingDemos = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_demos || []) : []
-            const crmUpcomingDeadlines = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_deadlines || []) : []
             return (<>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18,
             background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.15)',
