@@ -89,6 +89,14 @@ alter table public.formacorp_lifecycle enable row level security;
 alter table public.formacorp_service_requests enable row level security;
 alter table public.formacorp_documents enable row level security;
 
+revoke all on public.formacorp_lifecycle from anon;
+revoke all on public.formacorp_service_requests from anon;
+revoke all on public.formacorp_documents from anon;
+
+grant select,insert,update,delete on public.formacorp_lifecycle to authenticated;
+grant select,insert,update,delete on public.formacorp_service_requests to authenticated;
+grant select,insert,update,delete on public.formacorp_documents to authenticated;
+
 drop policy if exists tenant_scoped_formacorp_lifecycle on public.formacorp_lifecycle;
 create policy tenant_scoped_formacorp_lifecycle on public.formacorp_lifecycle
 for all to authenticated
