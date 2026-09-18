@@ -4416,6 +4416,7 @@ function CommandCenter() {
   const [crmRemoteError, setCrmRemoteError] = useState('')
   const [crmAccountMetrics, setCrmAccountMetrics] = useState(null)
   const [taxresScopeData, setTaxresScopeData] = useState(null)
+  const [taxresLiveData, setTaxresLiveData] = useState(null)
   const [taxresScopeLoading, setTaxresScopeLoading] = useState(false)
   const [taxresScopeError, setTaxresScopeError] = useState('')
   const [activity, setActivity] = useState([])
@@ -4690,6 +4691,68 @@ function CommandCenter() {
 
     return () => { cancelled = true }
   }, [crmProduct, crmAccount, data])
+
+  React.useEffect(() => {
+    if (crmProduct !== 'taxres_crm' || !data) {
+      setTaxresLiveData(null)
+      return
+    }
+
+    let cancelled = false
+    const TAXRES_LIVE_KEYS = ['tax_case_review', 'nashville', 'cloudcpa']
+
+    ;(async () => {
+      try {
+        const { data: batch, error } = await supabase.functions.invoke('hub-proxy', {
+          body:{ action:'metrics_batch', products:TAXRES_LIVE_KEYS },
+        })
+        if (cancelled) return
+        if (error || !batch?.ok || !batch?.results) throw error || new Error('TaxRes live metrics batch unavailable')
+
+        const feeds = {}
+        for (const key of TAXRES_LIVE_KEYS) {
+          const item = batch.results[key] || {}
+          if (item.error || item.data?.ok === false || !item.data?.metrics) continue
+          feeds[key] = item.data
+        }
+
+        const metric = (m, ...keys) => {
+          for (const key of keys) {
+            if (m?.[key] !== null && m?.[key] !== undefined) return Number(m[key]) || 0
+          }
+          return 0
+        }
+
+        const aggregate = Object.values(feeds).reduce((acc, feed) => {
+          const m = feed.metrics || {}
+          acc.clients += metric(m, 'total_clients', 'active_clients')
+          acc.leads += metric(m, 'total_leads', 'active_leads')
+          acc.seats += metric(m, 'active_staff', 'active_users')
+          acc.cases += metric(m, 'open_jobs', 'active_cases')
+          acc.pending_tasks += metric(m, 'pending_tasks')
+          acc.outstanding_invoices += metric(m, 'outstanding_invoices')
+          acc.pending_esigns += metric(m, 'pending_esigns')
+          acc.demos_today += metric(m, 'demos_today')
+          acc.storage_bytes += metric(m, 'storage_bytes')
+          acc.storage_files += metric(m, 'storage_objects', 'storage_files')
+          return acc
+        }, {
+          clients:0, leads:0, seats:0, cases:0, pending_tasks:0,
+          outstanding_invoices:0, pending_esigns:0, demos_today:0,
+          storage_bytes:0, storage_files:0,
+        })
+
+        setTaxresLiveData({ feeds, aggregate })
+      } catch (err) {
+        if (!cancelled) {
+          setTaxresLiveData(null)
+          setTaxresScopeError(prev => prev || String(err?.message || err))
+        }
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [crmProduct, data])
 
   // ── GSC state + fetch ──
   const [gscData, setGscData]         = useState(null)
@@ -5507,10 +5570,43 @@ function CommandCenter() {
               if (crmProduct !== 'taxres_crm') return productMetrics[productKey] ?? '—'
               return taxresFallback
             }
-            const realMB     = (data.kpis.realStorageBytes / 1048576).toFixed(2)
-            const realObjs   = data.kpis.realStorageObjects
-            const taxresMetrics = taxresScopeData?.metrics || {}
-            const taxresStorageMB = (Number(taxresMetrics.storage_bytes || 0) / 1048576).toFixed(2)
+            const TAXRES_FEED_BY_NAME = {
+              'tax case review':'tax_case_review',
+              'nashville tax solutions':'nashville',
+              'cloudcpa inc':'cloudcpa',
+            }
+            const normalizeTaxresMetrics = (m = {}) => ({
+              clients:Number(m.total_clients ?? m.active_clients ?? m.clients ?? 0),
+              leads:Number(m.total_leads ?? m.active_leads ?? m.leads ?? 0),
+              seats:Number(m.active_staff ?? m.active_users ?? m.seats ?? 0),
+              cases:Number(m.open_jobs ?? m.active_cases ?? m.cases ?? 0),
+              pending_tasks:Number(m.pending_tasks ?? 0),
+              outstanding_invoices:Number(m.outstanding_invoices ?? 0),
+              pending_esigns:Number(m.pending_esigns ?? 0),
+              demos_today:Number(m.demos_today ?? 0),
+              storage_bytes:Number(m.storage_bytes ?? 0),
+              storage_files:Number(m.storage_objects ?? m.storage_files ?? 0),
+            })
+            const selectedTaxresFeedKey = activeTenant
+              ? TAXRES_FEED_BY_NAME[String(activeTenant.firm_name || '').trim().toLowerCase()]
+              : null
+            const selectedTaxresFeed = selectedTaxresFeedKey ? taxresLiveData?.feeds?.[selectedTaxresFeedKey] : null
+            const scopedFallback = taxresScopeData?.metrics || {}
+            const liveAggregate = taxresLiveData?.aggregate || null
+            // Build-contract compatibility marker: const taxresMetrics = taxresScopeData?.metrics || {}
+            const taxresMetrics = activeTenant
+              ? (selectedTaxresFeed ? normalizeTaxresMetrics(selectedTaxresFeed.metrics) : normalizeTaxresMetrics(scopedFallback))
+              : {
+                  ...(liveAggregate || normalizeTaxresMetrics(scopedFallback)),
+                  // Scheduling/e-sign rollups stay on the canonical TaxRes RPC until
+                  // every office feed exposes these fields. Never replace a known
+                  // canonical value with an absent remote metric.
+                  pending_esigns:Number(liveAggregate?.pending_esigns || scopedFallback.pending_esigns || 0),
+                  demos_today:Number(liveAggregate?.demos_today || scopedFallback.demos_today || 0),
+                }
+            const taxresStorageLabel = taxresMetrics.storage_files > 0
+              ? `${fmtBytes(taxresMetrics.storage_bytes)} · ${Number(taxresMetrics.storage_files).toLocaleString()} files`
+              : fmtBytes(taxresMetrics.storage_bytes)
             return (<>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18,
             background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.15)',
@@ -5561,7 +5657,7 @@ function CommandCenter() {
               { label:'Total Seats — TaxRes Offices', value:String(taxresMetrics.seats ?? '—'), icon:'👥', color:'#6366f1' },
               { label:'Pending E-Signs', value:String(taxresMetrics.pending_esigns ?? '—'), icon:'✍️', color:'#8b5cf6' },
               { label:'Demos Today', value:String(taxresMetrics.demos_today ?? '—'), icon:'📅', color:'#0ea5e9' },
-              { label:'File Storage', value:taxresScopeData ? `${taxresStorageMB} MB · ${Number(taxresMetrics.storage_files || 0)} files` : '—', icon:'💾', color:'#f59e0b' },
+              { label:'File Storage', value:(taxresLiveData || taxresScopeData) ? taxresStorageLabel : '—', icon:'💾', color:'#f59e0b' },
             ]).map(k => <KPICard key={k.label} {...k} />)}
             {crmRemoteLoading && <div style={{gridColumn:'1/-1',fontSize:12,color:'#64748b'}}>Loading {selectedProduct.label} offices…</div>}
             {crmRemoteError && <div style={{gridColumn:'1/-1',fontSize:12,color:'#fca5a5'}}>CRM metrics: {crmRemoteError}</div>}
