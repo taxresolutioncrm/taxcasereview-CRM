@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
 import { buildFlArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
+import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 
 const ENTITY_TYPES = ['LLC','S-Corp','C-Corp','Sole Proprietorship','Partnership','Non-Profit 501(c)(3)','Professional LLC (PLLC)']
 const ENTITY_ICONS = {
@@ -12,7 +13,7 @@ const ENTITY_ICONS = {
   'Non-Profit 501(c)(3)':'❤️','Professional LLC (PLLC)':'⚖️'
 }
 const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
-const STAGES = ['Consultation','Documents Prep','State Filing','EIN Application','Operating Agreement','Bank Account Setup','Complete']
+const STAGES = ['Consultation','Documents Prep','State Filing','EIN Application','Operating Agreement','Bank Account Setup','Compliance & Maintenance','Complete']
 const FL_FILING_STEPS = ['Draft','Ready to Submit','Filing Queue','Submitted to Florida','Under State Review','Action Required','Approved / Active']
 const FL_ONLINE_URL = 'https://efile.sunbiz.org/llc_file.html'
 
@@ -689,6 +690,12 @@ export default function FormaCorp() {
             {stateReqs[c.state].notes && <div style={{fontSize:12,color:'var(--t3)',marginTop:8,lineHeight:1.5,paddingTop:8,borderTop:'1px solid var(--br)'}}>ℹ️ {stateReqs[c.state].notes}</div>}
           </div>
         )}
+
+        <FormaCorpLifecycle
+          caseRecord={c}
+          showToast={showToast}
+          onCasePatch={(patch)=>{ setDetail(d=>d?.id===c.id?({...d,...patch}):d); load() }}
+        />
 
         <div className="card" style={{padding:'12px 16px',marginBottom:10}}>
           <div className="stitle" style={{marginBottom:10}}>Quick Links & Resources</div>
