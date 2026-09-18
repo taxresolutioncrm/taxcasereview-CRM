@@ -221,3 +221,23 @@ export async function buildFlArticlesPdf(c) {
   const bytes = await pdf.save()
   return new Blob([bytes], { type: 'application/pdf' })
 }
+
+export async function buildFlFaxPacket(coverSheetFile, c) {
+  if (!coverSheetFile) throw new Error('Electronic Filing Cover Sheet is required')
+  const [coverBytes, articlesBlob] = await Promise.all([
+    coverSheetFile.arrayBuffer(),
+    buildFlArticlesPdf(c),
+  ])
+  const articlesBytes = await articlesBlob.arrayBuffer()
+  const [coverPdf, articlesPdf] = await Promise.all([
+    PDFDocument.load(coverBytes),
+    PDFDocument.load(articlesBytes),
+  ])
+  const out = await PDFDocument.create()
+  const coverPages = await out.copyPages(coverPdf, coverPdf.getPageIndices())
+  for (const pg of coverPages) out.addPage(pg)
+  const articlePages = await out.copyPages(articlesPdf, articlesPdf.getPageIndices())
+  for (const pg of articlePages) out.addPage(pg)
+  const bytes = await out.save()
+  return new Blob([bytes], { type:'application/pdf' })
+}
