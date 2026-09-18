@@ -1423,11 +1423,14 @@ export default function Clients() {
     }
 
     const actor = resolveActorName(user, employees)
-    const { error } = await supabase.from('sms_messages').insert([{
-      clientName: c.name, phone: toNum, body: smsBody, status,
-      signalwire_sms_id: swId, sent_by: actor, error_msg: errMsg,
-      created_at: new Date().toISOString(),
-    }])
+    let error = null
+    if (!(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && swId)) {
+      ;({ error } = await supabase.from('sms_messages').insert([{
+        clientName: c.name, phone: toNum, body: smsBody, status,
+        signalwire_sms_id: swId, sent_by: actor, error_msg: errMsg,
+        created_at: new Date().toISOString(),
+      }]))
+    }
     setSmsSending(false)
     if (error) { showToast('Error: '+error.message); return }
 
