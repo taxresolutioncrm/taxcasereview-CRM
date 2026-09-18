@@ -7,18 +7,20 @@ import { FIRM } from './firmBranding'
 // existing caller keeps working exactly as before.
 
 const LOGO_URL = ''  // replaced by FIRM.logoUrl
+const TCR_TENANT = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
+const isTcr = () => !FIRM.tenantId || FIRM.tenantId === TCR_TENANT
 const FIRM_NAME = 'Tax Case Review'
 const FIRM_ADDRESS = FIRM.address || ''
 const FIRM_PHONE   = FIRM.phone   || ''
-const FIRM_EMAIL = 'info@taxcasereview.org'
+const FIRM_EMAIL = () => FIRM.email || (isTcr() ? 'info@taxcasereview.org' : '')
 
 export function emailHtml({ body, headerBg = 'linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 100%)', firmName, logoUrl, address, phone, email }) {
   // Explicit override → this tenant's live settings (FIRM) → legacy default.
-  const fName = firmName || FIRM.name || FIRM_NAME
+  const fName = firmName || FIRM.name || (isTcr() ? FIRM_NAME : 'Tax Resolution Office')
   const fLogo = logoUrl || FIRM.logoUrl || LOGO_URL
   const fAddr = address || FIRM.address || FIRM_ADDRESS
   const fPhone = phone || FIRM.phone || FIRM_PHONE
-  const fEmail = email || FIRM.email || FIRM_EMAIL
+  const fEmail = email || FIRM_EMAIL()
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px">
 <tr><td align="center">
