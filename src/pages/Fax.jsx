@@ -213,7 +213,7 @@ export default function Fax() {
 
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
-    if (!file && !form.notes) { showToast('Attach a PDF or enter a message','err'); return }
+    if (!file) { showToast('Attach a PDF to send by fax. Notes are saved to the CRM log but are not a fax document.','err'); return }
     setSending(true)
 
     try {
