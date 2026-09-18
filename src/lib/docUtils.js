@@ -4,7 +4,8 @@ import { FIRM } from './firmBranding'
 
 const LOGO_URL = ''  // replaced by FIRM.logoUrl
 
-const FIRM_FAX = FIRM.fax || '(561) 420-6999'  // falls back to TCR fax if tenant has none set
+const TCR_TENANT = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
+const firmFax = () => FIRM.fax || ((!FIRM.tenantId || FIRM.tenantId === TCR_TENANT) ? '(561) 420-6999' : '')
 
 // Legal/body text renders the SIGNED-IN tenant's own firm, so a demo or
 // prospect tenant never sees Tax Case Review inside an agreement.
@@ -23,7 +24,7 @@ function printHeader(title, phone = FIRM.phone) {
     <div style="text-align:center;margin-bottom:28px;padding-bottom:18px;border-bottom:3px solid #1A7FD4">
       <img src="${FIRM.logoUrl}" style="height:52px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto" onerror="this.style.display='none'"/>
       <div style="font-size:22px;font-weight:800;color:#1A7FD4;letter-spacing:-.3px">${FIRM.name}</div>
-      <div style="font-size:11px;color:#666;margin-top:3px">${FIRM.address} &nbsp;·&nbsp; ${FIRM.email} &nbsp;·&nbsp; ${phone} &nbsp;·&nbsp; Fax ${FIRM_FAX}</div>
+      <div style="font-size:11px;color:#666;margin-top:3px">${FIRM.address} &nbsp;·&nbsp; ${FIRM.email} &nbsp;·&nbsp; ${phone} &nbsp;·&nbsp; Fax ${firmFax()}</div>
       <div style="font-size:15px;font-weight:700;margin-top:14px;color:#111;text-transform:uppercase;letter-spacing:.5px">${title}</div>
     </div>`
 }
@@ -31,7 +32,7 @@ function printHeader(title, phone = FIRM.phone) {
 function footer(phone = FIRM.phone) {
   return `
     <div style="margin-top:48px;padding-top:16px;border-top:1px solid #ddd;text-align:center;font-size:10px;color:#999;line-height:1.8">
-      ${FIRM.name} &nbsp;·&nbsp; ${FIRM.address} &nbsp;·&nbsp; ${FIRM.email} &nbsp;·&nbsp; ${phone} &nbsp;·&nbsp; Fax ${FIRM_FAX}<br/>
+      ${FIRM.name} &nbsp;·&nbsp; ${FIRM.address} &nbsp;·&nbsp; ${FIRM.email} &nbsp;·&nbsp; ${phone} &nbsp;·&nbsp; Fax ${firmFax()}<br/>
       <em>${FIRM.name} is a tax resolution consulting firm and is not a law firm. No attorney-client relationship is created by this agreement.</em>
     </div>`
 }
