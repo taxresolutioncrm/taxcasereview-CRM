@@ -169,7 +169,7 @@ export default function Sms() {
     if (settings?.sw_space_url || myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae') {
       try {
         const { data: resData, error: invokeErr } = await supabase.functions.invoke('send-sms', {
-          body: { to: toNum, body: form.body }
+          body: { to: toNum, body: form.body, client_id: clients.find(c=>c.name===form.clientName)?.id || null }
         })
         if (!invokeErr && resData?.success) {
           sw_id = resData.sid || null
@@ -185,11 +185,14 @@ export default function Sms() {
       status = 'Logged (not sent)'
     }
 
-    const {error}=await supabase.from('sms_messages').insert([{
-      ...form, phone: toNum, status,
-      signalwire_sms_id: sw_id, sent_by: user?.email || 'Unknown',
-      error_msg: errMsg, created_at:new Date().toISOString()
-    }])
+    let error = null
+    if (!(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && sw_id)) {
+      ;({error}=await supabase.from('sms_messages').insert([{
+        ...form, phone: toNum, status,
+        signalwire_sms_id: sw_id, sent_by: user?.email || 'Unknown',
+        error_msg: errMsg, created_at:new Date().toISOString()
+      }]))
+    }
     setSaving(false)
     if(error){showToast('Error: '+error.message);return}
 
