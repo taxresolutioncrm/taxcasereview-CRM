@@ -49,17 +49,62 @@ function b64urlJson(value: unknown) { return b64url(new TextEncoder().encode(JSO
 function fromB64url(value: string) { let s = value.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), c => c.charCodeAt(0)) }
 function randomToken(bytes = 32) { const a = new Uint8Array(bytes); crypto.getRandomValues(a); return b64url(a) }
 
+function derLength(n: number) {
+  if (n < 128) return new Uint8Array([n])
+  const bytes: number[] = []
+  for (let v = n; v > 0; v >>= 8) bytes.unshift(v & 0xff)
+  return new Uint8Array([0x80 | bytes.length, ...bytes])
+}
+function derTag(tag: number, value: Uint8Array) {
+  const len = derLength(value.length), out = new Uint8Array(1 + len.length + value.length)
+  out[0] = tag; out.set(len, 1); out.set(value, 1 + len.length); return out
+}
+function concatBytes(...parts: Uint8Array[]) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let offset = 0
+  for (const part of parts) { out.set(part, offset); offset += part.length }
+  return out
+}
+function pkcs1ToPkcs8(pkcs1: Uint8Array) {
+  const version = new Uint8Array([0x02, 0x01, 0x00])
+  const rsaOidAndNull = new Uint8Array([0x30,0x0d,0x06,0x09,0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x01,0x05,0x00])
+  return derTag(0x30, concatBytes(version, rsaOidAndNull, derTag(0x04, pkcs1)))
+}
 async function importPrivateKey() {
-  const body = env('IRS_TDS_JWT_PRIVATE_KEY_PEM').replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s+/g, '')
-  if (!body) throw new Error('IRS TDS JWT private key is not configured.')
-  const der = Uint8Array.from(atob(body), c => c.charCodeAt(0))
-  return crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign'])
+  const pem = env('IRS_TDS_JWT_PRIVATE_KEY_PEM')
+  if (!pem) throw new Error('IRS TDS JWT private key is not configured.')
+  const isPkcs1 = pem.includes('BEGIN RSA PRIVATE KEY')
+  const body = pem
+    .replace(/-----BEGIN (?:RSA )?PRIVATE KEY-----/g, '')
+    .replace(/-----END (?:RSA )?PRIVATE KEY-----/g, '')
+    .replace(/\s+/g, '')
+  if (!body) throw new Error('IRS TDS JWT private key is empty.')
+  const raw = Uint8Array.from(atob(body), c => c.charCodeAt(0))
+  const der = isPkcs1 ? pkcs1ToPkcs8(raw) : raw
+  try {
+    return await crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign'])
+  } catch {
+    throw new Error('IRS TDS JWT private key must be an RSA PKCS#8 or PKCS#1 PEM key matching the registered IRS JWK/certificate.')
+  }
 }
 async function createClientAssertion() {
   const clientId = env('IRS_TDS_CLIENT_ID'), now = Math.floor(Date.now() / 1000)
   const unsigned = `${b64urlJson({ alg: 'RS256', kid: env('IRS_TDS_JWT_KID'), typ: 'JWT' })}.${b64urlJson({ iss: clientId, sub: clientId, aud: TOKEN_URL(), iat: now, exp: now + 900, jti: crypto.randomUUID() })}`
   const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', await importPrivateKey(), new TextEncoder().encode(unsigned)))
   return `${unsigned}.${b64url(sig)}`
+}
+
+async function authorizationConfigError() {
+  if (!authorizationConfigured()) return 'IRS TDS authorization credentials are incomplete.'
+  try {
+    new URL(AUTHORIZE_URL())
+    new URL(TOKEN_URL())
+    new URL(env('IRS_TDS_REDIRECT_URI'))
+    await importPrivateKey()
+    return null
+  } catch (e) {
+    return e instanceof Error ? e.message : 'IRS TDS authorization configuration is invalid.'
+  }
 }
 async function sha256Hex(bytes: Uint8Array) { const hash = await crypto.subtle.digest('SHA-256', bytes.slice().buffer); return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('') }
 async function tokenKey() { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env('SUPABASE_SERVICE_ROLE_KEY') + ':irs-tds-session:v2')); return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt']) }
@@ -122,11 +167,13 @@ serve(async (req) => {
     const { data: userData, error: userErr } = await userDb.auth.getUser(); if (userErr || !userData?.user) return json({ error: 'Authentication required' }, 401)
     const employee = await resolveEmployee(userDb, userData.user), body = await req.json().catch(() => ({})), action = String(body?.action || 'capabilities'), session = await getSession(service, employee.tenant_id, userData.user.id)
     if (action === 'capabilities') {
-      const authReady = authorizationConfigured(), contractReady = transcriptContractConfigured(), sessionActive = authReady && sessionWindowActive(session)
+      const authError = await authorizationConfigError()
+      const authReady = !authError, contractReady = transcriptContractConfigured(), sessionActive = authReady && sessionWindowActive(session)
       return json({
         directConfigured: authReady && contractReady && sessionActive,
         sessionSetupConfigured: authReady,
         authorizationConfigured: authReady,
+        authorizationError: authError,
         transcriptContractConfigured: contractReady,
         sessionActive,
         expiresAt: sessionActive ? session.session_expires_at : null,
@@ -135,9 +182,14 @@ serve(async (req) => {
       })
     }
     if (action === 'begin-session') {
-      if (!authorizationConfigured()) return json({ error: 'IRS TDS ISP authorization is not configured yet.', code: 'IRS_ISP_NOT_CONFIGURED' }, 409)
+      const authError = await authorizationConfigError()
+      if (authError) return json({ error: authError, code: 'IRS_ISP_NOT_CONFIGURED' }, 409)
       const state = randomToken(32), { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' }); if (error) throw new Error(error.message)
-      const u = new URL(AUTHORIZE_URL()); u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID')); u.searchParams.set('response_type', 'code'); u.searchParams.set('state', state); return json({ ok: true, authorizationUrl: u.toString(), redirectUri: env('IRS_TDS_REDIRECT_URI') })
+      const u = new URL(AUTHORIZE_URL())
+      u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID'))
+      u.searchParams.set('response_type', 'code')
+      u.searchParams.set('state', state)
+      return json({ ok: true, authorizationUrl: u.toString(), redirectUri: env('IRS_TDS_REDIRECT_URI') })
     }
     if (action === 'end-session') { await service.from('irs_tds_sessions').update({ access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, state: null, state_expires_at: null, updated_at: new Date().toISOString() }).eq('tenant_id', employee.tenant_id).eq('user_id', userData.user.id); return json({ ok: true }) }
     if (!transcriptContractConfigured()) return json({ error: 'IRS TDS transcript request contract is not configured yet.', code: 'TDS_CONTRACT_NOT_CONFIGURED' }, 409)
