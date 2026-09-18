@@ -49,6 +49,17 @@ create table if not exists public.formacorp_lifecycle (
   unique (tenant_id, case_id)
 );
 
+create table if not exists public.formacorp_documents (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null default current_tenant_id(),
+  case_id uuid not null references public.formacorp(id) on delete cascade,
+  document_type text not null,
+  file_name text not null,
+  storage_path text not null,
+  source text not null default 'FormaCorp',
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.formacorp_service_requests (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null default current_tenant_id(),
@@ -64,9 +75,11 @@ create table if not exists public.formacorp_service_requests (
 
 create index if not exists idx_formacorp_lifecycle_tenant_case on public.formacorp_lifecycle(tenant_id, case_id);
 create index if not exists idx_formacorp_service_requests_case on public.formacorp_service_requests(case_id, requested_at desc);
+create index if not exists idx_formacorp_documents_case on public.formacorp_documents(case_id, created_at desc);
 
 alter table public.formacorp_lifecycle enable row level security;
 alter table public.formacorp_service_requests enable row level security;
+alter table public.formacorp_documents enable row level security;
 
 drop policy if exists tenant_scoped_formacorp_lifecycle on public.formacorp_lifecycle;
 create policy tenant_scoped_formacorp_lifecycle on public.formacorp_lifecycle
@@ -76,6 +89,13 @@ with check (tenant_id=current_tenant_id());
 
 drop policy if exists tenant_scoped_formacorp_service_requests on public.formacorp_service_requests;
 create policy tenant_scoped_formacorp_service_requests on public.formacorp_service_requests
+for all to authenticated
+using (tenant_id=current_tenant_id())
+with check (tenant_id=current_tenant_id());
+
+
+drop policy if exists tenant_scoped_formacorp_documents on public.formacorp_documents;
+create policy tenant_scoped_formacorp_documents on public.formacorp_documents
 for all to authenticated
 using (tenant_id=current_tenant_id())
 with check (tenant_id=current_tenant_id());
