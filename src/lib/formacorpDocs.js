@@ -64,7 +64,7 @@ export async function buildOperatingAgreementPdf(c, l = {}) {
     addText(page,title,M,y,bold,10); y-=16
     y=paragraph(page,body,M,y,reg,9.5,14); y-=8
   }
-  if (y < 150) y = 150
+  y = 150
   addText(page,'MEMBER APPROVAL',M,y,bold,10); y-=22
   addText(page,`Member / Authorized Signer: ${clean(c.authorized_representative || c.client_name)}`,M,y,reg,10); y-=22
   addText(page,'Signature: ________________________________________',M,y,reg,10)
