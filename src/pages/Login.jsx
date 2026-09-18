@@ -17,6 +17,10 @@ const COPY = {
     password: 'Password',
     signIn: 'Sign In',
     signingIn: 'Signing in…',
+    forgot: 'Forgot password?',
+    resetSent: 'Password reset email sent. Check your inbox.',
+    resetNeedEmail: 'Enter your email address first.',
+    resetting: 'Sending reset…',
     required: 'Email and password required',
     powered: 'Powered by TaxRes CRM',
     platform: 'RomyLabs Platform',
@@ -32,6 +36,10 @@ const COPY = {
     password: 'Contraseña',
     signIn: 'Iniciar sesión',
     signingIn: 'Iniciando sesión…',
+    forgot: '¿Olvidó su contraseña?',
+    resetSent: 'Correo de restablecimiento enviado. Revise su bandeja de entrada.',
+    resetNeedEmail: 'Ingrese primero su correo electrónico.',
+    resetting: 'Enviando…',
     required: 'Correo electrónico y contraseña requeridos',
     powered: 'Desarrollado con TaxRes CRM',
     platform: 'Plataforma RomyLabs',
@@ -68,6 +76,10 @@ const CSS = `
 .tcr-login-btn2:hover:not(:disabled){background:#1567B8;box-shadow:0 6px 18px rgba(26,127,212,.45)}
 .tcr-login-btn2:active:not(:disabled){transform:translateY(1px)}
 .tcr-login-btn2:disabled{opacity:.65;cursor:not-allowed;box-shadow:none}
+.tcr-login-reset2{display:flex;justify-content:flex-end;margin-top:-10px;margin-bottom:6px}
+.tcr-login-reset2 button{border:0;background:transparent;color:#1A7FD4;font:inherit;font-size:11.5px;font-weight:700;padding:4px 0;cursor:pointer}
+.tcr-login-reset2 button:disabled{opacity:.55;cursor:not-allowed}
+.tcr-login-success2{background:#ECFDF5;border:1.5px solid #A7F3D0;border-radius:10px;padding:10px 14px;font-size:13px;color:#047857;margin-bottom:20px;line-height:1.4}
 .tcr-login-footer2{margin-top:28px;font-size:11px;color:#94A3B8;text-align:center}
 @media(max-width:700px){.tcr-login-card2{flex-direction:column;min-height:unset}.tcr-login-left2{flex:auto;padding:32px 28px 28px}.tcr-login-logo2{height:38px;margin-bottom:26px}.tcr-login-title2{font-size:23px}.tcr-login-body2{display:none}.tcr-login-secure2{padding-top:20px}.tcr-login-right2{padding:52px 28px 38px}.tcr-login-form2{max-width:none}}
 @media(max-width:400px){.tcr-login-page{padding:12px}.tcr-login-left2{padding:24px 20px 22px}.tcr-login-right2{padding:52px 20px 30px}}
@@ -79,6 +91,8 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [success, setSuccess] = useState('')
   const [branding, setBranding] = useState(null)
   const [lang, setLang] = useState('en')
   const debounceRef = useRef(null)
@@ -129,11 +143,31 @@ export default function Login() {
     return () => clearTimeout(debounceRef.current)
   }, [email, isAdminHost])
 
+  async function sendReset() {
+    const target = String(email || '').trim().toLowerCase()
+    setError('')
+    setSuccess('')
+    if (!target) { setError(t.resetNeedEmail); return }
+    setResetting(true)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(target, {
+        redirectTo: window.location.origin + '/'
+      })
+      if (error) throw error
+      setSuccess(t.resetSent)
+    } catch (err) {
+      setError(err?.message || 'Could not send password reset email')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   async function submit(e) {
     e.preventDefault()
     if (!email || !password) return setError(t.required)
     setLoading(true)
     setError('')
+    setSuccess('')
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
@@ -202,6 +236,7 @@ export default function Login() {
             <h2>{t.heading}</h2>
             <p className="tcr-login-sub2">{t.sub}</p>
             {error && <div className="tcr-login-error2">{error}</div>}
+            {success && <div className="tcr-login-success2">{success}</div>}
 
             <form onSubmit={submit} noValidate>
               <div className="tcr-login-field2">
@@ -212,6 +247,7 @@ export default function Login() {
                 <label htmlFor="tcr-password">{t.password}</label>
                 <input id="tcr-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
               </div>
+              {!isAdminHost && <div className="tcr-login-reset2"><button type="button" onClick={sendReset} disabled={resetting}>{resetting ? t.resetting : t.forgot}</button></div>}
               <button type="submit" disabled={loading} className="tcr-login-btn2">{loading ? t.signingIn : t.signIn}</button>
             </form>
 
