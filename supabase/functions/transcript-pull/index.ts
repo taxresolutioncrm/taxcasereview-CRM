@@ -143,13 +143,24 @@ async function requireActiveSession(service: any, tenantId: string, userId: stri
 async function resolveContext(service: any, pull: any) {
   if (!pull || pull.provider !== 'irs_a2a') throw new Error('This request is not configured for direct IRS TDS.')
   const tenantId = String(pull.tenant_id || ''); if (!tenantId) throw new Error('Transcript pull request is missing tenant scope.')
-  const { data: poa, error: poaErr } = await service.from('poa_records').select('id,status,form_type,tax_years').eq('tenant_id', tenantId).eq('id', pull.poa_record_id).maybeSingle()
+  const { data: poa, error: poaErr } = await service.from('poa_records').select('id,status,form_type,tax_years,client_id').eq('tenant_id', tenantId).eq('id', pull.poa_record_id).maybeSingle()
   if (poaErr || !poa || poa.status !== 'On File') throw new Error('A valid POA/TIA with status On File is required.')
   const requestedYears = parseYears(pull.tax_years)
   if (requestedYears.size > 0) { const authorizedYears = parseYears(poa.tax_years); if (authorizedYears.size === 0 || [...requestedYears].some(y => !authorizedYears.has(y))) throw new Error('The recorded POA/TIA does not cover every requested tax year.') }
-  const { data: clients, error: clientErr } = await service.from('clients').select('id,name,ssn,ein').eq('tenant_id', tenantId).eq('name', pull.client_name).limit(2)
-  if (clientErr) throw new Error(clientErr.message); if (!clients || clients.length !== 1) throw new Error('Direct TDS requires exactly one matching client record.')
-  const client = clients[0], tin = String(client.ein || client.ssn || '').replace(/\D/g, ''); if (!tin) throw new Error('Client SSN/EIN is required for direct TDS.')
+
+  const stableClientId = String(pull.client_id || poa.client_id || '').trim()
+  let clientQuery = service.from('clients').select('id,name,ssn,ein').eq('tenant_id', tenantId)
+  clientQuery = stableClientId ? clientQuery.eq('id', stableClientId) : clientQuery.eq('name', pull.client_name)
+  const { data: clients, error: clientErr } = await clientQuery.limit(2)
+  if (clientErr) throw new Error(clientErr.message)
+  if (!clients || clients.length !== 1) {
+    throw new Error(stableClientId
+      ? 'Direct TDS could not resolve the client attached to this POA.'
+      : 'Direct TDS requires exactly one matching client record; link the POA to the client record first.')
+  }
+  const client = clients[0]
+  if (poa.client_id && String(poa.client_id) !== String(client.id)) throw new Error('The POA client does not match the transcript request client.')
+  const tin = String(client.ein || client.ssn || '').replace(/\D/g, ''); if (!tin) throw new Error('Client SSN/EIN is required for direct TDS.')
   const { data: settings, error: settingsErr } = await service.from('settings').select('caf_number').eq('tenant_id', tenantId).limit(1).maybeSingle(); if (settingsErr) throw new Error(settingsErr.message)
   const caf = String(settings?.caf_number || '').trim(); if (!caf) throw new Error('Office CAF number is required for direct TDS.')
   return { requestId: pull.id, clientId: client.id, clientName: pull.client_name, tin, tinType: client.ein ? 'EIN' : 'SSN', caf, poaId: poa.id, poaFormType: poa.form_type, taxYears: [...requestedYears], transcriptTypes: pull.transcript_types || [], requestedBy: pull.requested_by || '', providerRequestId: pull.provider_request_id || '' }
