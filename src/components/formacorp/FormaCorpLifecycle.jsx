@@ -79,6 +79,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
   const [serviceType,setServiceType]=useState(SERVICES[0])
   const [serviceNotes,setServiceNotes]=useState('')
   const [einValue,setEinValue]=useState(caseRecord?.ein || '')
+  const [signedSS4,setSignedSS4]=useState(null)
 
   useEffect(()=>{ setEinValue(caseRecord?.ein || '') },[caseRecord?.id,caseRecord?.ein])
 
@@ -236,6 +237,38 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     } catch(e) {
       showToast?.('Could not generate SS-4: '+(e?.message||e),'err')
     } finally { setBusy('') }
+  }
+
+  async function submitSignedSS4ByFax() {
+    if(!signedSS4){showToast?.('Attach the signed Form SS-4 first','err');return}
+    setBusy('ss4fax')
+    try{
+      const safe=signedSS4.name.replace(/[^a-zA-Z0-9._-]+/g,'-')
+      const path=`formacorp/${caseRecord.id}/ein/${Date.now()}-${safe}`
+      const {error:upErr}=await supabase.storage.from('documents').upload(path,signedSS4,{upsert:false,contentType:'application/pdf'})
+      if(upErr)throw upErr
+      const {data:urlData,error:urlErr}=await supabase.storage.from('documents').createSignedUrl(path,3600)
+      if(urlErr||!urlData?.signedUrl)throw urlErr||new Error('Could not create secure SS-4 filing URL')
+      const {data:fax,error:faxErr}=await supabase.functions.invoke('send-fax',{body:{
+        to:'+18556416935',
+        document_url:urlData.signedUrl
+      }})
+      if(faxErr)throw faxErr
+      if(!fax?.success)throw new Error(fax?.error||'Fax provider rejected the SS-4')
+      await supabase.from('formacorp_documents').insert([{
+        case_id:caseRecord.id,document_type:'Signed SS-4 / EIN Application',file_name:signedSS4.name,storage_path:path,source:'FormaCorp EIN Fax'
+      }])
+      await savePatch({
+        ein_status:'Submitted',
+        ein_application_method:'Form SS-4 / Fax',
+        ein_requested_at:new Date().toISOString(),
+        ein_confirmation_ref:fax.sid || lifecycle.ein_confirmation_ref || null,
+        ss4_document_path:path,
+      },'')
+      setSignedSS4(null)
+      showToast?.('✅ Signed SS-4 faxed to IRS EIN Operation and submission reference recorded')
+    }catch(e){showToast?.('SS-4 fax submission failed: '+(e?.message||e),'err')}
+    finally{setBusy('')}
   }
 
   async function recordEin() {
@@ -492,6 +525,14 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <button className="btn sm" onClick={generateSS4} disabled={busy==='ss4'}>{busy==='ss4'?'Generating…':'📄 Generate SS-4 Draft'}</button>
         <a className="btn sm" href="https://www.irs.gov/businesses/small-businesses-self-employed/get-an-employer-identification-number" target="_blank" rel="noreferrer">🏛️ Open Official IRS EIN</a>
         <button className="btn sm" onClick={saveCurrent} disabled={busy==='save'}>💾 Save EIN Workflow</button>
+      </div>
+      <div style={{padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,marginBottom:12}}>
+        <div style={{fontSize:11,fontWeight:800,marginBottom:4}}>Submit EIN application from FormaCorp</div>
+        <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>For a U.S. business, IRS currently accepts signed Form SS-4 by fax at 855-641-6935. Attach the completed and signed SS-4; FormaCorp sends it through the CRM fax service and records the provider submission reference. The IRS generally returns an EIN by fax in about 4 business days when a return fax number is provided on the form.</div>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <input type="file" accept="application/pdf" onChange={e=>setSignedSS4(e.target.files?.[0]||null)} style={{fontSize:11,flex:1,minWidth:220}}/>
+          <button className="btn pri sm" onClick={submitSignedSS4ByFax} disabled={busy==='ss4fax'||!signedSS4}>{busy==='ss4fax'?'Faxing…':'📠 Fax Signed SS-4 to IRS'}</button>
+        </div>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'end'}}>
         <Field label="Issued EIN" help="Stored in the existing protected CRM EIN field."><input value={einValue} onChange={e=>setEinValue(e.target.value)} placeholder="XX-XXXXXXX" style={inputStyle}/></Field>
