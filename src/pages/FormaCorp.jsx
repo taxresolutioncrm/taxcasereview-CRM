@@ -571,10 +571,41 @@ export default function FormaCorp() {
 
   async function updateStage(id, stage) {
     const c = cases.find(x=>x.id===id) || detail
-    if (c && isFloridaLlc(c) && STAGES.indexOf(stage) >= STAGES.indexOf('State Filing')) {
+    const target = STAGES.indexOf(stage)
+    if (c && isFloridaLlc(c) && target >= STAGES.indexOf('State Filing')) {
       const missing = floridaMissing(c)
       if (missing.length) {
         openFloridaEdit(c, missing)
+        return
+      }
+    }
+    if (c && target >= STAGES.indexOf('EIN Application')) {
+      const stateAccepted = isFloridaLlc(c)
+        ? (c.fl_filing_status === 'Approved / Active' && !!String(c.state_file_num || '').trim())
+        : !!String(c.state_file_num || c.formation_date || '').trim()
+      if (!stateAccepted) {
+        showToast('State formation must be accepted before advancing to EIN Application.', 'err')
+        return
+      }
+    }
+    if (c && target >= STAGES.indexOf('Operating Agreement') && !String(c.ein || '').trim()) {
+      showToast('Record the issued EIN before advancing to Operating Agreement.', 'err')
+      return
+    }
+    if (c && target >= STAGES.indexOf('Bank Account Setup')) {
+      const { data:lifecycle } = await supabase.from('formacorp_lifecycle')
+        .select('operating_agreement_status,banking_status,annual_report_due_date')
+        .eq('case_id', id).maybeSingle()
+      if (!lifecycle || lifecycle.operating_agreement_status !== 'Signed') {
+        showToast('The Operating Agreement must be signed before Bank Account Setup.', 'err')
+        return
+      }
+      if (target >= STAGES.indexOf('Compliance & Maintenance') && lifecycle.banking_status !== 'Opened') {
+        showToast('Record the business bank account as opened before Compliance & Maintenance.', 'err')
+        return
+      }
+      if (stage === 'Complete' && !lifecycle.annual_report_due_date) {
+        showToast('Set the annual-report compliance deadline before closing the launch workflow.', 'err')
         return
       }
     }
@@ -600,7 +631,8 @@ export default function FormaCorp() {
   })
 
   const stageColor = { 'Consultation':'#f59e0b','Documents Prep':'#3b82f6','State Filing':'#8b5cf6',
-    'EIN Application':'#06b6d4','Operating Agreement':'#ec4899','Bank Account Setup':'#f97316','Complete':'#22c55e' }
+    'EIN Application':'#06b6d4','Operating Agreement':'#ec4899','Bank Account Setup':'#f97316',
+    'Compliance & Maintenance':'#14b8a6','Complete':'#22c55e' }
 
   if (detail) {
     const c = cases.find(x=>x.id===detail.id) || detail
