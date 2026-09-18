@@ -890,7 +890,16 @@ export default function FormaCorp() {
     <div style={{maxWidth:1000}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2>
-        <div style={{display:'flex',gap:8}}><button className="btn pri" onClick={openWizard} style={{display:'flex',alignItems:'center',gap:6}}>🚀 Start a Business</button><button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>+ New Formation Case</button></div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button className="btn pri" onClick={()=>window.open(BIZEE_DASHBOARD_URL,'_blank','noopener,noreferrer')} style={{display:'flex',alignItems:'center',gap:6}}>🟠 Start Filing in Bizee Pro</button>
+          <button className="btn" onClick={openBizeeProSetup}>＋ Set Up Bizee Pro Account</button>
+          <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>＋ Track Bizee Filing</button>
+        </div>
+      </div>
+
+      <div className="card" style={{padding:'10px 14px',marginBottom:14,borderLeft:'3px solid var(--blue)'}}>
+        <div style={{fontSize:12,fontWeight:800,marginBottom:3}}>Bizee Pro handles the formation workflow</div>
+        <div style={{fontSize:10.5,color:'var(--t3)',lineHeight:1.55}}>Use one Bizee Pro commercial account for this CRM office. Start the formation in Bizee, let Bizee walk the rep through filing, EIN, operating agreement and included services, and use FormaCorp to link the order to the client and track the result inside the CRM.</div>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8,marginBottom:14}}>
