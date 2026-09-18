@@ -109,6 +109,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         }
       }
       setLifecycle(synced)
+      if (synced.annual_report_due_date) {
+        await upsertComplianceDeadline('annual_report',synced.annual_report_due_date,`${caseRecord.entity_name} Annual Report`)
+      }
+      if (synced.registered_agent_renewal_date) {
+        await upsertComplianceDeadline('registered_agent',synced.registered_agent_renewal_date,`${caseRecord.entity_name} Registered Agent Renewal`)
+      }
     } else {
       const seed={
         case_id:caseRecord.id,
@@ -124,7 +130,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       }
       const {data:newRow,error}=await supabase.from('formacorp_lifecycle').insert([seed]).select().single()
       if (error) console.error('[FormaCorp lifecycle] seed',error)
-      else setLifecycle(newRow)
+      else {
+        setLifecycle(newRow)
+        if (newRow.annual_report_due_date) {
+          await upsertComplianceDeadline('annual_report',newRow.annual_report_due_date,`${caseRecord.entity_name} Annual Report`)
+        }
+      }
     }
     setRequests(r || [])
     setDocuments(docs || [])
