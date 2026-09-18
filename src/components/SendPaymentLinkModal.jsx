@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { formatMoneyInput, parseMoney } from '../lib/money'
 import { supabase } from '../lib/supabase'
 import { emailHtml, ctaButton, fallbackLink } from '../lib/emailTemplate'
@@ -17,8 +17,15 @@ export default function SendPaymentLinkModal({ record, recordType, onClose, show
   const [err, setErr] = useState('')
   const [link, setLink] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [paymentProvider, setPaymentProvider] = useState(undefined)
+
+  useEffect(() => {
+    supabase.from('settings').select('payment_provider').limit(1).maybeSingle()
+      .then(({data}) => setPaymentProvider(data?.payment_provider || null))
+  }, [])
 
   async function generate() {
+    if (paymentProvider !== 'stripe') { setErr('Online payments are not connected for this office yet. Connect the office payment processor in Settings first.'); return }
     if (!amount || parseFloat(amount) <= 0) { setErr('Enter a valid amount'); return }
     setLoading(true); setErr('')
     const { data, error } = await supabase.functions.invoke('stripe-create-checkout-session', {
