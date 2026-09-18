@@ -1,0 +1,393 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../../lib/supabase'
+import { fillForm } from '../../lib/irsFormUtils'
+import { buildOperatingAgreementPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
+
+const SERVICES = [
+  'Annual Report Filing',
+  'Registered Agent Change',
+  'Registered Agent Service',
+  'Business Amendment',
+  'DBA / Fictitious Name',
+  'Foreign Qualification',
+  'Certificate of Good Standing',
+  'Business License & Permit Research',
+  'S-Corp Election / Form 2553',
+  'Reinstatement',
+  'Dissolution',
+  'Virtual Business Address',
+]
+
+const LIFECYCLE_TABS = [
+  ['overview','Overview'],
+  ['ein','EIN'],
+  ['agreement','Operating Agreement'],
+  ['banking','Banking'],
+  ['compliance','Compliance'],
+  ['services','Company Services'],
+]
+
+function nextFloridaAnnualReportDate(formationDate) {
+  const d = formationDate ? new Date(formationDate + 'T12:00:00') : new Date()
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()+1}-05-01`
+}
+
+function safeFilename(v) {
+  return String(v || 'company').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60) || 'company'
+}
+
+function Field({label,children,help}) {
+  return <div className="field" style={{marginBottom:10}}>
+    <label>{label}</label>
+    {children}
+    {help && <div style={{fontSize:10,color:'var(--t3)',marginTop:4,lineHeight:1.4}}>{help}</div>}
+  </div>
+}
+
+function StatusPill({value}) {
+  const good = ['Received','Signed','Opened','Current','Active','Filed','Complete','Connected'].some(x=>String(value||'').includes(x))
+  const warn = ['Pending','Requested','Due','In Progress','Action'].some(x=>String(value||'').includes(x))
+  return <span className={`bdg ${good?'bg':warn?'ba':'bn'}`} style={{fontSize:10}}>{value || 'Not Started'}</span>
+}
+
+export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch }) {
+  const [tab,setTab]=useState('overview')
+  const [lifecycle,setLifecycle]=useState(null)
+  const [requests,setRequests]=useState([])
+  const [busy,setBusy]=useState('')
+  const [serviceType,setServiceType]=useState(SERVICES[0])
+  const [serviceNotes,setServiceNotes]=useState('')
+  const [einValue,setEinValue]=useState(caseRecord?.ein || '')
+
+  useEffect(()=>{ setEinValue(caseRecord?.ein || '') },[caseRecord?.id,caseRecord?.ein])
+
+  async function load() {
+    if (!caseRecord?.id) return
+    const [{data:l,error:le},{data:r,error:re}] = await Promise.all([
+      supabase.from('formacorp_lifecycle').select('*').eq('case_id',caseRecord.id).maybeSingle(),
+      supabase.from('formacorp_service_requests').select('*').eq('case_id',caseRecord.id).order('requested_at',{ascending:false}),
+    ])
+    if (le) console.error('[FormaCorp lifecycle] load',le)
+    if (re) console.error('[FormaCorp services] load',re)
+    if (l) {
+      setLifecycle(l)
+    } else {
+      const seed={
+        case_id:caseRecord.id,
+        ein_status:caseRecord.ein?'Received':'Not Started',
+        ein_responsible_party_name:caseRecord.authorized_representative || caseRecord.client_name || '',
+        operating_agreement_status:'Not Started',
+        banking_status:'Not Started',
+        bank_account_type:'Business Checking',
+        bank_signer:caseRecord.authorized_representative || caseRecord.client_name || '',
+        annual_report_status:'Not Due',
+        annual_report_due_date:caseRecord.state==='FL' ? nextFloridaAnnualReportDate(caseRecord.formation_date) : null,
+        good_standing_status:caseRecord.state_file_num ? 'Verify with state' : 'Unknown',
+      }
+      const {data:newRow,error}=await supabase.from('formacorp_lifecycle').insert([seed]).select().single()
+      if (error) console.error('[FormaCorp lifecycle] seed',error)
+      else setLifecycle(newRow)
+    }
+    setRequests(r || [])
+  }
+
+  useEffect(()=>{ load() },[caseRecord?.id])
+
+  async function savePatch(patch, toast='Saved') {
+    if (!lifecycle?.id) return false
+    setBusy('save')
+    const payload={...patch,updated_at:new Date().toISOString()}
+    const {data,error}=await supabase.from('formacorp_lifecycle').update(payload).eq('id',lifecycle.id).select().single()
+    setBusy('')
+    if (error) { showToast?.('FormaCorp update failed: '+error.message,'err'); return false }
+    setLifecycle(data)
+    if (toast) showToast?.(toast)
+    return true
+  }
+
+  function setLocal(k,v){ setLifecycle(x=>({...x,[k]:v})) }
+
+  async function saveCurrent() {
+    const {
+      id,tenant_id,case_id,created_at,...rest
+    }=lifecycle || {}
+    await savePatch(rest,'✅ FormaCorp lifecycle saved')
+  }
+
+  async function uploadGenerated(blob, label, pathSuffix) {
+    const path=`formacorp/${caseRecord.id}/${pathSuffix}`
+    const {error:upErr}=await supabase.storage.from('documents').upload(path,blob,{upsert:true,contentType:'application/pdf'})
+    if(upErr) throw upErr
+    const {data:urlData,error:urlErr}=await supabase.storage.from('documents').createSignedUrl(path,60*60*24*30)
+    if(urlErr) throw urlErr
+    const url=urlData?.signedUrl || ''
+    const fileName=pathSuffix.split('/').pop()
+    const {error:docErr}=await supabase.from('documents').insert([{
+      clientname:caseRecord.client_name,
+      client:caseRecord.client_name,
+      type:'FormaCorp',
+      docType:'Business Formation',
+      filename:fileName,
+      file_name:fileName,
+      url,
+      file_url:url,
+      notes:label,
+      source:'FormaCorp',
+    }])
+    if(docErr) console.error('[FormaCorp document index]',docErr)
+    return {path,url,fileName}
+  }
+
+  async function generateSS4() {
+    setBusy('ss4')
+    try {
+      const bytes=await fillForm('ss4',{
+        name:caseRecord.authorized_representative || caseRecord.client_name,
+        business_name:caseRecord.entity_name,
+        trade_name:'',
+        address:caseRecord.principal_address,
+        street:caseRecord.principal_address,
+        state:caseRecord.state,
+        ein:caseRecord.ein || '',
+      },true)
+      const blob=new Blob([bytes],{type:'application/pdf'})
+      const stamp=Date.now()
+      const doc=await uploadGenerated(blob,'FormaCorp — Form SS-4 EIN application draft',`SS-4-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
+      await savePatch({ss4_document_path:doc.path,ein_status:lifecycle.ein_status==='Not Started'?'Draft Prepared':lifecycle.ein_status},'✅ SS-4 draft generated and filed in Documents')
+    } catch(e) {
+      showToast?.('Could not generate SS-4: '+(e?.message||e),'err')
+    } finally { setBusy('') }
+  }
+
+  async function recordEin() {
+    const value=String(einValue||'').trim()
+    if(!/^\d{2}-\d{7}$/.test(value)){ showToast?.('Enter the EIN as XX-XXXXXXX','err'); return }
+    setBusy('ein')
+    const now=new Date().toISOString()
+    const {error}=await supabase.from('formacorp').update({ein:value,stage:'Operating Agreement'}).eq('id',caseRecord.id)
+    if(error){ setBusy(''); showToast?.('Could not save EIN: '+error.message,'err'); return }
+    await savePatch({ein_status:'Received',ein_received_at:now},'',)
+    setBusy('')
+    onCasePatch?.({ein:value,stage:'Operating Agreement'})
+    showToast?.('✅ EIN recorded — Operating Agreement is next')
+  }
+
+  async function generateOperatingAgreement() {
+    setBusy('agreement')
+    try {
+      const blob=await buildOperatingAgreementPdf(caseRecord,lifecycle)
+      const stamp=Date.now()
+      const doc=await uploadGenerated(blob,'FormaCorp — Operating Agreement draft',`Operating-Agreement-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
+      await savePatch({operating_agreement_status:'Draft Generated',operating_agreement_generated_at:new Date().toISOString(),operating_agreement_path:doc.path},'✅ Operating Agreement draft generated and filed in Documents')
+    }catch(e){showToast?.('Could not generate Operating Agreement: '+(e?.message||e),'err')}
+    finally{setBusy('')}
+  }
+
+  async function markAgreementSigned() {
+    const ok=await savePatch({operating_agreement_status:'Signed',operating_agreement_signed_at:new Date().toISOString()},'',)
+    if(!ok)return
+    const {error}=await supabase.from('formacorp').update({stage:'Bank Account Setup'}).eq('id',caseRecord.id)
+    if(!error){onCasePatch?.({stage:'Bank Account Setup'});showToast?.('✅ Operating Agreement signed — Banking is next')}
+  }
+
+  async function generateBankingResolution() {
+    setBusy('bankdoc')
+    try {
+      const blob=await buildBankingResolutionPdf(caseRecord,lifecycle)
+      const stamp=Date.now()
+      const doc=await uploadGenerated(blob,'FormaCorp — Banking Resolution / account-opening record',`Banking-Resolution-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
+      await savePatch({banking_resolution_path:doc.path,bank_documents_ready:true},'✅ Banking resolution generated and filed in Documents')
+    }catch(e){showToast?.('Could not generate banking resolution: '+(e?.message||e),'err')}
+    finally{setBusy('')}
+  }
+
+  async function markBankOpened() {
+    if(!String(lifecycle.bank_name||'').trim()){showToast?.('Enter the bank or credit union first','err');return}
+    if(lifecycle.bank_account_last4 && !/^\d{4}$/.test(String(lifecycle.bank_account_last4))){showToast?.('Store only the final 4 account digits','err');return}
+    const ok=await savePatch({banking_status:'Opened',bank_opened_at:lifecycle.bank_opened_at || new Date().toISOString().slice(0,10)},'',)
+    if(!ok)return
+    const {error}=await supabase.from('formacorp').update({stage:'Compliance & Maintenance'}).eq('id',caseRecord.id)
+    if(!error){onCasePatch?.({stage:'Compliance & Maintenance'});showToast?.('✅ Business banking recorded — Compliance & Maintenance is now active')}
+  }
+
+  async function syncAnnualReportDeadline() {
+    const due=lifecycle.annual_report_due_date
+    if(!due){showToast?.('Set an annual-report due date first','err');return}
+    const marker=`[FormaCorp:${caseRecord.id}:annual_report]`
+    const {data:existing}=await supabase.from('deadlines').select('id').eq('notes',marker).maybeSingle()
+    const payload={
+      name:`${caseRecord.entity_name} Annual Report`,
+      title:`${caseRecord.entity_name} Annual Report`,
+      client:caseRecord.client_name,
+      clientname:caseRecord.client_name,
+      clientName:caseRecord.client_name,
+      type:'Business Compliance',
+      duedate:due,
+      dueDate:due,
+      due_date:due,
+      status:'Tracking',
+      notes:marker,
+    }
+    const res=existing?.id
+      ? await supabase.from('deadlines').update(payload).eq('id',existing.id)
+      : await supabase.from('deadlines').insert([payload])
+    if(res.error){showToast?.('Could not sync deadline: '+res.error.message,'err');return}
+    showToast?.('✅ Annual-report deadline synced to CRM Deadlines')
+  }
+
+  async function createServiceRequest() {
+    setBusy('service')
+    const {data,error}=await supabase.from('formacorp_service_requests').insert([{
+      case_id:caseRecord.id,
+      service_type:serviceType,
+      status:'Requested',
+      notes:serviceNotes.trim() || null,
+    }]).select().single()
+    setBusy('')
+    if(error){showToast?.('Could not create service request: '+error.message,'err');return}
+    setRequests(x=>[data,...x]);setServiceNotes('')
+    showToast?.('✅ FormaCorp service request created')
+  }
+
+  async function updateRequest(id,status) {
+    const patch={status,completed_at:status==='Complete'?new Date().toISOString():null}
+    const {data,error}=await supabase.from('formacorp_service_requests').update(patch).eq('id',id).select().single()
+    if(error){showToast?.('Service update failed: '+error.message,'err');return}
+    setRequests(x=>x.map(r=>r.id===id?data:r))
+  }
+
+  const score=useMemo(()=>{
+    if(!lifecycle)return 0
+    const flags=[
+      !!caseRecord.state_file_num,
+      !!caseRecord.ein,
+      lifecycle.operating_agreement_status==='Signed',
+      lifecycle.banking_status==='Opened',
+      !!lifecycle.annual_report_due_date,
+      ['Current','Active'].includes(lifecycle.good_standing_status),
+    ]
+    return Math.round(flags.filter(Boolean).length/flags.length*100)
+  },[lifecycle,caseRecord.state_file_num,caseRecord.ein])
+
+  if(!lifecycle) return <div className="card" style={{padding:16,marginBottom:10,color:'var(--t3)',fontSize:12}}>Loading FormaCorp lifecycle…</div>
+
+  const inputStyle={width:'100%',padding:'7px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}
+
+  return <div className="card" style={{padding:'14px 16px',marginBottom:10}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:12}}>
+      <div>
+        <div className="stitle">🏢 Company Lifecycle</div>
+        <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>Formation is only the beginning: EIN, governing documents, banking, compliance, and company changes live here.</div>
+      </div>
+      <div style={{textAlign:'right'}}>
+        <div style={{fontSize:18,fontWeight:800}}>{score}%</div>
+        <div style={{fontSize:9,color:'var(--t3)',textTransform:'uppercase'}}>launch readiness</div>
+      </div>
+    </div>
+
+    <div style={{display:'flex',gap:5,flexWrap:'wrap',borderBottom:'1px solid var(--br)',paddingBottom:8,marginBottom:12}}>
+      {LIFECYCLE_TABS.map(([id,label])=><button key={id} className={`btn sm ${tab===id?'pri':''}`} onClick={()=>setTab(id)}>{label}</button>)}
+    </div>
+
+    {tab==='overview' && <div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:8}}>
+        {[
+          ['State Formation',caseRecord.state_file_num?'Accepted':'In Progress'],
+          ['EIN',caseRecord.ein?'Received':lifecycle.ein_status],
+          ['Operating Agreement',lifecycle.operating_agreement_status],
+          ['Business Banking',lifecycle.banking_status],
+          ['Annual Report',lifecycle.annual_report_status],
+          ['Good Standing',lifecycle.good_standing_status],
+        ].map(([label,value])=><div key={label} style={{padding:'10px 12px',background:'var(--s2)',borderRadius:8,border:'1px solid var(--br)'}}><div style={{fontSize:10,color:'var(--t3)',marginBottom:6}}>{label}</div><StatusPill value={value}/></div>)}
+      </div>
+      <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.6,marginTop:10}}>This dashboard intentionally does not store full bank account or routing numbers. Sensitive banking credentials belong with the bank; FormaCorp stores status, last four digits, and supporting documents only.</div>
+    </div>}
+
+    {tab==='ein' && <div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <Field label="EIN Workflow Status"><select value={lifecycle.ein_status||'Not Started'} onChange={e=>setLocal('ein_status',e.target.value)} style={inputStyle}>{['Not Started','Draft Prepared','Ready to Apply','Submitted','Pending','Received','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Responsible Party Name"><input value={lifecycle.ein_responsible_party_name||''} onChange={e=>setLocal('ein_responsible_party_name',e.target.value)} style={inputStyle}/></Field>
+        <Field label="Application Method"><select value={lifecycle.ein_application_method||''} onChange={e=>setLocal('ein_application_method',e.target.value)} style={inputStyle}><option value="">— Select —</option><option>IRS Online</option><option>Form SS-4</option><option>Fax</option><option>Mail</option><option>Phone / International</option></select></Field>
+        <Field label="IRS Confirmation / Reference"><input value={lifecycle.ein_confirmation_ref||''} onChange={e=>setLocal('ein_confirmation_ref',e.target.value)} style={inputStyle}/></Field>
+      </div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+        <button className="btn sm" onClick={generateSS4} disabled={busy==='ss4'}>{busy==='ss4'?'Generating…':'📄 Generate SS-4 Draft'}</button>
+        <a className="btn sm" href="https://www.irs.gov/businesses/small-businesses-self-employed/get-an-employer-identification-number" target="_blank" rel="noreferrer">🏛️ Open Official IRS EIN</a>
+        <button className="btn sm" onClick={saveCurrent} disabled={busy==='save'}>💾 Save EIN Workflow</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'end'}}>
+        <Field label="Issued EIN" help="Stored in the existing protected CRM EIN field."><input value={einValue} onChange={e=>setEinValue(e.target.value)} placeholder="XX-XXXXXXX" style={inputStyle}/></Field>
+        <button className="btn pri" style={{marginBottom:10}} onClick={recordEin} disabled={busy==='ein'}>Record EIN</button>
+      </div>
+    </div>}
+
+    {tab==='agreement' && <div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <Field label="Operating Agreement Status"><select value={lifecycle.operating_agreement_status||'Not Started'} onChange={e=>setLocal('operating_agreement_status',e.target.value)} style={inputStyle}>{['Not Started','Draft Generated','Sent for Review','Awaiting Signature','Signed','Needs Revision'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Signed Date"><input type="date" value={lifecycle.operating_agreement_signed_at?String(lifecycle.operating_agreement_signed_at).slice(0,10):''} onChange={e=>setLocal('operating_agreement_signed_at',e.target.value?new Date(e.target.value+'T12:00:00').toISOString():null)} style={inputStyle}/></Field>
+      </div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+        <button className="btn sm" onClick={generateOperatingAgreement} disabled={busy==='agreement'}>{busy==='agreement'?'Generating…':'📄 Generate Operating Agreement'}</button>
+        <button className="btn sm" onClick={saveCurrent}>💾 Save</button>
+        <button className="btn pri sm" onClick={markAgreementSigned}>✅ Mark Signed & Continue</button>
+      </div>
+    </div>}
+
+    {tab==='banking' && <div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <Field label="Banking Status"><select value={lifecycle.banking_status||'Not Started'} onChange={e=>setLocal('banking_status',e.target.value)} style={inputStyle}>{['Not Started','Documents Ready','Application Started','Pending Bank Review','Opened','Action Required','Declined'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Bank / Credit Union"><input value={lifecycle.bank_name||''} onChange={e=>setLocal('bank_name',e.target.value)} style={inputStyle}/></Field>
+        <Field label="Account Type"><select value={lifecycle.bank_account_type||'Business Checking'} onChange={e=>setLocal('bank_account_type',e.target.value)} style={inputStyle}>{['Business Checking','Business Savings','Money Market','Merchant Account','Other'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Account Last 4 Digits" help="Never enter the full account number."><input maxLength={4} inputMode="numeric" value={lifecycle.bank_account_last4||''} onChange={e=>setLocal('bank_account_last4',e.target.value.replace(/\D/g,'').slice(0,4))} style={inputStyle}/></Field>
+        <Field label="Authorized Signer"><input value={lifecycle.bank_signer||''} onChange={e=>setLocal('bank_signer',e.target.value)} style={inputStyle}/></Field>
+        <Field label="Account Opened Date"><input type="date" value={lifecycle.bank_opened_at||''} onChange={e=>setLocal('bank_opened_at',e.target.value||null)} style={inputStyle}/></Field>
+        <Field label="Opening Deposit"><input type="number" min="0" step="0.01" value={lifecycle.bank_opening_deposit ?? ''} onChange={e=>setLocal('bank_opening_deposit',e.target.value===''?null:Number(e.target.value))} style={inputStyle}/></Field>
+        <Field label="Bookkeeping Connection"><select value={lifecycle.bookkeeping_status||'Not Connected'} onChange={e=>setLocal('bookkeeping_status',e.target.value)} style={inputStyle}>{['Not Connected','Planned','Connected','Needs Attention'].map(x=><option key={x}>{x}</option>)}</select></Field>
+      </div>
+      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:10}}><input type="checkbox" checked={!!lifecycle.bank_documents_ready} onChange={e=>setLocal('bank_documents_ready',e.target.checked)} style={{width:'auto'}}/> Formation document, EIN confirmation, Operating Agreement, and signer ID are ready for the bank.</label>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+        <button className="btn sm" onClick={generateBankingResolution} disabled={busy==='bankdoc'}>{busy==='bankdoc'?'Generating…':'📄 Generate Banking Resolution'}</button>
+        <button className="btn sm" onClick={saveCurrent}>💾 Save Banking</button>
+        <button className="btn pri sm" onClick={markBankOpened}>✅ Mark Account Opened</button>
+      </div>
+    </div>}
+
+    {tab==='compliance' && <div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <Field label="Registered Agent Status"><select value={lifecycle.registered_agent_status||'Client / Self'} onChange={e=>setLocal('registered_agent_status',e.target.value)} style={inputStyle}>{['Client / Self','FormaCorp Managed','Third Party','Change Requested','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Registered Agent Renewal"><input type="date" value={lifecycle.registered_agent_renewal_date||''} onChange={e=>setLocal('registered_agent_renewal_date',e.target.value||null)} style={inputStyle}/></Field>
+        <Field label="Annual Report Status"><select value={lifecycle.annual_report_status||'Not Due'} onChange={e=>setLocal('annual_report_status',e.target.value)} style={inputStyle}>{['Not Due','Upcoming','Due','Ready to File','Filed','Late','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Annual Report Due Date"><input type="date" value={lifecycle.annual_report_due_date||''} onChange={e=>setLocal('annual_report_due_date',e.target.value||null)} style={inputStyle}/></Field>
+        <Field label="Good Standing"><select value={lifecycle.good_standing_status||'Unknown'} onChange={e=>setLocal('good_standing_status',e.target.value)} style={inputStyle}>{['Unknown','Verify with state','Current','Active','Not in Good Standing','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Annual Report Confirmation"><input value={lifecycle.annual_report_confirmation||''} onChange={e=>setLocal('annual_report_confirmation',e.target.value)} style={inputStyle}/></Field>
+        <Field label="S-Corp Election"><select value={lifecycle.s_corp_election_status||'Not Requested'} onChange={e=>setLocal('s_corp_election_status',e.target.value)} style={inputStyle}>{['Not Requested','Considering','Ready','Filed','Accepted','Rejected / Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="DBA / Fictitious Name"><select value={lifecycle.dba_status||'Not Requested'} onChange={e=>setLocal('dba_status',e.target.value)} style={inputStyle}>{['Not Requested','Requested','Filed','Active','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Business Licenses / Permits"><select value={lifecycle.business_license_status||'Not Reviewed'} onChange={e=>setLocal('business_license_status',e.target.value)} style={inputStyle}>{['Not Reviewed','Research Needed','In Progress','Complete','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Foreign Qualification"><select value={lifecycle.foreign_qualification_status||'Not Requested'} onChange={e=>setLocal('foreign_qualification_status',e.target.value)} style={inputStyle}>{['Not Requested','Requested','In Progress','Active','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+      </div>
+      <Field label="Compliance Notes"><textarea rows={3} value={lifecycle.compliance_notes||''} onChange={e=>setLocal('compliance_notes',e.target.value)} style={{...inputStyle,resize:'vertical'}}/></Field>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+        <button className="btn sm" onClick={saveCurrent}>💾 Save Compliance</button>
+        <button className="btn sm" onClick={syncAnnualReportDeadline}>⏰ Sync Annual Report Deadline</button>
+        {caseRecord.state==='FL' && <a className="btn sm" href="https://efile.sunbiz.org/sbs_webapp/" target="_blank" rel="noreferrer">☀️ Florida Annual Report</a>}
+      </div>
+    </div>}
+
+    {tab==='services' && <div>
+      <div style={{fontSize:11,color:'var(--t3)',marginBottom:10,lineHeight:1.5}}>Ongoing company work belongs here instead of disappearing into notes. Requests can track amendments, DBA, foreign qualification, certificates, reinstatement, dissolution, registered-agent changes, annual reports, licensing, S-Corp election, and virtual address work.</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,alignItems:'end'}}>
+        <Field label="Service"><select value={serviceType} onChange={e=>setServiceType(e.target.value)} style={inputStyle}>{SERVICES.map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Request Notes"><input value={serviceNotes} onChange={e=>setServiceNotes(e.target.value)} placeholder="What needs to change / be filed?" style={inputStyle}/></Field>
+      </div>
+      <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
+      <div style={{marginTop:12}}>
+        {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
+          <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}</div></div>
+          <StatusPill value={r.status}/>
+          <select value={r.status} onChange={e=>updateRequest(r.id,e.target.value)} style={{...inputStyle,width:135}}>{['Requested','In Progress','Waiting on Client','Submitted','State / Agency Review','Action Required','Complete','Cancelled'].map(x=><option key={x}>{x}</option>)}</select>
+        </div>)}
+      </div>
+    </div>}
+  </div>
+}
