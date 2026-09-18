@@ -128,15 +128,16 @@ serve(async req=>{
           const parsed=new URL(raw)
           if(parsed.protocol==='https:'&&(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com'))){
             const creds=await romylabsSignalWireCredentials()
-            if(creds?.sw_project_id&&creds?.sw_api_token){
-              const providerDelete=await fetch(raw,{
-                method:'DELETE',
-                headers:{Authorization:'Basic '+btoa(`${creds.sw_project_id}:${creds.sw_api_token}`)}
-              })
-              if(!providerDelete.ok&&providerDelete.status!==404){
-                console.error('[romylabs-phone-state] provider recording delete',providerDelete.status,id)
-                return json({error:`Provider refused recording deletion (${providerDelete.status})`},502)
-              }
+            if(!creds?.sw_project_id||!creds?.sw_api_token){
+              return json({error:'SignalWire recording credentials unavailable; recording was not deleted.'},503)
+            }
+            const providerDelete=await fetch(raw,{
+              method:'DELETE',
+              headers:{Authorization:'Basic '+btoa(`${creds.sw_project_id}:${creds.sw_api_token}`)}
+            })
+            if(!providerDelete.ok&&providerDelete.status!==404){
+              console.error('[romylabs-phone-state] provider recording delete',providerDelete.status,id)
+              return json({error:`Provider refused recording deletion (${providerDelete.status})`},502)
             }
           }
         }catch(e){console.error('[romylabs-phone-state] provider delete parse',e)}
