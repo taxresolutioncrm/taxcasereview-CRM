@@ -67,6 +67,7 @@ const ClientPortal = lazy(() => import('./pages/ClientPortal'))
 const OrganizerPage = lazy(() => import('./pages/OrganizerPage'))
 const FinancialIntakePage = lazy(() => import('./pages/FinancialIntakePage'))
 const AuthCallback = lazy(() => import('./pages/AuthCallback'))
+const PasswordReset = lazy(() => import('./pages/PasswordReset'))
 const QuickBooksCallback  = lazy(() => import('./pages/QuickBooksCallback'))
 const XeroCallback = lazy(() => import('./pages/XeroCallback'))
 const NewOffice = lazy(() => import('./pages/NewOffice'))
@@ -353,7 +354,7 @@ function AuthRouter() {
   // Public routes must render immediately — never block them on the auth check.
   // /book, /sign, /portal etc are anonymous; showing a spinner loses prospects.
   const publicPaths = ['/book', '/sign', '/agreement', '/office-sign', '/portal', '/clockin', '/kiosk',
-    '/employee', '/meet', '/screenshare', '/screenshare-host', '/financial-intake', '/organizer']
+    '/employee', '/meet', '/screenshare', '/screenshare-host', '/financial-intake', '/organizer', '/reset-password']
   const isPublicPath = publicPaths.some(p => path.startsWith(p))
 
   if (checking && !isPublicPath) return (
@@ -385,6 +386,7 @@ function AuthRouter() {
           : <Login />
       } />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/reset-password" element={<PasswordReset />} />
       <Route path="/auth/quickbooks-callback" element={<QuickBooksCallback />} />
       <Route path="/auth/xero-callback" element={<XeroCallback />} />
       <Route path="/book" element={<BookAppointment />} />
