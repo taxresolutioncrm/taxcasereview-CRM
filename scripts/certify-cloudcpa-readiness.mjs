@@ -9,6 +9,7 @@ const employees = read('src/pages/Employees.jsx')
 const email = read('src/pages/Email.jsx')
 const settings = read('src/pages/Settings.jsx')
 const migration = read('supabase/migrations/20260918121000_cloudcpa_prospect_readiness.sql')
+const bookingMigration = read('supabase/migrations/20260918122000_tenant_booking_branding.sql')
 
 must(fs.existsSync('public/cloudcpa-logo.png'),'CloudCPA logo asset exists')
 for (const route of ['/clients','/leads','/cases','/tasks','/calendar','/documents','/esign','/formacorp']) {
@@ -31,6 +32,7 @@ must(migration.includes("'enabled', true"),'CloudCPA public booking is enabled f
 must(migration.includes("calling_provider = case"),'voice provider is only shown when real tenant credentials exist')
 must(migration.includes("payment_provider = case"),'payment provider is only shown when real tenant credentials exist')
 must(!migration.includes('insert into auth.users'),'migration does not fabricate or overwrite authentication credentials')
+must(bookingMigration.includes("when coalesce(trim(v_firm_name),'') <> '' then '[' || trim(v_firm_name) || ']'"),'tenant bookings use the office identity instead of TaxRes CRM branding')
 
 if(process.exitCode) process.exit(process.exitCode)
 console.log('CLOUDCPA READINESS CERTIFICATION PASS')
