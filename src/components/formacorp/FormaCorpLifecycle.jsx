@@ -82,7 +82,21 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     if (le) console.error('[FormaCorp lifecycle] load',le)
     if (re) console.error('[FormaCorp services] load',re)
     if (l) {
-      setLifecycle(l)
+      let synced=l
+      if(l.operating_agreement_esign_id){
+        const {data:esign}=await supabase.from('esigns').select('id,status,signed_at,signeddate').eq('id',l.operating_agreement_esign_id).maybeSingle()
+        const signed=esign && ['Signed','Completed','Complete'].includes(String(esign.status||''))
+        if(signed && l.operating_agreement_status!=='Signed'){
+          const signedAt=esign.signed_at || esign.signeddate || new Date().toISOString()
+          const {data:updated}=await supabase.from('formacorp_lifecycle').update({operating_agreement_status:'Signed',operating_agreement_signed_at:signedAt,updated_at:new Date().toISOString()}).eq('id',l.id).select().single()
+          if(updated)synced=updated
+          if(caseRecord.stage==='Operating Agreement'){
+            await supabase.from('formacorp').update({stage:'Bank Account Setup'}).eq('id',caseRecord.id)
+            onCasePatch?.({stage:'Bank Account Setup'})
+          }
+        }
+      }
+      setLifecycle(synced)
     } else {
       const seed={
         case_id:caseRecord.id,
@@ -192,6 +206,39 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       const doc=await uploadGenerated(blob,'FormaCorp — Operating Agreement draft',`Operating-Agreement-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
       await savePatch({operating_agreement_status:'Draft Generated',operating_agreement_generated_at:new Date().toISOString(),operating_agreement_path:doc.path},'✅ Operating Agreement draft generated and filed in Documents')
     }catch(e){showToast?.('Could not generate Operating Agreement: '+(e?.message||e),'err')}
+    finally{setBusy('')}
+  }
+
+  async function sendAgreementForSignature() {
+    if(!lifecycle.operating_agreement_path){showToast?.('Generate the Operating Agreement first','err');return}
+    const to=String(caseRecord.correspondence_email||'').trim()
+    if(!to){showToast?.('Add the correspondence email before sending for signature','err');return}
+    setBusy('esign')
+    try{
+      const {data:urlData,error:urlErr}=await supabase.storage.from('documents').createSignedUrl(lifecycle.operating_agreement_path,60*60*24*30)
+      if(urlErr||!urlData?.signedUrl)throw urlErr||new Error('Could not create document link')
+      const {data:esign,error:esignErr}=await supabase.from('esigns').insert([{
+        doc_type:'FormaCorp Operating Agreement',
+        client_name:caseRecord.client_name,
+        client_email:to,
+        message:`Please review and sign the Operating Agreement for ${caseRecord.entity_name}.`,
+        pdf_attachments:[{label:'Operating Agreement',url:urlData.signedUrl}],
+        priority:'Normal',
+        status:'Awaiting',
+        sent_at:new Date().toISOString(),
+        created_at:new Date().toISOString(),
+      }]).select().single()
+      if(esignErr)throw esignErr
+      const signUrl=`${window.location.origin}/sign/${esign.id}`
+      const {error:mailErr}=await supabase.functions.invoke('send-email',{body:{
+        to,
+        subject:`Signature Required: ${caseRecord.entity_name} Operating Agreement`,
+        html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px"><h2>Operating Agreement Ready</h2><p>Please review and sign the Operating Agreement for <strong>${caseRecord.entity_name}</strong>.</p><p style="margin:24px 0"><a href="${signUrl}" style="background:#1d4ed8;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700">Review & Sign</a></p></div>`
+      }})
+      await savePatch({operating_agreement_status:'Awaiting Signature',operating_agreement_esign_id:esign.id},'',)
+      if(mailErr){await navigator.clipboard.writeText(signUrl).catch(()=>{});showToast?.('Signing request created; email failed, so the signing link was copied','err')}
+      else showToast?.('✅ Operating Agreement sent for e-signature')
+    }catch(e){showToast?.('Could not create signing request: '+(e?.message||e),'err')}
     finally{setBusy('')}
   }
 
@@ -373,6 +420,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       </div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
         <button className="btn sm" onClick={generateOperatingAgreement} disabled={busy==='agreement'}>{busy==='agreement'?'Generating…':'📄 Generate Operating Agreement'}</button>
+        <button className="btn sm" onClick={sendAgreementForSignature} disabled={busy==='esign'}>{busy==='esign'?'Sending…':'✍️ Send for E-Signature'}</button>
         <button className="btn sm" onClick={saveCurrent}>💾 Save</button>
         <button className="btn pri sm" onClick={markAgreementSigned}>✅ Mark Signed & Continue</button>
       </div>
