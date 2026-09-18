@@ -19,6 +19,7 @@ create table if not exists public.formacorp_lifecycle (
   operating_agreement_generated_at timestamptz,
   operating_agreement_signed_at timestamptz,
   operating_agreement_path text,
+  operating_agreement_esign_id text,
   banking_status text not null default 'Not Started',
   bank_name text,
   bank_account_type text,
