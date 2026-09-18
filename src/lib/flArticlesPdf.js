@@ -222,13 +222,13 @@ export async function buildFlArticlesPdf(c) {
   return new Blob([bytes], { type: 'application/pdf' })
 }
 
-export async function buildFlFaxPacket(coverSheetFile, c) {
+export async function buildFlFaxPacket(coverSheetFile, signedArticlesFile) {
   if (!coverSheetFile) throw new Error('Electronic Filing Cover Sheet is required')
-  const [coverBytes, articlesBlob] = await Promise.all([
+  if (!signedArticlesFile) throw new Error('Signed Florida Articles PDF is required')
+  const [coverBytes, articlesBytes] = await Promise.all([
     coverSheetFile.arrayBuffer(),
-    buildFlArticlesPdf(c),
+    signedArticlesFile.arrayBuffer(),
   ])
-  const articlesBytes = await articlesBlob.arrayBuffer()
   const [coverPdf, articlesPdf] = await Promise.all([
     PDFDocument.load(coverBytes),
     PDFDocument.load(articlesBytes),
