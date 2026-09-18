@@ -99,8 +99,12 @@ requireAll('src/pages/AdminPortal.jsx', [
 ])
 
 requireAll('supabase/functions/romylabs-phone-state/index.ts', [
+  "const mediaSignature=async(id:string,exp:string)",
+  "if(req.method==='GET')",
+  "const range=req.headers.get('range')",
+  "return new Response(audio.body,{status:audio.status,headers:responseHeaders})",
   "async function signedRecordingUrl(rec:any)",
-  "db.storage.from('voicemails').upload(path,blob",
+  "functions/v1/romylabs-phone-state?media=",
   "if(action==='delete_recording')",
   "db.from('call_ai_summaries').delete()",
   "db.from('call_recordings').delete()",
