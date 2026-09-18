@@ -478,12 +478,14 @@ export default function FormaCorp() {
   }
 
   async function queueFormaCorpFulfillment(c) {
-    const ok = await queueFloridaFiling(c, 'sunbiz_online')
+    const ok = await queueFloridaFiling(c, 'prepaid_fax')
     if (!ok) return
     showToast('✅ Filing queued for FormaCorp fulfillment — the customer does not re-enter the application on Sunbiz.')
   }
 
-  function openFloridaOnlineStaff(c) {
+  async function openFloridaOnlineStaff(c) {
+    const ok = await queueFloridaFiling(c, 'sunbiz_online')
+    if (!ok) return
     window.open(FL_ONLINE_URL, '_blank', 'noopener,noreferrer')
   }
 
