@@ -5,6 +5,7 @@
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
+const TCR_TENANT = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
 const FALLBACK_ADDRESS = '631 US Highway One Ste 304, North Palm Beach, FL 33408'
 
 function bytesToBase64(bytes) {
@@ -52,9 +53,10 @@ export async function generateInvoicePdfBase64(inv, firm = {}) {
   const marginX = 50
   let y = height - 56
 
-  const name    = firm.name    || 'Tax Case Review'
-  const tagline = firm.tagline || 'IRS Resolution Services'
-  const address = firm.address || FALLBACK_ADDRESS
+  const isTcr = !firm.tenantId || firm.tenantId === TCR_TENANT
+  const name    = firm.name || (isTcr ? 'Tax Case Review' : 'Tax Resolution Office')
+  const tagline = firm.tagline || (isTcr ? 'IRS Resolution Services' : '')
+  const address = firm.address || (isTcr ? FALLBACK_ADDRESS : '')
 
   // Try to embed the firm's real logo. If it can't be fetched/decoded for
   // any reason, fall back to a plain text header — never block the PDF.
@@ -76,8 +78,8 @@ export async function generateInvoicePdfBase64(inv, firm = {}) {
     textX = marginX + logoW + 14
   }
   page.drawText(name, { x: textX, y, size: 16, font: fontBold, color: blue })
-  page.drawText(tagline, { x: textX, y: y - 16, size: 9, font: fontReg, color: gray })
-  page.drawText(address, { x: textX, y: y - 28, size: 9, font: fontReg, color: gray })
+  if (tagline) page.drawText(tagline, { x: textX, y: y - 16, size: 9, font: fontReg, color: gray })
+  if (address) page.drawText(address, { x: textX, y: y - 28, size: 9, font: fontReg, color: gray })
 
   // Right side: INVOICE / number / status
   const invNum = inv.invNum || (inv.id || '').slice(-6) || 'INV-001'
