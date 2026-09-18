@@ -682,6 +682,108 @@ serve(async (req) => {
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
+    // CloudCPA prospect fallback: until Tony connects the office's own mailbox,
+    // system and staff mail can still be demonstrated without impersonating a
+    // different tenant's Gmail account. Physical delivery uses the proven
+    // TaxRes platform Stalwart transport, while Reply-To remains CloudCPA.
+    // This is intentionally scoped to TRC-003 and is removed from the path
+    // automatically once CloudCPA has its own Gmail OAuth credentials.
+    if (tenant_id) {
+      const { data: cloudTenant } = await admin.from('tenants')
+        .select('id,tenant_code,firm_name')
+        .eq('id', tenant_id)
+        .maybeSingle()
+      if (cloudTenant?.tenant_code === 'TRC-003') {
+        const { data: cloudSettings } = await admin.from('settings')
+          .select('name,firmname,email,firmemail,gmail_refresh_token')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle()
+        if (!cloudSettings?.gmail_refresh_token) {
+          const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product', {
+            p_product_key: 'taxres_crm',
+          })
+          if (!vaultTransport?.ok) {
+            return new Response(JSON.stringify({ error:'CloudCPA platform mail transport unavailable' }), {
+              status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
+            })
+          }
+          const transport = {
+            host: safe(vaultTransport.host || 'mail.taxrescrm.net'),
+            username: safe(vaultTransport.username),
+            password: String(vaultTransport.password || ''),
+            fromAddress: safe(vaultTransport.from_address || vaultTransport.username).toLowerCase(),
+          }
+          if (!transport.username || !transport.password || !transport.fromAddress) {
+            return new Response(JSON.stringify({ error:'CloudCPA platform mail credential incomplete' }), {
+              status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
+            })
+          }
+          const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
+          if (!recipients.length) {
+            return new Response(JSON.stringify({ error:'Recipient missing' }), {
+              status:422, headers:{...corsHeaders,'Content-Type':'application/json'},
+            })
+          }
+          const cloudName=safe(cloudSettings?.name || cloudSettings?.firmname || cloudTenant?.firm_name || 'CloudCPA Inc')
+          const cloudReply=safe(cloudSettings?.email || cloudSettings?.firmemail || 'tony@thecloudcpa.net').toLowerCase()
+          const submissions:any[]=[]
+          for (const recipient of recipients) {
+            const result=await sendViaStalwartJmap({
+              host:transport.host,
+              username:transport.username,
+              password:transport.password,
+              fromAddress:transport.fromAddress,
+              replyTo:cloudReply,
+              fromName:`${cloudName} via TaxRes CRM`,
+              to:recipient,
+              subject:safe(subject),
+              html:html ? String(html) : undefined,
+              text:text ? String(text) : undefined,
+            })
+            submissions.push({recipient,submissionId:result.submissionId})
+          }
+
+          // Log authenticated staff sends into the CloudCPA tenant mailbox so
+          // the demo has a truthful communication history even before mailbox
+          // cutover. System booking/e-sign sends are already represented by
+          // their workflow records and do not need duplicate email rows.
+          if (authenticated) {
+            for (const sent of submissions) {
+              await admin.from('emails').insert([{
+                tenant_id,
+                recipient:sent.recipient,
+                recipients:[sent.recipient],
+                subject:safe(subject),
+                body:safe(text || String(html || '').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')),
+                body_html:html ? String(html) : null,
+                triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
+                sender:transport.fromAddress,
+                from_address:transport.fromAddress,
+                reply_from:cloudReply,
+                mailbox_owner:safe(authenticatedUser?.email || cloudReply).toLowerCase(),
+                received_at:new Date().toISOString(),
+                created_at:new Date().toISOString(),
+                message_id:`stalwart:${sent.submissionId}`,
+                received_mailbox:transport.fromAddress,
+              }])
+            }
+          }
+
+          if (esignIdToMark) {
+            await admin.from('esigns').update({ signed_copy_sent_at:new Date().toISOString() }).eq('id',esignIdToMark)
+          }
+          return new Response(JSON.stringify({
+            success:true,
+            via:'taxres_platform_relay',
+            from:transport.fromAddress,
+            reply_to:cloudReply,
+            brand:cloudName,
+            submissions:submissions.map((x:any)=>x.submissionId),
+          }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+        }
+      }
+    }
+
     const { data: gs } = await admin.from('settings').select('*').not('gmail_refresh_token', 'is', null).limit(1).maybeSingle()
     if (!gs?.gmail_refresh_token) return new Response(JSON.stringify({ error: 'No Gmail OAuth configured' }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
