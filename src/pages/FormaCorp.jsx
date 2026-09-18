@@ -555,7 +555,6 @@ export default function FormaCorp() {
   if (detail) {
     const c = cases.find(x=>x.id===detail.id) || detail
     const stageIdx = STAGES.indexOf(c.stage)
-    const flMissing = floridaMissing(c)
     const flSubmitMissing = floridaSubmissionMissing(c)
     const flStep = flStatusIndex(c)
     return (
