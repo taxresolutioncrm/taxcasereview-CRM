@@ -52,7 +52,7 @@ export default function PasswordReset() {
         <input type="password" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} disabled={!ready||saving} style={{width:'100%',boxSizing:'border-box',padding:'11px 13px',border:'1.5px solid #E2E8F0',borderRadius:9,fontSize:14,marginBottom:14}}/>
         <label style={{display:'block',fontSize:12,fontWeight:700,color:'#334155',marginBottom:5}}>Confirm password</label>
         <input type="password" autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)} disabled={!ready||saving} style={{width:'100%',boxSizing:'border-box',padding:'11px 13px',border:'1.5px solid #E2E8F0',borderRadius:9,fontSize:14,marginBottom:18}}/>
-        <button type="submit" disabled={!ready||saving} style={{width:'100%',border:0,borderRadius:9,padding:'12px 14px',fontSize:14,fontWeight:800,background:'#1A7FD4',color:'#fff',cursor:!ready||saving?'not-allowed':'pointer',opacity:!ready||saving?.65:1}}>{saving?'Saving…':'Save password'}</button>
+        <button type="submit" disabled={!ready||saving} style={{width:'100%',border:0,borderRadius:9,padding:'12px 14px',fontSize:14,fontWeight:800,background:'#1A7FD4',color:'#fff',cursor:!ready||saving?'not-allowed':'pointer',opacity:(!ready||saving)?0.65:1}}>{saving?'Saving…':'Save password'}</button>
       </form>
       <button type="button" onClick={()=>window.location.href='/login'} style={{width:'100%',border:0,background:'transparent',color:'#64748B',fontSize:12,fontWeight:700,marginTop:14,cursor:'pointer'}}>Back to sign in</button>
     </div>
