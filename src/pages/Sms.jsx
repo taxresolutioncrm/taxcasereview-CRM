@@ -52,7 +52,7 @@ const TEMPLATES = [
 const BLANK = { phone:'', clientName:'', body:'', status:'Sent' }
 
 export default function Sms() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [searchParams] = useSearchParams()
   const [sent,    setSent]    = useState([])
   const [clients, setClients] = useState([])
@@ -166,10 +166,10 @@ export default function Sms() {
     const toNum = '+1' + form.phone.replace(/\D/g,'').slice(-10)
     let status = 'Sent', sw_id = null, errMsg = null
 
-    if (settings?.sw_space_url) {
+    if (settings?.sw_space_url || myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae') {
       try {
         const { data: resData, error: invokeErr } = await supabase.functions.invoke('send-sms', {
-          body: { to: toNum, body: form.body }
+          body: { to: toNum, body: form.body, client_id: clients.find(c=>c.name===form.clientName)?.id || null }
         })
         if (!invokeErr && resData?.success) {
           sw_id = resData.sid || null
@@ -185,11 +185,14 @@ export default function Sms() {
       status = 'Logged (not sent)'
     }
 
-    const {error}=await supabase.from('sms_messages').insert([{
-      ...form, phone: toNum, status,
-      signalwire_sms_id: sw_id, sent_by: user?.email || 'Unknown',
-      error_msg: errMsg, created_at:new Date().toISOString()
-    }])
+    let error = null
+    if (!(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && sw_id)) {
+      ;({error}=await supabase.from('sms_messages').insert([{
+        ...form, phone: toNum, status,
+        signalwire_sms_id: sw_id, sent_by: user?.email || 'Unknown',
+        error_msg: errMsg, created_at:new Date().toISOString()
+      }]))
+    }
     setSaving(false)
     if(error){showToast('Error: '+error.message);return}
 
@@ -210,7 +213,7 @@ export default function Sms() {
       })
     }
 
-    if (status === 'Sent') showToast('✅ SMS sent via SignalWire!')
+    if (status === 'Sent') showToast(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && !settings?.sw_space_url ? '✅ SMS sent through the TaxRes platform relay!' : '✅ SMS sent via SignalWire!')
     else if (status === 'Failed') showToast('SignalWire error: ' + (errMsg||'send failed'))
     else showToast('Logged — add SignalWire credentials in Settings to send for real')
     setForm(BLANK);load()

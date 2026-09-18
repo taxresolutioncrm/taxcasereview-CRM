@@ -213,7 +213,7 @@ export default function Fax() {
 
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
-    if (!file && !form.notes) { showToast('Attach a PDF or enter a message','err'); return }
+    if (!file) { showToast('Attach a PDF to send by fax. Notes are saved to the CRM log but are not a fax document.','err'); return }
     setSending(true)
 
     try {
@@ -241,9 +241,10 @@ export default function Fax() {
 
       const sw_id = resData?.sid || null
       const status = !invokeErr && resData?.success ? 'Pending' : 'Failed'
+      const actualFrom = resData?.from || fromNum || null
 
       const { error: logErr } = await supabase.from('fax_logs').insert([{
-        to_number: toNum, from_number: fromNum,
+        to_number: toNum, from_number: actualFrom,
         client_name: form.client_name, subject: form.subject,
         notes: form.notes, file_name: file?.name || null,
         file_url: storagePath ? `storage://documents/${storagePath}` : mediaUrl, storage_path: storagePath, signalwire_fax_id: sw_id,
@@ -255,7 +256,7 @@ export default function Fax() {
 
       if (logErr) console.error('Log error:', logErr)
       if (status === 'Pending') {
-        showToast('📠 Fax accepted — waiting for delivery confirmation')
+        showToast(resData?.platform_relay ? '📠 Fax accepted through the TaxRes platform relay — waiting for delivery confirmation' : '📠 Fax accepted — waiting for delivery confirmation')
         setModal(false); setForm(BLANK); setFile(null); load()
       } else {
         showToast('Error: ' + (resData?.error || invokeErr?.message || 'Check SignalWire credentials in Settings'), 'err')

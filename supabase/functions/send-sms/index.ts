@@ -53,6 +53,18 @@ serve(async(req)=>{
   if(String(body).length>1600)return json({error:'Message is too long'},400)
   let{data:settings}=await admin.from('settings').select('name,firmname,sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did').eq('tenant_id',tenantId).maybeSingle()
   let fromNumber=settings?.sw_outbound_did||settings?.sw_inbound_did||''
+  let platformRelay=false
+  if(!romylabsContext && (!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token)){
+    const{data:cloudTenant}=await admin.from('tenants').select('tenant_code').eq('id',tenantId).maybeSingle()
+    if(cloudTenant?.tenant_code==='TRC-003'){
+      const{data:source}=await admin.from('settings').select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did').eq('tenant_id',SIGNALWIRE_SOURCE_TENANT).limit(1).maybeSingle()
+      if(source?.sw_space_url&&source?.sw_project_id&&source?.sw_api_token){
+        settings={...settings,...source}
+        fromNumber=source.sw_outbound_did||source.sw_inbound_did||''
+        platformRelay=true
+      }
+    }
+  }
   if(romylabsContext){
     const[{data:source},{data:adminPhone}]=await Promise.all([
       admin.from('settings').select('sw_space_url,sw_project_id,sw_api_token').eq('tenant_id',SIGNALWIRE_SOURCE_TENANT).limit(1).maybeSingle(),
@@ -68,15 +80,23 @@ serve(async(req)=>{
   // Explicit certification path: all production auth/tenant/permission/provider
   // checks above must pass, but no provider request or delivery log occurs.
   if(authenticatedUser&&payload.qa_certification===true&&payload.dry_run===true){
-    return json({success:true,dry_run:true,delivery:false,provider:'signalwire',tenant_id:tenantId,phone_context:romylabsContext?'romylabs':'taxres',from_number:fromNumber})
+    return json({success:true,dry_run:true,delivery:false,provider:'signalwire',tenant_id:tenantId,phone_context:romylabsContext?'romylabs':'taxres',from_number:fromNumber,platform_relay:platformRelay})
   }
 
   const authHeader=btoa(`${settings.sw_project_id}:${settings.sw_api_token}`),form=new URLSearchParams({From:fromNumber,To:toNumber,Body:String(body).trim()})
   const swRes=await fetch(`https://${String(settings.sw_space_url).replace(/^https?:\/\//,'')}/api/laml/2010-04-01/Accounts/${settings.sw_project_id}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${authHeader}`,'Content-Type':'application/x-www-form-urlencoded'},body:form.toString()});const sw=await swRes.json()
   if(!swRes.ok)return json({error:sw.message||'SignalWire error'},400)
-  let clientName:string|null=null;if(client_id){const{data:c}=await admin.from('clients').select('name').eq('id',String(client_id)).eq('tenant_id',tenantId).maybeSingle();clientName=c?.name||null}
-  const{error:logErr}=await admin.from('sms_messages').insert({clientName,phone:toNumber,body:String(body).trim(),status:sw.status||'sent',direction:'outbound',signalwire_sms_id:sw.sid||null,sent_by:sentBy,tenant_id:tenantId,client_id:client_id?String(client_id):null,read:true});if(logErr)console.error('[send-sms] log failed',logErr.message)
+  let clientName:string|null=null
+  if(client_id){
+    const{data:c}=await admin.from('clients').select('name').eq('id',String(client_id)).eq('tenant_id',tenantId).maybeSingle()
+    clientName=c?.name||null
+  }else if(lead_id){
+    const{data:l}=await admin.from('leads').select('name').eq('id',String(lead_id)).eq('tenant_id',tenantId).maybeSingle()
+    clientName=l?.name||null
+  }
+  const{error:logErr}=await admin.from('sms_messages').insert({clientName,phone:toNumber,body:String(body).trim(),status:sw.status||'sent',direction:'outbound',signalwire_sms_id:sw.sid||null,sent_by:sentBy,tenant_id:tenantId,client_id:client_id?String(client_id):null,read:true})
+  if(logErr)console.error('[send-sms] log failed',logErr.message)
   if(esignIdToMark)await admin.from('esigns').update({signed_sms_sent_at:new Date().toISOString()}).eq('id',esignIdToMark)
-  return json({success:true,sid:sw.sid})
+  return json({success:true,sid:sw.sid,platform_relay:platformRelay,from_number:fromNumber,logged:!logErr})
  }catch(e){console.error('[send-sms]',e);return json({error:e?.message||'Send failed'},500)}
 })

@@ -52,12 +52,42 @@ serve(async (req) => {
     const allowedHost = new URL(url).hostname
     if (docUrl.protocol !== 'https:' || docUrl.hostname !== allowedHost) return json({ error: 'document_url must use this office storage host' }, 400)
 
-    const { data: settings } = await admin
+    let { data: settings } = await admin
       .from('settings')
       .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,telnyx_api_key,firm_fax_number,tenant_id')
       .eq('tenant_id', tenantId)
       .limit(1)
       .maybeSingle()
+
+    let platformRelay = false
+    // CloudCPA TRC-003 is an active prospect workspace. Until Tony connects
+    // CloudCPA's own fax carrier, allow authenticated CloudCPA staff with
+    // communications permission to transmit outbound faxes through the proven
+    // Tax Case Review SignalWire transport. The CRM keeps the fax log and
+    // callback tenant scoped to CloudCPA; the response truthfully identifies
+    // the physical relay number/provider.
+    const hasTenantFaxProvider = Boolean(
+      settings?.telnyx_api_key ||
+      (settings?.sw_space_url && settings?.sw_project_id && settings?.sw_api_token)
+    )
+    if (!hasTenantFaxProvider) {
+      const { data: cloudTenant } = await admin.from('tenants')
+        .select('tenant_code').eq('id', tenantId).maybeSingle()
+      if (cloudTenant?.tenant_code === 'TRC-003') {
+        const { data: relaySettings } = await admin.from('settings')
+          .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,telnyx_api_key,firm_fax_number,tenant_id')
+          .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a')
+          .limit(1).maybeSingle()
+        const relayReady = Boolean(
+          relaySettings?.telnyx_api_key ||
+          (relaySettings?.sw_space_url && relaySettings?.sw_project_id && relaySettings?.sw_api_token)
+        )
+        if (relayReady) {
+          settings = relaySettings
+          platformRelay = true
+        }
+      }
+    }
 
     const configuredFrom = settings?.firm_fax_number || settings?.sw_inbound_did || ''
     const fromDigits = digits(configuredFrom)
@@ -70,7 +100,7 @@ serve(async (req) => {
     // validation, storage-host validation and provider configuration all run first.
     // No provider request and no database delivery log happens in dry-run mode.
     if (qa_certification === true && dry_run === true) {
-      return json({ success: true, dry_run: true, delivery: false, provider, tenant_id: tenantId })
+      return json({ success: true, dry_run: true, delivery: false, provider, tenant_id: tenantId, platform_relay: platformRelay, from: fromNumber })
     }
 
     let faxResult: any = null
@@ -90,7 +120,7 @@ serve(async (req) => {
       })
       faxResult = await res.json()
       if (!res.ok) return json({ error: faxResult.errors?.[0]?.detail || 'Telnyx fax error' }, 400)
-      return json({ success: true, provider, sid: faxResult.data?.id })
+      return json({ success: true, provider, sid: faxResult.data?.id, platform_relay: platformRelay, from: fromNumber })
     }
 
     const auth = btoa(`${settings!.sw_project_id}:${settings!.sw_api_token}`)
@@ -125,7 +155,7 @@ serve(async (req) => {
       }))
       return json({ error: providerError, provider_status: res.status }, 400)
     }
-    return json({ success: true, provider, sid: faxResult.sid, provider_status: res.status })
+    return json({ success: true, provider, sid: faxResult.sid, provider_status: res.status, platform_relay: platformRelay, from: fromNumber })
   } catch (err) {
     console.error('[send-fax]', err)
     return json({ error: err instanceof Error ? err.message : 'Fax send failed' }, 500)

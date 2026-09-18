@@ -400,7 +400,7 @@ function LeadInlineEsign({ lead, onClose }) {
 }
 
 export default function Leads() {
-  const { user, role, employeeName, leadWorkflowModel } = useApp()
+  const { user, role, employeeName, leadWorkflowModel, myTenantId } = useApp()
 
   // ── Model-aware pipeline config ───────────────────────────────────────────
   // All pipeline rendering and logic reads from this — never hardcoded arrays.
@@ -912,7 +912,7 @@ export default function Leads() {
     const settings = await getSettings()
     let status = 'Sent', swId = null, errMsg = null
 
-    if (settings?.sw_space_url) {
+    if (settings?.sw_space_url || myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae') {
       try {
         const { data: resData, error: invokeErr } = await supabase.functions.invoke('send-sms', {
           body: { to: toNum, body: leadSmsBody, lead_id: l.id || null, user_id: user?.id || null }
@@ -932,11 +932,14 @@ export default function Leads() {
     }
 
     const actor = resolveActorName(user, employees)
-    const { error } = await supabase.from('sms_messages').insert([{
-      clientName: l.name, phone: toNum, body: leadSmsBody, status,
-      signalwire_sms_id: swId, sent_by: actor, error_msg: errMsg,
-      created_at: new Date().toISOString(),
-    }])
+    let error = null
+    if (!(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && swId)) {
+      ;({ error } = await supabase.from('sms_messages').insert([{
+        clientName: l.name, phone: toNum, body: leadSmsBody, status,
+        signalwire_sms_id: swId, sent_by: actor, error_msg: errMsg,
+        created_at: new Date().toISOString(),
+      }]))
+    }
     setLeadSmsSending(false)
     if (error) { showToast('Error: '+error.message); return }
 

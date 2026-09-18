@@ -79,6 +79,8 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
   const [branding, setBranding] = useState(null)
   const [lang, setLang] = useState('en')
   const debounceRef = useRef(null)
@@ -128,6 +130,18 @@ export default function Login() {
     }, 400)
     return () => clearTimeout(debounceRef.current)
   }, [email, isAdminHost])
+
+  async function sendPasswordReset() {
+    const target = email.trim()
+    if (!target) { setError(lang === 'es' ? 'Ingrese su correo electrónico primero' : 'Enter your email address first'); return }
+    setResetting(true); setError(''); setResetSent(false)
+    const { error } = await supabase.auth.resetPasswordForEmail(target, {
+      redirectTo: window.location.origin + '/'
+    })
+    setResetting(false)
+    if (error) { setError(error.message); return }
+    setResetSent(true)
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -212,6 +226,15 @@ export default function Login() {
                 <label htmlFor="tcr-password">{t.password}</label>
                 <input id="tcr-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
               </div>
+              <div style={{display:'flex',justifyContent:'flex-end',marginTop:-10,marginBottom:12}}>
+                <button type="button" onClick={sendPasswordReset} disabled={resetting}
+                  style={{border:0,background:'transparent',color:'#1A7FD4',fontSize:12,fontWeight:700,cursor:'pointer',padding:0}}>
+                  {resetting ? (lang==='es'?'Enviando…':'Sending…') : (lang==='es'?'¿Olvidó su contraseña?':'Forgot password?')}
+                </button>
+              </div>
+              {resetSent && <div style={{fontSize:12,color:'#047857',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:8,padding:'9px 12px',marginBottom:12}}>
+                {lang==='es'?'Enlace de restablecimiento enviado. Revise su correo.':'Password reset link sent. Check your email.'}
+              </div>}
               <button type="submit" disabled={loading} className="tcr-login-btn2">{loading ? t.signingIn : t.signIn}</button>
             </form>
 

@@ -161,6 +161,10 @@ export function AppProvider({ children }) {
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      if (_event === 'PASSWORD_RECOVERY' && session?.user) {
+        window.location.href = '/settings?reset_password=1'
+        return
+      }
       if (session?.user) {
         // If this is an admin impersonation session (arrived via ImpersonateGate),
         // set the tenant override so current_tenant_id() returns the impersonated tenant.
