@@ -221,11 +221,10 @@ function generatePOALetter() {
 
     <div style="border-left:3px solid #1A7FD4;padding-left:16px;margin:16px 0">
       <b>${FIRM.name}</b><br/>
-      631 US Highway One Ste 304<br/>
-      North Palm Beach, FL 33408<br/>
-      Phone: (561) ___-____<br/>
-      Fax: (561) ___-____<br/>
-      Email: ${FIRM.email}
+      ${FIRM.address ? FIRM.address + '<br/>' : ''}
+      ${FIRM.phone ? 'Phone: ' + FIRM.phone + '<br/>' : ''}
+      ${FIRM.fax ? 'Fax: ' + FIRM.fax + '<br/>' : ''}
+      ${FIRM.email ? 'Email: ' + FIRM.email : ''}
     </div>
 
     <p>Our authorized representative(s) are Enrolled Agents licensed to practice before the IRS. We respectfully request that all future contact regarding this matter be made through our office so that we may best serve our client's interests.</p>
