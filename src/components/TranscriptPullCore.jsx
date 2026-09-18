@@ -147,6 +147,7 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
       const row = {
         id: crypto.randomUUID(),
         client_name: form.clientName.trim(),
+        client_id: poa.client_id || null,
         transcript_types: form.types,
         tax_years: form.taxYears.trim() || null,
         provider: form.provider,
