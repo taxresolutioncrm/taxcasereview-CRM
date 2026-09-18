@@ -18,7 +18,7 @@ const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL'
 const STAGES = ['Consultation','Documents Prep','State Filing','EIN Application','Operating Agreement','Bank Account Setup','Compliance & Maintenance','Complete']
 const FL_FILING_STEPS = ['Draft','Ready to Submit','Filing Queue','Submitted to Florida','Under State Review','Action Required','Approved / Active']
 const FL_ONLINE_URL = 'https://efile.sunbiz.org/llc_file.html'
-const BIZEE_PRO_URL = 'https://bizee.com/company/bizee-pro-suite'
+const BIZEE_PRO_URL = 'https://orders.bizee.com/dashboard/login'
 const BIZEE_DASHBOARD_URL = 'https://orders.bizee.com/dashboard/login'
 
 const FL_FIELDS = {
@@ -232,7 +232,7 @@ export default function FormaCorp() {
   const [lookup, setLookup] = useState({ open:false, query:'', running:false, result:null })
   const [pdfBusy, setPdfBusy] = useState(false)
   const [flSubmit, setFlSubmit] = useState({ method:'sunbiz_online', faxNumber:'', coverSheet:null, signedArticles:null, busy:false })
-  const [bizeeBrowser, setBizeeBrowser] = useState({ open:false, url:BIZEE_DASHBOARD_URL, launched:false })
+  const [bizeeBrowser, setBizeeBrowser] = useState({ open:false, url:BIZEE_DASHBOARD_URL, key:0 })
   const [bizeeAccount, setBizeeAccount] = useState({ account_email:'', account_label:'', status:'not_configured' })
   const [bizeeAccountEdit, setBizeeAccountEdit] = useState({ account_email:'', account_label:'' })
   const [bizeeAccountSaving, setBizeeAccountSaving] = useState(false)
@@ -278,38 +278,16 @@ export default function FormaCorp() {
 
   function openBizeeBrowser(url = BIZEE_DASHBOARD_URL) {
     const safe = String(url || '')
-    if (!safe.startsWith('https://bizee.com/') && !safe.startsWith('https://orders.bizee.com/')) {
+    if (!safe.startsWith('https://orders.bizee.com/')) {
       showToast('Blocked non-Bizee browser URL', 'err')
       return false
     }
-
-    // Bizee does not reliably render inside a third-party iframe. Use a named,
-    // reusable browser window instead so Bizee controls its own cookies, login,
-    // redirects, payment pages, and security headers while the FormaCorp case
-    // stays open in the CRM behind it.
-    const width = Math.min(1280, Math.max(900, Math.round((window.screen?.availWidth || 1440) * 0.82)))
-    const height = Math.min(900, Math.max(650, Math.round((window.screen?.availHeight || 900) * 0.86)))
-    const left = Math.max(0, Math.round(((window.screen?.availWidth || width) - width) / 2))
-    const top = Math.max(0, Math.round(((window.screen?.availHeight || height) - height) / 2))
-    const popup = window.open(
-      safe,
-      'formacorp_bizee_pro',
-      `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-    )
-
-    if (!popup) {
-      setBizeeBrowser({ open:true, url:safe, launched:false })
-      showToast('Your browser blocked the Bizee window. Click “Open Bizee Secure Window” below.', 'err')
-      return false
-    }
-
-    try { popup.focus() } catch (_) {}
-    setBizeeBrowser({ open:true, url:safe, launched:true })
+    setBizeeBrowser(x => ({ open:true, url:safe, key:x.key+1 }))
     return true
   }
 
   function reloadBizeeBrowser() {
-    openBizeeBrowser(bizeeBrowser.url)
+    setBizeeBrowser(x => ({ ...x, key:x.key+1 }))
   }
 
   function openBizeeForOffice() {
@@ -1016,18 +994,24 @@ export default function FormaCorp() {
       {bizeeBrowser.open && (
         <div className="card" style={{marginBottom:14,overflow:'hidden',border:'1px solid var(--br)'}}>
           <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'var(--s2)',borderBottom:'1px solid var(--br)',flexWrap:'wrap'}}>
-            <div style={{fontWeight:800,fontSize:11,whiteSpace:'nowrap'}}>🟠 Bizee Pro Secure Browser</div>
+            <div style={{fontWeight:800,fontSize:11,whiteSpace:'nowrap'}}>🟠 Bizee Pro Browser</div>
             <div style={{fontSize:10,color:bizeeAccount.account_email?'var(--ok)':'var(--warn)',whiteSpace:'nowrap'}}>{bizeeAccount.account_email ? `Office account: ${bizeeAccount.account_email}` : 'Office account not linked yet'}</div>
             <div style={{flex:1,minWidth:220,padding:'6px 9px',border:'1px solid var(--br)',borderRadius:6,background:'var(--s1)',fontSize:10.5,color:'var(--t3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{bizeeBrowser.url}</div>
-            <button className="btn sm" onClick={reloadBizeeBrowser}>↻ Reopen</button>
-            <button className="btn sm" onClick={()=>setBizeeBrowser(x=>({...x,open:false}))}>✕ Dismiss</button>
+            <button className="btn sm" onClick={reloadBizeeBrowser}>↻ Reload</button>
+            <button className="btn sm" onClick={()=>setBizeeBrowser(x=>({...x,open:false}))}>✕ Close</button>
           </div>
-          <div style={{padding:'18px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap'}}>
-            <div style={{minWidth:240,flex:1}}>
-              <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>{bizeeBrowser.launched ? 'Bizee is open in the secure browser window.' : 'Bizee needs permission to open a secure browser window.'}</div>
-              <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.55}}>The FormaCorp case stays open here while Bizee handles its own login, cookies, redirects, filing pages, and payment screens in a dedicated browser window. This avoids the blank/blocked iframe problem.</div>
-            </div>
-            <button className="btn pri" onClick={()=>openBizeeBrowser(bizeeBrowser.url)}>🟠 Open Bizee Secure Window</button>
+          <div style={{height:'72vh',minHeight:560,background:'#fff'}}>
+            <iframe
+              key={bizeeBrowser.key}
+              src={bizeeBrowser.url}
+              title="Bizee Pro"
+              style={{width:'100%',height:'100%',border:0,background:'#fff'}}
+              allow="payment *"
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+          <div style={{padding:'7px 10px',fontSize:10,color:'var(--t3)',borderTop:'1px solid var(--br)'}}>
+            Bizee stays inside FormaCorp. This panel uses the Bizee account/dashboard host directly rather than the marketing site that refused framing.
           </div>
         </div>
       )}
