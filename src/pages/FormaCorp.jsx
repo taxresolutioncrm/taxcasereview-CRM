@@ -389,9 +389,11 @@ export default function FormaCorp() {
   async function recordFloridaEvent(c, status, note, metadata = {}) {
     try {
       const { data:{ user } } = await supabase.auth.getUser()
+      const safeMetadata = { ...metadata }
+      delete safeMetadata.fl_pin
       await supabase.from('formacorp_filing_events').insert([{
         case_id:c.id, event_type:'florida_filing', status, note,
-        metadata, actor_email:user?.email || null, created_at:new Date().toISOString()
+        metadata:safeMetadata, actor_email:user?.email || null, created_at:new Date().toISOString()
       }])
     } catch (e) {
       console.error('[FormaCorp] filing event log failed', e)
@@ -437,13 +439,16 @@ export default function FormaCorp() {
   }
 
   async function recordFloridaSubmission(c) {
-    const tracking = window.prompt('Florida tracking number (leave blank only if not yet issued):', c.fl_tracking_number || '')
-    if (tracking === null) return
+    const tracking = window.prompt('Florida tracking number from the state receipt:', c.fl_tracking_number || '')
+    if (!tracking?.trim()) { showToast('A Florida tracking number is required before marking the filing submitted.', 'err'); return }
+    const paymentRef = window.prompt('State payment receipt/reference (optional):', c.fl_payment_reference || '')
+    if (paymentRef === null) return
     const pin = window.prompt('Florida filing PIN (optional; usually supplied on rejection):', c.fl_pin || '')
     if (pin === null) return
     await updateFloridaCase(c, {
       fl_filing_status:'Submitted to Florida',
-      fl_tracking_number:String(tracking || '').trim(),
+      fl_tracking_number:tracking.trim(),
+      fl_payment_reference:String(paymentRef || '').trim(),
       fl_pin:String(pin || '').trim(),
       fl_submitted_at:new Date().toISOString(),
       fl_payment_status:'state_paid',
