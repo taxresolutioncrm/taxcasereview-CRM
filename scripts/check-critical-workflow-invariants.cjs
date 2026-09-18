@@ -73,4 +73,20 @@ requireAll('src/lib/i18n.js', [
   "'faltan $1 d'",
 ])
 
+const callContext = requireAll('src/context/CallContext.jsx', [
+  "const legRecoveryPendingRef = useRef(false)",
+  "const CALL_SESSION_KEY = phoneContext === 'romylabs' ? 'romylabs_active_call_v1' : 'taxres_active_call_v1'",
+  "async function providerCallStillActive()",
+  "function markBrowserLegRecovery(reason)",
+  "async function recoverBrowserLeg(clientOverride = null)",
+  "markBrowserLegRecovery('signalwire.socket.close')",
+  "markBrowserLegRecovery('blade.disconnect')",
+  "Connection interrupted — reconnecting active call…",
+  "finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true })",
+])
+if (callContext.includes("if (await finalizeCallEnd({ alreadyHungUp: true }))")) {
+  console.error('ERROR: browser/provider terminal events can still kill the live conference without provider-state verification.')
+  process.exit(1)
+}
+
 console.log('Critical workflow invariants: PASS')
