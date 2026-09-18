@@ -935,11 +935,15 @@ export function getPackageFormTypes(clientType) {
 
 // ─── Credit Card Authorization — built from scratch for the e-sign package ───
 export async function generateCcAuthPdf(client) {
-  // Firm branding for the authorization line + footer — falls back to the
-  // TCR defaults on any error so a settings hiccup never blocks the doc.
-  let firmName = 'Tax Case Review';
-  let firmFooterLine1 = 'Tax Case Review · 631 US Highway One Ste 304, North Palm Beach, FL 33408';
-  let firmFooterLine2 = 'info@taxcasereview.org · (888) 334-5052 · Fax (561) 420-6999';
+  // Firm branding for the authorization line + footer. TCR keeps its own
+  // historical defaults; a known non-TCR tenant never inherits TCR identity.
+  const ccIsTcr = !FIRM.tenantId || FIRM.tenantId === TCR_TENANT;
+  let firmName = FIRM.name || (ccIsTcr ? 'Tax Case Review' : 'Tax Resolution Office');
+  let firmFooterLine1 = FIRM.address
+    ? `${firmName} · ${FIRM.address}`
+    : (ccIsTcr ? 'Tax Case Review · 631 US Highway One Ste 304, North Palm Beach, FL 33408' : firmName);
+  let firmFooterLine2 = [FIRM.email, FIRM.phone, FIRM.fax ? `Fax ${FIRM.fax}` : null].filter(Boolean).join(' · ');
+  if (!firmFooterLine2 && ccIsTcr) firmFooterLine2 = 'info@taxcasereview.org · (888) 334-5052 · Fax (561) 420-6999';
   try {
     const { data: s } = await supabase.from('settings').select('name,address,city,state,zip,phone,email,firm_fax_number').maybeSingle();
     if (s?.name) {
