@@ -11,6 +11,7 @@ const cors = {
 
 const TCR_TENANT_ID  = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
 const NASH_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
+const DEMO_RUNTIME_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 const ADMIN_CODE     = 'ADMIN'
 const TCR_CODE       = 'TRC-001'
 const DEMO_CODE      = 'DEMO'
@@ -24,7 +25,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   try {
     const now = new Date()
-    const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number) => {
+    const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number, demoScope=false) => {
       const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: tenantStorage },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
@@ -34,13 +35,38 @@ Deno.serve(async (req) => {
         supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
         supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId}),
-        supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(5),
-        supabase.from('employees').select('id').eq('tenant_id',tenantId).ilike('status','active'),
+        supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(50),
+        supabase.from('employees').select('id,email').eq('tenant_id',tenantId).ilike('status','active'),
         supabase.from('tenants').select('monthly_rate,per_seat_rate,billing_seats').eq('id',tenantId).maybeSingle(),
       ])
       const documentStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
       const totalStorage=Number(tenantStorage ?? documentStorage ?? 0)
-      const staffCount=(employees||[]).length
+      const isDemoEmployee = (email:string) => {
+        const normalized=String(email||'').trim().toLowerCase()
+        return normalized==='demo@taxrescrm.net' || normalized.endsWith('@taxrescrm.demo')
+      }
+      const scopedEmployees=(employees||[]).filter((e:any)=>!demoScope || isDemoEmployee(e.email))
+      const scopedEmails=new Set(scopedEmployees.map((e:any)=>String(e.email||'').trim().toLowerCase()).filter(Boolean))
+      const scopedRecentActivity=(recentActivity||[]).filter((n:any)=>{
+        if(!demoScope) return true
+        return scopedEmails.has(String(n.employee_email||'').trim().toLowerCase())
+      })
+      let authLastSignIn:string|null=null
+      if(scopedEmails.size){
+        const {data:authUsers,error:authUsersError}=await supabase.auth.admin.listUsers({page:1,perPage:1000})
+        if(authUsersError) console.warn('platform-metrics auth activity unavailable:',authUsersError.message)
+        for(const user of authUsers?.users||[]){
+          const email=String(user.email||'').trim().toLowerCase()
+          if(!scopedEmails.has(email) || !user.last_sign_in_at) continue
+          if(!authLastSignIn || new Date(user.last_sign_in_at).getTime()>new Date(authLastSignIn).getTime()) authLastSignIn=user.last_sign_in_at
+        }
+      }
+      const logLast=String(scopedRecentActivity[0]?.created_at||'') || null
+      const activityTimes=[logLast,authLastSignIn].filter(Boolean) as string[]
+      const lastActivity=activityTimes.length
+        ? activityTimes.reduce((latest,current)=>new Date(current).getTime()>new Date(latest).getTime()?current:latest)
+        : null
+      const staffCount=scopedEmployees.length
       const computedMrr=Number(tenant?.monthly_rate || 0)
         || (Number(tenant?.per_seat_rate || 0) * Number(tenant?.billing_seats || 0))
         || mrrFallback
@@ -57,6 +83,7 @@ Deno.serve(async (req) => {
           open_jobs:caseCount||0,
           pending_tasks:taskCount||0,
           storage_bytes:totalStorage,
+          last_activity:lastActivity,
           active_offices:1,total_offices:1
         },
         offices:[{
@@ -72,14 +99,16 @@ Deno.serve(async (req) => {
           open_jobs:caseCount||0,
           job_count:caseCount||0,
           pending_tasks:taskCount||0,
-          storage_bytes:totalStorage
+          storage_bytes:totalStorage,
+          last_activity:lastActivity
         }],
-        recent_activity:(recentActivity||[]).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))
+        recent_activity:scopedRecentActivity.slice(0,5).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))
       }
     }
     if(view==='tcr') return new Response(JSON.stringify(await tenantView(TCR_TENANT_ID,'tax_case_review','Tax Case Review',0)),{headers:{...cors,'Content-Type':'application/json'}})
     if(view==='nash') return new Response(JSON.stringify(await tenantView(NASH_TENANT_ID,'nashville','Nashville Tax Solutions',0)),{headers:{...cors,'Content-Type':'application/json'}})
     if(view==='cloudcpa') return new Response(JSON.stringify(await tenantView('ecd3d3ce-016a-4bb4-800e-f090f51e4cae','cloudcpa','CloudCPA Inc',0)),{headers:{...cors,'Content-Type':'application/json'}})
+    if(view==='demo') return new Response(JSON.stringify(await tenantView(DEMO_RUNTIME_TENANT_ID,'taxres_demo','Tax Res CRM Demo',0,true)),{headers:{...cors,'Content-Type':'application/json'}})
 
     const {data:tenants}=await supabase.from('tenants').select('id,firm_name,tenant_code,monthly_rate,created_at').not('tenant_code','in',`(${ADMIN_CODE},${TCR_CODE},${DEMO_CODE})`).neq('id',NASH_TENANT_ID)
     const tenantIds=(tenants||[]).map((t:any)=>t.id)
