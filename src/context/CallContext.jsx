@@ -185,8 +185,10 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const pageUnloadingRef = useRef(false)
   const callStartedAtRef = useRef(null)
   const restoreAttemptedRef = useRef(false)
+  const legRecoveryPendingRef = useRef(false)
+  const legRecoveryBusyRef = useRef(false)
   const inboundStatusPollRef = useRef(null)
-  const CALL_SESSION_KEY = 'taxres_active_call_v1'
+  const CALL_SESSION_KEY = phoneContext === 'romylabs' ? 'romylabs_active_call_v1' : 'taxres_active_call_v1'
 
   function persistCallSession(payload) {
     try { sessionStorage.setItem(CALL_SESSION_KEY, JSON.stringify(payload)) } catch (_) {}
@@ -293,6 +295,69 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     return supabase.from('outbound_calls').select('id,status,conference_name,provider_call_sid').eq('conference_name', conferenceName).maybeSingle()
   }
 
+  async function providerCallStillActive() {
+    if (!uiStartedRef.current || !activeConferenceRef.current) return false
+    if (activeInboundCallsidRef.current) {
+      const { data } = await fetchIncomingStatus(activeInboundCallsidRef.current)
+      return !!data && ['ringing','answered'].includes(String(data.status || '').toLowerCase())
+    }
+    const { data } = await fetchOutboundStatus(activeConferenceRef.current)
+    return !!data && ['pending','ringing','answered','connected'].includes(String(data.status || '').toLowerCase())
+  }
+
+  function markBrowserLegRecovery(reason) {
+    if (pageUnloadingRef.current || !uiStartedRef.current || !activeConferenceRef.current) return
+    legRecoveryPendingRef.current = true
+    liveCallRef.current = null
+    activeCallRef.current = null
+    console.warn('[call-recovery] browser leg interrupted:', reason)
+  }
+
+  async function recoverBrowserLeg(clientOverride = null) {
+    if (
+      pageUnloadingRef.current ||
+      !uiStartedRef.current ||
+      !activeConferenceRef.current ||
+      legRecoveryBusyRef.current
+    ) return false
+
+    legRecoveryBusyRef.current = true
+    try {
+      const stillActive = await providerCallStillActive()
+      if (!stillActive) {
+        legRecoveryPendingRef.current = false
+        if (await finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true })) {
+          handleRemoteHangup()
+        }
+        return false
+      }
+
+      const client = clientOverride || relayRef.current
+      if (!client || !callerNumberRef.current) {
+        legRecoveryPendingRef.current = true
+        return false
+      }
+
+      const call = await client.newCall({
+        destinationNumber: callerNumberRef.current,
+        callerNumber: callerNumberRef.current,
+      })
+      liveCallRef.current = call
+      activeCallRef.current = call
+      legRecoveryPendingRef.current = false
+      setMuted(false)
+      setOnHold(false)
+      showCallToast('📞 Reconnected to active call')
+      return true
+    } catch (err) {
+      legRecoveryPendingRef.current = true
+      console.error('[call-recovery] browser leg rejoin failed:', err)
+      return false
+    } finally {
+      legRecoveryBusyRef.current = false
+    }
+  }
+
   async function fetchLatestRinging() {
     if (phoneContext === 'romylabs') {
       const { data, error } = await supabase.functions.invoke('romylabs-phone-state', { body:{ action:'ringing' } })
@@ -374,11 +439,37 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       const client = new Relay({ project: data.project_id, token: data.jwt_token })
       client.remoteElement = 'sw-remote-audio'
 
-      client.on('signalwire.ready', () => { console.log('%c[RELAY] ready — registered as "office"', 'color:lime'); setRelayStatus('ready') })
-      client.on('signalwire.error', (e) => { setRelayStatus('error'); console.error('[RELAY] error', e); scheduleReconnect() })
-      client.on('signalwire.socket.close', () => { setRelayStatus('error'); console.warn('[RELAY] socket closed — reconnecting in 3s'); scheduleReconnect() })
-      client.on('signalwire.socket.error', (e) => { setRelayStatus('error'); console.error('[RELAY] socket error', e); scheduleReconnect() })
-      client.on('blade.disconnect', () => { setRelayStatus('error'); console.warn('[RELAY] disconnected — reconnecting in 3s'); scheduleReconnect() })
+      client.on('signalwire.ready', () => {
+        console.log('%c[RELAY] ready — registered as "office"', 'color:lime')
+        setRelayStatus('ready')
+        if (legRecoveryPendingRef.current) {
+          recoverBrowserLeg(client).catch(err => console.error('[call-recovery] ready rejoin failed:', err))
+        }
+      })
+      client.on('signalwire.error', (e) => {
+        markBrowserLegRecovery('signalwire.error')
+        setRelayStatus('error')
+        console.error('[RELAY] error', e)
+        scheduleReconnect()
+      })
+      client.on('signalwire.socket.close', () => {
+        markBrowserLegRecovery('signalwire.socket.close')
+        setRelayStatus('error')
+        console.warn('[RELAY] socket closed — preserving conference and reconnecting in 3s')
+        scheduleReconnect()
+      })
+      client.on('signalwire.socket.error', (e) => {
+        markBrowserLegRecovery('signalwire.socket.error')
+        setRelayStatus('error')
+        console.error('[RELAY] socket error', e)
+        scheduleReconnect()
+      })
+      client.on('blade.disconnect', () => {
+        markBrowserLegRecovery('blade.disconnect')
+        setRelayStatus('error')
+        console.warn('[RELAY] disconnected — preserving conference and reconnecting in 3s')
+        scheduleReconnect()
+      })
       client.on('signalwire.notification', async (n) => {
         console.log('[RELAY] notification received:', n.type, n)
         if (n.type !== 'callUpdate') return
@@ -412,14 +503,29 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           setIncomingMatch(null)
           stopRing()
           if (liveCallRef.current === call) {
-            // During refresh/page close, only the local browser leg is dying.
-            // Do NOT terminate the provider conference or clear persisted call
-            // state; the next page load will verify and rejoin it.
+            // The SDK uses hangup/destroy for BOTH a real far-end hangup and
+            // a lost browser/WebSocket leg. Never kill the provider conference
+            // based on this browser event alone. Verify provider state first.
             if (pageUnloadingRef.current) {
               liveCallRef.current = null
               return
             }
-            if (await finalizeCallEnd({ alreadyHungUp: true }))
+
+            const stillActive = await providerCallStillActive()
+            if (stillActive) {
+              markBrowserLegRecovery('local call object ' + call.state)
+              showCallToast('Connection interrupted — reconnecting active call…')
+              setTimeout(() => {
+                if (legRecoveryPendingRef.current) {
+                  recoverBrowserLeg(client).catch(err => console.error('[call-recovery] immediate rejoin failed:', err))
+                }
+              }, 500)
+              return
+            }
+
+            // Provider already says the remote leg ended. Clean up local UI,
+            // but do NOT send a redundant conference-kill request.
+            if (await finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true }))
               handleRemoteHangup()
           }
         }
@@ -502,7 +608,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
         outboundPollRef.current = setInterval(async () => {
           const { data: live } = await fetchOutboundStatus(conf)
           if (live?.status === 'completed' || live?.status === 'failed') {
-            if (await finalizeCallEnd({ alreadyHungUp: true }))
+            if (await finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true }))
               handleRemoteHangup()
           }
         }, 3000)
@@ -514,7 +620,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           if (live?.status === 'completed' || live?.status === 'missed') {
             clearInterval(inboundStatusPollRef.current)
             inboundStatusPollRef.current = null
-            if (await finalizeCallEnd({ alreadyHungUp: true }))
+            if (await finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true }))
               handleRemoteHangup()
           }
         }, 3000)
@@ -710,7 +816,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       if (row?.status === 'completed' || row?.status === 'missed') {
         clearInterval(inboundStatusPollRef.current)
         inboundStatusPollRef.current = null
-        if (await finalizeCallEnd({ alreadyHungUp: true }))
+        if (await finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true }))
           handleRemoteHangup()
       }
     }, 3000)
@@ -853,7 +959,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           outboundPollRef.current = setInterval(async () => {
             const { data: row } = await fetchOutboundStatus(conf)
             if (row?.status === 'completed') {
-              if (await finalizeCallEnd({ alreadyHungUp: true }))
+              if (await finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true }))
                 handleRemoteHangup()
             }
           }, 3000)
