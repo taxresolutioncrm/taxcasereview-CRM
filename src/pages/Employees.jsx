@@ -256,8 +256,26 @@ export default function Employees() {
     }
     setSaving(false)
     if (error) { setSaveError(error.message); if (!silent) showToast('Save error: ' + error.message, 'err'); return false }
+
+    const createdNow = !editing && data?.id
+    let inviteResult = null
+    if (createdNow) {
+      const { data: inviteData, error: inviteError } = await supabase.functions.invoke('provision-tenant', {
+        body: {
+          action: 'invite_employee',
+          email: form.email.trim().toLowerCase(),
+          name: form.name.trim(),
+          redirect_to: window.location.origin + '/reset-password'
+        }
+      })
+      inviteResult = inviteError ? { error: inviteError.message } : inviteData
+    }
+
     if (!silent) {
-      showToast(editing ? 'Employee updated!' : 'Employee added!')
+      if (createdNow && inviteResult?.invited) showToast('Employee added — login invite sent!')
+      else if (createdNow && inviteResult?.already_exists) showToast('Employee added — existing login can use Forgot password if needed.')
+      else if (createdNow && inviteResult?.error) showToast('Employee added, but login invite failed: ' + inviteResult.error, 'err')
+      else showToast(editing ? 'Employee updated!' : 'Employee added!')
       setShowForm(false)
     } else {
       showToast('Auto-saved', 'ok')
@@ -313,7 +331,7 @@ export default function Employees() {
     if (!resetEmail) return
     setResetSending(true)
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: window.location.origin + '/'
+      redirectTo: window.location.origin + '/reset-password'
     })
     setResetSending(false)
     if (error) return showToast(error.message, 'err')
