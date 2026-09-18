@@ -498,6 +498,21 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     setRequests(x=>x.map(r=>r.id===id?data:r))
   }
 
+  const visibleTabs=useMemo(()=>{
+    const selected=new Set(Array.isArray(lifecycle?.selected_services)?lifecycle.selected_services:[])
+    return LIFECYCLE_TABS.filter(([id])=>{
+      if(['overview','compliance','services','documents'].includes(id)) return true
+      if(id==='ein') return selected.has('EIN')
+      if(id==='agreement') return selected.has('Operating Agreement')
+      if(id==='banking') return selected.has('Banking')
+      return true
+    })
+  },[lifecycle?.selected_services])
+
+  useEffect(()=>{
+    if(lifecycle && !visibleTabs.some(([id])=>id===tab)) setTab('overview')
+  },[lifecycle?.id, visibleTabs, tab])
+
   const score=useMemo(()=>{
     if(!lifecycle)return 0
     const flags=[
@@ -525,11 +540,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <div style={{fontSize:18,fontWeight:800}}>{score}%</div>
         <div style={{fontSize:9,color:'var(--t3)',textTransform:'uppercase'}}>launch readiness</div>
         <div style={{fontSize:9,color:'var(--blue)',fontWeight:700,marginTop:3}}>{lifecycle.service_plan || 'Launch'} plan</div>
+        <div style={{fontSize:8,color:'var(--t3)',marginTop:2}}>{Array.isArray(lifecycle.selected_services)?lifecycle.selected_services.length:0} services enabled</div>
       </div>
     </div>
 
     <div style={{display:'flex',gap:5,flexWrap:'wrap',borderBottom:'1px solid var(--br)',paddingBottom:8,marginBottom:12}}>
-      {LIFECYCLE_TABS.map(([id,label])=><button key={id} className={`btn sm ${tab===id?'pri':''}`} onClick={()=>setTab(id)}>{label}</button>)}
+      {visibleTabs.map(([id,label])=><button key={id} className={`btn sm ${tab===id?'pri':''}`} onClick={()=>setTab(id)}>{label}</button>)}
     </div>
 
     {tab==='overview' && <div>
