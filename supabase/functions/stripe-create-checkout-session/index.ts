@@ -26,7 +26,7 @@ const STRIPE_SECRET_KEY  = Deno.env.get('STRIPE_SECRET_KEY') ?? ''
 const STRIPE_PRICE_NAME  = Deno.env.get('STRIPE_PRICE_NAME') ?? 'Tax Case Review'
 const STRIPE_SUCCESS_URL = Deno.env.get('STRIPE_SUCCESS_URL') ?? ''
 const STRIPE_CANCEL_URL  = Deno.env.get('STRIPE_CANCEL_URL') ?? ''
-const PRIMARY_TENANT_ID = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
+const PLATFORM_STRIPE_TENANTS = new Set(['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','518808b4-10dd-47fd-900e-6c3fc1ff2e7e'])
 
 async function stripeRequest(path: string, body: Record<string, string>, connectedAccount?: string | null) {
   const res = await fetch(`https://api.stripe.com/v1/${path}`, {
@@ -75,8 +75,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Billing permission denied' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
     const { data: tenant } = await supabase.from('tenants').select('stripe_connect_account_id').eq('id', tenantId).maybeSingle()
-    const connectedAccount = tenantId === PRIMARY_TENANT_ID ? null : (tenant?.stripe_connect_account_id || null)
-    if (tenantId !== PRIMARY_TENANT_ID && !connectedAccount) {
+    const usePlatformStripe = PLATFORM_STRIPE_TENANTS.has(String(tenantId))
+    const connectedAccount = usePlatformStripe ? null : (tenant?.stripe_connect_account_id || null)
+    if (!usePlatformStripe && !connectedAccount) {
       return new Response(JSON.stringify({ error: 'Online payments are not connected for this office. Connect the office payment processor in Settings first.' }), {
         status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
