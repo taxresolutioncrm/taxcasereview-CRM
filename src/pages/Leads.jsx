@@ -932,11 +932,14 @@ export default function Leads() {
     }
 
     const actor = resolveActorName(user, employees)
-    const { error } = await supabase.from('sms_messages').insert([{
-      clientName: l.name, phone: toNum, body: leadSmsBody, status,
-      signalwire_sms_id: swId, sent_by: actor, error_msg: errMsg,
-      created_at: new Date().toISOString(),
-    }])
+    let error = null
+    if (!(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && swId)) {
+      ;({ error } = await supabase.from('sms_messages').insert([{
+        clientName: l.name, phone: toNum, body: leadSmsBody, status,
+        signalwire_sms_id: swId, sent_by: actor, error_msg: errMsg,
+        created_at: new Date().toISOString(),
+      }]))
+    }
     setLeadSmsSending(false)
     if (error) { showToast('Error: '+error.message); return }
 
