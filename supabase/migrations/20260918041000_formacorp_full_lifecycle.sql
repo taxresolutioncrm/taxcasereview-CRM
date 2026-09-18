@@ -6,6 +6,8 @@ create table if not exists public.formacorp_lifecycle (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null default current_tenant_id(),
   case_id uuid not null references public.formacorp(id) on delete cascade,
+  service_plan text not null default 'Launch',
+  selected_services jsonb not null default '[]'::jsonb,
   ein_status text not null default 'Not Started',
   ein_responsible_party_name text,
   ein_application_method text,
