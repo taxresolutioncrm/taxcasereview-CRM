@@ -41,7 +41,26 @@ const BLANK = {
 const WIZ_BLANK = {
   entity_type: '', state: '', client_name: '', entity_name: '',
   owners: '', registered_agent: 'Self (Owner)', business_purpose: '',
+  service_plan:'Launch',
   ...FL_FIELDS,
+}
+
+const SERVICE_PLANS = {
+  Formation: {
+    title:'Formation',
+    desc:'State filing + formation documents + compliance dashboard.',
+    items:['State filing workflow','Formation documents','Compliance dashboard','Annual-report tracking'],
+  },
+  Launch: {
+    title:'Launch',
+    desc:'Formation plus the operational pieces needed to actually start using the company.',
+    items:['Everything in Formation','EIN workflow','Operating Agreement','Banking resolution & account setup','Compliance tracking'],
+  },
+  'Full Service': {
+    title:'Full Service',
+    desc:'Launch workflow plus ongoing company-maintenance services.',
+    items:['Everything in Launch','S-Corp election workflow','Registered-agent management workflow','Amendments / DBA / foreign qualification','Good-standing / reinstatement / dissolution requests'],
+  },
 }
 
 function isFloridaLlc(v = {}) {
@@ -346,9 +365,32 @@ export default function FormaCorp() {
       stage:'Consultation', fee: isFloridaLlc(wForm) ? floridaStateFee(wForm) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
     }
     const { data, error } = await supabase.from('formacorp').insert([payload]).select().single()
+    if (error) { setSaving(false); showToast('Error: '+error.message, 'err'); return }
+    const plan = wForm.service_plan || 'Launch'
+    const selected = plan === 'Formation'
+      ? ['State Filing','Formation Documents','Compliance']
+      : plan === 'Full Service'
+        ? ['State Filing','EIN','Operating Agreement','Banking','Compliance','S-Corp Election','Registered Agent','Company Changes']
+        : ['State Filing','EIN','Operating Agreement','Banking','Compliance']
+    const due = wForm.state==='FL' ? `${new Date().getFullYear()+1}-05-01` : null
+    const { error:lifecycleErr } = await supabase.from('formacorp_lifecycle').insert([{
+      case_id:data.id,
+      service_plan:plan,
+      selected_services:selected,
+      ein_status:'Not Started',
+      ein_responsible_party_name:wForm.authorized_representative || wForm.client_name || '',
+      operating_agreement_status:'Not Started',
+      banking_status:'Not Started',
+      bank_account_type:'Business Checking',
+      bank_signer:wForm.authorized_representative || wForm.client_name || '',
+      annual_report_status:'Not Due',
+      annual_report_due_date:due,
+      good_standing_status:'Unknown',
+      registered_agent_status:wForm.registered_agent==='Self (Owner)' ? 'Client / Self' : 'Third Party',
+    }])
     setSaving(false)
-    if (error) { showToast('Error: '+error.message, 'err'); return }
-    showToast('🏢 Formation case created!')
+    if (lifecycleErr) { showToast('Formation created, but lifecycle setup needs attention: '+lifecycleErr.message, 'err') }
+    else showToast('🏢 Formation case + launch lifecycle created!')
     setWizard(false)
     await load()
     setDetail(data)
@@ -789,7 +831,7 @@ export default function FormaCorp() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>
           <div className="modal" style={{width:560,maxHeight:'90vh',overflowY:'auto'}}>
             <div className="mh"><span className="mt">🚀 Start a Business</span><button className="xbtn" onClick={()=>setWizard(false)}>&times;</button></div>
-            <div style={{display:'flex',alignItems:'center',gap:0,marginBottom:20}}>{['Entity Type','State','Details','Review'].map((label,i)=>{const step=i+1;const done=step<wStep;const active=step===wStep;return <div key={label} style={{display:'flex',alignItems:'center',flex:1}}><div style={{display:'flex',flexDirection:'column',alignItems:'center',flex:1}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background:done||active?'var(--blue)':'var(--s3)',color:done||active?'#fff':'var(--t3)',border:`2px solid ${done||active?'var(--blue)':'var(--br)'}`}}>{done?'✓':step}</div><div style={{fontSize:10,marginTop:4,color:done||active?'var(--tx)':'var(--t3)',whiteSpace:'nowrap'}}>{label}</div></div>{step<4&&<div style={{height:2,flex:1,background:done?'var(--blue)':'var(--br)',marginBottom:16}}/>}</div>})}</div>
+            <div style={{display:'flex',alignItems:'center',gap:0,marginBottom:20}}>{['Entity Type','State','Details','Services','Review'].map((label,i)=>{const step=i+1;const done=step<wStep;const active=step===wStep;return <div key={label} style={{display:'flex',alignItems:'center',flex:1}}><div style={{display:'flex',flexDirection:'column',alignItems:'center',flex:1}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,background:done||active?'var(--blue)':'var(--s3)',color:done||active?'#fff':'var(--t3)',border:`2px solid ${done||active?'var(--blue)':'var(--br)'}`}}>{done?'✓':step}</div><div style={{fontSize:10,marginTop:4,color:done||active?'var(--tx)':'var(--t3)',whiteSpace:'nowrap'}}>{label}</div></div>{step<5&&<div style={{height:2,flex:1,background:done?'var(--blue)':'var(--br)',marginBottom:16}}/>}</div>})}</div>
 
             {wStep===1 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>What type of business entity does your client want to form?</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>{ENTITY_TYPES.map(t=><div key={t} onClick={()=>wFld('entity_type',t)} style={{padding:'16px 14px',borderRadius:8,border:`2px solid ${wForm.entity_type===t?'var(--blue)':'var(--br)'}`,background:wForm.entity_type===t?'var(--blt)':'var(--s2)',cursor:'pointer',fontWeight:600,fontSize:13,display:'flex',alignItems:'center',gap:8,transition:'all .1s'}}><span style={{fontSize:18}}>{ENTITY_ICONS[t]||'🏢'}</span> {t}</div>)}</div></div>}
 
@@ -797,9 +839,20 @@ export default function FormaCorp() {
 
             {wStep===3 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Tell us about the business.</div><div style={{position:'relative'}} className="field"><label>Client *</label><input value={wForm.client_name} onChange={e=>wSearchClient(e.target.value)} placeholder="Search or type client name…"/>{wShowSug&&wSugg.length>0&&<div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--sf)',border:'1px solid var(--br)',borderRadius:6,zIndex:50,maxHeight:160,overflowY:'auto'}}>{wSugg.map(c=><div key={c.id} onClick={()=>chooseWizardClient(c)} style={{padding:'8px 12px',cursor:'pointer',fontSize:13}} onMouseEnter={e=>e.currentTarget.style.background='var(--s2)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>{c.name}</div>)}</div>}</div><div className="field"><label>Entity Name *</label><input value={wForm.entity_name} onChange={e=>{wFld('entity_name',e.target.value);checkNameSoon(e.target.value,wForm.state)}} placeholder="e.g. Smith Holdings LLC"/><NameCheckStatus state={wForm.state} name={wForm.entity_name} check={nameCheck}/></div><div className="field"><label>Owners / Members (names & %)</label><input value={wForm.owners} onChange={e=>wFld('owners',e.target.value)} placeholder="e.g. John Smith 60%, Jane Smith 40%"/></div><div className="field"><label>Registered Agent</label><input value={wForm.registered_agent} onChange={e=>wFld('registered_agent',e.target.value)} placeholder="Self (Owner), or agency name"/></div><div className="field"><label>Business Purpose</label><input value={wForm.business_purpose} onChange={e=>wFld('business_purpose',e.target.value)} placeholder="e.g. Tax resolution consulting services"/></div><FloridaFilingFields value={wForm} onChange={wFld}/></div>}
 
-            {wStep===4 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],['Business Purpose',wForm.business_purpose||'—']].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div>{isFloridaLlc(wForm)&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>☀️ Florida Filing Readiness</div>{floridaSubmissionMissing(wForm).length===0?<div style={{fontSize:12,color:'var(--ok)'}}>✅ Florida submission details and filing authorization are ready.</div>:<div style={{fontSize:12,color:'var(--warn)',lineHeight:1.5}}>Case can be created as a Consultation draft. Before state submission, complete: {floridaSubmissionMissing(wForm).join(', ')}.</div>}</div>}{stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📍 {stateReqs[wForm.state].state_name} Filing Snapshot</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}<div style={{fontSize:12,color:'var(--t3)',marginTop:10,lineHeight:1.6}}>This creates a formation case starting at the <strong>Consultation</strong> stage. You'll be taken to the case page where you can track progress through filing, EIN, operating agreement, and more.</div></div>}
+            {wStep===4 && <div>
+              <div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Choose how far FormaCorp should carry this company after the state filing.</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr',gap:10}}>
+                {Object.entries(SERVICE_PLANS).map(([id,p])=><div key={id} onClick={()=>wFld('service_plan',id)} style={{padding:'14px 16px',borderRadius:9,border:`2px solid ${wForm.service_plan===id?'var(--blue)':'var(--br)'}`,background:wForm.service_plan===id?'var(--blt)':'var(--s2)',cursor:'pointer'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}><div style={{fontWeight:800,fontSize:14}}>{p.title}</div>{wForm.service_plan===id&&<span className="bdg bb">Selected</span>}</div>
+                  <div style={{fontSize:11,color:'var(--t3)',margin:'4px 0 8px',lineHeight:1.5}}>{p.desc}</div>
+                  <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>{p.items.map(x=><span key={x} className="bdg bn" style={{fontSize:9}}>{x}</span>)}</div>
+                </div>)}
+              </div>
+            </div>}
 
-            <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:20,paddingTop:16,borderTop:'1px solid var(--br)'}}><button className="btn" onClick={()=>wStep===1?setWizard(false):setWStep(s=>s-1)}>{wStep===1?'Cancel':'← Back'}</button>{wStep<4?<button className="btn pri" disabled={(wStep===1&&!wForm.entity_type)||(wStep===2&&!wForm.state)||(wStep===3&&(!wForm.client_name||!wForm.entity_name))} onClick={()=>setWStep(s=>s+1)}>Continue →</button>:<button className="btn pri" onClick={createFromWizard} disabled={saving}>{saving?'Creating…':'🏢 Create Formation Case'}</button>}</div>
+            {wStep===5 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case and lifecycle.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[['Service Plan',wForm.service_plan||'Launch'],['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],['Business Purpose',wForm.business_purpose||'—']].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div>{isFloridaLlc(wForm)&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>☀️ Florida Filing Readiness</div>{floridaSubmissionMissing(wForm).length===0?<div style={{fontSize:12,color:'var(--ok)'}}>✅ Florida submission details and filing authorization are ready.</div>:<div style={{fontSize:12,color:'var(--warn)',lineHeight:1.5}}>Case can be created as a Consultation draft. Before state submission, complete: {floridaSubmissionMissing(wForm).join(', ')}.</div>}</div>}{stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📍 {stateReqs[wForm.state].state_name} Filing Snapshot</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}<div style={{fontSize:12,color:'var(--t3)',marginTop:10,lineHeight:1.6}}>This creates a formation case starting at the <strong>Consultation</strong> stage. You'll be taken to the case page where you can track progress through filing, EIN, operating agreement, and more.</div></div>}
+
+            <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:20,paddingTop:16,borderTop:'1px solid var(--br)'}}><button className="btn" onClick={()=>wStep===1?setWizard(false):setWStep(s=>s-1)}>{wStep===1?'Cancel':'← Back'}</button>{wStep<5?<button className="btn pri" disabled={(wStep===1&&!wForm.entity_type)||(wStep===2&&!wForm.state)||(wStep===3&&(!wForm.client_name||!wForm.entity_name))} onClick={()=>setWStep(s=>s+1)}>Continue →</button>:<button className="btn pri" onClick={createFromWizard} disabled={saving}>{saving?'Creating…':'🏢 Create Formation + Lifecycle'}</button>}</div>
           </div>
         </div>
       )}
