@@ -3,6 +3,17 @@ import { supabase } from '../../lib/supabase'
 import { fillForm } from '../../lib/irsFormUtils'
 import { buildOperatingAgreementPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
 
+const FL_SERVICE_GUIDE = {
+  'Annual Report Filing': { fee:'$138.75', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Keeps the LLC active; Florida posts online credit-card filings immediately.' },
+  'Registered Agent Change': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Use the Florida LLC registered-agent / registered-office change filing.' },
+  'Business Amendment': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Florida LLC amendments use the Division of Corporations amendment form.' },
+  'DBA / Fictitious Name': { fee:'State fee varies', url:'https://dos.fl.gov/sunbiz/start-business/efile/fl-fictitious-name', note:'Florida fictitious-name registration is a separate filing.' },
+  'Foreign Qualification': { fee:'State fee applies', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Use the Foreign LLC qualification filing when expanding into Florida.' },
+  'Certificate of Good Standing': { fee:'$5', url:'https://dos.fl.gov/sunbiz/manage-business/certification/', note:'Florida calls this a Certificate of Status.' },
+  'Reinstatement': { fee:'$100 + annual reports due', url:'https://dos.fl.gov/sunbiz/manage-business/efile/reinstatement', note:'For administratively dissolved/revoked entities.' },
+  'Dissolution': { fee:'$25', url:'https://dos.fl.gov/sunbiz/manage-business/dissolve-withdraw-business/', note:'Formal Florida LLC dissolution / withdrawal.' },
+}
+
 const SERVICES = [
   'Annual Report Filing',
   'Registered Agent Change',
@@ -244,10 +255,43 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       status:'Requested',
       notes:serviceNotes.trim() || null,
     }]).select().single()
+    if(error){setBusy('');showToast?.('Could not create service request: '+error.message,'err');return}
+    const taskTitle=`FormaCorp: ${serviceType} — ${caseRecord.entity_name}`
+    await supabase.from('tasks').insert([{
+      title:taskTitle,
+      clientName:caseRecord.client_name,
+      linkedcase:caseRecord.entity_name,
+      dueDate:null,
+      priority:'Normal',
+      done:false,
+      notes:`FormaCorp service request ${data.id}. ${serviceNotes.trim() || ''}`,
+      section_title:'FormaCorp',
+      status_category:'To Do',
+      status_label:'Ready to Start',
+    }])
     setBusy('')
-    if(error){showToast?.('Could not create service request: '+error.message,'err');return}
     setRequests(x=>[data,...x]);setServiceNotes('')
-    showToast?.('✅ FormaCorp service request created')
+    showToast?.('✅ FormaCorp service request created and added to Tasks')
+  }
+
+  async function generate2553() {
+    if(!caseRecord.ein){showToast?.('Record the EIN before preparing Form 2553','err');return}
+    setBusy('2553')
+    try{
+      const bytes=await fillForm('2553',{
+        name:caseRecord.authorized_representative || caseRecord.client_name,
+        business_name:caseRecord.entity_name,
+        address:caseRecord.principal_address,
+        street:caseRecord.principal_address,
+        state:caseRecord.state,
+        ein:caseRecord.ein,
+      },true)
+      const blob=new Blob([bytes],{type:'application/pdf'})
+      const doc=await uploadGenerated(blob,'FormaCorp — Form 2553 S-Corp election draft',`Form-2553-${safeFilename(caseRecord.entity_name)}-${Date.now()}.pdf`)
+      await savePatch({s_corp_election_status:'Ready'},'✅ Form 2553 draft generated and filed in Documents')
+      return doc
+    }catch(e){showToast?.('Could not generate Form 2553: '+(e?.message||e),'err')}
+    finally{setBusy('')}
   }
 
   async function updateRequest(id,status) {
@@ -370,6 +414,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
         <button className="btn sm" onClick={saveCurrent}>💾 Save Compliance</button>
         <button className="btn sm" onClick={syncAnnualReportDeadline}>⏰ Sync Annual Report Deadline</button>
+        <button className="btn sm" onClick={generate2553} disabled={busy==='2553'}>{busy==='2553'?'Generating…':'📄 Generate Form 2553'}</button>
         {caseRecord.state==='FL' && <a className="btn sm" href="https://efile.sunbiz.org/sbs_webapp/" target="_blank" rel="noreferrer">☀️ Florida Annual Report</a>}
       </div>
     </div>}
@@ -380,6 +425,10 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <Field label="Service"><select value={serviceType} onChange={e=>setServiceType(e.target.value)} style={inputStyle}>{SERVICES.map(x=><option key={x}>{x}</option>)}</select></Field>
         <Field label="Request Notes"><input value={serviceNotes} onChange={e=>setServiceNotes(e.target.value)} placeholder="What needs to change / be filed?" style={inputStyle}/></Field>
       </div>
+      {caseRecord.state==='FL' && FL_SERVICE_GUIDE[serviceType] && <div style={{padding:'9px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:11,lineHeight:1.5,marginBottom:8}}>
+        <strong>Florida fulfillment:</strong> {FL_SERVICE_GUIDE[serviceType].fee} · {FL_SERVICE_GUIDE[serviceType].note}
+        <a href={FL_SERVICE_GUIDE[serviceType].url} target="_blank" rel="noreferrer" style={{marginLeft:8,color:'var(--blue)',fontWeight:700}}>Official Florida filing ↗</a>
+      </div>}
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
       <div style={{marginTop:12}}>
         {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
