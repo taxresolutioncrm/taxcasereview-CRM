@@ -14,6 +14,7 @@ const passwordReset = read('src/pages/PasswordReset.jsx')
 const provisionTenant = read('supabase/functions/provision-tenant/index.ts')
 const migration = read('supabase/migrations/20260918121000_cloudcpa_prospect_readiness.sql')
 const bookingMigration = read('supabase/migrations/20260918122000_tenant_booking_branding.sql')
+const canonicalMigration = read('supabase/migrations/20260918133500_cloudcpa_demo_canonicalization.sql')
 
 must(fs.existsSync('public/cloudcpa-logo.png'),'CloudCPA logo asset exists')
 for (const route of ['/clients','/leads','/cases','/tasks','/calendar','/documents','/esign','/formacorp']) {
@@ -47,6 +48,13 @@ must(migration.includes("calling_provider = case"),'voice provider is only shown
 must(migration.includes("payment_provider = case"),'payment provider is only shown when real tenant credentials exist')
 must(!migration.includes('insert into auth.users'),'migration does not fabricate or overwrite authentication credentials')
 must(bookingMigration.includes("when coalesce(trim(v_firm_name),'') <> '' then '[' || trim(v_firm_name) || ']'"),'tenant bookings use the office identity instead of TaxRes CRM branding')
+must(canonicalMigration.includes("tenant_code='TRC-003'"),'CloudCPA canonicalization is hard-scoped to TRC-003')
+must(canonicalMigration.includes("plan_tier='enterprise'"),'CloudCPA prospect has full enterprise feature access for the demo')
+must(canonicalMigration.includes("logo_url='/cloudcpa-logo.png'"),'CloudCPA tenant metadata carries its own logo')
+must(canonicalMigration.includes("status=case") === false,'CloudCPA canonicalization does not silently change trial/sale status')
+must(!canonicalMigration.includes("calling_provider='"),'CloudCPA canonicalization does not fabricate voice credentials')
+must(!canonicalMigration.includes("fax_provider='"),'CloudCPA canonicalization does not fabricate fax credentials')
+must(!canonicalMigration.includes("payment_provider='"),'CloudCPA canonicalization does not fabricate payment credentials')
 
 if(process.exitCode) process.exit(process.exitCode)
 console.log('CLOUDCPA READINESS CERTIFICATION PASS')
