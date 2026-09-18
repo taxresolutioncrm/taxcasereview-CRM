@@ -41,6 +41,7 @@ const PRODUCT_ENDPOINTS: Record<string, string> = {
   tax_case_review:   'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=tcr',
   nashville:         'https://ydrvncdedgjtcprczwpu.supabase.co/functions/v1/platform-metrics',
   cloudcpa:          'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=cloudcpa',
+  demo:              'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=demo',
   camvella:          'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/platform-metrics',
   arcvena:           'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/platform-metrics',
   bocasync:          'https://zmejbkttzvaqzzbmjclz.supabase.co/functions/v1/platform-metrics',
