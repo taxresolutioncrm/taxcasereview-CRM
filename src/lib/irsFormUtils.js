@@ -6,11 +6,13 @@ import { FIRM } from './firmBranding';
 // Firm identity for generated documents. FIRM is populated per signed-in tenant
 // at load; the fallbacks only apply if branding hasn't resolved yet, so a
 // settings hiccup never leaves a document with a blank letterhead.
-const fName = () => FIRM.name || 'Tax Case Review';
-const fAddr = () => FIRM.address || '631 US Highway One Ste 304, North Palm Beach, FL 33408';
-const fMail = () => FIRM.email || 'info@taxcasereview.org';
-const fPhone = () => FIRM.phone || '(888) 334-5052';
-const fFax = () => FIRM.fax || '(561) 420-6999';
+const TCR_TENANT = '61a89aef-0e7e-4ea2-b222-44ab2024655a';
+const tcrFallback = () => !FIRM.tenantId || FIRM.tenantId === TCR_TENANT;
+const fName = () => FIRM.name || (tcrFallback() ? 'Tax Case Review' : 'Tax Resolution Office');
+const fAddr = () => FIRM.address || (tcrFallback() ? '631 US Highway One Ste 304, North Palm Beach, FL 33408' : '');
+const fMail = () => FIRM.email || (tcrFallback() ? 'info@taxcasereview.org' : '');
+const fPhone = () => FIRM.phone || (tcrFallback() ? '(888) 334-5052' : '');
+const fFax = () => FIRM.fax || (tcrFallback() ? '(561) 420-6999' : '');
 const fContactLine = () => [fMail(), fPhone(), fFax() ? `Fax ${fFax()}` : null].filter(Boolean).join('  ·  ');
 const fFooterLine = () => [fAddr(), fMail(), fPhone(), fFax() ? `Fax ${fFax()}` : null].filter(Boolean).join(' · ');
 
