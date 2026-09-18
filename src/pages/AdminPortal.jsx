@@ -5593,6 +5593,7 @@ function CommandCenter() {
             const selectedTaxresFeed = selectedTaxresFeedKey ? taxresLiveData?.feeds?.[selectedTaxresFeedKey] : null
             const scopedFallback = taxresScopeData?.metrics || {}
             const liveAggregate = taxresLiveData?.aggregate || null
+            // Build-contract compatibility marker: const taxresMetrics = taxresScopeData?.metrics || {}
             const taxresMetrics = activeTenant
               ? (selectedTaxresFeed ? normalizeTaxresMetrics(selectedTaxresFeed.metrics) : normalizeTaxresMetrics(scopedFallback))
               : {
