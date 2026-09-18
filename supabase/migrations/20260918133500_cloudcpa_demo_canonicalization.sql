@@ -32,6 +32,21 @@ begin
          firmemail='tony@thecloudcpa.net',
          logourl='/cloudcpa-logo.png',
          primary_color='#ea580c',
+         -- Truthful demo defaults: CRM/manual workflows stay usable while
+         -- external provider credentials are still pending.
+         calling_provider=case
+           when (coalesce(sw_space_url,'')<>'' and coalesce(sw_project_id,'')<>'' and coalesce(sw_api_token,'')<>'')
+             or coalesce(verizon_api_key,'')<>''
+             or coalesce(telnyx_api_key,'')<>''
+           then calling_provider
+           else 'none'
+         end,
+         payment_provider=case
+           when exists (select 1 from public.tenants t where t.id=v_tenant and coalesce(t.stripe_connect_account_id,'')<>'')
+             then coalesce(payment_provider,'stripe')
+           when coalesce(qb_client_id,'')<>'' then coalesce(payment_provider,'intuit')
+           else 'manual'
+         end,
          booking_config=coalesce(booking_config,jsonb_build_object(
            'enabled',true,
            'slotMinutes',30,
