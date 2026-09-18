@@ -7,7 +7,9 @@ import ClientLink from '../components/ClientLink'
 import { buildFlArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
 import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 
-const ENTITY_TYPES = ['LLC','S-Corp','C-Corp','Sole Proprietorship','Partnership','Non-Profit 501(c)(3)','Professional LLC (PLLC)']
+// S-Corporation is a federal tax election, not a state-law formation entity.
+// New formations choose the legal entity here; S-election lives in the lifecycle.
+const ENTITY_TYPES = ['LLC','C-Corp','Sole Proprietorship','Partnership','Non-Profit 501(c)(3)','Professional LLC (PLLC)']
 const ENTITY_ICONS = {
   'LLC':'🏢','S-Corp':'📈','C-Corp':'🏦','Sole Proprietorship':'👤','Partnership':'🤝',
   'Non-Profit 501(c)(3)':'❤️','Professional LLC (PLLC)':'⚖️'
