@@ -399,6 +399,7 @@ export const SIGNATURE_POSITIONS = {
   // Anchored to the fixed signature block in buildAgreementPdf(), which starts
   // a fresh final page when the body would otherwise run into it.
   'agreement':     { page: 'last', sigX: 62, sigY: 170, dateX: 386, dateY: 170, size: 12 },
+  'formacorp_operating_agreement': { page: 0, sigX: 108, sigY: 106, dateX: 400, dateY: 106, size: 12 },
   // DR-835 page 2, taxpayer block. Rule measured at y 434.3-440.3, signature
   // column x 36-310, date column x 315-450.
   'state_poa':          { page: 1, sigX: 45, sigY: 438, dateX: 330, dateY: 438, repDateX: 490, repDateY: 117, size: 12 },
