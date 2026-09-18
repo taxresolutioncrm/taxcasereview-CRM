@@ -48,12 +48,67 @@ serve(async (req) => {
     const { data: { user }, error: userErr } = await asCaller.auth.getUser()
     if (userErr || !user?.email) return json({ error: 'Invalid session' }, 401)
 
-    // ── verify caller is THIS platform admin specifically (not any Super Admin) ──
-    if (!PLATFORM_ADMIN_EMAILS.includes(user.email.toLowerCase())) return json({ error: 'Not authorized to provision offices' }, 403)
     const admin = createClient(url, serviceKey)
 
     // ── inputs ──
     const b = await req.json().catch(() => ({}))
+    const action = String(b.action || 'provision_tenant').trim().toLowerCase()
+
+    // Tenant Super Admin / HR manager path: provision a login for an employee
+    // that already belongs to the caller's own tenant. This keeps employee
+    // creation tenant-scoped and never grants a tenant admin platform powers.
+    if (action === 'invite_employee') {
+      const { data: tenantId, error: tenantErr } = await asCaller.rpc('current_tenant_id')
+      if (tenantErr || !tenantId) return json({ error:'No active office context' }, 403)
+
+      const { data: caller } = await admin.from('employees')
+        .select('id,status,perm_hr,access,role')
+        .eq('tenant_id', tenantId)
+        .ilike('email', user.email)
+        .limit(1).maybeSingle()
+      const active = caller && String(caller.status || 'Active').toLowerCase() === 'active'
+      const canInvite = active && (Number(caller?.perm_hr || 0) >= 2 || String(caller?.access || caller?.role || '').toLowerCase() === 'super admin')
+      if (!canInvite) return json({ error:'Employee invite permission denied' }, 403)
+
+      const employeeEmail = String(b.email || '').trim().toLowerCase()
+      const employeeName = String(b.name || '').trim()
+      if (!employeeEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeEmail)) {
+        return json({ error:'Valid employee email is required' }, 400)
+      }
+
+      const { data: employee } = await admin.from('employees')
+        .select('id,email,name,status,tenant_id')
+        .eq('tenant_id', tenantId)
+        .ilike('email', employeeEmail)
+        .limit(1).maybeSingle()
+      if (!employee) return json({ error:'Employee must be saved in this office before inviting them' }, 409)
+      if (String(employee.status || 'Active').toLowerCase() !== 'active') return json({ error:'Employee is not active' }, 409)
+
+      // Detect an existing Auth account without exposing account metadata to the caller.
+      let existingUser:any = null
+      for (let page=1; page<=5 && !existingUser; page++) {
+        const { data:list, error:listErr } = await admin.auth.admin.listUsers({ page, perPage:200 })
+        if (listErr) return json({ error:'Could not verify employee login: '+listErr.message }, 500)
+        existingUser = (list?.users || []).find((u:any)=>String(u.email || '').toLowerCase() === employeeEmail) || null
+        if ((list?.users || []).length < 200) break
+      }
+
+      if (existingUser) {
+        return json({ ok:true, already_exists:true, email:employeeEmail, employee_id:employee.id })
+      }
+
+      const redirectTo = String(b.redirect_to || '').trim()
+      const options:any = { data:{ name:employeeName || employee.name || employeeEmail.split('@')[0] } }
+      if (redirectTo) options.redirectTo = redirectTo
+      const { data:invite, error:inviteErr } = await admin.auth.admin.inviteUserByEmail(employeeEmail, options)
+      if (inviteErr) return json({ error:'Employee invite failed: '+inviteErr.message }, 400)
+
+      return json({ ok:true, invited:true, email:employeeEmail, employee_id:employee.id, auth_user_id:invite?.user?.id || null })
+    }
+
+    // New-office provisioning remains platform-owner only.
+    if (!PLATFORM_ADMIN_EMAILS.includes(user.email.toLowerCase())) return json({ error: 'Not authorized to provision offices' }, 403)
+
     const firm_name   = (b.firm_name || '').trim()
     const tenant_code = (b.tenant_code || '').trim()
     const admin_name  = (b.admin_name || '').trim()
