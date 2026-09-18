@@ -5,7 +5,10 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store, max-age=0', Pragma: 'no-cache' },
+})
 const env = (name: string) => (Deno.env.get(name) || '').trim()
 const AUTHORIZE_URL = () => env('IRS_TDS_ISP_AUTHORIZE_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/authorize'
 const TOKEN_URL = () => env('IRS_TDS_ISP_TOKEN_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/token'
