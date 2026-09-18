@@ -191,10 +191,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       }]).select().single()
       if(idxErr)throw idxErr
       const {data:urlData}=await supabase.storage.from('documents').createSignedUrl(path,60*60*24*30)
-      await supabase.from('documents').insert([{
-        clientname:caseRecord.client_name,client:caseRecord.client_name,type:'FormaCorp',docType:'Business Formation',
-        filename:file.name,file_name:file.name,url:urlData?.signedUrl||'',file_url:urlData?.signedUrl||'',notes:docType,source:'FormaCorp'
-      }]).catch(()=>{})
+      try {
+        await supabase.from('documents').insert([{
+          clientname:caseRecord.client_name,client:caseRecord.client_name,type:'FormaCorp',docType:'Business Formation',
+          filename:file.name,file_name:file.name,url:urlData?.signedUrl||'',file_url:urlData?.signedUrl||'',notes:docType,source:'FormaCorp'
+        }])
+      } catch (_) {}
       setDocuments(x=>[row,...x])
       showToast?.('✅ Company document uploaded')
     }catch(e){showToast?.('Document upload failed: '+(e?.message||e),'err')}
