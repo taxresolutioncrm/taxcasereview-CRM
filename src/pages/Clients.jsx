@@ -901,7 +901,7 @@ export default function Clients() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user, searchQ } = useApp()
+  const { user, searchQ, myTenantId } = useApp()
 
   // Cache settings at load time — avoids re-fetching signalwire_backend on every action
   const settingsRef = useRef(null)
@@ -1403,7 +1403,7 @@ export default function Clients() {
     const settings = await getSettings()
     let status = 'Sent', swId = null, errMsg = null
 
-    if (settings?.sw_space_url) {
+    if (settings?.sw_space_url || myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae') {
       try {
         const { data: resData, error: invokeErr } = await supabase.functions.invoke('send-sms', {
           body: { to: toNum, body: smsBody, client_id: c.id || null, user_id: user?.id || null }
