@@ -55,6 +55,11 @@ function safeFilename(v) {
   return String(v || 'company').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60) || 'company'
 }
 
+function numericFee(v) {
+  const m=String(v||'').match(/\$?([0-9]+(?:\.[0-9]+)?)/)
+  return m ? Number(m[1]) : null
+}
+
 function Field({label,children,help}) {
   return <div className="field" style={{marginBottom:10}}>
     <label>{label}</label>
@@ -418,6 +423,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       status:'Requested',
       jurisdiction_state:caseRecord.state || null,
       agency:caseRecord.state==='FL' ? 'Florida Division of Corporations' : null,
+      state_fee:caseRecord.state==='FL' ? numericFee(FL_SERVICE_GUIDE[serviceType]?.fee) : null,
       payment_status:'Pending',
       notes:serviceNotes.trim() || null,
     }]).select().single()
@@ -476,6 +482,20 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     const {data,error}=await supabase.from('formacorp_service_requests').update(patch).eq('id',id).select().single()
     if(error){showToast?.('Service update failed: '+error.message,'err');return}
     setRequests(x=>x.map(r=>r.id===id?data:r))
+    const email=String(caseRecord.correspondence_email||'').trim()
+    if(email){
+      supabase.functions.invoke('send-email',{body:{
+        to:email,
+        subject:`FormaCorp Update: ${data.service_type} — ${data.status}`,
+        html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px"><h2>FormaCorp Service Update</h2><p><strong>${caseRecord.entity_name}</strong></p><p>${data.service_type}: <strong>${data.status}</strong></p>${data.submission_reference?`<p>Submission reference: ${data.submission_reference}</p>`:''}${data.confirmation?`<p>Confirmation: ${data.confirmation}</p>`:''}<p>Open the CRM for the current company record and documents.</p></div>`
+      }}).catch(()=>{})
+    }
+  }
+
+  async function updateRequestPayment(id,payment_status) {
+    const {data,error}=await supabase.from('formacorp_service_requests').update({payment_status}).eq('id',id).select().single()
+    if(error){showToast?.('Payment status update failed: '+error.message,'err');return}
+    setRequests(x=>x.map(r=>r.id===id?data:r))
   }
 
   const score=useMemo(()=>{
@@ -504,6 +524,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       <div style={{textAlign:'right'}}>
         <div style={{fontSize:18,fontWeight:800}}>{score}%</div>
         <div style={{fontSize:9,color:'var(--t3)',textTransform:'uppercase'}}>launch readiness</div>
+        <div style={{fontSize:9,color:'var(--blue)',fontWeight:700,marginTop:3}}>{lifecycle.service_plan || 'Launch'} plan</div>
       </div>
     </div>
 
@@ -619,9 +640,10 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       </div>}
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
       <div style={{marginTop:12}}>
-        {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
-          <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}{r.submission_reference?` · Ref ${r.submission_reference}`:''}{r.confirmation?` · Confirmation ${r.confirmation}`:''}</div></div>
+        {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
+          <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}{r.state_fee!=null?` · State fee ${Number(r.state_fee).toFixed(2)}`:''}{r.submission_reference?` · Ref ${r.submission_reference}`:''}{r.confirmation?` · Confirmation ${r.confirmation}`:''}</div></div>
           <StatusPill value={r.status}/>
+          <select value={r.payment_status||'Pending'} onChange={e=>updateRequestPayment(r.id,e.target.value)} style={{...inputStyle,width:105}}>{['Pending','Paid','Waived','Refunded'].map(x=><option key={x}>{x}</option>)}</select>
           <select value={r.status} onChange={e=>updateRequest(r.id,e.target.value)} style={{...inputStyle,width:135}}>{['Requested','In Progress','Waiting on Client','Submitted','State / Agency Review','Action Required','Complete','Cancelled'].map(x=><option key={x}>{x}</option>)}</select>
         </div>)}
       </div>
