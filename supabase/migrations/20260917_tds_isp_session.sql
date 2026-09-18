@@ -25,8 +25,13 @@ alter table public.irs_tds_sessions
 
 alter table public.irs_tds_sessions enable row level security;
 
--- Intentionally no end-user policies. Browser clients never read tokens or session rows.
--- Authenticated CRM actions receive only safe metadata from the Edge Function.
+-- Browser clients never read or write IRS access/refresh tokens. Only Edge
+-- Functions using the service role can access this table.
+revoke all on table public.irs_tds_sessions from anon, authenticated;
+grant select, insert, update, delete on table public.irs_tds_sessions to service_role;
+
+-- Intentionally no end-user policies. Authenticated CRM actions receive only
+-- safe session metadata from transcript-pull.
 create index if not exists idx_irs_tds_sessions_user
   on public.irs_tds_sessions(tenant_id, user_id);
 create index if not exists idx_irs_tds_sessions_state
