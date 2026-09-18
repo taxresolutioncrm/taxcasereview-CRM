@@ -606,7 +606,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
 
     {tab==='compliance' && <div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-        <Field label="Registered Agent Status"><select value={lifecycle.registered_agent_status||'Client / Self'} onChange={e=>setLocal('registered_agent_status',e.target.value)} style={inputStyle}>{['Client / Self','FormaCorp Managed','Third Party','Change Requested','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Registered Agent Status"><select value={lifecycle.registered_agent_status||'Client / Self'} onChange={e=>setLocal('registered_agent_status',e.target.value)} style={inputStyle}>{['Client / Self','Third Party','Service Requested','Change Requested','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
         <Field label="Registered Agent Renewal"><input type="date" value={lifecycle.registered_agent_renewal_date||''} onChange={e=>setLocal('registered_agent_renewal_date',e.target.value||null)} style={inputStyle}/></Field>
         <Field label="Annual Report Status"><select value={lifecycle.annual_report_status||'Not Due'} onChange={e=>setLocal('annual_report_status',e.target.value)} style={inputStyle}>{['Not Due','Upcoming','Due','Ready to File','Filed','Late','Action Required'].map(x=><option key={x}>{x}</option>)}</select></Field>
         <Field label="Annual Report Due Date"><input type="date" value={lifecycle.annual_report_due_date||''} onChange={e=>setLocal('annual_report_due_date',e.target.value||null)} style={inputStyle}/></Field>
