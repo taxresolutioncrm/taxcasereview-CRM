@@ -11,15 +11,15 @@ import { FIRM, firmFooterLine } from '../lib/firmBranding'
 const BASE = ''
 
 // RomyLabs Admin Portal always uses the RomyLabs platform identity.
-// Tenant-launched training continues to use that tenant's own branding.
-const ADMIN_TENANT_PREFIX = 'a0000000'
+// Every real tenant — including the canonical TaxRes Demo tenant — must use
+// that tenant's own branding. Never classify tenants by a shared UUID prefix.
 const PRODUCT_NAME  = 'RomyLabs'
 const PRODUCT_LOGO  = `${window.location.origin}/romylabs-logo.svg`
 const PRODUCT_EMAIL = 'info@romylabs.com'
+const PLATFORM_ADMIN_TENANT_ID = '00000000-0000-0000-0000-000000000000'
 
 function isAdminContext(tenantId) {
-  if (!tenantId) return false
-  return tenantId.startsWith(ADMIN_TENANT_PREFIX) || tenantId === '00000000-0000-0000-0000-000000000000'
+  return String(tenantId || '').trim() === PLATFORM_ADMIN_TENANT_ID
 }
 
 function ScreenPreview({ stream }) {
