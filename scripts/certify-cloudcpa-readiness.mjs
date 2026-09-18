@@ -52,9 +52,9 @@ must(canonicalMigration.includes("tenant_code='TRC-003'"),'CloudCPA canonicaliza
 must(canonicalMigration.includes("plan_tier='enterprise'"),'CloudCPA prospect has full enterprise feature access for the demo')
 must(canonicalMigration.includes("logo_url='/cloudcpa-logo.png'"),'CloudCPA tenant metadata carries its own logo')
 must(canonicalMigration.includes("status=case") === false,'CloudCPA canonicalization does not silently change trial/sale status')
-must(!canonicalMigration.includes("calling_provider='"),'CloudCPA canonicalization does not fabricate voice credentials')
+must(canonicalMigration.includes("else 'none'"),'CloudCPA shows calling as not connected when no voice credentials exist')
+must(canonicalMigration.includes("else 'manual'"),'CloudCPA keeps manual payments usable until a processor is connected')
 must(!canonicalMigration.includes("fax_provider='"),'CloudCPA canonicalization does not fabricate fax credentials')
-must(!canonicalMigration.includes("payment_provider='"),'CloudCPA canonicalization does not fabricate payment credentials')
 
 if(process.exitCode) process.exit(process.exitCode)
 console.log('CLOUDCPA READINESS CERTIFICATION PASS')
