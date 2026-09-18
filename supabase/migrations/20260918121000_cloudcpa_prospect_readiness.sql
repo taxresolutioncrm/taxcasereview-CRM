@@ -6,8 +6,17 @@
 
 do $$
 declare
-  v_tenant constant uuid := 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae';
+  v_tenant uuid;
 begin
+  select t.id into v_tenant
+  from public.tenants t
+  where t.tenant_code='TRC-003'
+    and lower(t.firm_name)=lower('CloudCPA Inc')
+  limit 1;
+
+  if v_tenant is null then
+    raise exception 'CloudCPA tenant TRC-003 was not found; refusing to mutate another office.';
+  end if;
   update public.tenants
      set firm_name = 'CloudCPA Inc',
          primary_contact_name = coalesce(primary_contact_name, 'Anthony Tropeano'),
