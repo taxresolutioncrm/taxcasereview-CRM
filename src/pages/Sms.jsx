@@ -52,7 +52,7 @@ const TEMPLATES = [
 const BLANK = { phone:'', clientName:'', body:'', status:'Sent' }
 
 export default function Sms() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [searchParams] = useSearchParams()
   const [sent,    setSent]    = useState([])
   const [clients, setClients] = useState([])
@@ -166,7 +166,7 @@ export default function Sms() {
     const toNum = '+1' + form.phone.replace(/\D/g,'').slice(-10)
     let status = 'Sent', sw_id = null, errMsg = null
 
-    if (settings?.sw_space_url) {
+    if (settings?.sw_space_url || myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae') {
       try {
         const { data: resData, error: invokeErr } = await supabase.functions.invoke('send-sms', {
           body: { to: toNum, body: form.body }
@@ -210,7 +210,7 @@ export default function Sms() {
       })
     }
 
-    if (status === 'Sent') showToast('✅ SMS sent via SignalWire!')
+    if (status === 'Sent') showToast(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && !settings?.sw_space_url ? '✅ SMS sent through the TaxRes platform relay!' : '✅ SMS sent via SignalWire!')
     else if (status === 'Failed') showToast('SignalWire error: ' + (errMsg||'send failed'))
     else showToast('Logged — add SignalWire credentials in Settings to send for real')
     setForm(BLANK);load()
