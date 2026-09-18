@@ -49,6 +49,20 @@ serve(async (req) => {
     let { data: settings, error: sErr } = await db.from('settings')
       .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did,tenant_id')
       .eq('tenant_id', effectiveTenantId).limit(1).maybeSingle()
+    let platformRelay = false
+    if (!romylabsContext && (!settings?.sw_space_url || !settings?.sw_project_id || !settings?.sw_api_token)) {
+      const { data: cloudTenant } = await db.from('tenants').select('tenant_code').eq('id', effectiveTenantId).maybeSingle()
+      if (cloudTenant?.tenant_code === 'TRC-003') {
+        const fallback = await db.from('settings')
+          .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did,tenant_id')
+          .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a').limit(1).maybeSingle()
+        if (fallback.data?.sw_space_url && fallback.data?.sw_project_id && fallback.data?.sw_api_token) {
+          settings = fallback.data
+          platformRelay = true
+        }
+        if (!sErr) sErr = fallback.error
+      }
+    }
     if (romylabsContext && (!settings?.sw_space_url || !settings?.sw_project_id || !settings?.sw_api_token)) {
       const fallback = await db.from('settings')
         .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did,tenant_id')
@@ -78,7 +92,7 @@ serve(async (req) => {
     // Real production authorization/provider validation, but guaranteed no call,
     // no outbound_calls insert and no SignalWire request.
     if (qa_certification === true && dry_run === true) {
-      return json({ success: true, dry_run: true, delivery: false, provider: 'signalwire', tenant_id: effectiveTenantId })
+      return json({ success: true, dry_run: true, delivery: false, provider: 'signalwire', tenant_id: effectiveTenantId, platform_relay: platformRelay })
     }
 
     const conferenceName = `outbound-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`
@@ -137,7 +151,7 @@ serve(async (req) => {
     if (clientCallsid) {
       await db.from('outbound_calls').update({ provider_call_sid: clientCallsid }).eq('tenant_id', effectiveTenantId).eq('conference_name', conferenceName)
     }
-    return json({ ok: true, conferenceName, clientCallsid, outboundCallId: insertedCall?.id || null, fromNumber })
+    return json({ ok: true, conferenceName, clientCallsid, outboundCallId: insertedCall?.id || null, fromNumber, platformRelay })
   } catch (err) {
     console.error('start-outbound-call error:', err)
     return json({ error: 'Unable to start call.' }, 500)
