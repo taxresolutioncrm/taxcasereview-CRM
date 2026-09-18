@@ -9,11 +9,43 @@ function b64url(bytes: Uint8Array) { let s = ''; bytes.forEach(b => { s += Strin
 function b64urlJson(value: unknown) { return b64url(new TextEncoder().encode(JSON.stringify(value))) }
 function escapeHtml(value: unknown) { return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c)) }
 
+function derLength(n: number) {
+  if (n < 128) return new Uint8Array([n])
+  const bytes: number[] = []
+  for (let v = n; v > 0; v >>= 8) bytes.unshift(v & 0xff)
+  return new Uint8Array([0x80 | bytes.length, ...bytes])
+}
+function derTag(tag: number, value: Uint8Array) {
+  const len = derLength(value.length), out = new Uint8Array(1 + len.length + value.length)
+  out[0] = tag; out.set(len, 1); out.set(value, 1 + len.length); return out
+}
+function concatBytes(...parts: Uint8Array[]) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let offset = 0
+  for (const part of parts) { out.set(part, offset); offset += part.length }
+  return out
+}
+function pkcs1ToPkcs8(pkcs1: Uint8Array) {
+  const version = new Uint8Array([0x02, 0x01, 0x00])
+  const rsaOidAndNull = new Uint8Array([0x30,0x0d,0x06,0x09,0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x01,0x05,0x00])
+  return derTag(0x30, concatBytes(version, rsaOidAndNull, derTag(0x04, pkcs1)))
+}
 async function importPrivateKey() {
-  const body = env('IRS_TDS_JWT_PRIVATE_KEY_PEM').replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s+/g, '')
-  if (!body) throw new Error('IRS TDS JWT private key is not configured.')
-  const der = Uint8Array.from(atob(body), c => c.charCodeAt(0))
-  return crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign'])
+  const pem = env('IRS_TDS_JWT_PRIVATE_KEY_PEM')
+  if (!pem) throw new Error('IRS TDS JWT private key is not configured.')
+  const isPkcs1 = pem.includes('BEGIN RSA PRIVATE KEY')
+  const body = pem
+    .replace(/-----BEGIN (?:RSA )?PRIVATE KEY-----/g, '')
+    .replace(/-----END (?:RSA )?PRIVATE KEY-----/g, '')
+    .replace(/\s+/g, '')
+  if (!body) throw new Error('IRS TDS JWT private key is empty.')
+  const raw = Uint8Array.from(atob(body), c => c.charCodeAt(0))
+  const der = isPkcs1 ? pkcs1ToPkcs8(raw) : raw
+  try {
+    return await crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign'])
+  } catch {
+    throw new Error('IRS TDS JWT private key must be an RSA PKCS#8 or PKCS#1 PEM key matching the registered IRS JWK/certificate.')
+  }
 }
 async function createClientAssertion() {
   const clientId = env('IRS_TDS_CLIENT_ID'), now = Math.floor(Date.now() / 1000)
@@ -23,7 +55,23 @@ async function createClientAssertion() {
 }
 async function tokenKey() { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env('SUPABASE_SERVICE_ROLE_KEY') + ':irs-tds-session:v2')); return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt']) }
 async function encryptText(value: string) { const iv = new Uint8Array(12); crypto.getRandomValues(iv); const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await tokenKey(), new TextEncoder().encode(value))); return `${b64url(iv)}.${b64url(cipher)}` }
-function html(title: string, message: string, status = 200) { return new Response(`<!doctype html><html><body style="font-family:system-ui;padding:32px"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p>${status < 400 ? '<script>setTimeout(()=>window.close(),1200)</script>' : ''}</body></html>`, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } }) }
+function html(title: string, message: string, status = 200) {
+  return new Response(
+    `<!doctype html><html><body style="font-family:system-ui;padding:32px"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p>${status < 400 ? '<script>setTimeout(()=>window.close(),1200)</script>' : ''}</body></html>`,
+    {
+      status,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, max-age=0',
+        'Pragma': 'no-cache',
+        'Referrer-Policy': 'no-referrer',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'",
+      },
+    },
+  )
+}
 
 serve(async (req) => {
   if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 })
@@ -36,7 +84,12 @@ serve(async (req) => {
     if (!session.state_expires_at || new Date(session.state_expires_at).getTime() < Date.now()) return html('IRS TDS connection expired', 'Return to the CRM and sign in again.', 400)
     if (providerError) return html('IRS TDS connection denied', providerError, 400)
     if (!code) return html('IRS TDS connection failed', 'IRS authorization did not return a code.', 400)
-    const form = new URLSearchParams({ grant_type: 'authorization_code', code, client_assertion_type: ASSERTION_TYPE, client_assertion: await createClientAssertion() })
+    const form = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_assertion_type: ASSERTION_TYPE,
+      client_assertion: await createClientAssertion(),
+    })
     const tokenResp = await fetch(TOKEN_URL(), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form }), text = await tokenResp.text()
     let tokenData: any = {}; try { tokenData = text ? JSON.parse(text) : {} } catch { return html('IRS TDS connection failed', `IRS token exchange returned an unexpected response (${tokenResp.status}).`, 502) }
     if (!tokenResp.ok) return html('IRS TDS connection failed', `IRS token exchange failed (${tokenResp.status}).`, 502)
