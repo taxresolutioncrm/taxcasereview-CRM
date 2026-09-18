@@ -36,6 +36,7 @@ const LIFECYCLE_TABS = [
   ['banking','Banking'],
   ['compliance','Compliance'],
   ['services','Company Services'],
+  ['documents','Documents'],
 ]
 
 function nextFloridaAnnualReportDate(formationDate) {
@@ -66,6 +67,8 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
   const [tab,setTab]=useState('overview')
   const [lifecycle,setLifecycle]=useState(null)
   const [requests,setRequests]=useState([])
+  const [documents,setDocuments]=useState([])
+  const [docType,setDocType]=useState('State Filing / Acceptance')
   const [busy,setBusy]=useState('')
   const [serviceType,setServiceType]=useState(SERVICES[0])
   const [serviceNotes,setServiceNotes]=useState('')
@@ -75,12 +78,14 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
 
   async function load() {
     if (!caseRecord?.id) return
-    const [{data:l,error:le},{data:r,error:re}] = await Promise.all([
+    const [{data:l,error:le},{data:r,error:re},{data:docs,error:de}] = await Promise.all([
       supabase.from('formacorp_lifecycle').select('*').eq('case_id',caseRecord.id).maybeSingle(),
       supabase.from('formacorp_service_requests').select('*').eq('case_id',caseRecord.id).order('requested_at',{ascending:false}),
+      supabase.from('formacorp_documents').select('*').eq('case_id',caseRecord.id).order('created_at',{ascending:false}),
     ])
     if (le) console.error('[FormaCorp lifecycle] load',le)
     if (re) console.error('[FormaCorp services] load',re)
+    if (de) console.error('[FormaCorp documents] load',de)
     if (l) {
       let synced=l
       if(l.operating_agreement_esign_id){
@@ -115,6 +120,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       else setLifecycle(newRow)
     }
     setRequests(r || [])
+    setDocuments(docs || [])
   }
 
   useEffect(()=>{ load() },[caseRecord?.id])
@@ -148,6 +154,14 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     if(urlErr) throw urlErr
     const url=urlData?.signedUrl || ''
     const fileName=pathSuffix.split('/').pop()
+    const {error:vaultErr}=await supabase.from('formacorp_documents').insert([{
+      case_id:caseRecord.id,
+      document_type:label,
+      file_name:fileName,
+      storage_path:path,
+      source:'FormaCorp',
+    }])
+    if(vaultErr) console.error('[FormaCorp vault index]',vaultErr)
     const {error:docErr}=await supabase.from('documents').insert([{
       clientname:caseRecord.client_name,
       client:caseRecord.client_name,
@@ -162,6 +176,37 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     }])
     if(docErr) console.error('[FormaCorp document index]',docErr)
     return {path,url,fileName}
+  }
+
+  async function uploadCompanyDocument(file) {
+    if(!file)return
+    setBusy('upload')
+    try{
+      const safe=file.name.replace(/[^a-zA-Z0-9._-]+/g,'-')
+      const path=`formacorp/${caseRecord.id}/uploads/${Date.now()}-${safe}`
+      const {error:upErr}=await supabase.storage.from('documents').upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'})
+      if(upErr)throw upErr
+      const {data:row,error:idxErr}=await supabase.from('formacorp_documents').insert([{
+        case_id:caseRecord.id,document_type:docType,file_name:file.name,storage_path:path,source:'Uploaded'
+      }]).select().single()
+      if(idxErr)throw idxErr
+      const {data:urlData}=await supabase.storage.from('documents').createSignedUrl(path,60*60*24*30)
+      await supabase.from('documents').insert([{
+        clientname:caseRecord.client_name,client:caseRecord.client_name,type:'FormaCorp',docType:'Business Formation',
+        filename:file.name,file_name:file.name,url:urlData?.signedUrl||'',file_url:urlData?.signedUrl||'',notes:docType,source:'FormaCorp'
+      }]).catch(()=>{})
+      setDocuments(x=>[row,...x])
+      showToast?.('✅ Company document uploaded')
+    }catch(e){showToast?.('Document upload failed: '+(e?.message||e),'err')}
+    finally{setBusy('')}
+  }
+
+  async function downloadCompanyDocument(doc) {
+    try{
+      const {data,error}=await supabase.storage.from('documents').createSignedUrl(doc.storage_path,300)
+      if(error||!data?.signedUrl)throw error||new Error('Could not create secure download link')
+      window.open(data.signedUrl,'_blank','noopener,noreferrer')
+    }catch(e){showToast?.('Could not open document: '+(e?.message||e),'err')}
   }
 
   async function generateSS4() {
@@ -483,6 +528,20 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
           <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}</div></div>
           <StatusPill value={r.status}/>
           <select value={r.status} onChange={e=>updateRequest(r.id,e.target.value)} style={{...inputStyle,width:135}}>{['Requested','In Progress','Waiting on Client','Submitted','State / Agency Review','Action Required','Complete','Cancelled'].map(x=><option key={x}>{x}</option>)}</select>
+        </div>)}
+      </div>
+    </div>}
+
+    {tab==='documents' && <div>
+      <div style={{fontSize:11,color:'var(--t3)',marginBottom:10,lineHeight:1.5}}>Formation documents, state acceptance records, EIN letters, signed agreements, bank resolutions, registered-agent notices, and compliance correspondence are stored here and indexed in the CRM Documents area.</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,alignItems:'end',marginBottom:10}}>
+        <Field label="Document Type"><select value={docType} onChange={e=>setDocType(e.target.value)} style={inputStyle}>{['State Filing / Acceptance','EIN Confirmation','Operating Agreement','Banking','Registered Agent Notice','Annual Report / Compliance','Amendment / Company Change','License / Permit','Other'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Upload Document"><input type="file" onChange={e=>{const f=e.target.files?.[0];if(f)uploadCompanyDocument(f);e.target.value=''}} style={inputStyle} disabled={busy==='upload'}/></Field>
+      </div>
+      <div>
+        {documents.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No FormaCorp documents on this company yet.</div>:documents.map(doc=><div key={doc.id} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
+          <div><div style={{fontSize:12,fontWeight:700}}>{doc.file_name}</div><div style={{fontSize:10,color:'var(--t3)'}}>{doc.document_type} · {new Date(doc.created_at).toLocaleDateString()}</div></div>
+          <button className="btn sm" onClick={()=>downloadCompanyDocument(doc)}>Open</button>
         </div>)}
       </div>
     </div>}
