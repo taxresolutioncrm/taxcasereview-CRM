@@ -38,7 +38,7 @@ serve(async req=>{
   }
 
   if(req.method==='GET'){
-    const url=new URL(req.url)
+    const url=new globalThis.URL(req.url)
     const id=String(url.searchParams.get('media')||'')
     const exp=String(url.searchParams.get('exp')||'')
     const sig=String(url.searchParams.get('sig')||'')
@@ -63,7 +63,7 @@ serve(async req=>{
     }
 
     let parsed:URL
-    try{parsed=new URL(raw)}catch{return json({error:'Invalid recording source'},500)}
+    try{parsed=new globalThis.URL(raw)}catch{return json({error:'Invalid recording source'},500)}
     if(parsed.protocol!=='https:'||!(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com')))return json({error:'Invalid recording source'},500)
 
     const creds=await romylabsSignalWireCredentials()
@@ -112,7 +112,7 @@ serve(async req=>{
       }
 
       let parsed:URL
-      try{parsed=new URL(raw)}catch{return ''}
+      try{parsed=new globalThis.URL(raw)}catch{return ''}
       if(parsed.protocol!=='https:'||!(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com')))return ''
 
       const exp=String(Date.now()+15*60*1000)
@@ -169,7 +169,7 @@ serve(async req=>{
         if(storageError)console.error('[romylabs-phone-state] recording storage delete',storageError.message)
       }else if(raw){
         try{
-          const parsed=new URL(raw)
+          const parsed=new globalThis.URL(raw)
           if(parsed.protocol==='https:'&&(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com'))){
             const creds=await romylabsSignalWireCredentials()
             if(!creds?.sw_project_id||!creds?.sw_api_token){
