@@ -27,6 +27,12 @@ const SERVICES = [
   'Reinstatement',
   'Dissolution',
   'Virtual Business Address',
+  'Trademark Search / Filing',
+  'Business Insurance',
+  'Business Contracts',
+  'Domain & Business Email',
+  'Business Phone',
+  'Bookkeeping / Accounting Setup',
 ]
 
 const LIFECYCLE_TABS = [
@@ -316,29 +322,48 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     if(!error){onCasePatch?.({stage:'Compliance & Maintenance'});showToast?.('✅ Business banking recorded — Compliance & Maintenance is now active')}
   }
 
+  async function upsertComplianceDeadline(kind,due,title) {
+    if(!due)return
+    const marker=`[FormaCorp:${caseRecord.id}:${kind}]`
+    const {data:existing}=await supabase.from('deadlines').select('id').eq('notes',marker).maybeSingle()
+    const payload={
+      name:title,title,client:caseRecord.client_name,clientname:caseRecord.client_name,clientName:caseRecord.client_name,
+      type:'Business Compliance',duedate:due,dueDate:due,due_date:due,status:'Tracking',notes:marker,
+    }
+    return existing?.id
+      ? supabase.from('deadlines').update(payload).eq('id',existing.id)
+      : supabase.from('deadlines').insert([payload])
+  }
+
   async function syncAnnualReportDeadline() {
     const due=lifecycle.annual_report_due_date
     if(!due){showToast?.('Set an annual-report due date first','err');return}
-    const marker=`[FormaCorp:${caseRecord.id}:annual_report]`
-    const {data:existing}=await supabase.from('deadlines').select('id').eq('notes',marker).maybeSingle()
-    const payload={
-      name:`${caseRecord.entity_name} Annual Report`,
-      title:`${caseRecord.entity_name} Annual Report`,
-      client:caseRecord.client_name,
-      clientname:caseRecord.client_name,
-      clientName:caseRecord.client_name,
-      type:'Business Compliance',
-      duedate:due,
-      dueDate:due,
-      due_date:due,
-      status:'Tracking',
-      notes:marker,
-    }
-    const res=existing?.id
-      ? await supabase.from('deadlines').update(payload).eq('id',existing.id)
-      : await supabase.from('deadlines').insert([payload])
+    const res=await upsertComplianceDeadline('annual_report',due,`${caseRecord.entity_name} Annual Report`)
     if(res.error){showToast?.('Could not sync deadline: '+res.error.message,'err');return}
     showToast?.('✅ Annual-report deadline synced to CRM Deadlines')
+  }
+
+  async function recordAnnualReportFiled() {
+    const confirmation=window.prompt('Annual report confirmation / receipt number:',lifecycle.annual_report_confirmation||'')
+    if(confirmation===null)return
+    const filed=new Date().toISOString().slice(0,10)
+    let nextDue=lifecycle.annual_report_due_date
+    if(nextDue){
+      const d=new Date(nextDue+'T12:00:00')
+      if(!Number.isNaN(d.getTime())) nextDue=`${d.getFullYear()+1}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    }
+    const ok=await savePatch({annual_report_status:'Filed',annual_report_filed_at:filed,annual_report_confirmation:String(confirmation||'').trim(),annual_report_due_date:nextDue},'',)
+    if(!ok)return
+    if(nextDue)await upsertComplianceDeadline('annual_report',nextDue,`${caseRecord.entity_name} Annual Report`)
+    showToast?.('✅ Annual report filed and next compliance deadline rolled forward')
+  }
+
+  async function syncRegisteredAgentRenewal() {
+    const due=lifecycle.registered_agent_renewal_date
+    if(!due){showToast?.('Set a registered-agent renewal date first','err');return}
+    const res=await upsertComplianceDeadline('registered_agent',due,`${caseRecord.entity_name} Registered Agent Renewal`)
+    if(res?.error){showToast?.('Could not sync registered-agent deadline: '+res.error.message,'err');return}
+    showToast?.('✅ Registered-agent renewal synced to CRM Deadlines')
   }
 
   async function createServiceRequest() {
@@ -347,6 +372,9 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       case_id:caseRecord.id,
       service_type:serviceType,
       status:'Requested',
+      jurisdiction_state:caseRecord.state || null,
+      agency:caseRecord.state==='FL' ? 'Florida Division of Corporations' : null,
+      payment_status:'Pending',
       notes:serviceNotes.trim() || null,
     }]).select().single()
     if(error){setBusy('');showToast?.('Could not create service request: '+error.message,'err');return}
@@ -390,6 +418,17 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
 
   async function updateRequest(id,status) {
     const patch={status,completed_at:status==='Complete'?new Date().toISOString():null}
+    if(status==='Submitted'){
+      const ref=window.prompt('Submission / tracking reference (optional):','')
+      if(ref===null)return
+      patch.submission_reference=String(ref||'').trim()||null
+      patch.submitted_at=new Date().toISOString()
+    }
+    if(status==='Complete'){
+      const conf=window.prompt('Completion / agency confirmation (optional):','')
+      if(conf===null)return
+      patch.confirmation=String(conf||'').trim()||null
+    }
     const {data,error}=await supabase.from('formacorp_service_requests').update(patch).eq('id',id).select().single()
     if(error){showToast?.('Service update failed: '+error.message,'err');return}
     setRequests(x=>x.map(r=>r.id===id?data:r))
@@ -509,6 +548,8 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
         <button className="btn sm" onClick={saveCurrent}>💾 Save Compliance</button>
         <button className="btn sm" onClick={syncAnnualReportDeadline}>⏰ Sync Annual Report Deadline</button>
+        <button className="btn sm" onClick={recordAnnualReportFiled}>✅ Record Annual Report Filed</button>
+        <button className="btn sm" onClick={syncRegisteredAgentRenewal}>⏰ Sync Agent Renewal</button>
         <button className="btn sm" onClick={generate2553} disabled={busy==='2553'}>{busy==='2553'?'Generating…':'📄 Generate Form 2553'}</button>
         {caseRecord.state==='FL' && <a className="btn sm" href="https://efile.sunbiz.org/sbs_webapp/" target="_blank" rel="noreferrer">☀️ Florida Annual Report</a>}
       </div>
@@ -527,7 +568,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
       <div style={{marginTop:12}}>
         {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
-          <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}</div></div>
+          <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}{r.submission_reference?` · Ref ${r.submission_reference}`:''}{r.confirmation?` · Confirmation ${r.confirmation}`:''}</div></div>
           <StatusPill value={r.status}/>
           <select value={r.status} onChange={e=>updateRequest(r.id,e.target.value)} style={{...inputStyle,width:135}}>{['Requested','In Progress','Waiting on Client','Submitted','State / Agency Review','Action Required','Complete','Cancelled'].map(x=><option key={x}>{x}</option>)}</select>
         </div>)}
