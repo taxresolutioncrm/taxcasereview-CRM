@@ -36,18 +36,21 @@ export default function Payments() {
   const [invSug,   setInvSug]   = useState([])
   const [running,  setRunning]  = useState(false)
   const [batchLog, setBatchLog] = useState([])
+  const [paymentProvider, setPaymentProvider] = useState(null)
 
   useEffect(() => { load() }, [])
 
   async function load() {
-    const [{ data:p },{ data:inv },{ data:cl }] = await Promise.all([
+    const [{ data:p },{ data:inv },{ data:cl },{ data:cfg }] = await Promise.all([
       supabase.from('payments').select('*').order('created_at',{ascending:false}),
       supabase.from('invoices').select('id,invNum,clientName,client_id,total,taxRate,paid,status'),
       supabase.from('clients').select('id,name,autopay_enabled,autopay_amount,autopay_frequency,autopay_next_charge,autopay_last_result,autopay_last_charged_at,default_payment_method_id,payment_method_brand,payment_method_last4'),
+      supabase.from('settings').select('payment_provider').limit(1).maybeSingle(),
     ])
     if (p)   setItems(p)
     if (inv) setInvoices(inv)
     if (cl)  setClients(cl)
+    setPaymentProvider(cfg?.payment_provider || null)
   }
 
   function showToast(msg) { setToast(msg); setTimeout(()=>setToast(''),3000) }
@@ -62,6 +65,7 @@ export default function Payments() {
   }
 
   async function chargeClientNow(client) {
+    if (paymentProvider !== 'stripe') { showToast('Online card charging is not connected for this office. Connect a payment processor in Settings first.'); return }
     setRunning(true)
     const { data, error } = await supabase.functions.invoke('stripe-charge', {
       body: { clientId: client.id, amount: client.autopay_amount, source: 'manual' }
@@ -73,6 +77,7 @@ export default function Payments() {
   }
 
   async function runAutopayBatch() {
+    if (paymentProvider !== 'stripe') { showToast('Autopay is unavailable until this office connects its payment processor.'); return }
     const today = new Date().toISOString().slice(0, 10)
     const due = clients.filter(c => c.autopay_enabled && c.autopay_amount && c.autopay_next_charge && c.autopay_next_charge <= today)
     if (due.length === 0) { showToast('Nothing due today'); return }
