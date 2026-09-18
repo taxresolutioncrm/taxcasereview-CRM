@@ -136,7 +136,7 @@ export default function Login() {
     if (!target) { setError(lang === 'es' ? 'Ingrese su correo electrónico primero' : 'Enter your email address first'); return }
     setResetting(true); setError(''); setResetSent(false)
     const { error } = await supabase.auth.resetPasswordForEmail(target, {
-      redirectTo: window.location.origin + '/settings?reset_password=1'
+      redirectTo: window.location.origin + '/'
     })
     setResetting(false)
     if (error) { setError(error.message); return }
