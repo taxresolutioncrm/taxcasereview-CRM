@@ -82,6 +82,17 @@ serve(async (req) => {
     const { data: session, error } = await service.from('irs_tds_sessions').select('*').eq('state', state).maybeSingle()
     if (error || !session) return html('IRS TDS connection failed', 'IRS authorization state was not recognized.', 400)
     if (!session.state_expires_at || new Date(session.state_expires_at).getTime() < Date.now()) return html('IRS TDS connection expired', 'Return to the CRM and sign in again.', 400)
+
+    // Claim the state exactly once before processing the provider response.
+    // Concurrent/replayed callbacks cannot exchange the same authorization flow.
+    const { data: claimed, error: claimErr } = await service.from('irs_tds_sessions')
+      .update({ state: null, state_expires_at: null, updated_at: new Date().toISOString() })
+      .eq('id', session.id)
+      .eq('state', state)
+      .select('id')
+      .maybeSingle()
+    if (claimErr || !claimed?.id) return html('IRS TDS connection failed', 'This IRS authorization response was already used. Start a new sign-in from the CRM.', 400)
+
     if (providerError) return html('IRS TDS connection denied', providerError, 400)
     if (!code) return html('IRS TDS connection failed', 'IRS authorization did not return a code.', 400)
     const form = new URLSearchParams({
@@ -95,7 +106,7 @@ serve(async (req) => {
     if (!tokenResp.ok) return html('IRS TDS connection failed', `IRS token exchange failed (${tokenResp.status}).`, 502)
     const accessToken = String(tokenData?.access_token || '').trim(), refreshToken = String(tokenData?.refresh_token || '').trim(); if (!accessToken || !refreshToken) return html('IRS TDS connection failed', 'IRS token response did not include both access and refresh tokens.', 502)
     const seconds = Math.max(60, Math.min(Number(tokenData?.expires_in || 900) || 900, 900)), now = Date.now()
-    const { error: saveErr } = await service.from('irs_tds_sessions').update({ access_token_ciphertext: await encryptText(accessToken), refresh_token_ciphertext: await encryptText(refreshToken), access_expires_at: new Date(now + seconds * 1000).toISOString(), session_expires_at: new Date(now + 60 * 60 * 1000).toISOString(), state: null, state_expires_at: null, updated_at: new Date().toISOString() }).eq('id', session.id)
+    const { error: saveErr } = await service.from('irs_tds_sessions').update({ access_token_ciphertext: await encryptText(accessToken), refresh_token_ciphertext: await encryptText(refreshToken), access_expires_at: new Date(now + seconds * 1000).toISOString(), session_expires_at: new Date(now + 60 * 60 * 1000).toISOString(), updated_at: new Date().toISOString() }).eq('id', session.id)
     if (saveErr) return html('IRS TDS connection failed', 'Authorization succeeded but the CRM could not store the short-lived session.', 500)
     return html('IRS TDS connected', 'You can close this window and return to the CRM.')
   } catch (e) { return html('IRS TDS connection failed', e instanceof Error ? e.message : 'Unexpected callback error.', 500) }
