@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import {
   PULL_PROVIDERS, loadPullProviders, getProvider, submitToProvider,
-  parseYearSpec, nameKey, namesMatch,
+  parseYearSpec, nameKey, namesMatch, requestCoverageSatisfied,
   parseTranscriptFile, storeTranscriptAnalysis,
 } from '../lib/transcriptPull'
 
@@ -222,15 +222,17 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
   async function refreshCoverage(req, justAddedId) {
     const existingIds = new Set(req.result_analysis_ids || [])
     if (justAddedId) existingIds.add(justAddedId)
-    const patch = { updated_at: new Date().toISOString(), result_analysis_ids: [...existingIds] }
-    const wanted = parseYearSpec(req.tax_years)
-    let done = false
-    if (wanted.size > 0) {
-      const { data, error } = await supabase.from('transcript_analyses').select('tax_year').eq('client_name', req.client_name)
+    const idList = [...existingIds]
+    const patch = { updated_at: new Date().toISOString(), result_analysis_ids: idList }
+    let rows = []
+    if (idList.length) {
+      const { data, error } = await supabase.from('transcript_analyses')
+        .select('id,tax_year,transcript_type')
+        .in('id', idList)
       if (error) throw new Error(`Could not verify transcript coverage: ${error.message}`)
-      const have = new Set((data || []).map(r => String(r.tax_year || '')))
-      done = [...wanted].every(y => have.has(y))
+      rows = data || []
     }
+    const done = requestCoverageSatisfied(req, rows)
     patch.status = done ? 'Completed' : 'In Progress'
     patch.completed_at = done ? new Date().toISOString() : null
     const { error: updateErr } = await supabase.from('transcript_pull_requests').update(patch).eq('id', req.id)
