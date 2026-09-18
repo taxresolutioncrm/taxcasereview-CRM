@@ -222,7 +222,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         client_name:caseRecord.client_name,
         client_email:to,
         message:`Please review and sign the Operating Agreement for ${caseRecord.entity_name}.`,
-        pdf_attachments:[{label:'Operating Agreement',url:urlData.signedUrl}],
+        pdf_attachments:[{formType:'formacorp_operating_agreement',label:'Operating Agreement',url:urlData.signedUrl}],
         priority:'Normal',
         status:'Awaiting',
         sent_at:new Date().toISOString(),
