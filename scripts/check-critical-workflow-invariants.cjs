@@ -89,4 +89,21 @@ if (callContext.includes("if (await finalizeCallEnd({ alreadyHungUp: true }))"))
   process.exit(1)
 }
 
+requireAll('src/pages/AdminPortal.jsx', [
+  "async function deleteRecording(id)",
+  "function loadRecentCallIntoDialer(call)",
+  "onClick={()=>loadRecentCallIntoDialer(call)}",
+  "body:{ action:'delete_recording', id }",
+  "preload=\"metadata\"",
+  "Recording audio unavailable — refresh to retry secure retrieval.",
+])
+
+requireAll('supabase/functions/romylabs-phone-state/index.ts', [
+  "async function signedRecordingUrl(rec:any)",
+  "db.storage.from('voicemails').upload(path,blob",
+  "if(action==='delete_recording')",
+  "db.from('call_ai_summaries').delete()",
+  "db.from('call_recordings').delete()",
+])
+
 console.log('Critical workflow invariants: PASS')
