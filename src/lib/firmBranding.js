@@ -97,7 +97,7 @@ export async function loadFirmBranding() {
 
     const { data: s } = await supabase
       .from('settings')
-      .select('tenant_id,name,firmname,logourl,address,firmaddress,city,state,zip,phone,firmphone,email,firmemail,website,firm_fax_number,labels')
+      .select('tenant_id,name,firmname,logourl,address,firmaddress,city,state,zip,phone,firmphone,email,firmemail,website,firm_fax_number,labels,payment_provider')
       .limit(1).maybeSingle()
     if (!s) return FIRM
 
@@ -123,6 +123,7 @@ export async function loadFirmBranding() {
     FIRM.website = s.website || ''
     FIRM.fax = s.firm_fax_number || ''
     FIRM.labels = s.labels || {}
+    FIRM.paymentProvider = s.payment_provider || 'manual'
     FIRM.loaded = true
     // Cache for instant next-load — eliminates the branding flash on hard refresh
     try {
