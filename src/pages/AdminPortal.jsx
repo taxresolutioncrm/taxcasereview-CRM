@@ -487,6 +487,22 @@ function AdminDialer() {
     setRecordingsLoading(false)
   }, [])
 
+  async function deleteRecording(id) {
+    if (!window.confirm('Delete this RomyLabs call recording and its AI summary?')) return
+    const { data, error } = await supabase.functions.invoke('romylabs-phone-state', { body:{ action:'delete_recording', id } })
+    if (error || !data?.ok) {
+      window.alert(data?.error || error?.message || 'Recording could not be deleted.')
+      return
+    }
+    setRecordings(rows => rows.filter(x => x.id !== id))
+  }
+
+  function loadRecentCallIntoDialer(call) {
+    if (!call?.phone) return
+    setNumber(call.phone)
+    setTab('phone')
+  }
+
   const loadSms = useCallback(async () => {
     setSmsLoading(true)
     const {data,error}=await supabase.functions.invoke('romylabs-sms',{body:{action:'list',limit:300}})
@@ -620,11 +636,11 @@ function AdminDialer() {
         </div>
         <div style={{...S.card,marginTop:16}}>
           <div style={{padding:'13px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontSize:14,fontWeight:900,color:'#fff'}}>Recent Calls</div><div style={{fontSize:10,color:'#64748b'}}>Inbound, missed and outbound RomyLabs activity</div></div><button onClick={loadRecentCalls} style={{...S.btn('ghost'),padding:'6px 10px',fontSize:11}}>Refresh</button></div>
-          {callsLoading?<Spinner/>:recentCalls.length===0?<div style={{padding:30,textAlign:'center',color:'#475569',fontSize:12}}>No RomyLabs call activity yet.</div>:recentCalls.slice(0,30).map((call,i)=><div key={call.id} style={{padding:'10px 16px',display:'flex',alignItems:'center',gap:12,borderBottom:i<Math.min(recentCalls.length,30)-1?'1px solid rgba(99,102,241,.08)':'none'}}>
+          {callsLoading?<Spinner/>:recentCalls.length===0?<div style={{padding:30,textAlign:'center',color:'#475569',fontSize:12}}>No RomyLabs call activity yet.</div>:recentCalls.slice(0,30).map((call,i)=><div key={call.id} onClick={()=>loadRecentCallIntoDialer(call)} role={call.phone?'button':undefined} tabIndex={call.phone?0:undefined} onKeyDown={e=>{if(call.phone&&(e.key==='Enter'||e.key===' ')){e.preventDefault();loadRecentCallIntoDialer(call)}}} style={{padding:'10px 16px',display:'flex',alignItems:'center',gap:12,borderBottom:i<Math.min(recentCalls.length,30)-1?'1px solid rgba(99,102,241,.08)':'none',cursor:call.phone?'pointer':'default'}}>
             <div style={{width:30,height:30,borderRadius:9,display:'grid',placeItems:'center',background:call.direction==='Inbound'?'rgba(16,185,129,.1)':'rgba(99,102,241,.1)'}}>{call.direction==='Inbound'?'↙':'↗'}</div>
             <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{call.name||call.phone||'RomyLabs Call'}</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>{call.phone||'—'} · {call.created_at?new Date(call.created_at).toLocaleString():'—'}</div></div>
             <span style={{fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:999,background:String(call.status).toLowerCase()==='missed'?'rgba(239,68,68,.12)':'rgba(99,102,241,.12)',color:String(call.status).toLowerCase()==='missed'?'#fca5a5':'#a5b4fc'}}>{call.status}</span>
-            {call.phone&&<button disabled={relayStatus!=='ready'||calling} onClick={()=>callBack(call.phone,call.name)} style={{...S.btn('ghost'),padding:'4px 8px',fontSize:9,opacity:relayStatus==='ready'&&!calling?1:.45}}>Call Back</button>}
+            {call.phone&&<button disabled={relayStatus!=='ready'||calling} onClick={e=>{e.stopPropagation();callBack(call.phone,call.name)}} style={{...S.btn('ghost'),padding:'4px 8px',fontSize:9,opacity:relayStatus==='ready'&&!calling?1:.45}}>Call Back</button>}
           </div>)}
         </div>
       </>}
@@ -679,8 +695,8 @@ function AdminDialer() {
       {tab==='recordings' && <div style={{...S.card}}>
         <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',alignItems:'center',justifyContent:'space-between'}}><div><div style={{fontSize:14,fontWeight:900,color:'#fff'}}>Recordings & AI Summaries</div><div style={{fontSize:10,color:'#64748b'}}>Private RomyLabs call recordings</div></div><button onClick={loadRecordings} style={{...S.btn('ghost'),padding:'6px 10px',fontSize:11}}>Refresh</button></div>
         {recordingsLoading?<Spinner/>:recordings.length===0?<div style={{padding:30,textAlign:'center',color:'#475569',fontSize:12}}>No RomyLabs recordings yet.</div>:recordings.slice(0,30).map((rec,i)=><div key={rec.id} style={{padding:'13px 16px',borderBottom:i<Math.min(recordings.length,30)-1?'1px solid rgba(99,102,241,.08)':'none'}}>
-          <div style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{flex:1}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{rec.from_number||'Unknown'} → {rec.to_number||'RomyLabs'}</div><div style={{fontSize:10,color:'#64748b'}}>{rec.created_at?new Date(rec.created_at).toLocaleString():'—'}{rec.duration_seconds?` · ${rec.duration_seconds}s`:''}</div></div>{rec.ai?.sentiment&&<span style={{fontSize:9,fontWeight:800,padding:'3px 7px',borderRadius:999,background:'rgba(99,102,241,.12)',color:'#a5b4fc'}}>{rec.ai.sentiment}</span>}</div>
-          {rec.recording_url&&<audio controls src={rec.recording_url} style={{width:'100%',height:30,marginTop:9}}/>}{rec.ai?.summary&&<div style={{marginTop:8,fontSize:11,color:'#94a3b8',lineHeight:1.55}}><strong style={{color:'#cbd5e1'}}>Summary:</strong> {rec.ai.summary}</div>}{rec.ai?.next_steps&&<div style={{marginTop:5,fontSize:11,color:'#64748b'}}><strong style={{color:'#94a3b8'}}>Next:</strong> {rec.ai.next_steps}</div>}{rec.ai?.transcript&&<details style={{marginTop:8}}><summary style={{cursor:'pointer',fontSize:10,fontWeight:800,color:'#6366f1'}}>View transcript</summary><div style={{marginTop:6,padding:'8px 10px',borderRadius:7,background:'rgba(255,255,255,.025)',fontSize:10,color:'#64748b',lineHeight:1.55,whiteSpace:'pre-wrap'}}>{rec.ai.transcript}</div></details>}
+          <div style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{flex:1}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{rec.from_number||'RomyLabs call'}{rec.to_number?` → ${rec.to_number}`:''}</div><div style={{fontSize:10,color:'#64748b'}}>{rec.created_at?new Date(rec.created_at).toLocaleString():'—'}{rec.duration_seconds?` · ${rec.duration_seconds}s`:''}</div></div>{rec.ai?.sentiment&&<span style={{fontSize:9,fontWeight:800,padding:'3px 7px',borderRadius:999,background:'rgba(99,102,241,.12)',color:'#a5b4fc'}}>{rec.ai.sentiment}</span>}<button onClick={()=>deleteRecording(rec.id)} style={{...S.btn('danger'),fontSize:9,padding:'4px 8px'}}>Delete</button></div>
+          {rec.recording_url?<audio controls preload="metadata" src={rec.recording_url} style={{width:'100%',height:30,marginTop:9}}/>:<div style={{marginTop:9,fontSize:10,color:'#f59e0b'}}>Recording audio unavailable — refresh to retry secure retrieval.</div>}{rec.ai?.summary&&<div style={{marginTop:8,fontSize:11,color:'#94a3b8',lineHeight:1.55}}><strong style={{color:'#cbd5e1'}}>Summary:</strong> {rec.ai.summary}</div>}{rec.ai?.next_steps&&<div style={{marginTop:5,fontSize:11,color:'#64748b'}}><strong style={{color:'#94a3b8'}}>Next:</strong> {rec.ai.next_steps}</div>}{rec.ai?.transcript&&<details style={{marginTop:8}}><summary style={{cursor:'pointer',fontSize:10,fontWeight:800,color:'#6366f1'}}>View transcript</summary><div style={{marginTop:6,padding:'8px 10px',borderRadius:7,background:'rgba(255,255,255,.025)',fontSize:10,color:'#64748b',lineHeight:1.55,whiteSpace:'pre-wrap'}}>{rec.ai.transcript}</div></details>}
         </div>)}
       </div>}
 

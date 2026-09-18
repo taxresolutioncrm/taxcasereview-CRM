@@ -73,4 +73,37 @@ requireAll('src/lib/i18n.js', [
   "'faltan $1 d'",
 ])
 
+const callContext = requireAll('src/context/CallContext.jsx', [
+  "const legRecoveryPendingRef = useRef(false)",
+  "const CALL_SESSION_KEY = phoneContext === 'romylabs' ? 'romylabs_active_call_v1' : 'taxres_active_call_v1'",
+  "async function providerCallStillActive()",
+  "function markBrowserLegRecovery(reason)",
+  "async function recoverBrowserLeg(clientOverride = null)",
+  "markBrowserLegRecovery('signalwire.socket.close')",
+  "markBrowserLegRecovery('blade.disconnect')",
+  "Connection interrupted — reconnecting active call…",
+  "finalizeCallEnd({ alreadyHungUp: true, skipConferenceKill: true })",
+])
+if (callContext.includes("if (await finalizeCallEnd({ alreadyHungUp: true }))")) {
+  console.error('ERROR: browser/provider terminal events can still kill the live conference without provider-state verification.')
+  process.exit(1)
+}
+
+requireAll('src/pages/AdminPortal.jsx', [
+  "async function deleteRecording(id)",
+  "function loadRecentCallIntoDialer(call)",
+  "onClick={()=>loadRecentCallIntoDialer(call)}",
+  "body:{ action:'delete_recording', id }",
+  "preload=\"metadata\"",
+  "Recording audio unavailable — refresh to retry secure retrieval.",
+])
+
+requireAll('supabase/functions/romylabs-phone-state/index.ts', [
+  "async function signedRecordingUrl(rec:any)",
+  "db.storage.from('voicemails').upload(path,blob",
+  "if(action==='delete_recording')",
+  "db.from('call_ai_summaries').delete()",
+  "db.from('call_recordings').delete()",
+])
+
 console.log('Critical workflow invariants: PASS')

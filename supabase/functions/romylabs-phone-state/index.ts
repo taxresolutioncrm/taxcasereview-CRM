@@ -25,6 +25,57 @@ serve(async req=>{
     const action=String(body?.action||'')
     const db=createClient(URL,SERVICE)
 
+    async function romylabsSignalWireCredentials(){
+      let {data:settings}=await db.from('settings')
+        .select('sw_project_id,sw_api_token,sw_space_url')
+        .eq('tenant_id',TENANT).limit(1).maybeSingle()
+      if(!settings?.sw_project_id||!settings?.sw_api_token){
+        const fallback=await db.from('settings')
+          .select('sw_project_id,sw_api_token,sw_space_url')
+          .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a').limit(1).maybeSingle()
+        settings=fallback.data||settings
+      }
+      return settings||null
+    }
+
+    async function signedRecordingUrl(rec:any){
+      const raw=String(rec?.recording_url||'')
+      const prefix='storage://voicemails/'
+      if(raw.startsWith(prefix)){
+        const path=raw.slice(prefix.length)
+        const {data:signed,error}=await db.storage.from('voicemails').createSignedUrl(path,60*60)
+        if(error)console.error('[romylabs-phone-state] signed recording',error.message)
+        return signed?.signedUrl||''
+      }
+      if(!raw)return ''
+
+      let parsed:URL
+      try{parsed=new URL(raw)}catch{return ''}
+      if(parsed.protocol!=='https:'||!(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com')))return ''
+
+      const creds=await romylabsSignalWireCredentials()
+      if(!creds?.sw_project_id||!creds?.sw_api_token)return ''
+      const audioUrl=raw.endsWith('.mp3')?raw:`${raw}.mp3`
+      const audio=await fetch(audioUrl,{headers:{Authorization:'Basic '+btoa(`${creds.sw_project_id}:${creds.sw_api_token}`)}})
+      if(!audio.ok){
+        console.error('[romylabs-phone-state] provider recording fetch',audio.status,rec?.id)
+        return ''
+      }
+
+      const safeSid=String(rec?.call_sid||rec?.id||crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g,'').slice(0,120)
+      const path=`${TENANT}/call-recordings/${safeSid}.mp3`
+      const blob=await audio.arrayBuffer()
+      const {error:uploadError}=await db.storage.from('voicemails').upload(path,blob,{contentType:'audio/mpeg',upsert:true})
+      if(uploadError){
+        console.error('[romylabs-phone-state] recording migration upload',uploadError.message)
+        return ''
+      }
+      await db.from('call_recordings').update({recording_url:`storage://voicemails/${path}`})
+        .eq('tenant_id',TENANT).eq('id',rec.id)
+      const {data:signed}=await db.storage.from('voicemails').createSignedUrl(path,60*60)
+      return signed?.signedUrl||''
+    }
+
     if(action==='ringing'){
       // Provider/cXML failures can leave a row marked ringing even though the
       // physical call is already gone. Never surface those as phantom calls.
@@ -52,16 +103,51 @@ serve(async req=>{
       const bySid=new Map((summaries.data||[]).map((x:any)=>[String(x.call_sid||''),x]))
       const rows=[]
       for(const rec of recordings.data||[]){
-        let playback_url=String(rec.recording_url||'')
-        const prefix='storage://voicemails/'
-        if(playback_url.startsWith(prefix)){
-          const path=playback_url.slice(prefix.length)
-          const {data:signed}=await db.storage.from('voicemails').createSignedUrl(path,60*60)
-          playback_url=signed?.signedUrl||''
-        }
-        rows.push({...rec,recording_url:playback_url,ai:bySid.get(String(rec.call_sid||''))||null})
+        const playback_url=await signedRecordingUrl(rec)
+        rows.push({...rec,recording_url:playback_url,playback_ready:!!playback_url,ai:bySid.get(String(rec.call_sid||''))||null})
       }
       return json({ok:true,recordings:rows})
+    }
+
+    if(action==='delete_recording'){
+      const id=String(body?.id||'')
+      if(!id)return json({error:'id required'},400)
+      const {data:rec,error:findError}=await db.from('call_recordings')
+        .select('id,call_sid,recording_url').eq('tenant_id',TENANT).eq('id',id).limit(1).maybeSingle()
+      if(findError)return json({error:findError.message},500)
+      if(!rec)return json({error:'Recording not found'},404)
+
+      const raw=String(rec.recording_url||'')
+      const prefix='storage://voicemails/'
+      if(raw.startsWith(prefix)){
+        const path=raw.slice(prefix.length)
+        const {error:storageError}=await db.storage.from('voicemails').remove([path])
+        if(storageError)console.error('[romylabs-phone-state] recording storage delete',storageError.message)
+      }else if(raw){
+        try{
+          const parsed=new URL(raw)
+          if(parsed.protocol==='https:'&&(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com'))){
+            const creds=await romylabsSignalWireCredentials()
+            if(!creds?.sw_project_id||!creds?.sw_api_token){
+              return json({error:'SignalWire recording credentials unavailable; recording was not deleted.'},503)
+            }
+            const providerDelete=await fetch(raw,{
+              method:'DELETE',
+              headers:{Authorization:'Basic '+btoa(`${creds.sw_project_id}:${creds.sw_api_token}`)}
+            })
+            if(!providerDelete.ok&&providerDelete.status!==404){
+              console.error('[romylabs-phone-state] provider recording delete',providerDelete.status,id)
+              return json({error:`Provider refused recording deletion (${providerDelete.status})`},502)
+            }
+          }
+        }catch(e){console.error('[romylabs-phone-state] provider delete parse',e)}
+      }
+
+      const aiDelete=await db.from('call_ai_summaries').delete().eq('tenant_id',TENANT).eq('call_sid',rec.call_sid)
+      if(aiDelete.error)return json({error:aiDelete.error.message},500)
+      const recordingDelete=await db.from('call_recordings').delete().eq('tenant_id',TENANT).eq('id',id)
+      if(recordingDelete.error)return json({error:recordingDelete.error.message},500)
+      return json({ok:true,id})
     }
 
     if(action==='recent_calls'){
