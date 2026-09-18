@@ -123,6 +123,8 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     } else {
       const seed={
         case_id:caseRecord.id,
+        service_plan:'Launch',
+        selected_services:['State Filing','EIN','Operating Agreement','Banking','Compliance'],
         ein_status:caseRecord.ein?'Received':'Not Started',
         ein_responsible_party_name:caseRecord.authorized_representative || caseRecord.client_name || '',
         operating_agreement_status:'Not Started',
