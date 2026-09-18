@@ -7,6 +7,7 @@ export default function TDSSessionPresence() {
     sessionActive: false,
     expiresAt: null,
     organizationName: null,
+    authorizationError: null,
   })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -25,10 +26,11 @@ export default function TDSSessionPresence() {
         sessionActive: Boolean(data?.sessionActive),
         expiresAt: data?.expiresAt || null,
         organizationName: data?.organizationName || null,
+        authorizationError: data?.authorizationError || null,
       })
       setError('')
     } catch (e) {
-      setStatus({ sessionSetupConfigured: false, sessionActive: false, expiresAt: null, organizationName: null })
+      setStatus({ sessionSetupConfigured: false, sessionActive: false, expiresAt: null, organizationName: null, authorizationError: null })
       setError(e?.message || 'Could not check your IRS TDS session.')
     } finally {
       if (showSpinner) setLoading(false)
@@ -57,12 +59,21 @@ export default function TDSSessionPresence() {
 
       const deadline = Date.now() + 10 * 60 * 1000
       const poll = setInterval(async () => {
+        await loadStatus(false)
         try {
           const { data: check } = await supabase.functions.invoke('transcript-pull', { body: { action: 'capabilities' } })
           if (check?.sessionActive || Date.now() > deadline || popup.closed) {
             clearInterval(poll)
             setBusy(false)
-            await loadStatus(false)
+            if (check?.sessionActive) {
+              setStatus({
+                sessionSetupConfigured: Boolean(check?.sessionSetupConfigured),
+                sessionActive: true,
+                expiresAt: check?.expiresAt || null,
+                organizationName: check?.organizationName || null,
+                authorizationError: check?.authorizationError || null,
+              })
+            }
           }
         } catch {
           if (Date.now() > deadline || popup.closed) {
@@ -103,7 +114,7 @@ export default function TDSSessionPresence() {
         <div style={{ flex: 1, minWidth: 240 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>🔐 IRS TDS Session</div>
           <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 4, lineHeight: 1.45 }}>
-            Sign in through IRS e-Services with ID.me and 2FA. IRS handles the credentials and organization selection; the CRM keeps only the short-lived authorized session server-side and never stores the IRS password or 2FA code.
+            Sign in through IRS e-Services with ID.me and 2FA. IRS handles the credentials and organization selection; the CRM keeps only the short-lived authorized session server-side and never stores your IRS password or 2FA code.
           </div>
         </div>
 
@@ -141,7 +152,7 @@ export default function TDSSessionPresence() {
 
       {!loading && !status.sessionSetupConfigured && !error && (
         <div style={{ marginTop: 10, fontSize: 11.5, color: '#b45309' }}>
-          ⚠ IRS ISP authorization contract is not configured on the Edge Function yet. Direct pull remains disabled; manual TDS fallback is unchanged.
+          ⚠ {status.authorizationError || 'IRS ISP authorization contract is not configured on the Edge Function yet.'} Direct pull remains disabled; manual TDS fallback is unchanged.
         </div>
       )}
 
