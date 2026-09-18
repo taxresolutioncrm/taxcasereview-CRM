@@ -10,6 +10,82 @@ const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,
 
 serve(async req=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:CORS})
+  const db=createClient(URL,SERVICE)
+
+  const b64url=(bytes:Uint8Array)=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
+  const mediaSignature=async(id:string,exp:string)=>{
+    const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(SERVICE),{name:'HMAC',hash:'SHA-256'},false,['sign'])
+    const raw=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(`${id}.${exp}`))
+    return b64url(new Uint8Array(raw))
+  }
+  const safeEqual=(a:string,b:string)=>{
+    if(a.length!==b.length)return false
+    let diff=0
+    for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i)
+    return diff===0
+  }
+  const romylabsSignalWireCredentials=async()=>{
+    let {data:settings}=await db.from('settings')
+      .select('sw_project_id,sw_api_token,sw_space_url')
+      .eq('tenant_id',TENANT).limit(1).maybeSingle()
+    if(!settings?.sw_project_id||!settings?.sw_api_token){
+      const fallback=await db.from('settings')
+        .select('sw_project_id,sw_api_token,sw_space_url')
+        .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a').limit(1).maybeSingle()
+      settings=fallback.data||settings
+    }
+    return settings||null
+  }
+
+  if(req.method==='GET'){
+    const url=new URL(req.url)
+    const id=String(url.searchParams.get('media')||'')
+    const exp=String(url.searchParams.get('exp')||'')
+    const sig=String(url.searchParams.get('sig')||'')
+    if(!id||!/^\d{10,13}$/.test(exp)||!sig)return json({error:'Invalid media request'},400)
+    const expMs=Number(exp)
+    if(!Number.isFinite(expMs)||Date.now()>expMs)return json({error:'Media link expired'},401)
+    const expected=await mediaSignature(id,exp)
+    if(!safeEqual(expected,sig))return json({error:'Invalid media signature'},403)
+
+    const {data:rec,error}=await db.from('call_recordings')
+      .select('id,recording_url').eq('tenant_id',TENANT).eq('id',id).limit(1).maybeSingle()
+    if(error)return json({error:error.message},500)
+    if(!rec?.recording_url)return json({error:'Recording not found'},404)
+
+    const raw=String(rec.recording_url)
+    const prefix='storage://voicemails/'
+    if(raw.startsWith(prefix)){
+      const path=raw.slice(prefix.length)
+      const {data:signed,error:signedError}=await db.storage.from('voicemails').createSignedUrl(path,60*15)
+      if(signedError||!signed?.signedUrl)return json({error:'Recording unavailable'},502)
+      return new Response(null,{status:302,headers:{...CORS,Location:signed.signedUrl,'Cache-Control':'private, no-store'}})
+    }
+
+    let parsed:URL
+    try{parsed=new URL(raw)}catch{return json({error:'Invalid recording source'},500)}
+    if(parsed.protocol!=='https:'||!(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com')))return json({error:'Invalid recording source'},500)
+
+    const creds=await romylabsSignalWireCredentials()
+    if(!creds?.sw_project_id||!creds?.sw_api_token)return json({error:'SignalWire recording credentials unavailable'},503)
+    const headers:Record<string,string>={Authorization:'Basic '+btoa(`${creds.sw_project_id}:${creds.sw_api_token}`)}
+    const range=req.headers.get('range')
+    if(range)headers.Range=range
+    const audioUrl=raw.endsWith('.mp3')?raw:`${raw}.mp3`
+    const audio=await fetch(audioUrl,{headers,redirect:'follow'})
+    if(!audio.ok&&audio.status!==206)return json({error:`Recording provider returned ${audio.status}`},502)
+
+    const responseHeaders=new Headers(CORS)
+    responseHeaders.set('Content-Type',audio.headers.get('content-type')||'audio/mpeg')
+    responseHeaders.set('Cache-Control','private, no-store')
+    responseHeaders.set('Accept-Ranges',audio.headers.get('accept-ranges')||'bytes')
+    for(const h of ['content-length','content-range','etag','last-modified']){
+      const v=audio.headers.get(h)
+      if(v)responseHeaders.set(h,v)
+    }
+    return new Response(audio.body,{status:audio.status,headers:responseHeaders})
+  }
+
   if(req.method!=='POST')return json({error:'Method not allowed'},405)
   try{
     const auth=req.headers.get('authorization')||''
@@ -23,23 +99,10 @@ serve(async req=>{
 
     const body=await req.json().catch(()=>({}))
     const action=String(body?.action||'')
-    const db=createClient(URL,SERVICE)
-
-    async function romylabsSignalWireCredentials(){
-      let {data:settings}=await db.from('settings')
-        .select('sw_project_id,sw_api_token,sw_space_url')
-        .eq('tenant_id',TENANT).limit(1).maybeSingle()
-      if(!settings?.sw_project_id||!settings?.sw_api_token){
-        const fallback=await db.from('settings')
-          .select('sw_project_id,sw_api_token,sw_space_url')
-          .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a').limit(1).maybeSingle()
-        settings=fallback.data||settings
-      }
-      return settings||null
-    }
 
     async function signedRecordingUrl(rec:any){
       const raw=String(rec?.recording_url||'')
+      if(!raw)return ''
       const prefix='storage://voicemails/'
       if(raw.startsWith(prefix)){
         const path=raw.slice(prefix.length)
@@ -47,33 +110,14 @@ serve(async req=>{
         if(error)console.error('[romylabs-phone-state] signed recording',error.message)
         return signed?.signedUrl||''
       }
-      if(!raw)return ''
 
       let parsed:URL
       try{parsed=new URL(raw)}catch{return ''}
       if(parsed.protocol!=='https:'||!(parsed.hostname==='signalwire.com'||parsed.hostname.endsWith('.signalwire.com')))return ''
 
-      const creds=await romylabsSignalWireCredentials()
-      if(!creds?.sw_project_id||!creds?.sw_api_token)return ''
-      const audioUrl=raw.endsWith('.mp3')?raw:`${raw}.mp3`
-      const audio=await fetch(audioUrl,{headers:{Authorization:'Basic '+btoa(`${creds.sw_project_id}:${creds.sw_api_token}`)}})
-      if(!audio.ok){
-        console.error('[romylabs-phone-state] provider recording fetch',audio.status,rec?.id)
-        return ''
-      }
-
-      const safeSid=String(rec?.call_sid||rec?.id||crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g,'').slice(0,120)
-      const path=`${TENANT}/call-recordings/${safeSid}.mp3`
-      const blob=await audio.arrayBuffer()
-      const {error:uploadError}=await db.storage.from('voicemails').upload(path,blob,{contentType:'audio/mpeg',upsert:true})
-      if(uploadError){
-        console.error('[romylabs-phone-state] recording migration upload',uploadError.message)
-        return ''
-      }
-      await db.from('call_recordings').update({recording_url:`storage://voicemails/${path}`})
-        .eq('tenant_id',TENANT).eq('id',rec.id)
-      const {data:signed}=await db.storage.from('voicemails').createSignedUrl(path,60*60)
-      return signed?.signedUrl||''
+      const exp=String(Date.now()+15*60*1000)
+      const sig=await mediaSignature(String(rec.id),exp)
+      return `${URL}/functions/v1/romylabs-phone-state?media=${encodeURIComponent(String(rec.id))}&exp=${exp}&sig=${encodeURIComponent(sig)}`
     }
 
     if(action==='ringing'){
