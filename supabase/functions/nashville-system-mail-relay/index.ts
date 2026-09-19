@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SECRET_KEY='nashville_system_mail_relay_v1'
 const NASHVILLE_HOST='ydrvncdedgjtcprczwpu.supabase.co'
-const ALLOWED_KINDS=new Set(['esign_request','esign_reminder','esign_signed_copy','esign_internal_notification'])
+const ALLOWED_KINDS=new Set(['esign_request','esign_reminder','esign_signed_copy','esign_internal_notification','employee_access'])
 const safe=(v:any)=>String(v??'').replace(/[\r\n]+/g,' ').trim()
 const enc=(s:string)=>!s||/^[\x00-\x7F]*$/.test(s)?s:(()=>{const u=new TextEncoder().encode(s);let b='';u.forEach(x=>b+=String.fromCharCode(x));return '=?UTF-8?B?'+btoa(b)+'?='})()
 const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}})

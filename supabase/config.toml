@@ -233,3 +233,7 @@ verify_jwt = false
 
 [functions.nashville-esign-mail]
 verify_jwt = false
+
+[functions.employee-access-link]
+# Validates Nashville admin/session or enumeration-safe self reset internally.
+verify_jwt = false
