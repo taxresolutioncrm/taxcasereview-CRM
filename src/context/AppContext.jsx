@@ -154,6 +154,11 @@ export function AppProvider({ children }) {
     loadFirmBranding()   // fills FIRM for email/document templates
     supabase.auth.getSession().then(({ data }) => {
       if (data.session?.user) {
+        const inviteSetup = new URLSearchParams(window.location.search).get('invite') === '1'
+        if (inviteSetup) {
+          window.location.href = '/settings?reset_password=1'
+          return
+        }
         setUser(data.session.user)
         loadRole(data.session.user.email)
       }
@@ -163,6 +168,10 @@ export function AppProvider({ children }) {
       setUser(session?.user ?? null)
       if (_event === 'PASSWORD_RECOVERY' && session?.user) {
         if (window.location.pathname === '/family-password') return
+        window.location.href = '/settings?reset_password=1'
+        return
+      }
+      if (_event === 'SIGNED_IN' && session?.user && new URLSearchParams(window.location.search).get('invite') === '1') {
         window.location.href = '/settings?reset_password=1'
         return
       }
