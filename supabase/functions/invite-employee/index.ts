@@ -62,7 +62,13 @@ serve(async(req)=>{
     if(tenantErr||!tenantId) return json({error:'No active office context'},403)
 
     const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}})
-    const {data:isPlatformAdmin}=await caller.rpc('_is_platform_admin').catch(()=>({data:false}))
+    let isPlatformAdmin=false
+    try {
+      const {data:platformAdmin,error:platformErr}=await caller.rpc('_is_platform_admin')
+      if(!platformErr) isPlatformAdmin=!!platformAdmin
+    } catch (_) {
+      isPlatformAdmin=false
+    }
     const {data:callerEmployee}=await admin.from('employees')
       .select('id,status,perm_hr,role,access')
       .eq('tenant_id',tenantId)
