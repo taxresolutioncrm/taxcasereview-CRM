@@ -58,6 +58,17 @@ for (const route of routes) {
   if (manualId) assert(new RegExp(`id:\\s*['"]${manualId}['"]`).test(manual), `Manual section ${manualId} required for ${route} is missing`)
 }
 
+const familyScopeSignals = [
+  ['TaxRes family scope', /entire TaxRes family/],
+  ['TCR scope', /Tax Case Review/],
+  ['Nashville scope', /Nashville Tax Solutions/],
+  ['CloudCPA scope', /CloudCPA/],
+  ['Demo scope', /Demo/],
+  ['future office scope', /future TaxRes-family offices/],
+]
+for (const [name,re] of familyScopeSignals) assert(re.test(manual), `CRM Manual is not scoped across the full TaxRes family: ${name}`)
+assert(!/complete TaxRes CRM platform as configured for Tax Case Review and Nashville Tax Solutions/.test(manual), 'CRM Manual still contains the obsolete TCR/Nashville-only scope statement')
+
 const requiredWorkflowSignals = [
   ['employee CRM invitation', /Send the CRM invitation/],
   ['employee password setup/recovery', /TaxRes family password setup flow/],
@@ -77,4 +88,4 @@ if (failures.length) {
   for (const f of failures) console.error(' - '+f)
   process.exit(1)
 }
-console.log('✓ CRM manual synchronization check PASS')
+console.log('✓ TaxRes-family CRM manual synchronization check PASS')
