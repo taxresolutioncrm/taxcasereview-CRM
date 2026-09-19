@@ -74,6 +74,7 @@ export default function TimeClock() {
   const [historyHours,setHistoryHours] = useState(0)
   const [historyPage,setHistoryPage] = useState(0)
   const [historyLoading,setHistoryLoading] = useState(false)
+  const [historyVersion,setHistoryVersion] = useState(0)
   const HISTORY_PAGE_SIZE = 250
   const timerRef = useRef(null)
 
@@ -86,12 +87,12 @@ export default function TimeClock() {
         clearTimeout(reloadTimer)
         reloadTimer = setTimeout(() => {
           load()
-          if (activeTab === 'history') loadHistory(historyPage)
+          setHistoryVersion(v=>v+1)
         }, 250)
       })
       .subscribe()
     return () => { clearInterval(timerRef.current); clearTimeout(reloadTimer); supabase.removeChannel(ch) }
-  }, [activeTab,historyPage])
+  }, [])
 
   async function load() {
     const todayKey = new Date().toISOString().slice(0,10)
@@ -152,6 +153,11 @@ export default function TimeClock() {
     const t=setTimeout(()=>{ setHistoryPage(0); loadHistory(0) },200)
     return ()=>clearTimeout(t)
   }, [activeTab,filterEmp,filterWeek,search])
+
+  useEffect(() => {
+    if (!historyVersion || !isPrivileged || activeTab !== 'history') return
+    loadHistory(historyPage)
+  }, [historyVersion])
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3500) }
   function fld(k, v) { setForm(f => ({ ...f, [k]: v })) }
