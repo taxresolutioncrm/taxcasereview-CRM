@@ -30,6 +30,7 @@ const FL_FIELDS = {
   fl_submission_method:'sunbiz_online', fl_tracking_number:'', fl_pin:'',
   fl_submitted_at:null, fl_decision_at:null, fl_rejection_reason:'',
   fl_confirmation_url:'', fl_state_fee:125,
+  fl_incorporator:'', fl_authorized_shares:1, fl_officers_directors:'',
   formation_funds_status:'unpaid', formation_payment_reference:'', formation_payment_intent_id:'',
   state_disbursement_status:'not_paid', state_disbursement_reference:'', state_disbursed_at:null,
 }
@@ -71,34 +72,48 @@ function isFloridaLlc(v = {}) {
   return v.state === 'FL' && (v.entity_type === 'LLC' || v.entity_type === 'Professional LLC (PLLC)')
 }
 
+function isFloridaProfitCorp(v = {}) {
+  return v.state === 'FL' && v.entity_type === 'C-Corp'
+}
+
+function isFloridaDirectFormation(v = {}) {
+  return isFloridaLlc(v) || isFloridaProfitCorp(v)
+}
+
 function validEmail(v) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim())
 }
 
 function floridaMissing(v = {}) {
-  if (!isFloridaLlc(v)) return []
+  if (!isFloridaDirectFormation(v)) return []
   const missing = []
   if (!String(v.entity_name || '').trim()) missing.push('Entity name')
   if (!String(v.principal_address || '').trim()) missing.push('Principal street address')
   if (!String(v.registered_agent || '').trim()) missing.push('Registered agent')
   if (!String(v.registered_agent_address || '').trim()) missing.push('Registered agent Florida street address')
-  if (!String(v.authorized_representative || '').trim()) missing.push('Authorized representative / signer')
   if (!validEmail(v.correspondence_email)) missing.push('Valid correspondence email')
   if (!v.registered_agent_accepted) missing.push('Registered-agent acceptance confirmation')
-  if (v.entity_type === 'Professional LLC (PLLC)' && !String(v.business_purpose || '').trim()) missing.push('Specific professional purpose')
+  if (isFloridaProfitCorp(v)) {
+    if (!String(v.fl_incorporator || '').trim()) missing.push('Incorporator')
+    if (!(Number(v.fl_authorized_shares) >= 1)) missing.push('At least 1 authorized share')
+  } else {
+    if (!String(v.authorized_representative || '').trim()) missing.push('Authorized representative / signer')
+    if (v.entity_type === 'Professional LLC (PLLC)' && !String(v.business_purpose || '').trim()) missing.push('Specific professional purpose')
+  }
   return missing
 }
 
 function floridaSubmissionMissing(v = {}) {
-  if (!isFloridaLlc(v)) return []
+  if (!isFloridaDirectFormation(v)) return []
   const missing = floridaMissing(v)
   if (!String(v.fl_registered_agent_signature || '').trim()) missing.push('Registered-agent typed signature')
-  if (!String(v.fl_authorized_representative_signature || '').trim()) missing.push('Authorized-representative typed signature')
+  if (!String(v.fl_authorized_representative_signature || '').trim()) missing.push(isFloridaProfitCorp(v) ? 'Incorporator typed signature' : 'Authorized-representative typed signature')
   if (!v.fl_filing_authorized) missing.push('Filing authorization')
   return missing
 }
 
 function floridaStateFee(v = {}) {
+  if (isFloridaProfitCorp(v)) return 70 + (v.fl_certificate_of_status ? 8.75 : 0) + (v.fl_certified_copy ? 8.75 : 0)
   return 125 + (v.fl_certificate_of_status ? 5 : 0) + (v.fl_certified_copy ? 30 : 0)
 }
 
@@ -108,7 +123,8 @@ function flStatusIndex(v = {}) {
 }
 
 function FloridaFilingFields({ value, onChange }) {
-  if (!isFloridaLlc(value)) return null
+  if (!isFloridaDirectFormation(value)) return null
+  const corp = isFloridaProfitCorp(value)
   return (
     <div className="card" style={{padding:'12px 14px',margin:'10px 0',background:'var(--s2)'}}>
       <div className="stitle" style={{marginBottom:8}}>☀️ Florida Filing Details</div>
@@ -124,7 +140,19 @@ function FloridaFilingFields({ value, onChange }) {
       <div className="field"><label>Registered Agent Florida Street Address *</label>
         <input value={value.registered_agent_address || ''} onChange={e=>onChange('registered_agent_address',e.target.value)} placeholder="Florida street address — no P.O. Box"/>
       </div>
-      <div className="fg2">
+      {corp ? <>
+        <div className="fg2">
+          <div className="field"><label>Incorporator *</label>
+            <input value={value.fl_incorporator || ''} onChange={e=>onChange('fl_incorporator',e.target.value)} placeholder="Person signing the Articles"/>
+          </div>
+          <div className="field"><label>Authorized Shares *</label>
+            <input type="number" min="1" step="1" value={value.fl_authorized_shares || 1} onChange={e=>onChange('fl_authorized_shares',Math.max(1,Number(e.target.value)||1))}/>
+          </div>
+        </div>
+        <div className="field"><label>Initial Officers / Directors (optional)</label>
+          <textarea rows={2} value={value.fl_officers_directors || ''} onChange={e=>onChange('fl_officers_directors',e.target.value)} placeholder="Name, title, address — one per line"/>
+        </div>
+      </> : <div className="fg2">
         <div className="field"><label>Authorized Representative / Signer *</label>
           <input value={value.authorized_representative || ''} onChange={e=>onChange('authorized_representative',e.target.value)} placeholder="Person who will sign/file"/>
         </div>
@@ -134,7 +162,7 @@ function FloridaFilingFields({ value, onChange }) {
             <option value="MGR">MGR — Manager</option>
           </select>
         </div>
-      </div>
+      </div>}
       <div className="fg2">
         <div className="field"><label>Correspondence Email *</label>
           <input type="email" value={value.correspondence_email || ''} onChange={e=>onChange('correspondence_email',e.target.value)} placeholder="Filing confirmation email"/>
@@ -153,22 +181,22 @@ function FloridaFilingFields({ value, onChange }) {
         <div className="field"><label>Registered Agent Typed Signature *</label>
           <input value={value.fl_registered_agent_signature || ''} onChange={e=>onChange('fl_registered_agent_signature',e.target.value)} placeholder="Type registered agent's legal name"/>
         </div>
-        <div className="field"><label>Authorized Representative Typed Signature *</label>
-          <input value={value.fl_authorized_representative_signature || ''} onChange={e=>onChange('fl_authorized_representative_signature',e.target.value)} placeholder="Type authorized representative's legal name"/>
+        <div className="field"><label>{corp ? 'Incorporator Typed Signature *' : 'Authorized Representative Typed Signature *'}</label>
+          <input value={value.fl_authorized_representative_signature || ''} onChange={e=>onChange('fl_authorized_representative_signature',e.target.value)} placeholder={corp ? "Type incorporator's legal name" : "Type authorized representative's legal name"}/>
         </div>
       </div>
       <div className="fg2">
         <div className="field">
-          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certificate_of_status} onChange={e=>onChange('fl_certificate_of_status',e.target.checked)} style={{width:'auto'}}/> Certificate of Status (+$5)</label>
+          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certificate_of_status} onChange={e=>onChange('fl_certificate_of_status',e.target.checked)} style={{width:'auto'}}/> Certificate of Status (+{corp ? '$8.75' : '$5'})</label>
         </div>
         <div className="field">
-          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certified_copy} onChange={e=>onChange('fl_certified_copy',e.target.checked)} style={{width:'auto'}}/> Certified Copy (+$30)</label>
+          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certified_copy} onChange={e=>onChange('fl_certified_copy',e.target.checked)} style={{width:'auto'}}/> Certified Copy (+{corp ? '$8.75' : '$30'})</label>
         </div>
       </div>
       <div className="field" style={{marginBottom:0}}>
         <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',lineHeight:1.4}}>
           <input type="checkbox" checked={!!value.fl_filing_authorized} onChange={e=>onChange('fl_filing_authorized',e.target.checked)} style={{width:'auto',marginTop:2}}/>
-          <span>I authorize this office to prepare and submit the Florida LLC filing using the information above. I understand the filing becomes a public record and that typed signatures may be used only with the signer's permission.</span>
+          <span>I authorize this office to prepare and submit this Florida formation filing using the information above. I understand the filing becomes a public record and that typed signatures may be used only with the signer's permission.</span>
         </label>
       </div>
     </div>
@@ -358,6 +386,8 @@ export default function FormaCorp() {
       registered_agent_address:wForm.registered_agent_address || '',
       authorized_representative:wForm.authorized_representative || '',
       authorized_representative_title:wForm.authorized_representative_title || 'AR',
+      fl_incorporator:wForm.fl_incorporator || '', fl_authorized_shares:Number(wForm.fl_authorized_shares||1),
+      fl_officers_directors:wForm.fl_officers_directors || '',
       correspondence_email:wForm.correspondence_email || '', effective_date:wForm.effective_date || '',
       registered_agent_accepted:!!wForm.registered_agent_accepted,
       fl_registered_agent_signature:wForm.fl_registered_agent_signature || '',
@@ -367,7 +397,7 @@ export default function FormaCorp() {
       fl_certificate_of_status:!!wForm.fl_certificate_of_status,
       fl_certified_copy:!!wForm.fl_certified_copy,
       fl_filing_status:'Draft', fl_payment_status:'unpaid', fl_submission_method:'sunbiz_online',
-      fl_state_fee:floridaStateFee(wForm),
+      fl_state_fee:isFloridaDirectFormation(wForm) ? floridaStateFee(wForm) : fee,
       stage:'Consultation', fee: isFloridaLlc(wForm) ? floridaStateFee(wForm) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
     }
     const { data, error } = await supabase.from('formacorp').insert([payload]).select().single()
@@ -482,7 +512,7 @@ export default function FormaCorp() {
   }
 
   async function startNativeFormation(c) {
-    if (isFloridaLlc(c)) {
+    if (isFloridaDirectFormation(c)) {
       const missing = floridaSubmissionMissing(c)
       if (missing.length) { openFloridaEdit(c, missing); return }
       const ok = await queueFloridaFiling(c, 'prepaid_fax')
@@ -618,7 +648,7 @@ export default function FormaCorp() {
   async function updateStage(id, stage) {
     const c = cases.find(x=>x.id===id) || detail
     const target = STAGES.indexOf(stage)
-    if (c && isFloridaLlc(c) && target >= STAGES.indexOf('State Filing')) {
+    if (c && isFloridaDirectFormation(c) && target >= STAGES.indexOf('State Filing')) {
       const missing = floridaMissing(c)
       if (missing.length) {
         openFloridaEdit(c, missing)
@@ -626,7 +656,7 @@ export default function FormaCorp() {
       }
     }
     if (c && target >= STAGES.indexOf('EIN Application')) {
-      const stateAccepted = isFloridaLlc(c)
+      const stateAccepted = isFloridaDirectFormation(c)
         ? (c.fl_filing_status === 'Approved / Active' && !!String(c.state_file_num || '').trim())
         : !!String(c.state_file_num || c.formation_date || '').trim()
       if (!stateAccepted) {
@@ -832,8 +862,8 @@ export default function FormaCorp() {
           <div className="stitle" style={{marginBottom:10}}>Quick Links & Resources</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <button className="btn sm" onClick={()=>setDetail(c)}>🔢 Continue EIN in FormaCorp</button>
-            {!isFloridaLlc(c) && <button className="btn sm" onClick={()=>startNativeFormation(c)}>🏛️ Continue {c.state} Filing in FormaCorp</button>}
-            {isFloridaLlc(c) && <button onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:pdfBusy?'wait':'pointer'}}>{pdfBusy ? '⏳ Building…' : '📄 Generate FL Articles PDF'}</button>}
+            {!isFloridaDirectFormation(c) && <button className="btn sm" onClick={()=>startNativeFormation(c)}>🏛️ Continue {c.state} Filing in FormaCorp</button>}
+            {isFloridaDirectFormation(c) && <button onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:pdfBusy?'wait':'pointer'}}>{pdfBusy ? '⏳ Building…' : '📄 Generate FL Articles PDF'}</button>}
             {c.state === 'FL' && <button onClick={()=>setLookup({ open:true, query:c.entity_name || '', running:false, result:null })} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:'pointer'}}>🔍 Sunbiz Lookup</button>}
             <button className="btn sm" onClick={()=>setDetail(c)}>📋 Continue Entity Workflow</button>
           </div>
