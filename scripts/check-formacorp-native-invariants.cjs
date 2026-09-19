@@ -11,6 +11,7 @@ const files = [
   'supabase/migrations/20260918192500_formacorp_taxres_family_compat.sql',
   'supabase/migrations/20260919012000_formacorp_florida_corporation_fields.sql',
   'supabase/migrations/20260919053500_formacorp_state_fee_payment_audit.sql',
+  'src/pages/Manual.jsx',
 ]
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
 const failures = []
@@ -64,6 +65,19 @@ assert(/Record Rejection/.test(content), 'State rejection tracking control is mi
 assert(/Operating Agreement/.test(content), 'Operating Agreement workflow is missing')
 assert(/Bank Account Setup|Banking/.test(content), 'Banking workflow is missing')
 assert(/Compliance/.test(content), 'Compliance workflow is missing')
+
+assert(/id:\s*'formacorp'/.test(content), 'CRM Manual is missing the dedicated FormaCorp section')
+assert(/A-to-Z business formation/.test(content), 'CRM Manual is missing the FormaCorp A-to-Z workflow')
+assert(/Pay Government Filing Amount/.test(content), 'CRM Manual is missing in-CRM government filing payment instructions')
+assert(/Submit via Prepaid Sunbiz Fax/.test(content), 'CRM Manual is missing the prepaid Sunbiz submission instructions')
+assert(/Government funds collected from the client inside FormaCorp/.test(content), 'CRM Manual is missing received-vs-remitted filing-funds guidance')
+assert(/Record approval only after Florida accepts the filing/.test(content), 'CRM Manual is missing the Florida approval gate')
+assert(/Company Lifecycle → EIN/.test(content), 'CRM Manual is missing the EIN lifecycle instructions')
+assert(/LLC \/ PLLC → Operating Agreement/.test(content), 'CRM Manual is missing LLC governing-document instructions')
+assert(/Corporation → Corporate Bylaws/.test(content), 'CRM Manual is missing corporation bylaws instructions')
+assert(/Open Company Lifecycle → Banking/.test(content), 'CRM Manual is missing business-banking instructions')
+assert(/Open Compliance/.test(content), 'CRM Manual is missing post-formation compliance instructions')
+assert(/manual must be updated in the same release whenever the workflow changes/.test(content), 'CRM Manual update policy is missing')
 
 if(failures.length){
   console.error('FormaCorp native invariant check FAILED:')
