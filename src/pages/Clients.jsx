@@ -314,11 +314,16 @@ function InlineEsignForm({ client, onClose, showToast }) {
       try{
         const path=`esign-custom/${(client?.name||'client').replace(/[^A-Za-z0-9 _-]/g,'')}/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
-        if(!upErr){
-          const{data:u}=await supabase.storage.from('documents').createSignedUrl(path, 3600)
-          pdfAttachments=[{formType:'custom',label:customFile.name,url:u?.signedUrl||null}]
-        }
-      }catch(e){console.error('custom upload:',e)}
+        if(upErr) throw upErr
+        const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path, 3600)
+        if(signErr || !u?.signedUrl) throw signErr || new Error('Could not create secure document link')
+        pdfAttachments=[{formType:'custom',label:customFile.name,url:u.signedUrl,storage_path:path}]
+      }catch(e){
+        console.error('custom upload:',e)
+        setSaving(false)
+        showToast('Custom document upload failed: '+(e?.message||'Unknown upload error'),'err')
+        return
+      }
     }
     const { data, error } = await supabase.from('esigns').insert([{
       doc_type: docType, client_name: client?.name, client_email: client?.email||'', client_phone: client?.phone||'',
@@ -1615,12 +1620,13 @@ export default function Clients() {
       const path = `docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
       if (upErr) throw new Error(upErr.message)
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      if (signedUrlErr || !urlData?.signedUrl) throw new Error(signedUrlErr?.message || 'Could not create secure State POA link')
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
         doc_type: `State POA — ${formDef.state} (${formDef.num})`,
         client_name: client.name, client_email: client.email||'', client_phone: client.phone||'',
         message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${FIRM.name || 'Tax Case Review'} to represent you before the ${formDef.state} tax authority.`,
-        pdf_attachments: [{ formType:'state_poa', label:`${formDef.state} POA — ${formDef.label}`, url:urlData?.signedUrl || '' }],
+        pdf_attachments: [{ formType:'state_poa', label:`${formDef.state} POA — ${formDef.label}`, url:urlData.signedUrl, storage_path:path }],
         priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
