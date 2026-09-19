@@ -449,6 +449,63 @@ serve(async (req) => {
     let q = admin.from('settings').select('*'); if (tenant_id) q = q.eq('tenant_id', tenant_id); else q = q.limit(1)
     const { data: ts } = await q.maybeSingle()
 
+    // TaxRes-family employee invite/recovery mail must not be sent through the
+    // recipient employee's own connected Gmail mailbox. Gmail self-delivery can
+    // remain only in Sent, which makes a valid access message look missing.
+    // Use the proven TaxRes Stalwart transport as the system sender instead.
+    if (authenticated && body.kind === 'employee_access') {
+      const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product', {
+        p_product_key: 'taxres_crm',
+      })
+      if (!vaultTransport?.ok) {
+        return new Response(JSON.stringify({ error:'TaxRes employee-access mail transport unavailable' }), {
+          status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+      const transport = {
+        host:safe(vaultTransport.host || 'mail.taxrescrm.net'),
+        username:safe(vaultTransport.username),
+        password:String(vaultTransport.password || ''),
+        fromAddress:safe(vaultTransport.from_address || vaultTransport.username).toLowerCase(),
+      }
+      if (!transport.username || !transport.password || !transport.fromAddress) {
+        return new Response(JSON.stringify({ error:'TaxRes employee-access mail credential incomplete' }), {
+          status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+
+      const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x).toLowerCase()).filter(Boolean).slice(0,25)
+      if (!recipients.length) {
+        return new Response(JSON.stringify({ error:'Employee-access recipient missing' }), {
+          status:422, headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+      const replyTo=safe(from_email || ts?.email || ts?.firmemail || transport.fromAddress).toLowerCase()
+      const submissions:any[]=[]
+      for (const recipient of recipients) {
+        const result=await sendViaStalwartJmap({
+          host:transport.host,
+          username:transport.username,
+          password:transport.password,
+          fromAddress:transport.fromAddress,
+          replyTo,
+          fromName:safe(from_name || ts?.name || ts?.firmname || 'TaxRes CRM'),
+          to:recipient,
+          subject:safe(subject),
+          html:html ? String(html) : undefined,
+          text:text ? String(text) : undefined,
+        })
+        submissions.push(result.submissionId)
+      }
+      return new Response(JSON.stringify({
+        success:true,
+        via:'taxres_stalwart_employee_access',
+        from:transport.fromAddress,
+        reply_to:replyTo,
+        submissions,
+      }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+    }
+
     // Admin Portal office e-sign requests must use the exact product SMTP identity.
     // Never fall back to the first Gmail OAuth mailbox for contracts.
     const looksLikeOfficeEsign =

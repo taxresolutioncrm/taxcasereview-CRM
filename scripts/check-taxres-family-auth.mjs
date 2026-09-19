@@ -13,6 +13,7 @@ const migration=read('supabase/migrations/20260918221000_taxres_family_sso.sql')
 const config=read('supabase/config.toml')
 const employees=read('src/pages/Employees.jsx')
 const inviteEmployee=read('supabase/functions/invite-employee/index.ts')
+const sendEmail=read('supabase/functions/send-email/index.ts')
 
 const checks=[
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
@@ -36,6 +37,8 @@ const checks=[
   ['platform admin invite path remains tenant scoped',inviteEmployee.includes("rpc('_is_platform_admin')")&&inviteEmployee.includes("rpc('current_tenant_id')")],
   ['central employee invite uses family password flow',inviteEmployee.includes("FAMILY_PASSWORD_PAGE='https://taxrescrm.app/family-password'")&&inviteEmployee.includes('admin.auth.admin.generateLink')],
   ['central employee invite uses office CRM mail transport',inviteEmployee.includes('/functions/v1/send-email')&&inviteEmployee.includes("delivery:'email'")],
+  ['central employee invite marks employee-access system mail',inviteEmployee.includes("kind:'employee_access'")],
+  ['employee-access mail uses TaxRes Stalwart instead of recipient Gmail',sendEmail.includes("body.kind === 'employee_access'")&&sendEmail.includes("via:'taxres_stalwart_employee_access'")&&sendEmail.includes("romylabs_stalwart_transport_for_product")],
   ['central employee invite preserves secure fallback link',inviteEmployee.includes("delivery:'manual'")&&inviteEmployee.includes('access_link:accessLink')],
   ['Nashville UI uses family access bridge',employees.includes("functionName = isNashville ? 'employee-access-link' : 'invite-employee'")],
 ]

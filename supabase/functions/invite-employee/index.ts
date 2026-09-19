@@ -100,8 +100,9 @@ serve(async(req)=>{
     if(otherEmployee) return json({error:'This email already belongs to another office'},409)
 
     const {data:tenant}=await admin.from('tenants').select('tenant_code,firm_name').eq('id',tenantId).maybeSingle()
-    const {data:settings}=await admin.from('settings').select('name,firmname').eq('tenant_id',tenantId).maybeSingle()
+    const {data:settings}=await admin.from('settings').select('name,firmname,email,firmemail').eq('tenant_id',tenantId).maybeSingle()
     const firmName=safe(settings?.name||settings?.firmname||tenant?.firm_name||'TaxRes CRM')
+    const officeReplyTo=safe(settings?.email||settings?.firmemail||'')
     const existing=await findAuthUser(admin,email)
     const kind:'invite'|'recovery'=existing?'recovery':'invite'
 
@@ -128,6 +129,8 @@ serve(async(req)=>{
         to:email,
         subject:kind==='invite'?`Set up your ${firmName} CRM password`:`Reset your ${firmName} CRM password`,
         from_name:firmName,
+        from_email:officeReplyTo||undefined,
+        kind:'employee_access',
         html
       })
     })
