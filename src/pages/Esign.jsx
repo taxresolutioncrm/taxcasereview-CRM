@@ -9,6 +9,8 @@ import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
 import { FIRM } from '../lib/firmBranding'
 
+const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
+
 const DOC_TYPES = [
   'Tax Service Agreement',
   'Form 2848 — Power of Attorney',
@@ -94,9 +96,10 @@ export default function Esign() {
     setSug([]); setShowSug(false)
   }
 
-  async function sendLink(url, item) {
+  async function sendLink(url, item, esignId, kind = 'esign_request') {
     const { sendVia, clientEmail, clientPhone, clientName } = item || form
-    const msg = `Hi ${clientName}, ${FIRM.name || 'Tax Case Review'} sent you a Tax Service Agreement to sign. Please review and sign here: ${url}`
+    const docType = item?.docType || item?.doc_type || form.docType || 'Tax Service Agreement'
+    const msg = `Hi ${clientName}, ${FIRM.name || 'Tax Case Review'} sent you a ${docType} to sign. Please review and sign here: ${url}`
     let smsSent = false, emailSent = false
     if ((sendVia === 'sms' || sendVia === 'both') && clientPhone) {
       try {
@@ -108,15 +111,18 @@ export default function Esign() {
     }
     if ((sendVia === 'email' || sendVia === 'both') && clientEmail) {
       try {
-        const { error } = await supabase.functions.invoke('send-email', {
-          body: {
-            tenant_id: FIRM.tenantId || undefined,
-            to: clientEmail,
-            subject: `Tax Service Agreement — Please Sign`,
-            html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden"><tr><td style="background:linear-gradient(135deg,#1e3a8a,#1d4ed8);padding:28px 40px;text-align:center"><img src="${FIRM.logoUrl}" alt="${FIRM.name}" style="max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px" onerror="this.style.display='none'"/><div style="font-size:13px;font-weight:800;color:#93c5fd;letter-spacing:.12em;text-transform:uppercase">${FIRM.name}</div></td></tr><tr><td style="padding:36px 40px"><p style="margin:0 0 16px;font-size:15px;color:#0f172a">Dear <strong>${clientName}</strong>,</p><p style="margin:0 0 24px;font-size:14px;color:#334155;line-height:1.7">Please review and sign your <strong>Tax Service Agreement</strong>. This link is unique to you.</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 20px"><a href="${url}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px">Sign Agreement →</a></td></tr></table><p style="margin:0;font-size:11px;color:#94a3b8;text-align:center">Can't click? <a href="${url}" style="color:#3b82f6">Click here to sign</a></p></td></tr><tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 40px;text-align:center"><p style="margin:0;font-size:11px;color:#94a3b8">${FIRM.name || 'Tax Case Review'} &nbsp;·&nbsp; ${FIRM.address} &nbsp;·&nbsp; ${FIRM.phone}</p></td></tr></table></td></tr></table></body></html>`
-          }
+        const subject = kind === 'esign_reminder'
+          ? `Reminder: ${docType} — Please Sign`
+          : `${docType} — Please Sign`
+        const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden"><tr><td style="background:linear-gradient(135deg,#1e3a8a,#1d4ed8);padding:28px 40px;text-align:center"><img src="${FIRM.logoUrl}" alt="${FIRM.name}" style="max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px" onerror="this.style.display='none'"/><div style="font-size:13px;font-weight:800;color:#93c5fd;letter-spacing:.12em;text-transform:uppercase">${FIRM.name}</div></td></tr><tr><td style="padding:36px 40px"><p style="margin:0 0 16px;font-size:15px;color:#0f172a">Dear <strong>${clientName}</strong>,</p><p style="margin:0 0 24px;font-size:14px;color:#334155;line-height:1.7">Please review and sign your <strong>${docType}</strong>. This link is unique to you.</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 20px"><a href="${url}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px">Sign Document →</a></td></tr></table><p style="margin:0;font-size:11px;color:#94a3b8;text-align:center">Can't click? <a href="${url}" style="color:#3b82f6">Click here to sign</a></p></td></tr><tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 40px;text-align:center"><p style="margin:0;font-size:11px;color:#94a3b8">${FIRM.name || 'Tax Case Review'} &nbsp;·&nbsp; ${FIRM.address} &nbsp;·&nbsp; ${FIRM.phone}</p></td></tr></table></td></tr></table></body></html>`
+        const isNashville = String(FIRM.tenantId || '') === NASHVILLE_TENANT_ID
+        const { data, error } = await supabase.functions.invoke(isNashville ? 'nashville-esign-mail' : 'send-email', {
+          body: isNashville
+            ? { kind, esign_id:esignId, to:clientEmail, subject, html }
+            : { tenant_id:FIRM.tenantId || undefined, to:clientEmail, subject, html }
         })
-        if (!error) emailSent = true
+        if (!error && (!isNashville || data?.success)) emailSent = true
+        else if (error) console.error('Email delivery error:', error)
       } catch (e) { console.error('Email error:', e) }
     }
     return { smsSent, emailSent }
@@ -149,7 +155,7 @@ export default function Esign() {
     const url = signingUrl(data.id, data.signer_token)
     if (!url) { showToast('Signing token is missing — create a new signing request.'); return }
     await navigator.clipboard.writeText(url).catch(() => {})
-    const { smsSent, emailSent } = await sendLink(url, { ...form, sendVia: form.sendVia })
+    const { smsSent, emailSent } = await sendLink(url, { ...form, sendVia: form.sendVia }, data.id, 'esign_request')
     const sent = [smsSent && 'SMS', emailSent && 'Email'].filter(Boolean)
     showToast(sent.length ? `✅ Agreement sent via ${sent.join(' & ')}!` : '✅ Created — signing link copied to clipboard.')
     const actorE = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
@@ -170,7 +176,8 @@ export default function Esign() {
       clientEmail: item.client_email,
       clientPhone: item.client_phone,
       clientName: item.client_name,
-    })
+      docType: item.doc_type,
+    }, item.id, 'esign_reminder')
     const sent = [smsSent && 'SMS', emailSent && 'Email'].filter(Boolean)
     showToast(sent.length ? `✅ Resent via ${sent.join(' & ')}` : '⚠️ No email/phone on file to resend to — link copied to clipboard')
     load()
