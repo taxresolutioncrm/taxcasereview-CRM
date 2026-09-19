@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import PayrollStatCards from '../components/PayrollStatCards'
 import { useApp } from '../context/AppContext'
+import { FIRM } from '../lib/firmBranding'
 
 const BLANK = { employee:'', date:'', inTime:'', outTime:'', hours:'', notes:'' }
 
@@ -72,18 +73,30 @@ export default function TimeClock() {
   const timerRef = useRef(null)
 
   useEffect(() => {
+    let refreshTimer = null
+    const scheduleLoad = () => {
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(load, 300)
+    }
     load()
     timerRef.current = setInterval(() => setNow(new Date()), 1000)
+    const cfg = { event:'*', schema:'public', table:'timeentries', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('timeclock-admin-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'timeentries' }, load)
+      .on('postgres_changes', cfg, scheduleLoad)
       .subscribe()
-    return () => { clearInterval(timerRef.current); supabase.removeChannel(ch) }
-  }, [])
+    return () => { clearTimeout(refreshTimer); clearInterval(timerRef.current); supabase.removeChannel(ch) }
+  }, [employeeName, isPrivileged])
 
   async function load() {
+    let timeQuery = supabase.from('timeentries').select('*').order('created_at', { ascending: false })
+    timeQuery = isPrivileged
+      ? timeQuery.limit(10000)
+      : timeQuery.ilike('employee', employeeName || '').limit(60)
     const [{ data:t }, { data:e }] = await Promise.all([
-      supabase.from('timeentries').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('*').order('name'),
+      timeQuery,
+      isPrivileged
+        ? supabase.from('employees').select('*').order('name')
+        : supabase.from('employees').select('*').ilike('name', employeeName || '').limit(1),
     ])
     if (t) {
       setItems(t)
