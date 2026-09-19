@@ -516,17 +516,17 @@ export default function Chat() {
       const dmMine  = myEmpId ? 'dm_' + myEmpId : null
       const chans   = [...new Set([dmOther, ...(pair ? [pair] : []), ...(dmMine ? [dmMine] : [])])]
       const res = await supabase.from('chat_messages').select('*').in('channel', chans)
-        .order('created_at', { ascending: true }).limit(600)
+        .order('created_at', { ascending: false }).limit(600)
       error = res.error
-      data = (res.data || []).filter(m =>
+      data = (res.data || []).reverse().filter(m =>
         (pair && m.channel === pair) ||                              // new symmetric channel
         (m.channel === dmOther && m.sender === myName) ||            // legacy: I → them
         (dmMine && m.channel === dmMine && m.sender === active.name) // legacy: them → me
       )
     } else {
       const res = await supabase.from('chat_messages').select('*').eq('channel', channelId)
-        .order('created_at', { ascending: true }).limit(300)
-      data = res.data; error = res.error
+        .order('created_at', { ascending: false }).limit(300)
+      data = (res.data || []).reverse(); error = res.error
     }
     if (!silent) setLoading(false)
     if (error) {
