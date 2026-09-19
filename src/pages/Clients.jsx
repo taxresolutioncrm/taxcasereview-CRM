@@ -1197,13 +1197,13 @@ export default function Clients() {
     return !error
   }
 
-  async function loadRelated(clientName) {
+  async function loadRelated(clientName, clientId = (detail?.name === clientName ? detail?.id : null)) {
     setLoadingRel(true)
     const [casesRes,tasksRes,invoicesRes,docsRes,clientNotesRes,paymentsRes,smsRes,deadlinesRes] = await Promise.all([
       supabase.from('cases').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
       supabase.from('tasks').select('*').eq('clientName', clientName).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}),
       supabase.from('invoices').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('documents').select('*').eq('client', clientName).order('created_at',{ascending:false}),
+      (clientId ? supabase.from('documents').select('*').eq('client_id', String(clientId)) : supabase.from('documents').select('*').eq('client', clientName)).order('created_at',{ascending:false}),
       supabase.from('client_notes').select('*').eq('clientname', clientName).order('created_at',{ascending:false}),
       supabase.from('payments').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
       supabase.from('sms_messages').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
@@ -1844,7 +1844,7 @@ export default function Clients() {
     if (!opts.preserveTab) setDetailTab('overview')
     setDetail(c)
     setRelCases([]);setRelTasks([]);setRelInvoices([]);setRelSms([]);setRelDeadlines([])
-    loadRelated(c.name)
+    loadRelated(c.name, c.id)
     const qs = opts.preserveTab ? searchParams.toString() : ''
     navigate(`/clients/${c.id}${qs ? `?${qs}` : ''}`, { replace: false })
     // If opened from the list (narrow columns), upgrade to full row in background
