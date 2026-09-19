@@ -187,6 +187,9 @@ export default function Employees() {
   const [resetEmail, setResetEmail] = useState('')
   const [showReset, setShowReset]   = useState(false)
   const [resetSending, setResetSending] = useState(false)
+  const [inviteTarget, setInviteTarget] = useState(null)
+  const [inviteVia, setInviteVia] = useState('email')
+  const [inviteSending, setInviteSending] = useState(false)
   const [search, setSearch]       = useState('')
   const [empDocs, setEmpDocs]     = useState([])
   const [docUploading, setDocUploading] = useState(false)
@@ -263,7 +266,12 @@ export default function Employees() {
     setForm(f => ({ ...f, access: role, ...ROLE_PERM_DEFAULTS[role] }))
   }
 
-  async function inviteEmployeeLogin(empLike) {
+  function openInviteModal(emp) {
+    setInviteTarget(emp)
+    setInviteVia('email')
+  }
+
+  async function inviteEmployeeLogin(empLike, via = 'email') {
     const email = String(empLike?.email || '').trim().toLowerCase()
     if (!email) { showToast('Employee email is required before sending a login invite.', 'err'); return { ok:false } }
 
@@ -274,8 +282,8 @@ export default function Employees() {
     const isNashville = window.location.hostname.toLowerCase() === 'nashville.taxrescrm.app'
     const functionName = isNashville ? 'employee-access-link' : 'invite-employee'
     const body = isNashville
-      ? { mode:'admin', email }
-      : { email, name:String(empLike?.name || '').trim(), app_origin:window.location.origin }
+      ? { mode:'admin', email, via }
+      : { email, name:String(empLike?.name || '').trim(), app_origin:window.location.origin, via }
 
     const { data, error } = await supabase.functions.invoke(functionName, { body })
     if (error || data?.error) {
@@ -302,8 +310,10 @@ export default function Employees() {
     }
 
     const recovery = data?.mode === 'recovery' || data?.already_exists || data?.reset_sent
-    showToast((recovery ? 'CRM password reset email sent to ' : 'CRM login invite sent to ') + email)
-    return { ok:true, invited:!recovery, already_exists:recovery }
+    const delivered = String(data?.delivery || via)
+    const deliveryLabel = delivered === 'both' ? 'email and text' : delivered === 'text' ? 'text' : 'email'
+    showToast((recovery ? 'CRM password reset sent by ' : 'CRM login invite sent by ') + deliveryLabel + ' to ' + email)
+    return { ok:true, invited:!recovery, already_exists:recovery, delivery:delivered, warning:data?.warning || null }
   }
 
   async function save(silent = false) {
@@ -334,8 +344,10 @@ export default function Employees() {
     if (error) { setSaveError(error.message); if (!silent) showToast('Save error: ' + error.message, 'err'); return false }
     const createdNow = !editing && data?.id
     if (!silent) {
-      if (createdNow) await inviteEmployeeLogin(data)
-      else showToast('Employee updated!')
+      if (createdNow) {
+        setInviteTarget(data)
+        setInviteVia('email')
+      } else showToast('Employee updated!')
       setShowForm(false)
     } else {
       showToast('Auto-saved', 'ok')
@@ -470,7 +482,7 @@ export default function Employees() {
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑</button>
-                  {can('edit', 'employees') && <button className="btn sm" onClick={() => inviteEmployeeLogin(emp)} title="Send CRM login invite">✉️ Invite</button>}
+                  {can('edit', 'employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite">✉️ Invite</button>}
                   {can('edit', 'employees') && (
                     <>
                       <button className="btn sm" onClick={() => openEdit(emp)}>Edit</button>
@@ -933,6 +945,65 @@ export default function Employees() {
                   {saving ? 'Saving…' : (editing ? 'Save Changes' : 'Add Employee')}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shared TaxRes-family CRM login invite modal */}
+      {inviteTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1002, padding: 20
+        }} onClick={e => e.target === e.currentTarget && !inviteSending && setInviteTarget(null)}>
+          <div style={{
+            background: 'var(--sf)', border: '1px solid var(--br)',
+            borderRadius: 14, width: '100%', maxWidth: 400, padding: 28
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--tx)', marginBottom: 6 }}>🔐 Send CRM Login Invite</div>
+            <div style={{ fontSize: 13, color: 'var(--t3)', marginBottom: 18 }}>
+              Send the employee a secure CRM link to create or reset their password.
+            </div>
+            <div className="field">
+              <label>Employee Email</label>
+              <input type="email" value={inviteTarget.email || ''} readOnly />
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Send Via</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {[
+                  ['email','✉️ Email'],
+                  ['text','💬 Text'],
+                  ['both','✉️ + 💬 Both'],
+                ].map(([value,label]) => {
+                  const needsPhone = value === 'text' || value === 'both'
+                  const disabled = needsPhone && !String(inviteTarget.phone || '').trim()
+                  return (
+                    <button key={value} type="button" disabled={disabled} onClick={() => !disabled && setInviteVia(value)}
+                      className={inviteVia === value ? 'btn pri' : 'btn'}
+                      title={disabled ? 'Add an employee phone number to use text delivery' : ''}
+                      style={{ justifyContent:'center', opacity:disabled ? .45 : 1 }}>
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+              {!String(inviteTarget.phone || '').trim() && (
+                <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 7 }}>Text delivery requires a phone number on the employee profile.</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button className="btn" onClick={() => setInviteTarget(null)} disabled={inviteSending}>Cancel</button>
+              <button className="btn pri" disabled={inviteSending}
+                onClick={async () => {
+                  setInviteSending(true)
+                  const result = await inviteEmployeeLogin(inviteTarget, inviteVia)
+                  setInviteSending(false)
+                  if (result?.ok) setInviteTarget(null)
+                }}>
+                {inviteSending ? 'Sending…' : 'Send Login Invite'}
+              </button>
             </div>
           </div>
         </div>
