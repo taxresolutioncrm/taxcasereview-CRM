@@ -112,18 +112,36 @@ export async function parseTranscriptFile(file) {
 // Mirrors the insert on the Transcript Analysis tab so both paths file
 // identical rows.
 export async function storeTranscriptAnalysis(file, clientName, a) {
-  let fileUrl = null, filePath = null
-  try {
-    filePath = `transcripts/${clientName.trim().replace(/[^A-Za-z0-9 _-]/g, '')}/${Date.now()}-${file.name}`
-    const { error: upErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: true })
-    if (!upErr) {
-      const { data: u } = await supabase.storage.from('documents').createSignedUrl(filePath, 94608000)
-      fileUrl = u?.signedUrl || null
-    }
-  } catch { /* analysis still saves without the file */ }
+  const normalizedClientName = clientName.trim()
+  const { data: tenantId } = await supabase.rpc('current_tenant_id')
+  const { data: matches, error: clientErr } = await supabase.from('clients')
+    .select('id,name')
+    .eq('tenant_id', tenantId)
+    .ilike('name', normalizedClientName)
+    .limit(2)
+  if (clientErr) throw new Error(clientErr.message)
+  if ((matches || []).length !== 1) {
+    throw new Error((matches || []).length === 0
+      ? `Could not resolve "${normalizedClientName}" to a Nashville client.`
+      : `More than one Nashville client matches "${normalizedClientName}". Assign the transcript manually.`)
+  }
 
+  const client = matches[0]
+  let filePath = null
+  try {
+    const safeFile = String(file.name || 'transcript.pdf').replace(/[^A-Za-z0-9._-]+/g, '-')
+    filePath = `transcripts/${client.id}/${Date.now()}-${safeFile}`
+    const { error: upErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
+    if (upErr) throw upErr
+  } catch (e) {
+    throw new Error(`Transcript file upload failed: ${e?.message || e}`)
+  }
+
+  const storageUrl = `storage://documents/${filePath}`
   const { data, error } = await supabase.from('transcript_analyses').insert({
-    client_name: clientName.trim(),
+    tenant_id: tenantId,
+    client_id: client.id,
+    client_name: client.name,
     tax_year: a.tax_year || null,
     transcript_type: a.transcript_type || null,
     total_balance: a.account_balance ?? null,
@@ -133,24 +151,32 @@ export async function storeTranscriptAnalysis(file, clientName, a) {
     csed_estimate: a.csed_estimate || null,
     flags: a.flags || {},
     raw_analysis: a,
-    file_url: fileUrl, file_path: filePath,
+    file_url: storageUrl,
+    file_path: filePath,
   }).select('id').single()
-  if (error) throw new Error(error.message)
+  if (error) {
+    await supabase.storage.from('documents').remove([filePath]).catch(()=>{})
+    throw new Error(error.message)
+  }
 
-  // File it in the client's Documents → Transcripts folder (best-effort;
-  // the analysis stands even if this insert fails)
-  try {
-    const title = ['IRS', a.transcript_type || 'Transcript', a.tax_year || ''].filter(Boolean).join(' ')
-    const bal = a.account_balance
-    await supabase.from('documents').insert([{
-      name: title,
-      client: clientName.trim(),
-      docType: 'Transcripts',
-      notes: bal !== null && bal !== undefined ? `Auto-imported. Balance: $${Number(bal).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'Auto-imported.',
-      file_url: fileUrl, file_name: file.name, file_size: file.size,
-      created_at: new Date().toISOString(),
-    }])
-  } catch { /* noop */ }
+  // File it in the authoritative client Documents → Transcripts folder.
+  const title = ['IRS', a.transcript_type || 'Transcript', a.tax_year || ''].filter(Boolean).join(' ')
+  const bal = a.account_balance
+  const { error: docErr } = await supabase.from('documents').insert([{
+    tenant_id: tenantId,
+    client_id: client.id,
+    client: client.name,
+    clientname: client.name,
+    name: title,
+    docType: 'Transcripts',
+    notes: bal !== null && bal !== undefined ? `Auto-imported. Balance: ${Number(bal).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'Auto-imported.',
+    file_url: storageUrl,
+    storage_path: filePath,
+    file_name: file.name,
+    file_size: file.size,
+    created_at: new Date().toISOString(),
+  }])
+  if (docErr) throw new Error(`Transcript analysis saved, but client filing failed: ${docErr.message}`)
 
   return data?.id || null
 }
