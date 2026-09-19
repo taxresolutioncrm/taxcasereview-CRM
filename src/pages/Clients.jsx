@@ -767,9 +767,31 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
     if (onLogged) await onLogged(`📁 Document added: "${loggedName}" (${loggedType})`)
   }
 
+  async function openClientDoc(doc) {
+    if (!doc) return
+    const tab = window.open('about:blank','_blank')
+    if (tab) tab.opener = null
+    try {
+      let url = doc.file_url || ''
+      const storagePath = doc.storage_path
+        || (String(doc.file_url || '').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : '')
+      if (storagePath) {
+        const { data, error } = await supabase.storage.from('documents').createSignedUrl(storagePath, 3600)
+        if (error || !data?.signedUrl) throw error || new Error('Could not open document')
+        url = data.signedUrl
+      }
+      if (!url) throw new Error('Document file is unavailable')
+      if (tab) tab.location.href = url
+      else showToast('Allow pop-ups to open documents')
+    } catch (e) {
+      if (tab) tab.close()
+      showToast('Could not open document: ' + (e?.message || e))
+    }
+  }
+
   async function delDoc(doc) {
     if (doc.file_name) {
-      const path = doc.file_url?.split('/documents/')[1]
+      const path = doc.storage_path || (String(doc.file_url || '').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : doc.file_url?.split('/documents/')[1])
       if (path) await supabase.storage.from('documents').remove([path]).catch(()=>{})
     }
     const { error } = await supabase.from('documents').delete().eq('id', doc.id)
@@ -881,12 +903,12 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
                     {d.created_at?.slice(0,10)}{d.file_size?` · ${fmt(d.file_size)}`:''}
                   </div>
                   <div style={{display:'flex',gap:4}}>
-                    {d.file_url && (
-                      <a href={d.file_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
-                        style={{flex:1,padding:'3px 0',background:'var(--blue)',color:'#fff',borderRadius:5,
-                          fontSize:9,fontWeight:700,textAlign:'center',textDecoration:'none'}}>
+                    {(d.file_url || d.storage_path) && (
+                      <button type="button" onClick={e=>{e.stopPropagation();openClientDoc(d)}}
+                        style={{flex:1,padding:'3px 0',background:'var(--blue)',color:'#fff',border:0,borderRadius:5,
+                          fontSize:9,fontWeight:700,textAlign:'center',cursor:'pointer'}}>
                         View
-                      </a>
+                      </button>
                     )}
                     <button onClick={e=>{e.stopPropagation();delDoc(d)}}
                       style={{padding:'3px 6px',background:'var(--bad)',color:'#fff',border:'none',
