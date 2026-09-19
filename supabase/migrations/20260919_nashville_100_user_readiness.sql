@@ -78,3 +78,29 @@ where deleted_at is null and phone is not null;
 
 create index if not exists idx_sms_tenant_phone10_created
 on public.sms_messages(tenant_id,(right(regexp_replace(coalesce(phone,''),'\D','','g'),10)),created_at desc);
+
+-- Client workspace hot paths used heavily by many simultaneous staff.
+create index if not exists idx_cases_tenant_clientname_created
+on public.cases(tenant_id,"clientName",created_at desc);
+
+create index if not exists idx_tasks_tenant_clientname_due
+on public.tasks(tenant_id,"clientName","dueDate",created_at)
+where coalesce(deleted,false)=false;
+
+create index if not exists idx_invoices_tenant_clientname_created
+on public.invoices(tenant_id,"clientName",created_at desc);
+
+create index if not exists idx_client_notes_tenant_clientname_created
+on public.client_notes(tenant_id,clientname,created_at desc);
+
+create index if not exists idx_payments_tenant_clientname_created
+on public.payments(tenant_id,"clientName",created_at desc);
+
+create index if not exists idx_sms_tenant_clientname_created
+on public.sms_messages(tenant_id,"clientName",created_at desc);
+
+create index if not exists idx_deadlines_tenant_clientname_due
+on public.deadlines(tenant_id,"clientName","dueDate");
+
+create index if not exists idx_documents_tenant_client_created
+on public.documents(tenant_id,client,created_at desc);
