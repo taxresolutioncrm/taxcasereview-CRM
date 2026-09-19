@@ -67,12 +67,12 @@ $$;
 revoke all on function public.emp_login_auth() from public, anon;
 grant execute on function public.emp_login_auth() to authenticated;
 
-create or replace function public.dedupe_nashville_book_whip_month(p_month date)
-returns integer
-language plpgsql
-security definer
-set search_path to 'public'
-as $$
+CREATE OR REPLACE FUNCTION public.dedupe_nashville_book_whip_month(p_month date)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 declare
   v_tenant constant uuid := '489ace07-1a6b-4864-833a-4f8420568b40';
   v_month date := date_trunc('month',p_month)::date;
@@ -99,10 +99,7 @@ begin
   with keepers as (
     select
       lower(regexp_replace(trim(client_name),'\s+[0-9]{5}$','','g')) norm,
-      coalesce(
-        min(id::text) filter (where source='uploaded_csv'),
-        min(id::text)
-      ) keep_id
+      coalesce(min(id::text) filter (where source='uploaded_csv'),min(id::text)) keep_id
     from public.book_whip_rows
     where tenant_id=v_tenant and snapshot_month=v_month
     group by 1
@@ -117,9 +114,33 @@ begin
     and bw.source<>'uploaded_csv';
 
   get diagnostics v_deleted = row_count;
+
+  -- Legacy uploaded names sometimes have a suffix or formatting difference but
+  -- still map unambiguously to a CRM client. Backfill those links so the client
+  -- name remains clickable without inventing a match when more than one exists.
+  with missing as (
+    select id,lower(regexp_replace(trim(client_name),'\s+[0-9]{5}$','','g')) norm
+    from public.book_whip_rows
+    where tenant_id=v_tenant and snapshot_month=v_month and nullif(client_id,'') is null
+  ), matches as (
+    select m.id,max(c.id) matched_id
+    from missing m
+    join public.clients c
+      on c.tenant_id=v_tenant
+     and c.deleted_at is null
+     and lower(regexp_replace(trim(c.name),'\s+[0-9]{5}$','','g'))=m.norm
+    group by m.id
+    having count(c.id)=1
+  )
+  update public.book_whip_rows bw
+  set client_id=matches.matched_id,updated_at=now()
+  from matches
+  where bw.id=matches.id;
+
   return v_deleted;
 end;
-$$;
+$function$
+
 
 create or replace function public.system_refresh_nashville_book_whip()
 returns integer
