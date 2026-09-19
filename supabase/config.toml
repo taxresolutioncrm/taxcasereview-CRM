@@ -221,3 +221,9 @@ verify_jwt = false
 
 [functions.invite-employee]
 verify_jwt = true
+
+[functions.m365-oauth-start]
+verify_jwt = true
+
+[functions.m365-mail-gateway]
+verify_jwt = true
