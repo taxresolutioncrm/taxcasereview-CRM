@@ -9,6 +9,8 @@ const redeem=read('supabase/functions/taxres-family-sso-redeem/index.ts')
 const invite=read('supabase/functions/taxres-family-admin-invite/index.ts')
 const migration=read('supabase/migrations/20260918221000_taxres_family_sso.sql')
 const config=read('supabase/config.toml')
+const employees=read('src/pages/Employees.jsx')
+const inviteEmployee=read('supabase/functions/invite-employee/index.ts')
 
 const checks=[
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
