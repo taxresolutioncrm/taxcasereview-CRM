@@ -5612,14 +5612,29 @@ function CommandCenter() {
             // Build-contract compatibility marker: const taxresMetrics = taxresScopeData?.metrics || {}
             const taxresMetrics = activeTenant
               ? (selectedTaxresFeed ? normalizeTaxresMetrics(selectedTaxresFeed.metrics) : normalizeTaxresMetrics(scopedFallback))
-              : {
-                  ...(liveAggregate || normalizeTaxresMetrics(scopedFallback)),
-                  pending_esigns:Number(liveAggregate?.pending_esigns || scopedFallback.pending_esigns || 0),
-                  demos_today:Number(liveAggregate?.demos_today || scopedFallback.demos_today || 0),
-                }
-            const taxresStorageLabel = taxresMetrics.storage_files > 0
-              ? `${fmtBytes(taxresMetrics.storage_bytes)} · ${Number(taxresMetrics.storage_files).toLocaleString()} files`
-              : fmtBytes(taxresMetrics.storage_bytes)
+              : liveAggregate
+                ? {
+                    ...liveAggregate,
+                    pending_esigns:Number(scopedFallback.pending_esigns ?? liveAggregate.pending_esigns ?? 0),
+                    demos_today:Number(scopedFallback.demos_today ?? liveAggregate.demos_today ?? 0),
+                  }
+                : {
+                    clients:null,
+                    leads:null,
+                    seats:null,
+                    cases:null,
+                    pending_tasks:null,
+                    outstanding_invoices:null,
+                    pending_esigns:scopedFallback.pending_esigns ?? null,
+                    demos_today:scopedFallback.demos_today ?? null,
+                    storage_bytes:null,
+                    storage_files:null,
+                  }
+            const taxresStorageLabel = taxresMetrics.storage_bytes == null
+              ? '—'
+              : taxresMetrics.storage_files > 0
+                ? `${fmtBytes(taxresMetrics.storage_bytes)} · ${Number(taxresMetrics.storage_files).toLocaleString()} files`
+                : fmtBytes(taxresMetrics.storage_bytes)
             return (<>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18,
             background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.15)',
