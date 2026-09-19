@@ -3,14 +3,14 @@ import fs from 'node:fs'
 const adminPath = 'src/pages/AdminPortal.jsx'
 const s = fs.readFileSync(adminPath, 'utf8').replace(/\r\n/g, '\n')
 
-// This prebuild step is a verifier only. It must not rewrite current Admin Portal
-// source or require the retired registry-tenant metrics path.
 for (const forbidden of [
   'fetchCrmMetricsUrl(product.metricsUrl)',
   'fetchCrmMetricsUrl(tenantProduct.metricsUrl)',
   "if (!product?.metricsUrl)",
   "if (!key || !tenantProduct?.metricsUrl)",
   "liveAggregate || normalizeTaxresMetrics(scopedFallback)",
+  "const TAXRES_LIVE_KEYS = ['tax_case_review', 'nashville', 'cloudcpa']",
+  "setTaxresLiveData(",
 ]) {
   if (s.includes(forbidden)) throw new Error(`Unsafe/stale Admin metrics path remains: ${forbidden}`)
 }
@@ -20,17 +20,15 @@ for (const required of [
   "functions/v1/hub-proxy",
   'fetchCrmProductMetrics(crmProduct)',
   "supabase.rpc('admin_taxres_crm_scope_metrics'",
+  "supabase.rpc('admin_taxres_live_kpis'",
   'const [taxresScopeData, setTaxresScopeData] = useState(null)',
+  "metrics_source: liveRes.data.source || 'live_taxres_family'",
   'const taxresMetrics = taxresScopeData?.metrics || {}',
+  "const hasLiveTaxresMetrics = taxresScopeData?.metrics_source === 'live_taxres_family'",
   "const crmTenants = crmProduct === 'taxres_crm' ? localTaxRes : remoteOffices",
   "String(t.tenant_code || '').toUpperCase() !== 'DEMO'",
   "crmProduct==='taxres_crm' ? (taxresMetrics.clients ?? '—')",
   "crmProduct==='taxres_crm' && taxresScopeError",
-  "const missing = TAXRES_LIVE_KEYS.filter(key => !feeds[key])",
-  "const stillMissing = TAXRES_LIVE_KEYS.filter(key => !feeds[key])",
-  "throw new Error(\`Live TaxRes metrics unavailable for: \${stillMissing.join(', ')}\`)",
-  "const taxresMetrics = activeTenant",
-  ": (liveAggregate || {})",
 ]) {
   if (!s.includes(required)) throw new Error(`Admin metrics contract missing: ${required}`)
 }
@@ -64,17 +62,32 @@ for (const requiredMetricFragment of [
   }
 }
 
-const scopeMigration = fs.readFileSync('supabase/migrations/20260916193000_admin_taxres_crm_scope_metrics.sql', 'utf8')
+const scheduleMigration = fs.readFileSync('supabase/migrations/20260916193000_admin_taxres_crm_scope_metrics.sql', 'utf8')
 for (const required of [
   'admin_taxres_crm_scope_metrics',
-  "upper(coalesce(t.tenant_code,'')) not in ('ADMIN','DEMO')",
   "'pending_esigns'",
   "'demos_today'",
   "'storage_bytes'",
   "'upcoming_demos'",
   "'upcoming_deadlines'",
 ]) {
-  if (!scopeMigration.includes(required)) throw new Error(`TaxRes scoped metrics migration verification failed: ${required}`)
+  if (!scheduleMigration.includes(required)) throw new Error(`TaxRes schedule migration verification failed: ${required}`)
 }
 
-console.log('Admin CRM metrics contracts verified without mutating source')
+const liveKpiMigration = fs.readFileSync('supabase/migrations/20260919053000_authoritative_taxres_live_kpis.sql', 'utf8')
+for (const required of [
+  'admin_taxres_live_kpis',
+  "'live_taxres_family'",
+  'x-internal-cron-token',
+  'tax_case_review',
+  'nashville',
+  'cloudcpa',
+  "'storage_files'",
+  "'pending_esigns'",
+  "'demos_today'",
+  'billing_seats',
+]) {
+  if (!liveKpiMigration.includes(required)) throw new Error(`Authoritative TaxRes KPI migration verification failed: ${required}`)
+}
+
+console.log('Admin CRM server-authoritative metrics contracts verified without mutating source')
