@@ -69,34 +69,89 @@ export default function TimeClock() {
   const [openEntries, setOpenEntries] = useState({})
   const [now,        setNow]        = useState(new Date())
   const [activeTab,  setActiveTab]  = useState('today')
+  const [historyItems,setHistoryItems] = useState([])
+  const [historyTotal,setHistoryTotal] = useState(0)
+  const [historyHours,setHistoryHours] = useState(0)
+  const [historyPage,setHistoryPage] = useState(0)
+  const [historyLoading,setHistoryLoading] = useState(false)
+  const HISTORY_PAGE_SIZE = 250
   const timerRef = useRef(null)
 
   useEffect(() => {
     load()
     timerRef.current = setInterval(() => setNow(new Date()), 1000)
+    let reloadTimer = null
     const ch = supabase.channel('timeclock-admin-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'timeentries' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'timeentries' }, () => {
+        clearTimeout(reloadTimer)
+        reloadTimer = setTimeout(() => {
+          load()
+          if (activeTab === 'history') loadHistory(historyPage)
+        }, 250)
+      })
       .subscribe()
-    return () => { clearInterval(timerRef.current); supabase.removeChannel(ch) }
-  }, [])
+    return () => { clearInterval(timerRef.current); clearTimeout(reloadTimer); supabase.removeChannel(ch) }
+  }, [activeTab,historyPage])
 
   async function load() {
-    const [{ data:t }, { data:e }] = await Promise.all([
-      supabase.from('timeentries').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('*').order('name'),
+    const todayKey = new Date().toISOString().slice(0,10)
+    const [{ data:todayRows }, { data:openRows }, { data:e }] = await Promise.all([
+      supabase.from('timeentries').select('*').eq('date', todayKey).order('created_at', { ascending: false }),
+      supabase.from('timeentries').select('*').or('outTime.is.null,hours.is.null').order('created_at', { ascending: false }).limit(500),
+      supabase.from('employees').select('*').eq('status','Active').order('name'),
     ])
-    if (t) {
-      setItems(t)
-      // Collect ALL open entries (no outTime) per employee — not just today's
-      const open = {}
-      t.filter(e => !e.outTime && !e.hours).forEach(e => {
-        if (!open[e.employee]) open[e.employee] = []
-        open[e.employee].push({ id: e.id, inTime: e.inTime, date: e.date })
-      })
-      setOpenEntries(open)
+    const merged = []
+    const seen = new Set()
+    for (const row of [...(todayRows||[]), ...(openRows||[])]) {
+      if (seen.has(row.id)) continue
+      seen.add(row.id)
+      merged.push(row)
     }
+    setItems(merged)
+    const open = {}
+    ;(openRows||[]).filter(e => !e.outTime && !e.hours).forEach(e => {
+      if (!open[e.employee]) open[e.employee] = []
+      open[e.employee].push({ id:e.id,inTime:e.inTime,date:e.date })
+    })
+    setOpenEntries(open)
     if (e) setEmployees(e)
   }
+
+  function historyDateRange() {
+    const todayKey = new Date().toISOString().slice(0,10)
+    if (filterWeek === 'today') return { start: todayKey, end: todayKey }
+    if (filterWeek === 'week') {
+      const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay())
+      return { start:d.toISOString().slice(0,10), end:null }
+    }
+    if (filterWeek === 'month') return { start:todayKey.slice(0,7)+'-01', end:null }
+    return { start:null,end:null }
+  }
+
+  async function loadHistory(page = 0) {
+    if (!isPrivileged) return
+    setHistoryLoading(true)
+    const range = historyDateRange()
+    const { data, error } = await supabase.rpc('timeclock_history_page', {
+      p_employee: filterEmp === 'All' ? null : filterEmp,
+      p_start_date: range.start,
+      p_end_date: range.end,
+      p_search: search.trim() || null,
+      p_offset: page * HISTORY_PAGE_SIZE,
+      p_limit: HISTORY_PAGE_SIZE,
+    })
+    setHistoryLoading(false)
+    if (error) { showToast('History load failed: '+error.message); return }
+    setHistoryItems(Array.isArray(data?.rows) ? data.rows : [])
+    setHistoryTotal(Number(data?.total_count || 0))
+    setHistoryHours(Number(data?.total_hours || 0))
+  }
+
+  useEffect(() => {
+    if (!isPrivileged || activeTab !== 'history') return
+    const t=setTimeout(()=>{ setHistoryPage(0); loadHistory(0) },200)
+    return ()=>clearTimeout(t)
+  }, [activeTab,filterEmp,filterWeek,search])
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3500) }
   function fld(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -174,22 +229,11 @@ export default function TimeClock() {
   const empNames = employees.length > 0 ? employees.map(e => e.name) : ['Romy Cruz', 'Dana Richard', 'Yesenia Gonzalez']
   const today = new Date().toISOString().slice(0, 10)
 
-  const filtered = items.filter(e => {
-    const matchEmp = filterEmp === 'All' || e.employee === filterEmp
-    const matchSearch = !search || e.employee?.toLowerCase().includes(search.toLowerCase()) || e.notes?.toLowerCase().includes(search.toLowerCase())
-    if (filterWeek === 'all') return matchEmp && matchSearch
-    const now2 = new Date(), todayD = new Date(now2); todayD.setHours(0,0,0,0)
-    const entryD = new Date(e.date)
-    if (filterWeek === 'today') return matchEmp && matchSearch && e.date === today
-    if (filterWeek === 'week') {
-      const ws = new Date(todayD); ws.setDate(todayD.getDate() - todayD.getDay())
-      return matchEmp && matchSearch && entryD >= ws
-    }
-    if (filterWeek === 'month') return matchEmp && matchSearch && e.date?.slice(0,7) === today.slice(0,7)
-    return matchEmp && matchSearch
-  })
+  const filtered = activeTab === 'history' ? historyItems : items
 
-  const totalHours = filtered.reduce((s, e) => s + parseFloat(e.hours || 0), 0)
+  const totalHours = activeTab === 'history'
+    ? historyHours
+    : filtered.reduce((s, e) => s + parseFloat(e.hours || 0), 0)
 
   // Today's entries (for Today's Log tab)
   const todayEntries = items.filter(e => e.date === today)
@@ -431,6 +475,18 @@ export default function TimeClock() {
           </table>
         )}
       </div>
+      {historyTotal > HISTORY_PAGE_SIZE && (
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginTop:10}}>
+          <div style={{fontSize:11,color:'var(--t3)'}}>
+            Showing {historyTotal ? historyPage*HISTORY_PAGE_SIZE+1 : 0}–{Math.min((historyPage+1)*HISTORY_PAGE_SIZE,historyTotal)} of {historyTotal}
+          </div>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <button className="btn sec" disabled={historyPage===0 || historyLoading} onClick={()=>{const p=Math.max(0,historyPage-1);setHistoryPage(p);loadHistory(p)}}>← Prev</button>
+            <span style={{fontSize:11,color:'var(--t2)'}}>Page {historyPage+1} / {Math.max(1,Math.ceil(historyTotal/HISTORY_PAGE_SIZE))}</span>
+            <button className="btn sec" disabled={(historyPage+1)*HISTORY_PAGE_SIZE>=historyTotal || historyLoading} onClick={()=>{const p=historyPage+1;setHistoryPage(p);loadHistory(p)}}>Next →</button>
+          </div>
+        </div>
+      )}
       </>)}
 
       {activeTab==='history' && (<>
@@ -438,7 +494,7 @@ export default function TimeClock() {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:8, marginBottom:12 }}>
         {[
           ['Total Hours', totalHours.toFixed(1)+'h', 'var(--b2c)'],
-          ['Entries', filtered.length, 'var(--tx)'],
+          ['Entries', historyTotal, 'var(--tx)'],
           ['Active Now', Object.keys(openEntries).length, 'var(--ok)'],
           ...empNames.map(e => [e.split(' ')[0], filtered.filter(en => en.employee===e).reduce((s,en) => s+parseFloat(en.hours||0),0).toFixed(1)+'h', 'var(--t2)'])
         ].map(([l,v,c]) => (
@@ -465,7 +521,9 @@ export default function TimeClock() {
 
       {/* Table */}
       <div className="card" style={{ padding:0, overflow:'hidden' }}>
-        {filtered.length === 0 ? (
+        {historyLoading ? (
+          <div style={{ padding:24, textAlign:'center', color:'var(--t3)', fontSize:13 }}>Loading history…</div>
+        ) : filtered.length === 0 ? (
           <div style={{ padding:24, textAlign:'center', color:'var(--t3)', fontSize:13 }}>No time entries yet.</div>
         ) : (
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
