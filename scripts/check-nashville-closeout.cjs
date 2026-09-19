@@ -131,6 +131,21 @@ const checks=[
     "nashville-esign-reminders",
     "x-internal-cron-token",
   ]],
+  ['src/pages/Email.jsx',[
+    "m365-oauth-start",
+    "m365-mail-gateway",
+    "m365MessageId",
+    "message_action",
+    "Email sent via Microsoft 365",
+  ]],
+  ['supabase/functions/m365-mail-gateway/index.ts',[
+    "action==='send'",
+    "action==='reply'",
+    "action==='message_action'",
+    "m365_message_id",
+    "deleteditems",
+    "destinationId",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
