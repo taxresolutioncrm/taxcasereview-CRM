@@ -42,27 +42,45 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
   const [filterBilled, setFilterBilled] = useState('all') // 'all' | 'wip' | 'billed'
   const [clientSearch, setClientSearch] = useState(filterClient)
   const [showClientDrop, setShowClientDrop] = useState(false)
+  const [page, setPage] = useState(1)
+  const [totalRows, setTotalRows] = useState(0)
+  const [summary, setSummary] = useState({ total_records:0,total_hours:0,wip_hours:0,total_amount:0,wip_amount:0,billed_amount:0 })
+  const [activitySummary, setActivitySummary] = useState([])
+  const PAGE_SIZE = 250
 
   function fld(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: ents }, { data: acts }, { data: cls }] = await Promise.all([
-      filterClientId
-        ? supabase.from('billing_time_entries').select('*').eq('client_id', filterClientId).order('date', { ascending: false }).order('created_at', { ascending: false })
-        : filterClient
-        ? supabase.from('billing_time_entries').select('*').eq('client_name', filterClient).order('date', { ascending: false }).order('created_at', { ascending: false })
-        : supabase.from('billing_time_entries').select('*').order('date', { ascending: false }).order('created_at', { ascending: false }),
+    const from = (page - 1) * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+    let entryQuery = supabase.from('billing_time_entries').select('*', { count:'exact' })
+    if (filterClientId) entryQuery = entryQuery.eq('client_id', filterClientId)
+    else if (filterClient) entryQuery = entryQuery.eq('client_name', filterClient)
+    if (filterBilled === 'wip') entryQuery = entryQuery.eq('billed', false)
+    else if (filterBilled === 'billed') entryQuery = entryQuery.eq('billed', true)
+    entryQuery = entryQuery.order('date',{ascending:false}).order('created_at',{ascending:false}).range(from,to)
+
+    const rpcArgs = { p_client_id: filterClientId || null, p_client_name: filterClientId ? null : (filterClient || null) }
+    const [entryRes, actsRes, clsRes, sumRes, activityRes] = await Promise.all([
+      entryQuery,
       supabase.from('billing_activity_types').select('*').order('sort_order'),
       supabase.from('clients').select('id,name').order('name'),
+      supabase.rpc('billing_time_summary', rpcArgs),
+      supabase.rpc('billing_time_activity_summary', rpcArgs),
     ])
-    setEntries(ents || [])
-    setActivities(acts || [])
-    setClients(cls || [])
+    setEntries(entryRes.data || [])
+    setTotalRows(entryRes.count || 0)
+    setActivities(actsRes.data || [])
+    setClients(clsRes.data || [])
+    const s = Array.isArray(sumRes.data) ? sumRes.data[0] : sumRes.data
+    if (s) setSummary(s)
+    setActivitySummary(activityRes.data || [])
     setLoading(false)
-  }, [filterClient, filterClientId])
+  }, [filterClient, filterClientId, filterBilled, page])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { setPage(1) }, [filterClient, filterClientId, filterBilled])
 
   // Load tasks when client changes in the form
   useEffect(() => {
@@ -160,16 +178,13 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
     load()
   }
 
-  const filtered = entries.filter(e =>
-    filterBilled === 'all' ? true :
-    filterBilled === 'wip' ? !e.billed :
-    e.billed
-  )
-
-  const wipTotal    = entries.filter(e => !e.billed).reduce((s, e) => s + Number(e.amount || 0), 0)
-  const wipHours    = entries.filter(e => !e.billed).reduce((s, e) => s + Number(e.hours || 0), 0)
-  const billedTotal = entries.filter(e =>  e.billed).reduce((s, e) => s + Number(e.amount || 0), 0)
-  const totalHours  = entries.reduce((s, e) => s + Number(e.hours || 0), 0)
+  const filtered = entries
+  const wipTotal    = Number(summary?.wip_amount || 0)
+  const wipHours    = Number(summary?.wip_hours || 0)
+  const billedTotal = Number(summary?.billed_amount || 0)
+  const totalHours  = Number(summary?.total_hours || 0)
+  const totalRecords = Number(summary?.total_records || 0)
+  const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE))
 
   const clientFiltered = clients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())).slice(0, 8)
 
@@ -191,7 +206,7 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
         {[
           { label: 'WIP Amount',    value: fmt(wipTotal),    sub: fmtH(wipHours) + ' unbilled',  color: '#f59e0b' },
           { label: 'Billed',        value: fmt(billedTotal), sub: 'collected this matter',         color: '#22c55e' },
-          { label: 'Total Hours',   value: fmtH(totalHours), sub: entries.length + ' entries',    color: '#2563eb' },
+          { label: 'Total Hours',   value: fmtH(totalHours), sub: totalRecords + ' entries',    color: '#2563eb' },
         ].map(c => (
           <div key={c.label} style={{ flex: 1, minWidth: 140, background: 'var(--s1)', border: '1px solid var(--br)', borderRadius: 10, padding: '12px 16px' }}>
             <div style={{ fontSize: 11, color: 'var(--t3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{c.label}</div>
@@ -226,20 +241,14 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
 
       {/* Billing Report Panel */}
       {showReport && (() => {
-        const byActivity = {}
-        entries.forEach(e => {
-          if (!byActivity[e.activity_type]) byActivity[e.activity_type] = { hours: 0, amount: 0, billed: 0, wip: 0, count: 0 }
-          byActivity[e.activity_type].hours  += Number(e.hours || 0)
-          byActivity[e.activity_type].amount += Number(e.amount || 0)
-          byActivity[e.activity_type].count  += 1
-          if (e.billed) byActivity[e.activity_type].billed += Number(e.amount || 0)
-          else          byActivity[e.activity_type].wip    += Number(e.amount || 0)
-        })
-        const rows = Object.entries(byActivity).sort((a, b) => b[1].amount - a[1].amount)
-        const totH = entries.reduce((s, e) => s + Number(e.hours || 0), 0)
-        const totA = entries.reduce((s, e) => s + Number(e.amount || 0), 0)
-        const totW = entries.filter(e => !e.billed).reduce((s, e) => s + Number(e.amount || 0), 0)
-        const totB = entries.filter(e =>  e.billed).reduce((s, e) => s + Number(e.amount || 0), 0)
+        const rows = activitySummary.map(r => [r.activity_type, {
+          count:Number(r.entry_count||0), hours:Number(r.hours||0), amount:Number(r.amount||0),
+          billed:Number(r.billed_amount||0), wip:Number(r.wip_amount||0),
+        }])
+        const totH = Number(summary?.total_hours || 0)
+        const totA = Number(summary?.total_amount || 0)
+        const totW = Number(summary?.wip_amount || 0)
+        const totB = Number(summary?.billed_amount || 0)
 
         function printBillingReport() {
           const w = window.open('', '_blank')
@@ -252,10 +261,10 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
           .total{font-weight:800;background:#f1f5f9}.footer{margin-top:24px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}</style>
           </head><body>
           <h1>Billing Report${filterClient ? ' — ' + filterClient : ''}</h1>
-          <div class="meta">Generated ${now} · ${entries.length} entries</div>
+          <div class="meta">Generated ${now} · ${totalRecords} entries</div>
           <table><thead><tr><th>Activity Type</th><th>Entries</th><th>Hours</th><th>Total</th><th>WIP</th><th>Billed</th></tr></thead><tbody>
           ${rows.map(([act, d]) => `<tr><td>${act}</td><td>${d.count}</td><td>${Number(d.hours).toFixed(2)}h</td><td>$${Number(d.amount).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#92400e">$${Number(d.wip).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#15803d">$${Number(d.billed).toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>`).join('')}
-          <tr class="total"><td>TOTAL</td><td>${entries.length}</td><td>${totH.toFixed(2)}h</td><td>$${totA.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#92400e">$${totW.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#15803d">$${totB.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>
+          <tr class="total"><td>TOTAL</td><td>${totalRecords}</td><td>${totH.toFixed(2)}h</td><td>$${totA.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#92400e">$${totW.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#15803d">$${totB.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>
           </tbody></table>
           <div class="footer">${FIRM.name || 'Tax Case Review'} · Confidential</div>
           </body></html>`)
@@ -265,7 +274,7 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
         return (
           <div style={{ background: 'var(--s1)', border: '1px solid var(--br)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--tx)' }}>📊 Billing Summary — {entries.length} entries</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--tx)' }}>📊 Billing Summary — {totalRecords} entries</div>
               <button onClick={printBillingReport}
                 style={{ padding: '6px 14px', background: '#1e3a8a', border: 'none', borderRadius: 7, color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
                 🖨️ Print
@@ -419,6 +428,17 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
           </div>
         </div>
       )}
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,margin:'0 0 10px',flexWrap:'wrap'}}>
+        <div style={{fontSize:11,color:'var(--t3)'}}>
+          Showing {totalRows ? ((page-1)*PAGE_SIZE)+1 : 0}–{Math.min(page*PAGE_SIZE,totalRows)} of {totalRows} matching entries
+        </div>
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          <button className="btn sec" style={{fontSize:11,padding:'4px 9px'}} disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Prev</button>
+          <span style={{fontSize:11,color:'var(--t2)'}}>Page {page} / {pageCount}</span>
+          <button className="btn sec" style={{fontSize:11,padding:'4px 9px'}} disabled={page>=pageCount} onClick={()=>setPage(p=>Math.min(pageCount,p+1))}>Next →</button>
+        </div>
+      </div>
 
       {/* Entries list */}
       {filtered.length === 0 ? (
