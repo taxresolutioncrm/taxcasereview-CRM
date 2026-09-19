@@ -47,11 +47,12 @@ serve(async(req)=>{
 
     const {caseId,amount}=await req.json()
     if(!caseId)return new Response(JSON.stringify({error:'caseId is required'}),{status:400,headers:{...corsHeaders,'Content-Type':'application/json'}})
-    const {data:c}=await admin.from('formacorp').select('id,tenant_id,entity_name,client_name,correspondence_email,fee,fl_state_fee,state_fee_collected_amount').eq('id',caseId).eq('tenant_id',tenantId).maybeSingle()
+    const {data:c}=await admin.from('formacorp').select('id,tenant_id,state,entity_type,entity_name,client_name,correspondence_email,fee,fl_state_fee,state_fee_amount,state_fee_collected_amount').eq('id',caseId).eq('tenant_id',tenantId).maybeSingle()
     if(!c)return new Response(JSON.stringify({error:'FormaCorp case not found in this office'}),{status:404,headers:{...corsHeaders,'Content-Type':'application/json'}})
 
     const requested=Number(amount)
-    const canonical=Number(c.fl_state_fee??c.fee??0)
+    const isFloridaFormation=String(c.state)==='FL' && ['LLC','Professional LLC (PLLC)','C-Corp','Non-Profit 501(c)(3)'].includes(String(c.entity_type||''))
+    const canonical=Number(c.state_fee_amount ?? (isFloridaFormation ? c.fl_state_fee : c.fee) ?? 0)
     if(!Number.isFinite(requested)||requested<=0)return new Response(JSON.stringify({error:'Valid state filing amount is required'}),{status:400,headers:{...corsHeaders,'Content-Type':'application/json'}})
     if(canonical>0&&Math.abs(requested-canonical)>0.009)return new Response(JSON.stringify({error:'Amount does not match the government filing amount on this case'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
 
