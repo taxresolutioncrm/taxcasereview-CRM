@@ -21,13 +21,14 @@ function replaceFunction(name,replacement,requiredToken){
 replaceFunction('connectQuickBooks',`  async function connectQuickBooks() {
     if (!myTenantId) { showToast('Still loading your account — try again in a moment'); return }
     if (!firm.qb_client_id) { showToast('Save your QuickBooks Client ID/Secret first'); return }
-    const { data: state, error } = await supabase.rpc('create_accounting_oauth_state', { p_provider: 'quickbooks' })
-    if (error || !state) { showToast('Could not start secure QuickBooks connection'); return }
-    const redirectUri = window.location.origin + '/auth/quickbooks-callback'
-    const authorizeUrl = \`https://appcenter.intuit.com/connect/oauth2?client_id=\${encodeURIComponent(firm.qb_client_id)}&redirect_uri=\${encodeURIComponent(redirectUri)}&response_type=code&scope=com.intuit.quickbooks.accounting&state=\${encodeURIComponent(state)}\`
-    window.location.href = authorizeUrl
+    const { data, error } = await supabase.functions.invoke('quickbooks-oauth-start', { body: {} })
+    if (error || !data?.authorize_url) {
+      showToast('Could not start secure QuickBooks connection')
+      return
+    }
+    window.location.href = data.authorize_url
   }
-` , "p_provider: 'quickbooks'")
+` , "quickbooks-oauth-start")
 
 replaceFunction('connectXero',`  async function connectXero() {
     if (!myTenantId) { showToast('Still loading your account — try again in a moment'); return }
