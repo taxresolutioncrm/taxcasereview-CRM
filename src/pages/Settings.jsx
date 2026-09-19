@@ -6,6 +6,12 @@ import { loadFirmBranding } from '../lib/firmBranding'
 
 const BUCKET = 'firm-assets'
 
+async function resolveSettingsTenantId() {
+  const { data, error } = await supabase.rpc('current_tenant_id')
+  if (error || !data) return null
+  return data
+}
+
 export default function Settings() {
   const { showToast, user, role, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin'].includes(role)
@@ -89,18 +95,24 @@ export default function Settings() {
 
   useEffect(() => {
     if (!user?.email) return
-    supabase.from('employees').select('email_signature,email_signature_logo_url')
-      .eq('email', user.email).maybeSingle()
-      .then(({ data }) => setMySig({ text: data?.email_signature || '', logoUrl: data?.email_signature_logo_url || '' }))
-  }, [user?.email])
+    ;(async () => {
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) return
+      const { data } = await supabase.from('employees').select('email_signature,email_signature_logo_url')
+        .eq('tenant_id', tid).eq('email', user.email).maybeSingle()
+      setMySig({ text: data?.email_signature || '', logoUrl: data?.email_signature_logo_url || '' })
+    })()
+  }, [user?.email, myTenantId])
 
   async function saveMySignature() {
     if (!user?.email) return
     setMySigSaving(true)
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) { setMySigSaving(false); showToast('Could not resolve this office', 'err'); return }
     await supabase.from('employees').update({
       email_signature: mySig.text,
       email_signature_logo_url: mySig.logoUrl,
-    }).eq('email', user.email)
+    }).eq('tenant_id', tid).eq('email', user.email)
     setMySigSaving(false)
     showToast('Signature saved!')
   }
@@ -139,11 +151,15 @@ export default function Settings() {
   const [employees, setEmployees] = useState([])
 
   // Guard: wait for auth — prevents TCR settings loading in Nashville
-  useEffect(() => { if (user) { loadFirm(); loadLogo(); loadEmployees() } }, [user?.id])
+  useEffect(() => { if (user && myTenantId) { loadFirm(); loadLogo(); loadEmployees() } }, [user?.id, myTenantId])
 
   async function loadEmployees() {
-    const { data } = await supabase.from('employees').select('id,name,email,role,access,status,created_at,avatar_url').order('created_at', { ascending: true })
-    // Exclude platform admin — never shows in any office's team list
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) { setEmployees([]); return }
+    const { data } = await supabase.from('employees')
+      .select('id,name,email,role,access,status,created_at,avatar_url')
+      .eq('tenant_id', tid)
+      .order('created_at', { ascending: true })
     if (data) setEmployees(data.filter(e => e.email !== 'romy@taxrescrm.net'))
   }
 
@@ -192,24 +208,38 @@ export default function Settings() {
   }
 
   async function loadFirm() {
-    const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle()
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    const { data } = await supabase.from('settings').select('*').eq('tenant_id', tid).maybeSingle()
     if (data) {
       setFirm(f => ({ ...f, ...data }))
       if (data.primary_color) applyBrandColor(data.primary_color)
       if (data.logourl) setLogoUrl(data.logourl)
     }
-    const { count } = await supabase.from('employee_gmail_accounts')
-      .select('employee_email', { count: 'exact', head: true }).not('gmail_refresh_token', 'is', null)
-    setConnectedGmailCount(count || 0)
+    const { data: tenantEmployees } = await supabase.from('employees').select('email').eq('tenant_id', tid)
+    const tenantEmails = (tenantEmployees || []).map(e => e.email).filter(Boolean)
+    let gmailCount = 0
+    if (tenantEmails.length) {
+      const { count } = await supabase.from('employee_gmail_accounts')
+        .select('employee_email', { count: 'exact', head: true })
+        .in('employee_email', tenantEmails)
+        .not('gmail_refresh_token', 'is', null)
+      gmailCount = count || 0
+    }
+    setConnectedGmailCount(gmailCount)
     const { count: m365Count } = await supabase.from('employee_m365_accounts')
-      .select('employee_email', { count: 'exact', head: true }).not('m365_refresh_token', 'is', null)
+      .select('employee_email', { count: 'exact', head: true })
+      .eq('tenant_id', tid)
+      .not('m365_refresh_token', 'is', null)
     setConnectedM365Count(m365Count || 0)
   }
 
   async function loadLogo() {
     // Show this tenant's own saved logo; never the shared bucket file (which
     // gets overwritten across tenants). loadFirm sets it from settings.logourl.
-    const { data } = await supabase.from('settings').select('logourl').limit(1).maybeSingle()
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    const { data } = await supabase.from('settings').select('logourl').eq('tenant_id', tid).maybeSingle()
     if (data?.logourl) setLogoUrl(data.logourl)
   }
 
@@ -266,7 +296,9 @@ export default function Settings() {
       // "invalid input syntax" — Postgres wants null for "no value", not ''.
       Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
 
-      const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').limit(1).maybeSingle()
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
+      const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').eq('tenant_id', tid).maybeSingle()
       if (fetchErr) throw fetchErr
 
       // Self-healing save: if Postgres reports an unknown column, strip it and retry.
@@ -276,9 +308,9 @@ export default function Settings() {
       let saveErr
       for (let attempt = 0; attempt < 12; attempt++) {
         if (existing?.id) {
-          ({ error: saveErr } = await supabase.from('settings').update(payload).eq('id', existing.id))
+          ({ error: saveErr } = await supabase.from('settings').update(payload).eq('tenant_id', tid).eq('id', existing.id))
         } else {
-          ({ error: saveErr } = await supabase.from('settings').insert([payload]))
+          ({ error: saveErr } = await supabase.from('settings').insert([{ ...payload, tenant_id: tid }]))
         }
         if (!saveErr) break
         // Postgres "column does not exist" error: 42703, message names the column
@@ -322,7 +354,9 @@ export default function Settings() {
       if (error) throw error
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
       const bustedUrl = `${pub.publicUrl}?t=${Date.now()}`
-      await supabase.from('settings').update({ logourl: bustedUrl }).eq('id', firm.id)
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
+      await supabase.from('settings').update({ logourl: bustedUrl }).eq('tenant_id', tid).eq('id', firm.id)
       setFirm(f => ({ ...f, logourl: bustedUrl }))
       setLogoUrl(bustedUrl)
       await loadFirmBranding()
@@ -350,7 +384,9 @@ export default function Settings() {
       // browser-cached copy of the old file at the same URL.
       const bustedUrl = `${pub.publicUrl}?t=${Date.now()}`
       setFirm(f => ({ ...f, email_signature_logo_url: bustedUrl }))
-      await supabase.from('settings').update({ email_signature_logo_url: bustedUrl }).eq('id', firm.id)
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
+      await supabase.from('settings').update({ email_signature_logo_url: bustedUrl }).eq('tenant_id', tid).eq('id', firm.id)
       showToast('Signature logo uploaded!')
     } catch (err) { showToast(err.message, 'err') } finally { setSigLogoUploading(false) }
   }
@@ -1963,6 +1999,7 @@ function ImportTab() {
 }
 
 function StatusesTab() {
+  const [tenantId, setTenantId] = useState(null)
   const [categories, setCategories] = useState([])
   const [statuses,   setStatuses]   = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -1974,9 +2011,12 @@ function StatusesTab() {
 
   async function load() {
     setLoading(true)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setCategories([]); setStatuses([]); setLoading(false); return }
+    if (!tenantId) setTenantId(tid)
     const [{ data: cats }, { data: sts }] = await Promise.all([
-      supabase.from('workflow_status_categories').select('*').order('sort_order'),
-      supabase.from('workflow_statuses').select('*').order('sort_order'),
+      supabase.from('workflow_status_categories').select('*').eq('tenant_id', tid).order('sort_order'),
+      supabase.from('workflow_statuses').select('*').eq('tenant_id', tid).order('sort_order'),
     ])
     setCategories(cats || [])
     setStatuses(sts || [])
@@ -1987,7 +2027,9 @@ function StatusesTab() {
   async function addCategory() {
     if (!newCatName.trim()) return
     const sort_order = categories.length
-    const { error } = await supabase.from('workflow_status_categories').insert([{ name: newCatName.trim(), sort_order }])
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { showToast('❌ Could not resolve this office'); return }
+    const { error } = await supabase.from('workflow_status_categories').insert([{ tenant_id: tid, name: newCatName.trim(), sort_order }])
     if (error) { showToast('❌ ' + error.message); return }
     setNewCatName('')
     load()
@@ -1995,7 +2037,9 @@ function StatusesTab() {
 
   async function deleteCategory(cat) {
     if (!confirm(`Delete the "${cat.name}" column and all its statuses? Existing tasks already using these statuses keep their text label — this only removes them from the picker.`)) return
-    await supabase.from('workflow_status_categories').delete().eq('id', cat.id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('workflow_status_categories').delete().eq('tenant_id', tid).eq('id', cat.id)
     load()
   }
 
@@ -2003,14 +2047,18 @@ function StatusesTab() {
     const text = (newStatusText[cat.id] || '').trim()
     if (!text) return
     const sort_order = statuses.filter(s => s.category_id === cat.id).length
-    const { error } = await supabase.from('workflow_statuses').insert([{ category_id: cat.id, label: text, sort_order }])
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { showToast('❌ Could not resolve this office'); return }
+    const { error } = await supabase.from('workflow_statuses').insert([{ tenant_id: tid, category_id: cat.id, label: text, sort_order }])
     if (error) { showToast('❌ ' + error.message); return }
     setNewStatusText(prev => ({ ...prev, [cat.id]: '' }))
     load()
   }
 
   async function deleteStatus(id) {
-    await supabase.from('workflow_statuses').delete().eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('workflow_statuses').delete().eq('tenant_id', tid).eq('id', id)
     load()
   }
 
@@ -2074,6 +2122,7 @@ function StatusesTab() {
 // ── Billing Rates Tab ───────────────────────────────────────────────────────
 function BillingRatesTab() {
   const { showToast } = useApp()
+  const [tenantId, setTenantId] = useState(null)
   const [activities, setActivities] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [saving,     setSaving]     = useState(null) // id being saved
@@ -2085,7 +2134,10 @@ function BillingRatesTab() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('billing_activity_types').select('*').order('sort_order')
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setActivities([]); setLoading(false); return }
+    if (!tenantId) setTenantId(tid)
+    const { data } = await supabase.from('billing_activity_types').select('*').eq('tenant_id', tid).order('sort_order')
     setActivities(data || [])
     setLoading(false)
   }
@@ -2095,18 +2147,24 @@ function BillingRatesTab() {
     setSaving(act.id)
     const parsed = parseFloat(rate)
     if (isNaN(parsed) || parsed < 0) { showToast('Enter a valid rate'); setSaving(null); return }
-    await supabase.from('billing_activity_types').update({ default_rate: parsed }).eq('id', act.id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setSaving(null); return }
+    await supabase.from('billing_activity_types').update({ default_rate: parsed }).eq('tenant_id', tid).eq('id', act.id)
     setSaving(null)
     load()
   }
 
   async function toggleNonBillable(id, current) {
-    await supabase.from('billing_activity_types').update({ non_billable: !current }).eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('billing_activity_types').update({ non_billable: !current }).eq('tenant_id', tid).eq('id', id)
     load()
   }
 
   async function updateColor(id, color) {
-    await supabase.from('billing_activity_types').update({ color }).eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('billing_activity_types').update({ color }).eq('tenant_id', tid).eq('id', id)
     load()
   }
 
@@ -2117,8 +2175,10 @@ function BillingRatesTab() {
     if (isNaN(rate) || rate < 0) { showToast('Enter a valid rate'); return }
     setAdding(true)
     const maxSort = activities.reduce((m, a) => Math.max(m, a.sort_order || 0), 0)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setAdding(false); showToast('❌ Could not resolve this office'); return }
     const { error } = await supabase.from('billing_activity_types').insert([{
-      name, default_rate: rate, color: newForm.color, sort_order: maxSort + 1
+      tenant_id: tid, name, default_rate: rate, color: newForm.color, sort_order: maxSort + 1
     }])
     setAdding(false)
     if (error) { showToast('❌ ' + (error.code === '23505' ? 'Activity type already exists' : error.message)); return }
@@ -2130,7 +2190,9 @@ function BillingRatesTab() {
   async function deleteActivity(id) {
     if (!confirm('Delete this activity type? Existing time entries keep their activity label.')) return
     setDeleting(id)
-    await supabase.from('billing_activity_types').delete().eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setDeleting(null); return }
+    await supabase.from('billing_activity_types').delete().eq('tenant_id', tid).eq('id', id)
     setDeleting(null)
     load()
   }
@@ -2218,6 +2280,7 @@ function BillingRatesTab() {
 // ── Email Accounts — personal IMAP/SMTP per employee ────────────────────────
 function EmailAccountsSection() {
   const { user, showToast } = useApp()
+  const [tenantId, setTenantId] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [loading,  setLoading]  = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -2235,8 +2298,12 @@ function EmailAccountsSection() {
 
   async function load() {
     setLoading(true)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setAccounts([]); setLoading(false); return }
+    if (!tenantId) setTenantId(tid)
     const { data } = await supabase.from('email_accounts')
       .select('id,email_address,display_name,imap_host,imap_port,smtp_host,smtp_port,is_active,last_sync_at,sync_status,sync_error')
+      .eq('tenant_id', tid)
       .eq('employee_email', user?.email || '')
       .order('created_at')
     setAccounts(data || [])
@@ -2265,7 +2332,9 @@ function EmailAccountsSection() {
 
   async function remove(id) {
     if (!confirm('Remove this email account? Synced emails will remain.')) return
-    await supabase.from('email_accounts').update({ is_active: false }).eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('email_accounts').update({ is_active: false }).eq('tenant_id', tid).eq('id', id)
     load()
   }
 
