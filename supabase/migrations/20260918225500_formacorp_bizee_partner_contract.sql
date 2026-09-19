@@ -14,6 +14,15 @@ create index if not exists idx_formacorp_service_requests_provider_order
   on public.formacorp_service_requests(provider, provider_order_id)
   where provider_order_id is not null;
 
+alter table public.formacorp_documents
+  add column if not exists provider text,
+  add column if not exists provider_document_id text,
+  add column if not exists provider_metadata jsonb not null default '{}'::jsonb;
+
+create unique index if not exists uq_formacorp_documents_provider_document
+  on public.formacorp_documents(provider, provider_document_id)
+  where provider_document_id is not null;
+
 create table if not exists public.formacorp_provider_events (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null default current_tenant_id(),
