@@ -1193,8 +1193,9 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
   const { error: upErr } = await supabase.storage.from('documents')
     .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
   if (upErr) return { error: upErr.message }
-  const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-  const pdfAttachments = [{ formType: 'addendum', label: 'Service Addendum', url: urlData?.signedUrl || '' }]
+  const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+  if (signErr || !urlData?.signedUrl) return { error: signErr?.message || 'Could not create secure addendum link' }
+  const pdfAttachments = [{ formType: 'addendum', label: 'Service Addendum', url: urlData.signedUrl, storage_path: path }]
 
   const { data, error } = await supabase.from('esigns').insert([{
     doc_type: 'Service Addendum',
