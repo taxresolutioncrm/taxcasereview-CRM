@@ -72,11 +72,11 @@ Deno.serve(async(req)=>{
         if(dryRun) continue
 
         await sendMail(url,key,{
-          tenant_id:TENANT,
+          kind:'esign_reminder',
+          esign_id:doc.id,
           to:String(doc.client_email).trim(),
           subject,
-          html,
-          from_name:'Nashville Tax Solutions'
+          html
         })
 
         const stamp=new Date().toISOString()
