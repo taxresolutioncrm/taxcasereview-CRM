@@ -117,13 +117,18 @@ async function loadPlatformOfficeRows() {
     { data: taxresRows, error: taxresError },
     { data: registryData, error: registryError },
     { data: billingData, error: billingError },
+    { data: productRows, error: productError },
   ] = await Promise.all([
     supabase.rpc('admin_tenant_overview'),
     supabase.rpc('admin_romylabs_office_registry'),
     supabase.rpc('admin_romylabs_billing_totals'),
+    supabase.from('romylabs_products')
+      .select('product_id,name,accent_color,app_url,lifecycle,active')
+      .eq('active', true),
   ])
   if (taxresError) throw taxresError
   if (billingError) throw billingError
+  if (productError) throw productError
 
   const rows = (taxresRows || []).map(r => ({
     ...r,
@@ -145,6 +150,15 @@ async function loadPlatformOfficeRows() {
   const warnings = []
   const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
   const seen = new Set(rows.map(r => `taxres_crm:${r.id}`))
+  const externalProductConfigs = Object.fromEntries(
+    (productRows || [])
+      .filter(p => p.product_id !== 'taxres_crm' && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
+      .map(p => [p.product_id, {
+        label:p.name || p.product_id,
+        color:p.accent_color || '#6366f1',
+        appUrl:p.app_url || null,
+      }])
+  )
 
   // Overlay each known TaxRes tenant with the same authenticated platform-metrics
   // feed used by the CRM drilldown. admin_tenant_overview remains the directory/
@@ -155,7 +169,7 @@ async function loadPlatformOfficeRows() {
     { key:'cloudcpa', name:'CloudCPA Inc' },
     { key:'demo', name:'Tax Res CRM Demo' },
   ]
-  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
+  const productKeys = Object.keys(externalProductConfigs)
 
   // One authenticated hub call fetches all products concurrently server-side.
   // If the batch path is unavailable for any reason, fall back to the existing
@@ -215,7 +229,7 @@ async function loadPlatformOfficeRows() {
   if (!registryError && Array.isArray(registryData)) {
     for (const office of registryData) {
       if (!office?.product_key || office.product_key === 'taxres_crm' || !office.external_office_id) continue
-      const cfg = EXTERNAL_OFFICE_PRODUCTS[office.product_key] || { label:office.product_key, color:'#6366f1' }
+      const cfg = externalProductConfigs[office.product_key] || EXTERNAL_OFFICE_PRODUCTS[office.product_key] || { label:office.product_key, color:'#6366f1', appUrl:null }
       const key = `${office.product_key}:${office.external_office_id}`
       if (seen.has(key)) continue
       seen.add(key)
@@ -246,7 +260,7 @@ async function loadPlatformOfficeRows() {
   const registrySyncJobs = []
 
   for (const result of results) {
-    const cfg = EXTERNAL_OFFICE_PRODUCTS[result.productKey]
+    const cfg = externalProductConfigs[result.productKey] || EXTERNAL_OFFICE_PRODUCTS[result.productKey] || { label:result.productKey, color:'#6366f1', appUrl:null }
     const offices = Array.isArray(result.data?.offices) ? result.data.offices : null
     if (result.error || !offices) {
       warnings.push(`${cfg.label} live office feed unavailable`)
@@ -900,11 +914,35 @@ function ArcvenaOfficePage() {
 function ExternalProductOfficePage({ productKey }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const cfg = EXTERNAL_OFFICE_PRODUCTS[productKey]
   const officeId = String(id || '').replace(new RegExp(`^${productKey}:`), '')
+  const [cfg,setCfg] = useState(
+    EXTERNAL_OFFICE_PRODUCTS[productKey] || {
+      label:productKey,
+      color:'#6366f1',
+      appUrl:null,
+    }
+  )
   const [office,setOffice] = useState(null)
   const [loading,setLoading] = useState(true)
   const [error,setError] = useState('')
+
+  useEffect(() => {
+    let cancelled=false
+    supabase.from('romylabs_products')
+      .select('product_id,name,accent_color,app_url')
+      .eq('product_id', productKey)
+      .limit(1)
+      .maybeSingle()
+      .then(({data}) => {
+        if(cancelled || !data) return
+        setCfg({
+          label:data.name || productKey,
+          color:data.accent_color || '#6366f1',
+          appUrl:data.app_url || null,
+        })
+      })
+    return()=>{cancelled=true}
+  },[productKey])
 
   useEffect(() => {
     let cancelled=false
@@ -965,7 +1003,7 @@ function ExternalProductOfficePage({ productKey }) {
           <div style={{fontSize:28,fontWeight:900,color:'#fff'}}>{office.name||`${cfg.label} Office`}</div>
           <div style={{fontSize:13,color:'#64748b',marginTop:4}}>You are inside this office only.</div>
         </div>
-        <button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={S.btn('primary')}>Open {cfg.label} CRM ↗</button>
+        {cfg.appUrl && <button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={S.btn('primary')}>Open {cfg.label} CRM ↗</button>}
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:22}}>
         {kv.map(([label,value])=><div key={label} style={{...S.card,padding:'16px 18px'}}><div style={{fontSize:10,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>{label}</div><div style={{fontSize:14,fontWeight:700,color:'#e2e8f0',wordBreak:'break-word'}}>{String(value??'—')}</div></div>)}
@@ -988,11 +1026,11 @@ function OfficePageRouter(){
   const {id}=useParams()
   const raw=String(id||'')
   if(raw.startsWith('arcvena:')) return <ArcvenaOfficePage/>
-  if(raw.startsWith('camvella:')) return <ExternalProductOfficePage productKey="camvella"/>
-  if(raw.startsWith('bocasync:')) return <ExternalProductOfficePage productKey="bocasync"/>
-  if(raw.startsWith('groundivo:')) return <ExternalProductOfficePage productKey="groundivo"/>
-  if(raw.startsWith('oculivo:')) return <ExternalProductOfficePage productKey="oculivo"/>
-  if(raw.startsWith('restore_relay:')) return <ExternalProductOfficePage productKey="restore_relay"/>
+  const separator=raw.indexOf(':')
+  if(separator>0){
+    const productKey=raw.slice(0,separator)
+    if(productKey && productKey!=='taxres_crm') return <ExternalProductOfficePage productKey={productKey}/>
+  }
   return <OfficePage/>
 }
 
@@ -3214,6 +3252,36 @@ function ArcvenaOfficeOnboarding({ supabase, onCreated }) {
   )
 }
 
+function mergeProductRegistry(rows = []) {
+  const staticProducts = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+  const byKey = new Map(staticProducts.map(p => [p.key, p]))
+  for (const row of rows || []) {
+    if (!row?.product_id || row.product_id === 'romylabs' || String(row.lifecycle || '').toLowerCase() === 'internal') continue
+    const existing = byKey.get(row.product_id) || {}
+    const supabaseUrl = String(row.supabase_url || '').replace(/\/$/, '')
+    byKey.set(row.product_id, {
+      key: row.product_id,
+      label: row.name || existing.label || row.product_id,
+      icon: row.icon_ref || existing.icon || '🧩',
+      color: row.accent_color || existing.color || '#6366f1',
+      industry: row.industry || existing.industry || 'Business Operations',
+      url: row.app_url || row.marketing_url || existing.url || null,
+      appUrl: row.app_url || existing.appUrl || null,
+      websiteUrl: row.marketing_url || existing.websiteUrl || null,
+      lifecycleStage: String(row.lifecycle || existing.lifecycleStage || 'building').toLowerCase(),
+      connection: supabaseUrl ? 'connected' : (existing.connection || 'not_connected'),
+      brandStatus: existing.brandStatus || 'branded',
+      publicOnRomyLabs: row.public ?? existing.publicOnRomyLabs ?? false,
+      commerciallyAvailable: ['live','available'].includes(String(row.lifecycle || '').toLowerCase()),
+      desc: row.short_desc || row.description || existing.desc || '',
+      metricsUrl: supabaseUrl ? `${supabaseUrl}/functions/v1/platform-metrics` : (existing.metricsUrl || null),
+      nextMilestone: existing.nextMilestone,
+      priorityRank: existing.priorityRank,
+    })
+  }
+  return [...byKey.values()]
+}
+
 function ProductsTab({ supabase, taxresActivity = [] }) {
   const [productParams] = useSearchParams()
   const portfolioFilter = productParams.get('portfolio') || ''
@@ -3224,12 +3292,19 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   const [taxresOps, setTaxresOps]   = useState(null)
   const [taxresLoading, setTaxresLoading] = useState(false)
   const [registryTenants, setRegistryTenants] = useState([])
+  const [registryProducts, setRegistryProducts] = useState([])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data, error } = await supabase.rpc('admin_romylabs_office_registry')
+      const [{ data, error }, { data: productRows, error: productError }] = await Promise.all([
+        supabase.rpc('admin_romylabs_office_registry'),
+        supabase.from('romylabs_products')
+          .select('product_id,name,accent_color,icon_ref,industry,app_url,marketing_url,lifecycle,public,short_desc,description,supabase_url,active')
+          .eq('active', true),
+      ])
       if (cancelled) return
+      setRegistryProducts(productError ? [] : (productRows || []))
       if (error || !Array.isArray(data)) {
         setRegistryTenants([])
         return
@@ -3348,7 +3423,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   function getConn(p)      { return CONN_LABEL[p.connection] || { label: p.connection, color: '#64748b', dot: '⚪' } }
 
   // ── Portfolio counts (from registry only — no live data needed) ─────────
-  const products = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+  const products = mergeProductRegistry(registryProducts)
   const staticTenants = PRODUCT_REGISTRY.filter(p => p.isTenant)
   const tenantKeys = new Set(staticTenants.map(p => p.key))
   const tenants = [...staticTenants, ...registryTenants.filter(p => !tenantKeys.has(p.key))]
@@ -4671,6 +4746,7 @@ function CommandCenter() {
     setCrmRemoteError('')
     if (crmProduct === 'taxres_crm') { setCrmRemoteData(null); return }
     const product = PRODUCT_REGISTRY.find(p => p.key === crmProduct && !p.isTenant)
+      || reportingProducts.find(p => p.product_id === crmProduct)
     if (!product) { setCrmRemoteData(null); return }
     let cancelled = false
     setCrmRemoteLoading(true)
@@ -4679,7 +4755,7 @@ function CommandCenter() {
       .catch(err => { if (!cancelled) { setCrmRemoteData(null); setCrmRemoteError(String(err?.message || err)) } })
       .finally(() => { if (!cancelled) setCrmRemoteLoading(false) })
     return () => { cancelled = true }
-  }, [crmProduct, fetchCrmProductMetrics])
+  }, [crmProduct, fetchCrmProductMetrics, reportingProducts])
 
   React.useEffect(() => {
     setCrmAccountMetrics(null)
@@ -5007,7 +5083,7 @@ function CommandCenter() {
 
           {/* ── Portfolio Scorecard ───────────────────────────────────────── */}
           {(() => {
-            const products   = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+            const products   = mergeProductRegistry(reportingProducts)
             const liveN      = products.filter(p => ['live','available'].includes(p.lifecycleStage)).length
             const comingN    = products.filter(p => p.lifecycleStage === 'coming').length
             const buildN     = products.filter(p => p.lifecycleStage === 'building').length
@@ -5070,7 +5146,7 @@ function CommandCenter() {
 
           {/* ── Portfolio Grid (compact — not a duplicate of Products tab) ── */}
           {(() => {
-            const products = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+            const products = mergeProductRegistry(reportingProducts)
             const LIFECYCLE_COLOR = { live:'#10b981', available:'#10b981', coming:'#8b5cf6', building:'#f59e0b', research:'#64748b', internal:'#475569' }
             const LIFECYCLE_LABEL = { live:'✅ Live', available:'🟢 Available', coming:'🔜 Coming Soon', building:'🔨 Building', research:'🔬 Research', internal:'🔒 Internal' }
             const CONN_DOT = { connected:'🟢', partial:'🟡', not_connected:'⚪' }
@@ -5184,7 +5260,7 @@ function CommandCenter() {
 
           {/* ── Needs Attention ─────────────────────────────────────────── */}
           {(() => {
-            const products = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+            const products = mergeProductRegistry(reportingProducts)
             const attention = []
             // Partial connections — metrics not deployed
             products.filter(p => p.connection === 'partial').forEach(p => {
