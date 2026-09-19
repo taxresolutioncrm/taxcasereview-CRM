@@ -27,11 +27,14 @@ function accessEmailHtml(name:string,accessLink:string,kind:'invite'|'recovery')
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#162235"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:32px 12px"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e4eaf1;border-radius:14px;overflow:hidden;box-shadow:0 8px 28px rgba(18,42,66,.08)"><tr><td style="background:#0b2136;padding:26px 32px;text-align:center"><img src="${LOGO_URL}" alt="Nashville Tax Solutions" style="max-width:220px;max-height:72px;width:auto;height:auto;display:inline-block"></td></tr><tr><td style="padding:34px 36px 10px"><div style="font-size:22px;font-weight:700;line-height:1.3;color:#10243a;margin:0 0 14px">${heading}</div><div style="font-size:15px;line-height:1.65;color:#4b5f73">Hi ${safeName},</div><div style="font-size:15px;line-height:1.65;color:#4b5f73;margin-top:8px">${intro}</div></td></tr><tr><td style="padding:20px 36px 24px;text-align:center"><a href="${safeLink}" style="display:inline-block;background:#1A7FD4;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 24px;border-radius:8px">${button}</a></td></tr><tr><td style="padding:0 36px 28px"><div style="font-size:13px;line-height:1.6;color:#718096">For your security, use the button above to choose your password. Office access remains permission-based and isolated.</div><div style="font-size:12px;line-height:1.55;color:#94a3b8;margin-top:18px">If the button does not open, copy and paste this link into your browser:<br><span style="word-break:break-all;color:#5c6f82">${safeLink}</span></div></td></tr><tr><td style="border-top:1px solid #e9eef4;padding:18px 36px 22px;text-align:center"><div style="font-size:12px;color:#8795a5">Nashville Tax Solutions · TaxRes CRM Family Access</div><div style="font-size:11px;color:#a4afbb;margin-top:5px">This is an automated security email. Please do not forward it.</div></td></tr></table></td></tr></table></body></html>`
 }
 
-async function familyAccess(authHeader:string,target:string,action:'link'|'status'='link'){
+async function familyAccess(admin:any,authHeader:string,target:string,name:string,action:'link'|'status'='link'){
+  const {data:secretRow,error:secretErr}=await admin.from('platform_internal_secrets')
+    .select('secret').eq('key','nashville_family_bridge_v1').maybeSingle()
+  if(secretErr||!secretRow?.secret) throw new Error('Nashville family bridge is unavailable')
   const res=await fetch(FAMILY_INVITE_URL,{
     method:'POST',
-    headers:{Authorization:authHeader,'Content-Type':'application/json'},
-    body:JSON.stringify({email:target,action})
+    headers:{'x-nashville-family-secret':String(secretRow.secret),'Content-Type':'application/json'},
+    body:JSON.stringify({email:target,name,action})
   })
   const body=await res.json().catch(()=>({}))
   if(!res.ok||body?.error) throw new Error(body?.error||'Could not prepare TaxRes family access')
@@ -68,6 +71,7 @@ Deno.serve(async(req)=>{
     const body=await req.json().catch(()=>({}))
     const mode=String(body?.mode||'admin')
     const target=String(body?.email||'').trim().toLowerCase()
+    const via=['email','text','both'].includes(String(body?.via||'email').toLowerCase())?String(body?.via||'email').toLowerCase():'email'
 
     // Public self-service stays enumeration-safe and only forwards a reset
     // request for an active Nashville employee into the shared TaxRes identity.
@@ -156,7 +160,7 @@ Deno.serve(async(req)=>{
         else if((counts.get(email)||0)>1){status='blocked';reason='duplicate_employee_email'}
         else{
           try{
-            family=await familyAccess(authHeader,email,'status')
+            family=await familyAccess(admin,authHeader,email,String(emp.name||''),'status')
             if(family?.last_sign_in_at) status='already_ready'
             else if(family?.exists) status='setup_ready'
           }catch(e){status='error';reason=e instanceof Error?e.message:String(e)}
@@ -213,12 +217,12 @@ Deno.serve(async(req)=>{
           results.push({id:emp.id,name:emp.name,email,status:'blocked',reason:'protected_access'});continue
         }
         try{
-          const status=await familyAccess(authHeader,email,'status')
+          const status=await familyAccess(admin,authHeader,email,String(emp.name||''),'status')
           if(status?.last_sign_in_at){
             results.push({id:emp.id,name:emp.name,email,status:'already_ready',last_sign_in_at:status.last_sign_in_at})
             continue
           }
-          const family=await familyAccess(authHeader,email,'link')
+          const family=await familyAccess(admin,authHeader,email,String(emp.name||''),'link')
           results.push({id:emp.id,name:emp.name,email,status:'prepared',kind:family.mode||'invite',access_link:family.access_link})
         }catch(e){
           results.push({id:emp.id,name:emp.name,email,status:'error',reason:e instanceof Error?e.message:String(e)})
@@ -243,7 +247,7 @@ Deno.serve(async(req)=>{
       const isSelf=String(actor.email||'').toLowerCase()===target
       if(!isSelf && actor.access!=='Super Admin' && targetRank>=actorRank) return json({error:'Cannot prepare access for an equal or higher access account'},403)
       try{
-        const family=await familyAccess(authHeader,target,'link')
+        const family=await familyAccess(admin,authHeader,target,String(emp.name||''),'link')
         return json({success:true,mode:family.mode||'invite',delivery:'prepared',access_link:family.access_link,phone:emp.phone||null,name:emp.name||''})
       }catch(e){return json({error:e instanceof Error?e.message:String(e)},502)}
     }
@@ -253,7 +257,7 @@ Deno.serve(async(req)=>{
     }
 
     if(!/^\S+@\S+\.\S+$/.test(target)) return json({error:'Employee email is required'},400)
-    const {data:emp}=await admin.from('employees').select('id,name,email,status,tenant_id,access').ilike('email',target).eq('tenant_id',TENANT).eq('status','Active').maybeSingle()
+    const {data:emp}=await admin.from('employees').select('id,name,email,phone,status,tenant_id,access').ilike('email',target).eq('tenant_id',TENANT).eq('status','Active').maybeSingle()
     if(!emp) return json({error:'Active Nashville employee record not found'},404)
 
     const targetRank=RANK[emp.access||'']||0
@@ -261,25 +265,58 @@ Deno.serve(async(req)=>{
     if(!isSelf && actor.access!=='Super Admin' && targetRank>=actorRank) return json({error:'Cannot reset an equal or higher access account'},403)
 
     try{
-      const family=await familyAccess(authHeader,target,'link')
+      const family=await familyAccess(admin,authHeader,target,String(emp.name||''),'link')
       const kind:'invite'|'recovery'=family.mode==='invite'?'invite':'recovery'
       const accessLink=String(family.access_link||'')
       if(!accessLink) throw new Error('TaxRes family access link was not returned')
-      try{
-        await sendBrandedAccess(admin,target,emp.name||'',kind,accessLink)
-        return json({
-          success:true,mode:kind,delivery:'email',access_link:accessLink,
-          message:kind==='invite'
-            ?'TaxRes family CRM setup email sent.'
-            :'TaxRes family password reset email sent.'
-        })
-      }catch(sendError){
-        console.error('[employee-access-link] email delivery failed; returning family link',sendError)
+
+      let emailOk=false,textOk=false,emailError='',textError=''
+      if(via==='email'||via==='both'){
+        try{
+          await sendBrandedAccess(admin,target,emp.name||'',kind,accessLink)
+          emailOk=true
+        }catch(sendError){
+          emailError=sendError instanceof Error?sendError.message:String(sendError)
+          console.error('[employee-access-link] email delivery failed',sendError)
+        }
+      }
+
+      if(via==='text'||via==='both'){
+        if(!String(emp.phone||'').trim()){
+          textError='Employee phone number is required for text delivery'
+        }else{
+          const smsRes=await fetch(`${url}/functions/v1/send-sms`,{
+            method:'POST',
+            headers:{Authorization:authHeader,apikey:anonKey,'Content-Type':'application/json'},
+            body:JSON.stringify({
+              to:emp.phone,
+              body:`Nashville Tax Solutions: ${kind==='invite'?'Set up':'Reset'} your CRM password: ${accessLink}`
+            })
+          })
+          const smsBody=await smsRes.json().catch(()=>({}))
+          textOk=!!(smsRes.ok&&smsBody?.success)
+          if(!textOk) textError=String(smsBody?.error||`SMS transport returned ${smsRes.status}`)
+        }
+      }
+
+      const requestedSucceeded=(via==='email'&&emailOk)||(via==='text'&&textOk)||(via==='both'&&emailOk&&textOk)
+      const partialSucceeded=via==='both'&&(emailOk||textOk)
+      if(!requestedSucceeded&&!partialSucceeded){
         return json({
           success:true,mode:kind,delivery:'manual',access_link:accessLink,
-          message:'Secure TaxRes family access link prepared. Email transport is unavailable, so send the link to the employee securely.'
+          warning:[emailError,textError].filter(Boolean).join(' · ')||'Delivery transport unavailable',
+          message:'Secure TaxRes family access link prepared. Requested delivery transport is unavailable.'
         })
       }
+
+      return json({
+        success:true,
+        mode:kind,
+        delivery:via==='both'?(emailOk&&textOk?'both':emailOk?'email':'text'):via,
+        access_link:accessLink,
+        warning:via==='both'&&!(emailOk&&textOk)?[emailError,textError].filter(Boolean).join(' · '):null,
+        message:kind==='invite'?'TaxRes family CRM access prepared.':'TaxRes family password reset prepared.'
+      })
     }catch(e){return json({error:e instanceof Error?e.message:String(e)},502)}
   }catch(e){
     return json({error:e instanceof Error?e.message:String(e)},500)
