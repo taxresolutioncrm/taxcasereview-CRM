@@ -25,6 +25,20 @@ const checks=[
     "com.intuit.quickbooks.accounting",
     "nashville.taxrescrm.app/auth/quickbooks-callback",
   ]],
+  ['src/pages/Clients.jsx',[
+    "q.eq('client_id', String(clientId))",
+    "client_id: clientId ? String(clientId) : null",
+    "storage_path: storagePath",
+  ]],
+  ['src/pages/Documents.jsx',[
+    "clientFilter.startsWith('client:')",
+    "client_id: entityClientId",
+    "storage_path: storagePath",
+  ]],
+  ['supabase/migrations/20260919_nashville_document_client_identity.sql',[
+    "sync_document_client_identity",
+    "before insert or update of client_id, client, clientname, tenant_id",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
@@ -43,4 +57,4 @@ for(const [file,tokens] of checks){
   }
 }
 if(failed) process.exit(1)
-console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal')
+console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents')
