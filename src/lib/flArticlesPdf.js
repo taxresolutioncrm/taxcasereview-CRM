@@ -34,7 +34,105 @@ function safe(v, fallback = '__________________________') {
   return s || fallback
 }
 
+async function buildFlProfitArticlesPdf(c) {
+  const pdf = await PDFDocument.create()
+  const reg = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const ital = await pdf.embedFont(StandardFonts.HelveticaOblique)
+  const ink = rgb(0.05, 0.06, 0.09)
+  const muted = rgb(0.4, 0.42, 0.5)
+  let page = pdf.addPage([PAGE_W, PAGE_H])
+  let y = PAGE_H - 60
+
+  function newPage() { page = pdf.addPage([PAGE_W, PAGE_H]); y = PAGE_H - 60 }
+  function ensure(space) { if (y - space < 60) newPage() }
+  function heading(t, size=11) { ensure(size+12); page.drawText(t,{x:MARGIN,y,size,font:bold,color:ink}); y -= size+8 }
+  function label(t) { ensure(14); page.drawText(t,{x:MARGIN,y,size:8.5,font:bold,color:muted}); y -= 12 }
+  function body(t, opts={}) {
+    const size=opts.size ?? 10
+    const font=opts.font ?? reg
+    for (const ln of wrap(t,font,size,BODY_W)) {
+      ensure(size+4)
+      page.drawText(ln,{x:MARGIN,y,size,font,color:ink})
+      y -= size+4
+    }
+  }
+  function rule() { ensure(10); page.drawLine({start:{x:MARGIN,y:y-2},end:{x:MARGIN+BODY_W,y:y-2},thickness:.6,color:muted}); y -= 10 }
+  function gap(n=6){ y -= n }
+
+  page.drawText('FLORIDA DIVISION OF CORPORATIONS',{x:MARGIN,y,size:9,font:bold,color:muted}); y-=12
+  page.drawText('Articles of Incorporation',{x:MARGIN,y,size:16,font:bold,color:ink}); y-=18
+  page.drawText('for a Florida Profit Corporation',{x:MARGIN,y,size:10,font:ital,color:muted}); y-=22
+  rule(); gap(4)
+
+  body('The undersigned incorporator submits these Articles of Incorporation for a Florida profit corporation under Chapter 607, Florida Statutes.',{size:9})
+  gap(10)
+
+  heading('ARTICLE I — Corporate Name')
+  label('Name of Corporation')
+  body(safe(c.entity_name))
+  gap(6)
+
+  heading('ARTICLE II — Principal Office and Mailing Address')
+  label('Principal Street Address')
+  body(safe(c.principal_address || c.business_address))
+  gap(2)
+  label('Mailing Address')
+  body(safe(c.mailing_address || c.principal_address || c.business_address))
+  gap(6)
+
+  heading('ARTICLE III — Authorized Shares')
+  body(String(Math.max(1, Number(c.fl_authorized_shares || 1))) + ' authorized share(s).')
+  gap(6)
+
+  heading('ARTICLE IV — Registered Agent and Registered Office')
+  label('Registered Agent')
+  body(safe(c.registered_agent))
+  gap(2)
+  label('Florida Street Address')
+  body(safe(c.registered_agent_address))
+  gap(8)
+  body('The registered agent accepts the appointment and agrees to comply with the duties of a Florida registered agent.',{size:8.5})
+  gap(8)
+  label('Registered Agent Signature')
+  body(safe(c.fl_registered_agent_signature))
+  gap(8)
+
+  if (String(c.fl_officers_directors || '').trim()) {
+    heading('INITIAL OFFICERS / DIRECTORS')
+    body(String(c.fl_officers_directors).trim(),{size:9})
+    gap(8)
+  }
+
+  heading('EFFECTIVE DATE')
+  body('Effective date: ' + safe(c.effective_date,'Upon filing'))
+  gap(8)
+
+  heading('CORRESPONDENCE')
+  label('Correspondence Email')
+  body(safe(c.correspondence_email))
+  gap(8)
+
+  heading('INCORPORATOR')
+  label('Name')
+  body(safe(c.fl_incorporator))
+  gap(4)
+  label('Incorporator Signature')
+  body(safe(c.fl_authorized_representative_signature || c.fl_incorporator))
+  gap(10)
+
+  rule(); gap(4)
+  page.drawText('FILING FEES',{x:MARGIN,y,size:9,font:bold,color:muted}); y-=12
+  body('$70.00 required base filing ($35 Articles + $35 registered agent designation).',{size:9})
+  body('Optional: Certified Copy $8.75; Certificate of Status $8.75.',{size:8.5})
+  gap(4)
+  body('This packet was prepared from information supplied to FormaCorp for authorized filing. State acceptance is not represented until the Division of Corporations accepts the filing.',{size:7.5,font:ital})
+
+  return new Blob([await pdf.save()],{type:'application/pdf'})
+}
+
 export async function buildFlArticlesPdf(c) {
+  if (c?.entity_type === 'C-Corp') return buildFlProfitArticlesPdf(c)
   const pdf = await PDFDocument.create()
   const reg  = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
