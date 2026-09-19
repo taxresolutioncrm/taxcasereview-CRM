@@ -10,6 +10,12 @@ on public.chat_channels(tenant_id,archived,position);
 create index if not exists idx_time_entries_tenant_worker_started
 on public.time_entries(tenant_id,worker_name,started_at desc);
 
+create index if not exists idx_timeentries_tenant_employee_created
+on public.timeentries(tenant_id,employee,created_at desc);
+
+create index if not exists idx_timeentries_tenant_date
+on public.timeentries(tenant_id,date);
+
 create index if not exists idx_billing_time_tenant_employee_date
 on public.billing_time_entries(tenant_id,employee_name,date desc);
 
