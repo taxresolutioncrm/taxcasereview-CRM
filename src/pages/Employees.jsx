@@ -237,7 +237,7 @@ export default function Employees() {
       body: {
         email,
         name: String(empLike?.name || '').trim(),
-        redirect_to: window.location.origin + '/'
+        redirect_to: window.location.origin + '/?invite=1'
       }
     })
     if (error || data?.error) {
