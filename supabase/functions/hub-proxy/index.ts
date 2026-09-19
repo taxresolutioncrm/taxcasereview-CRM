@@ -26,7 +26,7 @@ function getCors(req: Request) {
   const allowed = ALLOWED_ORIGINS.has(origin) ? origin : 'https://admin.romylabs.com'
   return {
     'Access-Control-Allow-Origin':  allowed,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-cron-token',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   }
 }
@@ -59,47 +59,57 @@ Deno.serve(async (req) => {
     })
   }
 
-  // ── Step 1: Verify caller has a valid Supabase session ───────────────────
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return new Response(JSON.stringify({ error: 'Authentication required' }), {
-      status: 401, headers: { ...cors, 'Content-Type': 'application/json' }
-    })
-  }
-  const jwt = authHeader.slice(7)
-
-  // ── Step 2: Verify platform_admin role server-side ───────────────────────
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: `Bearer ${jwt}` } } }
-  )
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired session' }), {
-      status: 401, headers: { ...cors, 'Content-Type': 'application/json' }
-    })
-  }
-
-  // Verify platform_admin role from app_metadata (server-authoritative, not jwt claim)
   const serviceClient = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
-  const { data: authUser } = await serviceClient.auth.admin.getUserById(user.id)
-  const role = authUser?.user?.app_metadata?.role
-  const email = String(authUser?.user?.email || user.email || '').toLowerCase()
-  const ownerEmails = new Set([
-    'info@romylabs.com',
-    'romy@romylabs.com',
-    'romy@taxrescrm.net',
-    'romy@taxcasereview.org',
-  ])
-  if (role !== 'platform_admin' && !ownerEmails.has(email)) {
-    return new Response(JSON.stringify({ error: 'Forbidden: RomyLabs platform admin required' }), {
-      status: 403, headers: { ...cors, 'Content-Type': 'application/json' }
-    })
+
+  // Browser requests use the authenticated platform-admin session. Internal
+  // verification can use the existing cron token so this exact proxy path can
+  // be acceptance-tested server-to-server without exposing HUB_METRICS_SECRET.
+  const internalToken = req.headers.get('x-internal-cron-token') || ''
+  let internalAuthorized = false
+  if (internalToken) {
+    const { data: validInternal } = await serviceClient.rpc('verify_internal_cron_token', { provided: internalToken })
+    internalAuthorized = validInternal === true
+  }
+
+  const authHeader = req.headers.get('Authorization') || ''
+  let jwt = ''
+  if (!internalAuthorized) {
+    if (!authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401, headers: { ...cors, 'Content-Type': 'application/json' }
+      })
+    }
+    jwt = authHeader.slice(7)
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+    )
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid or expired session' }), {
+        status: 401, headers: { ...cors, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const { data: authUser } = await serviceClient.auth.admin.getUserById(user.id)
+    const role = authUser?.user?.app_metadata?.role
+    const email = String(authUser?.user?.email || user.email || '').toLowerCase()
+    const ownerEmails = new Set([
+      'info@romylabs.com',
+      'romy@romylabs.com',
+      'romy@taxrescrm.net',
+      'romy@taxcasereview.org',
+    ])
+    if (role !== 'platform_admin' && !ownerEmails.has(email)) {
+      return new Response(JSON.stringify({ error: 'Forbidden: RomyLabs platform admin required' }), {
+        status: 403, headers: { ...cors, 'Content-Type': 'application/json' }
+      })
+    }
   }
 
   // ── Step 3: Parse product key from request body ──────────────────────────
@@ -170,14 +180,19 @@ Deno.serve(async (req) => {
           return { status: 503, data: null, error: 'Arcvena proxy credential not configured' }
         }
         productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
+      } else if (productKey === 'nashville') {
+        // Prefer server-to-server hub auth so Nashville metrics are not coupled
+        // to browser JWT forwarding. Keep the user JWT as a compatibility fallback.
+        productHeaders['x-hub-secret'] = hubSecret
+        if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (
         productKey === 'camvella' ||
-        productKey === 'nashville' ||
         productKey === 'bocasync' ||
         productKey === 'groundivo' ||
         productKey === 'oculivo' ||
         productKey === 'restore_relay'
       ) {
+        if (!jwt) return { status: 401, data: null, error: `${productKey} requires an authenticated user session` }
         productHeaders['Authorization'] = `Bearer ${jwt}`
       } else {
         productHeaders['x-hub-secret'] = hubSecret
