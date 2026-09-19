@@ -21,8 +21,7 @@ alter table public.formacorp_documents
 
 drop index if exists public.uq_formacorp_documents_provider_document;
 create unique index if not exists uq_formacorp_documents_tenant_provider_document
-  on public.formacorp_documents(tenant_id, provider, provider_document_id)
-  where provider_document_id is not null;
+  on public.formacorp_documents(tenant_id, provider, provider_document_id);
 
 create table if not exists public.formacorp_provider_events (
   id uuid primary key default gen_random_uuid(),
@@ -38,8 +37,7 @@ create table if not exists public.formacorp_provider_events (
 );
 
 create unique index if not exists uq_formacorp_provider_events_tenant_event
-  on public.formacorp_provider_events(tenant_id, provider, provider_event_id)
-  where provider_event_id is not null;
+  on public.formacorp_provider_events(tenant_id, provider, provider_event_id);
 
 create index if not exists idx_formacorp_provider_events_case
   on public.formacorp_provider_events(case_id, received_at desc);
