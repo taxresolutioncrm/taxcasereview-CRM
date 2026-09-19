@@ -30,6 +30,7 @@ const DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu
 const TYPE_OPTIONS = ['Free Consultation', 'Case Discussion', 'Tax Investigation Review', 'Document Signing', 'Follow-Up Call', 'In-Person Meeting']
 
 export default function BookingSettings() {
+  const [tenantId, setTenantId] = useState(null)
   const [cfg, setCfg] = useState(DEFAULT_BOOKING_CONFIG)
   const [rowId, setRowId] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -39,7 +40,13 @@ export default function BookingSettings() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('settings').select('id, booking_config').limit(1).maybeSingle()
+      const { data: tid } = await supabase.rpc('current_tenant_id')
+      setTenantId(tid || null)
+      if (!tid) { setLoading(false); return }
+      const { data } = await supabase.from('settings')
+        .select('id, booking_config')
+        .eq('tenant_id', tid)
+        .maybeSingle()
       if (data) {
         setRowId(data.id)
         if (data.booking_config) setCfg({ ...DEFAULT_BOOKING_CONFIG, ...data.booking_config, blockedDates: data.booking_config.blockedDates || [], payment: { ...DEFAULT_BOOKING_CONFIG.payment, ...(data.booking_config.payment || {}) }, hours: { ...DEFAULT_BOOKING_CONFIG.hours, ...(data.booking_config.hours || {}) } })
@@ -54,9 +61,20 @@ export default function BookingSettings() {
   async function persist(next) {
     setSaving(true); setMsg('')
     let error
-    if (rowId) ({ error } = await supabase.from('settings').update({ booking_config: next }).eq('id', rowId))
+    let tid = tenantId
+    if (!tid) {
+      const { data } = await supabase.rpc('current_tenant_id')
+      tid = data || null
+      if (tid) setTenantId(tid)
+    }
+    if (!tid) {
+      setSaving(false)
+      setMsg('❌ Could not resolve this office')
+      return false
+    }
+    if (rowId) ({ error } = await supabase.from('settings').update({ booking_config: next }).eq('tenant_id', tid).eq('id', rowId))
     else {
-      const res = await supabase.from('settings').insert([{ booking_config: next }]).select('id').single()
+      const res = await supabase.from('settings').insert([{ tenant_id: tid, booking_config: next }]).select('id').single()
       error = res.error; if (res.data) setRowId(res.data.id)
     }
     setSaving(false)
