@@ -111,81 +111,39 @@ export default function Dashboard() {
   }, [])
 
   async function load() {
-    const [
-      { data: leads }, { data: clients }, { data: cases },
-      { data: tasks }, { data: invoices }, { data: payments },
-      { data: deadlines }, { data: arScheduled },
-    ] = await Promise.all([
-      tf(supabase.from('leads').select('id,name,status,"assignedTo","taxFee",created_at,"issueType",source,"irsBalance"')).order('created_at', { ascending: false }),
-      tf(supabase.from('clients').select('id,name,"issueType","irsBalance",created_at').is('deleted_at', null)).order('created_at', { ascending: false }),
-      tf(supabase.from('cases').select('id,"clientName","caseType","irsBalance",status,created_at')).order('created_at', { ascending: false }),
-      tf(supabase.from('tasks').select('id,title,"clientName","dueDate",priority,done,created_at').not('deleted','is',true)).order('created_at', { ascending: false }),
-      tf(supabase.from('invoices').select('id,total,status,clientName')),
-      tf(supabase.from('payments').select('id,amount,status,created_at,source,enrolled_by')),
-      tf(supabase.from('deadlines').select('id,name,title,"clientName",client,"dueDate",status')).order('dueDate', { ascending: true }),
-      tf(supabase.from('payments').select('amount,payment_status,scheduled_date').eq('payment_status', 'Scheduled')),
-    ])
-
-    const now = new Date()
-    const thisMonth = now.toISOString().slice(0, 7)
-
-    // 1st trade = the Tax Investigation Fee. This is collected externally via
-    // LeadFlow before a lead ever reaches the CRM, so it's never written to
-    // the payments table — leads.taxFee (set when the lead is qualified) is
-    // the only record of it we have. MTD = leads created this month.
-    // 2nd trade = the Resolution Fee, charged in-app once IRS results are
-    // back and the addendum is signed — these DO hit payments, tagged
-    // source:'resolution_fee' by stripe-resolution-fee-confirm.
-    const mtd1stTrades   = (leads || [])
-      .filter(l => l.created_at?.startsWith(thisMonth))
-      .reduce((s, l) => s + parseFloat(l.taxFee || 0), 0)
-    const total1stTrades = (leads || []).reduce((s, l) => s + parseFloat(l.taxFee || 0), 0)
-    const mtd2ndTrades   = (payments || [])
-      .filter(p => p.source === 'resolution_fee' && p.created_at?.startsWith(thisMonth))
-      .reduce((s, p) => s + parseFloat(p.amount || 0), 0)
-    const total2ndTrades = (payments || [])
-      .filter(p => p.source === 'resolution_fee')
-      .reduce((s, p) => s + parseFloat(p.amount || 0), 0)
-
-    // Role-scoped numbers — Tax Advisor (sales rep) only sees their own
-    // leads/1st-trade, Tax Associate/Manager only sees their own 2nd-trade
-    // (commission credit, via enrolled_by — see ChargeResolutionFeeModal /
-    // stripe-resolution-fee-confirm). "Closed" = no longer open, matching
-    // Open Leads' own status list, just inverted.
-    const CLOSED_STATUSES = ['Converted to Client', 'Dead', 'Do Not Contact']
-    const myLeads = (leads || []).filter(l => l.assignedTo === employeeName)
-    const myOpenLeads   = myLeads.filter(l => !CLOSED_STATUSES.includes(l.status)).length
-    const myClosedLeads = myLeads.filter(l => CLOSED_STATUSES.includes(l.status)).length
-    const closedLeads   = (leads || []).filter(l => CLOSED_STATUSES.includes(l.status)).length
-    const my1stTradeMtd = myLeads
-      .filter(l => l.created_at?.startsWith(thisMonth))
-      .reduce((s, l) => s + parseFloat(l.taxFee || 0), 0)
-    const my2ndTradeMtd = (payments || [])
-      .filter(p => p.source === 'resolution_fee' && p.enrolled_by === employeeName && p.created_at?.startsWith(thisMonth))
-      .reduce((s, p) => s + parseFloat(p.amount || 0), 0)
-
-    const arOutstanding = (arScheduled || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0)
-
+    const { data: snapshot, error } = await supabase.rpc('get_dashboard_snapshot')
+    if (error) {
+      console.error('Dashboard snapshot failed:', error)
+      setLoading(false)
+      return
+    }
+    const m = snapshot?.metrics || {}
     setMetrics({
-      activeCases: (cases || []).filter(c => OPEN_STATUSES.includes(c.status)).length,
-      openLeads: (leads || []).filter(l => !['Converted to Client', 'Dead', 'Do Not Contact'].includes(l.status)).length,
-      totalClients: (clients || []).length,
-      mtd1stTrades, total1stTrades, mtd2ndTrades, total2ndTrades,
-      closedLeads, myOpenLeads, myClosedLeads, my1stTradeMtd, my2ndTradeMtd,
-      arOutstanding,
-      unpaidInvoices: (invoices || []).filter(i => i.status === 'Unpaid' || i.status === 'Overdue').length,
-      unpaidAmt: (invoices || []).filter(i => i.status === 'Unpaid' || i.status === 'Overdue').reduce((s, i) => s + parseFloat(i.total || 0), 0),
-      openTasks: (tasks || []).filter(t => !t.done).length,
-      overdueTasks: (tasks || []).filter(t => !t.done && t.dueDate && new Date(t.dueDate) < now).length,
-      upcomingDl: (deadlines || []).filter(d => new Date(d.dueDate) >= now && d.status !== 'Completed').length,
-      overdueDl: (deadlines || []).filter(d => new Date(d.dueDate) < now && d.status !== 'Completed').length,
+      activeCases: Number(m.activeCases || 0),
+      openLeads: Number(m.openLeads || 0),
+      totalClients: Number(m.totalClients || 0),
+      mtd1stTrades: Number(m.mtd1stTrades || 0),
+      total1stTrades: Number(m.total1stTrades || 0),
+      mtd2ndTrades: Number(m.mtd2ndTrades || 0),
+      total2ndTrades: Number(m.total2ndTrades || 0),
+      closedLeads: Number(m.closedLeads || 0),
+      myOpenLeads: Number(m.myOpenLeads || 0),
+      myClosedLeads: Number(m.myClosedLeads || 0),
+      my1stTradeMtd: Number(m.my1stTradeMtd || 0),
+      my2ndTradeMtd: Number(m.my2ndTradeMtd || 0),
+      arOutstanding: Number(m.arOutstanding || 0),
+      unpaidInvoices: Number(m.unpaidInvoices || 0),
+      unpaidAmt: Number(m.unpaidAmt || 0),
+      openTasks: Number(m.openTasks || 0),
+      overdueTasks: Number(m.overdueTasks || 0),
+      upcomingDl: Number(m.upcomingDl || 0),
+      overdueDl: Number(m.overdueDl || 0),
     })
-
-    setRecentCases((cases || []).slice(0, 6))
-    setTasks((tasks || []).filter(t => !t.done).slice(0, 8))
-    setDeadlines((deadlines || []).filter(d => d.status !== 'Completed').slice(0, 8))
-    setRecentClients((clients || []).slice(0, 5))
-    setRecentLeads((leads || []).filter(l => !['Converted to Client', 'Dead'].includes(l.status)).slice(0, 5))
+    setRecentCases(Array.isArray(snapshot?.recentCases) ? snapshot.recentCases : [])
+    setTasks(Array.isArray(snapshot?.tasks) ? snapshot.tasks : [])
+    setDeadlines(Array.isArray(snapshot?.deadlines) ? snapshot.deadlines : [])
+    setRecentClients(Array.isArray(snapshot?.recentClients) ? snapshot.recentClients : [])
+    setRecentLeads(Array.isArray(snapshot?.recentLeads) ? snapshot.recentLeads : [])
     setLoading(false)
   }
 
