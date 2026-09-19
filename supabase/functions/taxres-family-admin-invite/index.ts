@@ -6,14 +6,9 @@ const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'au
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors})
 
 async function findUser(admin:any,email:string){
-  for(let page=1;page<=20;page++){
-    const {data,error}=await admin.auth.admin.listUsers({page,perPage:1000})
-    if(error) throw error
-    const hit=(data?.users||[]).find((u:any)=>String(u.email||'').toLowerCase()===email)
-    if(hit) return hit
-    if((data?.users||[]).length<1000) break
-  }
-  return null
+  const {data,error}=await admin.rpc('taxres_auth_user_by_email',{target_email:email})
+  if(error) throw error
+  return Array.isArray(data)&&data.length ? data[0] : null
 }
 
 Deno.serve(async(req)=>{
@@ -21,25 +16,35 @@ Deno.serve(async(req)=>{
   if(req.method!=='POST') return json({error:'POST only'},405)
   try{
     const nashAuth=req.headers.get('authorization')||''
-    if(!nashAuth.toLowerCase().startsWith('bearer ')) return json({error:'Nashville Admin authentication required'},401)
+    const bridgeSecret=req.headers.get('x-nashville-family-secret')||''
     const body=await req.json().catch(()=>({}))
     const targetEmail=String(body?.email||'').trim().toLowerCase()
     const action=String(body?.action||'link').trim().toLowerCase()
     if(!/^\S+@\S+\.\S+$/.test(targetEmail)) return json({error:'Employee email required'},400)
 
-    const proofRes=await fetch(NASHVILLE_PROOF_URL,{
-      method:'POST',
-      headers:{Authorization:nashAuth,'Content-Type':'application/json'},
-      body:JSON.stringify({target_email:targetEmail})
-    })
-    const proof=await proofRes.json().catch(()=>({}))
-    if(!proofRes.ok||!proof?.success||String(proof?.target_email||'').toLowerCase()!==targetEmail){
-      return json({error:proof?.error||'Nashville Admin verification failed'},proofRes.status||403)
-    }
-
     const url=Deno.env.get('SUPABASE_URL')||''
     const service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
     const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}})
+
+    let proof:any=null
+    if(bridgeSecret){
+      const {data:secretRow,error:secretErr}=await admin.from('platform_internal_secrets')
+        .select('secret').eq('key','nashville_family_bridge_v1').maybeSingle()
+      if(secretErr||!secretRow?.secret||String(secretRow.secret)!==bridgeSecret) return json({error:'Invalid Nashville family bridge'},401)
+      proof={success:true,target_email:targetEmail,target_name:String(body?.name||'')}
+    }else{
+      if(!nashAuth.toLowerCase().startsWith('bearer ')) return json({error:'Nashville Admin authentication required'},401)
+      const proofRes=await fetch(NASHVILLE_PROOF_URL,{
+        method:'POST',
+        headers:{Authorization:nashAuth,'Content-Type':'application/json'},
+        body:JSON.stringify({target_email:targetEmail})
+      })
+      proof=await proofRes.json().catch(()=>({}))
+      if(!proofRes.ok||!proof?.success||String(proof?.target_email||'').toLowerCase()!==targetEmail){
+        return json({error:proof?.error||'Nashville Admin verification failed'},proofRes.status||403)
+      }
+    }
+
     const existing=await findUser(admin,targetEmail)
 
     if(action==='status'){

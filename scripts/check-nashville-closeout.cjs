@@ -139,7 +139,8 @@ const checks=[
     "SYSTEM_MAIL_SECRET_KEY",
     "employee_access",
     "duplicate_employee_email",
-    "delivery:'email'",
+    "delivery:via==='both'",
+    "/functions/v1/send-sms",
   ]],
   ['supabase/functions/nashville-esign-reminders/index.ts',[
     "signer_token",

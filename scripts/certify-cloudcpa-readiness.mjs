@@ -53,7 +53,8 @@ must(email.includes("data?.via !== 'taxres_platform_relay'"),'CloudCPA compose v
 must(email.includes("data?.reply_to !== 'tony@thecloudcpa.net'"),'CloudCPA compose verifies tenant Reply-To')
 must(email.includes('alreadyStored = true'),'CloudCPA platform mail does not duplicate Sent history')
 
-must(sendSms.includes("cloudTenant?.tenant_code==='TRC-003'"),'CloudCPA SMS relay is explicitly scoped to TRC-003')
+must(sendSms.includes("'TRC-003'")&&sendSms.includes("platformRelay=true"),'CloudCPA SMS relay includes TRC-003')
+must(sendSms.includes("'ADMIN'"),'Demo SMS uses the TaxRes platform relay instead of an unconfigured transport')
 must(sendSms.includes("platformRelay=true"),'CloudCPA SMS truthfully marks platform relay')
 must(sendSms.includes("eq('tenant_id',tenantId)"),'CloudCPA SMS client/lead resolution stays tenant scoped')
 must(sendSms.includes("return json({success:true,sid:sw.sid,platform_relay:platformRelay"),'SMS response exposes physical relay state')
