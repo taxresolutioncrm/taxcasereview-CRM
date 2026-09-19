@@ -14,6 +14,8 @@ function tf(q) {
   return FIRM.tenantId ? q.eq('tenant_id', FIRM.tenantId) : q
 }
 
+const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
+
 const CARD_COLORS = {
     'Active Cases':        '#f59e0b',
     'Open Leads':          '#a855f7',
@@ -111,6 +113,23 @@ export default function Dashboard() {
   }, [])
 
   async function load() {
+    if (FIRM.tenantId === NASHVILLE_TENANT_ID) {
+      const { data: snapshot, error: snapshotError } = await supabase.rpc('nashville_dashboard_snapshot', {
+        p_employee_name: employeeName || ''
+      })
+      if (!snapshotError && snapshot) {
+        setMetrics(snapshot.metrics || {})
+        setRecentCases(snapshot.recentCases || [])
+        setTasks(snapshot.tasks || [])
+        setDeadlines(snapshot.deadlines || [])
+        setRecentClients(snapshot.recentClients || [])
+        setRecentLeads(snapshot.recentLeads || [])
+        setLoading(false)
+        return
+      }
+      if (snapshotError) console.error('[Dashboard] Nashville snapshot failed; falling back:', snapshotError.message)
+    }
+
     const [
       { data: leads }, { data: clients }, { data: cases },
       { data: tasks }, { data: invoices }, { data: payments },
