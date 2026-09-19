@@ -117,6 +117,17 @@ function floridaStateFee(v = {}) {
   return 125 + (v.fl_certificate_of_status ? 5 : 0) + (v.fl_certified_copy ? 30 : 0)
 }
 
+function stateFilingAmount(v = {}, req = null) {
+  if (isFloridaFormation(v)) return floridaStateFee(v)
+  const stored = Number(v.state_fee_amount ?? v.fee)
+  if (Number.isFinite(stored) && stored > 0) return stored
+  if ((v.entity_type === 'LLC' || v.entity_type === 'Professional LLC (PLLC)') && req?.llc_filing_fee) {
+    const parsed = Number(String(req.llc_filing_fee).replace(/[^0-9.]/g,''))
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
 function flStatusIndex(v = {}) {
   const i = FL_FILING_STEPS.indexOf(v.fl_filing_status || 'Draft')
   return i < 0 ? 0 : i
@@ -187,16 +198,16 @@ function FloridaFilingFields({ value, onChange }) {
       </div>
       <div className="fg2">
         <div className="field">
-          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certificate_of_status} onChange={e=>onChange('fl_certificate_of_status',e.target.checked)} style={{width:'auto'}}/> Certificate of Status (+$5)</label>
+          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certificate_of_status} onChange={e=>onChange('fl_certificate_of_status',e.target.checked)} style={{width:'auto'}}/> Certificate of Status (+{isFloridaCorporation(value)?'$8.75':'$5'})</label>
         </div>
         <div className="field">
-          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certified_copy} onChange={e=>onChange('fl_certified_copy',e.target.checked)} style={{width:'auto'}}/> Certified Copy (+$30)</label>
+          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certified_copy} onChange={e=>onChange('fl_certified_copy',e.target.checked)} style={{width:'auto'}}/> Certified Copy (+{isFloridaCorporation(value)?'$8.75':'$30'})</label>
         </div>
       </div>
       <div className="field" style={{marginBottom:0}}>
         <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',lineHeight:1.4}}>
           <input type="checkbox" checked={!!value.fl_filing_authorized} onChange={e=>onChange('fl_filing_authorized',e.target.checked)} style={{width:'auto',marginTop:2}}/>
-          <span>I authorize this office to prepare and submit the Florida LLC filing using the information above. I understand the filing becomes a public record and that typed signatures may be used only with the signer's permission.</span>
+          <span>I authorize this office to prepare and submit this Florida formation filing using the information above. I understand the filing becomes a public record and that typed signatures may be used only with the signer's permission.</span>
         </label>
       </div>
     </div>
@@ -318,7 +329,7 @@ export default function FormaCorp() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `Articles-of-Organization-${(c.entity_name || 'LLC').replace(/[^a-z0-9]+/gi,'-')}.pdf`
+      a.download = `${isFloridaCorporation(c)?'Articles-of-Incorporation':'Articles-of-Organization'}-${(c.entity_name || 'Business').replace(/[^a-z0-9]+/gi,'-')}.pdf`
       document.body.appendChild(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 4000)
     } catch (e) {
@@ -395,7 +406,9 @@ export default function FormaCorp() {
       fl_certificate_of_status:!!wForm.fl_certificate_of_status,
       fl_certified_copy:!!wForm.fl_certified_copy,
       fl_filing_status:'Draft', fl_payment_status:'unpaid', fl_submission_method:'sunbiz_online',
-      fl_state_fee:floridaStateFee(wForm),
+      fl_state_fee:isFloridaFormation(wForm) ? floridaStateFee(wForm) : 125,
+      state_fee_amount:isFloridaFormation(wForm) ? floridaStateFee(wForm) : ((wForm.entity_type==='LLC'||wForm.entity_type==='Professional LLC (PLLC)') ? fee : null),
+      state_fee_payment_status:'unpaid',
       corporation_shares:wForm.corporation_shares ? Number(wForm.corporation_shares) : null,
       corporation_par_value:wForm.corporation_par_value === '' ? null : Number(wForm.corporation_par_value),
       incorporator_name:wForm.incorporator_name || '',
@@ -456,8 +469,11 @@ export default function FormaCorp() {
     const payload = { ...form, fee: form.fee ? parseFloat(form.fee) : null, created_at: form.created_at || new Date().toISOString() }
     if (isFloridaFormation(payload)) {
       payload.fl_state_fee = floridaStateFee(payload)
+      payload.state_fee_amount = floridaStateFee(payload)
       if (payload.fl_filing_authorized && !payload.fl_authorized_at) payload.fl_authorized_at = new Date().toISOString()
       if (!payload.fl_filing_authorized) payload.fl_authorized_at = null
+    } else if (payload.fee) {
+      payload.state_fee_amount = Number(payload.fee)
     }
     const { error } = modal === 'edit'
       ? await supabase.from('formacorp').update(payload).eq('id', form.id)
@@ -770,9 +786,10 @@ export default function FormaCorp() {
           </div>
           <div className="card" style={{padding:'12px 16px'}}>
             <div className="stitle" style={{marginBottom:8}}>Filing & Fee</div>
-            {[['EIN',c.ein||'—'],['State File #',c.state_file_num||'—'],['Fee',c.fee?`$${c.fee}`:'—'],['Fee Paid',c.fee_paid?'✅ Yes':'⏳ Pending'],['Business Purpose',c.business_purpose||'—']].map(([l,v])=>(
+            {[['EIN',c.ein||'—'],['State File #',c.state_file_num||'—'],['Government Filing Amount',stateFilingAmount(c,stateReqs[c.state])?`${Number(stateFilingAmount(c,stateReqs[c.state])).toFixed(2)}`:'Set fee'],['Payment',c.state_fee_payment_status==='received'||c.fee_paid?'✅ Received':'⏳ Pending'],['Business Purpose',c.business_purpose||'—']].map(([l,v])=>(
               <div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>
             ))}
+            {!isFloridaFormation(c) && stateFilingAmount(c,stateReqs[c.state]) && c.state_fee_payment_status!=='received' && <button className="btn pri sm" style={{marginTop:8}} onClick={()=>setFeePaymentCase(c)}>💳 Pay Government Filing Amount</button>}
           </div>
         </div>
 
@@ -888,7 +905,7 @@ export default function FormaCorp() {
           </div>
         )}
 
-        {feePaymentCase && <FormaCorpStateFeeModal caseRecord={feePaymentCase} amount={Number(feePaymentCase.fl_state_fee || floridaStateFee(feePaymentCase))} onClose={()=>setFeePaymentCase(null)} onPaid={async()=>{ setFeePaymentCase(null); showToast('✅ Government filing funds collected'); await load(); setDetail(d=>d?({...d,fl_payment_status:'received',fee_paid:true,state_fee_collected_amount:Number(feePaymentCase.fl_state_fee || floridaStateFee(feePaymentCase))}):d) }}/>}
+        {feePaymentCase && <FormaCorpStateFeeModal caseRecord={feePaymentCase} amount={Number(stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0)} onClose={()=>setFeePaymentCase(null)} onPaid={async(data)=>{ const paid=Number(data?.amount || stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0); const wasFlorida=isFloridaFormation(feePaymentCase); setFeePaymentCase(null); showToast('✅ Government filing funds collected'); await load(); setDetail(d=>d?({...d,state_fee_payment_status:'received',fee_paid:true,state_fee_collected_amount:paid,...(wasFlorida?{fl_payment_status:'received'}:{})}):d) }}/>}
         {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>This cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
       </div>
     )
