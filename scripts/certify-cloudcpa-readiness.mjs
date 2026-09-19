@@ -103,6 +103,7 @@ must(inviteEmployee.includes("type:kind,email,options"),'new and existing employ
 must(inviteEmployee.includes("/functions/v1/send-email"),'employee access email uses the office-authorized CRM mail transport')
 must(inviteEmployee.includes("delivery:'manual'"),'employee access preserves a secure fallback link if office email transport is unavailable')
 must(inviteEmployee.includes("Employee invite permission denied"),'employee invitation enforces office HR/admin permission')
+must(inviteEmployee.includes("rpc('_is_platform_admin')"),'platform admin can manage tenant-scoped employee invitations')
 must(inviteEmployee.includes("This email already belongs to another office"),'employee invitation refuses cross-office email collisions')
 must(migration.includes("firmname = 'CloudCPA Inc'"),'CloudCPA does not inherit Tax Case Review firm name')
 must(migration.includes("firmemail = 'tony@thecloudcpa.net'"),'CloudCPA correspondence identity is tenant-owned')
