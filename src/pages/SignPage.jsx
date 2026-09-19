@@ -175,7 +175,6 @@ export default function SignPage() {
   async function sign() {
     if (!canSign) return
     setSigning(true)
-    const signedAt  = new Date().toISOString()
     const signedDate = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' })
 
     let sigImage = null
@@ -183,15 +182,23 @@ export default function SignPage() {
       sigImage = canvasRef.current.toDataURL('image/png')
     }
 
-    const { error } = await supabase.rpc('esign_mark_signed', {
-      p_id:                id,
-      p_signed_name:       mode === 'type' ? typedSig.trim() : fullname.trim(),
-      p_signer_full_name:  fullname.trim(),
-      p_signer_ip:         ip,
-      p_signed_user_agent: navigator.userAgent.slice(0, 200),
+    const { data: signResult, error: signError } = await supabase.functions.invoke('esign-archive-upload', {
+      body: {
+        action:'sign',
+        esign_id:id,
+        signer_token:signerToken,
+        signed_name:mode === 'type' ? typedSig.trim() : fullname.trim(),
+        signer_full_name:fullname.trim(),
+      }
     })
 
-    if (error) { setSigning(false); setError('Error saving signature: ' + error.message); return }
+    if (signError || !signResult?.success) {
+      setSigning(false)
+      setError('Error saving signature: ' + (signResult?.error || signError?.message || 'Unknown signing error'))
+      return
+    }
+    const signedAt = signResult.document?.signed_at || new Date().toISOString()
+    setDoc(prev => ({ ...prev, ...(signResult.document || {}) }))
 
     // Everything after the DB write is best-effort — pipeline advance, PDF
     // stamping, document inserts, email/SMS. If any of it hangs or throws the
