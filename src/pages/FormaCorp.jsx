@@ -556,10 +556,11 @@ export default function FormaCorp() {
   }
 
   async function recordFloridaSubmission(c) {
+    if (c.formation_funds_status !== 'received') { showToast('Collect the state filing funds inside FormaCorp before recording a new submission.', 'err'); setFeePayCase(c); return }
     const tracking = window.prompt('Florida tracking number from the state receipt:', c.fl_tracking_number || '')
     if (!tracking?.trim()) { showToast('A Florida tracking number is required before marking the filing submitted.', 'err'); return }
-    const paymentRef = window.prompt('State payment receipt/reference (optional):', c.fl_payment_reference || '')
-    if (paymentRef === null) return
+    const paymentRef = window.prompt('State payment receipt/reference:', c.fl_payment_reference || '')
+    if (!paymentRef?.trim()) { showToast('A state payment receipt/reference is required before marking the government fee paid.', 'err'); return }
     const pin = window.prompt('Florida filing PIN (optional; usually supplied on rejection):', c.fl_pin || '')
     if (pin === null) return
     await updateFloridaCase(c, {
@@ -570,8 +571,11 @@ export default function FormaCorp() {
       fl_submitted_at:new Date().toISOString(),
       fl_payment_status:'state_paid',
       fee_paid:true,
+      state_disbursement_status:'paid_to_state',
+      state_disbursement_reference:String(paymentRef || '').trim(),
+      state_disbursed_at:new Date().toISOString(),
       stage:'State Filing',
-    }, '✅ Recorded as submitted to Florida', 'State submission recorded')
+    }, '✅ Recorded as submitted to Florida', 'State submission recorded with government payment reference')
   }
 
   async function markFloridaReview(c) {
