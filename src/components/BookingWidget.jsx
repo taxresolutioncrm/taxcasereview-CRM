@@ -32,6 +32,7 @@ export default function BookingWidget({ contact, onClose, mode = 'lead' }) {
   const [saving, setSaving] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [linkSent, setLinkSent] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
   // Calendly-style: email them the public booking link and let THEM pick
   async function sendBookingLink() {
@@ -66,6 +67,7 @@ export default function BookingWidget({ contact, onClose, mode = 'lead' }) {
 
   async function confirmBooking() {
     if (!form.date || !form.time) return
+    setErrorMsg('')
     setSaving(true)
     const title = `${contact?.name || 'Appointment'} - ${form.eventType}`
 
@@ -89,7 +91,7 @@ export default function BookingWidget({ contact, onClose, mode = 'lead' }) {
       created_at: new Date().toISOString(),
     }])
     setSaving(false)
-    if (error) { alert('Error saving: ' + error.message); return }
+    if (error) { setErrorMsg('Could not save appointment: ' + error.message); return }
 
     // Save qualification answers as a lead note too
     if (mode === 'lead' && contact?.id) {
@@ -145,6 +147,11 @@ export default function BookingWidget({ contact, onClose, mode = 'lead' }) {
         </div>
 
         <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1 }}>
+          {errorMsg && (
+            <div role="alert" style={{background:'rgba(239,68,68,.10)',border:'1px solid rgba(239,68,68,.35)',color:'#fca5a5',borderRadius:8,padding:'9px 11px',fontSize:12,marginBottom:12}}>
+              {errorMsg}
+            </div>
+          )}
           {confirmed ? (
             <div style={{ textAlign: 'center', color: 'var(--ok)', fontWeight: 700, fontSize: 14, padding: '24px 0' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
