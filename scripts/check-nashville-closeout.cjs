@@ -39,6 +39,12 @@ const checks=[
     "sync_document_client_identity",
     "before insert or update of client_id, client, clientname, tenant_id",
   ]],
+  ['src/pages/Dialer.jsx',[
+    "phoneDirectoryRef",
+    "setInterval(loadCallLog, 10000)",
+    "table: 'incoming_calls', ...tenantFilter",
+    "client_id: String(client.id)",
+  ]],
   ['src/context/AppContext.jsx',[
     "tenant_id=eq.${myTenantId}",
     "}, [user, myTenantId])",
