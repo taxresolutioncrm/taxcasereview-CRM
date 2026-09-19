@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { FIRM } from '../lib/firmBranding'
 
 export default function GlobalTeamChatNotifier(){
   const { user, employeeName } = useApp()
@@ -12,8 +13,9 @@ export default function GlobalTeamChatNotifier(){
   useEffect(()=>{
     if(!user?.email) return
     const me=employeeName || user.user_metadata?.name || user.email.split('@')[0]
+    const cfg={event:'INSERT',schema:'public',table:'chat_messages',...(FIRM.tenantId?{filter:`tenant_id=eq.${FIRM.tenantId}`}:{})}
     const ch=supabase.channel('global-teamchat-notifier-'+user.id)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},({new:msg})=>{
+      .on('postgres_changes',cfg,({new:msg})=>{
         if(!msg || msg.sender===me) return
         if(msg.invite_to && msg.invite_to!==me) return
 
