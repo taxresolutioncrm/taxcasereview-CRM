@@ -44,3 +44,37 @@ as $$
 $$;
 
 grant execute on function public.billing_time_activity_summary(text,text) to authenticated;
+-- Employee Portal assignment and communications hot paths.
+create index if not exists idx_clients_tenant_assigned_lower
+on public.clients(tenant_id,lower(coalesce("assignedTo",'')))
+where deleted_at is null;
+
+create index if not exists idx_clients_tenant_taxassociate_lower
+on public.clients(tenant_id,lower(coalesce("taxAssociate",'')))
+where deleted_at is null;
+
+create index if not exists idx_cases_tenant_assigned_lower
+on public.cases(tenant_id,lower(coalesce("assignedTo",'')));
+
+create index if not exists idx_cases_tenant_taxassociate_lower
+on public.cases(tenant_id,lower(coalesce("taxAssociate",'')));
+
+create index if not exists idx_tasks_tenant_assigned_open_lower
+on public.tasks(tenant_id,lower(coalesce("assignedTo",assignedto,'')),"dueDate",created_at desc)
+where coalesce(deleted,false)=false and coalesce(done,false)=false;
+
+create index if not exists idx_calevents_tenant_assigned_date_lower
+on public.calevents(tenant_id,lower(coalesce("assignedTo",'')),date);
+
+create index if not exists idx_timeentries_tenant_employee_lower_date
+on public.timeentries(tenant_id,lower(coalesce(employee,staffname,'')),date,created_at desc);
+
+create index if not exists idx_timeoff_tenant_employee_created
+on public.time_off_requests(tenant_id,employee_id,created_at desc);
+
+create index if not exists idx_clients_tenant_phone10
+on public.clients(tenant_id,(right(regexp_replace(coalesce(phone,''),'\D','','g'),10)))
+where deleted_at is null and phone is not null;
+
+create index if not exists idx_sms_tenant_phone10_created
+on public.sms_messages(tenant_id,(right(regexp_replace(coalesce(phone,''),'\D','','g'),10)),created_at desc);
