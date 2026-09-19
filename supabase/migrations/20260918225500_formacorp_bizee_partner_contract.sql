@@ -19,8 +19,9 @@ alter table public.formacorp_documents
   add column if not exists provider_document_id text,
   add column if not exists provider_metadata jsonb not null default '{}'::jsonb;
 
-create unique index if not exists uq_formacorp_documents_provider_document
-  on public.formacorp_documents(provider, provider_document_id)
+drop index if exists public.uq_formacorp_documents_provider_document;
+create unique index if not exists uq_formacorp_documents_tenant_provider_document
+  on public.formacorp_documents(tenant_id, provider, provider_document_id)
   where provider_document_id is not null;
 
 create table if not exists public.formacorp_provider_events (
@@ -33,9 +34,12 @@ create table if not exists public.formacorp_provider_events (
   event_type text,
   event_status text,
   payload jsonb not null default '{}'::jsonb,
-  received_at timestamptz not null default now(),
-  unique(provider, provider_event_id)
+  received_at timestamptz not null default now()
 );
+
+create unique index if not exists uq_formacorp_provider_events_tenant_event
+  on public.formacorp_provider_events(tenant_id, provider, provider_event_id)
+  where provider_event_id is not null;
 
 create index if not exists idx_formacorp_provider_events_case
   on public.formacorp_provider_events(case_id, received_at desc);
