@@ -718,7 +718,7 @@ function ClientWIPWidget({ clientId, clientName }) {
 const FILE_EXT_ICON = n => { const e=(n||'').split('.').pop().toLowerCase(); return {pdf:'📄',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',tiff:'🖼️'}[e]||'📎' }
 const fmt = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB'
 
-export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
+export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged }) {
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
   const [uploading,  setUploading]  = useState(false)
@@ -728,11 +728,12 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
   const [preview,    setPreview]    = useState(null)
   const fileRef = useRef(null)
 
-  useEffect(() => { loadDocs() }, [clientName])
+  useEffect(() => { loadDocs() }, [clientId, clientName])
 
   async function loadDocs() {
-    const { data } = await supabase.from('documents').select('*')
-      .eq('client', clientName).order('created_at', { ascending: false })
+    let q = supabase.from('documents').select('*')
+    q = clientId ? q.eq('client_id', String(clientId)) : q.eq('client', clientName)
+    const { data } = await q.order('created_at', { ascending: false })
     setDocs(data || [])
   }
 
@@ -741,15 +742,20 @@ export function ClientDocs({ clientName, supabase, showToast, onLogged }) {
     setSaving(true)
     let fileUrl = null, fileName = null, fileSize = null
     if (file) {
-      const path = `docs/${clientName.replace(/\s+/g,'-')}/${Date.now()}_${file.name}`
+      const folderKey = String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')
+      const ownerKey = clientId ? String(clientId) : clientName.replace(/\s+/g,'-')
+      const path = `docs/${ownerKey}/${folderKey}/${Date.now()}_${file.name}`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }
       const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
       fileUrl = urlData?.signedUrl || null; fileName = file.name; fileSize = file.size
     }
     const { error } = await supabase.from('documents').insert([{
-      name: form.name, client: clientName, docType: form.docType,
+      name: form.name, client: clientName, clientname: clientName,
+      client_id: clientId ? String(clientId) : null,
+      docType: form.docType,
       notes: form.notes, file_url: fileUrl, file_name: fileName,
+      storage_path: file ? `docs/${clientId ? String(clientId) : clientName.replace(/\s+/g,'-')}/${String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')}/${Date.now()}_${file.name}` : null,
       file_size: fileSize, created_at: new Date().toISOString()
     }])
     setSaving(false)
@@ -2249,7 +2255,7 @@ export default function Clients() {
           {/* Docs Tab */}
           {detailTab==='docs'&&(
             <div style={{padding:0}}>
-              <ClientDocs clientName={c.name} supabase={supabase} showToast={showToast} onLogged={(text)=>logAction(c.name, text)}/>
+              <ClientDocs clientId={c.id} clientName={c.name} supabase={supabase} showToast={showToast} onLogged={(text)=>logAction(c.name, text)}/>
             </div>
           )}
 
