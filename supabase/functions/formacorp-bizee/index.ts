@@ -3,7 +3,8 @@
 // IMPORTANT: This function deliberately does not invent undocumented Bizee endpoint paths.
 // Configure the exact Bizee-provided base URL and paths only after partner onboarding.
 //
-// Required secrets once Bizee approves the integration:
+// Required configuration once Bizee approves the integration and confirms
+// there is no additional API/integration fee:
 //   BIZEE_PARTNER_API_BASE_URL
 //   BIZEE_PARTNER_API_TOKEN
 //   BIZEE_PARTNER_CREATE_PATH
@@ -19,6 +20,13 @@
 //   BIZEE_PARTNER_DOCUMENT_ID_FIELD
 //   BIZEE_PARTNER_DOCUMENT_NAME_FIELD
 //   BIZEE_PARTNER_DOCUMENT_TYPE_FIELD
+//   BIZEE_PARTNER_WEBHOOK_SECRET_HEADER
+//   BIZEE_PARTNER_WEBHOOK_ORDER_ID_FIELD
+//   BIZEE_PARTNER_WEBHOOK_EVENT_ID_FIELD
+//   BIZEE_PARTNER_WEBHOOK_EVENT_TYPE_FIELD
+//   BIZEE_PARTNER_WEBHOOK_STATUS_FIELD
+//   BIZEE_PARTNER_STATUS_MAP_JSON
+//   BIZEE_PARTNER_NO_ADDITIONAL_API_FEE_CONFIRMED=true
 //
 // Optional provider-contract values:
 //   BIZEE_PARTNER_CREATE_STATIC_JSON
@@ -59,16 +67,24 @@ function cfg(){
   const documentIdField=(Deno.env.get('BIZEE_PARTNER_DOCUMENT_ID_FIELD')||'').trim()
   const documentNameField=(Deno.env.get('BIZEE_PARTNER_DOCUMENT_NAME_FIELD')||'').trim()
   const documentTypeField=(Deno.env.get('BIZEE_PARTNER_DOCUMENT_TYPE_FIELD')||'').trim()
+  const webhookSecret=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_SECRET')||'').trim()
+  const webhookSecretHeader=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_SECRET_HEADER')||'').trim()
+  const webhookOrderIdField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_ORDER_ID_FIELD')||'').trim()
+  const webhookEventIdField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_EVENT_ID_FIELD')||'').trim()
+  const webhookEventTypeField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_EVENT_TYPE_FIELD')||'').trim()
+  const webhookStatusField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_STATUS_FIELD')||'').trim()
+  const noAdditionalApiFeeConfirmed=(Deno.env.get('BIZEE_PARTNER_NO_ADDITIONAL_API_FEE_CONFIRMED')||'').trim().toLowerCase()==='true'
   const createStaticJson=(Deno.env.get('BIZEE_PARTNER_CREATE_STATIC_JSON')||'{}').trim()
   const requiredCanonicalJson=(Deno.env.get('BIZEE_PARTNER_REQUIRED_CANONICAL_FIELDS_JSON')||'[]').trim()
   const statusMapJson=(Deno.env.get('BIZEE_PARTNER_STATUS_MAP_JSON')||'{}').trim()
   const tenantTokensJson=(Deno.env.get('BIZEE_PARTNER_TENANT_TOKENS_JSON')||'{}').trim()
+  const tenantWebhookSecretsJson=(Deno.env.get('BIZEE_PARTNER_TENANT_WEBHOOK_SECRETS_JSON')||'{}').trim()
   const tenantStaticJson=(Deno.env.get('BIZEE_PARTNER_TENANT_STATIC_JSON')||'{}').trim()
   const timeout=Math.max(3000,Math.min(60000,Number(Deno.env.get('BIZEE_PARTNER_TIMEOUT_MS')||20000)))
-  return {base,token,createPath,statusPath,documentsPath,authHeader,authScheme,orderIdField,statusField,createFieldMapJson,documentsArrayField,documentUrlField,documentIdField,documentNameField,documentTypeField,createStaticJson,requiredCanonicalJson,statusMapJson,tenantTokensJson,tenantStaticJson,timeout}
+  return {base,token,createPath,statusPath,documentsPath,authHeader,authScheme,orderIdField,statusField,createFieldMapJson,documentsArrayField,documentUrlField,documentIdField,documentNameField,documentTypeField,webhookSecret,webhookSecretHeader,webhookOrderIdField,webhookEventIdField,webhookEventTypeField,webhookStatusField,noAdditionalApiFeeConfirmed,createStaticJson,requiredCanonicalJson,statusMapJson,tenantTokensJson,tenantWebhookSecretsJson,tenantStaticJson,timeout}
 }
 
-function configErrors(c:ReturnType<typeof cfg>,token:string){
+function configErrors(c:ReturnType<typeof cfg>,token:string,webhookSecret:string){
   const errors:string[]=[]
   if(!c.base) errors.push('BIZEE_PARTNER_API_BASE_URL')
   else if(!/^https:\/\//i.test(c.base)) errors.push('BIZEE_PARTNER_API_BASE_URL must use HTTPS')
@@ -83,6 +99,13 @@ function configErrors(c:ReturnType<typeof cfg>,token:string){
   else if(!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(c.authHeader)) errors.push('BIZEE_PARTNER_AUTH_HEADER is invalid')
   if(!c.orderIdField) errors.push('BIZEE_PARTNER_ORDER_ID_FIELD')
   if(!c.statusField) errors.push('BIZEE_PARTNER_STATUS_FIELD')
+  if(!c.noAdditionalApiFeeConfirmed) errors.push('BIZEE_PARTNER_NO_ADDITIONAL_API_FEE_CONFIRMED must be true')
+  if(!webhookSecret) errors.push('BIZEE_PARTNER_WEBHOOK_SECRET or BIZEE_PARTNER_TENANT_WEBHOOK_SECRETS_JSON')
+  if(!c.webhookSecretHeader) errors.push('BIZEE_PARTNER_WEBHOOK_SECRET_HEADER')
+  if(!c.webhookOrderIdField) errors.push('BIZEE_PARTNER_WEBHOOK_ORDER_ID_FIELD')
+  if(!c.webhookEventIdField) errors.push('BIZEE_PARTNER_WEBHOOK_EVENT_ID_FIELD')
+  if(!c.webhookEventTypeField) errors.push('BIZEE_PARTNER_WEBHOOK_EVENT_TYPE_FIELD')
+  if(!c.webhookStatusField) errors.push('BIZEE_PARTNER_WEBHOOK_STATUS_FIELD')
   if(!c.createFieldMapJson) errors.push('BIZEE_PARTNER_CREATE_FIELD_MAP_JSON')
   if(!c.documentsArrayField) errors.push('BIZEE_PARTNER_DOCUMENTS_ARRAY_FIELD')
   if(!c.documentUrlField) errors.push('BIZEE_PARTNER_DOCUMENT_URL_FIELD')
@@ -105,12 +128,13 @@ function configErrors(c:ReturnType<typeof cfg>,token:string){
     }
   }catch(e:any){ errors.push(e?.message||'Invalid Bizee status map JSON') }
   try{ parseObjectJson(c.tenantTokensJson,'BIZEE_PARTNER_TENANT_TOKENS_JSON') }catch(e:any){ errors.push(e?.message||'Invalid Bizee tenant token JSON') }
+  try{ parseObjectJson(c.tenantWebhookSecretsJson,'BIZEE_PARTNER_TENANT_WEBHOOK_SECRETS_JSON') }catch(e:any){ errors.push(e?.message||'Invalid Bizee tenant webhook secrets JSON') }
   try{ parseObjectJson(c.tenantStaticJson,'BIZEE_PARTNER_TENANT_STATIC_JSON') }catch(e:any){ errors.push(e?.message||'Invalid Bizee tenant static JSON') }
   return errors
 }
 
-function configured(c:ReturnType<typeof cfg>,token:string){
-  return configErrors(c,token).length===0
+function configured(c:ReturnType<typeof cfg>,token:string,webhookSecret:string){
+  return configErrors(c,token,webhookSecret).length===0
 }
 
 function readField(value:any,path:string){
@@ -162,12 +186,14 @@ async function applyProviderStatusToCase(sb:any,cfgValue:ReturnType<typeof cfg>,
 
 function tenantProviderConfig(c:ReturnType<typeof cfg>,tenantId:string){
   const tokens=parseObjectJson(c.tenantTokensJson,'BIZEE_PARTNER_TENANT_TOKENS_JSON')
+  const webhookSecrets=parseObjectJson(c.tenantWebhookSecretsJson,'BIZEE_PARTNER_TENANT_WEBHOOK_SECRETS_JSON')
   const tenantStatic=parseObjectJson(c.tenantStaticJson,'BIZEE_PARTNER_TENANT_STATIC_JSON')
   const token=String(tokens[tenantId]||c.token||'')
+  const webhookSecret=String(webhookSecrets[tenantId]||c.webhookSecret||'')
   const staticFields=tenantStatic[tenantId] && typeof tenantStatic[tenantId]==='object' && !Array.isArray(tenantStatic[tenantId])
     ? tenantStatic[tenantId]
     : {}
-  return {token,staticFields}
+  return {token,webhookSecret,staticFields}
 }
 
 function canonicalFormation(caseRow:any){
@@ -354,13 +380,13 @@ serve(async req=>{
       return json({
         ok:true,
         provider:'bizee',
-        configured:configured(c,tenantCfg.token),
+        configured:configured(c,tenantCfg.token,tenantCfg.webhookSecret),
         mode:'partner_api',
-        missing:configErrors(c,tenantCfg.token)
+        missing:configErrors(c,tenantCfg.token,tenantCfg.webhookSecret)
       })
     }
 
-    if(!configured(c,tenantCfg.token)) return json({error:'Bizee partner API is not configured for this CRM office.'},422)
+    if(!configured(c,tenantCfg.token,tenantCfg.webhookSecret)) return json({error:'Bizee partner API is not configured for this CRM office.'},422)
 
     const caseId=String(body.case_id||'')
     if(!UUID_RE.test(caseId)) return json({error:'Valid case_id required'},400)
