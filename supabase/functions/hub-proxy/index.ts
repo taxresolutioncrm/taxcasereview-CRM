@@ -112,6 +112,20 @@ Deno.serve(async (req) => {
     }
   }
 
+  async function getInternalSecret(key: string) {
+    const { data, error } = await serviceClient
+      .from('platform_internal_secrets')
+      .select('secret')
+      .eq('key', key)
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      console.error('hub-proxy: internal secret lookup failed', key, error.message)
+      return ''
+    }
+    return String(data?.secret || '')
+  }
+
   // ── Step 3: Parse product key from request body ──────────────────────────
   let body: { product?: string; products?: string[]; action?: string; payload?: Record<string, unknown> }
   try {
@@ -181,9 +195,13 @@ Deno.serve(async (req) => {
         }
         productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
       } else if (productKey === 'nashville') {
-        // Prefer server-to-server hub auth so Nashville metrics are not coupled
-        // to browser JWT forwarding. Keep the user JWT as a compatibility fallback.
-        productHeaders['x-hub-secret'] = hubSecret
+        const nashvilleToken = await getInternalSecret('nashville_metrics_token')
+        if (!nashvilleToken) {
+          return { status: 503, data: null, error: 'Nashville internal metrics token is not configured' }
+        }
+        productHeaders['x-romylabs-internal-token'] = nashvilleToken
+        // Preserve the existing user JWT as a compatibility fallback while the
+        // server-to-server token is the authoritative path.
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (
         productKey === 'camvella' ||
