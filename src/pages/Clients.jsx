@@ -740,11 +740,12 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
   async function upload() {
     if (!form.name.trim()) { showToast('Document name required'); return }
     setSaving(true)
-    let fileUrl = null, fileName = null, fileSize = null
+    let fileUrl = null, fileName = null, fileSize = null, storagePath = null
     if (file) {
       const folderKey = String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')
       const ownerKey = clientId ? String(clientId) : clientName.replace(/\s+/g,'-')
       const path = `docs/${ownerKey}/${folderKey}/${Date.now()}_${file.name}`
+      storagePath = path
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }
       const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
@@ -755,7 +756,7 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
       client_id: clientId ? String(clientId) : null,
       docType: form.docType,
       notes: form.notes, file_url: fileUrl, file_name: fileName,
-      storage_path: file ? `docs/${clientId ? String(clientId) : clientName.replace(/\s+/g,'-')}/${String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')}/${Date.now()}_${file.name}` : null,
+      storage_path: storagePath,
       file_size: fileSize, created_at: new Date().toISOString()
     }])
     setSaving(false)
