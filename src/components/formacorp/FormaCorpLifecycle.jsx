@@ -3,8 +3,6 @@ import { supabase } from '../../lib/supabase'
 import { fillForm } from '../../lib/irsFormUtils'
 import { buildOperatingAgreementPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
 
-const BIZEE_DASHBOARD_URL = 'https://orders.bizee.com/dashboard/login'
-
 const FL_SERVICE_GUIDE = {
   'Annual Report Filing': { fee:'$138.75', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Keeps the LLC active; Florida posts online credit-card filings immediately.' },
   'Registered Agent Change': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Use the Florida LLC registered-agent / registered-office change filing.' },
@@ -426,7 +424,9 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       service_type:serviceType,
       status:'Requested',
       jurisdiction_state:caseRecord.state || null,
-      agency:caseRecord.state==='FL' ? 'Florida Division of Corporations' : null,
+      agency:'Bizee Pro',
+      provider:'bizee',
+      provider_status:'queued',
       state_fee:caseRecord.state==='FL' ? numericFee(FL_SERVICE_GUIDE[serviceType]?.fee) : null,
       payment_status:'Pending',
       notes:serviceNotes.trim() || null,
@@ -468,6 +468,40 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       return doc
     }catch(e){showToast?.('Could not generate Form 2553: '+(e?.message||e),'err')}
     finally{setBusy('')}
+  }
+
+  async function syncBizeeDocuments(request) {
+    if(!request?.provider_order_id){showToast?.('No Bizee provider order is linked to this request yet.','err');return}
+    setBusy('bizee-docs-'+request.id)
+    try{
+      const {data,error}=await supabase.functions.invoke('formacorp-bizee',{
+        body:{action:'documents',case_id:caseRecord.id,order_id:request.provider_order_id}
+      })
+      if(error||!data?.ok)throw error||new Error(data?.error||'Bizee document sync failed')
+      await load()
+      showToast?.(`✅ Bizee documents synced inside FormaCorp (${Number(data?.count||0)})`)
+    }catch(e){
+      showToast?.('Bizee document sync failed: '+(e?.message||e),'err')
+    }finally{setBusy('')}
+  }
+
+  async function syncBizeeRequest(request) {
+    if(!request?.provider_order_id){showToast?.('No Bizee provider order is linked to this request yet.','err');return}
+    setBusy('bizee-sync-'+request.id)
+    try{
+      const {data,error}=await supabase.functions.invoke('formacorp-bizee',{
+        body:{action:'status',case_id:caseRecord.id,order_id:request.provider_order_id}
+      })
+      if(error||!data?.ok)throw error||new Error(data?.error||'Bizee status sync failed')
+      const {data:caseState}=await supabase.from('formacorp')
+        .select('fl_filing_status,fl_submitted_at,fl_decision_at,stage')
+        .eq('id',caseRecord.id).maybeSingle()
+      if(caseState) onCasePatch?.(caseState)
+      await load()
+      showToast?.('✅ Bizee status refreshed inside FormaCorp')
+    }catch(e){
+      showToast?.('Bizee status sync failed: '+(e?.message||e),'err')
+    }finally{setBusy('')}
   }
 
   async function updateRequest(id,status) {
@@ -655,8 +689,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <Field label="Request Notes"><input value={serviceNotes} onChange={e=>setServiceNotes(e.target.value)} placeholder="What needs to change / be filed?" style={inputStyle}/></Field>
       </div>
       <div style={{padding:'9px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:11,lineHeight:1.5,marginBottom:8}}>
-        <strong>Primary fulfillment: Bizee Pro.</strong> Create the CRM service request here, then complete the provider workflow in the office's Bizee Pro dashboard.
-        <a href={BIZEE_DASHBOARD_URL} target="_blank" rel="noreferrer" style={{marginLeft:8,color:'var(--blue)',fontWeight:700}}>Open Bizee Pro ↗</a>
+        <strong>Primary fulfillment: Bizee Pro through FormaCorp.</strong> Create the service request here; submission, status, and documents stay inside the CRM through the approved Bizee partner connection.
         {caseRecord.state==='FL' && FL_SERVICE_GUIDE[serviceType] && <details style={{marginTop:6}}>
           <summary style={{cursor:'pointer',color:'var(--t3)',fontSize:10}}>Direct Florida fallback / reference</summary>
           <div style={{marginTop:4}}>{FL_SERVICE_GUIDE[serviceType].fee} · {FL_SERVICE_GUIDE[serviceType].note} <a href={FL_SERVICE_GUIDE[serviceType].url} target="_blank" rel="noreferrer" style={{color:'var(--blue)',fontWeight:700}}>Official state page ↗</a></div>
@@ -664,9 +697,11 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       </div>
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
       <div style={{marginTop:12}}>
-        {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
-          <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}{r.state_fee!=null?` · State fee ${Number(r.state_fee).toFixed(2)}`:''}{r.submission_reference?` · Ref ${r.submission_reference}`:''}{r.confirmation?` · Confirmation ${r.confirmation}`:''}</div></div>
+        {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
+          <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}{r.state_fee!=null?` · State fee ${Number(r.state_fee).toFixed(2)}`:''}{r.provider_order_id?` · Bizee order ${r.provider_order_id}`:''}{r.provider_status?` · Provider ${r.provider_status}`:''}{r.submission_reference?` · Ref ${r.submission_reference}`:''}{r.confirmation?` · Confirmation ${r.confirmation}`:''}</div></div>
           <StatusPill value={r.status}/>
+          {r.provider==='bizee'&&r.provider_order_id?<button className="btn sm" onClick={()=>syncBizeeRequest(r)} disabled={busy==='bizee-sync-'+r.id}>{busy==='bizee-sync-'+r.id?'Syncing…':'↻ Sync Bizee'}</button>:<span/>}
+          {r.provider==='bizee'&&r.provider_order_id?<button className="btn sm" onClick={()=>syncBizeeDocuments(r)} disabled={busy==='bizee-docs-'+r.id}>{busy==='bizee-docs-'+r.id?'Syncing…':'📄 Sync Docs'}</button>:<span/>}
           <select value={r.payment_status||'Pending'} onChange={e=>updateRequestPayment(r.id,e.target.value)} style={{...inputStyle,width:105}}>{['Pending','Paid','Waived','Refunded'].map(x=><option key={x}>{x}</option>)}</select>
           <select value={r.status} onChange={e=>updateRequest(r.id,e.target.value)} style={{...inputStyle,width:135}}>{['Requested','In Progress','Waiting on Client','Submitted','State / Agency Review','Action Required','Complete','Cancelled'].map(x=><option key={x}>{x}</option>)}</select>
         </div>)}
