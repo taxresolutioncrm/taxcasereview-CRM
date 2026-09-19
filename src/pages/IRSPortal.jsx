@@ -103,6 +103,28 @@ export default function IRSPortal() {
     loadAnalyses()
   }
 
+  async function openTranscriptFile(row) {
+    const tab = window.open('about:blank', '_blank')
+    if (tab) tab.opener = null
+    try {
+      let url = row?.file_url || ''
+      const path = row?.file_path
+        || (String(url).startsWith('storage://documents/') ? String(url).replace('storage://documents/', '') : '')
+      if (path) {
+        const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
+        if (error || !data?.signedUrl) throw error || new Error('Could not authorize transcript file')
+        url = data.signedUrl
+      }
+      if (!url) throw new Error('Transcript file is unavailable')
+      if (tab) tab.location.href = url
+      else setParseStatus('❌ Allow pop-ups to open transcript PDFs.')
+    } catch (e) {
+      if (tab) tab.close()
+      setParseStatus('❌ ' + (e?.message || e))
+      setTimeout(() => setParseStatus(''), 6000)
+    }
+  }
+
   function copySummary(rows, client) {
     const lines = [`IRS Transcript Summary — ${client}`, '']
     let total = 0
@@ -283,7 +305,7 @@ export default function IRSPortal() {
                                   ))}
                               </td>
                               <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                                {r.file_url && <a className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} href={r.file_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>PDF</a>}
+                                {(r.file_url || r.file_path) && <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={e => { e.stopPropagation(); openTranscriptFile(r) }}>PDF</button>}
                                 <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={e => { e.stopPropagation(); setTDel(r.id) }}>✕</button>
                               </td>
                             </tr>
