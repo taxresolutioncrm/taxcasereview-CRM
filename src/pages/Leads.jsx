@@ -509,11 +509,17 @@ export default function Leads() {
     // is established in the DB before the first query fires. Without this, a hard
     // refresh can return the wrong tenant's records before RLS kicks in.
     if (!user) return
+    let refreshTimer = null
+    const scheduleLoad = () => {
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(load, 350)
+    }
     load()
+    const cfg = { event:'*', schema:'public', table:'leads', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('leads-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => load())
+      .on('postgres_changes', cfg, scheduleLoad)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { clearTimeout(refreshTimer); supabase.removeChannel(ch) }
   }, [user?.id])
 
   // Live-update the currently-open lead's related data (notes, tasks, docs)
@@ -522,13 +528,20 @@ export default function Leads() {
   useEffect(() => {
     if (!detail?.id) return
     const id = detail.id, name = detail.name
-    function reloadNotes() { loadLeadNotes(id) }
-    function reloadTasks() { loadLeadTasks(name) }
+    let notesTimer = null, tasksTimer = null
+    function reloadNotes() {
+      clearTimeout(notesTimer)
+      notesTimer = setTimeout(() => loadLeadNotes(id), 300)
+    }
+    function reloadTasks() {
+      clearTimeout(tasksTimer)
+      tasksTimer = setTimeout(() => loadLeadTasks(name), 300)
+    }
     const ch = supabase.channel('lead-detail-rt-' + id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_notes' }, reloadNotes)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, reloadTasks)
+      .on('postgres_changes', { event:'*', schema:'public', table:'lead_notes', filter:`lead_id=eq.${id}` }, reloadNotes)
+      .on('postgres_changes', { event:'*', schema:'public', table:'tasks', filter:`clientName=eq.${name}` }, reloadTasks)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { clearTimeout(notesTimer); clearTimeout(tasksTimer); supabase.removeChannel(ch) }
   }, [detail?.id, detail?.name])
 
   // Save scroll position before refresh/navigation away, restore once the
