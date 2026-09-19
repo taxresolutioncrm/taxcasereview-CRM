@@ -104,8 +104,10 @@ serve(async(req)=>{
       if(confirmErr) return json({error:'Could not prepare existing employee login: '+confirmErr.message},500)
     }
 
-    const options:any={data:{name:requestedName||employee.name||email.split('@')[0]}}
-    const {data:linkData,error:linkErr}=await admin.auth.admin.generateLink({type:kind,email,options})
+    const linkArgs:any = kind === 'invite'
+      ? { type:'invite', email, options:{ data:{ name:requestedName||employee.name||email.split('@')[0] } } }
+      : { type:'recovery', email }
+    const {data:linkData,error:linkErr}=await admin.auth.admin.generateLink(linkArgs)
     if(linkErr) return json({error:'Could not prepare employee access: '+linkErr.message},400)
     const tokenHash=linkData?.properties?.hashed_token||linkData?.properties?.hashedToken||''
     if(!tokenHash) return json({error:'Could not prepare employee access token'},500)
