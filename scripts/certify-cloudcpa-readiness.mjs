@@ -40,6 +40,8 @@ must(login.includes('resetPasswordForEmail'),'login provides password recovery')
 must(login.includes("redirectTo: window.location.origin + '/'"),'password recovery uses approved app root redirect')
 must(appContext.includes("_event === 'PASSWORD_RECOVERY'"),'recovery session is routed into password settings')
 must(appContext.includes("window.location.href = '/settings?reset_password=1'"),'password recovery lands on Settings')
+must(employees.includes("redirect_to: window.location.origin + '/?invite=1'"),'new employee invites return through the password-setup path')
+must(appContext.includes("get('invite') === '1'"),'invited employee sessions are forced into password setup')
 
 must(app.includes('Email') && email.includes('supabase'),'Email workspace is part of the shared tenant CRM')
 must(sendEmail.includes("cloudTenant?.tenant_code === 'TRC-003'"),'CloudCPA has a tenant-scoped platform mail fallback before mailbox cutover')
