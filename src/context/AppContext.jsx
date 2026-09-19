@@ -421,6 +421,8 @@ export function AppProvider({ children }) {
   const REMINDER_MINUTES_BEFORE = 30
   const notifiedIdsRef = useRef(new Set())
   const snoozedIdsRef  = useRef({}) // id → snooze-until timestamp
+  const appointmentEventsRef = useRef([])
+  const appointmentDateRef = useRef('')
 
   useEffect(() => {
     if (!user) return
@@ -428,16 +430,24 @@ export function AppProvider({ children }) {
       Notification.requestPermission()
     }
 
-    async function checkUpcoming() {
-      const now = new Date()
-      const windowEnd = new Date(now.getTime() + REMINDER_MINUTES_BEFORE * 60000)
+    async function loadUpcomingForToday() {
+      const today = new Date().toISOString().slice(0, 10)
       const { data, error } = await supabase
         .from('calevents')
         .select('id, title, "clientName", date, time, "eventType"')
         .eq('status', 'scheduled')
-        .eq('date', now.toISOString().slice(0, 10))
-      if (error || !data) return
-      for (const ev of data) {
+        .eq('date', today)
+      if (error) return
+      appointmentEventsRef.current = data || []
+      appointmentDateRef.current = today
+    }
+
+    async function checkUpcoming() {
+      const now = new Date()
+      const today = now.toISOString().slice(0, 10)
+      if (appointmentDateRef.current !== today) await loadUpcomingForToday()
+      const windowEnd = new Date(now.getTime() + REMINDER_MINUTES_BEFORE * 60000)
+      for (const ev of appointmentEventsRef.current) {
         if (!ev.time || notifiedIdsRef.current.has(ev.id)) continue
         // Check snooze
         const snoozedUntil = snoozedIdsRef.current[ev.id]
@@ -468,10 +478,20 @@ export function AppProvider({ children }) {
       }
     }
 
-    checkUpcoming()
+    loadUpcomingForToday().then(checkUpcoming)
+    const tenantFilter = myTenantId ? { filter: `tenant_id=eq.${myTenantId}` } : {}
+    const rt = supabase.channel('appointment-reminders')
+      .on('postgres_changes', { event:'*', schema:'public', table:'calevents', ...tenantFilter }, () => {
+        loadUpcomingForToday().then(checkUpcoming)
+      })
+      .subscribe()
+    // Local minute tick only; it does not query Supabase each minute.
     const poll = setInterval(checkUpcoming, 60000)
-    return () => clearInterval(poll)
-  }, [user])
+    return () => {
+      clearInterval(poll)
+      supabase.removeChannel(rt)
+    }
+  }, [user, myTenantId])
 
   // Check if the tenant account is suspended or cancelled — block login if so
   async function checkTenantStatus() {
