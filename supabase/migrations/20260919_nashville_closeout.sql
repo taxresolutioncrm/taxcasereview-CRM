@@ -142,3 +142,7 @@ begin
   return v_count;
 end;
 $$;
+
+revoke all on function public.dedupe_nashville_book_whip_month(date) from public, anon, authenticated;
+revoke all on function public.system_refresh_nashville_book_whip() from public, anon, authenticated;
+revoke all on function public.system_create_nashville_book_whip_month(date) from public, anon, authenticated;
