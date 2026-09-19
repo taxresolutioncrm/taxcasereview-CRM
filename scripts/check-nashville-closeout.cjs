@@ -88,6 +88,10 @@ const checks=[
     "?token=${encodeURIComponent(token)}",
     "data.signer_token",
     "item.signer_token",
+    "NASHVILLE_TENANT_ID",
+    "nashville-esign-mail",
+    "esign_request",
+    "esign_reminder",
   ]],
   ['supabase/functions/esign-archive-upload/index.ts',[
     "action==='load'",
