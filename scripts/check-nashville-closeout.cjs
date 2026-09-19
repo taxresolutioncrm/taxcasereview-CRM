@@ -117,10 +117,23 @@ const checks=[
     "idx_transcript_analyses_tenant_name_year",
     "idx_poa_records_tenant_client_status",
   ]],
+  ['supabase/functions/nashville-system-mail-relay/index.ts',[
+    "nashville_system_mail_relay_v1",
+    "romylabs_stalwart_transport_for_product",
+    "taxres_stalwart_relay",
+  ]],
+  ['supabase/functions/nashville-esign-mail/index.ts',[
+    "nashville-system-mail-relay",
+    "esign_request",
+    "esign_reminder",
+    "esign_signed_copy",
+    "esign_internal_notification",
+  ]],
   ['supabase/functions/nashville-esign-reminders/index.ts',[
     "signer_token",
     "?token=",
     "x-internal-cron-token",
+    "nashville-esign-mail",
     "platform_internal_secrets",
     "reminder_1_sent_at",
     "event_type:'reminder_sent'",
