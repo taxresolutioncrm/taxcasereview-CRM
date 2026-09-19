@@ -227,3 +227,9 @@ verify_jwt = true
 
 [functions.m365-mail-gateway]
 verify_jwt = true
+
+[functions.nashville-system-mail-relay]
+verify_jwt = false
+
+[functions.nashville-esign-mail]
+verify_jwt = false
