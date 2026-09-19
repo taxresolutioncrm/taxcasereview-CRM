@@ -36,8 +36,10 @@ Deno.serve(async(req)=>{
    } else if(!serviceCaller && !userEmail) return json({error:'Unauthorized'},401)
    const {data:secretRow}=await admin.from('platform_internal_secrets').select('secret').eq('key',SECRET_KEY).maybeSingle()
    if(!secretRow?.secret)return json({error:'Nashville mail relay secret unavailable'},503)
+   const dryRun=body?.dry_run===true
+   if(dryRun&&!serviceCaller)return json({error:'Dry-run certification requires service access'},403)
    const rr=await fetch(CENTRAL,{method:'POST',headers:{'content-type':'application/json','x-nashville-relay-secret':secretRow.secret},body:JSON.stringify({
-     kind,to,subject:String(body.subject||''),html:String(body.html||''),attachments:Array.isArray(body.attachments)?body.attachments:[]
+     kind,to,subject:String(body.subject||''),html:String(body.html||''),attachments:Array.isArray(body.attachments)?body.attachments:[],dry_run:dryRun
    })})
    const out=await rr.json().catch(()=>({}))
    if(!rr.ok||!out?.success)return json({error:out?.error||'Nashville mail relay failed'},rr.status||502)
