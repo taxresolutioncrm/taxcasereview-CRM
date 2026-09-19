@@ -95,10 +95,13 @@ export async function loadFirmBranding() {
       }
     } catch (_) {}
 
+    const { data: tenantId } = await supabase.rpc('current_tenant_id')
+    if (!tenantId) return FIRM
     const { data: s } = await supabase
       .from('settings')
       .select('tenant_id,name,firmname,logourl,address,firmaddress,city,state,zip,phone,firmphone,email,firmemail,website,firm_fax_number,labels')
-      .limit(1).maybeSingle()
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
     if (!s) return FIRM
 
     const name = s.name || s.firmname || ''
