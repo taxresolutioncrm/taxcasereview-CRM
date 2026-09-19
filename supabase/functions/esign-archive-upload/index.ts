@@ -200,7 +200,29 @@ Deno.serve(async(req:Request)=>{
       for(const a of signedAttachments)await db.from('documents').update({storage_path:a.storage_path}).eq('tenant_id',TENANT).eq('client',e.client_name).eq('file_url',a.url)
       if(certUrl&&certPath)await db.from('documents').update({storage_path:certPath}).eq('tenant_id',TENANT).eq('client',e.client_name).eq('file_url',certUrl)
       await db.from('esigns').update({signed_attachments:signedAttachments}).eq('id',id).eq('tenant_id',TENANT)
-      return json({success:true,signed_attachments:signedAttachments,certificate_url:certUrl})
+
+      let clientEmailSent=false,clientSmsSent=false
+      if(e.client_email){
+        const emailAttachments=signedAttachments
+          .filter((a:any)=>a.clientUrl)
+          .map((a:any)=>({url:a.clientUrl,filename:`${clean(a.label||a.formType||'signed-document')}.pdf`}))
+        const {error:receiptErr}=await db.functions.invoke('send-email',{body:{
+          tenant_id:TENANT,
+          to:e.client_email,
+          subject:`Signed Copy — ${e.doc_type||'Document'}`,
+          html:`<div style="font-family:Arial,sans-serif;max-width:600px;padding:24px"><h2>Signature Complete</h2><p>Thank you, ${esc(e.client_name||'Client')}. Your <strong>${esc(e.doc_type||'document')}</strong> has been signed and saved to your file.</p><p>Attached are the signed client copies available for this request.</p></div>`,
+          attachments:emailAttachments
+        }})
+        clientEmailSent=!receiptErr
+      }
+      if(e.client_phone){
+        const {error:smsErr}=await db.functions.invoke('send-sms',{body:{
+          to:e.client_phone,
+          body:`${String(e.client_name||'Client')}, your ${String(e.doc_type||'document')} has been signed and saved by Nashville Tax Solutions.`
+        }})
+        clientSmsSent=!smsErr
+      }
+      return json({success:true,signed_attachments:signedAttachments,certificate_url:certUrl,client_email_sent:clientEmailSent,client_sms_sent:clientSmsSent})
     }
     return json({error:'Unknown action'},400)
   }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
