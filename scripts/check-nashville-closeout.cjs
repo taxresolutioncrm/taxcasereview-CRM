@@ -53,6 +53,35 @@ const checks=[
     "nashville_dashboard_snapshot",
     "Active Nashville employee required",
   ]],
+  ['supabase/migrations/20260919_nashville_sidebar_badge_summary_rpc.sql',[
+    "get_sidebar_badge_counts",
+    "pending_payments",
+    "unread_voicemails",
+    "p.scheduled_date is not null",
+  ]],
+  ['src/components/layout/Sidebar.jsx',[
+    "setPendingPayments(Number(b.pending_payments)",
+    "scheduleCountsReload",
+    "head:true }).eq('is_read', false)",
+    "const chatCfg =",
+  ]],
+  ['src/context/AppContext.jsx',[
+    "const realtimeFilter = myTenantId",
+    "filter:realtimeFilter",
+    "}, [user, myTenantId])",
+  ]],
+  ['src/pages/Clients.jsx',[
+    "const scheduleLoad = () =>",
+    "client_id=eq.${detail.id}",
+  ]],
+  ['src/pages/Leads.jsx',[
+    "const scheduleLoad = () =>",
+    "lead_id=eq.${id}",
+  ]],
+  ['src/pages/TimeClock.jsx',[
+    "timeQuery.limit(10000)",
+    "timeQuery.ilike('employee', employeeName || '').limit(60)",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
@@ -71,4 +100,4 @@ for(const [file,tokens] of checks){
   }
 }
 if(failed) process.exit(1)
-console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, 100-user scale')
+console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, 100-user scale, scoped realtime, sidebar badge summary')
