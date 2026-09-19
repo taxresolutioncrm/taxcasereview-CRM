@@ -25,7 +25,7 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'Which office uses which CRM?' },
       { type: 'table', headers: ['Office', 'Email system', 'Phone system', 'Stripe account'], rows: [
         ['Tax Case Review (TCR)', 'Gmail (per employee)', 'SignalWire', 'TCR Stripe'],
-        ['Nashville Tax Solutions', 'Microsoft 365 (per employee)', 'SignalWire', 'Nashville Stripe'],
+        ['Nashville Tax Solutions', 'Per-rep connected mailbox', 'Verizon Business calling / office-configured provider', 'QuickBooks-connected billing / office payment configuration'],
         ['Demo Office', 'Demo only', 'Demo only', 'Test mode'],
       ]},
       { type: 'info', text: 'Every office is a separate tenant. Nashville cannot see TCR data. TCR cannot see Nashville data. RLS (Row Level Security) enforces this at the database level — not in the app layer. Even if someone guessed a URL, they would get empty data.' },
@@ -64,7 +64,9 @@ const MANUAL_SECTIONS = [
         { title: 'Set CAF number and PTIN (if applicable)', desc: 'These auto-populate on every 2848 and 8821 when this employee is the assigned rep.' },
         { title: 'Upload a profile photo', desc: 'Shows on the kiosk, employee directory, and client file assignments.' },
         { title: 'Set a portal PIN', desc: '4-digit PIN for the employee portal — separate from the main CRM login.' },
-        { title: 'Employee receives an invitation email', desc: 'They set their own password and log in. Their view is restricted to their role from day one.' },
+        { title: 'Send the CRM invitation', desc: 'From the employee record, send the CRM access invite to the employee’s work email. The link takes them to the TaxRes family password setup flow; they create their own password and then sign in to the correct office.' },
+        { title: 'Resend access when needed', desc: 'If the employee did not receive the invite or the link expired, use the employee access/invite control again rather than creating a second employee. Password recovery also routes through the TaxRes family password flow.' },
+        { title: 'Test the actual employee login', desc: 'Confirm email + newly created password opens the correct office and the employee only sees the permissions assigned on their profile.' },
       ]},
       { type: 'warn', text: 'Deleting an employee does not delete their clients or notes. It marks them inactive and unassigns them from future tasks. Always reassign their open tasks before deactivating.' },
     ]
@@ -169,11 +171,13 @@ const MANUAL_SECTIONS = [
       { type: 'table', headers: ['Column', 'What it tells you'], rows: [
         ['Sent', 'When the e-sign request was sent'],
         ['Opened', 'When the client first opened the link — blank = haven\'t seen it yet'],
-        ['Reminders', 'How many auto-reminders have gone out (Day 1, Day 3, Day 7 at 9 AM ET)'],
+        ['Last Viewed / Progress', 'Tracks repeat views and signing progress. Detailed envelope/audit views can show progress percentage and the approximate page reached.'],
+        ['Reminders', 'How many automated reminders have gone out for an unsigned request'],
         ['Status', 'Pending / Signed / Expired (after 30 days unsigned)'],
         ['Signed', 'Date and time signature was completed'],
       ]},
-      { type: 'tip', text: 'Check the Opened column first. If blank after 24 hours, the client hasn\'t seen the email — check spam. If Opened but not Signed, they opened it but didn\'t finish — call them.' },
+      { type: 'tip', text: 'Check Opened, Last Viewed, and progress before following up. If Opened is blank, verify delivery/spam. If it was viewed but not completed, the audit trail tells you whether the signer stopped partway through the document so staff can follow up accurately.' },
+      { type: 'info', text: 'E-sign lifecycle events are audit data. Sent, delivered/viewed, progress, completed/signed, resend/reminder, decline/void, timestamps, and available recipient metadata must remain attached to the envelope instead of being reduced to a single status label.' },
       { type: 'h3', text: 'What fires when the Full Package is signed' },
       { type: 'flow', items: ['Client Signs', 'Status → Signed', 'Pipeline → Tax Inv Agreement Signed', '6 Tasks Created', 'Documents Filed', 'Note Logged ✓'] },
     ]
@@ -405,7 +409,7 @@ const MANUAL_SECTIONS = [
     id: 'documents', icon: '📁', label: 'Documents', category: 'Documents',
     title: 'Documents',
     content: [
-      { type: 'lead', text: 'Every document related to a client lives in the Documents tab — signed agreements, generated forms, uploaded files, and fax confirmations. Organized by folder and accessible to the client through the portal.' },
+      { type: 'lead', text: 'Every document related to a client lives in the Documents tab — signed agreements, generated forms, uploaded files, fax confirmations, and imported records. Documents are attached to the authoritative client ID and then organized into that client’s folders; matching by display name alone is not considered sufficient.' },
       { type: 'h3', text: 'Document folders' },
       { type: 'table', headers: ['Folder', 'What goes here'], rows: [
         ['POA & Forms', 'Signed 2848s, 8821s, state POAs, and IRS authorization forms'],
@@ -418,7 +422,7 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'Uploading documents' },
       { type: 'steps', items: [
         { title: 'Client file → Documents tab → Upload', desc: 'Drag and drop or click to browse. Supported: PDF, Word, Excel, JPG, PNG. Max 50MB per file.' },
-        { title: 'Choose the folder', desc: 'Select which folder the document belongs in. Movable later.' },
+        { title: 'Choose the folder', desc: 'Select which folder the document belongs in. Movable later. When imported or generated documents are linked to a client, verify they resolve to that client’s ID-backed folder rather than a similarly named client.' },
         { title: 'Add a label (optional)', desc: 'Add a description like "IRS Notice CP-503 dated 3/15/2026" to make it searchable.' },
         { title: 'Upload — filed and logged as a note', desc: 'The client can see their documents in the portal if you choose to share them.' },
       ]},
@@ -858,6 +862,141 @@ const MANUAL_SECTIONS = [
     ]
   },
 
+  // ─── OPERATIONS / BILLING / TAX RETURNS ─────────────────────────────────────
+  {
+    id: 'calendar', icon: '📅', label: 'Calendar', category: 'Operations',
+    title: 'Calendar & appointments',
+    content: [
+      { type: 'lead', text: 'The Calendar is the office schedule for consultations, client appointments, internal events, and imported meetings. Calendar records remain tenant-scoped and can link back to the client or lead.' },
+      { type: 'steps', items: [
+        { title: 'Calendar → New Event', desc: 'Enter title, date/time, event type, attendee/client, assigned staff, notes, and meeting information when applicable.' },
+        { title: 'Use the linked client/lead when available', desc: 'Linking the event keeps appointment history attached to the correct record and allows follow-up communication from the event.' },
+        { title: 'Respect external meeting links', desc: 'Imported Teams, Google Meet, Zoom, or Webex invitations keep the organizer’s original meeting URL. The CRM must not replace an external organizer link with an internal room.' },
+        { title: 'Complete or update the appointment', desc: 'After the appointment, update the event status and the related lead/client stage when the workflow requires it.' },
+      ]},
+    ]
+  },
+  {
+    id: 'transactions', icon: '💳', label: 'Transactions', category: 'Money',
+    title: 'Transactions',
+    content: [
+      { type: 'lead', text: 'Transactions is the detailed money ledger used to review imported and CRM payment activity by client, associate, service, deposit account, amount, and status.' },
+      { type: 'table', headers: ['Status / field', 'Use'], rows: [
+        ['Posted / Cleared', 'Money confirmed as posted or cleared'],
+        ['No Status / TBD / New Agmt', 'Needs review or is not yet finalized'],
+        ['Refunded / Chargeback / Disputed / Check Returned / Failed', 'Exception states that require follow-up and reconciliation'],
+        ['Client + client ID', 'Keep the transaction tied to the authoritative client record, not only a name match'],
+      ]},
+      { type: 'tip', text: 'Use Transactions for reconciliation and history. Use Payments/AR for collection workflow, scheduled trades, and outstanding client balances.' },
+    ]
+  },
+  {
+    id: 'timebilling', icon: '⏱️', label: 'Time & Billing', category: 'Money',
+    title: 'Time & Billing',
+    content: [
+      { type: 'lead', text: 'Time & Billing records billable or internal work against clients, calculates WIP, and distinguishes billed from unbilled entries.' },
+      { type: 'steps', items: [
+        { title: 'Billing → Time & Billing → Log Time', desc: 'Select the client, activity type, date, hours, rate, and work description.' },
+        { title: 'Review WIP', desc: 'Unbilled entries remain in work-in-progress until staff marks them billed or includes them in the appropriate billing workflow.' },
+        { title: 'Use the Billing Report', desc: 'Filter and review entries by client/activity and compare hours, rate, amount, billed status, and WIP totals.' },
+      ]},
+    ]
+  },
+  {
+    id: 'books', icon: '📚', label: 'Books & Ledger', category: 'Money',
+    title: 'Books & Ledger',
+    content: [
+      { type: 'lead', text: 'Books & Ledger is the internal office ledger for income, expenses, accounts, and period review. It is separate from the client case ledger and can coexist with a connected accounting platform.' },
+      { type: 'steps', items: [
+        { title: 'Add a ledger entry', desc: 'Choose income or expense, date, description, category, amount, and the applicable account.' },
+        { title: 'Use consistent categories', desc: 'Examples include Revenue, Retainer, Payment Plan, Rent, Payroll, Software, Marketing, Taxes, Utilities, Legal, and Other Expense.' },
+        { title: 'Reconcile with the connected accounting platform', desc: 'When QuickBooks or Xero is connected, use the CRM connection and sync status rather than creating duplicate disconnected records.' },
+      ]},
+    ]
+  },
+  {
+    id: 'taxreturns', icon: '🧾', label: 'Tax Returns', category: 'Tax Returns & Entities',
+    title: 'Tax Returns',
+    content: [
+      { type: 'lead', text: 'Tax Returns tracks return preparation from draft through filing and acceptance, with the supporting tax documents, preparer information, review status, and client record kept together.' },
+      { type: 'flow', items: ['Draft', 'In Review', 'Client Review', 'Ready to File', 'Filed', 'Accepted / Rejected', 'Amended if needed'] },
+      { type: 'steps', items: [
+        { title: 'Create or open the return', desc: 'Confirm taxpayer/client, year, return type, filing status, preparer, and the required tax documents.' },
+        { title: 'Work through preparation and review', desc: 'Use the return’s status to show whether it is being prepared, reviewed internally, waiting on the client, or ready to file.' },
+        { title: 'Record filing accurately', desc: 'Mark Filed only after the filing event occurred. Record acceptance/rejection separately so “filed” is not mistaken for “accepted.”' },
+        { title: 'Keep the source documents attached', desc: 'W-2s, K-1s, supporting schedules, organizer material, and filing evidence stay attached to the taxpayer/client record.' },
+      ]},
+    ]
+  },
+  {
+    id: 'stateforms', icon: '🏛️', label: 'State Forms & Docs', category: 'IRS Tools',
+    title: 'State Forms & documents',
+    content: [
+      { type: 'lead', text: 'State Forms & Docs provides state-specific authorization and tax forms. Select the client and state, use the supported official form, review every populated field, then route the final document through e-sign/fax/storage as required.' },
+      { type: 'steps', items: [
+        { title: 'Select the correct state and form', desc: 'The library contains state-specific POA/authorization forms; form names and requirements vary by jurisdiction.' },
+        { title: 'Pre-fill from the client and representative record', desc: 'Review taxpayer identifiers, business/individual name, address, representative information, tax types, periods, and signature requirements.' },
+        { title: 'Review before sending', desc: 'State forms may require full identifiers or fields that differ from IRS forms. Never assume an IRS form rule applies to a state form.' },
+        { title: 'Send and file the final copy', desc: 'Use the CRM fax/e-sign/document workflow when supported and keep confirmation evidence with the client record.' },
+      ]},
+    ]
+  },
+  {
+    id: 'irsreference', icon: '☎️', label: 'IRS & State Reference', category: 'IRS Tools',
+    title: 'IRS & State Reference',
+    content: [
+      { type: 'lead', text: 'The reference page is the operational lookup for IRS phone numbers, mailing addresses, state information, representative information, and procedure notes.' },
+      { type: 'warn', text: 'Reference information can change. For a filing deadline, address, fax number, fee, or procedure that could have changed, verify the current agency instruction before relying on an older saved reference.' },
+    ]
+  },
+  {
+    id: 'timeclock', icon: '🕒', label: 'Time Clock', category: 'HR & Payroll',
+    title: 'Time Clock',
+    content: [
+      { type: 'lead', text: 'Time Clock is the administrative punch-history view. It shows who is clocked in, daily entries, calculated hours, and allows authorized staff to correct missing or incorrect entries.' },
+      { type: 'steps', items: [
+        { title: 'Review current status', desc: 'Use Today / active status to see who is currently clocked in and who has completed a shift.' },
+        { title: 'Correct an entry only when necessary', desc: 'Authorized staff can edit or add a missed punch. Keep notes explaining manual corrections.' },
+        { title: 'Recalculate when required', desc: 'The recalculation control handles incomplete/overnight timing cases after the underlying in/out times are corrected.' },
+      ]},
+    ]
+  },
+  {
+    id: 'timeoff', icon: '🏖️', label: 'Time Off', category: 'HR & Payroll',
+    title: 'Time Off',
+    content: [
+      { type: 'lead', text: 'Time Off tracks PTO, sick-day, and vacation requests through pending, approved, or denied status.' },
+      { type: 'steps', items: [
+        { title: 'Employee submits the request', desc: 'Choose leave type and dates and provide the required note/details.' },
+        { title: 'Manager reviews Pending requests', desc: 'Approve or deny from the Time Off area; the decision remains part of the employee record.' },
+        { title: 'Review YTD totals', desc: 'Use the totals to monitor approved leave and avoid treating pending requests as approved time.' },
+      ]},
+    ]
+  },
+  {
+    id: 'payroll', icon: '💵', label: 'Payroll', category: 'HR & Payroll',
+    title: 'Payroll',
+    content: [
+      { type: 'lead', text: 'Payroll uses employee/pay-period data and timeclock entries to calculate and track payroll records, deductions, gross/net amounts, payment method, and pay stubs according to the configuration available to the office.' },
+      { type: 'warn', text: 'Do not process payroll from an incomplete pay period. Review missed punches, regular/overtime hours, pay rates, deductions, and payment method before marking payroll completed.' },
+    ]
+  },
+  {
+    id: 'activityreport', icon: '📈', label: 'Activity Report', category: 'HR & Payroll',
+    title: 'Employee Activity Report',
+    content: [
+      { type: 'lead', text: 'Activity Report summarizes staff activity by date range, employee, action, category, description, and related client/lead. Use it for operational review rather than reconstructing work from separate pages.' },
+      { type: 'table', headers: ['Metric', 'Meaning'], rows: [
+        ['Total Actions', 'Recorded staff/system activity in the selected range'],
+        ['Calls Logged', 'Call-related activity recorded for staff'],
+        ['Leads Touched', 'Lead records with activity'],
+        ['Payments', 'Payment-related actions'],
+        ['E-Signs Sent', 'Signature requests initiated'],
+        ['Active Staff', 'Staff with recorded activity/login data in the selected view'],
+      ]},
+    ]
+  },
+
   // ─── SETTINGS & REPORTS ─────────────────────────────────────────────────────
   {
     id: 'settings', icon: '⚙️', label: 'Firm Settings', category: 'Settings & Reports',
@@ -889,12 +1028,15 @@ const MANUAL_SECTIONS = [
         ['Groq', 'AI button will error — rest of CRM unaffected'],
         ['SignalWire', 'Calling and SMS down — use personal phones temporarily'],
       ]},
-      { type: 'h3', text: 'SignalWire setup (Nashville)' },
+      { type: 'h3', text: 'Office-specific communications providers' },
+      { type: 'info', text: 'Do not assume every TaxRes office uses the same phone, fax, or mailbox provider. The CRM routes communications according to that office’s configured provider/mapping. Nashville calling is mapped to Verizon Business One Talk where configured; fax may use the office-configured fax integration/import path; other TaxRes offices may use different providers.' },
+      { type: 'warn', text: 'Carrier application activation and CRM routing are different things. A mapped Verizon One Talk number can be launched/routed by the CRM only after the underlying Verizon user/line is activated and the required carrier-side capability is available.' },
+      { type: 'h3', text: 'QuickBooks Online connection' },
       { type: 'steps', items: [
-        { title: 'Log into your SignalWire dashboard at signalwire.com', desc: 'Create a Space for Nashville — needs its own Space separate from TCR.' },
-        { title: 'Create a phone number', desc: 'Phone Numbers → Add Number. Choose a Nashville area code (615, 629, 931).' },
-        { title: 'Get your credentials', desc: 'Space URL, Project ID, and API token from the Space settings.' },
-        { title: 'Enter in CRM Settings → Calling & Communications', desc: 'Paste all three credentials. Save. Calling and SMS go live immediately.' },
+        { title: 'Settings → Accounting → QuickBooks', desc: 'Start the authenticated QuickBooks connection for the current office.' },
+        { title: 'Complete Intuit authorization', desc: 'Authorize the correct QuickBooks company. The OAuth callback returns to the CRM and stores the connection for this tenant.' },
+        { title: 'Verify the connected company before syncing', desc: 'Confirm the office is connected to the intended QuickBooks company; never reuse another tenant’s connection.' },
+        { title: 'Run/monitor sync', desc: 'Use the CRM accounting sync to import or reconcile supported accounting records and watch connection/sync status for errors.' },
       ]},
     ]
   },
@@ -916,6 +1058,9 @@ const MANUAL_SECTIONS = [
         ['Task Completion', 'Tasks completed vs overdue by rep', 'Date range, Rep, Status'],
         ['Client Activity', 'Clients with no activity in X days — find stale cases', 'Days inactive, Rep'],
       ]},
+      { type: 'h3', text: 'Book Whip' },
+      { type: 'info', text: 'Book Whip is the monthly client/associate/para production review for tax offices. Select the snapshot month, review the full office list, and use the sortable/clickable columns to verify each client is assigned and progressing correctly. It is tenant-scoped: each office sees its own Book Whip data.' },
+      { type: 'tip', text: 'Book Whip is a monthly operational snapshot, not a replacement for the client file. Open the client from the report when you need the authoritative documents, notes, payments, assignments, or case history.' },
       { type: 'h3', text: 'Exporting reports' },
       { type: 'info', text: 'Every report has a Print button (PDF) and a CSV Export button. The CSV opens in Excel or Google Sheets. For payroll, use the Timeclock report exported as CSV — includes employee name, clock-in time, clock-out time, and total hours per day.' },
       { type: 'h3', text: 'Client Activity Report' },
@@ -1089,6 +1234,8 @@ const MANUAL_SECTIONS = [
         ['Voluntary extension', 'Per signed waiver', 'Never recommended — almost never in client\'s interest'],
         ['Living outside US', '6+ months absence', 'Tolls entire CSED while abroad'],
       ]},
+      { type: 'h3', text: 'Manual synchronization rule' },
+      { type: 'warn', text: 'The CRM Manual is part of the release scope. Any user-facing workflow, button, integration, status, role/access rule, document path, payment behavior, provider behavior, or operational procedure changed in the CRM must have the corresponding manual instructions updated in the same release. A feature change is not considered release-complete when its manual is stale.' },
       { type: 'tip', text: 'The CRM manual is searchable — use the search bar in the left sidebar to find any topic instantly. Navigation arrows at the bottom of each page move through sections in order.' },
     ]
   },
@@ -1096,14 +1243,18 @@ const MANUAL_SECTIONS = [
 
 const CATEGORIES = [
   'Getting Started',
+  'Operations',
   'Client Pipeline',
   'Documents',
   'Tasks & Workflows',
   'Communications',
   'Money',
   'IRS Tools',
+  'Tax Returns & Entities',
+  'Business Formation',
   'Portals',
   'Settings & Reports',
+  'HR & Payroll',
   'Training',
 ]
 
