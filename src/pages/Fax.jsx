@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext'
 import { useLocation } from 'react-router-dom'
 import { DOC_FOLDERS } from './Clients'
 import ClientLink from '../components/ClientLink'
+import { FIRM } from '../lib/firmBranding'
 
 const BLANK = { to_number:'', from_number:'', client_name:'', subject:'', notes:'' }
 
@@ -56,11 +57,17 @@ export default function Fax() {
 
 
   useEffect(() => {
+    let refreshTimer = null
+    const scheduleLoad = () => {
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(load, 350)
+    }
     load()
+    const cfg = { event:'*', schema:'public', table:'fax_logs', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const channel = supabase.channel('fax-log-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, () => load())
+      .on('postgres_changes', cfg, scheduleLoad)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { clearTimeout(refreshTimer); supabase.removeChannel(channel) }
   }, [])
 
   async function load() {
