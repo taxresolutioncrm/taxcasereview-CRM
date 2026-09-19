@@ -407,26 +407,29 @@ export async function getAndParseGmailMessage(supabase, id, clients = []) {
   // HTML separately so the reading pane can render the real content.
   const bodyHtmlRaw = htmlData ? base64UrlDecodeToString(htmlData) : null
 
-  const counterpartHeader = isSent ? toHeader : fromHeader
+  // Gmail can apply SENT + INBOX to the same self-addressed message.
+  // Treat provider delivery labels as authoritative so the message appears
+  // in Inbox/Spam instead of being trapped only in Sent.
+  const counterpartHeader = (isInbox || isSpam) ? fromHeader : toHeader
   const counterpartAddress = extractAddress(counterpartHeader)
   const counterpartName = extractDisplayName(counterpartHeader)
   const matchedClient = clients.find(c => c.email && c.email.toLowerCase() === counterpartAddress.toLowerCase())
   const attachments = findAttachments(msg.payload)
 
   return {
-    recipient: isSent ? counterpartAddress : extractAddress(fromHeader),
+    recipient: (isInbox || isSpam) ? extractAddress(fromHeader) : counterpartAddress,
     clientName: matchedClient?.name || counterpartName || counterpartAddress,
     subject,
     body,
     body_html: bodyHtmlRaw,
-    triage: isSent ? 'Sent' : isSpam ? 'Spam' : 'Inbox',
-    status: isSent ? 'Sent' : isSpam ? 'Spam' : 'Received',
+    triage: isSpam ? 'Spam' : isInbox ? 'Inbox' : 'Sent',
+    status: isSpam ? 'Spam' : isInbox ? 'Received' : 'Sent',
     gmail_message_id: msg.id,
     gmail_thread_id: msg.threadId,
     from_address: extractAddress(fromHeader),
     received_at: receivedAt,
     created_at: receivedAt,
-    is_read: isSent, // sent mail is inherently "read" (you wrote it); inbox mail starts unread
+    is_read: !labels.includes('UNREAD'),
     attachments,
   }
 }
