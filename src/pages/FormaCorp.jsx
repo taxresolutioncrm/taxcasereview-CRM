@@ -589,7 +589,7 @@ export default function FormaCorp() {
         agency:'Bizee Pro',
         provider:'bizee',
         provider_status:'ready_for_provider_mapping',
-        state_fee:floridaStateFee(c),
+        state_fee:isFloridaLlc(c) ? floridaStateFee(c) : null,
         service_fee:null,
         payment_status:'Pending',
         notes:'Primary formation provider. Filing remains inside FormaCorp through the approved Bizee partner connection.',
@@ -629,11 +629,16 @@ export default function FormaCorp() {
       created_at:new Date().toISOString(),
     }])
 
-    await updateFloridaCase(c, {
-      fl_filing_status:'Filing Queue',
-      fl_state_fee:floridaStateFee(c),
-      stage:'State Filing',
-    }, '✅ Bizee order accepted from FormaCorp', 'Bizee provider order accepted; awaiting provider confirmation of state submission')
+    const filingPatch = isFloridaLlc(c)
+      ? { fl_filing_status:'Filing Queue', fl_state_fee:floridaStateFee(c), stage:'State Filing' }
+      : { stage:'State Filing' }
+
+    await updateFloridaCase(
+      c,
+      filingPatch,
+      '✅ Bizee order accepted from FormaCorp',
+      'Bizee provider order accepted; awaiting provider confirmation of state submission'
+    )
   }
 
   function openBizeeProSetup() {
