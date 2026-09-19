@@ -33,6 +33,8 @@ const checks=[
   ['central employee invite requires authenticated caller',config.includes('[functions.invite-employee]\nverify_jwt = true')&&inviteEmployee.includes('Employee invite permission denied')],
   ['central employee invite validates the exact bearer token',inviteEmployee.includes('auth.getUser(token)')],
   ['central employee invite does not call .catch on Supabase RPC',!inviteEmployee.includes("rpc('_is_platform_admin').catch")],
+  ['central employee invite avoids global auth listUsers',!inviteEmployee.includes('admin.auth.admin.listUsers')&&inviteEmployee.includes("rpc('taxres_auth_user_by_email')")],
+  ['central employee invite supports email text and both',inviteEmployee.includes("['email','text','both']")&&inviteEmployee.includes('/functions/v1/send-sms')],
   ['central recovery links use the supported generateLink payload',inviteEmployee.includes("{ type:'recovery', email }")&&!inviteEmployee.includes("generateLink({type:kind,email,options})")],
   ['platform admin invite path remains tenant scoped',inviteEmployee.includes("rpc('_is_platform_admin')")&&inviteEmployee.includes("rpc('current_tenant_id')")],
   ['central employee invite uses family password flow',inviteEmployee.includes("FAMILY_PASSWORD_PAGE='https://taxrescrm.app/family-password'")&&inviteEmployee.includes('admin.auth.admin.generateLink')],
