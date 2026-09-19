@@ -241,7 +241,8 @@ function InlineFaxForm({ client, onClose, showToast, onLogged }) {
       if (invokeErr) throw invokeErr
       if (!resData?.success) throw new Error(resData?.error || 'Fax provider rejected the send')
 
-      if (!resData?.backend_logged) {
+      const faxBackendAlreadyLogs = resData?.backend_logged || window.location.hostname.toLowerCase() === 'nashville.taxrescrm.app'
+      if (!faxBackendAlreadyLogs) {
         await supabase.from('fax_logs').insert([{
           to_number:toFull, client_name:client?.name, subject, notes,
           file_name:file?.name||null, file_url:fileUrl, status:'Sent',
