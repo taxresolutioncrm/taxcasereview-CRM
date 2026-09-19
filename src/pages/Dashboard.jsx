@@ -116,13 +116,13 @@ export default function Dashboard() {
       { data: tasks }, { data: invoices }, { data: payments },
       { data: deadlines }, { data: arScheduled },
     ] = await Promise.all([
-      tf(supabase.from('leads').select('*')).order('created_at', { ascending: false }),
-      tf(supabase.from('clients').select('*').is('deleted_at', null)).order('created_at', { ascending: false }),
-      tf(supabase.from('cases').select('*')).order('created_at', { ascending: false }),
-      tf(supabase.from('tasks').select('*').not('deleted','is',true)).order('created_at', { ascending: false }),
+      tf(supabase.from('leads').select('id,name,status,"assignedTo","taxFee",created_at,"issueType",source,"irsBalance"')).order('created_at', { ascending: false }),
+      tf(supabase.from('clients').select('id,name,"issueType","irsBalance",created_at').is('deleted_at', null)).order('created_at', { ascending: false }),
+      tf(supabase.from('cases').select('id,"clientName","caseType","irsBalance",status,created_at')).order('created_at', { ascending: false }),
+      tf(supabase.from('tasks').select('id,title,"clientName","dueDate",priority,done,created_at').not('deleted','is',true)).order('created_at', { ascending: false }),
       tf(supabase.from('invoices').select('id,total,status,clientName')),
       tf(supabase.from('payments').select('id,amount,status,created_at,source,enrolled_by')),
-      tf(supabase.from('deadlines').select('*')).order('dueDate', { ascending: true }),
+      tf(supabase.from('deadlines').select('id,name,title,"clientName",client,"dueDate",status')).order('dueDate', { ascending: true }),
       tf(supabase.from('payments').select('amount,payment_status,scheduled_date').eq('payment_status', 'Scheduled')),
     ])
 
