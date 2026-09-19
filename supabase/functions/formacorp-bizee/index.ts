@@ -14,6 +14,11 @@
 //   BIZEE_PARTNER_ORDER_ID_FIELD
 //   BIZEE_PARTNER_STATUS_FIELD
 //   BIZEE_PARTNER_CREATE_FIELD_MAP_JSON
+//   BIZEE_PARTNER_DOCUMENTS_ARRAY_FIELD
+//   BIZEE_PARTNER_DOCUMENT_URL_FIELD
+//   BIZEE_PARTNER_DOCUMENT_ID_FIELD
+//   BIZEE_PARTNER_DOCUMENT_NAME_FIELD
+//   BIZEE_PARTNER_DOCUMENT_TYPE_FIELD
 //
 // Optional provider-contract values:
 //   BIZEE_PARTNER_CREATE_STATIC_JSON
@@ -49,13 +54,18 @@ function cfg(){
   const orderIdField=(Deno.env.get('BIZEE_PARTNER_ORDER_ID_FIELD')||'').trim()
   const statusField=(Deno.env.get('BIZEE_PARTNER_STATUS_FIELD')||'').trim()
   const createFieldMapJson=(Deno.env.get('BIZEE_PARTNER_CREATE_FIELD_MAP_JSON')||'').trim()
+  const documentsArrayField=(Deno.env.get('BIZEE_PARTNER_DOCUMENTS_ARRAY_FIELD')||'').trim()
+  const documentUrlField=(Deno.env.get('BIZEE_PARTNER_DOCUMENT_URL_FIELD')||'').trim()
+  const documentIdField=(Deno.env.get('BIZEE_PARTNER_DOCUMENT_ID_FIELD')||'').trim()
+  const documentNameField=(Deno.env.get('BIZEE_PARTNER_DOCUMENT_NAME_FIELD')||'').trim()
+  const documentTypeField=(Deno.env.get('BIZEE_PARTNER_DOCUMENT_TYPE_FIELD')||'').trim()
   const createStaticJson=(Deno.env.get('BIZEE_PARTNER_CREATE_STATIC_JSON')||'{}').trim()
   const requiredCanonicalJson=(Deno.env.get('BIZEE_PARTNER_REQUIRED_CANONICAL_FIELDS_JSON')||'[]').trim()
   const statusMapJson=(Deno.env.get('BIZEE_PARTNER_STATUS_MAP_JSON')||'{}').trim()
   const tenantTokensJson=(Deno.env.get('BIZEE_PARTNER_TENANT_TOKENS_JSON')||'{}').trim()
   const tenantStaticJson=(Deno.env.get('BIZEE_PARTNER_TENANT_STATIC_JSON')||'{}').trim()
   const timeout=Math.max(3000,Math.min(60000,Number(Deno.env.get('BIZEE_PARTNER_TIMEOUT_MS')||20000)))
-  return {base,token,createPath,statusPath,documentsPath,authHeader,authScheme,orderIdField,statusField,createFieldMapJson,createStaticJson,requiredCanonicalJson,statusMapJson,tenantTokensJson,tenantStaticJson,timeout}
+  return {base,token,createPath,statusPath,documentsPath,authHeader,authScheme,orderIdField,statusField,createFieldMapJson,documentsArrayField,documentUrlField,documentIdField,documentNameField,documentTypeField,createStaticJson,requiredCanonicalJson,statusMapJson,tenantTokensJson,tenantStaticJson,timeout}
 }
 
 function configErrors(c:ReturnType<typeof cfg>,token:string){
@@ -74,6 +84,11 @@ function configErrors(c:ReturnType<typeof cfg>,token:string){
   if(!c.orderIdField) errors.push('BIZEE_PARTNER_ORDER_ID_FIELD')
   if(!c.statusField) errors.push('BIZEE_PARTNER_STATUS_FIELD')
   if(!c.createFieldMapJson) errors.push('BIZEE_PARTNER_CREATE_FIELD_MAP_JSON')
+  if(!c.documentsArrayField) errors.push('BIZEE_PARTNER_DOCUMENTS_ARRAY_FIELD')
+  if(!c.documentUrlField) errors.push('BIZEE_PARTNER_DOCUMENT_URL_FIELD')
+  if(!c.documentIdField) errors.push('BIZEE_PARTNER_DOCUMENT_ID_FIELD')
+  if(!c.documentNameField) errors.push('BIZEE_PARTNER_DOCUMENT_NAME_FIELD')
+  if(!c.documentTypeField) errors.push('BIZEE_PARTNER_DOCUMENT_TYPE_FIELD')
   else {
     try{
       const map=parseObjectJson(c.createFieldMapJson,'BIZEE_PARTNER_CREATE_FIELD_MAP_JSON')
@@ -218,6 +233,77 @@ function pathWithId(path:string,id:string){
   return path.replaceAll('{order_id}',encodeURIComponent(id)).replaceAll('{id}',encodeURIComponent(id))
 }
 
+function safeFileName(value:string){
+  const v=String(value||'document').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,120)
+  return v||'document'
+}
+
+async function fetchProviderDocument(c:ReturnType<typeof cfg>,token:string,urlValue:string){
+  const raw=String(urlValue||'').trim()
+  if(!raw) throw new Error('Bizee document URL is empty')
+  const url=raw.startsWith('/') ? c.base+raw : raw
+  if(!/^https:\/\//i.test(url)) throw new Error('Bizee document URL must use HTTPS')
+  const sameProviderOrigin=(()=>{ try{return new URL(url).origin===new URL(c.base).origin}catch{return false} })()
+  const headers:Record<string,string>={}
+  if(sameProviderOrigin) headers[c.authHeader]=c.authScheme ? `${c.authScheme} ${token}` : token
+  const res=await fetch(url,{headers})
+  if(!res.ok) throw new Error(`Bizee document download failed (${res.status})`)
+  const contentType=res.headers.get('content-type')||'application/octet-stream'
+  const bytes=new Uint8Array(await res.arrayBuffer())
+  return {bytes,contentType}
+}
+
+async function syncProviderDocuments(sb:any,cfgValue:ReturnType<typeof cfg>,token:string,tenantId:string,caseId:string,orderId:string,data:any){
+  const list=readField(data,cfgValue.documentsArrayField)
+  if(!Array.isArray(list)) throw new Error('Configured Bizee documents array field did not resolve to an array')
+
+  const admin=createClient(
+    Deno.env.get('SUPABASE_URL')||'',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'',
+    {auth:{persistSession:false}}
+  )
+  const synced:any[]=[]
+  for(const item of list){
+    const providerDocumentId=String(readField(item,cfgValue.documentIdField)||'').trim()
+    const providerUrl=String(readField(item,cfgValue.documentUrlField)||'').trim()
+    const providerName=String(readField(item,cfgValue.documentNameField)||providerDocumentId||'Bizee-document').trim()
+    const providerType=String(readField(item,cfgValue.documentTypeField)||'Bizee Formation Document').trim()
+    if(!providerDocumentId||!providerUrl) continue
+
+    const {data:existing,error:existingErr}=await admin.from('formacorp_documents')
+      .select('id,file_name,storage_path')
+      .eq('tenant_id',tenantId)
+      .eq('provider','bizee')
+      .eq('provider_document_id',providerDocumentId)
+      .maybeSingle()
+    if(existingErr) throw existingErr
+    if(existing){ synced.push({...existing,provider_document_id:providerDocumentId,existing:true}); continue }
+
+    const downloaded=await fetchProviderDocument(cfgValue,token,providerUrl)
+    const fileName=safeFileName(providerName)
+    const storagePath=`formacorp/${caseId}/bizee/${safeFileName(providerDocumentId)}-${fileName}`
+    const {error:uploadErr}=await admin.storage.from('documents').upload(storagePath,downloaded.bytes,{
+      upsert:false,contentType:downloaded.contentType
+    })
+    if(uploadErr) throw uploadErr
+
+    const {data:row,error:insertErr}=await admin.from('formacorp_documents').insert([{
+      tenant_id:tenantId,
+      case_id:caseId,
+      document_type:providerType,
+      file_name:fileName,
+      storage_path:storagePath,
+      source:'Bizee Pro',
+      provider:'bizee',
+      provider_document_id:providerDocumentId,
+      provider_metadata:{order_id:orderId,provider_item:item},
+    }]).select().single()
+    if(insertErr) throw insertErr
+    synced.push({...row,existing:false})
+  }
+  return synced
+}
+
 async function bizeeFetch(c:ReturnType<typeof cfg>, token:string, path:string, init:RequestInit={}){
   if(!path.startsWith('/')) throw new Error('Bizee endpoint path must start with /')
   const controller=new AbortController()
@@ -350,7 +436,8 @@ serve(async req=>{
 
     if(action==='documents'){
       const data=await bizeeFetch(c,tenantCfg.token,pathWithId(c.documentsPath,orderId),{method:'GET'})
-      return json({ok:true,data})
+      const documents=await syncProviderDocuments(sb,c,tenantCfg.token,tenantId,caseId,orderId,data)
+      return json({ok:true,count:documents.length,documents})
     }
 
     return json({error:'Unsupported action'},400)
