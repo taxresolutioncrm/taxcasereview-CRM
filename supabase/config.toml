@@ -205,3 +205,7 @@ verify_jwt = false
 [functions.taxres-family-password-reset]
 # Public enumeration-safe reset request; Supabase Auth applies its own delivery throttles.
 verify_jwt = false
+
+# FormaCorp state filing fee payment — authenticated CRM staff only.
+[functions.formacorp-state-fee]
+verify_jwt = true

@@ -4,8 +4,10 @@ import { formatMoneyInput, parseMoney } from '../lib/money'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
-import { buildFlArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
+import { buildFlArticlesPdf, buildFlProfitArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
 import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
+import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
+import FloridaProfitCorpDetails from '../components/formacorp/FloridaProfitCorpDetails'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -32,7 +34,7 @@ const FL_FIELDS = {
 }
 
 const BLANK = {
-  client_name:'', entity_name:'', entity_type:'LLC', state:'FL',
+  client_id:null, client_name:'', entity_name:'', entity_type:'LLC', state:'FL',
   owners:'', registered_agent:'', business_purpose:'',
   ein:'', state_file_num:'', stage:'Consultation',
   notes:'', formation_date:'', fee:'', fee_paid:false,
@@ -40,7 +42,7 @@ const BLANK = {
 }
 
 const WIZ_BLANK = {
-  entity_type: '', state: '', client_name: '', entity_name: '',
+  entity_type: '', state: '', client_id:null, client_name: '', entity_name: '',
   owners: '', registered_agent: 'Self (Owner)', business_purpose: '',
   service_plan:'Launch',
   ...FL_FIELDS,
@@ -68,12 +70,20 @@ function isFloridaLlc(v = {}) {
   return v.state === 'FL' && (v.entity_type === 'LLC' || v.entity_type === 'Professional LLC (PLLC)')
 }
 
+function isFloridaProfitCorp(v = {}) {
+  return v.state === 'FL' && v.entity_type === 'C-Corp'
+}
+
+function isFloridaFormation(v = {}) {
+  return isFloridaLlc(v) || isFloridaProfitCorp(v)
+}
+
 function validEmail(v) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim())
 }
 
 function floridaMissing(v = {}) {
-  if (!isFloridaLlc(v)) return []
+  if (!isFloridaFormation(v)) return []
   const missing = []
   if (!String(v.entity_name || '').trim()) missing.push('Entity name')
   if (!String(v.principal_address || '').trim()) missing.push('Principal street address')
@@ -83,11 +93,13 @@ function floridaMissing(v = {}) {
   if (!validEmail(v.correspondence_email)) missing.push('Valid correspondence email')
   if (!v.registered_agent_accepted) missing.push('Registered-agent acceptance confirmation')
   if (v.entity_type === 'Professional LLC (PLLC)' && !String(v.business_purpose || '').trim()) missing.push('Specific professional purpose')
+  if (isFloridaProfitCorp(v) && (!Number.isInteger(Number(v.fl_authorized_shares)) || Number(v.fl_authorized_shares) < 1)) missing.push('Authorized stock shares (at least 1)')
+  if (isFloridaProfitCorp(v) && !v.fl_corp_details_saved) missing.push('Saved Florida corporation filing details')
   return missing
 }
 
 function floridaSubmissionMissing(v = {}) {
-  if (!isFloridaLlc(v)) return []
+  if (!isFloridaFormation(v)) return []
   const missing = floridaMissing(v)
   if (!String(v.fl_registered_agent_signature || '').trim()) missing.push('Registered-agent typed signature')
   if (!String(v.fl_authorized_representative_signature || '').trim()) missing.push('Authorized-representative typed signature')
@@ -96,6 +108,7 @@ function floridaSubmissionMissing(v = {}) {
 }
 
 function floridaStateFee(v = {}) {
+  if (isFloridaProfitCorp(v)) return 70 + (v.fl_certificate_of_status ? 8.75 : 0) + (v.fl_certified_copy ? 8.75 : 0)
   return 125 + (v.fl_certificate_of_status ? 5 : 0) + (v.fl_certified_copy ? 30 : 0)
 }
 
@@ -105,7 +118,8 @@ function flStatusIndex(v = {}) {
 }
 
 function FloridaFilingFields({ value, onChange }) {
-  if (!isFloridaLlc(value)) return null
+  if (!isFloridaFormation(value)) return null
+  const corp = isFloridaProfitCorp(value)
   return (
     <div className="card" style={{padding:'12px 14px',margin:'10px 0',background:'var(--s2)'}}>
       <div className="stitle" style={{marginBottom:8}}>☀️ Florida Filing Details</div>
@@ -126,9 +140,8 @@ function FloridaFilingFields({ value, onChange }) {
           <input value={value.authorized_representative || ''} onChange={e=>onChange('authorized_representative',e.target.value)} placeholder="Person who will sign/file"/>
         </div>
         <div className="field"><label>Title</label>
-          <select value={value.authorized_representative_title || 'AR'} onChange={e=>onChange('authorized_representative_title',e.target.value)}>
-            <option value="AR">AR — Authorized Representative</option>
-            <option value="MGR">MGR — Manager</option>
+          <select value={value.authorized_representative_title || (corp?'INC':'AR')} onChange={e=>onChange('authorized_representative_title',e.target.value)}>
+            {corp ? <option value="INC">INC — Incorporator</option> : <><option value="AR">AR — Authorized Representative</option><option value="MGR">MGR — Manager</option></>}
           </select>
         </div>
       </div>
@@ -156,16 +169,16 @@ function FloridaFilingFields({ value, onChange }) {
       </div>
       <div className="fg2">
         <div className="field">
-          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certificate_of_status} onChange={e=>onChange('fl_certificate_of_status',e.target.checked)} style={{width:'auto'}}/> Certificate of Status (+$5)</label>
+          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certificate_of_status} onChange={e=>onChange('fl_certificate_of_status',e.target.checked)} style={{width:'auto'}}/> Certificate of Status (+${corp?'8.75':'5'})</label>
         </div>
         <div className="field">
-          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certified_copy} onChange={e=>onChange('fl_certified_copy',e.target.checked)} style={{width:'auto'}}/> Certified Copy (+$30)</label>
+          <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!value.fl_certified_copy} onChange={e=>onChange('fl_certified_copy',e.target.checked)} style={{width:'auto'}}/> Certified Copy (+${corp?'8.75':'30'})</label>
         </div>
       </div>
       <div className="field" style={{marginBottom:0}}>
         <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer',lineHeight:1.4}}>
           <input type="checkbox" checked={!!value.fl_filing_authorized} onChange={e=>onChange('fl_filing_authorized',e.target.checked)} style={{width:'auto',marginTop:2}}/>
-          <span>I authorize this office to prepare and submit the Florida LLC filing using the information above. I understand the filing becomes a public record and that typed signatures may be used only with the signer's permission.</span>
+          <span>I authorize this office to prepare and submit this Florida formation filing using the information above. I understand the filing becomes a public record and that typed signatures may be used only with the signer's permission.</span>
         </label>
       </div>
     </div>
@@ -230,6 +243,8 @@ export default function FormaCorp() {
   const [lookup, setLookup] = useState({ open:false, query:'', running:false, result:null })
   const [pdfBusy, setPdfBusy] = useState(false)
   const [flSubmit, setFlSubmit] = useState({ method:'sunbiz_online', faxNumber:'', coverSheet:null, signedArticles:null, busy:false })
+  const [stateFeePayment, setStateFeePayment] = useState(null)
+  const [corpDetails, setCorpDetails] = useState({ fl_authorized_shares:'', fl_officers_directors:'', fl_corp_details_saved:false })
 
   function checkNameSoon(name, state) {
     if (state !== 'FL' || !name || name.trim().length < 3) {
@@ -268,25 +283,27 @@ export default function FormaCorp() {
   }
 
   function openFloridaEdit(c, missing = floridaMissing(c)) {
-    setForm({ ...BLANK, ...c })
+    const { fl_authorized_shares, fl_officers_directors, fl_corp_details_saved, ...dbCase } = c
+    setForm({ ...BLANK, ...dbCase })
     setModal('edit')
     if (missing.length) showToast(`Florida filing details needed: ${missing.join(', ')}`, 'err')
   }
 
-  async function downloadArticlesPdf(c) {
+  async function downloadArticlesPdf(c, details = corpDetails) {
     if (pdfBusy) return
-    const missing = floridaMissing(c)
+    const filing = isFloridaProfitCorp(c) ? { ...c, ...details } : c
+    const missing = floridaMissing(filing)
     if (missing.length) {
       openFloridaEdit(c, missing)
       return
     }
     setPdfBusy(true)
     try {
-      const blob = await buildFlArticlesPdf(c)
+      const blob = isFloridaProfitCorp(filing) ? await buildFlProfitArticlesPdf(filing) : await buildFlArticlesPdf(filing)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `Articles-of-Organization-${(c.entity_name || 'LLC').replace(/[^a-z0-9]+/gi,'-')}.pdf`
+      a.download = `${isFloridaProfitCorp(filing)?'Articles-of-Incorporation':'Articles-of-Organization'}-${(c.entity_name || 'Business').replace(/[^a-z0-9]+/gi,'-')}.pdf`
       document.body.appendChild(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 4000)
     } catch (e) {
@@ -330,7 +347,7 @@ export default function FormaCorp() {
   }
 
   function chooseWizardClient(c) {
-    setWForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setWForm(f => ({ ...f, client_id:c.id, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
     setWSugg([]); setWShowSug(false)
   }
 
@@ -348,7 +365,7 @@ export default function FormaCorp() {
     const req = stateReqs[wForm.state]
     const fee = req?.llc_filing_fee ? parseFloat(req.llc_filing_fee.replace(/[^0-9.]/g, '')) : null
     const payload = {
-      client_name:wForm.client_name, entity_name:wForm.entity_name, entity_type:wForm.entity_type, state:wForm.state,
+      client_id:wForm.client_id || null, client_name:wForm.client_name, entity_name:wForm.entity_name, entity_type:wForm.entity_type, state:wForm.state,
       owners:wForm.owners, registered_agent:wForm.registered_agent, business_purpose:wForm.business_purpose,
       principal_address:wForm.principal_address || '', mailing_address:wForm.mailing_address || '',
       registered_agent_address:wForm.registered_agent_address || '',
@@ -364,7 +381,7 @@ export default function FormaCorp() {
       fl_certified_copy:!!wForm.fl_certified_copy,
       fl_filing_status:'Draft', fl_payment_status:'unpaid', fl_submission_method:'sunbiz_online',
       fl_state_fee:floridaStateFee(wForm),
-      stage:'Consultation', fee: isFloridaLlc(wForm) ? floridaStateFee(wForm) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
+      stage:'Consultation', fee: isFloridaFormation(wForm) ? floridaStateFee(wForm) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
     }
     const { data, error } = await supabase.from('formacorp').insert([payload]).select().single()
     if (error) { setSaving(false); showToast('Error: '+error.message, 'err'); return }
@@ -406,7 +423,7 @@ export default function FormaCorp() {
   }
 
   function chooseClient(c) {
-    setForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setForm(f => ({ ...f, client_id:c.id, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
     setSugg([]); setShowSug(false)
   }
 
@@ -416,7 +433,7 @@ export default function FormaCorp() {
     }
     setSaving(true)
     const payload = { ...form, fee: form.fee ? parseFloat(form.fee) : null, created_at: form.created_at || new Date().toISOString() }
-    if (isFloridaLlc(payload)) {
+    if (isFloridaFormation(payload)) {
       payload.fl_state_fee = floridaStateFee(payload)
       if (payload.fl_filing_authorized && !payload.fl_authorized_at) payload.fl_authorized_at = new Date().toISOString()
       if (!payload.fl_filing_authorized) payload.fl_authorized_at = null
@@ -478,7 +495,7 @@ export default function FormaCorp() {
   }
 
   async function startNativeFormation(c) {
-    if (isFloridaLlc(c)) {
+    if (isFloridaFormation(c)) {
       const missing = floridaSubmissionMissing(c)
       if (missing.length) { openFloridaEdit(c, missing); return }
       const ok = await queueFloridaFiling(c, 'prepaid_fax')
@@ -524,8 +541,8 @@ export default function FormaCorp() {
   async function recordFloridaSubmission(c) {
     const tracking = window.prompt('Florida tracking number from the state receipt:', c.fl_tracking_number || '')
     if (!tracking?.trim()) { showToast('A Florida tracking number is required before marking the filing submitted.', 'err'); return }
-    const paymentRef = window.prompt('State payment receipt/reference (optional):', c.fl_payment_reference || '')
-    if (paymentRef === null) return
+    const paymentRef = window.prompt('State payment receipt/reference:', c.fl_payment_reference || '')
+    if (!paymentRef?.trim()) { showToast('A state payment receipt/reference is required before recording a paid state submission.', 'err'); return }
     const pin = window.prompt('Florida filing PIN (optional; usually supplied on rejection):', c.fl_pin || '')
     if (pin === null) return
     await updateFloridaCase(c, {
@@ -570,6 +587,9 @@ export default function FormaCorp() {
   }
 
   async function submitFloridaFax(c) {
+    if (!c.fee_paid || !['received','state_paid','state_account'].includes(String(c.fl_payment_status || 'unpaid'))) {
+      showToast('Collect the state filing fee in FormaCorp before submitting the filing to Florida.', 'err'); return
+    }
     const missing = floridaSubmissionMissing(c)
     if (missing.length) { openFloridaEdit(c, missing); return }
     const digits = String(flSubmit.faxNumber || '').replace(/\D/g,'')
@@ -595,8 +615,6 @@ export default function FormaCorp() {
         fl_submission_method:'prepaid_fax',
         fl_tracking_number:fax.sid || c.fl_tracking_number || '',
         fl_submitted_at:new Date().toISOString(),
-        fl_payment_status:'state_account',
-        fee_paid:true,
         stage:'State Filing',
       }, '📠 Florida filing fax submitted', `Submitted through Prepaid Sunbiz E-File fax via ${fax.provider || 'fax provider'}`)
     } catch (e) {
@@ -610,7 +628,7 @@ export default function FormaCorp() {
   async function updateStage(id, stage) {
     const c = cases.find(x=>x.id===id) || detail
     const target = STAGES.indexOf(stage)
-    if (c && isFloridaLlc(c) && target >= STAGES.indexOf('State Filing')) {
+    if (c && isFloridaFormation(c) && target >= STAGES.indexOf('State Filing')) {
       const missing = floridaMissing(c)
       if (missing.length) {
         openFloridaEdit(c, missing)
@@ -618,7 +636,7 @@ export default function FormaCorp() {
       }
     }
     if (c && target >= STAGES.indexOf('EIN Application')) {
-      const stateAccepted = isFloridaLlc(c)
+      const stateAccepted = isFloridaFormation(c)
         ? (c.fl_filing_status === 'Approved / Active' && !!String(c.state_file_num || '').trim())
         : !!String(c.state_file_num || c.formation_date || '').trim()
       if (!stateAccepted) {
@@ -675,7 +693,8 @@ export default function FormaCorp() {
   if (detail) {
     const c = cases.find(x=>x.id===detail.id) || detail
     const stageIdx = STAGES.indexOf(c.stage)
-    const flSubmitMissing = floridaSubmissionMissing(c)
+    const filingCase = isFloridaProfitCorp(c) ? { ...c, ...corpDetails } : c
+    const flSubmitMissing = floridaSubmissionMissing(filingCase)
     const flStep = flStatusIndex(c)
     return (
       <div style={{maxWidth:900}}>
@@ -735,10 +754,17 @@ export default function FormaCorp() {
             {[['EIN',c.ein||'—'],['State File #',c.state_file_num||'—'],['Fee',c.fee?`$${c.fee}`:'—'],['Fee Paid',c.fee_paid?'✅ Yes':'⏳ Pending'],['Business Purpose',c.business_purpose||'—']].map(([l,v])=>(
               <div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>
             ))}
+            {(() => {
+              const byId = clients.find(x => String(x.id) === String(c.client_id || ''))
+              const byName = clients.filter(x => x.name === c.client_name)
+              const linkedClient = byId || (byName.length === 1 ? byName[0] : null)
+              const amount = Number(isFloridaFormation(c) ? floridaStateFee(c) : (c.fee || 0))
+              return linkedClient && amount > 0 ? <button className="btn pri sm" style={{marginTop:9,width:'100%',justifyContent:'center'}} onClick={()=>setStateFeePayment({ caseRecord:c, client:linkedClient, amount })}>💳 Pay State Filing Fee in FormaCorp</button> : null
+            })()}
           </div>
         </div>
 
-        {isFloridaLlc(c) && (
+        {isFloridaFormation(c) && (
           <div className="card" style={{padding:'12px 16px',marginBottom:10,borderLeft:`3px solid ${c.fl_filing_status==='Approved / Active'?'var(--ok)':flSubmitMissing.length?'var(--warn)':'var(--blue)'}`}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:10}}>
               <div>
@@ -771,10 +797,10 @@ export default function FormaCorp() {
 
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>
               <button className="btn sm" onClick={()=>openFloridaEdit(c, [])}>✏️ Edit Filing Details</button>
-              <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
-              {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
-              {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>🏢 Start FormaCorp Filing</button>}
-              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>🏢 Continue FormaCorp Filing</button>}
+              <button className="btn sm" onClick={()=>downloadArticlesPdf(c,corpDetails)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
+              {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(filingCase)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
+              {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(filingCase)}>🏢 Start FormaCorp Filing</button>}
+              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(filingCase)}>🏢 Continue FormaCorp Filing</button>}
               {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>}
               {c.fl_filing_status==='Submitted to Florida' && <button className="btn sm" onClick={()=>markFloridaReview(c)}>⏳ Mark Under Review</button>}
               {['Submitted to Florida','Under State Review'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>approveFlorida(c)}>✅ Record Approval</button>}
@@ -796,8 +822,10 @@ export default function FormaCorp() {
                 <label style={{fontSize:10,color:'var(--t3)'}}>Electronic Filing Cover Sheet<input type="file" accept="application/pdf" onChange={e=>setFlSubmit(x=>({...x,coverSheet:e.target.files?.[0]||null}))} style={{width:'100%',fontSize:11,marginTop:3}}/></label>
                 <label style={{fontSize:10,color:'var(--t3)'}}>Signed Florida Articles PDF<input type="file" accept="application/pdf" onChange={e=>setFlSubmit(x=>({...x,signedArticles:e.target.files?.[0]||null}))} style={{width:'100%',fontSize:11,marginTop:3}}/></label>
               </div>
-              <button className="btn sm" style={{marginTop:8}} onClick={()=>submitFloridaFax(c)} disabled={flSubmit.busy || flSubmitMissing.length>0}>{flSubmit.busy?'⏳ Sending…':'📠 Staff: Submit via Prepaid Sunbiz Fax'}</button>
+              {!c.fee_paid && <div style={{fontSize:10.5,color:'var(--warn)',marginTop:8}}>State fee must be collected in FormaCorp before the filing can be transmitted.</div>}
+              <button className="btn sm" style={{marginTop:8}} onClick={()=>submitFloridaFax(filingCase)} disabled={flSubmit.busy || flSubmitMissing.length>0 || !c.fee_paid}>{flSubmit.busy?'⏳ Sending…':'📠 Staff: Submit via Prepaid Sunbiz Fax'}</button>
             </details>
+            {isFloridaProfitCorp(c) && <FloridaProfitCorpDetails caseRecord={c} value={corpDetails} onChange={setCorpDetails} showToast={showToast} />}
           </div>
         )}
 
@@ -823,8 +851,8 @@ export default function FormaCorp() {
           <div className="stitle" style={{marginBottom:10}}>Quick Links & Resources</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <button className="btn sm" onClick={()=>setDetail(c)}>🔢 Continue EIN in FormaCorp</button>
-            {!isFloridaLlc(c) && <button className="btn sm" onClick={()=>startNativeFormation(c)}>🏛️ Continue {c.state} Filing in FormaCorp</button>}
-            {isFloridaLlc(c) && <button onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:pdfBusy?'wait':'pointer'}}>{pdfBusy ? '⏳ Building…' : '📄 Generate FL Articles PDF'}</button>}
+            {!isFloridaFormation(c) && <button className="btn sm" onClick={()=>startNativeFormation(c)}>🏛️ Continue {c.state} Filing in FormaCorp</button>}
+            {isFloridaFormation(c) && <button onClick={()=>downloadArticlesPdf(c,corpDetails)} disabled={pdfBusy} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:pdfBusy?'wait':'pointer'}}>{pdfBusy ? '⏳ Building…' : '📄 Generate FL Articles PDF'}</button>}
             {c.state === 'FL' && <button onClick={()=>setLookup({ open:true, query:c.entity_name || '', running:false, result:null })} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:'pointer'}}>🔍 Sunbiz Lookup</button>}
             <button className="btn sm" onClick={()=>setDetail(c)}>📋 Continue Entity Workflow</button>
           </div>
@@ -847,6 +875,8 @@ export default function FormaCorp() {
             </div>
           </div>
         )}
+
+        {stateFeePayment && <FormaCorpStateFeeModal caseRecord={stateFeePayment.caseRecord} client={stateFeePayment.client} amount={stateFeePayment.amount} onClose={()=>setStateFeePayment(null)} onPaid={async patch=>{ setStateFeePayment(null); setDetail(d=>d?.id===c.id?({...d,...patch}):d); await load() }} showToast={showToast} />}
 
         {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>This cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
       </div>
@@ -886,7 +916,7 @@ export default function FormaCorp() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:10}}>
           {filtered.map(c=><div key={c.id} className="card" style={{padding:'14px 16px',cursor:'pointer',borderTop:`3px solid ${stageColor[c.stage]||'var(--br)'}`}} onClick={()=>setDetail(c)} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow=`0 6px 20px ${stageColor[c.stage]}22`}} onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=''}}>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontSize:14,fontWeight:800,marginBottom:2}}>{c.entity_name}</div><div style={{fontSize:12,color:'var(--t3)'}}><ClientLink name={c.client_name} /></div></div><span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:stageColor[c.stage]+'22',color:stageColor[c.stage],border:`1px solid ${stageColor[c.stage]}44`,fontWeight:600,whiteSpace:'nowrap'}}>{c.stage}</span></div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}{isFloridaLlc(c) && floridaMissing(c).length===0 && <span className="bdg bg" style={{fontSize:10}}>FL Filing Ready</span>}</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}{isFloridaFormation(c) && floridaMissing(c).length===0 && <span className="bdg bg" style={{fontSize:10}}>FL Filing Ready</span>}</div>
             <div style={{display:'flex',gap:3,marginTop:10,alignItems:'center'}}>{STAGES.map((s,i)=><div key={s} style={{flex:1,height:4,borderRadius:2,background:i<=STAGES.indexOf(c.stage)?stageColor[c.stage]:'var(--s3)'}}/>)}</div>
             <div style={{fontSize:9,color:'var(--t3)',marginTop:3}}>Step {STAGES.indexOf(c.stage)+1} of {STAGES.length}: {c.stage}</div>
           </div>)}
@@ -938,7 +968,7 @@ export default function FormaCorp() {
               </div>
             </div>}
 
-            {wStep===5 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case and lifecycle.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[['Service Plan',wForm.service_plan||'Launch'],['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],['Business Purpose',wForm.business_purpose||'—']].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div>{isFloridaLlc(wForm)&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>☀️ Florida Filing Readiness</div>{floridaSubmissionMissing(wForm).length===0?<div style={{fontSize:12,color:'var(--ok)'}}>✅ Florida submission details and filing authorization are ready.</div>:<div style={{fontSize:12,color:'var(--warn)',lineHeight:1.5}}>Case can be created as a Consultation draft. Before state submission, complete: {floridaSubmissionMissing(wForm).join(', ')}.</div>}</div>}{stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📍 {stateReqs[wForm.state].state_name} Filing Snapshot</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}<div style={{fontSize:12,color:'var(--t3)',marginTop:10,lineHeight:1.6}}>This creates a formation case starting at the <strong>Consultation</strong> stage. You'll be taken to the case page where you can track progress through filing, EIN, operating agreement, and more.</div></div>}
+            {wStep===5 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case and lifecycle.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[['Service Plan',wForm.service_plan||'Launch'],['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],['Business Purpose',wForm.business_purpose||'—']].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div>{isFloridaFormation(wForm)&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>☀️ Florida Filing Readiness</div>{floridaSubmissionMissing(wForm).length===0?<div style={{fontSize:12,color:'var(--ok)'}}>✅ Florida submission details and filing authorization are ready.</div>:<div style={{fontSize:12,color:'var(--warn)',lineHeight:1.5}}>Case can be created as a Consultation draft. Before state submission, complete: {floridaSubmissionMissing(wForm).join(', ')}.</div>}</div>}{stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📍 {stateReqs[wForm.state].state_name} Filing Snapshot</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}<div style={{fontSize:12,color:'var(--t3)',marginTop:10,lineHeight:1.6}}>This creates a formation case starting at the <strong>Consultation</strong> stage. You'll be taken to the case page where you can track progress through filing, EIN, operating agreement, and more.</div></div>}
 
             <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:20,paddingTop:16,borderTop:'1px solid var(--br)'}}><button className="btn" onClick={()=>wStep===1?setWizard(false):setWStep(s=>s-1)}>{wStep===1?'Cancel':'← Back'}</button>{wStep<5?<button className="btn pri" disabled={(wStep===1&&!wForm.entity_type)||(wStep===2&&!wForm.state)||(wStep===3&&(!wForm.client_name||!wForm.entity_name))} onClick={()=>setWStep(s=>s+1)}>Continue →</button>:<button className="btn pri" onClick={createFromWizard} disabled={saving}>{saving?'Creating…':'🏢 Create Formation + Lifecycle'}</button>}</div>
           </div>

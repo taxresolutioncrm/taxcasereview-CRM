@@ -241,3 +241,37 @@ export async function buildFlFaxPacket(coverSheetFile, signedArticlesFile) {
   const bytes = await out.save()
   return new Blob([bytes], { type:'application/pdf' })
 }
+
+export async function buildFlProfitArticlesPdf(c) {
+  const doc = await PDFDocument.create()
+  const reg = await doc.embedFont(StandardFonts.Helvetica)
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const ital = await doc.embedFont(StandardFonts.HelveticaOblique)
+  const ink = rgb(0.05,0.06,0.09), muted = rgb(0.4,0.42,0.5)
+  let page = doc.addPage([PAGE_W,PAGE_H]), y = PAGE_H - 60
+  const newPage=()=>{page=doc.addPage([PAGE_W,PAGE_H]);y=PAGE_H-60}
+  const ensure=n=>{if(y-n<60)newPage()}
+  const heading=(t,size=11)=>{ensure(size+12);page.drawText(t,{x:MARGIN,y,size,font:bold,color:ink});y-=size+8}
+  const label=t=>{ensure(14);page.drawText(t,{x:MARGIN,y,size:8.5,font:bold,color:muted});y-=12}
+  const body=(t,opts={})=>{const size=opts.size??10,font=opts.font??reg;for(const ln of wrap(t,font,size,BODY_W)){ensure(size+4);page.drawText(ln,{x:MARGIN,y,size,font,color:ink});y-=size+4}}
+  const gap=(n=6)=>{y-=n}
+  const rule=()=>{ensure(10);page.drawLine({start:{x:MARGIN,y:y-2},end:{x:MARGIN+BODY_W,y:y-2},thickness:.6,color:muted});y-=10}
+
+  page.drawText('FLORIDA DIVISION OF CORPORATIONS',{x:MARGIN,y,size:9,font:bold,color:muted});y-=12
+  page.drawText('Articles of Incorporation',{x:MARGIN,y,size:16,font:bold,color:ink});y-=18
+  page.drawText('for a Florida Profit Corporation',{x:MARGIN,y,size:10,font:ital,color:muted});y-=22
+  rule();gap(4)
+  heading('ARTICLE I — Corporate Name');body(safe(c.entity_name));gap(6)
+  heading('ARTICLE II — Principal and Mailing Addresses');label('Principal Street Address');body(safe(c.principal_address));gap(2);label('Mailing Address');body(safe(c.mailing_address||c.principal_address));gap(6)
+  heading('ARTICLE III — Registered Agent');label('Registered Agent Name');body(safe(c.registered_agent));gap(2);label('Florida Street Address');body(safe(c.registered_agent_address));gap(6);label('Registered Agent Typed Signature');body(safe(c.fl_registered_agent_signature));gap(8)
+  heading('ARTICLE IV — Purpose');body(safe(c.business_purpose,'Any and all lawful business'));gap(8)
+  heading('ARTICLE V — Authorized Stock');const shares=Number(c.fl_authorized_shares);body(Number.isInteger(shares)&&shares>0?String(shares)+' authorized share'+(shares===1?'':'s'):'AUTHORIZED SHARE COUNT REQUIRED');gap(8)
+  heading('ARTICLE VI — Officers / Directors (optional)');body(String(c.fl_officers_directors||'').trim()||'Not listed in the Articles.');gap(8)
+  heading('EFFECTIVE DATE');body(c.effective_date?String(c.effective_date):'Upon filing');gap(8)
+  heading('INCORPORATOR');label('Name');body(safe(c.authorized_representative||c.client_name));gap(2);label('Typed Signature');body(safe(c.fl_authorized_representative_signature));gap(8)
+  heading('CORRESPONDENCE');label('Name');body(safe(c.client_name||c.authorized_representative));gap(2);label('Email');body(safe(c.correspondence_email));gap(10)
+  rule();body('$70.00 required base filing ($35 Articles + $35 registered-agent designation). Optional certified copy $8.75; optional certificate of status $8.75.',{size:8.5})
+  body('Prepared from the FormaCorp case for authorized submission to the Florida Division of Corporations. State acceptance is not established until the Division files the Articles.',{size:7.5,font:ital})
+  const bytes=await doc.save()
+  return new Blob([bytes],{type:'application/pdf'})
+}
