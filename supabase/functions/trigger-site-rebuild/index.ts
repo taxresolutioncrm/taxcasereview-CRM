@@ -15,11 +15,11 @@ const json = (body: unknown, status = 200) =>
     headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   })
 
-async function triggerViaPagesApi(token: string, accountId: string) {
+async function triggerViaPagesApi(token: string, accountId: string, target: 'romylabs' | 'admin') {
   const base = `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`
   const headers = { Authorization: `Bearer ${token}` }
 
-  let projectName = 'romylabs-site'
+  let projectName = target === 'admin' ? 'taxcasereview-crm' : 'romylabs-site'
   let projectRes = await fetch(`${base}/${projectName}`, { headers })
 
   if (!projectRes.ok) {
@@ -29,13 +29,18 @@ async function triggerViaPagesApi(token: string, accountId: string) {
       return { ok: false, status: listRes.status, error: 'cloudflare_project_lookup_failed' }
     }
 
-    const match = listBody.result.find((p: any) =>
-      p?.name === 'romylabs-site' ||
-      p?.source?.config?.repo_name === 'romylabs-site' ||
-      (Array.isArray(p?.domains) && p.domains.some((d: string) => d === 'romylabs.com' || d === 'www.romylabs.com'))
-    )
+    const match = listBody.result.find((p: any) => {
+      if (target === 'admin') {
+        return p?.name === 'taxcasereview-crm' ||
+          p?.source?.config?.repo_name === 'taxcasereview-CRM' ||
+          (Array.isArray(p?.domains) && p.domains.some((d: string) => d === 'admin.romylabs.com'))
+      }
+      return p?.name === 'romylabs-site' ||
+        p?.source?.config?.repo_name === 'romylabs-site' ||
+        (Array.isArray(p?.domains) && p.domains.some((d: string) => d === 'romylabs.com' || d === 'www.romylabs.com'))
+    })
     if (!match?.name) {
-      return { ok: false, status: 404, error: 'romylabs_pages_project_not_found' }
+      return { ok: false, status: 404, error: target === 'admin' ? 'admin_pages_project_not_found' : 'romylabs_pages_project_not_found' }
     }
     projectName = match.name
   }
@@ -71,20 +76,23 @@ Deno.serve(async (req) => {
       if (inbound !== webhookSecret) return json({ error: 'Unauthorized' }, 401)
     }
 
+    const requestBody = await req.json().catch(() => ({}))
+    const target = requestBody?.target === 'admin' ? 'admin' : 'romylabs'
+
     const hookUrl = Deno.env.get('CF_PAGES_DEPLOY_HOOK_ROMYLABS')
-    if (hookUrl) {
+    if (target === 'romylabs' && hookUrl) {
       const res = await fetch(hookUrl, { method: 'POST' })
       const body = await res.text()
       console.log(`[trigger-site-rebuild] deploy hook response: ${res.status} ${body.slice(0, 200)}`)
-      return json({ ok: res.ok, status: res.status, triggered: true, mode: 'deploy_hook' })
+      return json({ ok: res.ok, status: res.status, triggered: true, mode: 'deploy_hook', target })
     }
 
     const cfToken = Deno.env.get('CLOUDFLARE_API_TOKEN')
     const cfAccount = Deno.env.get('CLOUDFLARE_ACCOUNT_ID')
     if (cfToken && cfAccount) {
-      const result = await triggerViaPagesApi(cfToken, cfAccount)
+      const result = await triggerViaPagesApi(cfToken, cfAccount, target)
       console.log('[trigger-site-rebuild] Pages API result', result)
-      return json({ ...result, triggered: result.ok, mode: 'pages_api' }, result.ok ? 200 : 502)
+      return json({ ...result, triggered: result.ok, mode: 'pages_api', target }, result.ok ? 200 : 502)
     }
 
     console.warn('[trigger-site-rebuild] no Cloudflare deploy credentials configured')
