@@ -39,6 +39,30 @@ const checks=[
     "sync_document_client_identity",
     "before insert or update of client_id, client, clientname, tenant_id",
   ]],
+  ['src/context/AppContext.jsx',[
+    "tenant_id=eq.${myTenantId}",
+    "}, [user, myTenantId])",
+  ]],
+  ['src/components/GlobalTeamChatNotifier.jsx',[
+    "tenant_id=eq.${FIRM.tenantId}",
+  ]],
+  ['src/pages/Dashboard.jsx',[
+    "select('id,name,status,\"assignedTo\",\"taxFee\",created_at,\"issueType\",source,\"irsBalance\"')",
+    "select('id,name,\"issueType\",\"irsBalance\",created_at')",
+  ]],
+  ['src/pages/Clients.jsx',[
+    "payload.eventType === 'DELETE'",
+    "filter: `client_id=eq.${detail.id}`",
+    "filter: `clientid=eq.${detail.id}`",
+    "eq('client_id', String(clientId))",
+  ]],
+  ['supabase/migrations/20260919_nashville_scale_100_users.sql',[
+    "idx_employee_portal_sessions_tenant_employee_expires",
+    "idx_billing_time_tenant_employee_date",
+    "idx_payments_tenant_client_created",
+    "idx_transcript_pull_requests_poa_record_id",
+    "as restrictive",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
@@ -57,4 +81,4 @@ for(const [file,tokens] of checks){
   }
 }
 if(failed) process.exit(1)
-console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents')
+console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, 100-user scale')
