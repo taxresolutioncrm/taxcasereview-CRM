@@ -4732,6 +4732,24 @@ function CommandCenter() {
           feeds[key] = item.data
         }
 
+        // A TaxRes rollup is only valid when every real TaxRes office feed is live.
+        // Retry any missing batch member through the proven single-product proxy path.
+        // Never silently substitute the stale central tenant mirror for a remote office.
+        const missing = TAXRES_LIVE_KEYS.filter(key => !feeds[key])
+        if (missing.length) {
+          const retries = await Promise.all(missing.map(async key => {
+            const response = await supabase.functions.invoke('hub-proxy', { body:{ product:key } })
+            return { key, ...response }
+          }))
+          for (const retry of retries) {
+            if (!retry.error && retry.data?.ok !== false && retry.data?.metrics) feeds[retry.key] = retry.data
+          }
+        }
+        const stillMissing = TAXRES_LIVE_KEYS.filter(key => !feeds[key])
+        if (stillMissing.length) {
+          throw new Error(`Live TaxRes metrics unavailable for: ${stillMissing.join(', ')}`)
+        }
+
         const metric = (m, ...keys) => {
           for (const key of keys) {
             if (m?.[key] !== null && m?.[key] !== undefined) return Number(m[key]) || 0
@@ -5610,16 +5628,20 @@ function CommandCenter() {
             const scopedFallback = taxresScopeData?.metrics || {}
             const liveAggregate = taxresLiveData?.aggregate || null
             // Build-contract compatibility marker: const taxresMetrics = taxresScopeData?.metrics || {}
+            // Known TaxRes offices and the all-office rollup must come from live product feeds.
+            // The central RPC is allowed only for an unmapped local tenant drilldown; using it
+            // for Nashville/all-offices is what produced the stale 2,114 / 16 / 35 cards.
             const taxresMetrics = activeTenant
-              ? (selectedTaxresFeed ? normalizeTaxresMetrics(selectedTaxresFeed.metrics) : normalizeTaxresMetrics(scopedFallback))
-              : {
-                  ...(liveAggregate || normalizeTaxresMetrics(scopedFallback)),
-                  pending_esigns:Number(liveAggregate?.pending_esigns || scopedFallback.pending_esigns || 0),
-                  demos_today:Number(liveAggregate?.demos_today || scopedFallback.demos_today || 0),
-                }
-            const taxresStorageLabel = taxresMetrics.storage_files > 0
-              ? `${fmtBytes(taxresMetrics.storage_bytes)} · ${Number(taxresMetrics.storage_files).toLocaleString()} files`
-              : fmtBytes(taxresMetrics.storage_bytes)
+              ? (selectedTaxresFeed
+                  ? normalizeTaxresMetrics(selectedTaxresFeed.metrics)
+                  : (selectedTaxresFeedKey ? {} : normalizeTaxresMetrics(scopedFallback)))
+              : (liveAggregate || {})
+            const hasLiveTaxresMetrics = activeTenant ? Boolean(selectedTaxresFeed || !selectedTaxresFeedKey) : Boolean(liveAggregate)
+            const taxresStorageLabel = !hasLiveTaxresMetrics
+              ? '—'
+              : taxresMetrics.storage_files > 0
+                ? `${fmtBytes(taxresMetrics.storage_bytes)} · ${Number(taxresMetrics.storage_files).toLocaleString()} files`
+                : fmtBytes(taxresMetrics.storage_bytes)
             return (<>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18,
             background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.15)',

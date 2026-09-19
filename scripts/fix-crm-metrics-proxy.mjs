@@ -10,8 +10,9 @@ for (const forbidden of [
   'fetchCrmMetricsUrl(tenantProduct.metricsUrl)',
   "if (!product?.metricsUrl)",
   "if (!key || !tenantProduct?.metricsUrl)",
+  "liveAggregate || normalizeTaxresMetrics(scopedFallback)",
 ]) {
-  if (s.includes(forbidden)) throw new Error(`Unsafe direct metrics fetch remains: ${forbidden}`)
+  if (s.includes(forbidden)) throw new Error(`Unsafe/stale Admin metrics path remains: ${forbidden}`)
 }
 
 for (const required of [
@@ -25,6 +26,11 @@ for (const required of [
   "String(t.tenant_code || '').toUpperCase() !== 'DEMO'",
   "crmProduct==='taxres_crm' ? (taxresMetrics.clients ?? '—')",
   "crmProduct==='taxres_crm' && taxresScopeError",
+  "const missing = TAXRES_LIVE_KEYS.filter(key => !feeds[key])",
+  "const stillMissing = TAXRES_LIVE_KEYS.filter(key => !feeds[key])",
+  "throw new Error(\`Live TaxRes metrics unavailable for: \${stillMissing.join(', ')}\`)",
+  "const taxresMetrics = activeTenant",
+  ": (liveAggregate || {})",
 ]) {
   if (!s.includes(required)) throw new Error(`Admin metrics contract missing: ${required}`)
 }
@@ -48,6 +54,10 @@ for (const requiredMetricFragment of [
   'active_clients:activeClientCount||0',
   'active_staff:staffCount',
   'open_jobs:caseCount||0',
+  'outstanding_invoices:invoiceCount||0',
+  'pending_esigns:esignCount||0',
+  'demos_today:demoCount||0',
+  ".is('deleted_at',null)",
 ]) {
   if (!metricsFn.includes(requiredMetricFragment)) {
     throw new Error(`TaxRes metrics accuracy verification failed: ${requiredMetricFragment}`)
