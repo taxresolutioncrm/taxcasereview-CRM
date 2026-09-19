@@ -245,7 +245,7 @@ export default function Employees() {
       return { ok:false }
     }
     if (data?.already_exists) {
-      showToast('This employee already has a CRM login. Use Reset Password if they need access restored.')
+      showToast(data?.reset_sent ? 'CRM access link sent to ' + email : 'This employee already has a CRM login.')
       return { ok:true, already_exists:true }
     }
     showToast('Login invite sent to ' + email)
