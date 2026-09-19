@@ -3252,6 +3252,36 @@ function ArcvenaOfficeOnboarding({ supabase, onCreated }) {
   )
 }
 
+function mergeProductRegistry(rows = []) {
+  const staticProducts = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+  const byKey = new Map(staticProducts.map(p => [p.key, p]))
+  for (const row of rows || []) {
+    if (!row?.product_id || row.product_id === 'romylabs' || String(row.lifecycle || '').toLowerCase() === 'internal') continue
+    const existing = byKey.get(row.product_id) || {}
+    const supabaseUrl = String(row.supabase_url || '').replace(/\/$/, '')
+    byKey.set(row.product_id, {
+      key: row.product_id,
+      label: row.name || existing.label || row.product_id,
+      icon: row.icon_ref || existing.icon || '🧩',
+      color: row.accent_color || existing.color || '#6366f1',
+      industry: row.industry || existing.industry || 'Business Operations',
+      url: row.app_url || row.marketing_url || existing.url || null,
+      appUrl: row.app_url || existing.appUrl || null,
+      websiteUrl: row.marketing_url || existing.websiteUrl || null,
+      lifecycleStage: String(row.lifecycle || existing.lifecycleStage || 'building').toLowerCase(),
+      connection: supabaseUrl ? 'connected' : (existing.connection || 'not_connected'),
+      brandStatus: existing.brandStatus || 'branded',
+      publicOnRomyLabs: row.public ?? existing.publicOnRomyLabs ?? false,
+      commerciallyAvailable: ['live','available'].includes(String(row.lifecycle || '').toLowerCase()),
+      desc: row.short_desc || row.description || existing.desc || '',
+      metricsUrl: supabaseUrl ? `${supabaseUrl}/functions/v1/platform-metrics` : (existing.metricsUrl || null),
+      nextMilestone: existing.nextMilestone,
+      priorityRank: existing.priorityRank,
+    })
+  }
+  return [...byKey.values()]
+}
+
 function ProductsTab({ supabase, taxresActivity = [] }) {
   const [productParams] = useSearchParams()
   const portfolioFilter = productParams.get('portfolio') || ''
@@ -3262,12 +3292,19 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   const [taxresOps, setTaxresOps]   = useState(null)
   const [taxresLoading, setTaxresLoading] = useState(false)
   const [registryTenants, setRegistryTenants] = useState([])
+  const [registryProducts, setRegistryProducts] = useState([])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const { data, error } = await supabase.rpc('admin_romylabs_office_registry')
+      const [{ data, error }, { data: productRows, error: productError }] = await Promise.all([
+        supabase.rpc('admin_romylabs_office_registry'),
+        supabase.from('romylabs_products')
+          .select('product_id,name,accent_color,icon_ref,industry,app_url,marketing_url,lifecycle,public,short_desc,description,supabase_url,active')
+          .eq('active', true),
+      ])
       if (cancelled) return
+      setRegistryProducts(productError ? [] : (productRows || []))
       if (error || !Array.isArray(data)) {
         setRegistryTenants([])
         return
@@ -3386,7 +3423,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   function getConn(p)      { return CONN_LABEL[p.connection] || { label: p.connection, color: '#64748b', dot: '⚪' } }
 
   // ── Portfolio counts (from registry only — no live data needed) ─────────
-  const products = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+  const products = mergeProductRegistry(registryProducts)
   const staticTenants = PRODUCT_REGISTRY.filter(p => p.isTenant)
   const tenantKeys = new Set(staticTenants.map(p => p.key))
   const tenants = [...staticTenants, ...registryTenants.filter(p => !tenantKeys.has(p.key))]
@@ -4709,6 +4746,7 @@ function CommandCenter() {
     setCrmRemoteError('')
     if (crmProduct === 'taxres_crm') { setCrmRemoteData(null); return }
     const product = PRODUCT_REGISTRY.find(p => p.key === crmProduct && !p.isTenant)
+      || reportingProducts.find(p => p.product_id === crmProduct)
     if (!product) { setCrmRemoteData(null); return }
     let cancelled = false
     setCrmRemoteLoading(true)
@@ -5045,7 +5083,7 @@ function CommandCenter() {
 
           {/* ── Portfolio Scorecard ───────────────────────────────────────── */}
           {(() => {
-            const products   = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+            const products   = mergeProductRegistry(reportingProducts)
             const liveN      = products.filter(p => ['live','available'].includes(p.lifecycleStage)).length
             const comingN    = products.filter(p => p.lifecycleStage === 'coming').length
             const buildN     = products.filter(p => p.lifecycleStage === 'building').length
@@ -5108,7 +5146,7 @@ function CommandCenter() {
 
           {/* ── Portfolio Grid (compact — not a duplicate of Products tab) ── */}
           {(() => {
-            const products = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+            const products = mergeProductRegistry(reportingProducts)
             const LIFECYCLE_COLOR = { live:'#10b981', available:'#10b981', coming:'#8b5cf6', building:'#f59e0b', research:'#64748b', internal:'#475569' }
             const LIFECYCLE_LABEL = { live:'✅ Live', available:'🟢 Available', coming:'🔜 Coming Soon', building:'🔨 Building', research:'🔬 Research', internal:'🔒 Internal' }
             const CONN_DOT = { connected:'🟢', partial:'🟡', not_connected:'⚪' }
@@ -5222,7 +5260,7 @@ function CommandCenter() {
 
           {/* ── Needs Attention ─────────────────────────────────────────── */}
           {(() => {
-            const products = PRODUCT_REGISTRY.filter(p => !p.isTenant)
+            const products = mergeProductRegistry(reportingProducts)
             const attention = []
             // Partial connections — metrics not deployed
             products.filter(p => p.connection === 'partial').forEach(p => {
