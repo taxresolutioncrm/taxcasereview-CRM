@@ -575,6 +575,8 @@ const MANUAL_SECTIONS = [
         { title: 'Grant permissions', desc: 'The CRM requests Mail.ReadWrite, Mail.Send, and Calendars.ReadWrite.' },
         { title: 'Chris connects first as admin', desc: 'The admin account (Chris) establishes M365 app consent for the tenant. Other reps then connect individually.' },
       ]},
+      { type: 'h3', text: 'Sending to your own connected mailbox' },
+      { type: 'info', text: 'When a Gmail-connected employee sends a CRM email to the same address they are signed in with, Gmail may label the single provider message as both Sent and Inbox. The CRM treats Inbox as the delivery state, so the message must appear in Inbox instead of being visible only under Sent.' },
       { type: 'h3', text: 'Spam / Junk folder' },
       { type: 'steps', items: [
         { title: 'Open Email → Spam', desc: 'The CRM shows provider-classified junk mail in a dedicated Spam folder instead of hiding it. Gmail SPAM, Microsoft 365 Junk Email, and connected IMAP Junk/Spam folders are synchronized into this view.' },
