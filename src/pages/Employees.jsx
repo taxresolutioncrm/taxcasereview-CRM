@@ -178,6 +178,7 @@ export default function Employees() {
   const [resetEmail, setResetEmail] = useState('')
   const [showReset, setShowReset]   = useState(false)
   const [resetSending, setResetSending] = useState(false)
+  const [accessSendingId, setAccessSendingId] = useState(null)
   const [search, setSearch]       = useState('')
   const [empDocs, setEmpDocs]     = useState([])
   const [docUploading, setDocUploading] = useState(false)
@@ -309,15 +310,28 @@ export default function Employees() {
     setEmpDocs(prev => prev.filter(d => d.id !== doc.id))
   }
 
+  async function sendFamilyAccess(email, employeeId = null) {
+    const target = String(email || '').trim().toLowerCase()
+    if (!target) return false
+    if (employeeId) setAccessSendingId(employeeId)
+    else setResetSending(true)
+    const { data, error } = await supabase.functions.invoke('employee-access-link', {
+      body: { email: target }
+    })
+    if (employeeId) setAccessSendingId(null)
+    else setResetSending(false)
+    if (error || !data?.success) {
+      showToast(data?.error || error?.message || 'Could not send TaxRes family access link', 'err')
+      return false
+    }
+    showToast(data.mode === 'invite' ? 'Employee setup link sent!' : 'Password reset link sent!')
+    return true
+  }
+
   async function sendReset() {
     if (!resetEmail) return
-    setResetSending(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: window.location.origin + '/'
-    })
-    setResetSending(false)
-    if (error) return showToast(error.message, 'err')
-    showToast('Password reset link sent!')
+    const ok = await sendFamilyAccess(resetEmail)
+    if (!ok) return
     setShowReset(false)
     setResetEmail('')
   }
@@ -392,7 +406,7 @@ export default function Employees() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑</button>
+                  <button className="btn sm" onClick={() => sendFamilyAccess(emp.email, emp.id)} disabled={accessSendingId===emp.id || !emp.email} title="Send setup / password reset link">{accessSendingId===emp.id?'…':'✉️'}</button>
                   {can('edit', 'employees') && (
                     <>
                       <button className="btn sm" onClick={() => openEdit(emp)}>Edit</button>
@@ -870,23 +884,23 @@ export default function Employees() {
             background: 'var(--sf)', border: '1px solid var(--br)',
             borderRadius: 14, width: '100%', maxWidth: 400, padding: 28
           }}>
-            <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--tx)', marginBottom: 6 }}>🔑 Reset Password</div>
+            <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--tx)', marginBottom: 6 }}>🔑 Employee CRM Access</div>
             <div style={{ fontSize: 13, color: 'var(--t3)', marginBottom: 18 }}>
-              A secure reset link will be emailed to the user. The link expires in 1 hour.
+              A branded TaxRes family setup or password-reset link will be emailed to the active employee.
             </div>
             <div className="field">
               <label>Employee Email</label>
               <input
                 type="email" value={resetEmail}
                 onChange={e => setResetEmail(e.target.value)}
-                placeholder="employee@taxcasereview.org"
+                placeholder="employee@nashvilletaxsolutions.com"
                 autoFocus
               />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
               <button className="btn" onClick={() => setShowReset(false)}>Cancel</button>
               <button className="btn pri" onClick={sendReset} disabled={resetSending || !resetEmail}>
-                {resetSending ? 'Sending…' : 'Send Reset Link'}
+                {resetSending ? 'Sending…' : 'Send Access Link'}
               </button>
             </div>
           </div>
