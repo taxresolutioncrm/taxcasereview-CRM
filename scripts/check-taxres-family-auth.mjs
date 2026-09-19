@@ -38,7 +38,7 @@ const checks=[
   ['central recovery links use the supported generateLink payload',inviteEmployee.includes("{ type:'recovery', email }")&&!inviteEmployee.includes("generateLink({type:kind,email,options})")],
   ['platform admin invite path remains tenant scoped',inviteEmployee.includes("rpc('_is_platform_admin')")&&inviteEmployee.includes("rpc('current_tenant_id')")],
   ['central employee invite uses family password flow',inviteEmployee.includes("FAMILY_PASSWORD_PAGE='https://taxrescrm.app/family-password'")&&inviteEmployee.includes('admin.auth.admin.generateLink')],
-  ['central employee invite uses office CRM mail transport',inviteEmployee.includes('/functions/v1/send-email')&&inviteEmployee.includes("delivery:'email'")],
+  ['central employee invite uses office CRM delivery transports',inviteEmployee.includes('/functions/v1/send-email')&&inviteEmployee.includes('/functions/v1/send-sms')&&inviteEmployee.includes("delivery:via==='both'")],
   ['central employee invite marks employee-access system mail',inviteEmployee.includes("kind:'employee_access'")],
   ['employee-access mail uses TaxRes Stalwart instead of recipient Gmail',sendEmail.includes("body.kind === 'employee_access'")&&sendEmail.includes("via:'taxres_stalwart_employee_access'")&&sendEmail.includes("romylabs_stalwart_transport_for_product")],
   ['central employee invite preserves secure fallback link',inviteEmployee.includes("delivery:'manual'")&&inviteEmployee.includes('access_link:accessLink')],
