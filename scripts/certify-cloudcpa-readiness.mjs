@@ -24,6 +24,7 @@ const stripeCheckout = read('supabase/functions/stripe-create-checkout-session/i
 const stripeCharge = read('supabase/functions/stripe-charge/index.ts')
 const autopayBatch = read('supabase/functions/run-autopay-batch/index.ts')
 const settings = read('src/pages/Settings.jsx')
+const inviteEmployee = read('supabase/functions/invite-employee/index.ts')
 const migration = read('supabase/migrations/20260918121000_cloudcpa_prospect_readiness.sql')
 const bookingMigration = read('supabase/migrations/20260918122000_tenant_booking_branding.sql')
 
@@ -90,6 +91,13 @@ must(migration.includes("payment_provider = case"),'CloudCPA does not inherit an
 
 must(settings.includes('BookingSettings'),'Online booking settings are available')
 must(employees.includes('perm levels: 0=No Access, 1=View Only, 2=Edit, 3=Full Admin'),'permission model exposes Full Admin level 3')
+must(employees.includes("supabase.functions.invoke('invite-employee'"),'employee profiles can send real CRM login invitations')
+must(employees.includes('Send CRM login invite'),'employee cards expose an explicit login invite action')
+must(inviteEmployee.includes("rpc('current_tenant_id')"),'employee invitation resolves the caller office server-side')
+must(inviteEmployee.includes(".eq('tenant_id',tenantId)"),'employee invitation is tenant scoped')
+must(inviteEmployee.includes("inviteUserByEmail"),'employee invitation provisions a real Supabase Auth login')
+must(inviteEmployee.includes("Employee invite permission denied"),'employee invitation enforces office HR/admin permission')
+must(inviteEmployee.includes("This email already belongs to another office"),'employee invitation refuses cross-office email collisions')
 must(migration.includes("firmname = 'CloudCPA Inc'"),'CloudCPA does not inherit Tax Case Review firm name')
 must(migration.includes("firmemail = 'tony@thecloudcpa.net'"),'CloudCPA correspondence identity is tenant-owned')
 must(migration.includes("logourl = '/cloudcpa-logo.png'"),'CloudCPA logo is tenant branding')
