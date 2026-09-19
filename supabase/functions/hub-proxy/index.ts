@@ -31,10 +31,10 @@ function getCors(req: Request) {
   }
 }
 
-// ── Server-side product allowlist ─────────────────────────────────────────
-// Only these named products can be fetched via hub-proxy.
-// The browser sends a product KEY, never a URL.
-// Adding a new product requires a code change and deployment here — not browser config.
+// ── Server-side product routing ───────────────────────────────────────────
+// Special products keep fixed endpoints/auth below. Standard RomyLabs products
+// are resolved from the trusted central romylabs_products registry so adding a
+// new CRM does not require another hub-proxy code change.
 const PRODUCT_ENDPOINTS: Record<string, string> = {
   // Keys must match PRODUCT_REGISTRY key values in AdminPortal.jsx
   taxres_crm:        'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=saas',
@@ -178,10 +178,33 @@ Deno.serve(async (req) => {
     })
   }
 
+  async function resolveProductEndpoint(productKey: string) {
+    const fixed = PRODUCT_ENDPOINTS[productKey]
+    if (fixed) return { url: fixed, standardExternal: !['taxres_crm','tax_case_review','nashville','cloudcpa','demo','arcvena'].includes(productKey) }
+
+    const { data: product, error } = await serviceClient
+      .from('romylabs_products')
+      .select('product_id,active,lifecycle,supabase_url')
+      .eq('product_id', productKey)
+      .eq('active', true)
+      .limit(1)
+      .maybeSingle()
+
+    if (error || !product) return { url: '', standardExternal: false }
+    if (String(product.lifecycle || '').toLowerCase() === 'internal') return { url: '', standardExternal: false }
+
+    const base = String(product.supabase_url || '').replace(/\/$/, '')
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(base)) {
+      return { url: '', standardExternal: false }
+    }
+    return { url: `${base}/functions/v1/platform-metrics`, standardExternal: true }
+  }
+
   async function fetchProductMetrics(productKey: string) {
-    const targetUrl = PRODUCT_ENDPOINTS[productKey]
+    const resolved = await resolveProductEndpoint(productKey)
+    const targetUrl = resolved.url
     if (!targetUrl) {
-      return { status: 400, data: null, error: `Unknown product: ${productKey}` }
+      return { status: 400, data: null, error: `Unknown or unconfigured product: ${productKey}` }
     }
 
     try {
@@ -200,16 +223,8 @@ Deno.serve(async (req) => {
           return { status: 503, data: null, error: 'Nashville internal metrics token is not configured' }
         }
         productHeaders['x-romylabs-internal-token'] = nashvilleToken
-        // Preserve the existing user JWT as a compatibility fallback while the
-        // server-to-server token is the authoritative path.
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (
-        productKey === 'camvella' ||
-        productKey === 'bocasync' ||
-        productKey === 'groundivo' ||
-        productKey === 'oculivo' ||
-        productKey === 'restore_relay'
-      ) {
+      } else if (resolved.standardExternal) {
         if (!jwt) return { status: 401, data: null, error: `${productKey} requires an authenticated user session` }
         productHeaders['Authorization'] = `Bearer ${jwt}`
       } else {
