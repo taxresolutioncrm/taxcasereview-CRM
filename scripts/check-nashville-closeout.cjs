@@ -24,7 +24,7 @@ const checks=[
   ['supabase/functions/quickbooks-oauth-start/index.ts',[
     "com.intuit.quickbooks.accounting",
     "const APP_URL = 'https://nashville.taxrescrm.app'",
-    "const redirectUri = \`${APP_URL}/auth/quickbooks-callback\`",
+    "${APP_URL}/auth/quickbooks-callback",
   ]],
   ['src/pages/Clients.jsx',[
     "q.eq('client_id', String(clientId))",
