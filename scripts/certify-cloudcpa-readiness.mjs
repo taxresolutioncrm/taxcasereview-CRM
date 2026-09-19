@@ -94,7 +94,7 @@ must(migration.includes("payment_provider = case"),'CloudCPA does not inherit an
 
 must(settings.includes('BookingSettings'),'Online booking settings are available')
 must(employees.includes('perm levels: 0=No Access, 1=View Only, 2=Edit, 3=Full Admin'),'permission model exposes Full Admin level 3')
-must(employees.includes("supabase.functions.invoke('invite-employee'"),'employee profiles can send real CRM login invitations')
+must(employees.includes("supabase.functions.invoke(functionName"),'employee profiles invoke the tenant-appropriate TaxRes-family login service')
 must(employees.includes('Send CRM login invite'),'employee cards expose an explicit login invite action')
 must(inviteEmployee.includes("rpc('current_tenant_id')"),'employee invitation resolves the caller office server-side')
 must(inviteEmployee.includes(".eq('tenant_id',tenantId)"),'employee invitation is tenant scoped')
