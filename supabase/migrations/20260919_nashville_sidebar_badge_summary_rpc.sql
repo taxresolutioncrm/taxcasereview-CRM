@@ -14,7 +14,7 @@ begin
   if v_tenant is null then return '{}'::jsonb; end if;
 
   select jsonb_build_object(
-    'deadlines',(select count(*) from public.deadlines d where d.tenant_id=v_tenant and lower(coalesce(d.status,'')) not in ('completed','closed','done') and coalesce(nullif(d.due_date,''),nullif(d."dueDate",''),nullif(d.duedate,'')) between v_today and v_week),
+    'deadlines',(select count(*) from public.deadlines d where d.tenant_id=v_tenant and lower(coalesce(d.status,'')) not in ('completed','closed','done') and coalesce(d.due_date::text,nullif(d."dueDate",''),nullif(d.duedate,'')) between v_today and v_week),
     'timeoff',(select count(*) from public.time_off_requests t where t.tenant_id=v_tenant and lower(coalesce(t.status,''))='pending'),
     'pending_payments',(select count(*) from public.payments p where p.tenant_id=v_tenant and p.status in ('Pending','TBD','No Status','New Agmt','Failed')),
     'overdue_invoices',(select count(*) from public.invoices i where i.tenant_id=v_tenant and lower(coalesce(i.status,'')) <> 'paid' and (lower(coalesce(i.status,''))='overdue' or (nullif(i."dueDate",'') is not null and i."dueDate"<v_today) or (nullif(i.duedate,'') is not null and i.duedate<v_today))),
