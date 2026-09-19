@@ -244,6 +244,109 @@ const MANUAL_SECTIONS = [
     ]
   },
 
+  // ─── BUSINESS FORMATION ────────────────────────────────────────────────────
+  {
+    id: 'formacorp', icon: '🏛️', label: 'FormaCorp', category: 'Business Formation',
+    title: 'FormaCorp — A-to-Z business formation',
+    content: [
+      { type: 'lead', text: 'FormaCorp keeps the formation workflow in the CRM from intake through state approval, EIN, governing documents, banking, compliance, company services, and permanent document storage. For supported Florida formations, staff can prepare the filing, collect the government filing amount inside the CRM, submit through the supported Sunbiz workflow, and track every state milestone on one record.' },
+      { type: 'flow', items: ['Draft', 'Ready to Submit', 'Filing Queue', 'Submitted to Florida', 'Under State Review', 'Action Required', 'Approved / Active'] },
+      { type: 'h3', text: 'Supported Florida formation types' },
+      { type: 'table', headers: ['Entity type', 'Formation document', 'Governing document'], rows: [
+        ['LLC', 'Florida Articles of Organization', 'Operating Agreement'],
+        ['Professional LLC (PLLC)', 'Florida Articles of Organization', 'Operating Agreement'],
+        ['C-Corporation', 'Florida Articles of Incorporation', 'Corporate Bylaws'],
+        ['Non-Profit corporation', 'Florida Articles of Incorporation with nonprofit organizational language', 'Nonprofit Bylaws'],
+      ]},
+      { type: 'info', text: 'The CRM may label a nonprofit workflow as 501(c)(3), but state formation does not itself grant federal 501(c)(3) tax-exempt status. Federal exemption is a separate IRS process.' },
+      { type: 'h3', text: '1. Create and review the formation record' },
+      { type: 'steps', items: [
+        { title: 'FormaCorp → New Corp / formation case', desc: 'Select the entity type and Florida as the formation state, then enter the exact proposed legal name and the client/company details.' },
+        { title: 'Enter principal and mailing addresses', desc: 'The principal address must be a physical address, not a P.O. Box. Mailing address may be entered separately when needed.' },
+        { title: 'Enter the registered agent', desc: 'Use the registered agent’s actual legal name and a physical Florida street address. The company being formed cannot be entered as its own registered agent.' },
+        { title: 'Enter authorized representative / incorporator information', desc: 'LLCs use the authorized representative fields. Corporations require incorporator information. Profit corporations also require authorized shares. Nonprofits require the nonprofit purpose and director election/appointment method.' },
+        { title: 'Set correspondence email and effective date', desc: 'Use the email where state correspondence should be received. Leave effective date blank for the normal filing-date result, or enter an allowed alternate date when intentionally needed.' },
+        { title: 'Save the draft', desc: 'The case remains at Draft until the filing details, required signatures/acceptances, and filing authorization are complete.' },
+      ]},
+      { type: 'h3', text: '2. Preview and validate the state filing' },
+      { type: 'steps', items: [
+        { title: 'Click Preview Articles', desc: 'Review the generated Florida Articles before paying or submitting. Confirm the legal name, addresses, registered agent, ownership/incorporator information, purpose language where applicable, and signature blocks.' },
+        { title: 'Correct anything before submission', desc: 'Use Edit Filing Details. FormaCorp blocks common filing problems such as an invalid Florida entity suffix, missing registered-agent acceptance, P.O. Box principal/agent addresses, missing corporation shares/incorporator, and incomplete nonprofit fields.' },
+        { title: 'Confirm signatures and authorization', desc: 'Registered-agent acceptance is required. LLCs require the authorized representative signature; corporations require the incorporator signature. Filing authorization must also be confirmed.' },
+      ]},
+      { type: 'h3', text: '3. Collect the government filing amount inside the CRM' },
+      { type: 'steps', items: [
+        { title: 'Click Pay Government Filing Amount', desc: 'The payment form opens inside FormaCorp using the embedded Stripe Payment Element. It must not redirect the user to an outside checkout page.' },
+        { title: 'Enter the payment card in the FormaCorp modal', desc: 'The CRM creates the Stripe PaymentIntent through the authenticated FormaCorp payment service and verifies the exact government amount for this case.' },
+        { title: 'Confirm payment status', desc: 'Successful payment is stored as government filing funds received. The PaymentIntent reference, collected amount, and audit event stay attached to the formation case.' },
+      ]},
+      { type: 'warn', text: 'Government funds collected from the client inside FormaCorp and funds remitted to the state are two different accounting events. “Received” means the CRM collected the filing money. “Remitted” should only be recorded when the government filing channel has actually been funded/submitted.' },
+      { type: 'h3', text: '4. Move the case to Ready to Submit' },
+      { type: 'steps', items: [
+        { title: 'Click Ready to Submit', desc: 'Use this only after the Articles are correct, required signatures/acceptance are present, filing authorization is confirmed, and the government filing amount has been collected.' },
+        { title: 'Verify the filing packet', desc: 'The Florida submission area requires the official Electronic Filing Cover Sheet, the signed Florida Articles PDF, and the fax number printed on the Sunbiz cover sheet.' },
+      ]},
+      { type: 'h3', text: '5. Submit to Florida through the supported Sunbiz path' },
+      { type: 'steps', items: [
+        { title: 'Obtain the official Sunbiz Electronic Filing Cover Sheet', desc: 'Use the current cover sheet for the prepaid Sunbiz E-File / fax filing. Enter the Florida fax number printed on that cover sheet into FormaCorp.' },
+        { title: 'Upload the Electronic Filing Cover Sheet', desc: 'Attach the exact cover sheet for this filing.' },
+        { title: 'Upload the signed Florida Articles PDF', desc: 'Unsigned Articles are blocked. Use the final reviewed and signed filing document.' },
+        { title: 'Confirm the prepaid Sunbiz E-File account has sufficient funds', desc: 'This checkbox is required because the actual state remittance is handled through the prepaid Sunbiz account. The client card payment collected in FormaCorp does not automatically load money into the Sunbiz prepaid account.' },
+        { title: 'Click Staff: Submit via Prepaid Sunbiz Fax', desc: 'FormaCorp combines the filing packet, sends it through the authenticated CRM fax service, and stores the provider submission/tracking reference on the case.' },
+      ]},
+      { type: 'h3', text: '6. Track Florida review and decision' },
+      { type: 'table', headers: ['Stage', 'Use it when'], rows: [
+        ['Filing Queue', 'Packet is ready and waiting for staff transmission'],
+        ['Submitted to Florida', 'The filing packet has been transmitted and a submission reference is recorded'],
+        ['Under State Review', 'Florida is processing the submission'],
+        ['Action Required', 'Florida returned a correction, rejection, or other item that must be addressed'],
+        ['Approved / Active', 'Florida accepted the filing and the state document number / formation date have been recorded'],
+      ]},
+      { type: 'warn', text: 'Do not treat a business as approved or active merely because the packet was transmitted. Record approval only after Florida accepts the filing and provides the state acknowledgment/document number.' },
+      { type: 'h3', text: '7. Complete the EIN workflow' },
+      { type: 'steps', items: [
+        { title: 'Open Company Lifecycle → EIN', desc: 'Complete the responsible-party and EIN application information after the entity is formed or when the filing workflow permits preparation.' },
+        { title: 'Generate / prepare Form SS-4', desc: 'Review the legal name, responsible party, entity type, addresses, and filing answers before signature.' },
+        { title: 'Submit the signed SS-4 from FormaCorp', desc: 'Upload the completed signed SS-4 and use the built-in fax action when the fax filing method applies. FormaCorp stores the submission reference.' },
+        { title: 'Record the EIN when received', desc: 'Enter the EIN and confirmation details so they become part of the permanent company lifecycle record.' },
+      ]},
+      { type: 'h3', text: '8. Governing documents' },
+      { type: 'steps', items: [
+        { title: 'LLC / PLLC → Operating Agreement', desc: 'Generate the agreement from the company record, review ownership/management provisions, send for signature, and store the signed document.' },
+        { title: 'Corporation → Corporate Bylaws', desc: 'Generate the corporation-specific bylaws and initial organizational action, then complete the signature/approval workflow.' },
+        { title: 'Nonprofit → Nonprofit Bylaws', desc: 'Use the nonprofit version containing the nonprofit governance provisions tied to the formation record.' },
+      ]},
+      { type: 'h3', text: '9. Banking' },
+      { type: 'steps', items: [
+        { title: 'Open Company Lifecycle → Banking', desc: 'Generate the banking resolution and track bank-account setup after the entity and EIN are available.' },
+        { title: 'Store only the permitted banking details', desc: 'FormaCorp tracks status, supporting documents, institution information when appropriate, and limited account identifiers. Do not store full online-banking credentials or full routing/account credentials in the lifecycle dashboard.' },
+      ]},
+      { type: 'h3', text: '10. Compliance and company services' },
+      { type: 'steps', items: [
+        { title: 'Open Compliance', desc: 'Track annual-report status, due dates, good standing, registered-agent items, and other recurring company obligations.' },
+        { title: 'Open Company Services', desc: 'Create and track requests such as amendments, DBA/fictitious name work, certificates, foreign qualification, S-election workflow, licenses, or other supported company services.' },
+        { title: 'Use Documents as the permanent record', desc: 'Formation documents, state acknowledgments, EIN letters, signed governing documents, banking resolutions, registered-agent notices, and compliance correspondence remain attached to the company record and indexed in CRM Documents.' },
+      ]},
+      { type: 'h3', text: 'Florida formation fees shown by FormaCorp' },
+      { type: 'table', headers: ['Item', 'Current CRM amount / behavior'], rows: [
+        ['Florida LLC / PLLC base filing', '$125 government filing amount before optional copies/status certificates'],
+        ['Florida profit corporation base filing', '$70 government filing amount before optional copies/status certificates'],
+        ['Certificate / certified copy options', 'Added only when selected in the filing details; they are not silently included'],
+        ['FormaCorp add-on fee', '$0.00 — no separate formation-platform surcharge'],
+      ]},
+      { type: 'info', text: 'State fees and filing procedures can change. FormaCorp should be updated when Florida changes an official amount or filing rule; the manual must be updated in the same release whenever the workflow changes.' },
+      { type: 'h3', text: 'Before calling a formation complete' },
+      { type: 'steps', items: [
+        { title: 'State filing accepted', desc: 'Florida document number and formation date recorded; case is Approved / Active.' },
+        { title: 'EIN completed', desc: 'EIN and confirmation evidence stored when an EIN is required.' },
+        { title: 'Governing document completed', desc: 'Operating Agreement or Bylaws generated and signed/approved as appropriate.' },
+        { title: 'Banking setup tracked', desc: 'Banking resolution and setup status completed without storing prohibited credentials.' },
+        { title: 'Compliance activated', desc: 'Annual report and ongoing compliance tracking are set for the new entity.' },
+        { title: 'Documents filed to the company record', desc: 'Final Articles, state acknowledgment, EIN evidence, governing documents, and related records are indexed in Documents.' },
+      ]},
+    ]
+  },
+
   // ─── DOCUMENTS ──────────────────────────────────────────────────────────────
   {
     id: 'forms', icon: '📄', label: 'IRS & State Forms', category: 'Documents',
