@@ -40,6 +40,19 @@ const checks=[
     "sync_document_client_identity",
     "before insert or update of client_id, client, clientname, tenant_id",
   ]],
+  ['src/pages/Dashboard.jsx',[
+    "nashville_dashboard_snapshot",
+    "NASHVILLE_TENANT_ID",
+  ]],
+  ['supabase/migrations/20260919_nashville_scale_100_users.sql',[
+    "idx_employee_portal_sessions_tenant_employee_expires",
+    "idx_time_entries_tenant_worker_started",
+    "idx_billing_time_tenant_employee_date",
+  ]],
+  ['supabase/migrations/20260919_nashville_dashboard_snapshot_scale.sql',[
+    "nashville_dashboard_snapshot",
+    "Active Nashville employee required",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
@@ -58,4 +71,4 @@ for(const [file,tokens] of checks){
   }
 }
 if(failed) process.exit(1)
-console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents')
+console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, 100-user scale')
