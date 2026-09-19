@@ -1113,11 +1113,11 @@ export default function Clients() {
     const name = detail.name
     function reload() { loadRelated(name, detail.id) }
     const ch = supabase.channel('client-detail-rt-' + (detail.id || name))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes', filter: `clientname=eq.${name}` }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `clientName=eq.${name}` }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `clientName=eq.${name}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes', filter: `client_id=eq.${detail.id}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `client_id=eq.${detail.id}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `client_id=eq.${detail.id}` }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'documents', filter: `client_id=eq.${detail.id}` }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases', filter: `clientName=eq.${name}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases', filter: `clientid=eq.${detail.id}` }, reload)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [detail?.id, detail?.name])
@@ -1222,14 +1222,14 @@ export default function Clients() {
   async function loadRelated(clientName, clientId = detail?.id) {
     setLoadingRel(true)
     const [casesRes,tasksRes,invoicesRes,docsRes,clientNotesRes,paymentsRes,smsRes,deadlinesRes] = await Promise.all([
-      supabase.from('cases').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('tasks').select('*').eq('clientName', clientName).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}),
-      supabase.from('invoices').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      (clientId ? supabase.from('documents').select('*').eq('client_id', String(clientId)) : supabase.from('documents').select('*').eq('client', clientName)).order('created_at',{ascending:false}),
-      supabase.from('client_notes').select('*').eq('clientname', clientName).order('created_at',{ascending:false}),
-      supabase.from('payments').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('sms_messages').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('deadlines').select('*').eq('clientName', clientName).order('dueDate',{ascending:true}),
+      clientId ? supabase.from('cases').select('*').eq('clientid', String(clientId)).order('created_at',{ascending:false}) : supabase.from('cases').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
+      clientId ? supabase.from('tasks').select('*').eq('client_id', String(clientId)).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}) : supabase.from('tasks').select('*').eq('clientName', clientName).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}),
+      clientId ? supabase.from('invoices').select('*').eq('client_id', String(clientId)).order('created_at',{ascending:false}) : supabase.from('invoices').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
+      clientId ? supabase.from('documents').select('*').eq('client_id', String(clientId)).order('created_at',{ascending:false}) : supabase.from('documents').select('*').eq('client', clientName).order('created_at',{ascending:false}),
+      clientId ? supabase.from('client_notes').select('*').eq('client_id', String(clientId)).order('created_at',{ascending:false}) : supabase.from('client_notes').select('*').eq('clientname', clientName).order('created_at',{ascending:false}),
+      clientId ? supabase.from('payments').select('*').eq('client_id', String(clientId)).order('created_at',{ascending:false}) : supabase.from('payments').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
+      clientId ? supabase.from('sms_messages').select('*').eq('client_id', String(clientId)).order('created_at',{ascending:false}) : supabase.from('sms_messages').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
+      clientId ? supabase.from('deadlines').select('*').eq('client_id', String(clientId)).order('dueDate',{ascending:true}) : supabase.from('deadlines').select('*').eq('clientName', clientName).order('dueDate',{ascending:true}),
     ])
     // These 8 queries used to only look at .data, silently discarding any
     // .error — a table failing here (RLS, schema cache, anything) looked
