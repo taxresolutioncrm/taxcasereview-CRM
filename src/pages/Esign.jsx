@@ -33,8 +33,9 @@ const BLANK = {
   priority: 'Normal', dueDate: ''
 }
 
-function signingUrl(id) {
-  return `${window.location.origin}/sign/${id}`
+function signingUrl(id, token) {
+  if (!id || !/^[0-9a-f]{64}$/i.test(String(token || ''))) return ''
+  return `${window.location.origin}/sign/${id}?token=${encodeURIComponent(token)}`
 }
 
 export default function Esign() {
@@ -145,7 +146,8 @@ export default function Esign() {
     }]).select().single()
     setSaving(false)
     if (error) { showToast('Error: ' + error.message); return }
-    const url = signingUrl(data.id)
+    const url = signingUrl(data.id, data.signer_token)
+    if (!url) { showToast('Signing token is missing — create a new signing request.'); return }
     await navigator.clipboard.writeText(url).catch(() => {})
     const { smsSent, emailSent } = await sendLink(url, { ...form, sendVia: form.sendVia })
     const sent = [smsSent && 'SMS', emailSent && 'Email'].filter(Boolean)
@@ -157,7 +159,7 @@ export default function Esign() {
   }
 
   async function resendLink(item) {
-    const url = signingUrl(item.id)
+    const url = signingUrl(item.id, item.signer_token)
     await navigator.clipboard.writeText(url).catch(() => {})
     const { error: updErr } = await supabase.from('esigns').update({ status: 'Awaiting', sent_at: new Date().toISOString() }).eq('id', item.id)
     if (updErr) { showToast('Error: ' + updErr.message); return }
@@ -186,7 +188,7 @@ export default function Esign() {
     setItems(prev => prev.filter(i => i.id !== id)); setConfirmDel(null); showToast('Deleted')
   }
 
-  function openSigningPage(item) { window.open(signingUrl(item.id), '_blank') }
+  function openSigningPage(item) { const url=signingUrl(item.id,item.signer_token); if(url) window.open(url, '_blank'); else showToast('Signing token is missing — regenerate the request.') }
 
   function daysPending(item) {
     if (!item.sent_at) return 0

@@ -214,5 +214,8 @@ verify_jwt = false
 
 
 # Authenticated employee onboarding.
+[functions.esign-archive-upload]
+verify_jwt = false
+
 [functions.invite-employee]
 verify_jwt = true

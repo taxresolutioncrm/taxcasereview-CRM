@@ -77,6 +77,26 @@ const checks=[
     "revoke all on function public.get_sidebar_badge_counts() from public, anon",
     "revoke all on function public.reports_overview_snapshot(date) from public, anon",
   ]],
+  ['src/pages/SignPage.jsx',[
+    "signerToken",
+    "action:'load'",
+    "action:'sign'",
+    "uploadToSignedUrl",
+    "action:'finalize'",
+  ]],
+  ['src/pages/Esign.jsx',[
+    "?token=${encodeURIComponent(token)}",
+    "data.signer_token",
+    "item.signer_token",
+  ]],
+  ['supabase/functions/esign-archive-upload/index.ts',[
+    "action==='load'",
+    "action==='sign'",
+    "action==='prepare'",
+    "action==='finalize'",
+    "eq('signer_token',token)",
+    "storage_path||a?.path",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
@@ -95,4 +115,4 @@ for(const [file,tokens] of checks){
   }
 }
 if(failed) process.exit(1)
-console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, 100-user scale')
+console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, E-Sign, 100-user scale')
