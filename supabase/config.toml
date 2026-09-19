@@ -200,3 +200,7 @@ verify_jwt = false
 [functions.taxres-family-admin-invite]
 # Nashville JWTs are validated by the Nashville admin-proof endpoint.
 verify_jwt = false
+
+[functions.taxres-family-password-reset]
+# Public enumeration-safe reset request; Supabase Auth applies its own delivery throttles.
+verify_jwt = false
