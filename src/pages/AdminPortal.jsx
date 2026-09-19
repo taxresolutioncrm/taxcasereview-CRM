@@ -5217,47 +5217,6 @@ function CommandCenter() {
             )
           })()}
 
-          {/* ── Cross-Product SEO / Analytics Status ─────────────────────── */}
-          {(() => {
-            const SEO_STATUS = [
-              { label:'RomyLabs',  ga4:'G-2MSNYF9XBE — Connected', gsc:'romylabs.com — Connected', clarity:'y54zqoj6c2 — Connected', sitemap:'https://romylabs.com/sitemap-index.xml', seoStatus:'Active' },
-              { label:'TaxRes',    ga4:'G-M6J80B65LG — Connected', gsc:'taxrescrm.net — Connected', clarity:'xyck7g2mfl — Connected', sitemap:'https://taxrescrm.net/sitemap.xml', seoStatus:'Active' },
-              { label:'Camvella',  ga4:'G-H1ZPCP2EE9 — Connected', gsc:'camvella.com — Active', clarity:'y62zna7yna — Connected', sitemap:'https://camvella.com/sitemap.xml ✓', seoStatus:'Active' },
-              { label:'Arcvena',   ga4:'Connected', gsc:'arcvena.com — Active', clarity:'Connected', sitemap:'https://arcvena.com/sitemap.xml ✓', seoStatus:'Active' },
-              { label:'BocaSync',  ga4:'—', gsc:'—', clarity:'—', sitemap:'—', seoStatus:'Not Started' },
-            ]
-            const COLOR = { 'Active':'#10b981', 'Pending Setup':'#f59e0b', 'Pending DNS':'#f59e0b', 'Not Started':'#64748b', 'Internal — N/A':'#475569' }
-            return (
-              <div style={{ marginBottom:24 }}>
-                <div style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:10 }}>
-                  SEO & Analytics Status by Product
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-                  {SEO_STATUS.map(p => (
-                    <div key={p.label} style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(99,102,241,.1)', borderRadius:10, padding:'14px 16px' }}>
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                        <div style={{ fontSize:13, fontWeight:800, color:'#e2e8f0' }}>{p.label}</div>
-                        <span style={{ fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20,
-                          background:`${COLOR[p.seoStatus]||'#64748b'}15`, color:COLOR[p.seoStatus]||'#64748b' }}>
-                          {p.seoStatus}
-                        </span>
-                      </div>
-                      {[['GA4', p.ga4], ['GSC', p.gsc], ['Clarity', p.clarity], ['Sitemap', p.sitemap]].map(([k,v]) => (
-                        <div key={k} style={{ display:'flex', gap:6, marginBottom:4 }}>
-                          <div style={{ fontSize:9, fontWeight:700, color:'#475569', width:44, flexShrink:0, textTransform:'uppercase', letterSpacing:'.05em', paddingTop:1 }}>{k}</div>
-                          <div style={{ fontSize:10, color: v.includes('Connected') ? '#10b981' : v.includes('Pending') ? '#f59e0b' : '#475569', lineHeight:1.4 }}>{v}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ fontSize:10, color:'#334155', marginTop:6 }}>
-                  Detailed TaxRes analytics → Products → Tax Res CRM · TaxRes GSC queries/impressions → TaxRes — SEO tab
-                </div>
-              </div>
-            )
-          })()}
-
           {/* ── Needs Attention ─────────────────────────────────────────── */}
           {(() => {
             const products = mergeProductRegistry(reportingProducts)
