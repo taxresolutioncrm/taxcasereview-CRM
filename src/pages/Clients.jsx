@@ -333,14 +333,13 @@ function InlineEsignForm({ client, onClose, showToast }) {
     if (error) { showToast('Error: '+error.message,'err'); return }
     const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
     setLink(url)
-    navigator.clipboard.writeText(url).catch(()=>{})
-    showToast('✅ Signing link copied!')
+    showToast('✅ Signing link created!')
   }
 
   if (link) return (
     <div style={{padding:'0 4px 4px'}}>
       <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>✅ Signing link created & copied!</div>
+        <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>✅ Signing link created!</div>
         <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all',marginBottom:8}}>{link}</div>
         <div style={{fontSize:11,color:'var(--t2)'}}>Send this link to <strong>{client?.name}</strong> via email or SMS. When they sign, their IP address and timestamp are automatically recorded and a copy is saved to their documents.</div>
       </div>
@@ -377,7 +376,7 @@ function InlineEsignForm({ client, onClose, showToast }) {
       <div style={{display:'flex',gap:8}}>
         <button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={onClose}>Cancel</button>
         <button className="btn pri" style={{flex:1,justifyContent:'center',background:'#7c3aed',borderColor:'#7c3aed'}} onClick={create} disabled={saving}>
-          {saving?'Creating…':'✍️ Create & Copy Link'}
+          {saving?'Creating…':'✍️ Create Signing Link'}
         </button>
       </div>
     </div>
@@ -395,7 +394,6 @@ function InlinePortalForm({ client, onClose, showToast }) {
 
   async function send() {
     setSending(true)
-    await navigator.clipboard.writeText(url).catch(() => {})
     let emailSent = false, smsSent = false
     // Safety net: never leave "Sending..." stuck if email/SMS are not configured
     const sendTimeout = setTimeout(() => { setSending(false); setDone({ sent: [], timedOut: true }) }, 12000)
@@ -537,7 +535,7 @@ function InlinePortalForm({ client, onClose, showToast }) {
     <div style={{padding:'0 4px 4px'}}>
       <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>
-          {done.sent.length ? `✅ Portal link sent via ${done.sent.join(' & ')}!` : '📋 Link copied to clipboard'}
+          {done.sent.length ? `✅ Portal link sent via ${done.sent.join(' & ')}!` : '📋 Link ready to share'}
         </div>
         {!done.sent.length && <div style={{fontSize:11,color:'var(--warn)',marginBottom:6}}>Email/SMS not configured — share the link manually.</div>}
         <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all'}}>{url}</div>
@@ -605,7 +603,6 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     }
 
     const url = window.location.origin + '/organizer/' + orgId
-    await navigator.clipboard.writeText(url).catch(() => {})
     let emailSent = false, smsSent = false
     if ((sendVia === 'email' || sendVia === 'both') && client?.email) {
       try {
@@ -636,7 +633,7 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     <div style={{padding:'0 4px 4px'}}>
       <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>
-          {done.sent.length ? `✅ Organizer link sent via ${done.sent.join(' & ')}!` : '📋 Link copied to clipboard'}
+          {done.sent.length ? `✅ Organizer link sent via ${done.sent.join(' & ')}!` : '📋 Link ready to share'}
         </div>
         {!done.sent.length && <div style={{fontSize:11,color:'var(--warn)',marginBottom:6}}>Email/SMS not configured — share the link manually.</div>}
         <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all'}}>{done.url}</div>
@@ -1633,7 +1630,6 @@ export default function Clients() {
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
       const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
-      await navigator.clipboard.writeText(sigUrl).catch(()=>{})
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && client.email) {
         const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
@@ -1649,7 +1645,7 @@ export default function Clients() {
       }
       await insertClientNote({ clientname:client.name, content:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, created_by:actor, visible_to_client:false, created_at:new Date().toISOString() })
       setPoaModal(false)
-      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing link copied to clipboard')
+      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing request created — delivery was not completed')
     } catch(e) { showToast('Error: '+e.message) }
     setPoaSending(false)
   }
@@ -1668,8 +1664,6 @@ export default function Clients() {
     if (res.error) { setAddendumSending(false); showToast('Error: '+res.error); return }
 
     const url = res.url
-    await navigator.clipboard.writeText(url).catch(()=>{})
-
     // Generate Stripe checkout link for resolution fee so client can pay inline
     let stripePayUrl = null
     try {
@@ -1774,8 +1768,6 @@ export default function Clients() {
       const res = await sendAddendumForSignature(detail, plan, supabase, actor)
       if (res.error) throw new Error(res.error)
       const url = res.url
-      await navigator.clipboard.writeText(url).catch(()=>{})
-
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && detail.email) {
         const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', { body: {
@@ -1817,7 +1809,7 @@ export default function Clients() {
       if (fresh) setDetail(fresh)
       loadRelated(detail.name, detail.id)
       setRewriteModal(false)
-      showToast(emailSent||smsSent ? '✅ Rewrite saved and sent for signature!' : '✅ Rewrite saved — signing link copied')
+      showToast(emailSent||smsSent ? '✅ Rewrite saved and sent for signature!' : '✅ Rewrite saved — delivery was not completed')
     } catch (e) {
       showToast('Rewrite error: ' + (e?.message || 'Unable to create new plan'))
     } finally {
