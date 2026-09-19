@@ -69,10 +69,6 @@ const checks=[
     "timeclock_history_page",
     "idx_timeentries_tenant_employee_date_created",
   ]],
-  ['supabase/migrations/20260919_nashville_100_user_indexes.sql',[
-    "idx_employee_portal_sessions_tenant_employee_expires",
-    "idx_billing_time_tenant_employee_date",
-  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
