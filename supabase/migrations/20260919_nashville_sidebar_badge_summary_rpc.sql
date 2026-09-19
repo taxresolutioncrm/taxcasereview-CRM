@@ -18,7 +18,7 @@ begin
     'timeoff',(select count(*) from public.time_off_requests t where t.tenant_id=v_tenant and lower(coalesce(t.status,''))='pending'),
     'pending_payments',(select count(*) from public.payments p where p.tenant_id=v_tenant and p.status in ('Pending','TBD','No Status','New Agmt','Failed')),
     'overdue_invoices',(select count(*) from public.invoices i where i.tenant_id=v_tenant and lower(coalesce(i.status,'')) <> 'paid' and (lower(coalesce(i.status,''))='overdue' or (nullif(i."dueDate",'') is not null and i."dueDate"<v_today) or (nullif(i.duedate,'') is not null and i.duedate<v_today))),
-    'overdue_ar',(select count(*) from public.payments p where p.tenant_id=v_tenant and p.trade_type in ('1st Trade','2nd Trade') and lower(coalesce(p.payment_status,''))<>'paid' and nullif(p.scheduled_date,'') is not null and p.scheduled_date<v_today),
+    'overdue_ar',(select count(*) from public.payments p where p.tenant_id=v_tenant and p.trade_type in ('1st Trade','2nd Trade') and lower(coalesce(p.payment_status,''))<>'paid' and p.scheduled_date is not null and p.scheduled_date<current_date),
     'unread_voicemails',(select count(*) from public.voicemails v where v.tenant_id=v_tenant and coalesce(v.is_read,false)=false),
     'pending_esign',(select count(*) from public.esigns e where e.tenant_id=v_tenant and e.status='Awaiting'),
     'unread_fax',(select count(*) from public.fax_logs f where f.tenant_id=v_tenant and f.direction='inbound' and coalesce(f.is_read,false)=false),
