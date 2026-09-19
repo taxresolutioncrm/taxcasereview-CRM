@@ -35,6 +35,9 @@ const checks=[
     "clientFilter.startsWith('client:')",
     "client_id: entityClientId",
     "storage_path: storagePath",
+    "DOC_PAGE_SIZE = 250",
+    "select('*', { count:'exact' })",
+    "docTotal > DOC_PAGE_SIZE",
   ]],
   ['supabase/migrations/20260919_nashville_document_client_identity.sql',[
     "sync_document_client_identity",
@@ -52,6 +55,27 @@ const checks=[
   ['supabase/migrations/20260919_nashville_dashboard_snapshot_scale.sql',[
     "nashville_dashboard_snapshot",
     "Active Nashville employee required",
+  ]],
+  ['src/pages/TimeClock.jsx',[
+    "timeclock_history_page",
+    "HISTORY_PAGE_SIZE = 250",
+    "supabase.from('timeentries').select('*').eq('date', todayKey)",
+    "historyTotal > HISTORY_PAGE_SIZE",
+  ]],
+  ['src/pages/Payroll.jsx',[
+    "payroll-timeentries-rt",
+    ".gte('date', jan1)",
+    ".limit(30000)",
+    ".eq('status','Active')",
+  ]],
+  ['supabase/migrations/20260919_nashville_timeclock_scale.sql',[
+    "timeclock_history_page",
+    "idx_timeentries_tenant_employee_date_created",
+  ]],
+  ['supabase/migrations/20260919_nashville_internal_rpc_privileges.sql',[
+    "revoke all on function public.create_book_whip_month(date) from public, anon",
+    "revoke all on function public.get_sidebar_badge_counts() from public, anon",
+    "revoke all on function public.reports_overview_snapshot(date) from public, anon",
   ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",

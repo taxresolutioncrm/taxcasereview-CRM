@@ -61,6 +61,9 @@ export default function Documents() {
   const [previewUrl,   setPreviewUrl]    = useState('')
   const [previewLoading,setPreviewLoading]= useState(false)
   const [cardPreviewUrls,setCardPreviewUrls] = useState({})
+  const [docPage,      setDocPage]      = useState(0)
+  const [docTotal,     setDocTotal]     = useState(0)
+  const DOC_PAGE_SIZE = 250
 
   function changeView(v) { setViewMode(v); localStorage.setItem('docs_view', v) }
   function toggleSort(col) {
@@ -80,11 +83,12 @@ export default function Documents() {
 
   const ALL_FOLDERS = [...(Array.isArray(ROOT_FOLDERS) ? ROOT_FOLDERS : []), ...customFolders]
 
-  useEffect(() => { loadAll() }, [clientFilter, folder])
+  useEffect(() => { loadReferenceData() }, [])
+  useEffect(() => { setDocPage(0) }, [clientFilter, folder, search, sortCol, sortDir])
+  useEffect(() => { loadDocuments() }, [clientFilter, folder, search, sortCol, sortDir, docPage, people.length])
 
-  async function loadAll() {
-    // Load documents
-    let q = supabase.from('documents').select('*').order('created_at', { ascending: false })
+  async function loadDocuments() {
+    let q = supabase.from('documents').select('*', { count:'exact' })
     if (clientFilter) {
       if (clientFilter.startsWith('client:')) q = q.eq('client_id', clientFilter.slice(7))
       else if (clientFilter.startsWith('lead:')) {
@@ -93,12 +97,18 @@ export default function Documents() {
       } else q = q.eq('client', clientFilter)
     }
     if (folder !== 'All') q = q.eq('docType', folder)
-    const { data: docsData } = await q
+    const term = String(search || '').trim().replace(/[,%()]/g,' ')
+    if (term) q = q.or(`name.ilike.%${term}%,client.ilike.%${term}%,notes.ilike.%${term}%`)
+    q = q.order(sortCol, { ascending: sortDir === 'asc' })
+      .range(docPage * DOC_PAGE_SIZE, docPage * DOC_PAGE_SIZE + DOC_PAGE_SIZE - 1)
+    const { data: docsData, count } = await q
     const nextDocs = Array.isArray(docsData) ? docsData : []
     setDocs(nextDocs)
+    setDocTotal(Number(count || 0))
     loadCardPreviews(nextDocs).catch(()=>{})
+  }
 
-    // Load clients + leads for autocomplete
+  async function loadReferenceData() {
     const [{ data: cl }, { data: ld }] = await Promise.all([
       supabase.from('clients').select('id,name').order('name'),
       supabase.from('leads').select('id,name').order('name'),
@@ -108,21 +118,17 @@ export default function Documents() {
       ...(ld || []).filter(p => p?.id && p?.name).map(p => ({ key:`lead:${p.id}`, id:String(p.id), name:p.name, type:'lead' })),
     ].sort((a,b)=>a.name.localeCompare(b.name))
     setPeople(nextPeople)
-    if (clientParam && clientFilter === clientParam) {
+    if (clientParam) {
       const exact = nextPeople.find(p => p.type === 'client' && p.name.toLowerCase() === clientParam.toLowerCase())
       if (exact) setClientFilter(exact.key)
     }
-
-    // Load custom folders from settings
     const { data: s } = await supabase.from('settings').select('custom_doc_folders').limit(1).maybeSingle()
     if (s?.custom_doc_folders) {
       try {
         const parsed = JSON.parse(s.custom_doc_folders)
         setCustomFolders(Array.isArray(parsed) ? parsed.filter(v => typeof v === 'string' && v.trim()) : [])
       } catch { setCustomFolders([]) }
-    } else {
-      setCustomFolders([])
-    }
+    } else setCustomFolders([])
   }
 
   function showToast(msg) { setToast(String(msg || '')); setTimeout(()=>setToast(''),3000) }
@@ -240,7 +246,7 @@ export default function Documents() {
     setForm({ name:'', client:'', docType:'IRS Docs', notes:'' })
     setFile(null)
     if (fileRef.current) fileRef.current.value = ''
-    loadAll()
+    loadDocuments()
   }
 
   async function del(doc) {
@@ -254,7 +260,7 @@ export default function Documents() {
     const { error } = await supabase.from('documents').delete().eq('id', doc.id)
     if (error) { showToast('Error: '+error.message); return }
     showToast('🗑 Document deleted')
-    loadAll()
+    loadDocuments()
   }
 
   async function addNote(doc) {
@@ -263,7 +269,7 @@ export default function Documents() {
     if (note === null) return
     const { error } = await supabase.from('documents').update({ notes: String(note) }).eq('id', doc.id)
     if (error) { showToast('Error: '+error.message); return }
-    loadAll()
+    loadDocuments()
   }
 
   async function openDocument(doc) {
@@ -281,12 +287,7 @@ export default function Documents() {
     }
   }
 
-  const needle = search.toLowerCase()
-  const filtered = sortedDocs(docs.filter(d =>
-    !search || String(d?.name || '').toLowerCase().includes(needle) ||
-    String(d?.client || '').toLowerCase().includes(needle) ||
-    String(d?.notes || '').toLowerCase().includes(needle)
-  ))
+  const filtered = docs
 
   return (
     <div>
@@ -434,6 +435,19 @@ export default function Documents() {
               :docPreviewKind(previewDoc)==='image'?<div style={{width:'100%',height:'100%',overflow:'auto',textAlign:'center',padding:16}}><img src={previewUrl} alt={docDisplayName(previewDoc)} style={{maxWidth:'100%',height:'auto'}}/></div>
               :<div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:30,textAlign:'center',color:'#fff'}}><div><div style={{fontSize:60,marginBottom:12}}>{fileIcon(docDisplayName(previewDoc))}</div><div style={{fontWeight:800,marginBottom:12}}>Preview not available for this file type</div><button className="btn primary" onClick={()=>openDocument(previewDoc)}>Open Document</button></div></div>}
             </div>
+          </div>
+        </div>
+      )}
+
+      {docTotal > DOC_PAGE_SIZE && (
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginTop:12,flexWrap:'wrap'}}>
+          <div style={{fontSize:11,color:'var(--t3)'}}>
+            Showing {docTotal ? docPage*DOC_PAGE_SIZE+1 : 0}–{Math.min((docPage+1)*DOC_PAGE_SIZE,docTotal)} of {docTotal} documents
+          </div>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <button className="btn sm" disabled={docPage===0} onClick={()=>setDocPage(p=>Math.max(0,p-1))}>← Prev</button>
+            <span style={{fontSize:11,color:'var(--t2)'}}>Page {docPage+1} / {Math.max(1,Math.ceil(docTotal/DOC_PAGE_SIZE))}</span>
+            <button className="btn sm" disabled={(docPage+1)*DOC_PAGE_SIZE>=docTotal} onClick={()=>setDocPage(p=>p+1)}>Next →</button>
           </div>
         </div>
       )}
