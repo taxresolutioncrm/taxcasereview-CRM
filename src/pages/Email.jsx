@@ -11,7 +11,8 @@ import { DOC_FOLDERS } from './Clients'
 
 const TRIAGE = ['Inbox','Action Needed','Waiting','Sent','Archive']
 const TRIAGE_COLORS = { 'Action Needed':'var(--bad)', 'Waiting':'var(--warn)', 'Inbox':'var(--blue)', 'Sent':'var(--ok)', 'Archive':'var(--t3)' }
-const BLANK = { recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'' }
+const BLANK = { recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'', m365MessageId:'' }
+const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
 
 export default function Email() {
   const [emails, setEmails]     = useState([])
@@ -64,6 +65,7 @@ export default function Email() {
   const userEmailLower = user?.email?.toLowerCase() || ''
   const isDemoMailbox = userEmailLower === 'demo@taxrescrm.net'
   const CLOUDCPA_TENANT_ID = 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae'
+  const isNashville = myTenantId === NASHVILLE_TENANT_ID
   const isCloudCpaPlatformRelay = myTenantId === CLOUDCPA_TENANT_ID && !gmailConnected
   const isRomyLabsMailboxAdmin = ['info@romylabs.com','romy@romylabs.com'].includes(userEmailLower)
   const centralMailboxOwner = isRomyLabsMailboxAdmin ? 'info@romylabs.com' : (user?.email || '')
@@ -438,6 +440,22 @@ export default function Email() {
         showToast('CloudCPA email not sent: ' + (e?.message || e))
         return
       }
+    } else if (isNashville && m365Connected) {
+      try {
+        const isReply = !!form.m365MessageId
+        const { data, error } = await supabase.functions.invoke('m365-mail-gateway', {
+          body: isReply
+            ? { action:'reply', m365_message_id:form.m365MessageId, body:form.body }
+            : { action:'send', to:form.recipient, subject:form.subject, body:form.body },
+        })
+        if (error) throw error
+        if (!data?.success || data?.provider !== 'm365') throw new Error(data?.error || 'Microsoft 365 did not confirm delivery')
+        status = 'Sent'
+      } catch (e) {
+        setSaving(false)
+        showToast('Microsoft 365 send failed: ' + (e?.message || e))
+        return
+      }
     } else if (gmailConnected) {
       try {
         await sendGmailEmail(supabase, { to: form.recipient, subject: form.subject, body: form.body, senderEmployeeEmail: user?.email })
@@ -482,7 +500,7 @@ export default function Email() {
       })
     }
 
-    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via Stalwart' : isCloudCpaPlatformRelay && status === 'Sent' ? '✅ CloudCPA email sent through the TaxRes platform relay' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ Gmail is not connected — this was only saved as a log entry, nothing was emailed')
+    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via Stalwart' : isCloudCpaPlatformRelay && status === 'Sent' ? '✅ CloudCPA email sent through the TaxRes platform relay' : isNashville && m365Connected && status === 'Sent' ? '✅ Email sent via Microsoft 365!' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ No connected email provider — this was only saved as a log entry, nothing was emailed')
     setForm(BLANK); setView('inbox'); load()
   }
 
@@ -493,9 +511,15 @@ export default function Email() {
 
     async function invokeChunk(chunk, attempt = 0) {
       try {
-        const { data, error } = await supabase.functions.invoke('gmail-sync-cron', {
-          body: { mode: 'message_action', email_ids: chunk, action },
-        })
+        const chunkRows = chunk.map(id => emails.find(row => String(row.id) === String(id))).filter(Boolean)
+        const useM365 = isNashville && chunkRows.length > 0 && chunkRows.every(row => !!row.m365_message_id)
+        const { data, error } = useM365
+          ? await supabase.functions.invoke('m365-mail-gateway', {
+              body: { action:'message_action', email_ids:chunk, message_action:action },
+            })
+          : await supabase.functions.invoke('gmail-sync-cron', {
+              body: { mode:'message_action', email_ids:chunk, action },
+            })
         if (error) throw new Error(error.message || String(error))
         if (!data?.ok) {
           const detail = data?.failures?.[0]?.error || data?.error || 'Mailbox action failed'
@@ -791,12 +815,23 @@ export default function Email() {
             <div style={{ fontSize: 11, fontWeight: 700, color: '#0078d4', marginBottom: 4 }}>📧 Connect Microsoft 365</div>
             <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 8, lineHeight: 1.5 }}>Link your Outlook inbox and calendar directly to the CRM.</div>
             {m365ClientId ? (
-              <button onClick={() => {
-                const state = encodeURIComponent(JSON.stringify({ employeeEmail: user?.email, tenantId: FIRM.tenantId, origin: window.location.origin }))
-                const redirectUri = encodeURIComponent(`${window.location.origin.replace(/\/taxcasereview-CRM.*/, '')}/functions/v1/m365-oauth-callback`.replace('https://taxresolutioncrm.github.io', 'https://mpxgxfqdbquzkrvvejkh.supabase.co'))
-                const url = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${m365ClientId}&response_type=code&redirect_uri=${redirectUri}&scope=offline_access+Mail.Read+Mail.Send+Calendars.ReadWrite+User.Read&state=${state}`
-                window.open(url, '_blank')
-                showToast('Complete Microsoft sign-in in the popup window')
+              <button onClick={async () => {
+                try {
+                  if (isNashville) {
+                    const { data, error } = await supabase.functions.invoke('m365-oauth-start', { body:{} })
+                    if (error) throw error
+                    if (!data?.authorize_url) throw new Error(data?.error || 'Microsoft authorization URL was not returned')
+                    window.open(data.authorize_url, '_blank')
+                  } else {
+                    const state = encodeURIComponent(JSON.stringify({ employeeEmail: user?.email, tenantId: FIRM.tenantId, origin: window.location.origin }))
+                    const redirectUri = encodeURIComponent(`${window.location.origin.replace(/\/taxcasereview-CRM.*/, '')}/functions/v1/m365-oauth-callback`.replace('https://taxresolutioncrm.github.io', 'https://mpxgxfqdbquzkrvvejkh.supabase.co'))
+                    const url = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${m365ClientId}&response_type=code&redirect_uri=${redirectUri}&scope=offline_access+Mail.Read+Mail.Send+Calendars.ReadWrite+User.Read&state=${state}`
+                    window.open(url, '_blank')
+                  }
+                  showToast('Complete Microsoft sign-in in the popup window')
+                } catch (e) {
+                  showToast('Microsoft 365 connection failed: ' + (e?.message || e))
+                }
               }} style={{ width: '100%', padding: '5px 0', borderRadius: 6, border: 'none', background: '#0078d4', color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
                 🔗 Connect Microsoft 365
               </button>
@@ -998,7 +1033,7 @@ export default function Email() {
                       {TRIAGE.filter(t => t !== (selected.triage || 'Inbox') && t !== 'Sent').map(t => (
                         <button key={t} className="btn sec" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => moveTriage(selected.id, t)}>→ {t}</button>
                       ))}
-                      <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => { const replyRecipient = selected.from_address || selected.sender || selected.recipient; const replySubject = String(selected.subject || '').toLowerCase().startsWith('re:') ? selected.subject : 'Re: ' + (selected.subject || ''); setForm({ ...BLANK, clientName: selected.clientName || selected.clientname || replyRecipient, recipient: replyRecipient || '', subject: replySubject, routeId: selected.route_id || '', replyFrom: selected.reply_from || selected.received_mailbox || '', threadId: selected.thread_id || '', inReplyTo: selected.message_id || '', references: selected.references_header || '', productId: selected.product_id || '' }); setView('compose') }}>↩ Reply</button>
+                      <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => { const replyRecipient = selected.from_address || selected.sender || selected.recipient; const replySubject = String(selected.subject || '').toLowerCase().startsWith('re:') ? selected.subject : 'Re: ' + (selected.subject || ''); setForm({ ...BLANK, clientName: selected.clientName || selected.clientname || replyRecipient, recipient: replyRecipient || '', subject: replySubject, routeId: selected.route_id || '', replyFrom: selected.reply_from || selected.received_mailbox || '', threadId: selected.thread_id || '', inReplyTo: selected.message_id || '', references: selected.references_header || '', productId: selected.product_id || '', m365MessageId: selected.m365_message_id || '' }); setView('compose') }}>↩ Reply</button>
                       <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600, background: 'var(--blue)', color: '#fff', border: 'none' }} onClick={() => markUnread(selected)}>● Mark as New</button>
                       {triageFilter === 'Archive'
                         ? <button className="btn del" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => permanentlyDeleteEmail(selected.id)}>🗑 Delete</button>
