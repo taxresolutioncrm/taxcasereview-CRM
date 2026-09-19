@@ -12,52 +12,35 @@ on public.time_entries(tenant_id,worker_name,started_at desc);
 create index if not exists idx_billing_time_tenant_employee_date
 on public.billing_time_entries(tenant_id,employee_name,date desc);
 
-create or replace function public.billing_time_summary(
+create or replace function public.billing_time_activity_summary(
   p_client_id text default null,
   p_client_name text default null
 )
-returns jsonb
+returns table(
+  activity_type text,
+  entry_count bigint,
+  hours numeric,
+  amount numeric,
+  billed_amount numeric,
+  wip_amount numeric
+)
 language sql
 security invoker
 stable
 set search_path to 'public','pg_temp'
 as $$
-  with scoped as (
-    select activity_type,hours,amount,billed
-    from public.billing_time_entries
-    where (p_client_id is null or client_id=p_client_id)
-      and (p_client_id is not null or p_client_name is null or client_name=p_client_name)
-  ),
-  activity as (
-    select
-      coalesce(activity_type,'Uncategorized') activity_type,
-      count(*) entry_count,
-      coalesce(sum(hours),0) hours,
-      coalesce(sum(amount),0) amount,
-      coalesce(sum(amount) filter(where billed),0) billed_amount,
-      coalesce(sum(amount) filter(where not billed),0) wip_amount
-    from scoped
-    group by coalesce(activity_type,'Uncategorized')
-  )
-  select jsonb_build_object(
-    'entry_count',(select count(*) from scoped),
-    'total_hours',coalesce((select sum(hours) from scoped),0),
-    'total_amount',coalesce((select sum(amount) from scoped),0),
-    'wip_hours',coalesce((select sum(hours) from scoped where not billed),0),
-    'wip_amount',coalesce((select sum(amount) from scoped where not billed),0),
-    'billed_amount',coalesce((select sum(amount) from scoped where billed),0),
-    'by_activity',coalesce((
-      select jsonb_agg(jsonb_build_object(
-        'activity_type',activity_type,
-        'count',entry_count,
-        'hours',hours,
-        'amount',amount,
-        'billed',billed_amount,
-        'wip',wip_amount
-      ) order by amount desc)
-      from activity
-    ),'[]'::jsonb)
-  );
+  select
+    coalesce(b.activity_type,'Uncategorized') as activity_type,
+    count(*)::bigint as entry_count,
+    coalesce(sum(b.hours),0) as hours,
+    coalesce(sum(b.amount),0) as amount,
+    coalesce(sum(b.amount) filter(where b.billed),0) as billed_amount,
+    coalesce(sum(b.amount) filter(where not b.billed),0) as wip_amount
+  from public.billing_time_entries b
+  where (p_client_id is null or b.client_id=p_client_id)
+    and (p_client_id is not null or p_client_name is null or b.client_name=p_client_name)
+  group by coalesce(b.activity_type,'Uncategorized')
+  order by amount desc;
 $$;
 
-grant execute on function public.billing_time_summary(text,text) to authenticated;
+grant execute on function public.billing_time_activity_summary(text,text) to authenticated;
