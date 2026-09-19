@@ -1,17 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fillForm } from '../../lib/irsFormUtils'
-import { buildOperatingAgreementPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
+import { buildOperatingAgreementPdf, buildCorporateBylawsPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
 
-const FL_SERVICE_GUIDE = {
-  'Annual Report Filing': { fee:'$138.75', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Keeps the LLC active; Florida posts online credit-card filings immediately.' },
-  'Registered Agent Change': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Use the Florida LLC registered-agent / registered-office change filing.' },
-  'Business Amendment': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Florida LLC amendments use the Division of Corporations amendment form.' },
+const FL_LLC_SERVICE_GUIDE = {
+  'Annual Report Filing': { fee:'$138.75', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Florida LLC annual report filing.' },
+  'Registered Agent Change': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Florida LLC registered-agent / registered-office change filing.' },
+  'Business Amendment': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Florida LLC amendment filing.' },
   'DBA / Fictitious Name': { fee:'State fee varies', url:'https://dos.fl.gov/sunbiz/start-business/efile/fl-fictitious-name', note:'Florida fictitious-name registration is a separate filing.' },
-  'Foreign Qualification': { fee:'State fee applies', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Use the Foreign LLC qualification filing when expanding into Florida.' },
+  'Foreign Qualification': { fee:'State fee applies', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Florida foreign LLC qualification filing.' },
   'Certificate of Good Standing': { fee:'$5', url:'https://dos.fl.gov/sunbiz/manage-business/certification/', note:'Florida calls this a Certificate of Status.' },
-  'Reinstatement': { fee:'$100 + annual reports due', url:'https://dos.fl.gov/sunbiz/manage-business/efile/reinstatement', note:'For administratively dissolved/revoked entities.' },
-  'Dissolution': { fee:'$25', url:'https://dos.fl.gov/sunbiz/manage-business/dissolve-withdraw-business/', note:'Formal Florida LLC dissolution / withdrawal.' },
+  'Reinstatement': { fee:'$100 + annual reports due', url:'https://dos.fl.gov/sunbiz/manage-business/efile/reinstatement', note:'Florida LLC reinstatement after administrative dissolution/revocation.' },
+  'Dissolution': { fee:'$25', url:'https://dos.fl.gov/sunbiz/manage-business/dissolve-withdraw-business/', note:'Florida LLC dissolution / withdrawal.' },
+}
+
+const FL_CORP_SERVICE_GUIDE = {
+  'Registered Agent Change': { fee:'$35', url:'https://dos.fl.gov/sunbiz/forms/corporations/', note:'Florida corporation registered-agent / registered-office change filing.' },
+  'Business Amendment': { fee:'$35', url:'https://dos.fl.gov/sunbiz/forms/corporations/', note:'Florida corporation Articles of Amendment filing.' },
+  'DBA / Fictitious Name': { fee:'State fee varies', url:'https://dos.fl.gov/sunbiz/start-business/efile/fl-fictitious-name', note:'Florida fictitious-name registration is a separate filing.' },
+  'Foreign Qualification': { fee:'State fee applies', url:'https://dos.fl.gov/sunbiz/forms/corporations/', note:'Florida foreign corporation qualification filing.' },
+  'Certificate of Good Standing': { fee:'$8.75', url:'https://dos.fl.gov/sunbiz/manage-business/certification/', note:'Florida calls this a Certificate of Status.' },
+  'Dissolution': { fee:'$35', url:'https://dos.fl.gov/sunbiz/manage-business/dissolve-withdraw-business/', note:'Florida corporation dissolution filing.' },
 }
 
 const SERVICES = [
@@ -51,6 +60,30 @@ function nextFloridaAnnualReportDate(formationDate) {
   return `${d.getFullYear()+1}-05-01`
 }
 
+function isCorporationCase(c = {}) {
+  return c.entity_type === 'C-Corp' || c.entity_type === 'Non-Profit 501(c)(3)'
+}
+
+function governingDocumentLabel(c = {}) {
+  return isCorporationCase(c) ? 'Corporate Bylaws' : 'Operating Agreement'
+}
+
+function floridaServiceGuide(c = {}, serviceType = '') {
+  if (!isCorporationCase(c)) return FL_LLC_SERVICE_GUIDE[serviceType] || null
+  const isNonProfit = c.entity_type === 'Non-Profit 501(c)(3)'
+  if (serviceType === 'Annual Report Filing') {
+    return isNonProfit
+      ? { fee:'$61.25', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Florida not-for-profit corporation annual report filing.' }
+      : { fee:'$150', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Florida profit corporation annual report filing.' }
+  }
+  if (serviceType === 'Reinstatement') {
+    return isNonProfit
+      ? { fee:'$175 + annual reports due', url:'https://dos.fl.gov/sunbiz/manage-business/efile/reinstatement', note:'Florida not-for-profit corporation reinstatement after administrative dissolution.' }
+      : { fee:'$600 + annual reports due', url:'https://dos.fl.gov/sunbiz/manage-business/efile/reinstatement', note:'Florida profit corporation reinstatement after administrative dissolution.' }
+  }
+  return FL_CORP_SERVICE_GUIDE[serviceType] || null
+}
+
 function safeFilename(v) {
   return String(v || 'company').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60) || 'company'
 }
@@ -75,6 +108,7 @@ function StatusPill({value}) {
 }
 
 export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch }) {
+  const governingLabel = governingDocumentLabel(caseRecord)
   const [tab,setTab]=useState('overview')
   const [lifecycle,setLifecycle]=useState(null)
   const [requests,setRequests]=useState([])
@@ -83,6 +117,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
   const [busy,setBusy]=useState('')
   const [serviceType,setServiceType]=useState(SERVICES[0])
   const [serviceNotes,setServiceNotes]=useState('')
+  const selectedServiceGuide = floridaServiceGuide(caseRecord, serviceType)
   const [einValue,setEinValue]=useState(caseRecord?.ein || '')
   const [signedSS4,setSignedSS4]=useState(null)
 
@@ -304,22 +339,26 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     await savePatch({ein_status:'Received',ein_received_at:now},'',)
     setBusy('')
     onCasePatch?.({ein:value,stage:'Operating Agreement'})
-    showToast?.('✅ EIN recorded — Operating Agreement is next')
+    showToast?.(`✅ EIN recorded — ${governingLabel} is next`)
   }
 
   async function generateOperatingAgreement() {
     setBusy('agreement')
     try {
-      const blob=await buildOperatingAgreementPdf(caseRecord,lifecycle)
+      const isCorp=isCorporationCase(caseRecord)
+      const blob=isCorp
+        ? await buildCorporateBylawsPdf(caseRecord,lifecycle)
+        : await buildOperatingAgreementPdf(caseRecord,lifecycle)
       const stamp=Date.now()
-      const doc=await uploadGenerated(blob,'FormaCorp — Operating Agreement draft',`Operating-Agreement-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
-      await savePatch({operating_agreement_status:'Draft Generated',operating_agreement_generated_at:new Date().toISOString(),operating_agreement_path:doc.path},'✅ Operating Agreement draft generated and filed in Documents')
-    }catch(e){showToast?.('Could not generate Operating Agreement: '+(e?.message||e),'err')}
+      const filePrefix=isCorp ? 'Corporate-Bylaws' : 'Operating-Agreement'
+      const doc=await uploadGenerated(blob,`FormaCorp — ${governingLabel} draft`,`${filePrefix}-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
+      await savePatch({operating_agreement_status:'Draft Generated',operating_agreement_generated_at:new Date().toISOString(),operating_agreement_path:doc.path},`✅ ${governingLabel} draft generated and filed in Documents`)
+    }catch(e){showToast?.(`Could not generate ${governingLabel}: `+(e?.message||e),'err')}
     finally{setBusy('')}
   }
 
   async function sendAgreementForSignature() {
-    if(!lifecycle.operating_agreement_path){showToast?.('Generate the Operating Agreement first','err');return}
+    if(!lifecycle.operating_agreement_path){showToast?.(`Generate the ${governingLabel} first`,'err');return}
     const to=String(caseRecord.correspondence_email||'').trim()
     if(!to){showToast?.('Add the correspondence email before sending for signature','err');return}
     setBusy('esign')
@@ -327,11 +366,11 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       const {data:urlData,error:urlErr}=await supabase.storage.from('documents').createSignedUrl(lifecycle.operating_agreement_path,60*60*24*30)
       if(urlErr||!urlData?.signedUrl)throw urlErr||new Error('Could not create document link')
       const {data:esign,error:esignErr}=await supabase.from('esigns').insert([{
-        doc_type:'FormaCorp Operating Agreement',
+        doc_type:`FormaCorp ${governingLabel}`,
         client_name:caseRecord.client_name,
         client_email:to,
-        message:`Please review and sign the Operating Agreement for ${caseRecord.entity_name}.`,
-        pdf_attachments:[{formType:'formacorp_operating_agreement',label:'Operating Agreement',url:urlData.signedUrl}],
+        message:`Please review and sign the ${governingLabel} for ${caseRecord.entity_name}.`,
+        pdf_attachments:[{formType:isCorporationCase(caseRecord)?'formacorp_corporate_bylaws':'formacorp_operating_agreement',label:governingLabel,url:urlData.signedUrl}],
         priority:'Normal',
         status:'Awaiting',
         sent_at:new Date().toISOString(),
@@ -341,12 +380,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       const signUrl=`${window.location.origin}/sign/${esign.id}`
       const {error:mailErr}=await supabase.functions.invoke('send-email',{body:{
         to,
-        subject:`Signature Required: ${caseRecord.entity_name} Operating Agreement`,
-        html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px"><h2>Operating Agreement Ready</h2><p>Please review and sign the Operating Agreement for <strong>${caseRecord.entity_name}</strong>.</p><p style="margin:24px 0"><a href="${signUrl}" style="background:#1d4ed8;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700">Review & Sign</a></p></div>`
+        subject:`Signature Required: ${caseRecord.entity_name} ${governingLabel}`,
+        html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px"><h2>${governingLabel} Ready</h2><p>Please review and sign the ${governingLabel} for <strong>${caseRecord.entity_name}</strong>.</p><p style="margin:24px 0"><a href="${signUrl}" style="background:#1d4ed8;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700">Review & Sign</a></p></div>`
       }})
       await savePatch({operating_agreement_status:'Awaiting Signature',operating_agreement_esign_id:esign.id},'',)
       if(mailErr){await navigator.clipboard.writeText(signUrl).catch(()=>{});showToast?.('Signing request created; email failed, so the signing link was copied','err')}
-      else showToast?.('✅ Operating Agreement sent for e-signature')
+      else showToast?.(`✅ ${governingLabel} sent for e-signature`)
     }catch(e){showToast?.('Could not create signing request: '+(e?.message||e),'err')}
     finally{setBusy('')}
   }
@@ -355,7 +394,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     const ok=await savePatch({operating_agreement_status:'Signed',operating_agreement_signed_at:new Date().toISOString()},'',)
     if(!ok)return
     const {error}=await supabase.from('formacorp').update({stage:'Bank Account Setup'}).eq('id',caseRecord.id)
-    if(!error){onCasePatch?.({stage:'Bank Account Setup'});showToast?.('✅ Operating Agreement signed — Banking is next')}
+    if(!error){onCasePatch?.({stage:'Bank Account Setup'});showToast?.(`✅ ${governingLabel} signed — Banking is next`)}
   }
 
   async function generateBankingResolution() {
@@ -430,7 +469,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       status:'Requested',
       jurisdiction_state:caseRecord.state || null,
       agency:caseRecord.state==='FL' ? 'Florida Division of Corporations' : null,
-      state_fee:caseRecord.state==='FL' ? numericFee(FL_SERVICE_GUIDE[serviceType]?.fee) : null,
+      state_fee:caseRecord.state==='FL' ? numericFee(selectedServiceGuide?.fee) : null,
       payment_status:'Pending',
       notes:serviceNotes.trim() || null,
     }]).select().single()
@@ -552,7 +591,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     </div>
 
     <div style={{display:'flex',gap:5,flexWrap:'wrap',borderBottom:'1px solid var(--br)',paddingBottom:8,marginBottom:12}}>
-      {visibleTabs.map(([id,label])=><button key={id} className={`btn sm ${tab===id?'pri':''}`} onClick={()=>setTab(id)}>{label}</button>)}
+      {visibleTabs.map(([id,label])=><button key={id} className={`btn sm ${tab===id?'pri':''}`} onClick={()=>setTab(id)}>{id==='agreement'?governingLabel:label}</button>)}
     </div>
 
     {tab==='overview' && <div>
@@ -560,7 +599,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         {[
           ['State Formation',caseRecord.state_file_num?'Accepted':'In Progress'],
           ['EIN',caseRecord.ein?'Received':lifecycle.ein_status],
-          ['Operating Agreement',lifecycle.operating_agreement_status],
+          [governingLabel,lifecycle.operating_agreement_status],
           ['Business Banking',lifecycle.banking_status],
           ['Annual Report',lifecycle.annual_report_status],
           ['Good Standing',lifecycle.good_standing_status],
@@ -597,11 +636,11 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
 
     {tab==='agreement' && <div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-        <Field label="Operating Agreement Status"><select value={lifecycle.operating_agreement_status||'Not Started'} onChange={e=>setLocal('operating_agreement_status',e.target.value)} style={inputStyle}>{['Not Started','Draft Generated','Sent for Review','Awaiting Signature','Signed','Needs Revision'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label={`${governingLabel} Status`}><select value={lifecycle.operating_agreement_status||'Not Started'} onChange={e=>setLocal('operating_agreement_status',e.target.value)} style={inputStyle}>{['Not Started','Draft Generated','Sent for Review','Awaiting Signature','Signed','Needs Revision'].map(x=><option key={x}>{x}</option>)}</select></Field>
         <Field label="Signed Date"><input type="date" value={lifecycle.operating_agreement_signed_at?String(lifecycle.operating_agreement_signed_at).slice(0,10):''} onChange={e=>setLocal('operating_agreement_signed_at',e.target.value?new Date(e.target.value+'T12:00:00').toISOString():null)} style={inputStyle}/></Field>
       </div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-        <button className="btn sm" onClick={generateOperatingAgreement} disabled={busy==='agreement'}>{busy==='agreement'?'Generating…':'📄 Generate Operating Agreement'}</button>
+        <button className="btn sm" onClick={generateOperatingAgreement} disabled={busy==='agreement'}>{busy==='agreement'?'Generating…':`📄 Generate ${governingLabel}`}</button>
         <button className="btn sm" onClick={sendAgreementForSignature} disabled={busy==='esign'}>{busy==='esign'?'Sending…':'✍️ Send for E-Signature'}</button>
         <button className="btn sm" onClick={saveCurrent}>💾 Save</button>
         <button className="btn pri sm" onClick={markAgreementSigned}>✅ Mark Signed & Continue</button>
@@ -619,7 +658,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <Field label="Opening Deposit"><input type="number" min="0" step="0.01" value={lifecycle.bank_opening_deposit ?? ''} onChange={e=>setLocal('bank_opening_deposit',e.target.value===''?null:Number(e.target.value))} style={inputStyle}/></Field>
         <Field label="Bookkeeping Connection"><select value={lifecycle.bookkeeping_status||'Not Connected'} onChange={e=>setLocal('bookkeeping_status',e.target.value)} style={inputStyle}>{['Not Connected','Planned','Connected','Needs Attention'].map(x=><option key={x}>{x}</option>)}</select></Field>
       </div>
-      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:10}}><input type="checkbox" checked={!!lifecycle.bank_documents_ready} onChange={e=>setLocal('bank_documents_ready',e.target.checked)} style={{width:'auto'}}/> Formation document, EIN confirmation, Operating Agreement, and signer ID are ready for the bank.</label>
+      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:10}}><input type="checkbox" checked={!!lifecycle.bank_documents_ready} onChange={e=>setLocal('bank_documents_ready',e.target.checked)} style={{width:'auto'}}/> Formation document, EIN confirmation, governing document, and signer ID are ready for the bank.</label>
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
         <button className="btn sm" onClick={generateBankingResolution} disabled={busy==='bankdoc'}>{busy==='bankdoc'?'Generating…':'📄 Generate Banking Resolution'}</button>
         <button className="btn sm" onClick={saveCurrent}>💾 Save Banking</button>
@@ -659,9 +698,9 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       </div>
       <div style={{padding:'9px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:11,lineHeight:1.5,marginBottom:8}}>
         <strong>Fulfillment stays in FormaCorp.</strong> Create and manage the service request here so the case, tasks, payment status, filing reference, completion confirmation, and documents stay attached to the company record.
-        {caseRecord.state==='FL' && FL_SERVICE_GUIDE[serviceType] && <details style={{marginTop:6}}>
+        {caseRecord.state==='FL' && selectedServiceGuide && <details style={{marginTop:6}}>
           <summary style={{cursor:'pointer',color:'var(--t3)',fontSize:10}}>Florida filing reference</summary>
-          <div style={{marginTop:4}}>{FL_SERVICE_GUIDE[serviceType].fee} · {FL_SERVICE_GUIDE[serviceType].note}</div>
+          <div style={{marginTop:4}}>{selectedServiceGuide.fee} · {selectedServiceGuide.note}</div>
         </details>}
       </div>
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
@@ -678,7 +717,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     {tab==='documents' && <div>
       <div style={{fontSize:11,color:'var(--t3)',marginBottom:10,lineHeight:1.5}}>Formation documents, state acceptance records, EIN letters, signed agreements, bank resolutions, registered-agent notices, and compliance correspondence are stored here and indexed in the CRM Documents area.</div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,alignItems:'end',marginBottom:10}}>
-        <Field label="Document Type"><select value={docType} onChange={e=>setDocType(e.target.value)} style={inputStyle}>{['State Filing / Acceptance','EIN Confirmation','Operating Agreement','Banking','Registered Agent Notice','Annual Report / Compliance','Amendment / Company Change','License / Permit','Other'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label="Document Type"><select value={docType} onChange={e=>setDocType(e.target.value)} style={inputStyle}>{['State Filing / Acceptance','EIN Confirmation','Operating Agreement','Corporate Bylaws','Banking','Registered Agent Notice','Annual Report / Compliance','Amendment / Company Change','License / Permit','Other'].map(x=><option key={x}>{x}</option>)}</select></Field>
         <Field label="Upload Document"><input type="file" onChange={e=>{const f=e.target.files?.[0];if(f)uploadCompanyDocument(f);e.target.value=''}} style={inputStyle} disabled={busy==='upload'}/></Field>
       </div>
       <div>

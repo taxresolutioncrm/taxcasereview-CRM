@@ -74,6 +74,71 @@ export async function buildOperatingAgreementPdf(c, l = {}) {
   return new Blob([bytes],{type:'application/pdf'})
 }
 
+
+export async function buildCorporateBylawsPdf(c, l = {}) {
+  const pdf = await PDFDocument.create()
+  const reg = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const page = pdf.addPage([PAGE_W,PAGE_H])
+  let y = header(page,bold,'CORPORATE BYLAWS',clean(c.entity_name,'Corporation'))
+  y = paragraph(page,`These Bylaws are adopted for ${clean(c.entity_name)} (the "Corporation"), organized under the laws of ${clean(c.state,'the formation state')}. The Corporation was formed on ${clean(c.formation_date,'the date accepted by the state')} and maintains its principal office at ${clean(c.principal_address)}.`,M,y,reg)
+  y -= 8
+  const isNonProfit = c.entity_type === 'Non-Profit 501(c)(3)'
+  const sections = isNonProfit ? [
+    ['ARTICLE I — OFFICES', 'The Corporation will maintain a principal office and registered office as required by applicable law. The board may establish additional offices as business needs require.'],
+    ['ARTICLE II — EXEMPT PURPOSE', 'The Corporation will be operated exclusively in furtherance of its purposes stated in the Articles of Incorporation and consistent with Section 501(c)(3) of the Internal Revenue Code. No part of its net earnings will inure to the benefit of private persons except for reasonable compensation and payments furthering exempt purposes.'],
+    ['ARTICLE III — BOARD OF DIRECTORS', `The affairs of the Corporation are managed under the direction of its board of directors. Initial officer/director information supplied to FormaCorp: ${clean(c.fl_officers_directors,'To be completed in the organizational action.')}`],
+    ['ARTICLE IV — OFFICERS', 'The board may appoint a President, Secretary, Treasurer, and any other officers it considers appropriate. Officers have the authority assigned by the board and may be removed or replaced as permitted by law.'],
+    ['ARTICLE V — MEETINGS AND ACTION', 'Director meetings, notices, quorum, voting, and written consents will be handled in accordance with the Articles of Incorporation, these Bylaws, and applicable law. Directors will be elected or appointed as provided by these Bylaws and board action.'],
+    ['ARTICLE VI — BANKING AND CONTRACTS', 'Corporate funds must be kept separate from personal funds. The board may authorize bank accounts, signers, contracts, grants, and other transactions through resolutions or written consents.'],
+    ['ARTICLE VII — RECORDS AND TAX EXEMPTION', 'The Corporation will maintain its Articles, Bylaws, minutes or written consents, financial and tax records, and other records required by law. Applications and ongoing filings related to federal or state tax-exempt status will be documented separately.'],
+    ['ARTICLE VIII — DISSOLUTION', 'Upon dissolution, assets will be distributed only as provided in the Articles of Incorporation and applicable law for one or more exempt purposes within the meaning of Section 501(c)(3), or to government for a public purpose.'],
+    ['ARTICLE IX — AMENDMENTS', 'These Bylaws may be amended through the approval process permitted by the Articles of Incorporation and applicable law, provided no amendment authorizes activity inconsistent with the Corporation\'s exempt purposes.'],
+  ] : [
+    ['ARTICLE I — OFFICES', 'The Corporation will maintain a principal office and registered office as required by applicable law. The board may establish additional offices as business needs require.'],
+    ['ARTICLE II — SHAREHOLDERS', 'Shareholder meetings, notices, voting, proxies, quorum, and written consents will be handled in accordance with the Articles of Incorporation, these Bylaws, and applicable state law.'],
+    ['ARTICLE III — BOARD OF DIRECTORS', `The business and affairs of the Corporation are managed under the direction of its board of directors. Initial officer/director information supplied to FormaCorp: ${clean(c.fl_officers_directors,'To be completed in the organizational action.')}`],
+    ['ARTICLE IV — OFFICERS', 'The board may appoint a President, Secretary, Treasurer, and any other officers it considers appropriate. Officers have the authority assigned by the board and may be removed or replaced as permitted by law.'],
+    ['ARTICLE V — SHARES', `The Corporation may issue shares within the authorization stated in its Articles of Incorporation. FormaCorp formation record: ${clean(c.fl_authorized_shares,'1')} authorized share(s). Stock issuance must be approved and documented in the corporate records.`],
+    ['ARTICLE VI — BANKING AND CONTRACTS', 'Corporate funds must be kept separate from personal funds. The board may authorize bank accounts, signers, contracts, loans, and other ordinary business transactions through resolutions or written consents.'],
+    ['ARTICLE VII — RECORDS AND TAX', 'The Corporation will maintain its Articles, Bylaws, minutes or written consents, stock records, tax records, and other records required by law. Federal and state tax elections will be documented separately.'],
+    ['ARTICLE VIII — AMENDMENTS', 'These Bylaws may be amended through the approval process permitted by the Articles of Incorporation and applicable law.'],
+  ]
+  for (const [title,body] of sections) {
+    if (y < 140) break
+    addText(page,title,M,y,bold,10); y-=16
+    y=paragraph(page,body,M,y,reg,9.3,14); y-=7
+  }
+  if (y < 285) { y = 285 }
+  addText(page,'INITIAL ORGANIZATIONAL ACTION',M,y,bold,10); y-=18
+  const orgActions = isNonProfit ? [
+    'The filed Articles of Incorporation and state acknowledgement are accepted and ordered placed in the corporate records.',
+    'These Bylaws are adopted as the initial bylaws of the Corporation.',
+    `The initial officers/directors are recorded as: ${clean(c.fl_officers_directors,'To be completed by organizational action')}.`,
+    `The Corporation is authorized to obtain and use EIN ${clean(c.ein,'when issued')} and to establish banking in the corporate name.`,
+    'The officers are authorized to complete federal and state tax-exemption applications, registrations, licenses, insurance, bookkeeping, grant, contract, and launch steps approved by the board.',
+  ] : [
+    'The filed Articles of Incorporation and state acknowledgement are accepted and ordered placed in the corporate records.',
+    'These Bylaws are adopted as the initial bylaws of the Corporation.',
+    `The initial officers/directors are recorded as: ${clean(c.fl_officers_directors,'To be completed by organizational action')}.`,
+    `The Corporation is authorized to issue shares within the ${clean(c.fl_authorized_shares,'authorized')} share limit stated in the Articles; each issuance must be separately documented in the stock ledger.`,
+    `The Corporation is authorized to obtain and use EIN ${clean(c.ein,'when issued')} and to establish banking in the corporate name.`,
+    'The officers are authorized to complete registrations, licenses, insurance, bookkeeping, contracts, tax elections, and other launch steps approved by the board.',
+  ]
+  for (const action of orgActions) {
+    y=paragraph(page,'• '+action,M,y,reg,8.7,12.5); y-=3
+  }
+  y -= 6
+  y = Math.max(y,125)
+  addText(page,'ADOPTION',M,y,bold,10); y-=22
+  addText(page,`Authorized Signer / Incorporator: ${clean(c.fl_incorporator || c.authorized_representative || c.client_name)}`,M,y,reg,10); y-=22
+  addText(page,'Signature: ________________________________________',M,y,reg,10)
+  addText(page,'Date: __________________',370,y,reg,10)
+  addText(page,'This is a corporate-record template generated from information supplied to FormaCorp. Review before adoption and signing.',M,50,reg,7.5,{color:rgb(.45,.48,.54)})
+  const bytes=await pdf.save()
+  return new Blob([bytes],{type:'application/pdf'})
+}
+
 export async function buildBankingResolutionPdf(c, l = {}) {
   const pdf = await PDFDocument.create()
   const reg = await pdf.embedFont(StandardFonts.Helvetica)
@@ -100,7 +165,8 @@ export async function buildBankingResolutionPdf(c, l = {}) {
   addText(page,'Title: ______________________________',M,y,reg,10)
   addText(page,'Date: __________________',370,y,reg,10);y-=32
   addText(page,'BANK DOCUMENT CHECKLIST',M,y,bold,10);y-=20
-  for(const item of ['Filed formation document / Articles','EIN confirmation (CP 575 or equivalent)','Operating Agreement','Government-issued signer ID','State document number / good-standing evidence if requested']) {
+  const governingDocument = (c.entity_type === 'C-Corp' || c.entity_type === 'Non-Profit 501(c)(3)') ? 'Corporate Bylaws / organizational action' : 'Operating Agreement'
+  for(const item of ['Filed formation document / Articles','EIN confirmation (CP 575 or equivalent)',governingDocument,'Government-issued signer ID','State document number / good-standing evidence if requested']) {
     addText(page,'☐ '+item,M,y,reg,9.5);y-=18
   }
   addText(page,'Security note: FormaCorp intentionally stores only the account last four digits, not full bank account or routing numbers.',M,50,reg,7.5,{color:rgb(.45,.48,.54)})

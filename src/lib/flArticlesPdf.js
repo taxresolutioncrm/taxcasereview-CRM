@@ -34,7 +34,7 @@ function safe(v, fallback = '__________________________') {
   return s || fallback
 }
 
-export async function buildFlArticlesPdf(c) {
+async function buildFlLlcArticlesPdf(c) {
   const pdf = await PDFDocument.create()
   const reg  = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
@@ -220,6 +220,178 @@ export async function buildFlArticlesPdf(c) {
 
   const bytes = await pdf.save()
   return new Blob([bytes], { type: 'application/pdf' })
+}
+
+async function buildFlCorporationArticlesPdf(c) {
+  const pdf = await PDFDocument.create()
+  const reg  = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const ital = await pdf.embedFont(StandardFonts.HelveticaOblique)
+  const ink   = rgb(0.05, 0.06, 0.09)
+  const muted = rgb(0.4, 0.42, 0.5)
+
+  let page = pdf.addPage([PAGE_W, PAGE_H])
+  let y = PAGE_H - 60
+  const isNonProfit = c.entity_type === 'Non-Profit 501(c)(3)'
+
+  function newPage() {
+    page = pdf.addPage([PAGE_W, PAGE_H])
+    y = PAGE_H - 60
+  }
+  function ensure(space) {
+    if (y - space < 60) newPage()
+  }
+  function heading(t, size = 11) {
+    ensure(size + 12)
+    page.drawText(t, { x: MARGIN, y, size, font: bold, color: ink })
+    y -= size + 8
+  }
+  function label(t) {
+    ensure(14)
+    page.drawText(t, { x: MARGIN, y, size: 8.5, font: bold, color: muted })
+    y -= 12
+  }
+  function body(t, opts = {}) {
+    const size = opts.size ?? 10
+    const font = opts.font ?? reg
+    const lines = wrap(t, font, size, BODY_W)
+    for (const ln of lines) {
+      ensure(size + 4)
+      page.drawText(ln, { x: MARGIN, y, size, font, color: ink })
+      y -= size + 4
+    }
+  }
+  function rule() {
+    ensure(10)
+    page.drawLine({
+      start: { x: MARGIN, y: y - 2 },
+      end:   { x: MARGIN + BODY_W, y: y - 2 },
+      thickness: 0.6, color: muted,
+    })
+    y -= 10
+  }
+  function gap(n = 6) { y -= n }
+
+  page.drawText('FLORIDA DIVISION OF CORPORATIONS', {
+    x: MARGIN, y, size: 9, font: bold, color: muted,
+  })
+  y -= 12
+  page.drawText('Articles of Incorporation', {
+    x: MARGIN, y, size: 16, font: bold, color: ink,
+  })
+  y -= 18
+  page.drawText(isNonProfit ? 'for a Florida Not For Profit Corporation' : 'for a Florida Profit Corporation', {
+    x: MARGIN, y, size: 10, font: ital, color: muted,
+  })
+  y -= 22
+  rule()
+  gap(4)
+
+  body(
+    isNonProfit
+      ? 'The undersigned incorporator submits these Articles of Incorporation for the purpose of forming a Florida not for profit corporation under chapter 617, Florida Statutes.'
+      : 'The undersigned incorporator submits these Articles of Incorporation for the purpose of forming a Florida profit corporation under chapter 607, Florida Statutes.',
+    { size: 9 }
+  )
+  gap(10)
+
+  heading('ARTICLE I — Name')
+  label('Name of Corporation')
+  body(safe(c.entity_name))
+  gap(6)
+
+  heading('ARTICLE II — Principal Office and Mailing Address')
+  label('Principal Street Address')
+  body(safe(c.principal_address || c.business_address))
+  gap(2)
+  label('Mailing Address')
+  body(safe(c.mailing_address || c.principal_address || c.business_address))
+  gap(6)
+
+  heading('ARTICLE III — Purpose')
+  body(safe(c.business_purpose, isNonProfit ? 'Not-for-profit purposes permitted under Florida law.' : 'Any lawful business purpose permitted under Florida law.'))
+  if (isNonProfit) {
+    gap(4)
+    body('This corporation is organized exclusively for charitable, religious, educational, scientific, and other purposes permitted under Section 501(c)(3) of the Internal Revenue Code, or the corresponding section of any future federal tax code.', { size: 8.5 })
+    gap(4)
+    body('No part of the net earnings of the corporation shall inure to the benefit of, or be distributable to, its directors, officers, members, or other private persons, except that the corporation may pay reasonable compensation for services rendered and make payments in furtherance of its exempt purposes.', { size: 8.5 })
+    gap(4)
+    body('Upon dissolution, the corporation\'s assets shall be distributed for one or more exempt purposes within the meaning of Section 501(c)(3), or to the federal government, or to a state or local government, for a public purpose.', { size: 8.5 })
+  }
+  gap(6)
+
+  if (!isNonProfit) {
+    heading('ARTICLE IV — Authorized Shares')
+    body(String(Math.max(1, Number(c.fl_authorized_shares || 1))) + ' shares of common stock are authorized.')
+    gap(6)
+  }
+
+  heading(isNonProfit ? 'ARTICLE IV — Registered Agent' : 'ARTICLE V — Registered Agent')
+  label('Registered Agent Name')
+  body(safe(c.registered_agent))
+  gap(2)
+  label('Florida Street Address')
+  body(safe(c.registered_agent_address))
+  gap(6)
+  body(
+    'Having been named as registered agent and to accept service of process for this corporation at the place designated in these Articles, I accept the appointment and agree to act in this capacity and comply with the applicable Florida statutory duties of a registered agent.',
+    { size: 8.5 }
+  )
+  gap(6)
+  label('Registered Agent Typed Signature')
+  body(safe(c.fl_registered_agent_signature))
+  gap(8)
+
+  heading(isNonProfit ? 'ARTICLE V — Officers / Directors' : 'ARTICLE VI — Officers / Directors (optional public listing)')
+  body(safe(c.fl_officers_directors, 'No optional officer/director listing supplied in FormaCorp.'))
+  if (isNonProfit) {
+    gap(4)
+    label('Manner of Election / Appointment')
+    body(safe(c.fl_director_election_method, 'As stated by the corporation bylaws and any organizational action adopted by the board.'))
+  }
+  gap(8)
+
+  heading(isNonProfit ? 'ARTICLE VI — Incorporator' : 'ARTICLE VII — Incorporator')
+  label('Incorporator Name')
+  body(safe(c.fl_incorporator || c.authorized_representative || c.client_name))
+  gap(2)
+  label('Incorporator Typed Signature')
+  body(safe(c.fl_incorporator_signature))
+  gap(8)
+
+  heading('EFFECTIVE DATE')
+  body('Effective date of this filing: ' + safe(c.effective_date, 'Upon filing'))
+  gap(8)
+
+  heading('CORRESPONDENCE')
+  label('Correspondence Name')
+  body(safe(c.authorized_representative || c.client_name))
+  gap(2)
+  label('Correspondence Email')
+  body(safe(c.correspondence_email))
+  gap(12)
+
+  rule()
+  gap(4)
+  page.drawText('FILING FEES', { x: MARGIN, y, size: 9, font: bold, color: muted })
+  y -= 12
+  body('$70.00 required base filing ($35 Articles + $35 registered agent designation).', { size: 9 })
+  body('Optional: Certified Copy $8.75; Certificate of Status $8.75.', { size: 8.5 })
+  gap(4)
+  body(
+    'This packet is prepared from the FormaCorp case for review and submission. The Florida Division of Corporations determines whether the filing satisfies statutory requirements and whether the entity is accepted.',
+    { size: 7.5, font: ital }
+  )
+
+  const bytes = await pdf.save()
+  return new Blob([bytes], { type: 'application/pdf' })
+}
+
+export async function buildFlArticlesPdf(c) {
+  if (c?.entity_type === 'C-Corp' || c?.entity_type === 'Non-Profit 501(c)(3)') {
+    return buildFlCorporationArticlesPdf(c)
+  }
+  return buildFlLlcArticlesPdf(c)
 }
 
 export async function buildFlFaxPacket(coverSheetFile, signedArticlesFile) {
