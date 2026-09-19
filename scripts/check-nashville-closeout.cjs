@@ -117,6 +117,20 @@ const checks=[
     "idx_transcript_analyses_tenant_name_year",
     "idx_poa_records_tenant_client_status",
   ]],
+  ['supabase/functions/nashville-esign-reminders/index.ts',[
+    "signer_token",
+    "?token=",
+    "x-internal-cron-token",
+    "platform_internal_secrets",
+    "reminder_1_sent_at",
+    "event_type:'reminder_sent'",
+  ]],
+  ['supabase/migrations/20260919_nashville_esign_reminder_worker.sql',[
+    "nashville_esign_reminders_cron",
+    "cron.unschedule",
+    "nashville-esign-reminders",
+    "x-internal-cron-token",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
