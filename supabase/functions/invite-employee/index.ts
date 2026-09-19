@@ -67,9 +67,15 @@ serve(async(req)=>{
       existing=(list?.users||[]).find((u:any)=>String(u.email||'').toLowerCase()===email)||null
       if((list?.users||[]).length<200) break
     }
-    if(existing) return json({ok:true,already_exists:true,email,employee_id:employee.id})
-
     const redirectTo=String(body.redirect_to||'').trim()
+    if(existing){
+      const recoveryClient=createClient(url,anon,{auth:{persistSession:false,autoRefreshToken:false}})
+      const resetOptions=redirectTo?{redirectTo}:{}
+      const {error:resetErr}=await recoveryClient.auth.resetPasswordForEmail(email,resetOptions)
+      if(resetErr) return json({error:'Employee access email failed: '+resetErr.message},400)
+      return json({ok:true,already_exists:true,reset_sent:true,email,employee_id:employee.id})
+    }
+
     const options:any={data:{name:name||employee.name||email.split('@')[0]}}
     if(redirectTo) options.redirectTo=redirectTo
     const {data:invite,error:inviteErr}=await admin.auth.admin.inviteUserByEmail(email,options)
