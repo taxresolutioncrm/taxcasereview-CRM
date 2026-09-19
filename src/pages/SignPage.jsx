@@ -319,22 +319,7 @@ export default function SignPage() {
       throw new Error(finalizeResult?.error || finalizeError?.message || 'Could not finalize signed archive')
     }
 
-    // Notify the client a signed copy is on file
-      if (doc.client_email) {
-        // Public signing pages never choose recipients or email content. The
-        // server binds delivery to this signed e-sign request, rebuilds any
-        // legacy private-document links, and prevents replay sends.
-        await supabase.functions.invoke('send-email', {
-          body: { kind: 'esign_signed_copy', esign_id: id }
-        }).catch(() => {})
-      }
-      if (doc.client_phone) {
-        // Same rule for SMS: the browser supplies only the signed request ID.
-        // The server derives tenant, phone number and receipt text.
-        await supabase.functions.invoke('send-sms', {
-          body: { kind: 'esign_signed_receipt', esign_id: id }
-        }).catch(() => {})
-      }
+    // Client receipt delivery is performed once by the trusted finalizer.
       await supabase.functions.invoke('esign-archive-upload', {
         body: { action:'notify', event:'signed', esign_id:id, signer_token:signerToken }
       }).catch(() => {})
