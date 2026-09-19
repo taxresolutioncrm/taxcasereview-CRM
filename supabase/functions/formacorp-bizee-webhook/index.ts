@@ -4,7 +4,8 @@
 // supplies the official webhook contract.
 //
 // Required once provided by Bizee:
-//   BIZEE_PARTNER_WEBHOOK_SECRET
+//   BIZEE_PARTNER_WEBHOOK_SECRET          (global fallback)
+//   BIZEE_PARTNER_TENANT_WEBHOOK_SECRETS_JSON  {"<tenant_uuid>":"secret"}
 //   BIZEE_PARTNER_WEBHOOK_SECRET_HEADER
 //   BIZEE_PARTNER_WEBHOOK_ORDER_ID_FIELD
 //   BIZEE_PARTNER_WEBHOOK_EVENT_ID_FIELD
@@ -50,16 +51,24 @@ async function applyStatusToCase(admin:any,caseId:string,providerStatus:string){
 serve(async req=>{
   if(req.method!=='POST') return json({error:'Method not allowed'},405)
   try{
-    const secret=Deno.env.get('BIZEE_PARTNER_WEBHOOK_SECRET')||''
+    const globalSecret=Deno.env.get('BIZEE_PARTNER_WEBHOOK_SECRET')||''
+    const tenantSecretsRaw=(Deno.env.get('BIZEE_PARTNER_TENANT_WEBHOOK_SECRETS_JSON')||'{}').trim()
+    let tenantSecrets:any={}
+    try{tenantSecrets=JSON.parse(tenantSecretsRaw)}catch{return json({error:'Bizee tenant webhook secrets are not valid JSON'},503)}
+    if(!tenantSecrets||typeof tenantSecrets!=='object'||Array.isArray(tenantSecrets)) return json({error:'Bizee tenant webhook secrets must be a JSON object'},503)
+
     const header=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_SECRET_HEADER')||'').trim().toLowerCase()
     const orderField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_ORDER_ID_FIELD')||'').trim()
     const eventIdField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_EVENT_ID_FIELD')||'').trim()
     const eventTypeField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_EVENT_TYPE_FIELD')||'').trim()
     const statusField=(Deno.env.get('BIZEE_PARTNER_WEBHOOK_STATUS_FIELD')||'').trim()
-    if(!secret||!header||!orderField||!eventIdField||!eventTypeField||!statusField){
+    if((!globalSecret&&!Object.keys(tenantSecrets).length)||!header||!orderField||!eventIdField||!eventTypeField||!statusField){
       return json({error:'Bizee webhook contract is not configured'},503)
     }
-    if((req.headers.get(header)||'')!==secret) return json({error:'Unauthorized'},401)
+
+    const inboundSecret=req.headers.get(header)||''
+    const recognized=inboundSecret && (inboundSecret===globalSecret || Object.values(tenantSecrets).some(v=>String(v)===inboundSecret))
+    if(!recognized) return json({error:'Unauthorized'},401)
 
     const body=await req.json()
     const eventId=String(readField(body,eventIdField)||'')
@@ -79,6 +88,9 @@ serve(async req=>{
       .eq('provider','bizee').eq('provider_order_id',orderId).maybeSingle()
     if(reqErr) throw reqErr
     if(!reqRow) return json({ok:true,ignored:true,reason:'unknown_order'})
+
+    const tenantSecret=String(tenantSecrets[String(reqRow.tenant_id)]||globalSecret||'')
+    if(!tenantSecret || inboundSecret!==tenantSecret) return json({error:'Unauthorized'},401)
 
     const {error:eventErr}=await admin.from('formacorp_provider_events').upsert({
       tenant_id:reqRow.tenant_id,
