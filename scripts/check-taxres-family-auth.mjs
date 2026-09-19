@@ -25,6 +25,11 @@ const checks=[
   ['Nashville invite points to family password page',invite.includes("PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
   ['config enables JWT on issue',config.includes('[functions.taxres-family-sso-issue]\nverify_jwt = true')],
   ['custom-code endpoints keep gateway JWT off',config.includes('[functions.taxres-family-sso-redeem]\nverify_jwt = false')&&config.includes('[functions.taxres-family-admin-invite]')],
+  ['central employee invite requires authenticated caller',config.includes('[functions.invite-employee]\nverify_jwt = true')&&inviteEmployee.includes('Employee invite permission denied')],
+  ['central employee invite uses family password flow',inviteEmployee.includes("FAMILY_PASSWORD_PAGE='https://taxrescrm.app/family-password'")&&inviteEmployee.includes('admin.auth.admin.generateLink')],
+  ['central employee invite uses office CRM mail transport',inviteEmployee.includes('/functions/v1/send-email')&&inviteEmployee.includes("delivery:'email'")],
+  ['central employee invite preserves secure fallback link',inviteEmployee.includes("delivery:'manual'")&&inviteEmployee.includes('access_link:accessLink')],
+  ['Nashville UI uses family access bridge',employees.includes("functionName = isNashville ? 'employee-access-link' : 'invite-employee'")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
