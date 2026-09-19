@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   try {
     const now = new Date()
     const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number, demoScope=false) => {
-      const today = now.toISOString().slice(0,10)
+      const today = new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(now)
       const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: tenantStorage },{ count: storageObjectCount },{ count: pendingEsignCount },{ count: demosTodayCount },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
         supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId}),
         supabase.schema('storage').from('objects').select('id',{count:'exact',head:true}).like('name',`%${tenantId}%`),
-        supabase.from('esigns').select('id',{count:'exact',head:true}).eq('tenant_id',tenantId).in('status',['pending','sent','awaiting']),
+        supabase.from('esigns').select('id',{count:'exact',head:true}).eq('tenant_id',tenantId).or('status.ilike.pending,status.ilike.sent,status.ilike.awaiting'),
         supabase.from('calevents').select('id',{count:'exact',head:true}).eq('tenant_id',tenantId).ilike('eventType','%demo%').eq('date',today),
         supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(50),
         supabase.from('employees').select('id,email').eq('tenant_id',tenantId).ilike('status','active'),
