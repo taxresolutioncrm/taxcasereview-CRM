@@ -157,89 +157,81 @@ export default function Sidebar() {
   const [unreadInbox, setUnreadInbox] = useState(0)
   const [openTasks, setOpenTasks] = useState(0)
   const [unreadChat, setUnreadChat] = useState(0)
-  useEffect(() => {
-    if (!user?.email) return
-    let cancelled = false
-    const seenKey = `tcr_esign_signed_last_seen_${user.email}`
-
-    async function loadSignedEsignBadge() {
-      const seenAt = localStorage.getItem(seenKey) || new Date(0).toISOString()
-      const { count, error } = await supabase
-        .from('esigns')
-        .select('id', { count:'exact', head:true })
-        .eq('status', 'Signed')
-        .not('signed_at', 'is', null)
-        .gt('signed_at', seenAt)
-      if (!cancelled && !error) setSignedEsign(count || 0)
-    }
-
-    loadSignedEsignBadge()
-    const poll = setInterval(loadSignedEsignBadge, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadSignedEsignBadge() }
-    document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel(`sidebar-esign-signed-rt-${user.email}`)
-      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'esigns' }, loadSignedEsignBadge)
-      .subscribe()
-    return () => {
-      cancelled = true
-      clearInterval(poll)
-      document.removeEventListener('visibilitychange', onVisible)
-      supabase.removeChannel(ch)
-    }
-  }, [user?.email])
-
   const [pendingPayments, setPendingPayments] = useState(0)
   const [overdueInvoices, setOverdueInvoices] = useState(0)
   const [overdueReceivables, setOverdueReceivables] = useState(0)
+  const [badgeRefreshTick, setBadgeRefreshTick] = useState(0)
 
+  // One sidebar Realtime channel per signed-in employee. Older code created
+  // eight separate channels per browser, which could burst past the provider's
+  // join-rate limit when a large office signed in together.
   useEffect(() => {
-    if (!user) return
+    if (!user?.email) return
     let cancelled = false
     let debounce = null
 
-    async function loadBillingBadges() {
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const [paymentsRes, invoicesRes, arRes] = await Promise.all([
-        supabase.from('payments').select('id,status', { count:'exact', head:false }).in('status', ['Pending','TBD','No Status','New Agmt','Failed']),
-        supabase.from('invoices').select('id,status,dueDate'),
-        supabase.from('payments').select('id,payment_status,scheduled_date,trade_type').in('trade_type', ['1st Trade','2nd Trade']),
-      ])
-      if (cancelled) return
-      if (!paymentsRes.error) setPendingPayments((paymentsRes.data || []).length)
-      if (!invoicesRes.error) {
-        setOverdueInvoices((invoicesRes.data || []).filter(inv => {
-          if (inv.status === 'Paid') return false
-          if (inv.status === 'Overdue') return true
-          if (!inv.dueDate) return false
-          const due = new Date(inv.dueDate)
-          due.setHours(0,0,0,0)
-          return due < today
-        }).length)
+    async function loadSidebarBadges() {
+      const epoch = new Date(0).toISOString()
+      const chatSeen = localStorage.getItem(`tcr_chat_last_seen_${user.email}`)
+      const args = {
+        p_sms_last_seen: localStorage.getItem('tcr_sms_last_seen') || epoch,
+        p_chat_last_seen: chatSeen || null,
+        p_employee_name: employeeName || user.email || null,
+        p_signed_last_seen: localStorage.getItem(`tcr_esign_signed_last_seen_${user.email}`) || epoch,
+        p_leads_last_seen: localStorage.getItem('tcr_sidebar_seen_leads') || epoch,
+        p_clients_last_seen: localStorage.getItem('tcr_sidebar_seen_clients') || epoch,
+        p_cases_last_seen: localStorage.getItem('tcr_sidebar_seen_cases') || epoch,
       }
-      if (!arRes.error) {
-        setOverdueReceivables((arRes.data || []).filter(p => {
-          if (p.payment_status === 'Paid' || !p.scheduled_date) return false
-          const due = new Date(p.scheduled_date)
-          due.setHours(0,0,0,0)
-          return due < today
-        }).length)
+      const { data, error } = await supabase.rpc('get_sidebar_badges_v2', args)
+      if (cancelled || error || !data) {
+        if (error) console.warn('[badge] consolidated refresh skipped:', error.message)
+        return
       }
+      const path = window.location.pathname
+      const viewing = section => path === `/${section}` || path.startsWith(`/${section}/`)
+      setPendingTimeOff(Number(data.pendingTimeOff) || 0)
+      setNewLeads(viewing('leads') ? 0 : Number(data.newLeads) || 0)
+      setNewClients(viewing('clients') ? 0 : Number(data.newClients) || 0)
+      setOpenCases(viewing('cases') ? 0 : Number(data.newCases) || 0)
+      setDueSoonDeadlines(Number(data.dueSoonDeadlines) || 0)
+      setUpcomingEvents(viewing('calendar') ? 0 : Number(data.upcomingEvents) || 0)
+      setUnreadVoicemails((viewing('dialer') || viewing('voicemail')) ? 0 : Number(data.unreadVoicemails) || 0)
+      setPendingEsign(viewing('esign') ? 0 : Number(data.pendingEsign) || 0)
+      setSignedEsign(viewing('esign') ? 0 : Number(data.signedEsign) || 0)
+      setUnreadFax(viewing('fax') ? 0 : Number(data.unreadFax) || 0)
+      setUnreadSms(viewing('sms') ? 0 : Number(data.unreadSms) || 0)
+      setUnreadInbox(viewing('email') ? 0 : Number(data.unreadInbox) || 0)
+      setEmailActionNeeded(Number(data.emailActionNeeded) || 0)
+      setEmailWaiting(Number(data.emailWaiting) || 0)
+      setOpenTasks(viewing('tasks') ? 0 : Number(data.openTasks) || 0)
+      setPendingPayments(Number(data.pendingPayments) || 0)
+      setOverdueInvoices(Number(data.overdueInvoices) || 0)
+      setOverdueReceivables(Number(data.overdueReceivables) || 0)
+      setUnreadChat(viewing('chat') ? 0 : Number(data.unreadChat) || 0)
     }
 
-    function scheduleBillingReload() {
+    function scheduleReload() {
       clearTimeout(debounce)
-      debounce = setTimeout(loadBillingBadges, 500)
+      debounce = setTimeout(loadSidebarBadges, 250)
     }
 
-    loadBillingBadges()
-    const poll = setInterval(loadBillingBadges, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadBillingBadges() }
+    loadSidebarBadges()
+    const poll = setInterval(loadSidebarBadges, 180000)
+    function onVisible() {
+      if (document.visibilityState === 'visible') loadSidebarBadges()
+    }
     document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel('sidebar-billing-rt')
-      .on('postgres_changes', { event:'*', schema:'public', table:'payments' }, scheduleBillingReload)
-      .on('postgres_changes', { event:'*', schema:'public', table:'invoices' }, scheduleBillingReload)
-      .subscribe()
+
+    const ch = supabase.channel(`sidebar-badges-${user.id || user.email}`)
+    ;[
+      'time_off_requests','leads','clients','cases','deadlines','calevents',
+      'voicemails','esigns','fax_logs','sms_messages','emails','tasks',
+      'payments','invoices','chat_messages',
+    ].forEach(table => {
+      ch.on('postgres_changes', { event:'*', schema:'public', table }, scheduleReload)
+    })
+    ch.subscribe()
+
     return () => {
       cancelled = true
       clearTimeout(debounce)
@@ -247,249 +239,49 @@ export default function Sidebar() {
       document.removeEventListener('visibilitychange', onVisible)
       supabase.removeChannel(ch)
     }
-  }, [user])
+  }, [user?.id, user?.email, employeeName, badgeRefreshTick])
 
-
+  // Mark entity/communication notifications seen immediately on navigation,
+  // then refresh the consolidated badge snapshot without creating another
+  // permanent Realtime subscription.
   useEffect(() => {
-    async function loadPendingTimeOff() {
-      const { count } = await supabase.from('time_off_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending')
-      setPendingTimeOff(count || 0)
-    }
-    loadPendingTimeOff()
-    const poll = setInterval(loadPendingTimeOff, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadPendingTimeOff() }
-    document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel('sidebar-timeoff-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'time_off_requests' }, loadPendingTimeOff)
-      .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [])
-
-  // Leads/Clients/Cases/Deadlines badges used to be hardcoded to "0" here,
-  // with other pages (Leads.jsx, Cases.jsx, Deadlines.jsx) trying to patch
-  // the number in via document.getElementById — which only worked while
-  // that specific page happened to be mounted, and got wiped back to "0"
-  // the moment Sidebar re-rendered for any other reason. Computing the
-  // real counts here, the same way pendingTimeOff already does, fixes that
-  // for good regardless of which page you're on.
-  useEffect(() => {
-    async function loadCounts() {
-      const seenAt = section => localStorage.getItem(`tcr_sidebar_seen_${section}`) || new Date(0).toISOString()
-      const [summaryRes, leadsRes, clientsRes, casesRes] = await Promise.all([
-        supabase.rpc('get_sidebar_badge_counts'),
-        supabase.from('leads').select('id', { count: 'exact', head: true }).gt('created_at', seenAt('leads')),
-        supabase.from('clients').select('id', { count: 'exact', head: true }).gt('created_at', seenAt('clients')),
-        supabase.from('cases').select('id', { count: 'exact', head: true }).gt('created_at', seenAt('cases')),
-      ])
-
-      if (summaryRes.error) console.warn('[badge] sidebar summary refresh skipped:', summaryRes.error.message)
-      if (leadsRes.error) console.warn('[badge] unseen leads refresh skipped:', leadsRes.error.message)
-      if (clientsRes.error) console.warn('[badge] unseen clients refresh skipped:', clientsRes.error.message)
-      if (casesRes.error) console.warn('[badge] unseen cases refresh skipped:', casesRes.error.message)
-
-      const path = window.location.pathname
-      const viewing = section => path === `/${section}` || path.startsWith(`/${section}/`)
-
-      // Entity badges are notifications, not KPIs: only records created since
-      // that user last opened the section should light up the sidebar.
-      setNewLeads(viewing('leads') ? 0 : (leadsRes.count || 0))
-      setNewClients(viewing('clients') ? 0 : (clientsRes.count || 0))
-      setOpenCases(viewing('cases') ? 0 : (casesRes.count || 0))
-
-      const b = summaryRes.data || {}
-      // Deadlines remain an action alert because an older deadline can become
-      // urgent as its due date approaches; it is intentionally not a record total.
-      setDueSoonDeadlines(Number(b.deadlines) || 0)
-    }
-    if (!user) return
-    loadCounts()
-    const poll = setInterval(loadCounts, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadCounts() }
-    document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel('sidebar-counts-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, loadCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, loadCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, loadCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deadlines' }, loadCounts)
-      .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user])
-
-  const BADGE_COUNTS = {leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: (pendingEsign + signedEsign), email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents, payments: pendingPayments, invoices: overdueInvoices, ar: overdueReceivables }
-
-  // SIDEBAR_UNSEEN_ACK_V1
-  useEffect(() => {
+    if (!user?.email) return
+    const now = new Date().toISOString()
     const path = location.pathname
-    const section = path === '/leads' || path.startsWith('/leads/') ? 'leads'
-      : path === '/clients' || path.startsWith('/clients/') ? 'clients'
-      : path === '/cases' || path.startsWith('/cases/') ? 'cases'
-      : null
-    if (!section) return
+    if (path === '/leads' || path.startsWith('/leads/')) {
+      localStorage.setItem('tcr_sidebar_seen_leads', now); setNewLeads(0)
+    }
+    if (path === '/clients' || path.startsWith('/clients/')) {
+      localStorage.setItem('tcr_sidebar_seen_clients', now); setNewClients(0)
+    }
+    if (path === '/cases' || path.startsWith('/cases/')) {
+      localStorage.setItem('tcr_sidebar_seen_cases', now); setOpenCases(0)
+    }
+    if (path.startsWith('/sms')) {
+      localStorage.setItem('tcr_sms_last_seen', now); setUnreadSms(0)
+    }
+    if (path.startsWith('/chat')) {
+      localStorage.setItem(`tcr_chat_last_seen_${user.email}`, now); setUnreadChat(0)
+    }
+    if (path.startsWith('/esign')) {
+      localStorage.setItem(`tcr_esign_signed_last_seen_${user.email}`, now)
+      setSignedEsign(0); setPendingEsign(0)
+    }
+    if (path.startsWith('/email')) setUnreadInbox(0)
+    if (path.startsWith('/tasks')) setOpenTasks(0)
+    if (path.startsWith('/dialer') || path.startsWith('/voicemail')) setUnreadVoicemails(0)
+    if (path.startsWith('/calendar')) setUpcomingEvents(0)
+    if (path.startsWith('/fax')) setUnreadFax(0)
+    setBadgeRefreshTick(t => t + 1)
+  }, [location.pathname, user?.email])
 
-    localStorage.setItem(`tcr_sidebar_seen_${section}`, new Date().toISOString())
-    if (section === 'leads') setNewLeads(0)
-    if (section === 'clients') setNewClients(0)
-    if (section === 'cases') setOpenCases(0)
-  }, [location.pathname])
-
-  useEffect(() => {
-    async function loadCommsCounts() {
-      const smsLastSeen = localStorage.getItem('tcr_sms_last_seen') || new Date(0).toISOString()
-      const [vmRes, esignRes, faxRes, smsRes] = await Promise.all([
-        supabase.from('voicemails').select('id,is_read'),
-        supabase.from('esigns').select('id,status'),
-        supabase.from('fax_logs').select('id,is_read,direction'),
-        supabase.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'inbound').gt('created_at', smsLastSeen),
-      ])
-      // These used to fail completely silently — a schema-cache or RLS error
-      // on any one of them would just default the badge to 0 with zero
-      // indication anything was wrong. Logging now so a broken badge shows
-      // up in the browser console instead of just looking like "no new items".
-      if (vmRes.error)    console.error('[badge] voicemails query failed:', vmRes.error.message)
-      if (esignRes.error) console.error('[badge] esigns query failed:', esignRes.error.message)
-      if (faxRes.error)   console.error('[badge] fax_logs query failed:', faxRes.error.message)
-      if (smsRes.error)   console.error('[badge] sms_messages query failed:', smsRes.error.message)
-      setUnreadVoicemails((vmRes.data || []).filter(v => !v.is_read).length)
-      setPendingEsign((esignRes.data || []).filter(e => e.status === 'Awaiting').length)
-      setUnreadFax((faxRes.data || []).filter(f => f.direction === 'inbound' && !f.is_read).length)
-      setUnreadSms(smsRes.count || 0)
-    }
-    if (!user) return
-    loadCommsCounts()
-    // Realtime is the primary path, but its websocket can silently die after
-    // the tab sits idle/backgrounded for a while with no automatic recovery —
-    // so two safety nets: a periodic fallback poll, and an immediate reload
-    // the moment the tab becomes visible again (covers the common "left it
-    // open overnight, came back, nothing updated" case instantly instead of
-    // waiting for the next poll).
-    const poll = setInterval(loadCommsCounts, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadCommsCounts() }
-    document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel('sidebar-comms-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voicemails' }, loadCommsCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'esigns' }, loadCommsCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, loadCommsCounts)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sms_messages' }, loadCommsCounts)
-      .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user])
-
-  // Calendar badge — events starting today or in the next 24 hours
-  useEffect(() => {
-    async function loadCalendarBadge() {
-      const now = new Date().toISOString()
-      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      const { count } = await supabase.from('calevents').select('id', { count: 'exact', head: true })
-        .gte('date', now).lte('date', tomorrow)
-      setUpcomingEvents(count || 0)
-    }
-    if (!user) return
-    loadCalendarBadge()
-    const poll = setInterval(loadCalendarBadge, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadCalendarBadge() }
-    document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel('sidebar-calendar-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'calevents' }, loadCalendarBadge)
-      .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user])
-
-  // Clear badges when user visits those pages (instant — no refresh needed)
-  useEffect(() => {
-    if (location.pathname.startsWith('/sms')) {
-      localStorage.setItem('tcr_sms_last_seen', new Date().toISOString())
-      setUnreadSms(0)
-    }
-    if (location.pathname.startsWith('/email')) {
-      setUnreadInbox(0)
-    }
-    if (location.pathname.startsWith('/tasks')) {
-      setOpenTasks(0)
-    }
-    if (location.pathname.startsWith('/esign')) {
-      localStorage.setItem(`tcr_esign_signed_last_seen_${user.email}`, new Date().toISOString())
-      setSignedEsign(0)
-      setPendingEsign(0)
-    }
-    if (location.pathname.startsWith('/voicemail') || location.pathname.startsWith('/dialer')) {
-      setUnreadVoicemails(0)
-    }
-    if (location.pathname.startsWith('/calendar')) {
-      setUpcomingEvents(0)
-    }
-  }, [location.pathname])
-
-  useEffect(() => {
-    async function loadEmailTaskCounts() {
-      if (!user?.email) return
-      const { data, error } = await supabase.rpc('get_sidebar_badge_counts')
-      if (error) {
-        // A navigation-aborted fetch is not an application error. Keep the last
-        // successful badge values and let the next realtime/poll/visibility pass retry.
-        console.warn('[badge] email/task count refresh skipped:', error.message)
-        return
-      }
-      const b = data || {}
-      setUnreadInbox(Number(b.email) || 0)
-      setOpenTasks(Number(b.tasks) || 0)
-      setEmailActionNeeded(0)
-      setEmailWaiting(0)
-    }
-    if (!user) return
-    loadEmailTaskCounts()
-    // Realtime channel below does the actual live updating. This poll is
-    // only a safety net for the rare case realtime misses an event — 5min
-    // is plenty for a fallback; it doesn't need to run every 30s when the
-    // channel already covers normal operation, and the previous 30s
-    // interval was fetching the full emails table for every logged-in
-    // user constantly, which adds up over a full day across a team.
-    const poll = setInterval(loadEmailTaskCounts, 300000)
-    function onVisible() { if (document.visibilityState === 'visible') loadEmailTaskCounts() }
-    document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel('sidebar-email-tasks-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'emails' }, loadEmailTaskCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, loadEmailTaskCounts)
-      .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user])
-
-  // Chat badge — count messages (rebuild) newer than when this user last had /chat open
-  useEffect(() => {
-    const storageKey = `tcr_chat_last_seen_${user?.email || 'anon'}`
-    async function countUnreadChat() {
-      const lastSeen = localStorage.getItem(storageKey)
-      if (!lastSeen) { setUnreadChat(0); return }
-      const { count } = await supabase
-        .from('chat_messages')
-        .select('id', { count: 'exact', head: true })
-        .gt('created_at', lastSeen)
-        .neq('sender', employeeName || user?.email || '')
-      setUnreadChat(count || 0)
-    }
-    countUnreadChat()
-    // Clear badge when user navigates to /chat
-    if (location.pathname.includes('/chat')) {
-      localStorage.setItem(storageKey, new Date().toISOString())
-      setUnreadChat(0)
-    }
-    const poll = setInterval(countUnreadChat, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') countUnreadChat() }
-    document.addEventListener('visibilitychange', onVisible)
-    // Realtime — new chat message arrives
-    const ch = supabase.channel('sidebar-chat-badge')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
-        if (payload.new?.sender !== (employeeName || user?.email || '')) {
-          const isOnChat = window.location.pathname.includes('/chat')
-          if (isOnChat) {
-            localStorage.setItem(storageKey, new Date().toISOString())
-          } else {
-            setUnreadChat(n => n + 1)
-          }
-        }
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user?.email, employeeName, location.pathname])
+  const BADGE_COUNTS = {
+    leads:newLeads, clients:newClients, cases:openCases, deadlines:dueSoonDeadlines,
+    fax:unreadFax, sms:unreadSms, voicemails:unreadVoicemails,
+    esign:(pendingEsign+signedEsign), email:unreadInbox, tasks:openTasks,
+    chat:unreadChat, calendar:upcomingEvents, payments:pendingPayments,
+    invoices:overdueInvoices, ar:overdueReceivables,
+  }
 
   const [tagline,  setTagline]  = useState('IRS Resolution Services')
 
