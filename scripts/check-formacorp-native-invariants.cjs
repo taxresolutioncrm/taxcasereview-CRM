@@ -10,6 +10,7 @@ const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
 assert(!/bizee/i.test(content), 'FormaCorp native workflow must not depend on Bizee')
+assert(!/target="_blank"|window\.open\(/.test(content), 'FormaCorp must not open any workflow in another browser tab/window')
 assert(!/orders\.bizee\.com|bizee\.com/i.test(content), 'External Bizee URL detected')
 assert(!/popup=yes|formacorp_bizee_pro|Open Bizee Secure Window/i.test(content), 'External Bizee popup workflow detected')
 assert(!/<iframe[^>]+bizee/i.test(content), 'Bizee iframe workflow detected')
