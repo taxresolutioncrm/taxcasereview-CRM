@@ -525,8 +525,8 @@ export default function Chat() {
       )
     } else {
       const res = await supabase.from('chat_messages').select('*').eq('channel', channelId)
-        .order('created_at', { ascending: true }).limit(300)
-      data = res.data; error = res.error
+        .order('created_at', { ascending: false }).limit(300)
+      data = (res.data || []).reverse(); error = res.error
     }
     if (!silent) setLoading(false)
     if (error) {
@@ -549,11 +549,17 @@ export default function Chat() {
       filter: `channel=eq.${channelId}` }, ({ new: msg }) => {
       loadMessages(true)
     }).subscribe()
-    // 60-second heartbeat as a fallback for any missed realtime events.
+    // Realtime is authoritative. Keep a low-frequency safety heartbeat and
+    // refresh immediately when a backgrounded tab becomes visible again.
+    const onVisible = () => { if (document.visibilityState === 'visible') loadMessages(true) }
+    document.addEventListener('visibilitychange', onVisible)
     clearInterval(pollerRef.current)
-    pollerRef.current = setInterval(() => loadMessages(true), 60000)
+    pollerRef.current = setInterval(() => {
+      if (document.visibilityState === 'visible') loadMessages(true)
+    }, 300000)
     return () => {
       clearInterval(pollerRef.current)
+      document.removeEventListener('visibilitychange', onVisible)
       supabase.removeChannel(rt)
     }
   }, [loadMessages, channelId])
