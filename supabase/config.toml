@@ -125,6 +125,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.xero-oauth-callback]
 verify_jwt = false
+[functions.invite-employee]
+verify_jwt = true
 [functions.quickbooks-sync]
 verify_jwt = true
 [functions.xero-sync]
