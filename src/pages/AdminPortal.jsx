@@ -5637,6 +5637,19 @@ function CommandCenter() {
                   : (selectedTaxresFeedKey ? {} : normalizeTaxresMetrics(scopedFallback)))
               : (liveAggregate || {})
             const hasLiveTaxresMetrics = activeTenant ? Boolean(selectedTaxresFeed || !selectedTaxresFeedKey) : Boolean(liveAggregate)
+            // Licensed seats are billing/provisioning data, not CRM activity.
+            // Keep this metric on the central tenant directory, where Nashville's
+            // contracted seat count is authoritative even though its CRM lives remotely.
+            const taxresSeatCount = localTaxRes.reduce((sum, tenant) => {
+              const billed = Number(tenant.billing_seats || 0)
+              const active = Number(tenant.employee_count || 0)
+              return sum + (billed > 0 ? billed : active)
+            }, 0)
+            const selectedTaxresSeats = activeTenant
+              ? (Number(activeTenant.billing_seats || 0) > 0
+                  ? Number(activeTenant.billing_seats)
+                  : Number(activeTenant.employee_count || 0))
+              : taxresSeatCount
             const taxresStorageLabel = !hasLiveTaxresMetrics
               ? '—'
               : taxresMetrics.storage_files > 0
@@ -5675,7 +5688,7 @@ function CommandCenter() {
             {(activeTenant ? [
               { label:`Clients — ${activeTenant.firm_name}`, value:String(crmProduct==='taxres_crm' ? (taxresMetrics.clients ?? '—') : metricValue('client_count','active_clients','—')), icon:'🏢', color:'#10b981' },
               { label:`Leads — ${activeTenant.firm_name}`, value:String(crmProduct==='taxres_crm' ? (taxresMetrics.leads ?? '—') : metricValue('lead_count','active_leads','—')), icon:'👤', color:'#a855f7' },
-              { label:`Seats — ${activeTenant.firm_name}`, value:String(crmProduct==='taxres_crm' ? (taxresMetrics.seats ?? '—') : metricValue('employee_count','active_staff','—')), icon:'👥', color:'#6366f1' },
+              { label:`Seats — ${activeTenant.firm_name}`, value:String(crmProduct==='taxres_crm' ? selectedTaxresSeats : metricValue('employee_count','active_staff','—')), icon:'👥', color:'#6366f1' },
               { label:`Jobs / Cases — ${activeTenant.firm_name}`, value:String(crmProduct==='taxres_crm' ? (taxresMetrics.cases ?? '—') : metricValue('cases_count','open_jobs','—')), icon:'📁', color:'#6366f1' },
               { label:`Pending Tasks — ${activeTenant.firm_name}`, value:String(crmProduct==='taxres_crm' ? (taxresMetrics.pending_tasks ?? '—') : metricValue('tasks_count','pending_tasks','—')), icon:'✅', color:'#0ea5e9' },
               { label:`Outstanding Invoices — ${activeTenant.firm_name}`, value:String(crmProduct==='taxres_crm' ? (taxresMetrics.outstanding_invoices ?? '—') : metricValue('transactions_count','outstanding_invoices','—')), icon:'💳', color:'#f59e0b' },
@@ -5689,7 +5702,7 @@ function CommandCenter() {
             ] : [
               { label:'Total Clients — TaxRes Offices', value:String(taxresMetrics.clients ?? '—'), icon:'🏢', color:'#10b981' },
               { label:'Total Leads — TaxRes Offices', value:String(taxresMetrics.leads ?? '—'), icon:'👤', color:'#a855f7' },
-              { label:'Total Seats — TaxRes Offices', value:String(taxresMetrics.seats ?? '—'), icon:'👥', color:'#6366f1' },
+              { label:'Total Seats — TaxRes Offices', value:String(selectedTaxresSeats), icon:'👥', color:'#6366f1' },
               { label:'Pending E-Signs', value:String(taxresMetrics.pending_esigns ?? '—'), icon:'✍️', color:'#8b5cf6' },
               { label:'Demos Today', value:String(taxresMetrics.demos_today ?? '—'), icon:'📅', color:'#0ea5e9' },
               { label:'File Storage', value:(taxresLiveData || taxresScopeData) ? taxresStorageLabel : '—', icon:'💾', color:'#f59e0b' },

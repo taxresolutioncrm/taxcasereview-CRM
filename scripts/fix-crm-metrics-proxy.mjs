@@ -31,6 +31,9 @@ for (const required of [
   "throw new Error(\`Live TaxRes metrics unavailable for: \${stillMissing.join(', ')}\`)",
   "const taxresMetrics = activeTenant",
   ": (liveAggregate || {})",
+  "const taxresSeatCount = localTaxRes.reduce",
+  "tenant.billing_seats || 0",
+  "value:String(selectedTaxresSeats)",
 ]) {
   if (!s.includes(required)) throw new Error(`Admin metrics contract missing: ${required}`)
 }
