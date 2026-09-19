@@ -7,6 +7,11 @@ const signPage=fs.readFileSync('src/pages/SignPage.jsx','utf8')
 const esignArchive=fs.readFileSync('supabase/functions/esign-archive-upload/index.ts','utf8')
 const esignMigration=fs.readFileSync('supabase/migrations/20260919213000_taxres_family_esign_tokens.sql','utf8')
 const bookingWidget=fs.readFileSync('src/components/BookingWidget.jsx','utf8')
+const irsFormFiller=fs.readFileSync('src/components/IRSFormFiller.jsx','utf8')
+const docUtils=fs.readFileSync('src/lib/docUtils.js','utf8')
+const organizerRpcMigration=fs.readFileSync('supabase/migrations/20260919235000_taxres_family_organizer_public_rpcs.sql','utf8')
+const sendSms=fs.readFileSync('supabase/functions/send-sms/index.ts','utf8')
+const sendFax=fs.readFileSync('supabase/functions/send-fax/index.ts','utf8')
 const sendFax=fs.readFileSync('supabase/functions/send-fax/index.ts','utf8')
 const app=fs.readFileSync('src/App.jsx','utf8')
 const irsForms=fs.readFileSync('src/lib/irsFormUtils.js','utf8')
@@ -30,6 +35,15 @@ const checks=[
   ['quick actions do not trigger automatic clipboard permission prompts',!clients.includes('navigator.clipboard.writeText(')],
   ['quick-action dependencies avoid native browser dialogs',!bookingWidget.includes('alert(')&&!bookingWidget.includes('confirm(')&&!bookingWidget.includes('prompt(')&&!clients.includes('alert(')&&!clients.includes('confirm(')&&!clients.includes('prompt(')],
   ['IRS pre-fill quick action is wired',clients.includes('label="Pre-Fill 8821/2848"')&&clients.includes('setFillerClient')],
+  ['IRS form signing uses tokenized links and retained storage paths',irsFormFiller.includes('/sign/')&&irsFormFiller.includes('signer_token')&&irsFormFiller.includes('storage_path: path')],
+  ['IRS form SMS uses tenant-aware Edge Function',irsFormFiller.includes("functions.invoke('send-sms'")&&!irsFormFiller.includes('signalwire_backend')],
+  ['IRS form flow does not trigger clipboard permission prompts',!irsFormFiller.includes('navigator.clipboard.writeText')],
+  ['State POA signing is tenant-bound and uses authenticated delivery',clients.includes('State POA')&&clients.includes('tenant_id: FIRM.tenantId || undefined')&&clients.includes("functions.invoke('send-sms'")&&clients.includes("functions.invoke('send-email'")],
+  ['Addendum signing retains secure storage path and tenant binding',docUtils.includes('sendAddendumForSignature')&&docUtils.includes('storage_path: path')&&docUtils.includes('tenant_id: FIRM.tenantId || undefined')],
+  ['Nashville organizer public link RPCs are provisioned',organizerRpcMigration.includes('organizer_get')&&organizerRpcMigration.includes('organizer_save_answers')&&organizerRpcMigration.includes('organizer_submit')&&organizerRpcMigration.includes('grant execute')],
+  ['Demo and CloudCPA SMS relay through TaxRes when needed',sendSms.includes("'ADMIN'")&&sendSms.includes("'TRC-003'")&&sendSms.includes('61a89aef-0e7e-4ea2-b222-44ab2024655a')],
+  ['Demo and CloudCPA fax relay through TaxRes when needed',sendFax.includes("'ADMIN'")&&sendFax.includes("'TRC-003'")&&sendFax.includes('61a89aef-0e7e-4ea2-b222-44ab2024655a')],
+  ['Nashville fax quick action avoids duplicate provider logs',clients.includes("faxBackendAlreadyLogs")&&clients.includes("nashville.taxrescrm.app")],
   ['State POA quick action is wired',clients.includes('label="Pre-Fill State POA"')&&clients.includes('sendStatePOA')&&clients.includes('setPoaModal(true)')],
   ['Addendum quick action is wired',clients.includes('label="Addendum"')&&clients.includes('sendAddendumForSignature')&&clients.includes('sendAddendum')],
   ['Addendum fails closed unless its secure PDF link exists',docUtils.includes('Could not create secure addendum link')&&docUtils.includes('storage_path: path')],
