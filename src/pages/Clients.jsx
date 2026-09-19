@@ -241,11 +241,13 @@ function InlineFaxForm({ client, onClose, showToast, onLogged }) {
       if (invokeErr) throw invokeErr
       if (!resData?.success) throw new Error(resData?.error || 'Fax provider rejected the send')
 
-      await supabase.from('fax_logs').insert([{
-        to_number:toFull, client_name:client?.name, subject, notes,
-        file_name:file?.name||null, file_url:fileUrl, status:'Sent',
-        ...(resData?.provider === 'telnyx' ? { telnyx_fax_id: resData?.sid || null } : { signalwire_fax_id: resData?.sid || null }), sent_at:new Date().toISOString(), created_at:new Date().toISOString()
-      }])
+      if (!resData?.backend_logged) {
+        await supabase.from('fax_logs').insert([{
+          to_number:toFull, client_name:client?.name, subject, notes,
+          file_name:file?.name||null, file_url:fileUrl, status:'Sent',
+          ...(resData?.provider === 'telnyx' ? { telnyx_fax_id: resData?.sid || null } : { signalwire_fax_id: resData?.sid || null }), sent_at:new Date().toISOString(), created_at:new Date().toISOString()
+        }])
+      }
 
       const { data: { user } } = await supabase.auth.getUser()
       const actor = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
