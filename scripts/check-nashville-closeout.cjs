@@ -39,6 +39,11 @@ const checks=[
     "sync_document_client_identity",
     "before insert or update of client_id, client, clientname, tenant_id",
   ]],
+  ['src/pages/Employees.jsx',[
+    "supabase.functions.invoke('employee-access-link'",
+    "Employee CRM Access",
+    "Send setup / password reset link",
+  ]],
   ['src/pages/Leads.jsx',[
     "payload.eventType === 'DELETE'",
     "lead_id=eq.${id}",
@@ -58,6 +63,8 @@ const checks=[
     "setInterval(() => {",
     "}, 300000)",
     "(res.data || []).reverse()",
+    "% 10000",
+    "presenceReadyRef.current",
   ]],
   ['src/pages/EmployeePortal.jsx',[
     "document.visibilityState === 'visible'",
