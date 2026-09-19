@@ -55,9 +55,15 @@ const actionBlock = `  async function runMailboxAction(emailIds, action) {
 
     async function invokeChunk(chunk, attempt = 0) {
       try {
-        const { data, error } = await supabase.functions.invoke('gmail-sync-cron', {
-          body: { mode: 'message_action', email_ids: chunk, action },
-        })
+        const chunkRows = chunk.map(id => emails.find(row => String(row.id) === String(id))).filter(Boolean)
+        const useM365 = isNashville && chunkRows.length > 0 && chunkRows.every(row => !!row.m365_message_id)
+        const { data, error } = useM365
+          ? await supabase.functions.invoke('m365-mail-gateway', {
+              body: { action:'message_action', email_ids:chunk, message_action:action },
+            })
+          : await supabase.functions.invoke('gmail-sync-cron', {
+              body: { mode:'message_action', email_ids:chunk, action },
+            })
         if (error) throw new Error(error.message || String(error))
         if (!data?.ok) {
           const detail = data?.failures?.[0]?.error || data?.error || 'Mailbox action failed'
