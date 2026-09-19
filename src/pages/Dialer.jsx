@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useCall } from '../context/CallContext'
 import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
+import { FIRM } from '../lib/firmBranding'
 
 const OUTCOME_C = {
   'Connected': 'bg', 'No Answer': 'bn', 'Voicemail': 'ba',
@@ -56,6 +57,8 @@ export default function Dialer() {
   const [attachResults, setAttachResults] = useState([])
   const [attaching, setAttaching]   = useState(false)
   const prevLogModalRef = useRef(false)
+  const phoneDirectoryRef = useRef([])
+  const callLogReloadTimerRef = useRef(null)
 
   // Page-local wrapper around the shared connection's startCall.
   function startCall(lead) { startCallShared(lead) }
@@ -74,7 +77,7 @@ export default function Dialer() {
   }, [logModal])
 
   useEffect(() => {
-    loadLeads(); loadCallLog(); loadVoicemails(); loadRecordings()
+    loadLeads(); loadPhoneDirectory().then(()=>loadCallLog()); loadVoicemails(); loadRecordings()
     // Pick up number passed from client phone link
     const pre = sessionStorage.getItem('dialerNumber')
     if (pre) {
@@ -91,7 +94,7 @@ export default function Dialer() {
   // whenever the Dialer becomes visible/focused, and whenever staff opens the
   // Call History tab, so recent calls never wait on a hard refresh.
   useEffect(() => {
-    const refresh = () => loadCallLog()
+    const refresh = () => loadPhoneDirectory().then(()=>loadCallLog())
     const onVisibility = () => { if (document.visibilityState === 'visible') refresh() }
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
@@ -106,18 +109,29 @@ export default function Dialer() {
   }, [tab])
 
   useEffect(() => {
+    const scheduleReload = () => {
+      if (callLogReloadTimerRef.current) clearTimeout(callLogReloadTimerRef.current)
+      callLogReloadTimerRef.current = setTimeout(() => loadCallLog(), 250)
+    }
+    const tenantFilter = FIRM.tenantId ? { filter: `tenant_id=eq.${FIRM.tenantId}` } : {}
     const channel = supabase
       .channel('dialer-calllog-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'calllog' }, () => loadCallLog())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calllog', ...tenantFilter }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_calls', ...tenantFilter }, scheduleReload)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      if (callLogReloadTimerRef.current) clearTimeout(callLogReloadTimerRef.current)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
-  // While a call is active or has just ended, poll the authoritative call tables
-  // briefly so status/completion appears in History without requiring any reload.
+  // Realtime handles normal history updates. Keep a low-frequency safety poll
+  // only while a call is actively in progress, when provider state can change
+  // without a new durable calllog row yet.
   useEffect(() => {
     loadCallLog()
-    const t = setInterval(loadCallLog, calling ? 2500 : 5000)
+    if (!calling) return
+    const t = setInterval(loadCallLog, 10000)
     return () => clearInterval(t)
   }, [calling])
 
@@ -133,25 +147,31 @@ export default function Dialer() {
     if (data) setLeads(data)
   }
 
+  async function loadPhoneDirectory() {
+    const [{ data: allLeads, error: leadsError }, { data: allClients, error: clientsError }] = await Promise.all([
+      supabase.from('leads').select('id,name,phone').limit(5000),
+      supabase.from('clients').select('id,name,phone').limit(5000),
+    ])
+    if (leadsError || clientsError) {
+      console.error('loadPhoneDirectory error:', leadsError || clientsError)
+      return
+    }
+    phoneDirectoryRef.current = [...(allLeads || []), ...(allClients || [])]
+  }
+
   async function loadCallLog() {
-    // Durable call history now comes from calllog. Every outbound attempt is
-    // inserted there server-side by the outbound_calls trigger, so the Dialer
-    // no longer depends on browser access to outbound_calls or on a post-call
-    // modal being saved. Inbound provider rows are merged in until inbound
-    // history is migrated to the same durable path.
+    // Durable call history now comes from calllog. Contact matching is cached
+    // separately so a 100-user dialer fleet does not download the entire
+    // client/lead directory every few seconds.
     const [
       { data: inbound, error: inboundError },
       { data: logged, error: loggedError },
-      { data: allLeads, error: leadsError },
-      { data: allClients, error: clientsError },
     ] = await Promise.all([
       supabase.from('incoming_calls').select('*').order('created_at', { ascending: false }).limit(150),
       supabase.from('calllog').select('*').order('created_at', { ascending: false }).limit(300),
-      supabase.from('leads').select('id,name,phone').limit(2000),
-      supabase.from('clients').select('id,name,phone').limit(2000),
     ])
 
-    const firstError = loggedError || inboundError || leadsError || clientsError
+    const firstError = loggedError || inboundError
     if (firstError) {
       console.error('loadCallLog error:', firstError)
       showToast('Call history failed to load: ' + firstError.message)
@@ -160,8 +180,7 @@ export default function Dialer() {
     function matchPhone(phone) {
       if (!phone) return null
       const digits = phone.replace(/\D/g,'').slice(-10)
-      const all = [...(allLeads||[]), ...(allClients||[])]
-      const found = all.find(c => c.phone?.replace(/\D/g,'').slice(-10) === digits)
+      const found = phoneDirectoryRef.current.find(c => c.phone?.replace(/\D/g,'').slice(-10) === digits)
       return found?.name || null
     }
 
