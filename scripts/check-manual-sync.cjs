@@ -71,7 +71,7 @@ assert(!/complete TaxRes CRM platform as configured for Tax Case Review and Nash
 
 const requiredWorkflowSignals = [
   ['employee CRM invitation', /Send the CRM invitation/],
-  ['employee password setup/recovery', /TaxRes family password setup flow/],
+  ['employee password setup/recovery', /same TaxRes family identity|same TaxRes family access flow|TaxRes family password/],
   ['e-sign progress audit', /Last Viewed \/ Progress/],
   ['ID-authoritative document filing', /authoritative client ID/],
   ['Book Whip', /Book Whip is the monthly client\/associate\/para production review/],

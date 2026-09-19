@@ -266,23 +266,33 @@ export default function Employees() {
   async function inviteEmployeeLogin(empLike) {
     const email = String(empLike?.email || '').trim().toLowerCase()
     if (!email) { showToast('Employee email is required before sending a login invite.', 'err'); return { ok:false } }
-    const { data, error } = await supabase.functions.invoke('invite-employee', {
-      body: {
-        email,
-        name: String(empLike?.name || '').trim(),
-        redirect_to: window.location.origin + '/?invite=1'
-      }
-    })
+
+    // Nashville is on its own Supabase project and must bridge to the shared
+    // TaxRes-family identity through employee-access-link. Every other TaxRes
+    // family office on the central project uses invite-employee. Both paths
+    // land on the same /family-password setup flow.
+    const isNashville = window.location.hostname.toLowerCase() === 'nashville.taxrescrm.app'
+    const functionName = isNashville ? 'employee-access-link' : 'invite-employee'
+    const body = isNashville
+      ? { mode:'admin', email }
+      : { email, name:String(empLike?.name || '').trim(), app_origin:window.location.origin }
+
+    const { data, error } = await supabase.functions.invoke(functionName, { body })
     if (error || data?.error) {
       showToast('Login invite failed: ' + (data?.error || error?.message || 'Unknown error'), 'err')
       return { ok:false }
     }
-    if (data?.already_exists) {
-      showToast(data?.reset_sent ? 'CRM access link sent to ' + email : 'This employee already has a CRM login.')
-      return { ok:true, already_exists:true }
+
+    const accessLink = String(data?.access_link || '').trim()
+    if (data?.delivery === 'manual' && accessLink) {
+      try { await navigator.clipboard.writeText(accessLink) } catch (_) {}
+      showToast('Secure CRM access link prepared and copied. Email delivery is unavailable for this office.', 'err')
+      return { ok:true, manual:true, access_link:accessLink }
     }
-    showToast('Login invite sent to ' + email)
-    return { ok:true, invited:true }
+
+    const recovery = data?.mode === 'recovery' || data?.already_exists || data?.reset_sent
+    showToast((recovery ? 'CRM password reset email sent to ' : 'CRM login invite sent to ') + email)
+    return { ok:true, invited:!recovery, already_exists:recovery }
   }
 
   async function save(silent = false) {
@@ -368,13 +378,12 @@ export default function Employees() {
 
   async function sendReset() {
     if (!resetEmail) return
+    const emp = employees.find(e => String(e.email || '').trim().toLowerCase() === String(resetEmail).trim().toLowerCase())
+    if (!emp) return showToast('Employee record not found for this office.', 'err')
     setResetSending(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: window.location.origin + '/'
-    })
+    const result = await inviteEmployeeLogin(emp)
     setResetSending(false)
-    if (error) return showToast(error.message, 'err')
-    showToast('Password reset link sent!')
+    if (!result?.ok) return
     setShowReset(false)
     setResetEmail('')
   }
