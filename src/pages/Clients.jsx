@@ -926,10 +926,9 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
 
 export default function Clients() {
   const navigate = useNavigate()
-  const [clientSearchParams] = useSearchParams()
-  const openedFromCases = clientSearchParams.get('from') === 'cases'
   const { id: urlId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
+  const openedFromCases = searchParams.get('from') === 'cases'
   const { user, searchQ, myTenantId } = useApp()
 
   // Cache settings at load time — avoids re-fetching signalwire_backend on every action
@@ -979,6 +978,9 @@ export default function Clients() {
   const [addModalTab, setAddModalTab] = useState('addendum') // 'addendum' | 'charge'
   const [addForm,     setAddForm]     = useState({ resolutionFee:'', paymentPlan:'', startDate:'', notes:'', services:[], sendVia:'email' })
   const [addendumSending, setAddendumSending] = useState(false)
+  const [rewriteModal, setRewriteModal] = useState(false)
+  const [rewriteSaving, setRewriteSaving] = useState(false)
+  const [rewriteForm, setRewriteForm] = useState({ resolutionFee:'', paymentPlan:'', startDate:'', notes:'', services:[], sendVia:'email' })
   const [showChargeModal, setShowChargeModal] = useState(false)
   const [poaModal, setPoaModal] = useState(false)
   const [poaClient, setPoaClient] = useState(null)
@@ -1751,6 +1753,78 @@ export default function Clients() {
     showToast(emailSent||smsSent ? '✅ Addendum sent for signature!' : '⚠️ Link copied — configure email/SMS to send automatically')
   }
 
+  async function saveRewritePlan() {
+    if (!rewriteForm.resolutionFee || !detail) { showToast('Enter the new resolution fee first'); return }
+    const fee = Number(rewriteForm.resolutionFee)
+    if (!Number.isFinite(fee) || fee <= 0) { showToast('Enter a valid resolution fee'); return }
+    const via = rewriteForm.sendVia || 'email'
+    if ((via === 'email' || via === 'both') && !detail.email) { showToast('Client has no email on file'); return }
+    if ((via === 'sms' || via === 'both') && !detail.phone) { showToast('Client has no phone on file'); return }
+
+    setRewriteSaving(true)
+    try {
+      const actor = resolveActorName(user, employees)
+      const plan = {
+        ...rewriteForm,
+        services: Array.isArray(rewriteForm.services) ? rewriteForm.services : [],
+      }
+
+      // Generate the replacement agreement first. Client terms are not changed
+      // unless a valid token-bound signing request exists.
+      const res = await sendAddendumForSignature(detail, plan, supabase, actor)
+      if (res.error) throw new Error(res.error)
+      const url = res.url
+      await navigator.clipboard.writeText(url).catch(()=>{})
+
+      let emailSent=false, smsSent=false
+      if ((via==='email'||via==='both') && detail.email) {
+        const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', { body: {
+          tenant_id: FIRM.tenantId || undefined,
+          to: detail.email,
+          subject: `Action Required: Review Your New Payment Plan — ${firmName()}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Updated Service Plan</h2><p>Hi <strong>${detail.name}</strong>,</p><p>Your updated service/payment plan is ready for review and signature.</p><p><strong>Resolution fee:</strong> ${fee.toLocaleString()}${plan.paymentPlan ? `<br><strong>New payment:</strong> ${Number(plan.paymentPlan).toLocaleString()}/mo` : ''}${plan.startDate ? `<br><strong>Start date:</strong> ${plan.startDate}` : ''}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign New Plan</a></p><p>If you have questions, reply to this message before signing.</p><p><strong>${firmName()}</strong></p></div>`
+        }})
+        emailSent = !emailErr && emailData?.success !== false
+      }
+      if ((via==='sms'||via==='both') && detail.phone) {
+        const { data:smsData, error:smsErr } = await supabase.functions.invoke('send-sms', { body: {
+          to: detail.phone,
+          body: `${firmName()}: your updated service/payment plan is ready to review and sign: ${url}`,
+          client_id: detail.id || null
+        }})
+        smsSent = !smsErr && !!smsData?.success
+      }
+
+      const nextChanges = Number(detail.payment_plan_changes || 0) + 1
+      const { error:updateErr } = await supabase.from('clients').update({
+        contractFee: fee,
+        services: plan.services,
+        payment_plan_changes: nextChanges,
+      }).eq('id', detail.id)
+      if (updateErr) throw updateErr
+
+      const servicesText = plan.services.length ? ` · Services: ${plan.services.join(', ')}` : ''
+      const paymentText = plan.paymentPlan ? ` · New payment: ${Number(plan.paymentPlan).toLocaleString()}/mo` : ''
+      const startText = plan.startDate ? ` · Starts: ${plan.startDate}` : ''
+      await insertClientNote({
+        clientname: detail.name,
+        content: `🔄 Rewrite created — Default → New Plan · Resolution fee: ${fee.toLocaleString()}${paymentText}${startText}${servicesText}`,
+        created_by: actor,
+        created_at: new Date().toISOString(),
+      })
+
+      const { data:fresh } = await supabase.from('clients').select('*').eq('id',detail.id).single()
+      if (fresh) setDetail(fresh)
+      loadRelated(detail.name, detail.id)
+      setRewriteModal(false)
+      showToast(emailSent||smsSent ? '✅ Rewrite saved and sent for signature!' : '✅ Rewrite saved — signing link copied')
+    } catch (e) {
+      showToast('Rewrite error: ' + (e?.message || 'Unable to create new plan'))
+    } finally {
+      setRewriteSaving(false)
+    }
+  }
+
   async function addPaymentForClient() {
     if (!payForm.amount||!detail) return
     setSavingPay(true)
@@ -2106,7 +2180,7 @@ export default function Clients() {
         <div className="card" style={{marginBottom:12}}>
           <div style={{fontSize:10,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Quick Actions</div>
           <div className="ovx">
-          <div style={{display:'grid',gridTemplateColumns:'repeat(9, 1fr)',gap:8,minWidth:800}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(10, 1fr)',gap:8,minWidth:800}}>
             <ActionBtn color="#0891b2" icon="📅" label="Schedule" sub="Book Appointment" onClick={()=>setBookingClient(c)}/>
             <ActionBtn color="#7c3aed" icon="✅" label="Add Task" sub="Assign Work" onClick={()=>{setTaskTitle('');setTaskPriority('Normal');setTaskDueDate('');setTaskModal(true)}}/>
             <ActionBtn color="#dc2626" icon="📠" label="Send Fax" sub="SignalWire Fax" onClick={()=>{setFaxClient(c);setFaxModal(true)}}/>
@@ -2118,7 +2192,8 @@ export default function Clients() {
               } catch (err) { showToast('Error opening form: ' + err.message) }
             }}/>
             <ActionBtn color="#0f766e" icon="🏛️" label="Pre-Fill State POA" sub={c.state ? c.state+' Form' : 'State Form'} onClick={()=>{ setPoaClient(c); setPoaModal(true) }}/>
-            <ActionBtn color="#d97706" icon="📋" label="Addendum" sub="Add Services" onClick={()=>{setAddForm({resolutionFee:String(c.contractFee||''),paymentPlan:'',startDate:'',notes:'',services:(()=>{try{return JSON.parse(c.services||'[]')}catch{return []}})(),sendVia:'email',trade1Amount:c.trade1Amount||'',trade1Date:c.trade1Date||'',trade2Amount:c.trade2Amount||'',trade2Date:c.trade2Date||'',trade3Amount:c.trade3Amount||'',trade3Date:c.trade3Date||''});setAddModal(true)}}/>
+            <ActionBtn color="#d97706" icon="📋" label="Addendum" sub="Add Services" onClick={()=>{setAddForm({resolutionFee:String(c.contractFee||''),paymentPlan:'',startDate:'',notes:'',services:Array.isArray(c.services)?c.services:[],sendVia:'email',trade1Amount:c.trade1Amount||'',trade1Date:c.trade1Date||'',trade2Amount:c.trade2Amount||'',trade2Date:c.trade2Date||'',trade3Amount:c.trade3Amount||'',trade3Date:c.trade3Date||''});setAddModal(true)}}/>
+            <ActionBtn color="#991b1b" icon="🔄" label="Rewrite" sub="Default → New Plan" onClick={()=>{setRewriteForm({resolutionFee:String(c.contractFee||''),paymentPlan:'',startDate:'',notes:'',services:Array.isArray(c.services)?c.services:[],sendVia:'email'});setRewriteModal(true)}}/>
             <ActionBtn color="#0ea5e9" icon="🔓" label="Client Portal" sub="Compliance Access" onClick={()=>{setPortalClient(c);setPortalModal(true)}}/>
             <ActionBtn color="#4338ca" icon="🧾" label="Tax Organizer" sub="Send for Filing" onClick={()=>{setOrgClient(c);setOrgModal(true)}}/>
           </div>
@@ -3107,6 +3182,58 @@ export default function Clients() {
                   💳 Open Stripe Charge Form →
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {rewriteModal&&(
+          <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setRewriteModal(false)}>
+            <div className="modal" style={{width:580,maxHeight:'88vh',overflowY:'auto'}}>
+              <div className="mh">
+                <span className="mt">🔄 Rewrite — Default → New Plan</span>
+                <button className="xbtn" onClick={()=>setRewriteModal(false)}>&times;</button>
+              </div>
+              <div style={{fontSize:12,color:'var(--t3)',marginBottom:16,lineHeight:1.6}}>
+                Replace the defaulted terms with a new service/payment plan for <strong>{c.name}</strong>. The new plan is saved to the client file and sent as a fresh token-secured agreement.
+              </div>
+              <div className="fg2">
+                <div className="field"><label>New Resolution Fee ($) *</label>
+                  <input type="text" inputMode="decimal" value={formatMoneyInput(rewriteForm.resolutionFee)}
+                    onChange={e=>setRewriteForm(f=>({...f,resolutionFee:parseMoney(e.target.value)}))}/>
+                </div>
+                <div className="field"><label>New Monthly Payment ($)</label>
+                  <input type="text" inputMode="decimal" value={formatMoneyInput(rewriteForm.paymentPlan)}
+                    onChange={e=>setRewriteForm(f=>({...f,paymentPlan:parseMoney(e.target.value)}))}/>
+                </div>
+              </div>
+              <div className="field"><label>New Plan Start Date</label>
+                <input type="date" value={rewriteForm.startDate} onChange={e=>setRewriteForm(f=>({...f,startDate:e.target.value}))}/>
+              </div>
+              <div className="field"><label>Services on New Plan</label>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:7,marginTop:6}}>
+                  {RESOLUTION_SERVICES.map(svc=>{
+                    const on=(rewriteForm.services||[]).includes(svc)
+                    return <label key={svc} style={{display:'flex',gap:7,alignItems:'center',fontSize:12,cursor:'pointer'}}>
+                      <input type="checkbox" checked={on} onChange={()=>setRewriteForm(f=>({...f,services:on?f.services.filter(x=>x!==svc):[...f.services,svc]}))}/>
+                      <span>{svc}</span>
+                    </label>
+                  })}
+                </div>
+              </div>
+              <div className="field"><label>Internal / Plan Notes</label>
+                <textarea value={rewriteForm.notes} onChange={e=>setRewriteForm(f=>({...f,notes:e.target.value}))} style={{minHeight:70}}/>
+              </div>
+              <div className="field"><label>Send Via</label>
+                <select value={rewriteForm.sendVia} onChange={e=>setRewriteForm(f=>({...f,sendVia:e.target.value}))}>
+                  <option value="email">Email</option>
+                  <option value="sms">Text Message</option>
+                  <option value="both">Email + Text</option>
+                </select>
+              </div>
+              <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontWeight:700}}
+                disabled={rewriteSaving||!rewriteForm.resolutionFee} onClick={saveRewritePlan}>
+                {rewriteSaving?'Creating New Plan…':'🔄 Save & Send New Plan'}
+              </button>
             </div>
           </div>
         )}
