@@ -477,8 +477,9 @@ export default function Sidebar() {
     function onVisible() { if (document.visibilityState === 'visible') countUnreadChat() }
     document.addEventListener('visibilitychange', onVisible)
     // Realtime — new chat message arrives
+    const chatCfg = { event:'INSERT', schema:'public', table:'chat_messages', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('sidebar-chat-badge')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
+      .on('postgres_changes', chatCfg, (payload) => {
         if (payload.new?.sender !== (employeeName || user?.email || '')) {
           const isOnChat = window.location.pathname.includes('/chat')
           if (isOnChat) {
