@@ -470,6 +470,21 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     finally{setBusy('')}
   }
 
+  async function syncBizeeDocuments(request) {
+    if(!request?.provider_order_id){showToast?.('No Bizee provider order is linked to this request yet.','err');return}
+    setBusy('bizee-docs-'+request.id)
+    try{
+      const {data,error}=await supabase.functions.invoke('formacorp-bizee',{
+        body:{action:'documents',case_id:caseRecord.id,order_id:request.provider_order_id}
+      })
+      if(error||!data?.ok)throw error||new Error(data?.error||'Bizee document sync failed')
+      await load()
+      showToast?.(`✅ Bizee documents synced inside FormaCorp (${Number(data?.count||0)})`)
+    }catch(e){
+      showToast?.('Bizee document sync failed: '+(e?.message||e),'err')
+    }finally{setBusy('')}
+  }
+
   async function syncBizeeRequest(request) {
     if(!request?.provider_order_id){showToast?.('No Bizee provider order is linked to this request yet.','err');return}
     setBusy('bizee-sync-'+request.id)
@@ -682,10 +697,11 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       </div>
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
       <div style={{marginTop:12}}>
-        {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
+        {requests.length===0?<div style={{fontSize:12,color:'var(--t3)'}}>No ongoing company-service requests yet.</div>:requests.map(r=><div key={r.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto auto auto',gap:8,alignItems:'center',padding:'8px 0',borderTop:'1px solid var(--br)'}}>
           <div><div style={{fontSize:12,fontWeight:700}}>{r.service_type}</div><div style={{fontSize:10,color:'var(--t3)'}}>{r.notes||'No notes'} · {new Date(r.requested_at).toLocaleDateString()}{r.state_fee!=null?` · State fee ${Number(r.state_fee).toFixed(2)}`:''}{r.provider_order_id?` · Bizee order ${r.provider_order_id}`:''}{r.provider_status?` · Provider ${r.provider_status}`:''}{r.submission_reference?` · Ref ${r.submission_reference}`:''}{r.confirmation?` · Confirmation ${r.confirmation}`:''}</div></div>
           <StatusPill value={r.status}/>
           {r.provider==='bizee'&&r.provider_order_id?<button className="btn sm" onClick={()=>syncBizeeRequest(r)} disabled={busy==='bizee-sync-'+r.id}>{busy==='bizee-sync-'+r.id?'Syncing…':'↻ Sync Bizee'}</button>:<span/>}
+          {r.provider==='bizee'&&r.provider_order_id?<button className="btn sm" onClick={()=>syncBizeeDocuments(r)} disabled={busy==='bizee-docs-'+r.id}>{busy==='bizee-docs-'+r.id?'Syncing…':'📄 Sync Docs'}</button>:<span/>}
           <select value={r.payment_status||'Pending'} onChange={e=>updateRequestPayment(r.id,e.target.value)} style={{...inputStyle,width:105}}>{['Pending','Paid','Waived','Refunded'].map(x=><option key={x}>{x}</option>)}</select>
           <select value={r.status} onChange={e=>updateRequest(r.id,e.target.value)} style={{...inputStyle,width:135}}>{['Requested','In Progress','Waiting on Client','Submitted','State / Agency Review','Action Required','Complete','Cancelled'].map(x=><option key={x}>{x}</option>)}</select>
         </div>)}
