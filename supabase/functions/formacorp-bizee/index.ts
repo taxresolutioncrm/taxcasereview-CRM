@@ -122,6 +122,7 @@ function configErrors(c:ReturnType<typeof cfg>,token:string,webhookSecret:string
   try{ parseArrayJson(c.requiredCanonicalJson,'BIZEE_PARTNER_REQUIRED_CANONICAL_FIELDS_JSON') }catch(e:any){ errors.push(e?.message||'Invalid Bizee required-fields JSON') }
   try{
     const map=parseObjectJson(c.statusMapJson,'BIZEE_PARTNER_STATUS_MAP_JSON')
+    if(!Object.keys(map).length) errors.push('BIZEE_PARTNER_STATUS_MAP_JSON must not be empty')
     const allowed=new Set(['Draft','Ready to Submit','Filing Queue','Submitted to Florida','Under State Review','Action Required','Approved / Active'])
     for(const [providerStatus,crmStatus] of Object.entries(map)){
       if(!providerStatus||!allowed.has(String(crmStatus))) errors.push('BIZEE_PARTNER_STATUS_MAP_JSON contains an invalid CRM status')
