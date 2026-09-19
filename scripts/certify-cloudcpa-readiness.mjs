@@ -98,6 +98,7 @@ must(employees.includes('Send CRM login invite'),'employee cards expose an expli
 must(inviteEmployee.includes("rpc('current_tenant_id')"),'employee invitation resolves the caller office server-side')
 must(inviteEmployee.includes(".eq('tenant_id',tenantId)"),'employee invitation is tenant scoped')
 must(inviteEmployee.includes("inviteUserByEmail"),'employee invitation provisions a real Supabase Auth login')
+must(inviteEmployee.includes("resetPasswordForEmail"),'existing employee logins can receive a fresh access/password link')
 must(inviteEmployee.includes("Employee invite permission denied"),'employee invitation enforces office HR/admin permission')
 must(inviteEmployee.includes("This email already belongs to another office"),'employee invitation refuses cross-office email collisions')
 must(migration.includes("firmname = 'CloudCPA Inc'"),'CloudCPA does not inherit Tax Case Review firm name')
