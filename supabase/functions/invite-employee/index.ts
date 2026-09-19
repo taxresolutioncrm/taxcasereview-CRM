@@ -11,14 +11,9 @@ const safe=(v:unknown)=>String(v??'').trim()
 const esc=(v:unknown)=>safe(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 
 async function findAuthUser(admin:any,email:string){
-  for(let page=1;page<=20;page++){
-    const {data,error}=await admin.auth.admin.listUsers({page,perPage:1000})
-    if(error) throw error
-    const hit=(data?.users||[]).find((u:any)=>safe(u.email).toLowerCase()===email)
-    if(hit) return hit
-    if((data?.users||[]).length<1000) break
-  }
-  return null
+  const {data,error}=await admin.rpc('taxres_auth_user_by_email',{target_email:email})
+  if(error) throw error
+  return Array.isArray(data)&&data.length ? data[0] : null
 }
 
 function accessEmailHtml(opts:{name:string,firmName:string,link:string,kind:'invite'|'recovery'}){

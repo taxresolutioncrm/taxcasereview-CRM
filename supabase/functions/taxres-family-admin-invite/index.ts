@@ -6,14 +6,9 @@ const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'au
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors})
 
 async function findUser(admin:any,email:string){
-  for(let page=1;page<=20;page++){
-    const {data,error}=await admin.auth.admin.listUsers({page,perPage:1000})
-    if(error) throw error
-    const hit=(data?.users||[]).find((u:any)=>String(u.email||'').toLowerCase()===email)
-    if(hit) return hit
-    if((data?.users||[]).length<1000) break
-  }
-  return null
+  const {data,error}=await admin.rpc('taxres_auth_user_by_email',{target_email:email})
+  if(error) throw error
+  return Array.isArray(data)&&data.length ? data[0] : null
 }
 
 Deno.serve(async(req)=>{
