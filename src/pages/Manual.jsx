@@ -575,6 +575,14 @@ const MANUAL_SECTIONS = [
         { title: 'Grant permissions', desc: 'The CRM requests Mail.ReadWrite, Mail.Send, and Calendars.ReadWrite.' },
         { title: 'Chris connects first as admin', desc: 'The admin account (Chris) establishes M365 app consent for the tenant. Other reps then connect individually.' },
       ]},
+      { type: 'h3', text: 'Spam / Junk folder' },
+      { type: 'steps', items: [
+        { title: 'Open Email → Spam', desc: 'The CRM shows provider-classified junk mail in a dedicated Spam folder instead of hiding it. Gmail SPAM, Microsoft 365 Junk Email, and connected IMAP Junk/Spam folders are synchronized into this view.' },
+        { title: 'Check Spam when an expected message is missing', desc: 'If an employee invite, password reset, client reply, provider notice, or other expected email is not in Inbox, check Spam before assuming it was not delivered.' },
+        { title: 'Move a legitimate message back to Inbox', desc: 'Drag the message to Inbox. For Gmail and Microsoft 365 connections the CRM also moves the provider-side message out of Spam/Junk so the mailbox stays synchronized.' },
+        { title: 'Unread badge stays visible', desc: 'Spam has its own unread count so newly synchronized junk messages are visible without opening the folder first.' },
+      ]},
+      { type: 'warn', text: 'Spam/Junk is mailbox-specific. Each employee only sees the Spam/Junk messages from their own connected mailbox; tenant isolation and per-employee mailbox isolation still apply.' },
       { type: 'h3', text: 'Email templates' },
       { type: 'table', headers: ['Template', 'When to use', 'Tone'], rows: [
         ['1st Strike — Payment', 'First missed payment reminder', 'Courteous'],

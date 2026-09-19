@@ -66,18 +66,34 @@ async function syncAccount(db:any,account:any){
     await conn.read(new Uint8Array(1024))
     const user=String(account.email_address||'').replace(/["\\]/g,''),pass=String(decrypted).replace(/["\\]/g,'')
     const login=await imapCommand(conn,'A1',`LOGIN "${user}" "${pass}"`);if(!login.includes('A1 OK'))throw new Error(`IMAP LOGIN failed: ${login.slice(0,200)}`)
-    await imapCommand(conn,'A2','SELECT INBOX')
-    const sr=await imapCommand(conn,'A3','SEARCH UNSEEN'),seqs=(sr.match(/\* SEARCH (.+?)\r\n/)?.[1]||'').trim().split(' ').filter(Boolean)
     let tag=10
-    for(const seq of seqs.slice(0,50)){
-      try{
-        const fr=await imapCommand(conn,`B${tag++}`,`FETCH ${seq} (BODY[])`),{subject,from,date,messageId}=parseEnvelope(fr),senderEmail=extractEmailAddress(from),{text,html}=extractBody(fr)
-        const {data:existing}=await db.from('emails').select('id').eq('message_id',messageId).eq('tenant_id',account.tenant_id).maybeSingle();if(existing)continue
-        const {clientId,clientName}=await matchToClient(db,senderEmail,String(account.tenant_id)),parsed=new Date(date)
-        const {error:insertErr}=await db.from('emails').insert([{tenant_id:account.tenant_id,email_account_id:account.id,message_id:messageId,thread_id:String(messageId).split('@')[0]||String(messageId),mailbox_owner:account.employee_email,sender:senderEmail,from_address:senderEmail,recipients:[{email:String(account.email_address||'')}],subject,body:text,body_html:html,direction:'inbound',triage:'Inbox',status:'Received',is_read:false,received_at:Number.isNaN(parsed.getTime())?new Date().toISOString():parsed.toISOString(),client_id:clientId,clientName,created_at:new Date().toISOString()}])
-        if(insertErr)throw insertErr;synced++
-      }catch(e){errors.push(`Seq ${seq}: ${(e as Error).message}`)}
+    async function syncFolder(folderName:string,triage:'Inbox'|'Spam'){
+      const safeFolder=folderName.replace(/["\\]/g,'')
+      const select=await imapCommand(conn!,`S${tag++}`,`SELECT "${safeFolder}"`)
+      if(!/ OK/i.test(select))return
+      const sr=await imapCommand(conn!,`S${tag++}`,'SEARCH UNSEEN')
+      const seqs=(sr.match(/\* SEARCH (.+?)\r\n/)?.[1]||'').trim().split(' ').filter(Boolean)
+      for(const seq of seqs.slice(0,50)){
+        try{
+          const fr=await imapCommand(conn!,`B${tag++}`,`FETCH ${seq} (BODY[])`),{subject,from,date,messageId}=parseEnvelope(fr),senderEmail=extractEmailAddress(from),{text,html}=extractBody(fr)
+          const {data:existing}=await db.from('emails').select('id,triage').eq('message_id',messageId).eq('tenant_id',account.tenant_id).maybeSingle()
+          if(existing){
+            if(triage==='Spam'&&existing.triage!=='Spam')await db.from('emails').update({triage:'Spam',status:'Spam'}).eq('id',existing.id).eq('tenant_id',account.tenant_id)
+            continue
+          }
+          const {clientId,clientName}=await matchToClient(db,senderEmail,String(account.tenant_id)),parsed=new Date(date)
+          const {error:insertErr}=await db.from('emails').insert([{tenant_id:account.tenant_id,email_account_id:account.id,message_id:messageId,thread_id:String(messageId).split('@')[0]||String(messageId),mailbox_owner:account.employee_email,sender:senderEmail,from_address:senderEmail,recipients:[{email:String(account.email_address||'')}],subject,body:text,body_html:html,direction:'inbound',triage,status:triage==='Spam'?'Spam':'Received',is_read:false,received_at:Number.isNaN(parsed.getTime())?new Date().toISOString():parsed.toISOString(),client_id:clientId,clientName,created_at:new Date().toISOString()}])
+          if(insertErr)throw insertErr;synced++
+        }catch(e){errors.push(`${triage} seq ${seq}: ${(e as Error).message}`)}
+      }
     }
+
+    await syncFolder('INBOX','Inbox')
+    const list=await imapCommand(conn,`L${tag++}`,'LIST "" "*"')
+    const junkLine=list.split(/\r?\n/).find(line=>/\\Junk/i.test(line)||/(?:^|[\s"\/])(Junk Email|Junk|Spam)(?:"|$)/i.test(line))
+    const mailboxMatch=junkLine?.match(/"([^"]+)"\s*$/)||junkLine?.match(/\s([^\s]+)\s*$/)
+    const spamFolder=mailboxMatch?.[1]||mailboxMatch?.[0]?.trim()||''
+    if(spamFolder&&spamFolder.toUpperCase()!=='INBOX')await syncFolder(spamFolder,'Spam')
     await imapCommand(conn,'A99','LOGOUT')
   }catch(e){errors.push((e as Error).message)}finally{try{conn?.close()}catch{}}
   return{synced,errors}

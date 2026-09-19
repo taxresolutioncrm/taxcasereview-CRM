@@ -9,8 +9,8 @@ import { useApp } from '../context/AppContext'
 import { DOC_FOLDERS } from './Clients'
 
 
-const TRIAGE = ['Inbox','Action Needed','Waiting','Sent','Archive']
-const TRIAGE_COLORS = { 'Action Needed':'var(--bad)', 'Waiting':'var(--warn)', 'Inbox':'var(--blue)', 'Sent':'var(--ok)', 'Archive':'var(--t3)' }
+const TRIAGE = ['Inbox','Action Needed','Waiting','Sent','Spam','Archive']
+const TRIAGE_COLORS = { 'Action Needed':'var(--bad)', 'Waiting':'var(--warn)', 'Inbox':'var(--blue)', 'Sent':'var(--ok)', 'Spam':'#f59e0b', 'Archive':'var(--t3)' }
 const BLANK = { recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'', m365MessageId:'' }
 const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
 
@@ -556,6 +556,10 @@ export default function Email() {
     try {
       if (triage === 'Archive') {
         await runMailboxAction(id, 'archive')
+      } else if (triage === 'Spam') {
+        await runMailboxAction(id, 'spam')
+      } else if (triage === 'Inbox' && current?.triage === 'Spam') {
+        await runMailboxAction(id, 'inbox')
       } else {
         if (current?.triage === 'Archive' && triage !== 'Sent') await runMailboxAction(id, 'inbox')
         const { error } = await supabase.from('emails').update({ triage }).eq('id', id)
@@ -865,7 +869,7 @@ export default function Email() {
                 outline: dragOverFolder === t ? `1px dashed ${TRIAGE_COLORS[t] || 'var(--blue)'}` : 'none',
               }}>
               <span style={{ fontSize: 13, color: triageFilter === t && view === 'inbox' ? 'var(--blue)' : 'var(--t2)', fontWeight: triageFilter === t ? 700 : 400 }}>
-                {t === 'Action Needed' ? '🔴' : t === 'Waiting' ? '🟡' : t === 'Inbox' ? '📥' : t === 'Sent' ? '📤' : '📦'} {t}
+                {t === 'Action Needed' ? '🔴' : t === 'Waiting' ? '🟡' : t === 'Inbox' ? '📥' : t === 'Sent' ? '📤' : t === 'Spam' ? '🚫' : '📦'} {t}
               </span>
               {counts[t] > 0 && (
                 <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: TRIAGE_COLORS[t] + '33', color: TRIAGE_COLORS[t] }}>{counts[t]}</span>

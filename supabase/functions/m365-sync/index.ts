@@ -206,14 +206,24 @@ serve(async (req) => {
         const token = await refreshIfNeeded(admin, acct, settings)
 
         if (acct.m365_email_sync) {
-          const emailRes = await fetch(
-            'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=100&$select=id,conversationId,internetMessageId,subject,from,toRecipients,body,bodyPreview,receivedDateTime,isRead,hasAttachments&$orderby=receivedDateTime desc',
-            { headers: { Authorization: `Bearer ${token}` } },
-          )
-          const emailData = await emailRes.json()
-          if (!emailRes.ok) throw new Error(emailData?.error?.message || 'Microsoft email sync failed')
+          const folderDefs = [
+            { id:'inbox', triage:'Inbox' },
+            { id:'junkemail', triage:'Spam' },
+          ]
+          const folderMessages:any[] = []
+          for (const folder of folderDefs) {
+            const emailRes = await fetch(
+              `https://graph.microsoft.com/v1.0/me/mailFolders/${folder.id}/messages?$top=100&$select=id,conversationId,internetMessageId,subject,from,toRecipients,body,bodyPreview,receivedDateTime,isRead,hasAttachments&$orderby=receivedDateTime desc`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            )
+            const emailData = await emailRes.json()
+            if (!emailRes.ok) throw new Error(emailData?.error?.message || `Microsoft ${folder.id} email sync failed`)
+            for (const msg of (Array.isArray(emailData.value) ? emailData.value : [])) {
+              if (msg?.id) folderMessages.push({ ...msg, _crmTriage: folder.triage })
+            }
+          }
 
-          const inboxMessages = Array.isArray(emailData.value) ? emailData.value.filter((m:any)=>m?.id) : []
+          const inboxMessages = folderMessages
           const ids = inboxMessages.map((m:any)=>String(m.id))
           const existingIds = new Set<string>()
           if (ids.length) {
@@ -232,7 +242,7 @@ serve(async (req) => {
           for (const msg of inboxMessages) {
             if (existingIds.has(String(msg.id))) continue
 
-            if (String(acct.employee_email||'').toLowerCase()==='chris@nashvilletaxsolutions.com') {
+            if (msg._crmTriage === 'Inbox' && String(acct.employee_email||'').toLowerCase()==='chris@nashvilletaxsolutions.com') {
               const ingestedFax=await ingestNextivaFax(admin,token,acct,msg)
               if(ingestedFax) continue
             }
@@ -263,15 +273,15 @@ serve(async (req) => {
               subject: msg.subject || '(no subject)',
               body: plainBody,
               body_html: htmlBody,
-              triage: 'Inbox',
-              status: 'Received',
+              triage: msg._crmTriage === 'Spam' ? 'Spam' : 'Inbox',
+              status: msg._crmTriage === 'Spam' ? 'Spam' : 'Received',
               direction: 'inbound',
               received_at: msg.receivedDateTime || new Date().toISOString(),
               created_at: msg.receivedDateTime || new Date().toISOString(),
               is_read: !!msg.isRead,
               received_mailbox: acct.m365_email || acct.employee_email,
             })
-            newMessages.push({msg,fromEmail})
+            if (msg._crmTriage !== 'Spam') newMessages.push({msg,fromEmail})
           }
 
           if (newRows.length) {

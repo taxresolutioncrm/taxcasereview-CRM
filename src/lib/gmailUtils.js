@@ -374,7 +374,7 @@ export async function listGmailMessages(supabase, { labelIds, query, pageToken, 
 }
 
 // Fetches one message and parses it into the shape the `emails` table uses.
-// Returns null for label types we don't care about (drafts, spam, trash).
+// Returns null for label types we don't care about (drafts, trash, promo-only). Spam is surfaced in the CRM Spam folder.
 export async function getAndParseGmailMessage(supabase, id, clients = []) {
   const token = await getValidGmailToken(supabase)
   const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`, {
@@ -386,7 +386,8 @@ export async function getAndParseGmailMessage(supabase, id, clients = []) {
   const labels = msg.labelIds || []
   const isSent = labels.includes('SENT')
   const isInbox = labels.includes('INBOX')
-  if (!isSent && !isInbox) return null // draft / spam / trash / promo-only, skip
+  const isSpam = labels.includes('SPAM')
+  if (!isSent && !isInbox && !isSpam) return null // draft / trash / promo-only, skip
 
   const headers = msg.payload?.headers || []
   const fromHeader = headerValue(headers, 'From')
@@ -418,8 +419,8 @@ export async function getAndParseGmailMessage(supabase, id, clients = []) {
     subject,
     body,
     body_html: bodyHtmlRaw,
-    triage: isSent ? 'Sent' : 'Inbox',
-    status: isSent ? 'Sent' : 'Received',
+    triage: isSent ? 'Sent' : isSpam ? 'Spam' : 'Inbox',
+    status: isSent ? 'Sent' : isSpam ? 'Spam' : 'Received',
     gmail_message_id: msg.id,
     gmail_thread_id: msg.threadId,
     from_address: extractAddress(fromHeader),

@@ -77,7 +77,7 @@ Deno.serve(async req=>{
     if(action==='message_action'){
       const ids=Array.isArray(body?.email_ids)?body.email_ids.map((x:any)=>String(x)).filter(Boolean).slice(0,25):[]
       const requested=String(body?.message_action||body?.mailbox_action||'').toLowerCase()
-      if(!ids.length||!['read','unread','archive','inbox','trash'].includes(requested))return json({error:'Valid email_ids and message_action are required.'},400)
+      if(!ids.length||!['read','unread','archive','inbox','spam','trash'].includes(requested))return json({error:'Valid email_ids and message_action are required.'},400)
       const {data:rows,error:rowsErr}=await admin.from('emails')
         .select('id,m365_message_id,mailbox_owner,triage,is_read')
         .eq('tenant_id',TENANT).ilike('mailbox_owner',user.email).in('id',ids)
@@ -96,7 +96,7 @@ Deno.serve(async req=>{
             if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d?.error?.message||`Microsoft message update failed (${r.status})`)}
             await admin.from('emails').update({is_read:requested==='read'}).eq('id',row.id).eq('tenant_id',TENANT)
           }else{
-            const destination=requested==='archive'?'archive':requested==='inbox'?'inbox':'deleteditems'
+            const destination=requested==='archive'?'archive':requested==='inbox'?'inbox':requested==='spam'?'junkemail':'deleteditems'
             const r=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(messageId)}/move`,{
               method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
               body:JSON.stringify({destinationId:destination})
@@ -106,6 +106,7 @@ Deno.serve(async req=>{
             const patch:any={m365_message_id:String(d?.id||messageId)}
             if(requested==='archive')patch.triage='Archive'
             if(requested==='inbox')patch.triage='Inbox'
+            if(requested==='spam')patch.triage='Spam'
             if(requested==='trash')patch.deleted_at=new Date().toISOString()
             await admin.from('emails').update(patch).eq('id',row.id).eq('tenant_id',TENANT)
           }

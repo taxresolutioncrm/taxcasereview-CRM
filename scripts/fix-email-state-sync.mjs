@@ -116,6 +116,10 @@ replaceBetweenAny(
     try {
       if (triage === 'Archive') {
         await runMailboxAction(id, 'archive')
+      } else if (triage === 'Spam') {
+        await runMailboxAction(id, 'spam')
+      } else if (triage === 'Inbox' && current?.triage === 'Spam') {
+        await runMailboxAction(id, 'inbox')
       } else {
         if (current?.triage === 'Archive' && triage !== 'Sent') await runMailboxAction(id, 'inbox')
         const { error } = await supabase.from('emails').update({ triage }).eq('id', id)
