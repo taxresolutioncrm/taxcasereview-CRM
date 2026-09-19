@@ -84,6 +84,7 @@ Deno.serve(async(req)=>{
     }
     const {data:t}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'taxres_crm'})
     if(!t?.ok||!t?.username||!t?.password)return json({error:'TaxRes Stalwart transport unavailable'},503)
+    if(body?.dry_run===true) return json({success:true,dry_run:true,delivery:false,via:'taxres_stalwart_relay',kind})
     await sendSmtp({
       host:t.host||'mail.taxrescrm.net',port:Number(t.port||465),ssl:true,
       username:t.username,password:t.password,fromAddress:t.from_address||t.username,
