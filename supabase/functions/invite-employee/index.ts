@@ -62,6 +62,7 @@ serve(async(req)=>{
     if(tenantErr||!tenantId) return json({error:'No active office context'},403)
 
     const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}})
+    const {data:isPlatformAdmin}=await caller.rpc('_is_platform_admin').catch(()=>({data:false}))
     const {data:callerEmployee}=await admin.from('employees')
       .select('id,status,perm_hr,role,access')
       .eq('tenant_id',tenantId)
@@ -70,7 +71,7 @@ serve(async(req)=>{
 
     const active=callerEmployee&&safe(callerEmployee.status||'Active').toLowerCase()==='active'
     const superAdmin=safe(callerEmployee?.access||callerEmployee?.role).toLowerCase()==='super admin'
-    if(!active||(!superAdmin&&Number(callerEmployee?.perm_hr||0)<2)) return json({error:'Employee invite permission denied'},403)
+    if(!isPlatformAdmin && (!active||(!superAdmin&&Number(callerEmployee?.perm_hr||0)<2))) return json({error:'Employee invite permission denied'},403)
 
     const body=await req.json().catch(()=>({}))
     const email=safe(body.email).toLowerCase()
