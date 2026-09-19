@@ -121,6 +121,7 @@ const checks=[
     "nashville_system_mail_relay_v1",
     "romylabs_stalwart_transport_for_product",
     "taxres_stalwart_relay",
+    "employee_access",
   ]],
   ['supabase/functions/nashville-esign-mail/index.ts',[
     "nashville-system-mail-relay",
@@ -128,6 +129,13 @@ const checks=[
     "esign_reminder",
     "esign_signed_copy",
     "esign_internal_notification",
+  ]],
+  ['supabase/functions/employee-access-link/index.ts',[
+    "SYSTEM_MAIL_RELAY",
+    "SYSTEM_MAIL_SECRET_KEY",
+    "employee_access",
+    "duplicate_employee_email",
+    "delivery:'email'",
   ]],
   ['supabase/functions/nashville-esign-reminders/index.ts',[
     "signer_token",
