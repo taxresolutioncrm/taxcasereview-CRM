@@ -53,31 +53,48 @@ export default function Payroll() {
 
   useEffect(() => {
     load()
-    // Auto-sync with TimeClock — keeps Payroll's view of punches and employees fresh in the background
-    const interval = setInterval(() => {
-      supabase.from('timeentries').select('*').then(({ data }) => {
-        if (data) setTimeEntries(data)
+    let reloadTimer = null
+    const timeCh = supabase.channel('payroll-timeentries-rt')
+      .on('postgres_changes', { event:'*', schema:'public', table:'timeentries' }, () => {
+        clearTimeout(reloadTimer)
+        reloadTimer = setTimeout(loadTimeEntries, 300)
       })
-    }, 5000)
-    const empInterval = setInterval(() => {
-      supabase.from('employees').select('*').order('name').then(({ data }) => {
-        if (data) setEmployees(data)
+      .subscribe()
+    const empCh = supabase.channel('payroll-employees-rt')
+      .on('postgres_changes', { event:'*', schema:'public', table:'employees' }, () => {
+        clearTimeout(reloadTimer)
+        reloadTimer = setTimeout(loadEmployees, 300)
       })
-    }, 5000)
-    return () => { clearInterval(interval); clearInterval(empInterval) }
+      .subscribe()
+    return () => {
+      clearTimeout(reloadTimer)
+      supabase.removeChannel(timeCh)
+      supabase.removeChannel(empCh)
+    }
   }, [])
 
+  async function loadEmployees() {
+    const { data } = await supabase.from('employees').select('*').eq('status','Active').order('name')
+    if (data) setEmployees(data)
+  }
+
+  async function loadTimeEntries() {
+    const jan1 = `${new Date().getFullYear()}-01-01`
+    const { data } = await supabase.from('timeentries').select('*')
+      .gte('date', jan1)
+      .order('date',{ascending:false})
+      .limit(30000)
+    if (data) setTimeEntries(data)
+  }
+
   async function load() {
-    const [{ data:r },{ data:e },{ data:t },{ data:s }] = await Promise.all([
-      supabase.from('payrollruns').select('*').order('created_at',{ascending:false}),
-      supabase.from('employees').select('*').order('name'),
-      supabase.from('timeentries').select('*'),
+    const [{ data:r },{ data:s }] = await Promise.all([
+      supabase.from('payrollruns').select('*').order('created_at',{ascending:false}).limit(250),
       supabase.from('settings').select('name,phone,email,address,city,state,zip,logourl').limit(1).maybeSingle(),
     ])
     if (r) setRuns(r)
-    if (e) setEmployees(e)
-    if (t) setTimeEntries(t)
     if (s) setFirm(s)
+    await Promise.all([loadEmployees(),loadTimeEntries()])
   }
 
   function showToast(msg) { setToast(msg); setTimeout(()=>setToast(''),3000) }
