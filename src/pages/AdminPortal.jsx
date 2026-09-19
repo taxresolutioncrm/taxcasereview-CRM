@@ -913,29 +913,41 @@ function ExternalProductOfficePage({ productKey }) {
       const {data,error:invokeError}=await supabase.functions.invoke('hub-proxy',{body:{product:productKey}})
       if(cancelled) return
       const offices=Array.isArray(data?.offices)?data.offices:[]
-      if(invokeError || !offices.length){
-        const {data:registryRows,error:registryError}=await supabase.rpc('admin_romylabs_office_registry')
-        if(cancelled) return
-        const match=(Array.isArray(registryRows)?registryRows:[]).find(r=>r.product_key===productKey && String(r.external_office_id)===officeId)
-        if(match){
-          setOffice({
-            id:match.external_office_id,
-            name:match.firm_name,
-            status:match.status,
-            is_active:!['inactive','suspended','cancelled'].includes(String(match.status||'').toLowerCase()),
-            since:match.created_at,
-            mrr:match.monthly_amount,
-          })
-          setLoading(false)
-          return
-        }
-        setError(invokeError?.message || registryError?.message || data?.error || `Unable to load ${cfg.label} office`)
+      const liveMatch=offices.find(o=>String(o.id)===officeId)
+      if(liveMatch){
+        setOffice(liveMatch)
         setLoading(false)
         return
       }
-      const match=offices.find(o=>String(o.id)===officeId)
-      if(!match){ setError(`${cfg.label} office not found`); setLoading(false); return }
-      setOffice(match); setLoading(false)
+
+      // The central RomyLabs office registry is the durable fallback for
+      // required demo offices and any product office whose live metrics feed is
+      // temporarily unavailable or does not expose that office.
+      const {data:registryRows,error:registryError}=await supabase.rpc('admin_romylabs_office_registry')
+      if(cancelled) return
+      const registryMatch=(Array.isArray(registryRows)?registryRows:[]).find(
+        r=>r.product_key===productKey && String(r.external_office_id)===officeId
+      )
+      if(registryMatch){
+        setOffice({
+          id:registryMatch.external_office_id,
+          name:registryMatch.firm_name,
+          status:registryMatch.status,
+          is_active:!['inactive','suspended','cancelled'].includes(String(registryMatch.status||'').toLowerCase()),
+          since:registryMatch.created_at,
+          mrr:registryMatch.monthly_amount,
+        })
+        setLoading(false)
+        return
+      }
+
+      setError(
+        invokeError?.message ||
+        registryError?.message ||
+        data?.error ||
+        `${cfg.label} office not found`
+      )
+      setLoading(false)
     })()
     return()=>{cancelled=true}
   },[officeId,productKey,cfg.label])
