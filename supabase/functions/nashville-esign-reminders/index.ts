@@ -10,7 +10,7 @@ const validEmail=(v:any)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim()
 const validSignerToken=(v:any)=>/^[0-9a-f]{64}$/i.test(String(v||''))
 
 async function sendMail(url:string,key:string,body:any){
-  const r=await fetch(url+'/functions/v1/send-email',{
+  const r=await fetch(url+'/functions/v1/nashville-esign-mail',{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'apikey':key},
     body:JSON.stringify(body)
