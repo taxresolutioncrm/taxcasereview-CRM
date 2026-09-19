@@ -53,6 +53,26 @@ const checks=[
     "nashville_dashboard_snapshot",
     "Active Nashville employee required",
   ]],
+  ['src/pages/TimeClock.jsx',[
+    "timeclock_history_page",
+    "HISTORY_PAGE_SIZE = 250",
+    "supabase.from('timeentries').select('*').eq('date', todayKey)",
+    "historyTotal > HISTORY_PAGE_SIZE",
+  ]],
+  ['src/pages/Payroll.jsx',[
+    "payroll-timeentries-rt",
+    ".gte('date', jan1)",
+    ".limit(30000)",
+    ".eq('status','Active')",
+  ]],
+  ['supabase/migrations/20260919_nashville_timeclock_scale.sql',[
+    "timeclock_history_page",
+    "idx_timeentries_tenant_employee_date_created",
+  ]],
+  ['supabase/migrations/20260919_nashville_100_user_indexes.sql',[
+    "idx_employee_portal_sessions_tenant_employee_expires",
+    "idx_billing_time_tenant_employee_date",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
