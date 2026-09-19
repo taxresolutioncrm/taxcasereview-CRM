@@ -147,6 +147,42 @@ export default function EmployeePortal() {
     return () => clearInterval(t)
   }, [])
 
+  // If the employee already signed into the Nashville CRM with the shared
+  // TaxRes-family password, reuse that authenticated session and open the
+  // Employee Portal directly. The PIN form remains as a kiosk/fallback path.
+  useEffect(() => {
+    let cancelled = false
+    async function bootstrapAuthenticatedPortal() {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser?.email) return
+      setLogging(true)
+      const { data, error } = await supabase.rpc('emp_login_auth')
+      if (cancelled) return
+      if (error || !data?.token) {
+        setLogging(false)
+        return
+      }
+      setEmpToken(data.token)
+      setEmp(data.employee)
+      if (data.firm) {
+        const b = { name: data.firm.name || '', logoUrl: data.firm.logo_url || '' }
+        setBrand(b)
+        try { localStorage.setItem(BRAND_CACHE_KEY, JSON.stringify(b)) } catch (_) {}
+      }
+      await Promise.all([
+        loadWeek(data.token, 0), loadPeriod(data.token, 0),
+        loadTasks(data.token), loadEvents(data.token), loadTimeOff(data.token),
+        loadEmpClients(data.token), loadEmpCases(data.token), loadEmpSmsThreads(data.token),
+      ])
+      if (!cancelled) {
+        setScreen('home')
+        setLogging(false)
+      }
+    }
+    bootstrapAuthenticatedPortal()
+    return () => { cancelled = true }
+  }, [])
+
   useEffect(() => { if (emp && empToken) loadWeek(empToken, weekOffset) }, [weekOffset])
   useEffect(() => { if (emp && empToken) loadPeriod(empToken, periodOffset) }, [periodOffset])
 
