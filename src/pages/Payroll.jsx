@@ -775,65 +775,6 @@ export default function Payroll() {
           )}
         </div>
       </>)}
-        <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
-          <input value={teSearch} onChange={e=>setTeSearch(e.target.value)} placeholder="Search…"
-            style={{ flex:1, minWidth:140, padding:'7px 12px', background:'var(--s2)', border:'1px solid var(--br)', borderRadius:6, color:'var(--tx)', fontSize:12 }}/>
-          <select value={teFilterEmp} onChange={e=>setTeFilterEmp(e.target.value)}
-            style={{ padding:'7px 10px', background:'var(--s2)', border:'1px solid var(--br)', borderRadius:6, color:'var(--tx)', fontSize:12 }}>
-            <option value="All">All Staff</option>
-            {[...new Set(timeEntries.map(t=>t.employee).filter(Boolean))].sort().map(e=><option key={e}>{e}</option>)}
-          </select>
-          <button className="btn pri" style={{fontSize:11,padding:'6px 14px'}} onClick={()=>{ showToast('Use the Time Clock page to add new entries'); }}>+ Add Entry via Time Clock</button>
-        </div>
-        <div className="card" style={{ padding:0, overflow:'hidden' }}>
-          {timeEntries.filter(e=>{
-            const ms = teFilterEmp==='All'||e.employee===teFilterEmp
-            const ss = !teSearch || e.employee?.toLowerCase().includes(teSearch.toLowerCase()) || e.notes?.toLowerCase().includes(teSearch.toLowerCase())
-            return ms && ss
-          }).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).length === 0 ? (
-            <div style={{ padding:24, textAlign:'center', color:'var(--t3)', fontSize:13 }}>No time entries.</div>
-          ) : (
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-              <thead>
-                <tr style={{ borderBottom:'1px solid var(--br)', background:'var(--s2)' }}>
-                  {['Employee','Date','Clock In','Clock Out','Hours','Notes',''].map(h=>(
-                    <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontSize:10, fontWeight:700, color:'var(--t3)', textTransform:'uppercase', letterSpacing:'.05em' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {timeEntries.filter(e=>{
-                  const ms = teFilterEmp==='All'||e.employee===teFilterEmp
-                  const ss = !teSearch || e.employee?.toLowerCase().includes(teSearch.toLowerCase()) || e.notes?.toLowerCase().includes(teSearch.toLowerCase())
-                  return ms && ss
-                }).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(e=>(
-                  <tr key={e.id} style={{ borderBottom:'1px solid var(--br)' }}
-                    onMouseEnter={ev=>ev.currentTarget.style.background='var(--s2)'}
-                    onMouseLeave={ev=>ev.currentTarget.style.background=''}>
-                    <td style={{ padding:'9px 12px', fontWeight:600 }}>{e.employee}</td>
-                    <td style={{ padding:'9px 12px', color:'var(--t2)' }}>{e.date}</td>
-                    <td style={{ padding:'9px 12px', color:'var(--ok)', fontWeight:600 }}>{fmt12Local(e.inTime)}</td>
-                    <td style={{ padding:'9px 12px', color:e.outTime?'var(--bad)':'var(--t3)' }}>{e.outTime?fmt12Local(e.outTime):<span className="bdg ba">Active</span>}</td>
-                    <td style={{ padding:'9px 12px', fontWeight:700, color:'#38BDF8' }}>{e.hours?e.hours+'h':'—'}</td>
-                    <td style={{ padding:'9px 12px', color:'var(--t2)', fontSize:11, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.notes||'—'}</td>
-                    <td style={{ padding:'9px 8px' }}>
-                      <div style={{ display:'flex', gap:5 }}>
-                        {e.inTime && e.outTime && !e.hours && (
-                          <button className="btn sec" style={{ fontSize:10, padding:'3px 8px', color:'var(--warn)' }}
-                            onClick={async()=>{ const h=calcHoursLocal(e.inTime,e.outTime); if(h){await supabase.from('timeentries').update({hours:parseFloat(h)}).eq('id',e.id);showToast('✅ Recalculated: '+h+'h');load()} }}>
-                            ↻ Recalc
-                          </button>
-                        )}
-                        <button className="btn sec" style={{ fontSize:10, padding:'3px 8px' }} onClick={()=>openEditPunch(e)}>✏️ Edit</button>
-                        <button className="btn del" style={{ fontSize:10, padding:'3px 8px' }} onClick={()=>setDeletePunchId(e.id)}>🗑</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
 
       {/* Edit Punch Modal */}
       {editPunch && (

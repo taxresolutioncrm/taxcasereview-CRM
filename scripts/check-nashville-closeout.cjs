@@ -148,5 +148,15 @@ for(const [file,tokens] of checks){
     }
   }
 }
+
+const payrollSrc=fs.readFileSync('src/pages/Payroll.jsx','utf8')
+if((payrollSrc.match(/activeTab==='punch'/g)||[]).length!==1){
+  console.error('Nashville closeout invariant: Payroll must render exactly one punch-history tab block')
+  failed=true
+}
+if(payrollSrc.includes('+ Add Entry via Time Clock')){
+  console.error('Nashville closeout invariant: legacy duplicate Payroll punch-history block is still present')
+  failed=true
+}
 if(failed) process.exit(1)
 console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, E-Sign, 100-user scale')
