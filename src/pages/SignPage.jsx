@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { stampSignature, buildCertificatePage, addTearDropStamp, appendPdfPages } from '../lib/irsFormUtils'
 import { FIRM, loadFirmBrandingPublic } from '../lib/firmBranding'
@@ -71,6 +71,8 @@ function printCancellationNotice(doc) {
 
 export default function SignPage() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
+  const signerToken = searchParams.get('token') || ''
   const [firmLogo, setFirmLogo] = useState('')
   const [firmName, setFirmName] = useState('')
   const [doc,      setDoc]      = useState(null)
@@ -88,32 +90,35 @@ export default function SignPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: rows, error } = await supabase.rpc('esign_load', { p_id: id })
-      const data = rows?.[0]
-      if (error || !data) {
-        // No record to source a tenant from → legacy first-row fallback keeps the
-        // error page from being unbranded.
+      if (!/^[0-9a-f]{64}$/i.test(signerToken)) {
         await loadFirmBrandingPublic()
         setFirmLogo(FIRM.logoUrl || '')
         setFirmName(FIRM.name || '')
-        setError('Signing request not found or expired.'); setLoading(false); return
+        setError('Signing link is incomplete or expired.'); setLoading(false); return
       }
-      // Load the signing tenant's branding BEFORE we render (FIRM is a mutable
-      // module-level object; without the await the first paint uses whatever
-      // was last set, i.e. TCR on the demo).
+      const { data: result, error } = await supabase.functions.invoke('esign-archive-upload', {
+        body: { action:'load', esign_id:id, signer_token:signerToken }
+      })
+      const data = result?.document
+      if (error || !result?.success || !data) {
+        await loadFirmBrandingPublic()
+        setFirmLogo(FIRM.logoUrl || '')
+        setFirmName(FIRM.name || '')
+        setError(result?.error || 'Signing request not found or expired.'); setLoading(false); return
+      }
       await loadFirmBrandingPublic(data.tenant_id)
       setFirmLogo(FIRM.logoUrl || '')
       setFirmName(FIRM.name || '')
       if (data.status === 'Signed') { setDone(true); setDoc(data); setLoading(false); return }
       setDoc(data); setLoading(false)
-      // Track that the client opened the document (only set once)
-      if (!data.opened_at) {
-        supabase.from('esigns').update({ opened_at: new Date().toISOString() }).eq('id', id).then(() => {})
+      if (result.first_open) {
+        supabase.functions.invoke('esign-archive-upload', {
+          body: { action:'notify', event:'opened', esign_id:id, signer_token:signerToken }
+        }).catch(()=>{})
       }
     }
     load()
-    fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>setIp(d.ip)).catch(()=>{})
-  }, [id])
+  }, [id, signerToken])
 
   // Canvas drawing setup
   useEffect(() => {
