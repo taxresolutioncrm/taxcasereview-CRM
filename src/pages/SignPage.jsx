@@ -335,21 +335,8 @@ export default function SignPage() {
           body: { kind: 'esign_signed_receipt', esign_id: id }
         }).catch(() => {})
       }
-      // Fire workflow trigger — esign_signed with doc_type as value
-      // Fire workflow trigger via edge function (service role) — triggerWorkflow()
-      // uses the anon Supabase client which is blocked by RLS on workflow_templates
-      // and tasks. The edge function bypasses that with SUPABASE_SERVICE_ROLE_KEY.
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://mpxgxfqdbquzkrvvejkh.supabase.co'
-      fetch(`${supabaseUrl}/functions/v1/trigger-workflow`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'esign_signed',
-          entity_type: 'client',
-          entity_name: doc.client_name || '',
-          tenant_id: doc.tenant_id || FIRM.tenantId || '',
-          doc_type: doc.doc_type || '',
-        }),
+      await supabase.functions.invoke('esign-archive-upload', {
+        body: { action:'notify', event:'signed', esign_id:id, signer_token:signerToken }
       }).catch(() => {})
     } catch (e) {
       console.error('Post-sign steps failed (signature already saved):', e)
