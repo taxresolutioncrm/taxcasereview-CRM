@@ -229,81 +229,94 @@ export default function SignPage() {
     // Stamp signature onto each pre-filled IRS PDF attached to this package
     const pdfAttachments = Array.isArray(doc.pdf_attachments) ? doc.pdf_attachments : []
     const signatureText = (mode === 'type' ? typedSig.trim() : fullname.trim())
-    const safeName = (doc.client_name || 'client').replace(/[^a-zA-Z0-9]+/g, '-')
-    const signedAttachments = []
+    const preparedArtifacts = []
 
     for (const att of pdfAttachments) {
       try {
-        const bytes = await fetch(att.url).then(r => r.arrayBuffer())
+        const bytes = await fetch(att.url).then(r => {
+          if (!r.ok) throw new Error('Could not open source document')
+          return r.arrayBuffer()
+        })
         let signedBytes = await stampSignature(
           bytes, att.formType, signatureText, signedDate,
           mode === 'draw' ? sigImage : null
         )
-        // Internal copy: append certificate as final page
         if (certBytes) signedBytes = await appendPdfPages(signedBytes, certBytes).catch(() => signedBytes)
-        // Client copy: teardrop stamp on last page
         const clientBytes = await addTearDropStamp(signedBytes, { signedBy: fullname, signedAt, ip }).catch(() => signedBytes)
-
-        const path = `docs/${safeName}/signed/${att.formType}_signed.pdf`
-        await supabase.storage.from('documents')
-          .upload(path, new Blob([signedBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
-        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-
-        const clientPath = `docs/${safeName}/signed/${att.formType}_client_copy.pdf`
-        await supabase.storage.from('documents')
-          .upload(clientPath, new Blob([clientBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
-        const { data: clientUrlData } = await supabase.storage.from('documents').createSignedUrl(clientPath, 94608000)
-
-        signedAttachments.push({
-          formType: att.formType, label: att.label,
-          url: urlData?.signedUrl || '', clientUrl: clientUrlData?.signedUrl || '',
-          fileSize: signedBytes.byteLength,
-          folder: SIGNED_DOC_FOLDER[att.formType] || null,
+        preparedArtifacts.push({
+          formType:att.formType,
+          label:att.label,
+          folder:SIGNED_DOC_FOLDER[att.formType] || null,
+          signedBlob:new Blob([signedBytes], { type:'application/pdf' }),
+          clientBlob:new Blob([clientBytes], { type:'application/pdf' }),
+          fileSize:signedBytes.byteLength,
         })
       } catch (e) {
-        console.error('Failed to stamp', att.formType, e)
+        throw new Error('Could not prepare ' + (att.label || att.formType) + ': ' + (e?.message || e))
       }
     }
 
-    // Save certificate as standalone doc record
-    let certUrl = null
-    if (certBytes) {
-      const certPath = `docs/${safeName}/signed/certificate_${Date.now()}.pdf`
-      await supabase.storage.from('documents')
-        .upload(certPath, new Blob([certBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
-        .catch(() => {})
-      const { data: certUrlData } = await supabase.storage.from('documents').createSignedUrl(certPath, 94608000)
-      certUrl = certUrlData?.signedUrl || null
-    }
+    const requestedFiles = preparedArtifacts.flatMap(a => [
+      { kind:'internal', formType:a.formType },
+      { kind:'client', formType:a.formType },
+    ])
+    if (certBytes) requestedFiles.push({ kind:'certificate', formType:'certificate' })
 
-    // Everything that used to be scattered leads/tasks/lead_notes/
-    // client_notes/documents/esigns calls — one SECURITY DEFINER RPC.
-    await supabase.rpc('esign_finalize', {
-      p_id:              id,
-      p_client_name:     doc.client_name,
-      p_doc_type:        doc.doc_type,
-      p_signed_by:       fullname,
-      p_signer_ip:       ip,
-      p_signed_at:       signedAt,
-      p_saved_doc_type:  savedDocType,
-      p_cert_url:        certUrl,
-      p_attachments:     signedAttachments,
-      p_cert_size:       certBytes ? certBytes.length : null,
+    const { data: prepResult, error: prepError } = await supabase.functions.invoke('esign-archive-upload', {
+      body: { action:'prepare', esign_id:id, signer_token:signerToken, files:requestedFiles }
     })
+    if (prepError || !prepResult?.success) throw new Error(prepResult?.error || prepError?.message || 'Could not prepare signed archive')
 
-    // esign_finalize files every attachment under a single doc type. Re-sort
-    // them so a signed 2848 lands in POA & Forms and the agreement lands in
-    // Agreements, matching where a human would have filed them.
-    try {
-      for (const att of signedAttachments) {
-        if (!att.folder) continue
-        await supabase.from('documents')
-          .update({ docType: att.folder })
-          .eq('client', doc.client_name)
-          .eq('file_url', att.url)
+    const uploads = Array.isArray(prepResult.uploads) ? prepResult.uploads : []
+    const findUpload = (kind, formType) => uploads.find(u => u.kind===kind && u.formType===formType)
+
+    const signedAttachments = []
+    for (const a of preparedArtifacts) {
+      const internal = findUpload('internal', a.formType)
+      const clientCopy = findUpload('client', a.formType)
+      if (!internal?.path || !internal?.token || !clientCopy?.path || !clientCopy?.token) {
+        throw new Error('Signed archive upload authorization is incomplete for ' + a.formType)
       }
-    } catch (e) {
-      console.warn('Document folder routing failed (files are still saved):', e.message)
+      const [internalUp, clientUp] = await Promise.all([
+        supabase.storage.from('documents').uploadToSignedUrl(internal.path, internal.token, a.signedBlob, { contentType:'application/pdf' }),
+        supabase.storage.from('documents').uploadToSignedUrl(clientCopy.path, clientCopy.token, a.clientBlob, { contentType:'application/pdf' }),
+      ])
+      if (internalUp.error || clientUp.error) throw internalUp.error || clientUp.error
+      signedAttachments.push({
+        formType:a.formType,
+        label:a.label,
+        internalPath:internal.path,
+        clientPath:clientCopy.path,
+        fileSize:a.fileSize,
+        folder:a.folder,
+      })
+    }
+
+    let certificate = null
+    if (certBytes) {
+      const certUpload = findUpload('certificate','certificate')
+      if (!certUpload?.path || !certUpload?.token) throw new Error('Certificate upload authorization is incomplete')
+      const certUp = await supabase.storage.from('documents').uploadToSignedUrl(
+        certUpload.path,
+        certUpload.token,
+        new Blob([certBytes], { type:'application/pdf' }),
+        { contentType:'application/pdf' }
+      )
+      if (certUp.error) throw certUp.error
+      certificate = { path:certUpload.path, fileSize:certBytes.length }
+    }
+
+    const { data: finalizeResult, error: finalizeError } = await supabase.functions.invoke('esign-archive-upload', {
+      body: {
+        action:'finalize',
+        esign_id:id,
+        signer_token:signerToken,
+        artifacts:signedAttachments,
+        certificate,
+      }
+    })
+    if (finalizeError || !finalizeResult?.success) {
+      throw new Error(finalizeResult?.error || finalizeError?.message || 'Could not finalize signed archive')
     }
 
     // Notify the client a signed copy is on file
