@@ -97,6 +97,11 @@ const checks=[
     "eq('signer_token',token)",
     "storage_path||a?.path",
   ]],
+  ['supabase/migrations/20260919_nashville_esign_rpc_lockdown.sql',[
+    "revoke all on function public.esign_public_load(text,text) from public, anon, authenticated",
+    "revoke all on function public.esign_public_mark_signed(text,text,text,text) from public, anon, authenticated",
+    "revoke all on function public.esign_public_track_event(text,text,text,integer,text,text,jsonb) from public, anon, authenticated",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
