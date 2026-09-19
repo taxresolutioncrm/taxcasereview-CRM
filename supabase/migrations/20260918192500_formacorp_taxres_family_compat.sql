@@ -1,6 +1,6 @@
 -- FormaCorp TaxRes-family compatibility
 -- Idempotent schema contract for TCR, Nashville, CloudCPA, Demo, and future TaxRes offices.
--- Keeps Bizee-backed FormaCorp on the same tenant-scoped database contract everywhere.
+-- Keeps the native FormaCorp workflow on the same tenant-scoped database contract everywhere.
 
 alter table public.formacorp
   add column if not exists principal_address text,

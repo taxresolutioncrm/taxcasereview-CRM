@@ -17,9 +17,6 @@ const ENTITY_ICONS = {
 const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 const STAGES = ['Consultation','Documents Prep','State Filing','EIN Application','Operating Agreement','Bank Account Setup','Compliance & Maintenance','Complete']
 const FL_FILING_STEPS = ['Draft','Ready to Submit','Filing Queue','Submitted to Florida','Under State Review','Action Required','Approved / Active']
-const FL_ONLINE_URL = 'https://efile.sunbiz.org/llc_file.html'
-const BIZEE_PRO_URL = 'https://bizee.com/company/bizee-pro-suite'
-const BIZEE_DASHBOARD_URL = 'https://orders.bizee.com/dashboard/login'
 
 const FL_FIELDS = {
   principal_address:'', mailing_address:'', registered_agent_address:'',
@@ -90,6 +87,7 @@ function floridaMissing(v = {}) {
 }
 
 function floridaSubmissionMissing(v = {}) {
+  if (!isFloridaLlc(v)) return []
   const missing = floridaMissing(v)
   if (!String(v.fl_registered_agent_signature || '').trim()) missing.push('Registered-agent typed signature')
   if (!String(v.fl_authorized_representative_signature || '').trim()) missing.push('Authorized-representative typed signature')
@@ -180,7 +178,7 @@ function NameCheckStatus({ state, name, check }) {
     <div style={{marginTop:6,fontSize:12}}>
       {check.state === 'pending' && <span style={{color:'var(--t3)'}}>⏳ Checking with Sunbiz…</span>}
       {check.state === 'unavailable' && (
-        <span style={{color:'var(--t3)'}}>ℹ️ Sunbiz unreachable — check manually at <a href="https://search.sunbiz.org" target="_blank" rel="noreferrer" style={{color:'var(--blue)'}}>search.sunbiz.org</a></span>
+        <span style={{color:'var(--t3)'}}>ℹ️ Sunbiz lookup is temporarily unavailable. Keep the case in FormaCorp and retry the lookup here.</span>
       )}
       {check.state === 'done' && check.result?.available && (
         <span style={{color:'var(--ok)'}}>✅ No exact match in FL — likely available (Sunbiz confirms at filing time)</span>
@@ -190,7 +188,7 @@ function NameCheckStatus({ state, name, check }) {
           <div style={{color:'var(--warn)'}}>⚠️ Exact match already exists in FL:</div>
           {(check.result.exactMatches || []).slice(0,3).map(m => (
             <div key={m.documentNumber} style={{color:'var(--t2)',marginTop:2,fontSize:11}}>
-              • {m.name} — {m.status} — <a href={m.detailUrl} target="_blank" rel="noreferrer" style={{color:'var(--blue)'}}>#{m.documentNumber}</a>
+              • {m.name} — {m.status} — #{m.documentNumber}
             </div>
           ))}
         </div>
@@ -232,91 +230,6 @@ export default function FormaCorp() {
   const [lookup, setLookup] = useState({ open:false, query:'', running:false, result:null })
   const [pdfBusy, setPdfBusy] = useState(false)
   const [flSubmit, setFlSubmit] = useState({ method:'sunbiz_online', faxNumber:'', coverSheet:null, signedArticles:null, busy:false })
-  const [bizeeBrowser, setBizeeBrowser] = useState({ open:false, url:BIZEE_DASHBOARD_URL, launched:false })
-  const [bizeeAccount, setBizeeAccount] = useState({ account_email:'', account_label:'', status:'not_configured' })
-  const [bizeeAccountEdit, setBizeeAccountEdit] = useState({ account_email:'', account_label:'' })
-  const [bizeeAccountSaving, setBizeeAccountSaving] = useState(false)
-
-  async function loadBizeeAccount() {
-    const { data, error } = await supabase.from('settings').select('labels').limit(1).maybeSingle()
-    if (error) { console.warn('[FormaCorp] Bizee account config load failed', error.message); return }
-    const cfg = data?.labels?.bizee_pro || {}
-    const next = {
-      account_email:String(cfg.account_email || '').trim(),
-      account_label:String(cfg.account_label || '').trim(),
-      status:String(cfg.status || (cfg.account_email ? 'configured' : 'not_configured')),
-    }
-    setBizeeAccount(next)
-    setBizeeAccountEdit({ account_email:next.account_email, account_label:next.account_label })
-  }
-
-  async function saveBizeeAccount() {
-    const email = String(bizeeAccountEdit.account_email || '').trim()
-    if (email && !validEmail(email)) { showToast('Enter a valid Bizee account email', 'err'); return }
-    setBizeeAccountSaving(true)
-    try {
-      const { data:row, error:loadErr } = await supabase.from('settings').select('id,labels').limit(1).maybeSingle()
-      if (loadErr || !row?.id) throw loadErr || new Error('Office settings row not found')
-      const labels = row.labels && typeof row.labels === 'object' ? { ...row.labels } : {}
-      labels.bizee_pro = {
-        account_email:email,
-        account_label:String(bizeeAccountEdit.account_label || '').trim(),
-        status:email ? 'configured' : 'not_configured',
-        login_url:BIZEE_DASHBOARD_URL,
-        updated_at:new Date().toISOString(),
-      }
-      const { error:updateErr } = await supabase.from('settings').update({ labels }).eq('id', row.id)
-      if (updateErr) throw updateErr
-      await loadBizeeAccount()
-      showToast(email ? '✅ Bizee Pro account linked to this CRM office' : 'Bizee Pro account link cleared')
-    } catch (e) {
-      showToast('Could not save Bizee Pro account: '+(e?.message || e), 'err')
-    } finally {
-      setBizeeAccountSaving(false)
-    }
-  }
-
-  function openBizeeBrowser(url = BIZEE_DASHBOARD_URL) {
-    const safe = String(url || '')
-    if (!safe.startsWith('https://bizee.com/') && !safe.startsWith('https://orders.bizee.com/')) {
-      showToast('Blocked non-Bizee browser URL', 'err')
-      return false
-    }
-
-    // Bizee does not reliably render inside a third-party iframe. Use a named,
-    // reusable browser window instead so Bizee controls its own cookies, login,
-    // redirects, payment pages, and security headers while the FormaCorp case
-    // stays open in the CRM behind it.
-    const width = Math.min(1280, Math.max(900, Math.round((window.screen?.availWidth || 1440) * 0.82)))
-    const height = Math.min(900, Math.max(650, Math.round((window.screen?.availHeight || 900) * 0.86)))
-    const left = Math.max(0, Math.round(((window.screen?.availWidth || width) - width) / 2))
-    const top = Math.max(0, Math.round(((window.screen?.availHeight || height) - height) / 2))
-    const popup = window.open(
-      safe,
-      'formacorp_bizee_pro',
-      `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-    )
-
-    if (!popup) {
-      setBizeeBrowser({ open:true, url:safe, launched:false })
-      showToast('Your browser blocked the Bizee window. Click “Open Bizee Secure Window” below.', 'err')
-      return false
-    }
-
-    try { popup.focus() } catch (_) {}
-    setBizeeBrowser({ open:true, url:safe, launched:true })
-    return true
-  }
-
-  function reloadBizeeBrowser() {
-    openBizeeBrowser(bizeeBrowser.url)
-  }
-
-  function openBizeeForOffice() {
-    openBizeeBrowser(bizeeAccount.account_email ? BIZEE_DASHBOARD_URL : BIZEE_PRO_URL)
-  }
-
-  useEffect(() => { loadBizeeAccount() }, [])
 
   function checkNameSoon(name, state) {
     if (state !== 'FL' || !name || name.trim().length < 3) {
@@ -564,81 +477,48 @@ export default function FormaCorp() {
     }, 'Florida filing moved to the filing queue', `Queued for Florida submission via ${method==='prepaid_fax'?'Prepaid Sunbiz E-File fax':'Sunbiz online'}`)
   }
 
-  async function startBizeeFiling(c) {
-    const missing = floridaSubmissionMissing(c)
-    if (missing.length) { openFloridaEdit(c, missing); return }
-    if (!bizeeAccount.account_email) {
-      showToast('Set up and link this CRM office\'s Bizee Pro account before starting a client filing.', 'err')
-      openBizeeBrowser(BIZEE_PRO_URL)
+  async function startNativeFormation(c) {
+    if (isFloridaLlc(c)) {
+      const missing = floridaSubmissionMissing(c)
+      if (missing.length) { openFloridaEdit(c, missing); return }
+      const ok = await queueFloridaFiling(c, 'prepaid_fax')
+      if (!ok) return
+      showToast('✅ Formation moved to the internal filing queue. Complete the signed packet and submit it from FormaCorp.')
       return
     }
 
-    const { data: existing, error:lookupErr } = await supabase
+    const { data:existing, error:lookupErr } = await supabase
       .from('formacorp_service_requests')
-      .select('*')
+      .select('id,status')
       .eq('case_id', c.id)
-      .eq('service_type', 'Bizee Pro Formation')
+      .eq('service_type', 'State Formation Filing')
       .order('requested_at', { ascending:false })
       .limit(1)
       .maybeSingle()
-    if (lookupErr) { showToast('Could not check Bizee filing request: '+lookupErr.message, 'err'); return }
+    if (lookupErr) { showToast('Could not check the formation filing request: '+lookupErr.message, 'err'); return }
 
     if (!existing) {
+      const req = stateReqs[c.state]
+      const stateFee = req?.llc_filing_fee ? parseFloat(String(req.llc_filing_fee).replace(/[^0-9.]/g,'')) : null
       const { error:reqErr } = await supabase.from('formacorp_service_requests').insert([{
         case_id:c.id,
-        service_type:'Bizee Pro Formation',
-        status:'In Progress',
+        service_type:'State Formation Filing',
+        status:'Requested',
         jurisdiction_state:c.state || null,
-        agency:'Bizee Pro',
-        state_fee:floridaStateFee(c),
-        service_fee:99,
+        agency:req?.state_name ? `${req.state_name} business filing office` : 'State business filing office',
+        state_fee:Number.isFinite(stateFee) ? stateFee : null,
+        service_fee:null,
         payment_status:'Pending',
-        notes:'Primary formation provider. Use the office Bizee Pro account for filing and fulfillment; keep the CRM case linked for status and documents.',
+        notes:'Native FormaCorp formation workflow. Intake, documents, filing status, payment tracking, and completion remain in the CRM.',
       }])
-      if (reqErr) { showToast('Could not create Bizee filing request: '+reqErr.message, 'err'); return }
+      if (reqErr) { showToast('Could not create the formation filing request: '+reqErr.message, 'err'); return }
     }
 
-    const ok = await updateFloridaCase(c, {
-      fl_filing_status:'Filing Queue',
-      fl_state_fee:floridaStateFee(c),
-      stage:'State Filing',
-    }, '✅ Bizee Pro filing started', 'Formation handed off to Bizee Pro for office fulfillment')
-    if (!ok) return
-    openBizeeBrowser(BIZEE_DASHBOARD_URL)
-  }
-
-  async function recordBizeeOrder(c) {
-    const order = window.prompt('Bizee order number / reference:', '')
-    if (!order?.trim()) return
-    const { data:req, error:findErr } = await supabase
-      .from('formacorp_service_requests')
-      .select('id')
-      .eq('case_id', c.id)
-      .eq('service_type', 'Bizee Pro Formation')
-      .order('requested_at', { ascending:false })
-      .limit(1)
-      .maybeSingle()
-    if (findErr || !req?.id) { showToast('Start the Bizee filing first, then record its order number.', 'err'); return }
-
-    const { error } = await supabase.from('formacorp_service_requests').update({
-      submission_reference:order.trim(),
-      status:'In Progress',
-      submitted_at:new Date().toISOString(),
-    }).eq('id', req.id)
-    if (error) { showToast('Could not save Bizee order: '+error.message, 'err'); return }
-
-    await recordFloridaEvent(c, c.fl_filing_status || 'Filing Queue', 'Bizee Pro order/reference recorded', { bizee_order:order.trim() })
-    showToast('✅ Bizee order saved to this formation case')
-  }
-
-  function openBizeeProSetup() {
-    openBizeeBrowser(BIZEE_PRO_URL)
-  }
-
-  async function openFloridaOnlineStaff(c) {
-    const ok = await queueFloridaFiling(c, 'sunbiz_online')
-    if (!ok) return
-    window.open(FL_ONLINE_URL, '_blank', 'noopener,noreferrer')
+    const { error:updateErr } = await supabase.from('formacorp').update({ stage:'State Filing' }).eq('id',c.id)
+    if (updateErr) { showToast('Could not move the company to State Filing: '+updateErr.message,'err'); return }
+    setDetail(d=>d?.id===c.id?({...d,stage:'State Filing'}):d)
+    await load()
+    showToast('✅ Native FormaCorp filing workflow started')
   }
 
   async function recordFloridaSubmission(c) {
@@ -893,9 +773,8 @@ export default function FormaCorp() {
               <button className="btn sm" onClick={()=>openFloridaEdit(c, [])}>✏️ Edit Filing Details</button>
               <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
               {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
-              {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startBizeeFiling(c)}>🟠 Start Bizee Filing</button>}
-              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startBizeeFiling(c)}>🟠 Open Bizee Dashboard</button>}
-              {c.fl_filing_status==='Filing Queue' && <button className="btn sm" onClick={()=>recordBizeeOrder(c)}>🔖 Record Bizee Order #</button>}
+              {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>🏢 Start FormaCorp Filing</button>}
+              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>🏢 Continue FormaCorp Filing</button>}
               {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>}
               {c.fl_filing_status==='Submitted to Florida' && <button className="btn sm" onClick={()=>markFloridaReview(c)}>⏳ Mark Under Review</button>}
               {['Submitted to Florida','Under State Review'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>approveFlorida(c)}>✅ Record Approval</button>}
@@ -903,18 +782,13 @@ export default function FormaCorp() {
             </div>
 
             <div style={{marginTop:10,padding:'10px 11px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:10.5,lineHeight:1.55}}>
-              <div style={{fontWeight:800,fontSize:11,marginBottom:4}}>🟠 Bizee Pro is the primary formation provider</div>
-              <div>Use one Bizee Pro commercial account for this CRM office. Bizee walks the rep through the formation and included services; FormaCorp keeps the client link, order reference, state status, documents, and post-formation tracking.</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
-                <button className="btn sm" onClick={openBizeeProSetup}>＋ Set Up / Apply for Bizee Pro</button>
-                <button className="btn sm" onClick={()=>openBizeeBrowser(BIZEE_DASHBOARD_URL)}>🟠 Bizee Pro Login</button>
-              </div>
+              <div style={{fontWeight:800,fontSize:11,marginBottom:4}}>🏢 FormaCorp native filing workflow</div>
+              <div>Intake, authorization, filing packet preparation, submission tracking, state fees, approval/rejection, documents, EIN, banking, and compliance stay in this CRM record. No third-party formation dashboard is required.</div>
             </div>
 
-            <details style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--br)'}}>
-              <summary style={{cursor:'pointer',fontSize:11,fontWeight:700}}>Legacy / fallback direct Florida filing tools</summary>
-              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Use only if the office intentionally files outside Bizee. This is not the normal FormaCorp workflow.</div>
-              <button className="btn sm" onClick={()=>openFloridaOnlineStaff(c)}>🏛️ Staff: Open Sunbiz Card Filing</button>
+            <details open style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--br)'}}>
+              <summary style={{cursor:'pointer',fontSize:11,fontWeight:700}}>Florida submission inside FormaCorp</summary>
+              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Use the office's existing filing/fax workflow from this record. No outside formation dashboard is required.</div>
               <div style={{fontSize:11,fontWeight:700,margin:'10px 0 6px'}}>Prepaid Sunbiz E-File / Fax submission</div>
               <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>For a frequent-filer Sunbiz account: generate the official Electronic Filing Cover Sheet in Sunbiz, attach it with the signed Articles, enter the fax number printed on that cover sheet, and FormaCorp will combine the PDFs and send the filing through the CRM fax service. Unsigned Articles are blocked from fax submission.</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -948,11 +822,11 @@ export default function FormaCorp() {
         <div className="card" style={{padding:'12px 16px',marginBottom:10}}>
           <div className="stitle" style={{marginBottom:10}}>Quick Links & Resources</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            <a href="https://www.irs.gov/businesses/small-businesses-self-employed/apply-for-an-employer-identification-number-ein-online" target="_blank" rel="noreferrer" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',textDecoration:'none'}}>🔢 Apply for EIN — IRS.gov</a>
-            {!isFloridaLlc(c) && <a href={stateReqs[c.state]?.sos_url || `https://www.sos.${c.state?.toLowerCase()}.gov`} target="_blank" rel="noreferrer" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',textDecoration:'none'}}>🏛️ File with {c.state} Secretary of State</a>}
+            <button className="btn sm" onClick={()=>setDetail(c)}>🔢 Continue EIN in FormaCorp</button>
+            {!isFloridaLlc(c) && <button className="btn sm" onClick={()=>startNativeFormation(c)}>🏛️ Continue {c.state} Filing in FormaCorp</button>}
             {isFloridaLlc(c) && <button onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:pdfBusy?'wait':'pointer'}}>{pdfBusy ? '⏳ Building…' : '📄 Generate FL Articles PDF'}</button>}
             {c.state === 'FL' && <button onClick={()=>setLookup({ open:true, query:c.entity_name || '', running:false, result:null })} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:'pointer'}}>🔍 Sunbiz Lookup</button>}
-            <a href="https://www.irs.gov/businesses/small-businesses-self-employed/s-corporations" target="_blank" rel="noreferrer" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',textDecoration:'none'}}>📋 IRS S-Corp / LLC Info</a>
+            <button className="btn sm" onClick={()=>setDetail(c)}>📋 Continue Entity Workflow</button>
           </div>
         </div>
 
@@ -969,7 +843,7 @@ export default function FormaCorp() {
               </div>
               {lookup.result && !lookup.result.ok && <div style={{fontSize:12,color:'var(--warn)',padding:'8px 10px',background:'var(--s2)',borderRadius:6}}>Sunbiz couldn't be reached — try again in a moment, or check manually at search.sunbiz.org</div>}
               {lookup.result?.ok && lookup.result.entities?.length === 0 && <div style={{fontSize:12,color:'var(--t3)',padding:'8px 10px',background:'var(--s2)',borderRadius:6}}>No entities matched "{lookup.query}".</div>}
-              {lookup.result?.ok && lookup.result.entities?.length > 0 && <div style={{maxHeight:340,overflowY:'auto'}}>{lookup.result.entities.map(m => <div key={m.documentNumber} style={{padding:'8px 10px',borderTop:'1px solid var(--br)',fontSize:12}}><div style={{fontWeight:700}}>{m.name}</div><div style={{color:'var(--t3)',marginTop:2}}>#{m.documentNumber} · {m.status}{m.detailUrl && <> · <a href={m.detailUrl} target="_blank" rel="noreferrer" style={{color:'var(--blue)'}}>View on Sunbiz</a></>}</div></div>)}</div>}
+              {lookup.result?.ok && lookup.result.entities?.length > 0 && <div style={{maxHeight:340,overflowY:'auto'}}>{lookup.result.entities.map(m => <div key={m.documentNumber} style={{padding:'8px 10px',borderTop:'1px solid var(--br)',fontSize:12}}><div style={{fontWeight:700}}>{m.name}</div><div style={{color:'var(--t3)',marginTop:2}}>#{m.documentNumber} · {m.status}</div></div>)}</div>}
             </div>
           </div>
         )}
@@ -984,21 +858,14 @@ export default function FormaCorp() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button className="btn pri" onClick={openBizeeForOffice} style={{display:'flex',alignItems:'center',gap:6}}>🟠 {bizeeAccount.account_email ? 'Start Filing in Bizee Pro' : 'Set Up Bizee Pro Account'}</button>
-          <button className="btn" onClick={openBizeeProSetup}>＋ Set Up Bizee Pro Account</button>
-          <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>＋ Track Bizee Filing</button>
+          <button className="btn pri" onClick={openWizard}>＋ Start Business Formation</button>
+          <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>＋ New Formation Case</button>
         </div>
       </div>
 
       <div className="card" style={{padding:'10px 14px',marginBottom:14,borderLeft:'3px solid var(--blue)'}}>
-        <div style={{fontSize:12,fontWeight:800,marginBottom:3}}>Bizee Pro handles the formation workflow</div>
-        <div style={{fontSize:10.5,color:'var(--t3)',lineHeight:1.55,marginBottom:9}}>Each CRM office has its own Bizee Pro account identity. The browser session stays with Bizee, while this CRM stores only the office account label/email so staff can verify they are using the correct office account.</div>
-        <div style={{display:'grid',gridTemplateColumns:'minmax(180px,1fr) minmax(180px,1fr) auto',gap:8,alignItems:'end'}}>
-          <div className="field" style={{margin:0}}><label>Bizee Pro Account Email</label><input type="email" value={bizeeAccountEdit.account_email} onChange={e=>setBizeeAccountEdit(x=>({...x,account_email:e.target.value}))} placeholder="office Bizee login email"/></div>
-          <div className="field" style={{margin:0}}><label>Account Label</label><input value={bizeeAccountEdit.account_label} onChange={e=>setBizeeAccountEdit(x=>({...x,account_label:e.target.value}))} placeholder="e.g. TaxRes CRM / Nashville"/></div>
-          <button className="btn sm" onClick={saveBizeeAccount} disabled={bizeeAccountSaving}>{bizeeAccountSaving?'Saving…':'💾 Save Office Account'}</button>
-        </div>
-        <div style={{fontSize:10,marginTop:7,color:bizeeAccount.account_email?'var(--ok)':'var(--warn)'}}>{bizeeAccount.account_email ? `Linked for this CRM: ${bizeeAccount.account_label || bizeeAccount.account_email}` : 'No Bizee Pro account is linked to this CRM yet. Use Set Up Bizee Pro Account, create/login to the office account, then save that office email here.'}</div>
+        <div style={{fontSize:12,fontWeight:800,marginBottom:3}}>FormaCorp runs the business-formation workflow inside the CRM</div>
+        <div style={{fontSize:10.5,color:'var(--t3)',lineHeight:1.55}}>Create the company record, collect filing authorization, prepare documents, track state fees and submission, record state approval, obtain the EIN, execute the operating agreement, prepare banking documents, and manage compliance without handing the case to another formation platform.</div>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8,marginBottom:14}}>
@@ -1013,27 +880,8 @@ export default function FormaCorp() {
         <select value={stageFilter} onChange={e=>setSF(e.target.value)} style={{padding:'7px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}><option value="All">All Stages</option>{STAGES.map(s=><option key={s}>{s}</option>)}</select>
       </div>
 
-      {bizeeBrowser.open && (
-        <div className="card" style={{marginBottom:14,overflow:'hidden',border:'1px solid var(--br)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'var(--s2)',borderBottom:'1px solid var(--br)',flexWrap:'wrap'}}>
-            <div style={{fontWeight:800,fontSize:11,whiteSpace:'nowrap'}}>🟠 Bizee Pro Secure Browser</div>
-            <div style={{fontSize:10,color:bizeeAccount.account_email?'var(--ok)':'var(--warn)',whiteSpace:'nowrap'}}>{bizeeAccount.account_email ? `Office account: ${bizeeAccount.account_email}` : 'Office account not linked yet'}</div>
-            <div style={{flex:1,minWidth:220,padding:'6px 9px',border:'1px solid var(--br)',borderRadius:6,background:'var(--s1)',fontSize:10.5,color:'var(--t3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{bizeeBrowser.url}</div>
-            <button className="btn sm" onClick={reloadBizeeBrowser}>↻ Reopen</button>
-            <button className="btn sm" onClick={()=>setBizeeBrowser(x=>({...x,open:false}))}>✕ Dismiss</button>
-          </div>
-          <div style={{padding:'18px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap'}}>
-            <div style={{minWidth:240,flex:1}}>
-              <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>{bizeeBrowser.launched ? 'Bizee is open in the secure browser window.' : 'Bizee needs permission to open a secure browser window.'}</div>
-              <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.55}}>The FormaCorp case stays open here while Bizee handles its own login, cookies, redirects, filing pages, and payment screens in a dedicated browser window. This avoids the blank/blocked iframe problem.</div>
-            </div>
-            <button className="btn pri" onClick={()=>openBizeeBrowser(bizeeBrowser.url)}>🟠 Open Bizee Secure Window</button>
-          </div>
-        </div>
-      )}
-
       {filtered.length === 0 ? (
-        <div className="card" style={{padding:32,textAlign:'center',color:'var(--t3)'}}><div style={{fontSize:36,marginBottom:10}}>🏢</div><div style={{fontWeight:700,fontSize:15,color:'var(--tx)',marginBottom:4}}>No formation cases yet</div><div style={{fontSize:13}}>Start the filing in Bizee Pro, then use "Track Bizee Filing" to link the order and state result to the client.</div></div>
+        <div className="card" style={{padding:32,textAlign:'center',color:'var(--t3)'}}><div style={{fontSize:36,marginBottom:10}}>🏢</div><div style={{fontWeight:700,fontSize:15,color:'var(--tx)',marginBottom:4}}>No formation cases yet</div><div style={{fontSize:13}}>Start a formation case here and move it through documents, state filing, approval, EIN, banking, and compliance.</div></div>
       ) : (
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:10}}>
           {filtered.map(c=><div key={c.id} className="card" style={{padding:'14px 16px',cursor:'pointer',borderTop:`3px solid ${stageColor[c.stage]||'var(--br)'}`}} onClick={()=>setDetail(c)} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow=`0 6px 20px ${stageColor[c.stage]}22`}} onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=''}}>

@@ -3,8 +3,6 @@ import { supabase } from '../../lib/supabase'
 import { fillForm } from '../../lib/irsFormUtils'
 import { buildOperatingAgreementPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
 
-const BIZEE_DASHBOARD_URL = 'https://orders.bizee.com/dashboard/login'
-
 const FL_SERVICE_GUIDE = {
   'Annual Report Filing': { fee:'$138.75', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Keeps the LLC active; Florida posts online credit-card filings immediately.' },
   'Registered Agent Change': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Use the Florida LLC registered-agent / registered-office change filing.' },
@@ -234,7 +232,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     try{
       const {data,error}=await supabase.storage.from('documents').createSignedUrl(doc.storage_path,300)
       if(error||!data?.signedUrl)throw error||new Error('Could not create secure download link')
-      window.open(data.signedUrl,'_blank','noopener,noreferrer')
+      const a=document.createElement('a')
+      a.href=data.signedUrl
+      a.download=doc.file_name || 'FormaCorp-document'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
     }catch(e){showToast?.('Could not open document: '+(e?.message||e),'err')}
   }
 
@@ -575,7 +578,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       </div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
         <button className="btn sm" onClick={generateSS4} disabled={busy==='ss4'}>{busy==='ss4'?'Generating…':'📄 Generate SS-4 Draft'}</button>
-        <a className="btn sm" href="https://www.irs.gov/businesses/small-businesses-self-employed/get-an-employer-identification-number" target="_blank" rel="noreferrer">🏛️ Open Official IRS EIN</a>
+        <span className="btn sm" style={{cursor:'default'}}>🏛️ EIN workflow stays in FormaCorp</span>
         <button className="btn sm" onClick={saveCurrent} disabled={busy==='save'}>💾 Save EIN Workflow</button>
       </div>
       <div style={{padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,marginBottom:12}}>
@@ -644,7 +647,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <button className="btn sm" onClick={recordAnnualReportFiled}>✅ Record Annual Report Filed</button>
         <button className="btn sm" onClick={syncRegisteredAgentRenewal}>⏰ Sync Agent Renewal</button>
         <button className="btn sm" onClick={generate2553} disabled={busy==='2553'}>{busy==='2553'?'Generating…':'📄 Generate Form 2553'}</button>
-        {caseRecord.state==='FL' && <a className="btn sm" href="https://efile.sunbiz.org/sbs_webapp/" target="_blank" rel="noreferrer">☀️ Florida Annual Report</a>}
+        {caseRecord.state==='FL' && <span className="btn sm" style={{cursor:'default'}}>☀️ Florida annual-report tracking stays in FormaCorp</span>}
       </div>
     </div>}
 
@@ -655,11 +658,10 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <Field label="Request Notes"><input value={serviceNotes} onChange={e=>setServiceNotes(e.target.value)} placeholder="What needs to change / be filed?" style={inputStyle}/></Field>
       </div>
       <div style={{padding:'9px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:11,lineHeight:1.5,marginBottom:8}}>
-        <strong>Primary fulfillment: Bizee Pro.</strong> Create the CRM service request here, then complete the provider workflow in the office's Bizee Pro dashboard.
-        <a href={BIZEE_DASHBOARD_URL} target="_blank" rel="noreferrer" style={{marginLeft:8,color:'var(--blue)',fontWeight:700}}>Open Bizee Pro ↗</a>
+        <strong>Fulfillment stays in FormaCorp.</strong> Create and manage the service request here so the case, tasks, payment status, filing reference, completion confirmation, and documents stay attached to the company record.
         {caseRecord.state==='FL' && FL_SERVICE_GUIDE[serviceType] && <details style={{marginTop:6}}>
-          <summary style={{cursor:'pointer',color:'var(--t3)',fontSize:10}}>Direct Florida fallback / reference</summary>
-          <div style={{marginTop:4}}>{FL_SERVICE_GUIDE[serviceType].fee} · {FL_SERVICE_GUIDE[serviceType].note} <a href={FL_SERVICE_GUIDE[serviceType].url} target="_blank" rel="noreferrer" style={{color:'var(--blue)',fontWeight:700}}>Official state page ↗</a></div>
+          <summary style={{cursor:'pointer',color:'var(--t3)',fontSize:10}}>Florida filing reference</summary>
+          <div style={{marginTop:4}}>{FL_SERVICE_GUIDE[serviceType].fee} · {FL_SERVICE_GUIDE[serviceType].note}</div>
         </details>}
       </div>
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
