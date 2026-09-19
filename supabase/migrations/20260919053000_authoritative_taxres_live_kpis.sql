@@ -46,7 +46,9 @@ begin
   perform set_config('http.curlopt_timeout_msec','15000',true);
   perform set_config('http.curlopt_connecttimeout_msec','5000',true);
 
-  select extensions.http(
+  select *
+    into v_http
+  from extensions.http(
     (
       'POST'::extensions.http_method,
       'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy',
@@ -57,7 +59,7 @@ begin
       'application/json',
       '{"action":"metrics_batch","products":["tax_case_review","nashville","cloudcpa"]}'
     )::extensions.http_request
-  ) into v_http;
+  );
 
   if coalesce(v_http.status,0)<>200 then
     raise exception 'Live TaxRes metrics unavailable (hub status %)',coalesce(v_http.status,0);
