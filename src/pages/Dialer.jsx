@@ -302,6 +302,8 @@ export default function Dialer() {
     const { error } = await supabase.from('documents').insert([{
       name: `Call Recording — ${when}`,
       client: client.name,
+      clientname: client.name,
+      client_id: String(client.id),
       docType: 'Call Recording',
       notes: `From ${attachRec.from_number || 'unknown'}${attachRec.duration_seconds ? ` · ${attachRec.duration_seconds}s` : ''}`,
       file_url: attachRec.recording_url,
