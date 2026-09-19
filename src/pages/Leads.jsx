@@ -511,7 +511,30 @@ export default function Leads() {
     if (!user) return
     load()
     const ch = supabase.channel('leads-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => load())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'leads',
+        ...(FIRM.tenantId ? { filter: `tenant_id=eq.${FIRM.tenantId}` } : {}),
+      }, payload => {
+        const next = payload?.new || null
+        const old = payload?.old || null
+        const id = next?.id || old?.id
+        if (!id) return
+        if (payload.eventType === 'DELETE') {
+          setLeads(rows => rows.filter(row => String(row.id) !== String(id)))
+          return
+        }
+        if (!next) return
+        setLeads(rows => {
+          const exists = rows.some(row => String(row.id) === String(id))
+          const merged = exists
+            ? rows.map(row => String(row.id) === String(id) ? { ...row, ...next } : row)
+            : [next, ...rows]
+          return merged.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0))
+        })
+        setDetail(current => current && String(current.id) === String(id) ? { ...current, ...next } : current)
+      })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [user?.id])
@@ -525,8 +548,8 @@ export default function Leads() {
     function reloadNotes() { loadLeadNotes(id) }
     function reloadTasks() { loadLeadTasks(name) }
     const ch = supabase.channel('lead-detail-rt-' + id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_notes' }, reloadNotes)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, reloadTasks)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_notes', filter: `lead_id=eq.${id}` }, reloadNotes)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `clientName=eq.${name}` }, reloadTasks)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [detail?.id, detail?.name])
