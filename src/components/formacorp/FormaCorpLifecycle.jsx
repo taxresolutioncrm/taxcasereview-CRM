@@ -3,8 +3,6 @@ import { supabase } from '../../lib/supabase'
 import { fillForm } from '../../lib/irsFormUtils'
 import { buildOperatingAgreementPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
 
-const BIZEE_DASHBOARD_URL = 'https://orders.bizee.com/dashboard/login'
-
 const FL_SERVICE_GUIDE = {
   'Annual Report Filing': { fee:'$138.75', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Keeps the LLC active; Florida posts online credit-card filings immediately.' },
   'Registered Agent Change': { fee:'$25', url:'https://dos.fl.gov/sunbiz/forms/limited-liability-company', note:'Use the Florida LLC registered-agent / registered-office change filing.' },
@@ -655,11 +653,10 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <Field label="Request Notes"><input value={serviceNotes} onChange={e=>setServiceNotes(e.target.value)} placeholder="What needs to change / be filed?" style={inputStyle}/></Field>
       </div>
       <div style={{padding:'9px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:11,lineHeight:1.5,marginBottom:8}}>
-        <strong>Primary fulfillment: Bizee Pro.</strong> Create the CRM service request here, then complete the provider workflow in the office's Bizee Pro dashboard.
-        <a href={BIZEE_DASHBOARD_URL} target="_blank" rel="noreferrer" style={{marginLeft:8,color:'var(--blue)',fontWeight:700}}>Open Bizee Pro ↗</a>
+        <strong>Fulfillment stays in FormaCorp.</strong> Create and manage the service request here so the case, tasks, payment status, filing reference, completion confirmation, and documents stay attached to the company record.
         {caseRecord.state==='FL' && FL_SERVICE_GUIDE[serviceType] && <details style={{marginTop:6}}>
-          <summary style={{cursor:'pointer',color:'var(--t3)',fontSize:10}}>Direct Florida fallback / reference</summary>
-          <div style={{marginTop:4}}>{FL_SERVICE_GUIDE[serviceType].fee} · {FL_SERVICE_GUIDE[serviceType].note} <a href={FL_SERVICE_GUIDE[serviceType].url} target="_blank" rel="noreferrer" style={{color:'var(--blue)',fontWeight:700}}>Official state page ↗</a></div>
+          <summary style={{cursor:'pointer',color:'var(--t3)',fontSize:10}}>Florida filing reference</summary>
+          <div style={{marginTop:4}}>{FL_SERVICE_GUIDE[serviceType].fee} · {FL_SERVICE_GUIDE[serviceType].note}</div>
         </details>}
       </div>
       <button className="btn pri sm" onClick={createServiceRequest} disabled={busy==='service'}>{busy==='service'?'Creating…':'＋ Create Service Request'}</button>
