@@ -21,7 +21,8 @@ serve(async(req)=>{
     const authHeader=req.headers.get('Authorization')||''
     if(!authHeader.startsWith('Bearer ')) return json({error:'Missing authorization'},401)
     const caller=createClient(url,anon,{global:{headers:{Authorization:authHeader}},auth:{persistSession:false}})
-    const {data:{user},error:userErr}=await caller.auth.getUser()
+    const token=authHeader.slice(7)
+    const {data:{user},error:userErr}=await caller.auth.getUser(token)
     if(userErr||!user?.email) return json({error:'Invalid session'},401)
 
     const {data:tenantId,error:tenantErr}=await caller.rpc('current_tenant_id')
