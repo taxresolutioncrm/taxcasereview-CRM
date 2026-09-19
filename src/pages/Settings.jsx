@@ -34,11 +34,12 @@ export default function Settings() {
   async function connectQuickBooks() {
     if (!myTenantId) { showToast('Still loading your account — try again in a moment'); return }
     if (!firm.qb_client_id) { showToast('Save your QuickBooks Client ID/Secret first'); return }
-    const { data: state, error } = await supabase.rpc('create_accounting_oauth_state', { p_provider: 'quickbooks' })
-    if (error || !state) { showToast('Could not start secure QuickBooks connection'); return }
-    const redirectUri = window.location.origin + '/auth/quickbooks-callback'
-    const authorizeUrl = `https://appcenter.intuit.com/connect/oauth2?client_id=${encodeURIComponent(firm.qb_client_id)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=com.intuit.quickbooks.accounting&state=${encodeURIComponent(state)}`
-    window.location.href = authorizeUrl
+    const { data, error } = await supabase.functions.invoke('quickbooks-oauth-start', { body: {} })
+    if (error || !data?.authorize_url) {
+      showToast('Could not start secure QuickBooks connection')
+      return
+    }
+    window.location.href = data.authorize_url
   }
 
   async function connectXero() {
@@ -960,6 +961,13 @@ export default function Settings() {
               <div style={{ background: 'rgba(212,147,10,.1)', border: '1px solid rgba(212,147,10,.3)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--t2)', marginBottom: 14, lineHeight: 1.7 }}>
                 <strong style={{ color: 'var(--warn)' }}>⚠️ Note:</strong> Save your Client ID/Secret above first, then click Connect.
               </div>
+
+              {acctStatus.quickbooks?.status === 'reconnect_required' ? (
+                <div style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#ef4444', marginBottom: 4 }}>QuickBooks authorization needs to be renewed</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.6 }}>Click Connect to QuickBooks and select the Nashville company. Historical Canopy-imported payments are excluded from outbound sync so reconnecting will not duplicate them.</div>
+                </div>
+              ) : null}
 
               {acctStatus.quickbooks?.status === 'connected' ? (
                 <div style={{ background: 'rgba(44,160,28,.1)', border: '1px solid rgba(44,160,28,.3)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
