@@ -39,7 +39,7 @@ export default function Documents() {
   const clientParam = new URLSearchParams(location.search).get('client') || ''
 
   const [docs,         setDocs]         = useState([])
-  const [people,       setPeople]        = useState([]) // clients + leads combined
+  const [people,       setPeople]        = useState([]) // { key, id, name, type }
   const [folder,       setFolder]        = useState('All')
   const [clientFilter, setClientFilter]  = useState(clientParam)
   const [search,       setSearch]        = useState('')
@@ -85,7 +85,13 @@ export default function Documents() {
   async function loadAll() {
     // Load documents
     let q = supabase.from('documents').select('*').order('created_at', { ascending: false })
-    if (clientFilter) q = q.ilike('client', `%${clientFilter}%`)
+    if (clientFilter) {
+      if (clientFilter.startsWith('client:')) q = q.eq('client_id', clientFilter.slice(7))
+      else if (clientFilter.startsWith('lead:')) {
+        const lead = people.find(p => p.key === clientFilter)
+        if (lead?.name) q = q.eq('client', lead.name)
+      } else q = q.eq('client', clientFilter)
+    }
     if (folder !== 'All') q = q.eq('docType', folder)
     const { data: docsData } = await q
     const nextDocs = Array.isArray(docsData) ? docsData : []
@@ -94,11 +100,18 @@ export default function Documents() {
 
     // Load clients + leads for autocomplete
     const [{ data: cl }, { data: ld }] = await Promise.all([
-      supabase.from('clients').select('name').order('name'),
-      supabase.from('leads').select('name').order('name'),
+      supabase.from('clients').select('id,name').order('name'),
+      supabase.from('leads').select('id,name').order('name'),
     ])
-    const names = [...new Set([...(cl||[]).map(c=>c?.name), ...(ld||[]).map(l=>l?.name)].filter(v => typeof v === 'string' && v.trim()))].sort()
-    setPeople(names)
+    const nextPeople = [
+      ...(cl || []).filter(p => p?.id && p?.name).map(p => ({ key:`client:${p.id}`, id:String(p.id), name:p.name, type:'client' })),
+      ...(ld || []).filter(p => p?.id && p?.name).map(p => ({ key:`lead:${p.id}`, id:String(p.id), name:p.name, type:'lead' })),
+    ].sort((a,b)=>a.name.localeCompare(b.name))
+    setPeople(nextPeople)
+    if (clientParam && clientFilter === clientParam) {
+      const exact = nextPeople.find(p => p.type === 'client' && p.name.toLowerCase() === clientParam.toLowerCase())
+      if (exact) setClientFilter(exact.key)
+    }
 
     // Load custom folders from settings
     const { data: s } = await supabase.from('settings').select('custom_doc_folders').limit(1).maybeSingle()
@@ -123,7 +136,15 @@ export default function Documents() {
     return 'other'
   }
   async function resolveDocUrl(doc) {
-    if (!doc?.file_url) return ''
+    if (!doc) return ''
+    const storagePath = doc.storage_path
+      || (String(doc.file_url || '').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : '')
+    if (storagePath) {
+      const { data, error } = await supabase.storage.from('documents').createSignedUrl(storagePath, 3600)
+      if (error || !data?.signedUrl) return ''
+      return data.signedUrl
+    }
+    if (!doc.file_url) return ''
     return (await getDocumentUrl(supabase, doc.file_url)) || ''
   }
   async function previewDocument(doc) {
@@ -171,26 +192,40 @@ export default function Documents() {
     const docType = String(form.docType || '').trim()
     if (!docName || !docType) { showToast('Name and folder required'); return }
     if (file) { const _v = validateFile(file); if (!_v.ok) { showToast('❌ ' + _v.error); return }; if (_v.warn) showToast('⚠️ ' + _v.warn) }
+    const selectedPerson = people.find(p => p.key === form.client)
+      || people.find(p => p.name.toLowerCase() === String(form.client || '').trim().toLowerCase())
+    const entityName = selectedPerson?.name || String(form.client || '').trim()
+    const entityClientId = selectedPerson?.type === 'client' ? selectedPerson.id : null
     setSaving(true)
-    let fileUrl = null, fileName = docName, fileSize = null
+    let fileUrl = null, fileName = docName, fileSize = null, storagePath = null
     if (file) {
-      const safeName = String(form.client || 'general').trim().replace(/[^a-zA-Z0-9._-]+/g,'-') || 'general'
+      const ownerKey = entityClientId || entityName.replace(/[^a-zA-Z0-9._-]+/g,'-') || 'general'
+      const folderKey = docType.replace(/[^a-zA-Z0-9._-]+/g,'-') || 'Documents'
       const originalName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const path = `docs/${safeName}/${Date.now()}_${originalName}`
+      const path = `docs/${ownerKey}/${folderKey}/${Date.now()}_${originalName}`
+      storagePath = path
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }
       const { data: signedData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
       fileUrl = signedData?.signedUrl || null; fileName = file.name || docName; fileSize = file.size
     }
     const { error } = await supabase.from('documents').insert([{
-      ...form, name: docName, docType, file_url: fileUrl, file_name: fileName, file_size: fileSize,
+      name: docName,
+      client: entityName,
+      clientname: entityName,
+      client_id: entityClientId,
+      docType,
+      notes: form.notes,
+      file_url: fileUrl,
+      file_name: fileName,
+      file_size: fileSize,
+      storage_path: storagePath,
       created_at: new Date().toISOString()
     }])
     setSaving(false)
     if (error) { showToast('Error: '+error.message); return }
     showToast('✅ Document saved!')
     const actor = getActor(user)
-    const entityName = form.client || ''
     await triggerWorkflow('document_uploaded', 'client', entityName, actor.name).catch(()=>{})
     await logActivity(supabase, {
       employeeName: actor.name,
@@ -210,9 +245,10 @@ export default function Documents() {
 
   async function del(doc) {
     if (!doc?.id) return
-    if (doc.file_name && doc.file_url) {
-      const rawUrl = String(doc.file_url)
-      const path = rawUrl.split('/documents/')[1]
+    if (doc.file_name && (doc.file_url || doc.storage_path)) {
+      const rawUrl = String(doc.file_url || '')
+      const path = doc.storage_path
+        || (rawUrl.startsWith('storage://documents/') ? rawUrl.replace('storage://documents/','') : rawUrl.split('/documents/')[1])
       if (path) await supabase.storage.from('documents').remove([path]).catch(()=>{})
     }
     const { error } = await supabase.from('documents').delete().eq('id', doc.id)
@@ -272,7 +308,7 @@ export default function Documents() {
           <input className="input" placeholder="Search documents…" value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth:280}} />
           <select className="select" value={clientFilter} onChange={e=>setClientFilter(e.target.value)} style={{maxWidth:220}}>
             <option value="">All Clients & Leads</option>
-            {people.map(p=><option key={p}>{p}</option>)}
+            {people.map(p=><option key={p.key} value={p.key}>{p.name}{p.type==='lead'?' (Lead)':''}</option>)}
           </select>
           <select className="select" value={folder} onChange={e=>setFolder(e.target.value)} style={{maxWidth:200}}>
             <option value="All">All Folders</option>
@@ -405,7 +441,7 @@ export default function Documents() {
       {modal&&<div className="modal-overlay" onClick={()=>setModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-header"><h2>Upload Document</h2><button className="modal-close" onClick={()=>setModal(false)}>×</button></div>
         <div className="form-group"><label>Document Name *</label><input className="input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. 2024 Tax Return" /></div>
-        <div className="form-group"><label>Client / Lead</label><input className="input" list="people-list" value={form.client} onChange={e=>setForm({...form,client:e.target.value})} placeholder="Start typing a name…" /><datalist id="people-list">{people.map(p=><option key={p} value={p}/>)}</datalist></div>
+        <div className="form-group"><label>Client / Lead</label><select className="select" value={form.client} onChange={e=>setForm({...form,client:e.target.value})}><option value="">General / Unassigned</option>{people.map(p=><option key={p.key} value={p.key}>{p.name}{p.type==='lead'?' (Lead)':''}</option>)}</select></div>
         <div className="form-group"><label>Folder *</label><select className="select" value={form.docType} onChange={e=>setForm({...form,docType:e.target.value})}>{ALL_FOLDERS.map(f=><option key={f}>{f}</option>)}</select></div>
         <div className="form-group"><label>File</label><input ref={fileRef} type="file" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const v=validateFile(f);if(!v.ok){showToast('❌ '+v.error);e.target.value='';return}if(v.warn)showToast('⚠️ '+v.warn);const c=await maybeCompressImage(f);setFile(c)}} /></div>
         <div className="form-group"><label>Notes</label><textarea className="textarea" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} /></div>
