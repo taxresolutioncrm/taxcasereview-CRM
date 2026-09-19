@@ -219,3 +219,10 @@ verify_jwt = false
 
 [functions.invite-employee]
 verify_jwt = true
+
+
+[functions.nashville-system-mail-relay]
+verify_jwt = false
+
+[functions.nashville-esign-mail]
+verify_jwt = false
