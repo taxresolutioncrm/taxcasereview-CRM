@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { FIRM } from '../lib/firmBranding'
 
 const TYPE_LABEL = { pto: 'PTO', sick: 'Sick Day', vacation: 'Vacation' }
 const TYPE_COLOR = { pto: 'var(--blue)', sick: 'var(--bad)', vacation: 'var(--green)' }
@@ -25,10 +26,16 @@ export default function TimeOff() {
 
   useEffect(() => { load() }, [])
   useEffect(() => {
+    let refreshTimer = null
+    const scheduleLoad = () => {
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(load, 350)
+    }
+    const cfg = { event:'*', schema:'public', table:'time_off_requests', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('timeoff-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'time_off_requests' }, () => load())
+      .on('postgres_changes', cfg, scheduleLoad)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { clearTimeout(refreshTimer); supabase.removeChannel(ch) }
   }, [])
 
   async function load() {
