@@ -102,7 +102,7 @@ serve(async req=>{
       event_status:eventStatus||null,
       payload:body,
       received_at:new Date().toISOString(),
-    }, eventId ? {onConflict:'provider,provider_event_id'} : undefined)
+    }, eventId ? {onConflict:'tenant_id,provider,provider_event_id'} : undefined)
     if(eventErr) throw eventErr
 
     const normalizedStatus=eventStatus||eventType||'updated'
