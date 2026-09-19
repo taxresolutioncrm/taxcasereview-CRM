@@ -303,6 +303,8 @@ function InlineEsignForm({ client, onClose, showToast }) {
   const [saving,   setSaving]   = useState(false)
   const [link,     setLink]     = useState('')
   const [customFile, setCustomFile] = useState(null)
+  const [sendVia, setSendVia] = useState(client?.email ? 'email' : 'sms')
+  const [delivered, setDelivered] = useState([])
 
   async function create() {
     if(docType==='Custom Document' && !message.trim() && !customFile){
@@ -327,21 +329,47 @@ function InlineEsignForm({ client, onClose, showToast }) {
     }
     const { data, error } = await supabase.from('esigns').insert([{
       doc_type: docType, client_name: client?.name, client_email: client?.email||'', client_phone: client?.phone||'',
-      message, pdf_attachments:pdfAttachments, priority, status:'Awaiting', sent_at: new Date().toISOString(), created_at: new Date().toISOString()
+      message, pdf_attachments:pdfAttachments, priority, status:'Awaiting', sent_at: new Date().toISOString(), created_at: new Date().toISOString(),
+      tenant_id: FIRM.tenantId || undefined
     }]).select().single()
-    setSaving(false)
-    if (error) { showToast('Error: '+error.message,'err'); return }
+    if (error) { setSaving(false); showToast('Error: '+error.message,'err'); return }
     const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
     setLink(url)
-    showToast('✅ Signing link created!')
+
+    let emailSent=false, smsSent=false
+    if ((sendVia==='email'||sendVia==='both') && client?.email) {
+      try {
+        const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', {
+          body:{
+            tenant_id:FIRM.tenantId||undefined,
+            to:client.email,
+            subject:`Action Required: Sign Your ${docType} — ${firmName()}`,
+            html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Signature Requested</h2><p>Hi <strong>${client.name}</strong>,</p><p>${message}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign</a></p><p style="font-size:12px;color:#64748b;word-break:break-all">${url}</p><p><strong>${firmName()}</strong></p></div>`
+          }
+        })
+        emailSent=!emailErr && emailData?.success!==false
+      } catch(_) {}
+    }
+    if ((sendVia==='sms'||sendVia==='both') && client?.phone) {
+      try {
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:client.phone,body:`${firmName()}: please review and sign your ${docType}: ${url}`,client_id:client.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
+      } catch(_) {}
+    }
+    const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+    setDelivered(sent)
+    setSaving(false)
+    showToast(sent.length ? `✅ Signing request sent via ${sent.join(' & ')}!` : '✅ Signing link created — delivery was not completed')
   }
 
   if (link) return (
     <div style={{padding:'0 4px 4px'}}>
       <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>✅ Signing link created!</div>
-        <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all',marginBottom:8}}>{link}</div>
-        <div style={{fontSize:11,color:'var(--t2)'}}>Send this link to <strong>{client?.name}</strong> via email or SMS. When they sign, their IP address and timestamp are automatically recorded and a copy is saved to their documents.</div>
+        <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>{delivered.length ? `✅ Signing request sent via ${delivered.join(' & ')}!` : '✅ Signing link created!'}</div>
+        <a href={link} target="_blank" rel="noreferrer" style={{display:'block',fontSize:11,color:'var(--blue)',wordBreak:'break-all',marginBottom:8}}>{link}</a>
+        <div style={{fontSize:11,color:'var(--t2)'}}>When they sign, their IP address and timestamp are automatically recorded and a copy is saved to their documents.</div>
       </div>
       <button className="btn sec" style={{width:'100%',justifyContent:'center'}} onClick={onClose}>Done</button>
     </div>
@@ -370,8 +398,20 @@ function InlineEsignForm({ client, onClose, showToast }) {
           <option>Normal</option><option>High</option><option>Urgent</option>
         </select>
       </div>
+      <div className="field"><label>Send Via</label>
+        <div style={{display:'flex',gap:8}}>
+          {[['email','Email'],['sms','Text'],['both','Both']].map(([v,l])=>(
+            <button key={v} type="button" onClick={()=>setSendVia(v)}
+              disabled={(v==='email'&&!client?.email)||(v==='sms'&&!client?.phone)||(v==='both'&&(!client?.email||!client?.phone))}
+              style={{flex:1,padding:'7px 4px',borderRadius:7,border:'1px solid',fontSize:12,fontWeight:600,cursor:'pointer',
+                borderColor:sendVia===v?'var(--blue)':'var(--br)',background:sendVia===v?'var(--blue)22':'var(--s2)',color:sendVia===v?'var(--blue)':'var(--t2)'}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
       <div style={{background:'var(--s2)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--t3)',marginBottom:14,lineHeight:1.6}}>
-        💡 A unique signing link will be generated. Send to client via email or SMS. Their signature, IP, and timestamp are all recorded automatically.
+        💡 A unique signing link will be generated and delivered using the selected channel. Their signature, IP, and timestamp are recorded automatically.
       </div>
       <div style={{display:'flex',gap:8}}>
         <button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={onClose}>Cancel</button>
