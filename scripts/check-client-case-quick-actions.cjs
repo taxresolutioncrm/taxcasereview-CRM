@@ -8,10 +8,11 @@ const esignArchive=fs.readFileSync('supabase/functions/esign-archive-upload/inde
 const esignMigration=fs.readFileSync('supabase/migrations/20260919213000_taxres_family_esign_tokens.sql','utf8')
 
 const checks=[
-  ['client links are real anchors for browser new-tab support',clientLink.includes('<a\n      href={href}')&&clientLink.includes('e.ctrlKey')&&clientLink.includes('e.metaKey')],
-  ['cases client names use ClientLink',cases.includes('<ClientLink name={c.clientName}')],
+  ['global client links are real anchors for browser new-tab support',clientLink.includes('<a\n      href={href}')&&clientLink.includes('e.ctrlKey')&&clientLink.includes('e.metaKey')],
+  ['Cases client names are direct native hrefs with return context',cases.includes('clientHrefForCase(c)')&&cases.includes('?from=cases')&&cases.includes('href={clientHrefForCase(c)}')],
+  ['Cases table client click is isolated from case-row click',cases.includes("onClick={e=>e.stopPropagation()}")&&cases.includes('title="Open client file"')],
   ['client detail has Back to Clients',clients.includes('← Back to Clients')],
-  ['client detail has Back to Cases',clients.includes('← Back to Cases')],
+  ['client detail has native Back to Cases return link',clients.includes('href="/cases"')&&clients.includes('← Back to Cases')&&clients.includes("openedFromCases")],
   ['Schedule quick action is wired',clients.includes('label="Schedule"')&&clients.includes('setBookingClient(c)')&&clients.includes('<BookingWidget')],
   ['Add Task quick action is wired',clients.includes('label="Add Task"')&&clients.includes('setTaskModal(true)')&&clients.includes('addTaskFromModal')],
   ['Send Fax quick action is wired',clients.includes('label="Send Fax"')&&clients.includes('setFaxModal(true)')&&clients.includes("functions.invoke('send-fax'")],
