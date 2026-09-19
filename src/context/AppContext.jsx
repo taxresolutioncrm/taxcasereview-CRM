@@ -138,12 +138,12 @@ export function AppProvider({ children }) {
 
   async function loadBrandColor() {
     try {
-      let q = supabase.from('settings').select('primary_color,lead_workflow_model')
-      try {
-        const imp = sessionStorage.getItem('admin_impersonation')
-        if (imp) { const { tenant_id } = JSON.parse(imp); if (tenant_id) q = q.eq('tenant_id', tenant_id) }
-      } catch (_) {}
-      const { data } = await q.limit(1).maybeSingle()
+      const { data: tenantId } = await supabase.rpc('current_tenant_id')
+      if (!tenantId) return
+      const q = supabase.from('settings')
+        .select('primary_color,lead_workflow_model')
+        .eq('tenant_id', tenantId)
+      const { data } = await q.maybeSingle()
       if (data?.primary_color) applyBrandColor(data.primary_color)
       if (data?.lead_workflow_model) setLeadWorkflowModel(data.lead_workflow_model)
     } catch(e) {}
@@ -235,21 +235,35 @@ export function AppProvider({ children }) {
     // chat-mute lookup below (keyed by name) and the sender!==myName check in
     // the realtime handler (new-message sound never fired reliably).
     const fallbackName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'You'
-    supabase.from('employees').select('id, name, tenant_id').eq('email', user.email).maybeSingle()
-      .then(({ data }) => {
-        if (cancelled || !data) return
-        myEmpIdRef.current = data.id
-          setMyTenantId(data.tenant_id || null)
-          setMyEmpId(data.id || null)
-        myRealNameRef.current = data.name?.trim() || null
-        // Re-run the mute-prefs load now that we may have a corrected name —
-        // cheap, and only runs once per mount.
-        supabase.from('chat_conv_prefs').select('conv_id, muted').eq('viewer_name', data.name?.trim() || fallbackName)
-          .then(({ data: prefs }) => {
-            if (cancelled || !prefs) return
-            mutedRef.current = new Set(prefs.filter(r => r.muted).map(r => r.conv_id))
-          })
-      })
+    ;(async () => {
+      const { data: tenantId } = await supabase.rpc('current_tenant_id')
+      if (cancelled) return
+      setMyTenantId(tenantId || null)
+      if (!tenantId) {
+        setMyEmpId(null)
+        myEmpIdRef.current = null
+        return
+      }
+      const { data } = await supabase.from('employees')
+        .select('id, name, tenant_id')
+        .eq('tenant_id', tenantId)
+        .eq('email', user.email)
+        .maybeSingle()
+      if (cancelled || !data) {
+        setMyEmpId(null)
+        myEmpIdRef.current = null
+        return
+      }
+      myEmpIdRef.current = data.id
+      setMyEmpId(data.id || null)
+      myRealNameRef.current = data.name?.trim() || null
+      // Re-run the mute-prefs load now that we may have a corrected name.
+      supabase.from('chat_conv_prefs').select('conv_id, muted').eq('viewer_name', data.name?.trim() || fallbackName)
+        .then(({ data: prefs }) => {
+          if (cancelled || !prefs) return
+          mutedRef.current = new Set(prefs.filter(r => r.muted).map(r => r.conv_id))
+        })
+    })()
     supabase.from('chat_conv_prefs').select('conv_id, muted').eq('viewer_name', fallbackName)
       .then(({ data }) => {
         if (cancelled || !data) return
@@ -517,9 +531,17 @@ export function AppProvider({ children }) {
       setEmployeeName('')
       return
     }
+    const { data: tenantId } = await supabase.rpc('current_tenant_id')
+    if (!tenantId) {
+      setRole('Tax Associate')
+      setEmployeeName('')
+      setPerms(null)
+      return
+    }
     const { data } = await supabase
       .from('employees')
       .select('name, access, perm_leads, perm_clients, perm_billing, perm_schedule, perm_documents, perm_reports, perm_hr, perm_settings, perm_comms, perm_irs')
+      .eq('tenant_id', tenantId)
       .eq('email', email)
       .maybeSingle()
 
