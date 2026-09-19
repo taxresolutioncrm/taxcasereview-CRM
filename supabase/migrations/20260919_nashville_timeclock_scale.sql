@@ -1,8 +1,8 @@
 -- Scale-safe Time Clock history for offices with 100+ active employees.
 create or replace function public.timeclock_history_page(
   p_employee text default null,
-  p_start_date date default null,
-  p_end_date date default null,
+  p_start_date text default null,
+  p_end_date text default null,
   p_search text default null,
   p_offset integer default 0,
   p_limit integer default 250
@@ -18,6 +18,8 @@ declare
   v_actor record;
   v_employee text := nullif(btrim(coalesce(p_employee,'')),'');
   v_search text := nullif(btrim(coalesce(p_search,'')),'');
+  v_start text := nullif(btrim(coalesce(p_start_date,'')),'');
+  v_end text := nullif(btrim(coalesce(p_end_date,'')),'');
   v_offset integer := greatest(coalesce(p_offset,0),0);
   v_limit integer := least(greatest(coalesce(p_limit,250),1),500);
   v_total bigint := 0;
@@ -49,8 +51,8 @@ begin
   from public.timeentries t
   where t.tenant_id=v_tenant
     and (v_employee is null or t.employee=v_employee)
-    and (p_start_date is null or t.date>=p_start_date)
-    and (p_end_date is null or t.date<=p_end_date)
+    and (v_start is null or t.date>=v_start)
+    and (v_end is null or t.date<=v_end)
     and (v_search is null or t.employee ilike '%'||v_search||'%' or coalesce(t.notes,'') ilike '%'||v_search||'%');
 
   select coalesce(jsonb_agg(to_jsonb(x) order by x.date desc,x.created_at desc),'[]'::jsonb)
@@ -60,8 +62,8 @@ begin
     from public.timeentries t
     where t.tenant_id=v_tenant
       and (v_employee is null or t.employee=v_employee)
-      and (p_start_date is null or t.date>=p_start_date)
-      and (p_end_date is null or t.date<=p_end_date)
+      and (v_start is null or t.date>=v_start)
+      and (v_end is null or t.date<=v_end)
       and (v_search is null or t.employee ilike '%'||v_search||'%' or coalesce(t.notes,'') ilike '%'||v_search||'%')
     order by t.date desc,t.created_at desc
     offset v_offset
@@ -78,8 +80,8 @@ begin
 end;
 $$;
 
-revoke all on function public.timeclock_history_page(text,date,date,text,integer,integer) from public,anon;
-grant execute on function public.timeclock_history_page(text,date,date,text,integer,integer) to authenticated;
+revoke all on function public.timeclock_history_page(text,text,text,text,integer,integer) from public,anon;
+grant execute on function public.timeclock_history_page(text,text,text,text,integer,integer) to authenticated;
 
 create index if not exists idx_timeentries_tenant_date_created
 on public.timeentries(tenant_id,date desc,created_at desc);
