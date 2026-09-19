@@ -6,6 +6,12 @@ import { loadFirmBranding } from '../lib/firmBranding'
 
 const BUCKET = 'firm-assets'
 
+async function resolveSettingsTenantId() {
+  const { data, error } = await supabase.rpc('current_tenant_id')
+  if (error || !data) return null
+  return data
+}
+
 export default function Settings() {
   const { showToast, user, role, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin'].includes(role)
@@ -89,18 +95,24 @@ export default function Settings() {
 
   useEffect(() => {
     if (!user?.email) return
-    supabase.from('employees').select('email_signature,email_signature_logo_url')
-      .eq('email', user.email).maybeSingle()
-      .then(({ data }) => setMySig({ text: data?.email_signature || '', logoUrl: data?.email_signature_logo_url || '' }))
-  }, [user?.email])
+    ;(async () => {
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) return
+      const { data } = await supabase.from('employees').select('email_signature,email_signature_logo_url')
+        .eq('tenant_id', tid).eq('email', user.email).maybeSingle()
+      setMySig({ text: data?.email_signature || '', logoUrl: data?.email_signature_logo_url || '' })
+    })()
+  }, [user?.email, myTenantId])
 
   async function saveMySignature() {
     if (!user?.email) return
     setMySigSaving(true)
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) { setMySigSaving(false); showToast('Could not resolve this office', 'err'); return }
     await supabase.from('employees').update({
       email_signature: mySig.text,
       email_signature_logo_url: mySig.logoUrl,
-    }).eq('email', user.email)
+    }).eq('tenant_id', tid).eq('email', user.email)
     setMySigSaving(false)
     showToast('Signature saved!')
   }
@@ -139,11 +151,15 @@ export default function Settings() {
   const [employees, setEmployees] = useState([])
 
   // Guard: wait for auth — prevents TCR settings loading in Nashville
-  useEffect(() => { if (user) { loadFirm(); loadLogo(); loadEmployees() } }, [user?.id])
+  useEffect(() => { if (user && myTenantId) { loadFirm(); loadLogo(); loadEmployees() } }, [user?.id, myTenantId])
 
   async function loadEmployees() {
-    const { data } = await supabase.from('employees').select('id,name,email,role,access,status,created_at,avatar_url').order('created_at', { ascending: true })
-    // Exclude platform admin — never shows in any office's team list
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) { setEmployees([]); return }
+    const { data } = await supabase.from('employees')
+      .select('id,name,email,role,access,status,created_at,avatar_url')
+      .eq('tenant_id', tid)
+      .order('created_at', { ascending: true })
     if (data) setEmployees(data.filter(e => e.email !== 'romy@taxrescrm.net'))
   }
 
@@ -192,24 +208,38 @@ export default function Settings() {
   }
 
   async function loadFirm() {
-    const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle()
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    const { data } = await supabase.from('settings').select('*').eq('tenant_id', tid).maybeSingle()
     if (data) {
       setFirm(f => ({ ...f, ...data }))
       if (data.primary_color) applyBrandColor(data.primary_color)
       if (data.logourl) setLogoUrl(data.logourl)
     }
-    const { count } = await supabase.from('employee_gmail_accounts')
-      .select('employee_email', { count: 'exact', head: true }).not('gmail_refresh_token', 'is', null)
-    setConnectedGmailCount(count || 0)
+    const { data: tenantEmployees } = await supabase.from('employees').select('email').eq('tenant_id', tid)
+    const tenantEmails = (tenantEmployees || []).map(e => e.email).filter(Boolean)
+    let gmailCount = 0
+    if (tenantEmails.length) {
+      const { count } = await supabase.from('employee_gmail_accounts')
+        .select('employee_email', { count: 'exact', head: true })
+        .in('employee_email', tenantEmails)
+        .not('gmail_refresh_token', 'is', null)
+      gmailCount = count || 0
+    }
+    setConnectedGmailCount(gmailCount)
     const { count: m365Count } = await supabase.from('employee_m365_accounts')
-      .select('employee_email', { count: 'exact', head: true }).not('m365_refresh_token', 'is', null)
+      .select('employee_email', { count: 'exact', head: true })
+      .eq('tenant_id', tid)
+      .not('m365_refresh_token', 'is', null)
     setConnectedM365Count(m365Count || 0)
   }
 
   async function loadLogo() {
     // Show this tenant's own saved logo; never the shared bucket file (which
     // gets overwritten across tenants). loadFirm sets it from settings.logourl.
-    const { data } = await supabase.from('settings').select('logourl').limit(1).maybeSingle()
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    const { data } = await supabase.from('settings').select('logourl').eq('tenant_id', tid).maybeSingle()
     if (data?.logourl) setLogoUrl(data.logourl)
   }
 
@@ -266,7 +296,9 @@ export default function Settings() {
       // "invalid input syntax" — Postgres wants null for "no value", not ''.
       Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
 
-      const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').limit(1).maybeSingle()
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
+      const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').eq('tenant_id', tid).maybeSingle()
       if (fetchErr) throw fetchErr
 
       // Self-healing save: if Postgres reports an unknown column, strip it and retry.
@@ -276,9 +308,9 @@ export default function Settings() {
       let saveErr
       for (let attempt = 0; attempt < 12; attempt++) {
         if (existing?.id) {
-          ({ error: saveErr } = await supabase.from('settings').update(payload).eq('id', existing.id))
+          ({ error: saveErr } = await supabase.from('settings').update(payload).eq('tenant_id', tid).eq('id', existing.id))
         } else {
-          ({ error: saveErr } = await supabase.from('settings').insert([payload]))
+          ({ error: saveErr } = await supabase.from('settings').insert([{ ...payload, tenant_id: tid }]))
         }
         if (!saveErr) break
         // Postgres "column does not exist" error: 42703, message names the column
@@ -322,7 +354,9 @@ export default function Settings() {
       if (error) throw error
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
       const bustedUrl = `${pub.publicUrl}?t=${Date.now()}`
-      await supabase.from('settings').update({ logourl: bustedUrl }).eq('id', firm.id)
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
+      await supabase.from('settings').update({ logourl: bustedUrl }).eq('tenant_id', tid).eq('id', firm.id)
       setFirm(f => ({ ...f, logourl: bustedUrl }))
       setLogoUrl(bustedUrl)
       await loadFirmBranding()
@@ -350,7 +384,9 @@ export default function Settings() {
       // browser-cached copy of the old file at the same URL.
       const bustedUrl = `${pub.publicUrl}?t=${Date.now()}`
       setFirm(f => ({ ...f, email_signature_logo_url: bustedUrl }))
-      await supabase.from('settings').update({ email_signature_logo_url: bustedUrl }).eq('id', firm.id)
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
+      await supabase.from('settings').update({ email_signature_logo_url: bustedUrl }).eq('tenant_id', tid).eq('id', firm.id)
       showToast('Signature logo uploaded!')
     } catch (err) { showToast(err.message, 'err') } finally { setSigLogoUploading(false) }
   }
