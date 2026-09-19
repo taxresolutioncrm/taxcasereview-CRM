@@ -104,3 +104,72 @@ on public.deadlines(tenant_id,"clientName","dueDate");
 
 create index if not exists idx_documents_tenant_client_created
 on public.documents(tenant_id,client,created_at desc);
+
+-- Consolidate Sidebar badge work into one authenticated RPC so 100 staff
+-- create one Realtime channel each instead of eight separate channel joins.
+create or replace function public.get_sidebar_badges_v2(
+  p_sms_last_seen timestamptz default '1970-01-01T00:00:00Z'::timestamptz,
+  p_chat_last_seen timestamptz default null,
+  p_employee_name text default null,
+  p_signed_last_seen timestamptz default '1970-01-01T00:00:00Z'::timestamptz,
+  p_leads_last_seen timestamptz default '1970-01-01T00:00:00Z'::timestamptz,
+  p_clients_last_seen timestamptz default '1970-01-01T00:00:00Z'::timestamptz,
+  p_cases_last_seen timestamptz default '1970-01-01T00:00:00Z'::timestamptz
+)
+returns jsonb
+language plpgsql stable security definer
+set search_path to 'public','app_private','pg_temp'
+as $$
+declare
+  v_tenant uuid := app_private.current_tenant_id();
+  v_email text := lower(coalesce(auth.jwt()->>'email',''));
+  v_clients integer := app_private.permission_level('clients');
+  v_leads integer := app_private.permission_level('leads');
+  v_schedule integer := app_private.permission_level('schedule');
+  v_docs integer := app_private.permission_level('documents');
+  v_comms integer := app_private.permission_level('comms');
+  v_billing integer := app_private.permission_level('billing');
+  v_hr integer := app_private.permission_level('hr');
+  result jsonb;
+begin
+  if v_email='' or v_tenant is null then raise exception 'Authentication required' using errcode='42501'; end if;
+  select jsonb_build_object(
+    'pendingTimeOff',case when v_hr>=1 then (select count(*) from public.time_off_requests x where x.tenant_id=v_tenant and x.status='pending') else 0 end,
+    'newLeads',case when v_leads>=1 then (select count(*) from public.leads x where x.tenant_id=v_tenant and x.created_at>coalesce(p_leads_last_seen,'1970-01-01T00:00:00Z') and coalesce(x.archived,false)=false and x.deleted_at is null) else 0 end,
+    'newClients',case when v_clients>=1 then (select count(*) from public.clients x where x.tenant_id=v_tenant and x.created_at>coalesce(p_clients_last_seen,'1970-01-01T00:00:00Z') and x.deleted_at is null) else 0 end,
+    'newCases',case when v_clients>=1 then (select count(*) from public.cases x where x.tenant_id=v_tenant and x.created_at>coalesce(p_cases_last_seen,'1970-01-01T00:00:00Z')) else 0 end,
+    'dueSoonDeadlines',case when v_clients>=1 then (select count(*) from public.deadlines x where x.tenant_id=v_tenant and coalesce(x.status,'Tracking')<>'Completed' and x."dueDate" is not null and x."dueDate">=(current_date-1)::text and x."dueDate"<=(current_date+7)::text) else 0 end,
+    'upcomingEvents',case when v_schedule>=1 then (select count(*) from public.calevents x where x.tenant_id=v_tenant and x.status='scheduled' and x.date>=current_date::text and x.date<=(current_date+1)::text) else 0 end,
+    'unreadVoicemails',case when v_comms>=1 then (select count(*) from public.voicemails x where x.tenant_id=v_tenant and coalesce(x.is_read,false)=false) else 0 end,
+    'pendingEsign',case when v_docs>=1 then (select count(*) from public.esigns x where x.tenant_id=v_tenant and x.status='Awaiting') else 0 end,
+    'signedEsign',case when v_docs>=1 then (select count(*) from public.esigns x where x.tenant_id=v_tenant and x.status='Signed' and x.signed_at is not null and x.signed_at>coalesce(p_signed_last_seen,'1970-01-01T00:00:00Z')) else 0 end,
+    'unreadFax',case when v_comms>=1 then (select count(*) from public.fax_logs x where x.tenant_id=v_tenant and x.direction='inbound' and coalesce(x.is_read,false)=false) else 0 end,
+    'unreadSms',case when v_comms>=1 then (select count(*) from public.sms_messages x where x.tenant_id=v_tenant and x.direction='inbound' and x.created_at>coalesce(p_sms_last_seen,'1970-01-01T00:00:00Z')) else 0 end,
+    'unreadInbox',case when v_comms>=1 then (select count(*) from public.emails x where x.tenant_id=v_tenant and lower(coalesce(x.mailbox_owner,''))=v_email and coalesce(x.is_read,false)=false and coalesce(x.triage,'Inbox') in ('Inbox','Action Needed','Waiting')) else 0 end,
+    'emailActionNeeded',case when v_comms>=1 then (select count(*) from public.emails x where x.tenant_id=v_tenant and lower(coalesce(x.mailbox_owner,''))=v_email and coalesce(x.is_read,false)=false and x.triage='Action Needed') else 0 end,
+    'emailWaiting',case when v_comms>=1 then (select count(*) from public.emails x where x.tenant_id=v_tenant and lower(coalesce(x.mailbox_owner,''))=v_email and coalesce(x.is_read,false)=false and x.triage='Waiting') else 0 end,
+    'openTasks',case when v_clients>=1 then (select count(*) from public.tasks x where x.tenant_id=v_tenant and coalesce(x.done,false)=false and coalesce(x.deleted,false)=false) else 0 end,
+    'pendingPayments',case when v_billing>=1 then (select count(*) from public.payments x where x.tenant_id=v_tenant and x.status in ('Pending','TBD','No Status','New Agmt','Failed')) else 0 end,
+    'overdueInvoices',case when v_billing>=1 then (select count(*) from public.invoices x where x.tenant_id=v_tenant and coalesce(x.status,'')<>'Paid' and (x.status='Overdue' or (coalesce(x."dueDate",'')~'^[0-9]{4}-[0-9]{2}-[0-9]{2}$' and x."dueDate"<current_date::text))) else 0 end,
+    'overdueReceivables',case when v_billing>=1 then (select count(*) from public.payments x where x.tenant_id=v_tenant and x.trade_type in ('1st Trade','2nd Trade') and coalesce(x.payment_status,'')<>'Paid' and x.scheduled_date is not null and x.scheduled_date<current_date) else 0 end,
+    'unreadChat',case when v_comms>=1 and p_chat_last_seen is not null then (
+      select count(*) from public.chat_messages x where x.tenant_id=v_tenant and x.created_at>p_chat_last_seen
+        and coalesce(x.sender,'')<>coalesce(p_employee_name,v_email)
+        and (left(x.channel,3)<>'dm_' or (
+          app_private.chat_current_employee_id() is not null and (
+            (position('__' in substring(x.channel from 4))>0 and app_private.chat_current_employee_id()=any(string_to_array(substring(x.channel from 4),'__')))
+            or (position('__' in substring(x.channel from 4))=0 and (
+              x.channel='dm_'||app_private.chat_current_employee_id()
+              or lower(x.sender)=lower(public.chat_current_actor())
+              or lower(x.sender)=v_email
+              or lower(x.sender)=lower(split_part(v_email,'@',1))
+            ))
+          )
+        ))
+    ) else 0 end
+  ) into result;
+  return result;
+end
+$$;
+revoke all on function public.get_sidebar_badges_v2(timestamptz,timestamptz,text,timestamptz,timestamptz,timestamptz,timestamptz) from public,anon;
+grant execute on function public.get_sidebar_badges_v2(timestamptz,timestamptz,text,timestamptz,timestamptz,timestamptz,timestamptz) to authenticated;
