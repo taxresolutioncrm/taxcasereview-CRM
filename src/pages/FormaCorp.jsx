@@ -178,7 +178,7 @@ function NameCheckStatus({ state, name, check }) {
     <div style={{marginTop:6,fontSize:12}}>
       {check.state === 'pending' && <span style={{color:'var(--t3)'}}>⏳ Checking with Sunbiz…</span>}
       {check.state === 'unavailable' && (
-        <span style={{color:'var(--t3)'}}>ℹ️ Sunbiz unreachable — check manually at <a href="https://search.sunbiz.org" target="_blank" rel="noreferrer" style={{color:'var(--blue)'}}>search.sunbiz.org</a></span>
+        <span style={{color:'var(--t3)'}}>ℹ️ Sunbiz lookup is temporarily unavailable. Keep the case in FormaCorp and retry the lookup here.</span>
       )}
       {check.state === 'done' && check.result?.available && (
         <span style={{color:'var(--ok)'}}>✅ No exact match in FL — likely available (Sunbiz confirms at filing time)</span>
@@ -188,7 +188,7 @@ function NameCheckStatus({ state, name, check }) {
           <div style={{color:'var(--warn)'}}>⚠️ Exact match already exists in FL:</div>
           {(check.result.exactMatches || []).slice(0,3).map(m => (
             <div key={m.documentNumber} style={{color:'var(--t2)',marginTop:2,fontSize:11}}>
-              • {m.name} — {m.status} — <a href={m.detailUrl} target="_blank" rel="noreferrer" style={{color:'var(--blue)'}}>#{m.documentNumber}</a>
+              • {m.name} — {m.status} — #{m.documentNumber}
             </div>
           ))}
         </div>
@@ -822,11 +822,11 @@ export default function FormaCorp() {
         <div className="card" style={{padding:'12px 16px',marginBottom:10}}>
           <div className="stitle" style={{marginBottom:10}}>Quick Links & Resources</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            <a href="https://www.irs.gov/businesses/small-businesses-self-employed/apply-for-an-employer-identification-number-ein-online" target="_blank" rel="noreferrer" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',textDecoration:'none'}}>🔢 Apply for EIN — IRS.gov</a>
-            {!isFloridaLlc(c) && <a href={stateReqs[c.state]?.sos_url || `https://www.sos.${c.state?.toLowerCase()}.gov`} target="_blank" rel="noreferrer" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',textDecoration:'none'}}>🏛️ File with {c.state} Secretary of State</a>}
+            <button className="btn sm" onClick={()=>setDetail(c)}>🔢 Continue EIN in FormaCorp</button>
+            {!isFloridaLlc(c) && <button className="btn sm" onClick={()=>startNativeFormation(c)}>🏛️ Continue {c.state} Filing in FormaCorp</button>}
             {isFloridaLlc(c) && <button onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:pdfBusy?'wait':'pointer'}}>{pdfBusy ? '⏳ Building…' : '📄 Generate FL Articles PDF'}</button>}
             {c.state === 'FL' && <button onClick={()=>setLookup({ open:true, query:c.entity_name || '', running:false, result:null })} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',cursor:'pointer'}}>🔍 Sunbiz Lookup</button>}
-            <a href="https://www.irs.gov/businesses/small-businesses-self-employed/s-corporations" target="_blank" rel="noreferrer" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)',fontSize:12,fontWeight:600,color:'var(--blue)',textDecoration:'none'}}>📋 IRS S-Corp / LLC Info</a>
+            <button className="btn sm" onClick={()=>setDetail(c)}>📋 Continue Entity Workflow</button>
           </div>
         </div>
 
@@ -843,7 +843,7 @@ export default function FormaCorp() {
               </div>
               {lookup.result && !lookup.result.ok && <div style={{fontSize:12,color:'var(--warn)',padding:'8px 10px',background:'var(--s2)',borderRadius:6}}>Sunbiz couldn't be reached — try again in a moment, or check manually at search.sunbiz.org</div>}
               {lookup.result?.ok && lookup.result.entities?.length === 0 && <div style={{fontSize:12,color:'var(--t3)',padding:'8px 10px',background:'var(--s2)',borderRadius:6}}>No entities matched "{lookup.query}".</div>}
-              {lookup.result?.ok && lookup.result.entities?.length > 0 && <div style={{maxHeight:340,overflowY:'auto'}}>{lookup.result.entities.map(m => <div key={m.documentNumber} style={{padding:'8px 10px',borderTop:'1px solid var(--br)',fontSize:12}}><div style={{fontWeight:700}}>{m.name}</div><div style={{color:'var(--t3)',marginTop:2}}>#{m.documentNumber} · {m.status}{m.detailUrl && <> · <a href={m.detailUrl} target="_blank" rel="noreferrer" style={{color:'var(--blue)'}}>View on Sunbiz</a></>}</div></div>)}</div>}
+              {lookup.result?.ok && lookup.result.entities?.length > 0 && <div style={{maxHeight:340,overflowY:'auto'}}>{lookup.result.entities.map(m => <div key={m.documentNumber} style={{padding:'8px 10px',borderTop:'1px solid var(--br)',fontSize:12}}><div style={{fontWeight:700}}>{m.name}</div><div style={{color:'var(--t3)',marginTop:2}}>#{m.documentNumber} · {m.status}</div></div>)}</div>}
             </div>
           </div>
         )}
