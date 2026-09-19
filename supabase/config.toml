@@ -77,6 +77,10 @@ verify_jwt = true
 # Staff-only payment control endpoints.
 [functions.stripe-create-checkout-session]
 verify_jwt = true
+[functions.formacorp-state-fee-intent]
+verify_jwt = true
+[functions.formacorp-state-fee-confirm]
+verify_jwt = true
 [functions.stripe-create-subscription]
 verify_jwt = true
 [functions.run-autopay-batch]
