@@ -1076,7 +1076,29 @@ export default function Clients() {
     if (!user) return
     load()
     const ch = supabase.channel('clients-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => load())
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'clients',
+        ...(FIRM.tenantId ? { filter: `tenant_id=eq.${FIRM.tenantId}` } : {}),
+      }, payload => {
+        const next = payload?.new || null
+        const old = payload?.old || null
+        const id = next?.id || old?.id
+        if (!id) return
+        if (payload.eventType === 'DELETE' || (next && next.deleted_at && !next.archived)) {
+          setClients(rows => rows.filter(row => String(row.id) !== String(id)))
+          return
+        }
+        if (!next) return
+        setClients(rows => {
+          const exists = rows.some(row => String(row.id) === String(id))
+          const merged = exists
+            ? rows.map(row => String(row.id) === String(id) ? { ...row, ...next } : row)
+            : [...rows, next]
+          return merged.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')))
+        })
+      })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [user?.id])
@@ -1089,13 +1111,13 @@ export default function Clients() {
   useEffect(() => {
     if (!detail?.name) return
     const name = detail.name
-    function reload() { loadRelated(name) }
+    function reload() { loadRelated(name, detail.id) }
     const ch = supabase.channel('client-detail-rt-' + (detail.id || name))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes', filter: `clientname=eq.${name}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `clientName=eq.${name}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `clientName=eq.${name}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents', filter: `client_id=eq.${detail.id}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases', filter: `clientName=eq.${name}` }, reload)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [detail?.id, detail?.name])
@@ -1197,13 +1219,13 @@ export default function Clients() {
     return !error
   }
 
-  async function loadRelated(clientName) {
+  async function loadRelated(clientName, clientId = detail?.id) {
     setLoadingRel(true)
     const [casesRes,tasksRes,invoicesRes,docsRes,clientNotesRes,paymentsRes,smsRes,deadlinesRes] = await Promise.all([
       supabase.from('cases').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
       supabase.from('tasks').select('*').eq('clientName', clientName).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}),
       supabase.from('invoices').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('documents').select('*').eq('client', clientName).order('created_at',{ascending:false}),
+      (clientId ? supabase.from('documents').select('*').eq('client_id', String(clientId)) : supabase.from('documents').select('*').eq('client', clientName)).order('created_at',{ascending:false}),
       supabase.from('client_notes').select('*').eq('clientname', clientName).order('created_at',{ascending:false}),
       supabase.from('payments').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
       supabase.from('sms_messages').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
@@ -1382,11 +1404,11 @@ export default function Clients() {
     showToast(skipped.length ? `✅ Saved — but skipped fields not in the database yet: ${skipped.join(', ')}` : '✅ Saved!')
     setEditModal(false)
     const {data}=await supabase.from('clients').select('*').eq('id',form.id).single()
-    if (data){setDetail(data);loadRelated(data.name)}
+    if (data){setDetail(data);loadRelated(data.name, data.id)}
     load()
     if (data) {
       const changes = summarizeFieldChanges(before, data)
-      if (changes.length) { await logAction(data.name, `✏️ Updated: ${changes.join(', ')}`); loadRelated(data.name) }
+      if (changes.length) { await logAction(data.name, `✏️ Updated: ${changes.join(', ')}`); loadRelated(data.name, data.id) }
     }
   }
 
@@ -1472,7 +1494,7 @@ export default function Clients() {
     await insertClientNote({ clientname: c.name, content: noteContent, created_by: actor, created_at: new Date().toISOString() })
 
     setSmsBody('')
-    loadRelated(c.name)
+    loadRelated(c.name, c.id)
   }
 
   async function toggleTask(task) {
@@ -1746,7 +1768,7 @@ export default function Clients() {
 
     setAddendumSending(false)
     setAddModal(false)
-    loadRelated(c.name)
+    loadRelated(c.name, c.id)
     showToast(emailSent||smsSent ? '✅ Addendum sent for signature!' : '⚠️ Link copied — configure email/SMS to send automatically')
   }
 
@@ -1844,7 +1866,7 @@ export default function Clients() {
     if (!opts.preserveTab) setDetailTab('overview')
     setDetail(c)
     setRelCases([]);setRelTasks([]);setRelInvoices([]);setRelSms([]);setRelDeadlines([])
-    loadRelated(c.name)
+    loadRelated(c.name, c.id)
     const qs = opts.preserveTab ? searchParams.toString() : ''
     navigate(`/clients/${c.id}${qs ? `?${qs}` : ''}`, { replace: false })
     // If opened from the list (narrow columns), upgrade to full row in background
@@ -2744,8 +2766,8 @@ export default function Clients() {
             {/* Contact Info */}
             <div className="card">
               <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)',marginBottom:10}}>Contact Info</div>
-              <DR label="Phone"   val={c.phone} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name) }}/>
-              <DR label="Phone 2" val={c.phone2} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name) }}/>
+              <DR label="Phone"   val={c.phone} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name, c.id) }}/>
+              <DR label="Phone 2" val={c.phone2} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name, c.id) }}/>
               <DR label="Email"   val={c.email ? <span style={{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}} title="Send email" onClick={()=>setQuickEmail({ name:c.name, email:c.email })}>{c.email} ✉️</span> : null}/>
               <DR label={c.business_name ? "Personal Address" : "Address"} val={[c.street,c.city,c.state,c.zip].filter(Boolean).join(', ')}/>
               <DR label="Business Address" val={[c.biz_street,c.biz_city,c.biz_state,c.biz_zip].filter(Boolean).join(', ')}/>
@@ -2865,7 +2887,7 @@ export default function Clients() {
                           value={status}
                           onChange={async e=>{
                             await supabase.from('deadlines').update({status:e.target.value}).eq('id',d.id)
-                            loadRelated(c.name)
+                            loadRelated(c.name, c.id)
                           }}
                           style={{background:'var(--s2)',border:'1px solid var(--br)',borderRadius:5,color:'var(--tx)',fontSize:11,padding:'3px 6px',cursor:'pointer',flexShrink:0}}
                         >
@@ -3114,7 +3136,7 @@ export default function Clients() {
             lead={c}
             showToast={showToast}
             onClose={()=>setShowChargeModal(false)}
-            onPaid={()=>{ setShowChargeModal(false); loadRelated(c.name); showToast('✅ 2nd Trade charged!') }}
+            onPaid={()=>{ setShowChargeModal(false); loadRelated(c.name, c.id); showToast('✅ 2nd Trade charged!') }}
           />
         )}
 
