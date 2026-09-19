@@ -327,11 +327,13 @@ export function AppProvider({ children }) {
 
     function withReconnect(name, table, handler) {
       let attempt = 0
+      const realtimeFilter = myTenantId ? `tenant_id=eq.${myTenantId}` : null
       function create() {
         if (cancelled) return
         try {
           const ch = supabase.channel(`${name}-${Date.now()}`)
-          ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table }, handler)
+          const cfg = { event:'INSERT', schema:'public', table, ...(realtimeFilter ? { filter:realtimeFilter } : {}) }
+          ch.on('postgres_changes', cfg, handler)
             .subscribe(status => {
               if (cancelled) return
               if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -407,7 +409,7 @@ export function AppProvider({ children }) {
       pendingTimeouts.forEach(t => clearTimeout(t))
       channels.forEach(ch => { try { supabase.removeChannel(ch) } catch (_) {} })
     }
-  }, [user])
+  }, [user, myTenantId])
 
   // Appointment reminders — browser notification + sound ~30 min before a
   // scheduled appointment. notifiedIds lives outside the effect so it
