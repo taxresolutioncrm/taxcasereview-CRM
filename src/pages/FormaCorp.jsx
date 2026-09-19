@@ -94,6 +94,7 @@ function floridaMissing(v = {}) {
   if (!v.registered_agent_accepted) missing.push('Registered-agent acceptance confirmation')
   if (v.entity_type === 'Professional LLC (PLLC)' && !String(v.business_purpose || '').trim()) missing.push('Specific professional purpose')
   if (isFloridaProfitCorp(v) && (!Number.isInteger(Number(v.fl_authorized_shares)) || Number(v.fl_authorized_shares) < 1)) missing.push('Authorized stock shares (at least 1)')
+  if (isFloridaProfitCorp(v) && !v.fl_corp_details_saved) missing.push('Saved Florida corporation filing details')
   return missing
 }
 
@@ -243,7 +244,7 @@ export default function FormaCorp() {
   const [pdfBusy, setPdfBusy] = useState(false)
   const [flSubmit, setFlSubmit] = useState({ method:'sunbiz_online', faxNumber:'', coverSheet:null, signedArticles:null, busy:false })
   const [stateFeePayment, setStateFeePayment] = useState(null)
-  const [corpDetails, setCorpDetails] = useState({ fl_authorized_shares:'', fl_officers_directors:'' })
+  const [corpDetails, setCorpDetails] = useState({ fl_authorized_shares:'', fl_officers_directors:'', fl_corp_details_saved:false })
 
   function checkNameSoon(name, state) {
     if (state !== 'FL' || !name || name.trim().length < 3) {
@@ -282,7 +283,8 @@ export default function FormaCorp() {
   }
 
   function openFloridaEdit(c, missing = floridaMissing(c)) {
-    setForm({ ...BLANK, ...c })
+    const { fl_authorized_shares, fl_officers_directors, fl_corp_details_saved, ...dbCase } = c
+    setForm({ ...BLANK, ...dbCase })
     setModal('edit')
     if (missing.length) showToast(`Florida filing details needed: ${missing.join(', ')}`, 'err')
   }

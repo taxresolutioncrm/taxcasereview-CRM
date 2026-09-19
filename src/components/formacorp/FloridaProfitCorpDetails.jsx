@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
-const EMPTY = { fl_authorized_shares:'', fl_officers_directors:'' }
+const EMPTY = { fl_authorized_shares:'', fl_officers_directors:'', fl_corp_details_saved:false }
 
 export default function FloridaProfitCorpDetails({ caseRecord, value, onChange, showToast }) {
   const [busy,setBusy]=useState(false)
@@ -12,13 +12,13 @@ export default function FloridaProfitCorpDetails({ caseRecord, value, onChange, 
       const r=await supabase.from('formacorp_filing_events').select('metadata').eq('case_id',caseRecord.id).eq('event_type','florida_profit_corp_details').order('created_at',{ascending:false}).limit(1).maybeSingle()
       if(!live) return
       const m=r.data?.metadata || EMPTY
-      onChange({ fl_authorized_shares:String(m.fl_authorized_shares || ''), fl_officers_directors:String(m.fl_officers_directors || '') })
+      onChange({ fl_authorized_shares:String(m.fl_authorized_shares || ''), fl_officers_directors:String(m.fl_officers_directors || ''), fl_corp_details_saved:!!r.data })
     }
     load()
     return()=>{live=false}
   },[caseRecord.id])
 
-  function fld(k,v){ onChange({ ...value, [k]:v }) }
+  function fld(k,v){ onChange({ ...value, [k]:v, fl_corp_details_saved:false }) }
 
   async function save(){
     const shares=Number(value.fl_authorized_shares)
@@ -33,6 +33,7 @@ export default function FloridaProfitCorpDetails({ caseRecord, value, onChange, 
     }])
     setBusy(false)
     if(r.error){ showToast?.('Could not save corporation filing details: '+r.error.message,'err'); return }
+    onChange({ ...value, fl_authorized_shares:String(shares), fl_corp_details_saved:true })
     showToast?.('✅ Florida corporation filing details saved')
   }
 
