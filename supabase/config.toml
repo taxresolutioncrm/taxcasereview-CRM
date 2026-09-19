@@ -155,6 +155,8 @@ verify_jwt = false
 verify_jwt = true
 [functions.esign-reminders]
 verify_jwt = false
+[functions.nashville-esign-reminders]
+verify_jwt = false
 [functions.turn-credentials]
 verify_jwt = false
 [functions.push-platform-metrics]
