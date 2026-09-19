@@ -26,13 +26,17 @@ Deno.serve(async (req) => {
   try {
     const now = new Date()
     const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number, demoScope=false) => {
-      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: tenantStorage },{ data: tenantStorageFiles },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
-        supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
+      const todayEt = new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(now)
+      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ count: invoiceCount },{ count: esignCount },{ count: demoCount },{ data: docs },{ data: tenantStorage },{ data: tenantStorageFiles },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
-        supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
+        supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
+        supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).eq('done',false).or('deleted.is.null,deleted.eq.false'),
         supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
+        supabase.from('invoices').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).in('status',['Unpaid','Partial','Overdue','Past Due','Open','unpaid','partial','overdue','past_due','open']),
+        supabase.from('esigns').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).in('status',['pending','sent','awaiting','Pending','Sent','Awaiting']),
+        supabase.from('calevents').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).ilike('eventType','%demo%').eq('date',todayEt),
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
         supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId}),
         supabase.rpc('_admin_tenant_storage_files',{p_tenant_id:tenantId}),
@@ -84,6 +88,9 @@ Deno.serve(async (req) => {
           active_users:staffCount,
           open_jobs:caseCount||0,
           pending_tasks:taskCount||0,
+          outstanding_invoices:invoiceCount||0,
+          pending_esigns:esignCount||0,
+          demos_today:demoCount||0,
           storage_bytes:totalStorage,
           storage_objects:totalStorageFiles,
           storage_files:totalStorageFiles,
@@ -103,6 +110,9 @@ Deno.serve(async (req) => {
           open_jobs:caseCount||0,
           job_count:caseCount||0,
           pending_tasks:taskCount||0,
+          outstanding_invoices:invoiceCount||0,
+          pending_esigns:esignCount||0,
+          demos_today:demoCount||0,
           storage_bytes:totalStorage,
           storage_objects:totalStorageFiles,
           storage_files:totalStorageFiles,
