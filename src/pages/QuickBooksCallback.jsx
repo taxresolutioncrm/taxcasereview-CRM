@@ -34,19 +34,17 @@ export default function QuickBooksCallback() {
       try {
         // Forward to the edge function which does the token exchange
         const url = `${EDGE_FN}?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}&realmId=${encodeURIComponent(realmId)}`
-        const res = await fetch(url, { redirect: 'follow' })
-
-        // Edge fn redirects to /settings?qb_connect=ok|error&msg=...
-        // If fetch followed the redirect, check final URL
-        if (res.ok || res.redirected) {
+        const res = await fetch(url)
+        const body = await res.json().catch(() => ({}))
+        if (res.ok && body?.ok) {
+          const connectedName = body.company_name || 'Nashville QuickBooks'
           setStatus('success')
-          setMessage('QuickBooks connected! Redirecting to Settings…')
+          setMessage(`Connected to ${connectedName}. Redirecting to Settings…`)
           setTimeout(() => {
-            window.location.href = '/settings?qb_connect=ok&msg=' + encodeURIComponent('QuickBooks connected successfully')
-          }, 1500)
+            window.location.href = '/settings?qb_connect=ok&msg=' + encodeURIComponent(`Connected to ${connectedName}`)
+          }, 1200)
         } else {
-          const body = await res.text().catch(() => '')
-          throw new Error(body || `HTTP ${res.status}`)
+          throw new Error(body?.message || `QuickBooks connection failed (HTTP ${res.status})`)
         }
       } catch (e) {
         setStatus('error')
