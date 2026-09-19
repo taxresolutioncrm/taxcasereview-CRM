@@ -39,6 +39,29 @@ const checks=[
     "sync_document_client_identity",
     "before insert or update of client_id, client, clientname, tenant_id",
   ]],
+  ['src/pages/Payroll.jsx',[
+    "supabase.channel('payroll-live')",
+    "table:'timeentries', ...tenantFilter",
+    "table:'employees', ...tenantFilter",
+  ]],
+  ['src/pages/TimeClock.jsx',[
+    "eq('employee', employeeName).limit(500)",
+    "tenant_id=eq.${FIRM.tenantId}",
+    "setTimeout(load, 250)",
+  ]],
+  ['src/pages/Chat.jsx',[
+    "setInterval(() => {",
+    "}, 300000)",
+    "(res.data || []).reverse()",
+  ]],
+  ['src/pages/EmployeePortal.jsx',[
+    "document.visibilityState === 'visible'",
+    "}, 300000)",
+  ]],
+  ['supabase/functions/employee-access-link/index.ts',[
+    "mapLimited(targets,10",
+    "slice(0,100)",
+  ]],
   ['src/pages/Dialer.jsx',[
     "phoneDirectoryRef",
     "setInterval(loadCallLog, 10000)",
