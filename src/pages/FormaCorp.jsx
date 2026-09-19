@@ -579,8 +579,9 @@ export default function FormaCorp() {
       .maybeSingle()
     if (lookupErr) { showToast('Could not check Bizee filing request: '+lookupErr.message, 'err'); return }
 
+    let requestId = existing?.id || null
     if (!existing) {
-      const { error:reqErr } = await supabase.from('formacorp_service_requests').insert([{
+      const { data:created, error:reqErr } = await supabase.from('formacorp_service_requests').insert([{
         case_id:c.id,
         service_type:'Bizee Pro Formation',
         status:'Requested',
@@ -592,8 +593,9 @@ export default function FormaCorp() {
         service_fee:null,
         payment_status:'Pending',
         notes:'Primary formation provider. Filing remains inside FormaCorp through the approved Bizee partner connection.',
-      }])
-      if (reqErr) { showToast('Could not create Bizee filing request: '+reqErr.message, 'err'); return }
+      }]).select('id').single()
+      if (reqErr || !created?.id) { showToast('Could not create Bizee filing request: '+(reqErr?.message || 'No request ID returned'), 'err'); return }
+      requestId = created.id
     } else if (existing.provider !== 'bizee') {
       const { error:normalizeErr } = await supabase.from('formacorp_service_requests').update({
         provider:'bizee',
@@ -608,10 +610,12 @@ export default function FormaCorp() {
       body:{ action:'submit', case_id:c.id }
     })
     if (submitErr || !submitData?.ok) {
-      await supabase.from('formacorp_service_requests').update({
-        provider_status:'submission_error',
-        provider_error:submitData?.error || submitErr?.message || 'Unknown provider error',
-      }).eq('case_id',c.id).eq('service_type','Bizee Pro Formation').is('provider_order_id',null)
+      if (requestId) {
+        await supabase.from('formacorp_service_requests').update({
+          provider_status:'submission_error',
+          provider_error:submitData?.error || submitErr?.message || 'Unknown provider error',
+        }).eq('id',requestId)
+      }
       showToast('Bizee submission failed: '+(submitData?.error || submitErr?.message || 'Unknown provider error'), 'err')
       return
     }
