@@ -37,7 +37,7 @@ serve(async(req)=>{
     if(!caseId||!paymentIntentId)return new Response(JSON.stringify({error:'caseId and paymentIntentId are required'}),{status:400,headers:{...corsHeaders,'Content-Type':'application/json'}})
 
     const admin=createClient(url,service)
-    const {data:c}=await admin.from('formacorp').select('id,tenant_id,entity_name').eq('id',caseId).eq('tenant_id',tenantId).maybeSingle()
+    const {data:c}=await admin.from('formacorp').select('id,tenant_id,state,entity_type,entity_name').eq('id',caseId).eq('tenant_id',tenantId).maybeSingle()
     if(!c)return new Response(JSON.stringify({error:'FormaCorp case not found in this office'}),{status:404,headers:{...corsHeaders,'Content-Type':'application/json'}})
     const {data:tenant}=await admin.from('tenants').select('stripe_connect_account_id').eq('id',tenantId).maybeSingle()
     const connectedAccount=PLATFORM_STRIPE_TENANTS.has(String(tenantId))?null:(tenant?.stripe_connect_account_id||null)
@@ -51,14 +51,21 @@ serve(async(req)=>{
     if(Number.isFinite(expected)&&expected>0&&Math.abs(paid-expected)>0.009)return new Response(JSON.stringify({error:'Verified payment amount does not match the expected state fee'}),{status:409,headers:{...corsHeaders,'Content-Type':'application/json'}})
 
     const now=new Date().toISOString()
-    const {error:updateErr}=await admin.from('formacorp').update({
+    const isFloridaFormation=String(c.state)==='FL' && ['LLC','Professional LLC (PLLC)','C-Corp','Non-Profit 501(c)(3)'].includes(String(c.entity_type||''))
+    const paymentPatch:any={
+      state_fee_amount:paid,
+      state_fee_payment_status:'received',
+      state_fee_payment_reference:String(pi.id),
       state_fee_collected_amount:paid,
       state_fee_payment_intent_id:String(pi.id),
       state_fee_collected_at:now,
-      fl_payment_status:'received',
-      fl_payment_reference:String(pi.id),
       fee_paid:true,
-    }).eq('id',caseId).eq('tenant_id',tenantId)
+    }
+    if(isFloridaFormation){
+      paymentPatch.fl_payment_status='received'
+      paymentPatch.fl_payment_reference=String(pi.id)
+    }
+    const {error:updateErr}=await admin.from('formacorp').update(paymentPatch).eq('id',caseId).eq('tenant_id',tenantId)
     if(updateErr)throw updateErr
 
     await admin.from('formacorp_filing_events').insert([{
