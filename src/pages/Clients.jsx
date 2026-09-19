@@ -1629,7 +1629,7 @@ export default function Clients() {
         priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
-      const sigUrl = `${window.location.origin}/sign/${esign.id}`
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
       await navigator.clipboard.writeText(sigUrl).catch(()=>{})
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && client.email) {
