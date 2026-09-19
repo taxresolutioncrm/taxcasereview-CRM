@@ -52,6 +52,7 @@ class PageErrorBoundary extends React.Component {
 // first paint with no extra network round-trip, since these are the very
 // first thing a visitor (employee or client) sees.
 import Login      from './pages/Login'
+import FamilyPassword from './pages/FamilyPassword'
 const Kiosk = lazy(() => import('./pages/Kiosk'))
 const BookAppointment = lazy(() => import('./pages/BookAppointment'))
 const ManageBooking = lazy(() => import('./pages/ManageBooking'))
@@ -352,7 +353,7 @@ function AuthRouter() {
 
   // Public routes must render immediately — never block them on the auth check.
   // /book, /sign, /portal etc are anonymous; showing a spinner loses prospects.
-  const publicPaths = ['/book', '/sign', '/agreement', '/office-sign', '/portal', '/clockin', '/kiosk',
+  const publicPaths = ['/book', '/sign', '/agreement', '/office-sign', '/portal', '/clockin', '/kiosk', '/family-password',
     '/employee', '/meet', '/screenshare', '/screenshare-host', '/financial-intake', '/organizer']
   const isPublicPath = publicPaths.some(p => path.startsWith(p))
 
@@ -377,6 +378,7 @@ function AuthRouter() {
   return (
     <Routes>
       <Route path="/impersonate" element={<ImpersonateGate />} />
+      <Route path="/family-password" element={<FamilyPassword />} />
       <Route path="/login" element={
         user &&
         new URLSearchParams(window.location.search).get('switch') !== '1' &&
