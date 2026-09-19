@@ -279,8 +279,19 @@ export default function Employees() {
 
     const { data, error } = await supabase.functions.invoke(functionName, { body })
     if (error || data?.error) {
-      showToast('Login invite failed: ' + (data?.error || error?.message || 'Unknown error'), 'err')
-      return { ok:false }
+      let detail = String(data?.error || '').trim()
+      if (!detail && error?.context) {
+        try {
+          const payload = await error.context.clone().json()
+          detail = String(payload?.error || payload?.message || '').trim()
+        } catch (_) {
+          try {
+            detail = String(await error.context.clone().text()).trim()
+          } catch (_) {}
+        }
+      }
+      showToast('Login invite failed: ' + (detail || error?.message || 'Unknown error'), 'err')
+      return { ok:false, error: detail || error?.message || 'Unknown error' }
     }
 
     const accessLink = String(data?.access_link || '').trim()
