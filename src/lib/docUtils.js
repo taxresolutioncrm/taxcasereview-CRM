@@ -1169,7 +1169,7 @@ export async function sendFullPackage(client, supabase) {
 
   if (error) return { error: error.message }
 
-  const url = `${window.location.origin}/sign/${data.id}`
+  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token || '')}`
   return { id: data.id, url, pdfAttachments }
 }
 
@@ -1213,7 +1213,7 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
 
   if (error) return { error: error.message }
 
-  const url = `${window.location.origin}/sign/${data.id}`
+  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token || '')}`
   return { id: data.id, url, pdfAttachments }
 }
 
