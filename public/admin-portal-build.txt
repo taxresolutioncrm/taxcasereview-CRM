@@ -26,3 +26,6 @@ universal-office-sync=20260913-v1
 universal-esign-routing-closeout=20260913-v1
 production-rebuild-trigger=20260913-2348
 admin-calendar-owner-scope=20260915-v1
+taxres-live-kpi-rootfix=20260919-v1
+taxres-live-kpi-seat-source=20260919-v1
+production-release-verification=20260919-v1
