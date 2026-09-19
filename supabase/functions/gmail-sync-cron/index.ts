@@ -52,12 +52,15 @@ async function parse(tok: string, id: string, clients: any[], leads: any[]) {
   const res = await fetch(`${GMAIL}/${encodeURIComponent(id)}?format=full`, { headers: { Authorization: `Bearer ${tok}` } }); const msg = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(msg?.error?.message || `Gmail get failed (${res.status})`)
   const labels = msg.labelIds || [], sent = labels.includes('SENT'), inbox = labels.includes('INBOX'), spam = labels.includes('SPAM'); if (!sent && !inbox && !spam) return null
-  const headers = msg.payload?.headers || [], fromH = h(headers, 'From'), toH = h(headers, 'To'), counterpartH = sent ? toH : fromH, counterpart = address(counterpartH)
+  const headers = msg.payload?.headers || [], fromH = h(headers, 'From'), toH = h(headers, 'To')
+  // Gmail can label a message SENT + INBOX when a user sends to their own address.
+  // Inbox/Spam are delivery states and must win over Sent so self-delivery is visible.
+  const counterpartH = (inbox || spam) ? fromH : toH, counterpart = address(counterpartH)
   const client = clients.find((c: any) => c.email && String(c.email).toLowerCase() === counterpart.toLowerCase())
   const lead = client ? null : leads.find((l: any) => l.email && String(l.email).toLowerCase() === counterpart.toLowerCase())
   const htmlData = part(msg.payload, 'text/html'), html = htmlData ? decode(htmlData) : null, textData = part(msg.payload, 'text/plain'), body = textData ? decode(textData) : html ? plain(html) : (msg.snippet || '')
   const dateH = h(headers, 'Date'), at = dateH && !Number.isNaN(Date.parse(dateH)) ? new Date(dateH).toISOString() : new Date(Number(msg.internalDate || Date.now())).toISOString()
-  return { row: { recipient: sent ? counterpart : address(fromH), clientName: client?.name || lead?.name || displayName(counterpartH) || counterpart, subject: h(headers, 'Subject') || '(no subject)', body, body_html: html, triage: sent ? 'Sent' : spam ? 'Spam' : 'Inbox', status: sent ? 'Sent' : spam ? 'Spam' : 'Received', gmail_message_id: msg.id, gmail_thread_id: msg.threadId, from_address: address(fromH), received_at: at, created_at: at, is_read: sent || !labels.includes('UNREAD'), attachments: files(msg.payload) }, match: client ? { kind: 'client', id: client.id, name: client.name } : lead ? { kind: 'lead', id: lead.id, name: lead.name } : null }
+  return { row: { recipient: (inbox || spam) ? address(fromH) : counterpart, clientName: client?.name || lead?.name || displayName(counterpartH) || counterpart, subject: h(headers, 'Subject') || '(no subject)', body, body_html: html, triage: spam ? 'Spam' : inbox ? 'Inbox' : 'Sent', status: spam ? 'Spam' : inbox ? 'Received' : 'Sent', gmail_message_id: msg.id, gmail_thread_id: msg.threadId, from_address: address(fromH), received_at: at, created_at: at, is_read: !labels.includes('UNREAD'), attachments: files(msg.payload) }, match: client ? { kind: 'client', id: client.id, name: client.name } : lead ? { kind: 'lead', id: lead.id, name: lead.name } : null }
 }
 
 async function allLocalGmailRows(db: any, owner: string) {
@@ -71,10 +74,23 @@ async function reconcileUnread(db: any, tok: string, owner: string) {
   return { gmailUnread: unreadIds.length, localRows: rows.length, changed }
 }
 
-async function importIds(db: any, tok: string, owner: string, tenantId: string, ids: string[], clients: any[], leads: any[]) {
+async function importIds(db: any, tok: string, owner: string, tenantId: string, ids: string[], clients: any[], leads: any[], sourceLabel: 'SENT'|'INBOX'|'SPAM') {
   let inserted = 0
   for (let i = 0; i < ids.length; i += 100) {
-    const batch = ids.slice(i, i + 100), { data: knownRows } = await db.from('emails').select('gmail_message_id').eq('mailbox_owner', owner).in('gmail_message_id', batch), known = new Set((knownRows || []).map((r: any) => r.gmail_message_id))
+    const batch = ids.slice(i, i + 100), { data: knownRows } = await db.from('emails').select('id,gmail_message_id,triage,status').eq('mailbox_owner', owner).in('gmail_message_id', batch), known = new Set((knownRows || []).map((r: any) => r.gmail_message_id))
+
+    // Reconcile provider folder state for messages already logged by the send path.
+    // This is required for Gmail self-delivery: the same message ID can first exist
+    // as Sent, then also receive INBOX. Do not overwrite staff workflow folders.
+    for (const row of knownRows || []) {
+      const triage = String(row.triage || '')
+      if (sourceLabel === 'SPAM' && triage !== 'Spam') {
+        await db.from('emails').update({ triage:'Spam', status:'Spam', deleted_at:null }).eq('id', row.id).eq('mailbox_owner', owner)
+      } else if (sourceLabel === 'INBOX' && (triage === 'Sent' || triage === 'Spam' || !triage)) {
+        await db.from('emails').update({ triage:'Inbox', status:'Received', deleted_at:null }).eq('id', row.id).eq('mailbox_owner', owner)
+      }
+    }
+
     for (const id of batch.filter(x => !known.has(x))) {
       try { const parsed = await parse(tok, id, clients, leads); if (!parsed) continue; const { error } = await db.from('emails').insert({ ...parsed.row, tenant_id: tenantId, mailbox_owner: owner }); if (error) { console.error('gmail-sync insert', id, error.message); continue } inserted++; const m = parsed.match; if (m) { const direction = parsed.row.triage === 'Sent' ? 'Sent' : 'Received', preview = String(parsed.row.body || '').slice(0, 120).replace(/\n/g, ' ').trim(), note = `📧 Email ${direction} — "${parsed.row.subject}"${preview ? `\n${preview}${String(parsed.row.body || '').length > 120 ? '…' : ''}` : ''}`; if (m.kind === 'client') await db.from('client_notes').insert({ clientname: m.name, text: note, note_type: 'Email', author: direction === 'Sent' ? owner : m.name, created_at: parsed.row.created_at, tenant_id: tenantId }); else await db.from('lead_notes').insert({ lead_id: m.id, lead_name: m.name, text: note, type: 'Email', author: direction === 'Sent' ? owner : m.name, created_at: parsed.row.created_at, tenant_id: tenantId }) } } catch (e) { console.error('gmail-sync message import', id, e) }
     }
@@ -86,7 +102,9 @@ async function syncAccount(db: any, acct: any, tenantId: string, creds: any) {
   const tok = await token(db, acct, creds)
   const [{ data: clients }, { data: leads }] = await Promise.all([db.from('clients').select('id,name,email').eq('tenant_id', tenantId), db.from('leads').select('id,name,email').eq('tenant_id', tenantId)])
   const backfillDone = acct.gmail_backfill_phase === 'done', query = backfillDone ? '' : `after:${Math.floor((Date.now() - 365 * 86400000) / 1000)}`, pages = backfillDone ? 1 : 10; let inserted = 0
-  for (const label of ['INBOX','SENT','SPAM']) { const ids = await listIds(tok, label, { pages, pageSize: backfillDone ? 100 : 500, q: query || undefined }); inserted += await importIds(db, tok, acct.employee_email, tenantId, ids, clients || [], leads || []) }
+  // SENT first, then INBOX, then SPAM so a Gmail self-send that has both
+  // SENT and INBOX ends in Inbox, while true provider Spam remains Spam.
+  for (const label of ['SENT','INBOX','SPAM'] as const) { const ids = await listIds(tok, label, { pages, pageSize: backfillDone ? 100 : 500, q: query || undefined }); inserted += await importIds(db, tok, acct.employee_email, tenantId, ids, clients || [], leads || [], label) }
   const unread = await reconcileUnread(db, tok, acct.employee_email), now = new Date().toISOString()
   await db.from('employee_gmail_accounts').update({ gmail_last_sync_at: now, gmail_last_error: null, gmail_backfill_phase: 'done', gmail_backfill_page_token: null }).eq('employee_email', acct.employee_email)
   const cutoff = new Date(Date.now() - 365 * 86400000).toISOString(); await db.from('emails').delete().lt('created_at', cutoff).eq('mailbox_owner', acct.employee_email)
