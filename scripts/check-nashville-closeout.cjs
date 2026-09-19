@@ -117,6 +117,32 @@ const checks=[
     "idx_transcript_analyses_tenant_name_year",
     "idx_poa_records_tenant_client_status",
   ]],
+  ['src/pages/Esign.jsx',[
+    "functions.invoke('nashville-esign-mail'",
+    "kind: 'esign_request'",
+    "esignId: data.id",
+  ]],
+  ['supabase/functions/nashville-esign-mail/index.ts',[
+    "nashville_system_mail_relay_v1",
+    "esign_signed_copy",
+    "esign_internal_notification",
+    "Recipient does not match E-sign request",
+  ]],
+  ['supabase/functions/nashville-system-mail-relay/index.ts',[
+    "romylabs_stalwart_transport_for_product",
+    "taxres_stalwart_relay",
+    "Nashville Tax Solutions via TaxRes CRM",
+    "NASHVILLE_HOST",
+  ]],
+  ['supabase/functions/esign-reminders/index.ts',[
+    "nashville-esign-mail",
+    "kind:'esign_reminder'",
+  ]],
+  ['supabase/functions/esign-archive-upload/index.ts',[
+    "nashville-esign-mail",
+    "kind:'esign_signed_copy'",
+    "kind:'esign_internal_notification'",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
