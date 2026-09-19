@@ -9,6 +9,15 @@ import { hasPlanFeature } from '../lib/planTiers'
 // Scope queries to current tenant when FIRM.tenantId is available (platform admin sessions)
 function tf(q) { return FIRM.tenantId ? q.eq('tenant_id', FIRM.tenantId) : q }
 
+function safeRoleDefaults(access) {
+  return ROLE_PERM_DEFAULTS[access] || ROLE_PERM_DEFAULTS['Tax Associate']
+}
+
+function safePermLevel(value, fallback = 0) {
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 0 && n <= 3 ? n : fallback
+}
+
 // Base access levels — these are the actual permission presets (never change these keys)
 const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Tax Associate', 'Tax Advisor', 'Sales Rep', 'View Only']
 // Display labels for each access level — pulled from FIRM.labels or defaults
@@ -151,16 +160,16 @@ function fromDbRow(emp) {
     pto_balance:      emp.pto_balance ?? 0,
     sick_balance:     emp.sick_balance ?? 0,
     vacation_balance: emp.vacation_balance ?? 0,
-    perm_leads:       emp.perm_leads    ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_leads,
-    perm_clients:     emp.perm_clients  ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_clients,
-    perm_billing:     emp.perm_billing  ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_billing,
-    perm_schedule:    emp.perm_schedule ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_schedule,
-    perm_documents:   emp.perm_documents?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_documents,
-    perm_irs:         emp.perm_irs      ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_irs,
-    perm_comms:       emp.perm_comms    ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_comms,
-    perm_reports:     emp.perm_reports  ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_reports,
-    perm_hr:          emp.perm_hr       ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_hr,
-    perm_settings:    emp.perm_settings ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate'].perm_settings,
+    perm_leads:       safePermLevel(emp.perm_leads,       safeRoleDefaults(emp.access).perm_leads),
+    perm_clients:     safePermLevel(emp.perm_clients,     safeRoleDefaults(emp.access).perm_clients),
+    perm_billing:     safePermLevel(emp.perm_billing,     safeRoleDefaults(emp.access).perm_billing),
+    perm_schedule:    safePermLevel(emp.perm_schedule,    safeRoleDefaults(emp.access).perm_schedule),
+    perm_documents:   safePermLevel(emp.perm_documents,   safeRoleDefaults(emp.access).perm_documents),
+    perm_irs:         safePermLevel(emp.perm_irs,         safeRoleDefaults(emp.access).perm_irs),
+    perm_comms:       safePermLevel(emp.perm_comms,       safeRoleDefaults(emp.access).perm_comms),
+    perm_reports:     safePermLevel(emp.perm_reports,     safeRoleDefaults(emp.access).perm_reports),
+    perm_hr:          safePermLevel(emp.perm_hr,          safeRoleDefaults(emp.access).perm_hr),
+    perm_settings:    safePermLevel(emp.perm_settings,    safeRoleDefaults(emp.access).perm_settings),
   }
 }
 
@@ -197,16 +206,40 @@ export default function Employees() {
 
   async function load() {
     setLoading(true)
-    const { data } = await tf(supabase.from('employees').select('*')).order('name')
-    // Exclude platform admin account — romy@taxrescrm.net is the TaxRes CRM
-    // product owner account and must never appear in any office's employee list
-    setEmployees((data || []).filter(e => e.email !== 'romy@taxrescrm.net'))
-    setLoading(false)
+    try {
+      const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
+      if (tenantErr || !tenantId) {
+        setEmployees([])
+        showToast('Could not resolve this office. Please sign in again.', 'err')
+        return
+      }
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('name')
+      if (error) {
+        setEmployees([])
+        showToast('Employees failed to load: ' + error.message, 'err')
+        return
+      }
+      // Exclude platform admin account — romy@taxrescrm.net is the TaxRes CRM
+      // product owner account and must never appear in any office's employee list.
+      setEmployees((data || []).filter(e => e.email !== 'romy@taxrescrm.net'))
+    } catch (e) {
+      setEmployees([])
+      showToast('Employees failed to load.', 'err')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function openNew() {
     setEditing(null)
-    const { data: empIds } = await supabase.from('employees').select('employee_id')
+    const { data: tenantId } = await supabase.rpc('current_tenant_id')
+    const { data: empIds } = tenantId
+      ? await supabase.from('employees').select('employee_id').eq('tenant_id', tenantId)
+      : { data: [] }
     let nextNum = 100
     if (empIds?.length) {
       const nums = empIds
@@ -431,9 +464,10 @@ export default function Employees() {
               {/* Permission chips */}
               <div style={{ marginTop: 14, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {PERM_SECTIONS.map(s => {
-                  const level = emp[s.key] ?? ROLE_PERM_DEFAULTS[emp.access || 'Tax Associate']?.[s.key] ?? 0
+                  const fallback = safeRoleDefaults(emp.access)?.[s.key] ?? 0
+                  const level = safePermLevel(emp[s.key], fallback)
                   if (level === 0) return null
-                  const opt = LEVEL_OPTIONS[level]
+                  const opt = LEVEL_OPTIONS[level] || LEVEL_OPTIONS[0]
                   return (
                     <span key={s.key} title={s.label + ': ' + opt.label} style={{
                       fontSize: 10, padding: '2px 8px', borderRadius: 12,
