@@ -107,3 +107,59 @@ export async function buildBankingResolutionPdf(c, l = {}) {
   const bytes=await pdf.save()
   return new Blob([bytes],{type:'application/pdf'})
 }
+
+
+export async function buildCorporateGovernancePdf(c, l = {}) {
+  const nonprofit = c.entity_type === 'Non-Profit 501(c)(3)'
+  const pdf = await PDFDocument.create()
+  const reg = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  let page = pdf.addPage([PAGE_W,PAGE_H])
+  let y = header(page,bold,nonprofit?'BYLAWS & ORGANIZATIONAL ACTION':'BYLAWS & INITIAL ORGANIZATIONAL ACTION',clean(c.entity_name,'Corporation'))
+
+  const intro = nonprofit
+    ? `These bylaws are adopted for ${clean(c.entity_name)} (the "Corporation"), a not-for-profit corporation organized under the laws of ${clean(c.state,'the formation state')}.`
+    : `These bylaws are adopted for ${clean(c.entity_name)} (the "Corporation"), a corporation organized under the laws of ${clean(c.state,'the formation state')}.`
+  y=paragraph(page,intro,M,y,reg,9.5,14); y-=8
+
+  const sections=[
+    ['1. OFFICES AND RECORDS',`The principal office is ${clean(c.principal_address)}. The Corporation will maintain its formation records, minutes, resolutions, tax records, and other records required by law.`],
+    ['2. BOARD OF DIRECTORS','The business and affairs of the Corporation are managed under the direction of its board of directors, subject to applicable law and the Articles of Incorporation. Directors may act at meetings or by written consent when permitted.'],
+    ['3. OFFICERS','The board may appoint a President, Secretary, Treasurer, and other officers, define their authority, and remove or replace them in accordance with applicable law and these bylaws.'],
+    ['4. MEETINGS AND WRITTEN ACTION','Meetings may be held with the notice and quorum required by applicable law and these bylaws. Actions may be documented by minutes or written consents and retained with the corporate records.'],
+    ['5. BANKING AND CONTRACT AUTHORITY','Corporate funds must be maintained separately from personal funds. The board may designate authorized bank signers and persons authorized to execute contracts for the Corporation.'],
+    ['6. TAX, ACCOUNTING, AND COMPLIANCE','The Corporation will obtain and maintain its EIN, keep complete books and records, file required federal, state, and local returns, and maintain its registered agent and required annual filings.'],
+    ['7. INDEMNIFICATION','The Corporation may indemnify directors, officers, employees, and agents to the fullest extent permitted by applicable law.'],
+    ['8. AMENDMENTS','These bylaws may be amended in the manner permitted by the Articles of Incorporation, applicable law, and any rights of members or shareholders.'],
+  ]
+  for(const [title,body] of sections){
+    if(y<135){ page=pdf.addPage([PAGE_W,PAGE_H]); y=PAGE_H-64 }
+    addText(page,title,M,y,bold,10); y-=16
+    y=paragraph(page,body,M,y,reg,9.2,13.5); y-=7
+  }
+
+  if(y<260){ page=pdf.addPage([PAGE_W,PAGE_H]); y=PAGE_H-64 }
+  addText(page,'INITIAL ORGANIZATIONAL ACTION',M,y,bold,12); y-=20
+  const actions=[
+    'The Articles of Incorporation and state filing acknowledgement are accepted and ordered placed in the corporate records.',
+    'The bylaws above are adopted as the initial bylaws of the Corporation.',
+    `The following officers/directors are recorded from the formation file: ${clean(c.officers_directors,'To be completed by organizational action')}.`,
+    `The Corporation is authorized to obtain and use EIN ${clean(c.ein,'when issued')} and to establish business banking in the corporate name.`,
+    'The officers are authorized to take reasonable actions necessary to complete tax registrations, licenses, insurance, bookkeeping, contracts, and other launch requirements approved by the board.',
+  ]
+  for(const a of actions){ y=paragraph(page,'• '+a,M,y,reg,9.3,14); y-=4 }
+  y-=10
+  addText(page,'Authorized Director / Incorporator: '+clean(c.incorporator_name || c.authorized_representative || c.client_name),M,y,reg,9.5); y-=24
+  addText(page,'Signature: ________________________________________',M,y,reg,10)
+  addText(page,'Date: __________________',370,y,reg,10)
+  addText(page,'This document is a company-record template generated from information supplied to FormaCorp. Review for the corporation’s specific governance requirements before adoption.',M,50,reg,7.3,{color:rgb(.45,.48,.54)})
+  const bytes=await pdf.save()
+  return new Blob([bytes],{type:'application/pdf'})
+}
+
+export async function buildGovernanceDocumentPdf(c, l = {}) {
+  if (c?.entity_type === 'C-Corp' || c?.entity_type === 'Non-Profit 501(c)(3)') {
+    return buildCorporateGovernancePdf(c,l)
+  }
+  return buildOperatingAgreementPdf(c,l)
+}
