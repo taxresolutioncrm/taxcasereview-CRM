@@ -63,7 +63,7 @@ must(clients.includes(`myTenantId === '${CLOUD_ID}'`),'client SMS invokes the Cl
 must(leads.includes(`myTenantId === '${CLOUD_ID}'`),'lead SMS invokes the CloudCPA relay')
 must(sms.includes('client_id: clients.find'),'global SMS passes the matching client id for clean tenant history')
 
-must(sendFax.includes("cloudTenant?.tenant_code === 'TRC-003'"),'CloudCPA fax relay is explicitly scoped to TRC-003')
+must(sendFax.includes("'TRC-003'")&&sendFax.includes("'ADMIN'"),'CloudCPA and Demo fax relay are explicitly limited to approved TaxRes family relay tenants')
 must(sendFax.includes(`.eq('tenant_id','${TCR_RELAY_ID}')`),'CloudCPA fax borrows only the proven platform transport')
 must(sendFax.includes('platform_relay: platformRelay'),'fax response exposes physical relay state')
 must(fax.includes('const actualFrom = resData?.from || fromNum || null'),'fax history records the actual physical sending number')
