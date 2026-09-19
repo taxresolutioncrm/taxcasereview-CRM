@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   try {
     const now = new Date()
     const tenantView = async (tenantId:string, product:string, label:string, mrrFallback:number, demoScope=false) => {
-      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: tenantStorage },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
+      const [{ count: totalClientCount },{ count: activeClientCount },{ count: totalLeadCount },{ count: activeLeadCount },{ count: taskCount },{ count: caseCount },{ data: docs },{ data: tenantStorage },{ data: tenantStorageFiles },{ data: recentActivity },{ data: employees },{ data: tenant }] = await Promise.all([
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('clients').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId).is('deleted_at',null),
         supabase.from('leads').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
@@ -35,12 +35,14 @@ Deno.serve(async (req) => {
         supabase.from('cases').select('*',{count:'exact',head:true}).eq('tenant_id',tenantId),
         supabase.from('documents').select('file_size').eq('tenant_id',tenantId),
         supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId}),
+        supabase.rpc('_admin_tenant_storage_files',{p_tenant_id:tenantId}),
         supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(50),
         supabase.from('employees').select('id,email').eq('tenant_id',tenantId).ilike('status','active'),
         supabase.from('tenants').select('monthly_rate,per_seat_rate,billing_seats').eq('id',tenantId).maybeSingle(),
       ])
       const documentStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
       const totalStorage=Number(tenantStorage ?? documentStorage ?? 0)
+      const totalStorageFiles=Number(tenantStorageFiles ?? (docs||[]).length ?? 0)
       const isDemoEmployee = (email:string) => {
         const normalized=String(email||'').trim().toLowerCase()
         return normalized==='demo@taxrescrm.net' || normalized.endsWith('@taxrescrm.demo')
@@ -83,6 +85,8 @@ Deno.serve(async (req) => {
           open_jobs:caseCount||0,
           pending_tasks:taskCount||0,
           storage_bytes:totalStorage,
+          storage_objects:totalStorageFiles,
+          storage_files:totalStorageFiles,
           last_activity:lastActivity,
           active_offices:1,total_offices:1
         },
@@ -100,6 +104,8 @@ Deno.serve(async (req) => {
           job_count:caseCount||0,
           pending_tasks:taskCount||0,
           storage_bytes:totalStorage,
+          storage_objects:totalStorageFiles,
+          storage_files:totalStorageFiles,
           last_activity:lastActivity
         }],
         recent_activity:scopedRecentActivity.slice(0,5).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))
