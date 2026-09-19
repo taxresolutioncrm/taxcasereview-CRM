@@ -73,7 +73,7 @@ serve(async (req) => {
     if (!hasTenantFaxProvider) {
       const { data: cloudTenant } = await admin.from('tenants')
         .select('tenant_code').eq('id', tenantId).maybeSingle()
-      if (cloudTenant?.tenant_code === 'TRC-003') {
+      if (['TRC-003','ADMIN'].includes(String(cloudTenant?.tenant_code || ''))) {
         const { data: relaySettings } = await admin.from('settings')
           .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,telnyx_api_key,firm_fax_number,tenant_id')
           .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a')
