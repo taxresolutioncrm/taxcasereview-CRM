@@ -102,6 +102,21 @@ const checks=[
     "revoke all on function public.esign_public_mark_signed(text,text,text,text) from public, anon, authenticated",
     "revoke all on function public.esign_public_track_event(text,text,text,integer,text,text,jsonb) from public, anon, authenticated",
   ]],
+  ['src/lib/transcriptPull.js',[
+    "client_id: client.id",
+    "storage://documents/",
+    "transcripts/${client.id}/",
+    "storage_path: filePath",
+  ]],
+  ['src/pages/IRSPortal.jsx',[
+    "openTranscriptFile(row)",
+    "createSignedUrl(path, 3600)",
+  ]],
+  ['supabase/migrations/20260919_nashville_transcript_indexes.sql',[
+    "idx_transcript_analyses_tenant_client_year",
+    "idx_transcript_analyses_tenant_name_year",
+    "idx_poa_records_tenant_client_status",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
