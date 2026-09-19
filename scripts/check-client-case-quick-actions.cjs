@@ -9,6 +9,7 @@ const esignMigration=fs.readFileSync('supabase/migrations/20260919213000_taxres_
 const sendFax=fs.readFileSync('supabase/functions/send-fax/index.ts','utf8')
 const app=fs.readFileSync('src/App.jsx','utf8')
 const irsForms=fs.readFileSync('src/lib/irsFormUtils.js','utf8')
+const docUtils=fs.readFileSync('src/lib/docUtils.js','utf8')
 
 const requiredStateForms=['FL_POA.pdf','NC_POA.pdf','TX_POA.pdf','OH_POA.pdf','NY_POA.pdf','PA_POA.pdf','CA_POA.pdf','GA_POA.pdf','IL_POA.pdf','MA_POA.pdf','MO_POA.pdf','OR_POA.pdf','TN_POA.pdf','Washington_POA.pdf','Wyoming.pdf','AZ_POA.pdf','ID_POA.pdf']
 const requiredIrsTemplates=['2848_Pers_RC.pdf','2848_RC_Biz.pdf','8821_Pers_RC.pdf','8821_Biz_RC.pdf','433A_Blank.pdf','433B_Blank.pdf','433D_Blank.pdf','433F_Blank.pdf','433H_Blank.pdf','656L_Blank.pdf','433A_OIC_Blank.pdf']
@@ -26,6 +27,7 @@ const checks=[
   ['IRS pre-fill quick action is wired',clients.includes('label="Pre-Fill 8821/2848"')&&clients.includes('setFillerClient')],
   ['State POA quick action is wired',clients.includes('label="Pre-Fill State POA"')&&clients.includes('sendStatePOA')&&clients.includes('setPoaModal(true)')],
   ['Addendum quick action is wired',clients.includes('label="Addendum"')&&clients.includes('sendAddendumForSignature')&&clients.includes('sendAddendum')],
+  ['Addendum fails closed unless its secure PDF link exists',docUtils.includes('Could not create secure addendum link')&&docUtils.includes('storage_path: path')],
   ['Rewrite quick action is present in the 10-button row',clients.includes('label="Rewrite"')&&clients.includes('sub="Default → New Plan"')&&clients.includes("repeat(10, 1fr)")],
   ['Rewrite saves new plan terms and increments rewrite history',clients.includes('async function saveRewritePlan()')&&clients.includes('contractFee: fee')&&clients.includes('payment_plan_changes: nextChanges')],
   ['Rewrite preserves services as arrays across TaxRes-family schemas',clients.includes('services:Array.isArray(c.services)?c.services:[]')&&clients.includes('services: plan.services')&&!clients.includes("JSON.parse(c.services||'[]')")],
