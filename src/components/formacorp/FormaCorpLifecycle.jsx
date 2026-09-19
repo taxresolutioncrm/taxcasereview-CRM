@@ -377,7 +377,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         created_at:new Date().toISOString(),
       }]).select().single()
       if(esignErr)throw esignErr
-      const signUrl=`${window.location.origin}/sign/${esign.id}`
+      const signUrl=`${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
       const {error:mailErr}=await supabase.functions.invoke('send-email',{body:{
         to,
         subject:`Signature Required: ${caseRecord.entity_name} ${governingLabel}`,
