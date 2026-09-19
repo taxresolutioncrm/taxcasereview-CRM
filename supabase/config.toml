@@ -121,6 +121,8 @@ verify_jwt = false
 verify_jwt = false
 [functions.gmail-sync-cron]
 verify_jwt = false
+[functions.quickbooks-oauth-start]
+verify_jwt = true
 [functions.quickbooks-oauth-callback]
 verify_jwt = false
 [functions.xero-oauth-callback]
