@@ -7,7 +7,7 @@ const MANUAL_SECTIONS = [
     id: 'overview', icon: '🏠', label: 'Overview', category: 'Getting Started',
     title: 'What TaxRes CRM does',
     content: [
-      { type: 'lead', text: 'TaxRes CRM is a purpose-built operating system for tax resolution firms. It replaces Canopy, Calendly, RingCentral, DocuSign, QuickBooks invoicing, and a separate client portal — with one integrated platform where every action logs automatically on the file.' },
+      { type: 'lead', text: 'TaxRes CRM is the shared operating platform for the TaxRes family of tax-resolution offices. The same core workflows, controls, release standards, and CRM Manual apply across Tax Case Review, Nashville Tax Solutions, CloudCPA, Demo, and future TaxRes-family offices, with office-specific branding, providers, permissions, and integrations documented where they differ.' },
       { type: 'flow', items: ['New Lead', 'Financial Intake', 'Send Full Package', 'Client Signs ⭐', 'Tasks Auto-Created', 'Active Client', 'Resolution ✓'] },
       { type: 'h3', text: 'Core features' },
       { type: 'cards', items: [
@@ -22,13 +22,15 @@ const MANUAL_SECTIONS = [
         { icon: '🖥️', title: 'Live training sessions', body: 'Host live screen-share training sessions for new offices. Participants join via link — no install. Session recording, chat, and virtual backgrounds all built in.' },
         { icon: '📊', title: 'Reports', body: 'Revenue, production, call volume, timeclock, AR aging, and pipeline reports — filterable by rep, date range, and status.' },
       ]},
-      { type: 'h3', text: 'Which office uses which CRM?' },
-      { type: 'table', headers: ['Office', 'Email system', 'Phone system', 'Stripe account'], rows: [
-        ['Tax Case Review (TCR)', 'Gmail (per employee)', 'SignalWire', 'TCR Stripe'],
-        ['Nashville Tax Solutions', 'Per-rep connected mailbox', 'Verizon Business calling / office-configured provider', 'QuickBooks-connected billing / office payment configuration'],
-        ['Demo Office', 'Demo only', 'Demo only', 'Test mode'],
+      { type: 'h3', text: 'TaxRes family office model' },
+      { type: 'table', headers: ['Office type', 'Manual behavior', 'Office-specific configuration'], rows: [
+        ['Tax Case Review (TCR)', 'Uses this shared TaxRes CRM Manual', 'TCR branding, tenant data, and configured communications/payments'],
+        ['Nashville Tax Solutions', 'Uses this shared TaxRes CRM Manual', 'Nashville branding, per-rep mailbox configuration, Verizon Business calling where mapped, office fax/accounting configuration'],
+        ['CloudCPA', 'Uses this shared TaxRes CRM Manual', 'CloudCPA branding, tenant-scoped employee access, communications, booking, payments, and office integrations'],
+        ['Demo Office', 'Uses this shared TaxRes CRM Manual', 'Demo branding and safe/demo provider behavior where applicable'],
+        ['Future TaxRes-family offices', 'Inherit the shared manual and release gates', 'Their tenant branding, providers, staff, permissions, and integrations must be documented when they differ from the shared workflow'],
       ]},
-      { type: 'info', text: 'Every office is a separate tenant. Nashville cannot see TCR data. TCR cannot see Nashville data. RLS (Row Level Security) enforces this at the database level — not in the app layer. Even if someone guessed a URL, they would get empty data.' },
+      { type: 'info', text: 'Every TaxRes-family office is a separate tenant. Office data, employees, clients, cases, documents, communications, payments, and settings must remain tenant-isolated. Shared code and a shared manual do not mean shared office data.' },
       { type: 'tip', text: 'Every communication — call, email, SMS, fax, booking, document sent — creates a note automatically on the client or lead file. You never need to manually log anything the system already captures.' },
     ]
   },
@@ -1197,7 +1199,7 @@ const MANUAL_SECTIONS = [
     id: 'manual-about', icon: '📖', label: 'About This Manual', category: 'Training',
     title: 'About This Manual',
     content: [
-      { type: 'lead', text: 'This manual covers the complete TaxRes CRM platform as configured for Tax Case Review and Nashville Tax Solutions. All sections apply to both offices unless specifically noted.' },
+      { type: 'lead', text: 'This is the shared operating manual for the entire TaxRes family — Tax Case Review, Nashville Tax Solutions, CloudCPA, Demo, and future TaxRes-family offices. Core workflows apply across the family; when a tenant has different branding, providers, permissions, or integrations, the office-specific behavior is called out in the relevant section.' },
       { type: 'h3', text: 'Quick reference: most common tasks' },
       { type: 'table', headers: ['Task', 'Where to do it', 'Time'], rows: [
         ['Create a new lead', 'Leads → + New Lead', '2 min'],
@@ -1235,7 +1237,7 @@ const MANUAL_SECTIONS = [
         ['Living outside US', '6+ months absence', 'Tolls entire CSED while abroad'],
       ]},
       { type: 'h3', text: 'Manual synchronization rule' },
-      { type: 'warn', text: 'The CRM Manual is part of the release scope. Any user-facing workflow, button, integration, status, role/access rule, document path, payment behavior, provider behavior, or operational procedure changed in the CRM must have the corresponding manual instructions updated in the same release. A feature change is not considered release-complete when its manual is stale.' },
+      { type: 'warn', text: 'The CRM Manual is part of the release scope across the entire TaxRes family. Any user-facing workflow, button, integration, status, role/access rule, document path, payment behavior, provider behavior, or operational procedure changed for TCR, Nashville, CloudCPA, Demo, or any future TaxRes-family office must have the corresponding shared or office-specific manual instructions updated in the same release. A feature change is not considered release-complete when its manual is stale.' },
       { type: 'tip', text: 'The CRM manual is searchable — use the search bar in the left sidebar to find any topic instantly. Navigation arrows at the bottom of each page move through sections in order.' },
     ]
   },
