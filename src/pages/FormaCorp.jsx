@@ -88,6 +88,7 @@ function floridaMissing(v = {}) {
 }
 
 function floridaSubmissionMissing(v = {}) {
+  if (!isFloridaLlc(v)) return []
   const missing = floridaMissing(v)
   if (!String(v.fl_registered_agent_signature || '').trim()) missing.push('Registered-agent typed signature')
   if (!String(v.fl_authorized_representative_signature || '').trim()) missing.push('Authorized-representative typed signature')
