@@ -189,3 +189,11 @@ verify_jwt = false
 # x-internal-cron-token; the function verifies that token itself.
 [functions.stalwart-calendar-sync]
 verify_jwt = false
+
+# FormaCorp Bizee integration.
+# Staff adapter requires the CRM user's JWT. Provider webhook validates the
+# Bizee-issued webhook secret/signature contract inside the function.
+[functions.formacorp-bizee]
+verify_jwt = true
+[functions.formacorp-bizee-webhook]
+verify_jwt = false
