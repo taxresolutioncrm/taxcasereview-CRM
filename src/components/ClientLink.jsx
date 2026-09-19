@@ -73,14 +73,19 @@ export default function ClientLink({ name, clientId, style, className, subtle = 
     return <span style={style} className={className}>{name}</span>
   }
 
+  const href = target ? (target.kind === 'client' ? `/clients/${target.id}` : `/leads/${target.id}`) : undefined
+
   function go(e) {
     e.stopPropagation()
-    if (!target) return
-    navigate(target.kind === 'client' ? `/clients/${target.id}` : `/leads/${target.id}`)
+    if (!target || !href) return
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    e.preventDefault()
+    navigate(href)
   }
 
   return (
-    <span
+    <a
+      href={href}
       onClick={go}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -91,6 +96,6 @@ export default function ClientLink({ name, clientId, style, className, subtle = 
       className={className}
     >
       {name}
-    </span>
+    </a>
   )
 }
