@@ -1074,11 +1074,17 @@ export default function Clients() {
     // Guard: don't load until auth session confirmed so current_tenant_id()
     // is established before the first query — prevents wrong-tenant data on hard refresh.
     if (!user) return
+    let refreshTimer = null
+    const scheduleLoad = () => {
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(load, 350)
+    }
     load()
+    const cfg = { event:'*', schema:'public', table:'clients', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('clients-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => load())
+      .on('postgres_changes', cfg, scheduleLoad)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { clearTimeout(refreshTimer); supabase.removeChannel(ch) }
   }, [user?.id])
 
   // Live-update the currently-open client's related data (notes, tasks,
@@ -1089,15 +1095,19 @@ export default function Clients() {
   useEffect(() => {
     if (!detail?.name) return
     const name = detail.name
-    function reload() { loadRelated(name) }
+    let refreshTimer = null
+    function reload() {
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => loadRelated(name, detail.id), 300)
+    }
     const ch = supabase.channel('client-detail-rt-' + (detail.id || name))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, reload)
+      .on('postgres_changes', { event:'*', schema:'public', table:'client_notes', filter:`clientname=eq.${name}` }, reload)
+      .on('postgres_changes', { event:'*', schema:'public', table:'tasks', filter:`clientName=eq.${name}` }, reload)
+      .on('postgres_changes', { event:'*', schema:'public', table:'payments', filter:`clientName=eq.${name}` }, reload)
+      .on('postgres_changes', { event:'*', schema:'public', table:'documents', filter:`client_id=eq.${detail.id}` }, reload)
+      .on('postgres_changes', { event:'*', schema:'public', table:'cases', filter:`clientName=eq.${name}` }, reload)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { clearTimeout(refreshTimer); supabase.removeChannel(ch) }
   }, [detail?.id, detail?.name])
 
   // Save scroll position before refresh/navigation away, restore after detail (+ related data) loads.
