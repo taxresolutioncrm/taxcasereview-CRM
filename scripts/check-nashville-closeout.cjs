@@ -35,6 +35,9 @@ const checks=[
     "clientFilter.startsWith('client:')",
     "client_id: entityClientId",
     "storage_path: storagePath",
+    "DOC_PAGE_SIZE = 250",
+    "select('*', { count:'exact' })",
+    "docTotal > DOC_PAGE_SIZE",
   ]],
   ['supabase/migrations/20260919_nashville_document_client_identity.sql',[
     "sync_document_client_identity",
