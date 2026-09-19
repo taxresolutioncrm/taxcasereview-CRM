@@ -581,8 +581,9 @@ export default function Chat() {
       setReactions(counts); setMyReactions(mine)
     }
     loadReactionState()
+    const reactionCfg={event:'*',schema:'public',table:'chat_reactions',...(chatTenantId?{filter:`tenant_id=eq.${chatTenantId}`}:{})}
     const rt=supabase.channel('chat-reactions-'+channelId)
-      .on('postgres_changes',{event:'*',schema:'public',table:'chat_reactions'},loadReactionState)
+      .on('postgres_changes',reactionCfg,loadReactionState)
       .subscribe()
     return()=>{cancelled=true;supabase.removeChannel(rt)}
   }, [messages, myName, channelId, chatTenantId])
