@@ -4755,7 +4755,7 @@ function CommandCenter() {
       .catch(err => { if (!cancelled) { setCrmRemoteData(null); setCrmRemoteError(String(err?.message || err)) } })
       .finally(() => { if (!cancelled) setCrmRemoteLoading(false) })
     return () => { cancelled = true }
-  }, [crmProduct, fetchCrmProductMetrics])
+  }, [crmProduct, fetchCrmProductMetrics, reportingProducts])
 
   React.useEffect(() => {
     setCrmAccountMetrics(null)
