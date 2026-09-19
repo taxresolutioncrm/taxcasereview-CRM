@@ -6,6 +6,7 @@ const clientLink=fs.readFileSync('src/components/ClientLink.jsx','utf8')
 const signPage=fs.readFileSync('src/pages/SignPage.jsx','utf8')
 const esignArchive=fs.readFileSync('supabase/functions/esign-archive-upload/index.ts','utf8')
 const esignMigration=fs.readFileSync('supabase/migrations/20260919213000_taxres_family_esign_tokens.sql','utf8')
+const bookingWidget=fs.readFileSync('src/components/BookingWidget.jsx','utf8')
 const sendFax=fs.readFileSync('supabase/functions/send-fax/index.ts','utf8')
 const app=fs.readFileSync('src/App.jsx','utf8')
 const irsForms=fs.readFileSync('src/lib/irsFormUtils.js','utf8')
@@ -27,6 +28,7 @@ const checks=[
   ['E-Signature quick action delivers by email text or both',clients.includes("Signing request sent via")&&clients.includes("functions.invoke('send-email'")&&clients.includes("functions.invoke('send-sms'")],
   ['Rewrite quick action is wired to a replacement token-secured agreement',clients.includes('label="Rewrite"')&&clients.includes('saveRewritePlan')&&clients.includes('sendAddendumForSignature(detail, plan')],
   ['quick actions do not trigger automatic clipboard permission prompts',!clients.includes('navigator.clipboard.writeText(')],
+  ['quick-action dependencies avoid native browser dialogs',!bookingWidget.includes('alert(')&&!bookingWidget.includes('confirm(')&&!bookingWidget.includes('prompt(')&&!clients.includes('alert(')&&!clients.includes('confirm(')&&!clients.includes('prompt(')],
   ['IRS pre-fill quick action is wired',clients.includes('label="Pre-Fill 8821/2848"')&&clients.includes('setFillerClient')],
   ['State POA quick action is wired',clients.includes('label="Pre-Fill State POA"')&&clients.includes('sendStatePOA')&&clients.includes('setPoaModal(true)')],
   ['Addendum quick action is wired',clients.includes('label="Addendum"')&&clients.includes('sendAddendumForSignature')&&clients.includes('sendAddendum')],
