@@ -117,13 +117,18 @@ async function loadPlatformOfficeRows() {
     { data: taxresRows, error: taxresError },
     { data: registryData, error: registryError },
     { data: billingData, error: billingError },
+    { data: productRows, error: productError },
   ] = await Promise.all([
     supabase.rpc('admin_tenant_overview'),
     supabase.rpc('admin_romylabs_office_registry'),
     supabase.rpc('admin_romylabs_billing_totals'),
+    supabase.from('romylabs_products')
+      .select('product_id,name,accent_color,app_url,lifecycle,active')
+      .eq('active', true),
   ])
   if (taxresError) throw taxresError
   if (billingError) throw billingError
+  if (productError) throw productError
 
   const rows = (taxresRows || []).map(r => ({
     ...r,
@@ -145,6 +150,15 @@ async function loadPlatformOfficeRows() {
   const warnings = []
   const externalMetrics = { active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 }
   const seen = new Set(rows.map(r => `taxres_crm:${r.id}`))
+  const externalProductConfigs = Object.fromEntries(
+    (productRows || [])
+      .filter(p => p.product_id !== 'taxres_crm' && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
+      .map(p => [p.product_id, {
+        label:p.name || p.product_id,
+        color:p.accent_color || '#6366f1',
+        appUrl:p.app_url || null,
+      }])
+  )
 
   // Overlay each known TaxRes tenant with the same authenticated platform-metrics
   // feed used by the CRM drilldown. admin_tenant_overview remains the directory/
@@ -155,7 +169,7 @@ async function loadPlatformOfficeRows() {
     { key:'cloudcpa', name:'CloudCPA Inc' },
     { key:'demo', name:'Tax Res CRM Demo' },
   ]
-  const productKeys = Object.keys(EXTERNAL_OFFICE_PRODUCTS)
+  const productKeys = Object.keys(externalProductConfigs)
 
   // One authenticated hub call fetches all products concurrently server-side.
   // If the batch path is unavailable for any reason, fall back to the existing
@@ -215,7 +229,7 @@ async function loadPlatformOfficeRows() {
   if (!registryError && Array.isArray(registryData)) {
     for (const office of registryData) {
       if (!office?.product_key || office.product_key === 'taxres_crm' || !office.external_office_id) continue
-      const cfg = EXTERNAL_OFFICE_PRODUCTS[office.product_key] || { label:office.product_key, color:'#6366f1' }
+      const cfg = externalProductConfigs[office.product_key] || EXTERNAL_OFFICE_PRODUCTS[office.product_key] || { label:office.product_key, color:'#6366f1', appUrl:null }
       const key = `${office.product_key}:${office.external_office_id}`
       if (seen.has(key)) continue
       seen.add(key)
@@ -246,7 +260,7 @@ async function loadPlatformOfficeRows() {
   const registrySyncJobs = []
 
   for (const result of results) {
-    const cfg = EXTERNAL_OFFICE_PRODUCTS[result.productKey]
+    const cfg = externalProductConfigs[result.productKey] || EXTERNAL_OFFICE_PRODUCTS[result.productKey] || { label:result.productKey, color:'#6366f1', appUrl:null }
     const offices = Array.isArray(result.data?.offices) ? result.data.offices : null
     if (result.error || !offices) {
       warnings.push(`${cfg.label} live office feed unavailable`)
@@ -900,11 +914,35 @@ function ArcvenaOfficePage() {
 function ExternalProductOfficePage({ productKey }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const cfg = EXTERNAL_OFFICE_PRODUCTS[productKey]
   const officeId = String(id || '').replace(new RegExp(`^${productKey}:`), '')
+  const [cfg,setCfg] = useState(
+    EXTERNAL_OFFICE_PRODUCTS[productKey] || {
+      label:productKey,
+      color:'#6366f1',
+      appUrl:null,
+    }
+  )
   const [office,setOffice] = useState(null)
   const [loading,setLoading] = useState(true)
   const [error,setError] = useState('')
+
+  useEffect(() => {
+    let cancelled=false
+    supabase.from('romylabs_products')
+      .select('product_id,name,accent_color,app_url')
+      .eq('product_id', productKey)
+      .limit(1)
+      .maybeSingle()
+      .then(({data}) => {
+        if(cancelled || !data) return
+        setCfg({
+          label:data.name || productKey,
+          color:data.accent_color || '#6366f1',
+          appUrl:data.app_url || null,
+        })
+      })
+    return()=>{cancelled=true}
+  },[productKey])
 
   useEffect(() => {
     let cancelled=false
@@ -965,7 +1003,7 @@ function ExternalProductOfficePage({ productKey }) {
           <div style={{fontSize:28,fontWeight:900,color:'#fff'}}>{office.name||`${cfg.label} Office`}</div>
           <div style={{fontSize:13,color:'#64748b',marginTop:4}}>You are inside this office only.</div>
         </div>
-        <button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={S.btn('primary')}>Open {cfg.label} CRM ↗</button>
+        {cfg.appUrl && <button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={S.btn('primary')}>Open {cfg.label} CRM ↗</button>}
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:22}}>
         {kv.map(([label,value])=><div key={label} style={{...S.card,padding:'16px 18px'}}><div style={{fontSize:10,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>{label}</div><div style={{fontSize:14,fontWeight:700,color:'#e2e8f0',wordBreak:'break-word'}}>{String(value??'—')}</div></div>)}
@@ -988,11 +1026,11 @@ function OfficePageRouter(){
   const {id}=useParams()
   const raw=String(id||'')
   if(raw.startsWith('arcvena:')) return <ArcvenaOfficePage/>
-  if(raw.startsWith('camvella:')) return <ExternalProductOfficePage productKey="camvella"/>
-  if(raw.startsWith('bocasync:')) return <ExternalProductOfficePage productKey="bocasync"/>
-  if(raw.startsWith('groundivo:')) return <ExternalProductOfficePage productKey="groundivo"/>
-  if(raw.startsWith('oculivo:')) return <ExternalProductOfficePage productKey="oculivo"/>
-  if(raw.startsWith('restore_relay:')) return <ExternalProductOfficePage productKey="restore_relay"/>
+  const separator=raw.indexOf(':')
+  if(separator>0){
+    const productKey=raw.slice(0,separator)
+    if(productKey && productKey!=='taxres_crm') return <ExternalProductOfficePage productKey={productKey}/>
+  }
   return <OfficePage/>
 }
 
