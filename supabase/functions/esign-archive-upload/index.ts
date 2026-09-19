@@ -189,14 +189,12 @@ Deno.serve(async(req:Request)=>{
       }
       let certUrl:string|null=null,certPath:string|null=null
       if(cert?.path){certPath=String(cert.path);if(!exists(certPath))return json({error:'Certificate archive missing'},409);const {data,error}=await db.storage.from('documents').createSignedUrl(certPath,900);if(error||!data?.signedUrl)return json({error:'Could not create certificate link'},500);certUrl=data.signedUrl}
-      const {data:claimed,error:claimErr}=await db.rpc('esign_claim_finalize',{p_id:id})
-      if(claimErr)return json({error:claimErr.message},500)
-      if(!claimed)return json({success:true,already_finalized:true})
       const saved=e.doc_type==='Service Addendum'?'Agreements':'E-Signatures'
       const signedAt=e.signed_at||e.signed_timestamp||new Date().toISOString()
       const signedBy=e.signer_full_name||e.signed_name||e.client_name||'Signer'
-      const {error:finErr}=await db.rpc('esign_finalize',{p_id:id,p_client_name:e.client_name||'',p_doc_type:e.doc_type||'',p_signed_by:signedBy,p_signer_ip:e.signer_ip||'',p_signed_at:signedAt,p_saved_doc_type:saved,p_cert_url:certUrl,p_attachments:signedAttachments,p_cert_size:Number(cert?.fileSize||0)||null})
-      if(finErr){await db.from('esigns').update({finalized_at:null}).eq('id',id).eq('tenant_id',TENANT);return json({error:finErr.message},500)}
+      const {data:finalized,error:finErr}=await db.rpc('esign_finalize',{p_id:id,p_client_name:e.client_name||'',p_doc_type:e.doc_type||'',p_signed_by:signedBy,p_signer_ip:e.signer_ip||'',p_signed_at:signedAt,p_saved_doc_type:saved,p_cert_url:certUrl,p_attachments:signedAttachments,p_cert_size:Number(cert?.fileSize||0)||null})
+      if(finErr)return json({error:finErr.message},500)
+      if(finalized?.already_finalized===true)return json({success:true,already_finalized:true})
       for(const a of signedAttachments)await db.from('documents').update({storage_path:a.storage_path}).eq('tenant_id',TENANT).eq('client',e.client_name).eq('file_url',a.url)
       if(certUrl&&certPath)await db.from('documents').update({storage_path:certPath}).eq('tenant_id',TENANT).eq('client',e.client_name).eq('file_url',certUrl)
       await db.from('esigns').update({signed_attachments:signedAttachments}).eq('id',id).eq('tenant_id',TENANT)
