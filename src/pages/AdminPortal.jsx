@@ -109,7 +109,7 @@ const EXTERNAL_OFFICE_PRODUCTS = {
   bocasync:      { label:'BocaSync',      color:'#22c7d3', appUrl:'https://app.bocasync.com/' },
   groundivo:     { label:'GroundIVO',     color:'#16a34a', appUrl:'https://app.groundivo.com/' },
   oculivo:       { label:'Oculivo',       color:'#7C3AED', appUrl:'https://app.oculivo.com/' },
-  restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/' },
+  restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/login' },
 }
 
 async function loadPlatformOfficeRows() {
@@ -2877,7 +2877,7 @@ const PRODUCT_REGISTRY = [
     color:      '#C2410C',
     industry:   'Restoration & Roofing',
     url:        'https://restorerelay.com',
-    appUrl:     'https://restorerelay.com',
+    appUrl:     'https://restorerelay.com/login',
     websiteUrl: 'https://restorerelay.com',
     lifecycleStage: 'available',
     connection:     'partial',
