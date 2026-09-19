@@ -326,7 +326,7 @@ function InlineEsignForm({ client, onClose, showToast }) {
     }]).select().single()
     setSaving(false)
     if (error) { showToast('Error: '+error.message,'err'); return }
-    const url = window.location.origin+'/sign/'+data.id
+    const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
     setLink(url)
     navigator.clipboard.writeText(url).catch(()=>{})
     showToast('✅ Signing link copied!')
@@ -392,7 +392,6 @@ function InlinePortalForm({ client, onClose, showToast }) {
     setSending(true)
     await navigator.clipboard.writeText(url).catch(() => {})
     let emailSent = false, smsSent = false
-    const cfg = await getSettings()
     // Safety net: never leave "Sending..." stuck if email/SMS are not configured
     const sendTimeout = setTimeout(() => { setSending(false); setDone({ sent: [], timedOut: true }) }, 12000)
 
@@ -515,14 +514,12 @@ function InlinePortalForm({ client, onClose, showToast }) {
         if (!error) emailSent = true
       } catch (e) { console.error('Email error:', e) }
     }
-    if ((sendVia === 'sms' || sendVia === 'both') && client?.phone && cfg?.signalwire_backend) {
+    if ((sendVia === 'sms' || sendVia === 'both') && client?.phone) {
       try {
-        const r = await fetch(cfg.signalwire_backend + '/sms/send', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: client.phone, body: `Hi ${client.name}, your ${firmName()} Client Portal is ready! View your case, documents, invoices, and more here: ${url} (you'll need your email + last 4 of your SSN to log in)` })
+        const { data: smsData, error: smsErr } = await supabase.functions.invoke('send-sms', {
+          body: { to: client.phone, body: `Hi ${client.name}, your ${firmName()} Client Portal is ready! View your case, documents, invoices, and more here: ${url} (you'll need your email + last 4 of your SSN to log in)`, client_id: client.id || null }
         })
-        const d = await r.json()
-        if (d.success) smsSent = true
+        if (!smsErr && smsData?.success) smsSent = true
       } catch (e) { console.error('SMS error:', e) }
     }
     clearTimeout(sendTimeout)
@@ -605,8 +602,6 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     const url = window.location.origin + '/organizer/' + orgId
     await navigator.clipboard.writeText(url).catch(() => {})
     let emailSent = false, smsSent = false
-    const cfg = await getSettings()
-
     if ((sendVia === 'email' || sendVia === 'both') && client?.email) {
       try {
         const { error } = await supabase.functions.invoke('send-email', {
@@ -619,14 +614,12 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
         if (!error) emailSent = true
       } catch (e) { console.error('Email error:', e) }
     }
-    if ((sendVia === 'sms' || sendVia === 'both') && client?.phone && cfg?.signalwire_backend) {
+    if ((sendVia === 'sms' || sendVia === 'both') && client?.phone) {
       try {
-        const r = await fetch(cfg.signalwire_backend + '/sms/send', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: client.phone, body: `Hi ${client.name}, please complete your ${year.trim()} tax organizer here: ${url}` })
+        const { data: smsData, error: smsErr } = await supabase.functions.invoke('send-sms', {
+          body: { to: client.phone, body: `Hi ${client.name}, please complete your ${year.trim()} tax organizer here: ${url}`, client_id: client.id || null }
         })
-        const d = await r.json()
-        if (d.success) smsSent = true
+        if (!smsErr && smsData?.success) smsSent = true
       } catch (e) { console.error('SMS error:', e) }
     }
     setSending(false)
@@ -1637,8 +1630,12 @@ export default function Clients() {
         emailSent = !eErr
       }
       if ((via==='sms'||via==='both') && client.phone) {
-        const cfg = await getSettings()
-        if (cfg?.signalwire_backend) { try { await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:client.phone,body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`})}); smsSent=true } catch(_){} }
+        try {
+          const { data:smsData, error:smsErr } = await supabase.functions.invoke('send-sms', {
+            body:{to:client.phone, body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`, client_id:client.id||null}
+          })
+          smsSent = !smsErr && !!smsData?.success
+        } catch(_) {}
       }
       await insertClientNote({ clientname:client.name, content:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, created_by:actor, visible_to_client:false, created_at:new Date().toISOString() })
       setPoaModal(false)
@@ -1727,16 +1724,12 @@ export default function Clients() {
       emailSent = !eErr
     }
     if ((via==='sms'||via==='both') && c.phone) {
-      const cfg = await getSettings()
-      if (cfg?.signalwire_backend) {
-        try {
-          await fetch(cfg.signalwire_backend + '/sms/send', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: c.phone, body: `${firmName()}: please review and sign your Service Addendum here: ${url}` })
-          })
-          smsSent = true
-        } catch (_) {}
-      }
+      try {
+        const { data:smsData, error:smsErr } = await supabase.functions.invoke('send-sms', {
+          body:{to:c.phone, body:`${firmName()}: please review and sign your Service Addendum here: ${url}`, client_id:c.id||null}
+        })
+        smsSent = !smsErr && !!smsData?.success
+      } catch (_) {}
     }
 
     const feeText = `$${Number(addForm.resolutionFee).toLocaleString()}`
@@ -1929,6 +1922,7 @@ export default function Clients() {
         {/* Back + top actions */}
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap'}}>
           <button className="btn" style={{padding:'8px 16px',fontSize:13,fontWeight:600}} onClick={()=>{setDetail(null);navigate('/clients',{replace:true})}}>← Back to Clients</button>
+          <button className="btn" style={{padding:'8px 16px',fontSize:13,fontWeight:600}} onClick={()=>navigate('/cases')}>← Back to Cases</button>
           <button className="btn pri" style={{marginLeft:'auto',padding:'8px 18px',fontSize:13,fontWeight:700}} onClick={()=>openEdit(c)}>✏️ Edit</button>
           {c.archived ? (
             <button className="btn" style={{padding:'8px 18px',fontSize:13,fontWeight:700}} onClick={()=>restoreClient(c.id)}>↩ Restore</button>
