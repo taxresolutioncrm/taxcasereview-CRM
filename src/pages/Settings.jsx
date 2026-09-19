@@ -1999,6 +1999,7 @@ function ImportTab() {
 }
 
 function StatusesTab() {
+  const [tenantId, setTenantId] = useState(null)
   const [categories, setCategories] = useState([])
   const [statuses,   setStatuses]   = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -2010,9 +2011,12 @@ function StatusesTab() {
 
   async function load() {
     setLoading(true)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setCategories([]); setStatuses([]); setLoading(false); return }
+    if (!tenantId) setTenantId(tid)
     const [{ data: cats }, { data: sts }] = await Promise.all([
-      supabase.from('workflow_status_categories').select('*').order('sort_order'),
-      supabase.from('workflow_statuses').select('*').order('sort_order'),
+      supabase.from('workflow_status_categories').select('*').eq('tenant_id', tid).order('sort_order'),
+      supabase.from('workflow_statuses').select('*').eq('tenant_id', tid).order('sort_order'),
     ])
     setCategories(cats || [])
     setStatuses(sts || [])
@@ -2023,7 +2027,9 @@ function StatusesTab() {
   async function addCategory() {
     if (!newCatName.trim()) return
     const sort_order = categories.length
-    const { error } = await supabase.from('workflow_status_categories').insert([{ name: newCatName.trim(), sort_order }])
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { showToast('❌ Could not resolve this office'); return }
+    const { error } = await supabase.from('workflow_status_categories').insert([{ tenant_id: tid, name: newCatName.trim(), sort_order }])
     if (error) { showToast('❌ ' + error.message); return }
     setNewCatName('')
     load()
@@ -2031,7 +2037,9 @@ function StatusesTab() {
 
   async function deleteCategory(cat) {
     if (!confirm(`Delete the "${cat.name}" column and all its statuses? Existing tasks already using these statuses keep their text label — this only removes them from the picker.`)) return
-    await supabase.from('workflow_status_categories').delete().eq('id', cat.id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('workflow_status_categories').delete().eq('tenant_id', tid).eq('id', cat.id)
     load()
   }
 
@@ -2039,14 +2047,18 @@ function StatusesTab() {
     const text = (newStatusText[cat.id] || '').trim()
     if (!text) return
     const sort_order = statuses.filter(s => s.category_id === cat.id).length
-    const { error } = await supabase.from('workflow_statuses').insert([{ category_id: cat.id, label: text, sort_order }])
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { showToast('❌ Could not resolve this office'); return }
+    const { error } = await supabase.from('workflow_statuses').insert([{ tenant_id: tid, category_id: cat.id, label: text, sort_order }])
     if (error) { showToast('❌ ' + error.message); return }
     setNewStatusText(prev => ({ ...prev, [cat.id]: '' }))
     load()
   }
 
   async function deleteStatus(id) {
-    await supabase.from('workflow_statuses').delete().eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('workflow_statuses').delete().eq('tenant_id', tid).eq('id', id)
     load()
   }
 
@@ -2110,6 +2122,7 @@ function StatusesTab() {
 // ── Billing Rates Tab ───────────────────────────────────────────────────────
 function BillingRatesTab() {
   const { showToast } = useApp()
+  const [tenantId, setTenantId] = useState(null)
   const [activities, setActivities] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [saving,     setSaving]     = useState(null) // id being saved
@@ -2121,7 +2134,10 @@ function BillingRatesTab() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('billing_activity_types').select('*').order('sort_order')
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setActivities([]); setLoading(false); return }
+    if (!tenantId) setTenantId(tid)
+    const { data } = await supabase.from('billing_activity_types').select('*').eq('tenant_id', tid).order('sort_order')
     setActivities(data || [])
     setLoading(false)
   }
@@ -2131,18 +2147,24 @@ function BillingRatesTab() {
     setSaving(act.id)
     const parsed = parseFloat(rate)
     if (isNaN(parsed) || parsed < 0) { showToast('Enter a valid rate'); setSaving(null); return }
-    await supabase.from('billing_activity_types').update({ default_rate: parsed }).eq('id', act.id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setSaving(null); return }
+    await supabase.from('billing_activity_types').update({ default_rate: parsed }).eq('tenant_id', tid).eq('id', act.id)
     setSaving(null)
     load()
   }
 
   async function toggleNonBillable(id, current) {
-    await supabase.from('billing_activity_types').update({ non_billable: !current }).eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('billing_activity_types').update({ non_billable: !current }).eq('tenant_id', tid).eq('id', id)
     load()
   }
 
   async function updateColor(id, color) {
-    await supabase.from('billing_activity_types').update({ color }).eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('billing_activity_types').update({ color }).eq('tenant_id', tid).eq('id', id)
     load()
   }
 
@@ -2153,8 +2175,10 @@ function BillingRatesTab() {
     if (isNaN(rate) || rate < 0) { showToast('Enter a valid rate'); return }
     setAdding(true)
     const maxSort = activities.reduce((m, a) => Math.max(m, a.sort_order || 0), 0)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setAdding(false); showToast('❌ Could not resolve this office'); return }
     const { error } = await supabase.from('billing_activity_types').insert([{
-      name, default_rate: rate, color: newForm.color, sort_order: maxSort + 1
+      tenant_id: tid, name, default_rate: rate, color: newForm.color, sort_order: maxSort + 1
     }])
     setAdding(false)
     if (error) { showToast('❌ ' + (error.code === '23505' ? 'Activity type already exists' : error.message)); return }
@@ -2166,7 +2190,9 @@ function BillingRatesTab() {
   async function deleteActivity(id) {
     if (!confirm('Delete this activity type? Existing time entries keep their activity label.')) return
     setDeleting(id)
-    await supabase.from('billing_activity_types').delete().eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setDeleting(null); return }
+    await supabase.from('billing_activity_types').delete().eq('tenant_id', tid).eq('id', id)
     setDeleting(null)
     load()
   }
@@ -2254,6 +2280,7 @@ function BillingRatesTab() {
 // ── Email Accounts — personal IMAP/SMTP per employee ────────────────────────
 function EmailAccountsSection() {
   const { user, showToast } = useApp()
+  const [tenantId, setTenantId] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [loading,  setLoading]  = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -2271,8 +2298,12 @@ function EmailAccountsSection() {
 
   async function load() {
     setLoading(true)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) { setAccounts([]); setLoading(false); return }
+    if (!tenantId) setTenantId(tid)
     const { data } = await supabase.from('email_accounts')
       .select('id,email_address,display_name,imap_host,imap_port,smtp_host,smtp_port,is_active,last_sync_at,sync_status,sync_error')
+      .eq('tenant_id', tid)
       .eq('employee_email', user?.email || '')
       .order('created_at')
     setAccounts(data || [])
@@ -2301,7 +2332,9 @@ function EmailAccountsSection() {
 
   async function remove(id) {
     if (!confirm('Remove this email account? Synced emails will remain.')) return
-    await supabase.from('email_accounts').update({ is_active: false }).eq('id', id)
+    const tid = tenantId || await resolveSettingsTenantId()
+    if (!tid) return
+    await supabase.from('email_accounts').update({ is_active: false }).eq('tenant_id', tid).eq('id', id)
     load()
   }
 
