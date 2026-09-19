@@ -16,6 +16,18 @@ const attachmentPath=(a:any)=>{
   return ''
 }
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))
+async function sendSystemMail(body:any){
+  const base=Deno.env.get('SUPABASE_URL')||''
+  const key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
+  const res=await fetch(base+'/functions/v1/nashville-esign-mail',{
+    method:'POST',
+    headers:{'Content-Type':'application/json',apikey:key,Authorization:'Bearer '+key},
+    body:JSON.stringify(body)
+  })
+  const out=await res.json().catch(()=>({}))
+  if(!res.ok||!out?.success)throw new Error(out?.error||'Nashville E-sign mail failed')
+  return out
+}
 
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
@@ -142,8 +154,9 @@ Deno.serve(async(req:Request)=>{
       const detail=event==='opened'?`${esc(clientName)} opened the ${esc(docType)} for signing.`:event==='signed'?`${esc(clientName)} signed the ${esc(docType)}. The signed archive is being finalized to the client file.`:`${esc(clientName)} started but did not complete the ${esc(docType)}.`
       const subject=`[${firmName}] ${labels[event]} — ${clientName}`
       const html=`<div style="font-family:Arial,sans-serif;max-width:600px;padding:24px"><h2>${esc(labels[event])}</h2><p>${detail}</p><hr style="margin-top:24px;border:none;border-top:1px solid #e2e8f0"><p style="font-size:12px;color:#64748b">${esc(firmName)} — E-Sign Notification</p></div>`
-      const {error:mailErr}=await db.functions.invoke('send-email',{body:{tenant_id:TENANT,to:notifyTo,subject,html}})
-      if(mailErr)return json({error:'Notification email failed'},502)
+      try{
+        await sendSystemMail({kind:'esign_internal_notification',esign_id:id,to:notifyTo,subject,html})
+      }catch{return json({error:'Notification email failed'},502)}
       return json({success:true,event,notified_assigned_rep:true})
     }
 
@@ -204,14 +217,17 @@ Deno.serve(async(req:Request)=>{
         const emailAttachments=signedAttachments
           .filter((a:any)=>a.clientUrl)
           .map((a:any)=>({url:a.clientUrl,filename:`${clean(a.label||a.formType||'signed-document')}.pdf`}))
-        const {error:receiptErr}=await db.functions.invoke('send-email',{body:{
-          tenant_id:TENANT,
-          to:e.client_email,
-          subject:`Signed Copy — ${e.doc_type||'Document'}`,
-          html:`<div style="font-family:Arial,sans-serif;max-width:600px;padding:24px"><h2>Signature Complete</h2><p>Thank you, ${esc(e.client_name||'Client')}. Your <strong>${esc(e.doc_type||'document')}</strong> has been signed and saved to your file.</p><p>Attached are the signed client copies available for this request.</p></div>`,
-          attachments:emailAttachments
-        }})
-        clientEmailSent=!receiptErr
+        try{
+          await sendSystemMail({
+            kind:'esign_signed_copy',
+            esign_id:id,
+            to:e.client_email,
+            subject:`Signed Copy — ${e.doc_type||'Document'}`,
+            html:`<div style="font-family:Arial,sans-serif;max-width:600px;padding:24px"><h2>Signature Complete</h2><p>Thank you, ${esc(e.client_name||'Client')}. Your <strong>${esc(e.doc_type||'document')}</strong> has been signed and saved to your file.</p><p>Attached are the signed client copies available for this request.</p></div>`,
+            attachments:emailAttachments
+          })
+          clientEmailSent=true
+        }catch{clientEmailSent=false}
       }
       if(e.client_phone){
         const {error:smsErr}=await db.functions.invoke('send-sms',{body:{
