@@ -200,31 +200,16 @@ export default function Sidebar() {
     async function loadBillingBadges() {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
+      const todayIso = today.toISOString().slice(0,10)
       const [paymentsRes, invoicesRes, arRes] = await Promise.all([
-        supabase.from('payments').select('id,status', { count:'exact', head:false }).in('status', ['Pending','TBD','No Status','New Agmt','Failed']),
-        supabase.from('invoices').select('id,status,dueDate'),
-        supabase.from('payments').select('id,payment_status,scheduled_date,trade_type').in('trade_type', ['1st Trade','2nd Trade']),
+        supabase.from('payments').select('id', { count:'exact', head:true }).in('status', ['Pending','TBD','No Status','New Agmt','Failed']),
+        supabase.from('invoices').select('id', { count:'exact', head:true }).neq('status','Paid').lt('dueDate', todayIso),
+        supabase.from('payments').select('id', { count:'exact', head:true }).in('trade_type', ['1st Trade','2nd Trade']).neq('payment_status','Paid').lt('scheduled_date', todayIso),
       ])
       if (cancelled) return
-      if (!paymentsRes.error) setPendingPayments((paymentsRes.data || []).length)
-      if (!invoicesRes.error) {
-        setOverdueInvoices((invoicesRes.data || []).filter(inv => {
-          if (inv.status === 'Paid') return false
-          if (inv.status === 'Overdue') return true
-          if (!inv.dueDate) return false
-          const due = new Date(inv.dueDate)
-          due.setHours(0,0,0,0)
-          return due < today
-        }).length)
-      }
-      if (!arRes.error) {
-        setOverdueReceivables((arRes.data || []).filter(p => {
-          if (p.payment_status === 'Paid' || !p.scheduled_date) return false
-          const due = new Date(p.scheduled_date)
-          due.setHours(0,0,0,0)
-          return due < today
-        }).length)
-      }
+      if (!paymentsRes.error) setPendingPayments(paymentsRes.count || 0)
+      if (!invoicesRes.error) setOverdueInvoices(invoicesRes.count || 0)
+      if (!arRes.error) setOverdueReceivables(arRes.count || 0)
     }
 
     function scheduleBillingReload() {
@@ -297,22 +282,38 @@ export default function Sidebar() {
       setOpenCases(viewing('cases') ? 0 : (casesRes.count || 0))
 
       const b = summaryRes.data || {}
-      // Deadlines remain an action alert because an older deadline can become
-      // urgent as its due date approaches; it is intentionally not a record total.
+      // One indexed RPC carries the shared operational counts, avoiding every
+      // logged-in browser downloading the same full billing/comms tables.
       setDueSoonDeadlines(Number(b.deadlines) || 0)
+      setPendingTimeOff(Number(b.timeoff) || 0)
+      setPendingPayments(Number(b.pending_payments) || 0)
+      setOverdueInvoices(Number(b.overdue_invoices) || 0)
+      setOverdueReceivables(Number(b.overdue_ar) || 0)
+      setUnreadVoicemails(Number(b.unread_voicemails) || 0)
+      setPendingEsign(Number(b.pending_esign) || 0)
+      setUnreadFax(Number(b.unread_fax) || 0)
+      setUpcomingEvents(Number(b.calendar) || 0)
+      setOpenTasks(Number(b.tasks) || 0)
     }
     if (!user) return
+    let debounce = null
+    function scheduleCountsReload() {
+      clearTimeout(debounce)
+      debounce = setTimeout(loadCounts, 500)
+    }
     loadCounts()
     const poll = setInterval(loadCounts, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadCounts() }
+    function onVisible() { if (document.visibilityState === 'visible') scheduleCountsReload() }
     document.addEventListener('visibilitychange', onVisible)
     const ch = supabase.channel('sidebar-counts-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, loadCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, loadCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, loadCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deadlines' }, loadCounts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, scheduleCountsReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, scheduleCountsReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, scheduleCountsReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deadlines' }, scheduleCountsReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'time_off_requests' }, scheduleCountsReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, scheduleCountsReload)
       .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { clearTimeout(debounce); supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
   }, [user])
 
   const BADGE_COUNTS = {leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: (pendingEsign + signedEsign), email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents, payments: pendingPayments, invoices: overdueInvoices, ar: overdueReceivables }
@@ -336,9 +337,9 @@ export default function Sidebar() {
     async function loadCommsCounts() {
       const smsLastSeen = localStorage.getItem('tcr_sms_last_seen') || new Date(0).toISOString()
       const [vmRes, esignRes, faxRes, smsRes] = await Promise.all([
-        supabase.from('voicemails').select('id,is_read'),
-        supabase.from('esigns').select('id,status'),
-        supabase.from('fax_logs').select('id,is_read,direction'),
+        supabase.from('voicemails').select('id', { count:'exact', head:true }).eq('is_read', false),
+        supabase.from('esigns').select('id', { count:'exact', head:true }).eq('status','Awaiting'),
+        supabase.from('fax_logs').select('id', { count:'exact', head:true }).eq('direction','inbound').eq('is_read', false),
         supabase.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'inbound').gt('created_at', smsLastSeen),
       ])
       // These used to fail completely silently — a schema-cache or RLS error
@@ -349,9 +350,9 @@ export default function Sidebar() {
       if (esignRes.error) console.error('[badge] esigns query failed:', esignRes.error.message)
       if (faxRes.error)   console.error('[badge] fax_logs query failed:', faxRes.error.message)
       if (smsRes.error)   console.error('[badge] sms_messages query failed:', smsRes.error.message)
-      setUnreadVoicemails((vmRes.data || []).filter(v => !v.is_read).length)
-      setPendingEsign((esignRes.data || []).filter(e => e.status === 'Awaiting').length)
-      setUnreadFax((faxRes.data || []).filter(f => f.direction === 'inbound' && !f.is_read).length)
+      setUnreadVoicemails(vmRes.count || 0)
+      setPendingEsign(esignRes.count || 0)
+      setUnreadFax(faxRes.count || 0)
       setUnreadSms(smsRes.count || 0)
     }
     if (!user) return
