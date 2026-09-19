@@ -18,9 +18,6 @@ create index if not exists idx_employees_tenant_status_name
 on public.employees(tenant_id,status,name);
 
 
-create index if not exists idx_time_off_requests_tenant_employee_created
-on public.time_off_requests(tenant_id,employee_id,created_at desc);
-
 
 create index if not exists idx_time_off_requests_tenant_status_created
 on public.time_off_requests(tenant_id,status,created_at desc);
