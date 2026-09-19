@@ -177,8 +177,9 @@ export default function Sidebar() {
     const poll = setInterval(loadSignedEsignBadge, 180000)
     function onVisible() { if (document.visibilityState === 'visible') loadSignedEsignBadge() }
     document.addEventListener('visibilitychange', onVisible)
+    const esignCfg = { event:'UPDATE', schema:'public', table:'esigns', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel(`sidebar-esign-signed-rt-${user.email}`)
-      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'esigns' }, loadSignedEsignBadge)
+      .on('postgres_changes', esignCfg, loadSignedEsignBadge)
       .subscribe()
     return () => {
       cancelled = true
@@ -221,9 +222,11 @@ export default function Sidebar() {
     const poll = setInterval(loadBillingBadges, 180000)
     function onVisible() { if (document.visibilityState === 'visible') loadBillingBadges() }
     document.addEventListener('visibilitychange', onVisible)
+    const paymentCfg = { event:'*', schema:'public', table:'payments', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
+    const invoiceCfg = { event:'*', schema:'public', table:'invoices', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('sidebar-billing-rt')
-      .on('postgres_changes', { event:'*', schema:'public', table:'payments' }, scheduleBillingReload)
-      .on('postgres_changes', { event:'*', schema:'public', table:'invoices' }, scheduleBillingReload)
+      .on('postgres_changes', paymentCfg, scheduleBillingReload)
+      .on('postgres_changes', invoiceCfg, scheduleBillingReload)
       .subscribe()
     return () => {
       cancelled = true
@@ -240,14 +243,20 @@ export default function Sidebar() {
       const { count } = await supabase.from('time_off_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending')
       setPendingTimeOff(count || 0)
     }
+    let debounce = null
+    const scheduleTimeOffReload = () => {
+      clearTimeout(debounce)
+      debounce = setTimeout(loadPendingTimeOff, 500)
+    }
     loadPendingTimeOff()
     const poll = setInterval(loadPendingTimeOff, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadPendingTimeOff() }
+    function onVisible() { if (document.visibilityState === 'visible') scheduleTimeOffReload() }
     document.addEventListener('visibilitychange', onVisible)
+    const timeoffCfg = { event:'*', schema:'public', table:'time_off_requests', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('sidebar-timeoff-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'time_off_requests' }, loadPendingTimeOff)
+      .on('postgres_changes', timeoffCfg, scheduleTimeOffReload)
       .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { clearTimeout(debounce); supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
   }, [])
 
   // Leads/Clients/Cases/Deadlines badges used to be hardcoded to "0" here,
@@ -356,6 +365,11 @@ export default function Sidebar() {
       setUnreadSms(smsRes.count || 0)
     }
     if (!user) return
+    let debounce = null
+    const scheduleCommsReload = () => {
+      clearTimeout(debounce)
+      debounce = setTimeout(loadCommsCounts, 500)
+    }
     loadCommsCounts()
     // Realtime is the primary path, but its websocket can silently die after
     // the tab sits idle/backgrounded for a while with no automatic recovery —
@@ -364,15 +378,17 @@ export default function Sidebar() {
     // open overnight, came back, nothing updated" case instantly instead of
     // waiting for the next poll).
     const poll = setInterval(loadCommsCounts, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadCommsCounts() }
+    function onVisible() { if (document.visibilityState === 'visible') scheduleCommsReload() }
     document.addEventListener('visibilitychange', onVisible)
+    const tenantFilter = FIRM.tenantId ? `tenant_id=eq.${FIRM.tenantId}` : null
+    const cfg = (table,event='*') => ({ event, schema:'public', table, ...(tenantFilter ? { filter:tenantFilter } : {}) })
     const ch = supabase.channel('sidebar-comms-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voicemails' }, loadCommsCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'esigns' }, loadCommsCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, loadCommsCounts)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sms_messages' }, loadCommsCounts)
+      .on('postgres_changes', cfg('voicemails'), scheduleCommsReload)
+      .on('postgres_changes', cfg('esigns'), scheduleCommsReload)
+      .on('postgres_changes', cfg('fax_logs'), scheduleCommsReload)
+      .on('postgres_changes', cfg('sms_messages','INSERT'), scheduleCommsReload)
       .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { clearTimeout(debounce); supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
   }, [user])
 
   // Calendar badge — events starting today or in the next 24 hours
@@ -385,14 +401,20 @@ export default function Sidebar() {
       setUpcomingEvents(count || 0)
     }
     if (!user) return
+    let debounce = null
+    const scheduleCalendarReload = () => {
+      clearTimeout(debounce)
+      debounce = setTimeout(loadCalendarBadge, 500)
+    }
     loadCalendarBadge()
     const poll = setInterval(loadCalendarBadge, 180000)
-    function onVisible() { if (document.visibilityState === 'visible') loadCalendarBadge() }
+    function onVisible() { if (document.visibilityState === 'visible') scheduleCalendarReload() }
     document.addEventListener('visibilitychange', onVisible)
+    const calendarCfg = { event:'*', schema:'public', table:'calevents', ...(FIRM.tenantId ? { filter:`tenant_id=eq.${FIRM.tenantId}` } : {}) }
     const ch = supabase.channel('sidebar-calendar-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'calevents' }, loadCalendarBadge)
+      .on('postgres_changes', calendarCfg, scheduleCalendarReload)
       .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { clearTimeout(debounce); supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
   }, [user])
 
   // Clear badges when user visits those pages (instant — no refresh needed)
