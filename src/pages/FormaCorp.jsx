@@ -604,17 +604,14 @@ export default function FormaCorp() {
       if (normalizeErr) { showToast('Could not normalize the existing Bizee request: '+normalizeErr.message, 'err'); return }
     }
 
-    const ok = await updateFloridaCase(c, {
-      fl_filing_status:'Filing Queue',
-      fl_state_fee:floridaStateFee(c),
-      stage:'State Filing',
-    }, 'Bizee filing intake is ready inside FormaCorp', 'Bizee partner connection verified; filing request created inside FormaCorp')
-    if (!ok) return
-
     const { data:submitData, error:submitErr } = await supabase.functions.invoke('formacorp-bizee', {
       body:{ action:'submit', case_id:c.id }
     })
     if (submitErr || !submitData?.ok) {
+      await supabase.from('formacorp_service_requests').update({
+        provider_status:'submission_error',
+        provider_error:submitData?.error || submitErr?.message || 'Unknown provider error',
+      }).eq('case_id',c.id).eq('service_type','Bizee Pro Formation').is('provider_order_id',null)
       showToast('Bizee submission failed: '+(submitData?.error || submitErr?.message || 'Unknown provider error'), 'err')
       return
     }
@@ -623,13 +620,14 @@ export default function FormaCorp() {
       case_id:c.id,
       event_type:'bizee_provider',
       status:'Submitted',
-      note:'Formation submitted to Bizee through the approved in-CRM partner connection',
+      note:'Formation order accepted by Bizee through the approved in-CRM partner connection',
       metadata:{ provider:'bizee', order_id:submitData.order_id || null, provider_status:submitData.status || null },
       created_at:new Date().toISOString(),
     }])
 
     await updateFloridaCase(c, {
       fl_filing_status:'Filing Queue',
+      fl_state_fee:floridaStateFee(c),
       stage:'State Filing',
     }, '✅ Bizee order accepted from FormaCorp', 'Bizee provider order accepted; awaiting provider confirmation of state submission')
   }
