@@ -921,6 +921,8 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
 
 export default function Clients() {
   const navigate = useNavigate()
+  const [clientSearchParams] = useSearchParams()
+  const openedFromCases = clientSearchParams.get('from') === 'cases'
   const { id: urlId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user, searchQ, myTenantId } = useApp()
@@ -1922,7 +1924,7 @@ export default function Clients() {
         {/* Back + top actions */}
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap'}}>
           <button className="btn" style={{padding:'8px 16px',fontSize:13,fontWeight:600}} onClick={()=>{setDetail(null);navigate('/clients',{replace:true})}}>← Back to Clients</button>
-          <button className="btn" style={{padding:'8px 16px',fontSize:13,fontWeight:600}} onClick={()=>navigate('/cases')}>← Back to Cases</button>
+          <a href="/cases" className={openedFromCases ? "btn pri" : "btn"} style={{padding:'8px 16px',fontSize:13,fontWeight:600,textDecoration:'none'}}>← Back to Cases</a>
           <button className="btn pri" style={{marginLeft:'auto',padding:'8px 18px',fontSize:13,fontWeight:700}} onClick={()=>openEdit(c)}>✏️ Edit</button>
           {c.archived ? (
             <button className="btn" style={{padding:'8px 18px',fontSize:13,fontWeight:700}} onClick={()=>restoreClient(c.id)}>↩ Restore</button>
