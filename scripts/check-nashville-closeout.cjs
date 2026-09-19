@@ -72,6 +72,11 @@ const checks=[
     "timeclock_history_page",
     "idx_timeentries_tenant_employee_date_created",
   ]],
+  ['supabase/migrations/20260919_nashville_internal_rpc_privileges.sql',[
+    "revoke all on function public.create_book_whip_month(date) from public, anon",
+    "revoke all on function public.get_sidebar_badge_counts() from public, anon",
+    "revoke all on function public.reports_overview_snapshot(date) from public, anon",
+  ]],
   ['supabase/migrations/20260919_nashville_closeout.sql',[
     "dedupe_nashville_book_whip_month",
     "emp_login_auth",
