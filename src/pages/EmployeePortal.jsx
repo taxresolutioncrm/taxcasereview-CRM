@@ -190,15 +190,15 @@ export default function EmployeePortal() {
   useEffect(() => {
     if (!emp) return
     // Realtime postgres_changes subscriptions stopped working when the
-    // underlying tables were RLS-locked to anon (events are filtered by row
-    // access). Replaced with a 60s refresh + refresh on tab focus — well
-    // above the 3s guardrail in scripts/check-polling-intervals.cjs.
+    // underlying tables were RLS-locked to anon. Keep a low-frequency safety
+    // refresh plus immediate refresh on focus; own clock/task actions already
+    // update their local state directly.
     const refresh = () => {
       loadWeek(empToken, weekOffset); loadPeriod(empToken, periodOffset)
       loadTasks(empToken); loadEvents(empToken); loadTimeOff(empToken)
       refreshEmployee(empToken)
     }
-    const iv = setInterval(refresh, 60000)
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') refresh() }, 300000)
     const onFocus = () => { if (document.visibilityState === 'visible') refresh() }
     document.addEventListener('visibilitychange', onFocus)
     window.addEventListener('focus', onFocus)
