@@ -136,7 +136,15 @@ export default function Documents() {
     return 'other'
   }
   async function resolveDocUrl(doc) {
-    if (!doc?.file_url) return ''
+    if (!doc) return ''
+    const storagePath = doc.storage_path
+      || (String(doc.file_url || '').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : '')
+    if (storagePath) {
+      const { data, error } = await supabase.storage.from('documents').createSignedUrl(storagePath, 3600)
+      if (error || !data?.signedUrl) return ''
+      return data.signedUrl
+    }
+    if (!doc.file_url) return ''
     return (await getDocumentUrl(supabase, doc.file_url)) || ''
   }
   async function previewDocument(doc) {
@@ -237,9 +245,10 @@ export default function Documents() {
 
   async function del(doc) {
     if (!doc?.id) return
-    if (doc.file_name && doc.file_url) {
-      const rawUrl = String(doc.file_url)
-      const path = rawUrl.split('/documents/')[1]
+    if (doc.file_name && (doc.file_url || doc.storage_path)) {
+      const rawUrl = String(doc.file_url || '')
+      const path = doc.storage_path
+        || (rawUrl.startsWith('storage://documents/') ? rawUrl.replace('storage://documents/','') : rawUrl.split('/documents/')[1])
       if (path) await supabase.storage.from('documents').remove([path]).catch(()=>{})
     }
     const { error } = await supabase.from('documents').delete().eq('id', doc.id)
