@@ -120,7 +120,7 @@ export default function IRSFormFiller({ client, onClose }) {
       }]).select().single();
       if (esignErr) throw new Error(esignErr.message);
 
-      const sigUrl = `${window.location.origin}/sign/${esign.id}`;
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`;
       await navigator.clipboard.writeText(sigUrl).catch(() => {});
 
       let emailSent = false, smsSent = false;
