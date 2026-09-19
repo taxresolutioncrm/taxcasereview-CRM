@@ -42,6 +42,8 @@ export default function Reports() {
   const [bookWhipAssociate,setBookWhipAssociate] = useState('all')
   const [bookWhipFilter,setBookWhipFilter] = useState('all')
   const [bookWhipSort,setBookWhipSort] = useState({key:'client_name',direction:'asc'})
+  const [bookWhipPage,setBookWhipPage] = useState(1)
+  const BOOK_WHIP_PAGE_SIZE = 100
 
   // Guard: wait for auth — every office remains tenant-scoped.
   useEffect(() => { if (user) loadAll() }, [user?.id])
@@ -49,6 +51,9 @@ export default function Reports() {
     if (!user || tab !== 'bookwhip') return
     loadBookWhip(bookWhipMonth)
   }, [user?.id,tab,bookWhipMonth])
+  useEffect(() => {
+    setBookWhipPage(1)
+  }, [bookWhipMonth,bookWhipSearch,bookWhipAssociate,bookWhipFilter,bookWhipSort.key,bookWhipSort.direction])
 
   async function fetchAllRows(table, { orderBy, ascending=true, filter } = {}) {
     const pageSize = 1000
@@ -310,6 +315,9 @@ export default function Reports() {
     return bookWhipSort.direction==='asc'?cmp:-cmp
   })
   const toggleBookWhipSort=key=>setBookWhipSort(s=>s.key===key?{key,direction:s.direction==='asc'?'desc':'asc'}:{key,direction:'asc'})
+  const bookWhipPageCount=Math.max(1,Math.ceil(sortedBookWhip.length/BOOK_WHIP_PAGE_SIZE))
+  const safeBookWhipPage=Math.min(bookWhipPage,bookWhipPageCount)
+  const pagedBookWhip=sortedBookWhip.slice((safeBookWhipPage-1)*BOOK_WHIP_PAGE_SIZE,safeBookWhipPage*BOOK_WHIP_PAGE_SIZE)
   const bookWhipExportRows=sortedBookWhip.map(r=>[
     cleanBookWhipName(r),r.client_since,r.client_owner,fmtBookWhipDate(r.source_created_on),r.tags,r.spouse_name,cleanBookWhipName(r),
     r.assigned_associate,r.financials,r.last_payment,r.transcripts,r.state_res_hold,r.hold_date,r.notes,r.quote,r.return_quote,r.resolution_step,r.chris_flag,r.johnny_flag,r.last_contact_date
@@ -390,10 +398,19 @@ export default function Reports() {
 
           {bookWhipLoading ? <div style={{padding:40,textAlign:'center',color:'var(--t3)'}}>Loading Book Whip…</div> :
            sortedBookWhip.length===0 ? <div className="card"><Empty msg="No Book Whip rows match this filter."/></div> :
-           <div className="card" style={{overflowX:'auto',overflowY:'auto',maxHeight:'68vh'}}>
+           <div className="card" style={{padding:0,overflow:'hidden'}}>
+             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--br)',flexWrap:'wrap'}}>
+               <div style={{fontSize:11,color:'var(--t3)'}}>Showing {sortedBookWhip.length ? ((safeBookWhipPage-1)*BOOK_WHIP_PAGE_SIZE)+1 : 0}–{Math.min(safeBookWhipPage*BOOK_WHIP_PAGE_SIZE,sortedBookWhip.length)} of {sortedBookWhip.length}</div>
+               <div style={{display:'flex',alignItems:'center',gap:6}}>
+                 <button className="btn sec" style={{fontSize:10,padding:'4px 9px'}} disabled={safeBookWhipPage<=1} onClick={()=>setBookWhipPage(p=>Math.max(1,p-1))}>← Prev</button>
+                 <span style={{fontSize:11,color:'var(--t2)'}}>Page {safeBookWhipPage} / {bookWhipPageCount}</span>
+                 <button className="btn sec" style={{fontSize:10,padding:'4px 9px'}} disabled={safeBookWhipPage>=bookWhipPageCount} onClick={()=>setBookWhipPage(p=>Math.min(bookWhipPageCount,p+1))}>Next →</button>
+               </div>
+             </div>
+             <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'68vh'}}>
              <table style={{borderCollapse:'collapse',fontSize:11,minWidth:3000,width:'max-content'}}>
                <thead style={{position:'sticky',top:0,zIndex:2,background:'var(--s1)'}}><tr>{bookWhipColumns.map(([key,label])=><th key={key} style={{textAlign:'left',padding:'8px 7px',borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}><button type="button" onClick={()=>toggleBookWhipSort(key)} style={{background:'none',border:0,padding:0,color:'inherit',font:'inherit',fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}} title={`Sort ${label} ${bookWhipSort.key===key&&bookWhipSort.direction==='asc'?'descending':'ascending'}`}>{label}<span style={{fontSize:9,opacity:bookWhipSort.key===key?1:.35}}>{bookWhipSort.key===key?(bookWhipSort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead>
-               <tbody>{sortedBookWhip.map(r=><tr key={r.id}>
+               <tbody>{pagedBookWhip.map(r=><tr key={r.id}>
                  <td style={{padding:7,borderBottom:'1px solid var(--br)',fontWeight:700,minWidth:210,whiteSpace:'nowrap',position:'sticky',left:0,background:'var(--s1)',zIndex:1}}>
                    <button type="button" onClick={()=>r.client_id&&navigate(`/clients/${r.client_id}`)} title="Open client"
                      style={{all:'unset',cursor:r.client_id?'pointer':'default',color:r.client_id?'var(--blue)':'var(--tx)',fontWeight:700}}>
@@ -421,6 +438,7 @@ export default function Reports() {
                  <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'last_contact_date',105)}</td>
                </tr>)}</tbody>
              </table>
+             </div>
            </div>}
         </div>
       )}
@@ -1095,11 +1113,12 @@ export default function Reports() {
                     </div>
                   </div>
                 </div>
-                <div className="card">
+                <div className="card" style={{overflow:'hidden'}}>
                   <SectionTitle title="Recent Entries"
                     action={<ExportBtn name="Bookkeeping" rows={[['Date','Description','Category','Amount','Type','Reconciled'],
                       ...bookkeeping.slice(0,100).map(e=>[e.date,e.description,e.category,e.amount,e.type,e.reconciled?'Yes':'No'])]}/>}/>
-                  <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+                  <div style={{overflowX:'auto',width:'100%'}}>
+                  <table style={{width:'100%',minWidth:640,fontSize:12,borderCollapse:'collapse'}}>
                     <thead>
                       <tr style={{borderBottom:'1px solid var(--br)'}}>
                         {['Date','Description','Category','Amount'].map(h=>(
@@ -1120,6 +1139,7 @@ export default function Reports() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                   {bookkeeping.length===0&&<Empty/>}
                 </div>
               </>
