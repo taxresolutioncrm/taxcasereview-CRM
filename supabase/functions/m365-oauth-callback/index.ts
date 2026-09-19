@@ -1,79 +1,91 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-serve(async (req) => {
-  const cors = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
+const TENANT='489ace07-1a6b-4864-833a-4f8420568b40'
+const APP_URL='https://nashville.taxrescrm.app'
 
-  try {
-    const url = new URL(req.url)
-    const code  = url.searchParams.get('code')
-    const state = url.searchParams.get('state') // JSON: { employeeEmail, tenantId, origin }
-    const error = url.searchParams.get('error')
+function unb64url(v:string){
+  const s=v.replace(/-/g,'+').replace(/_/g,'/')
+  const pad=s+'='.repeat((4-s.length%4)%4)
+  return Uint8Array.from(atob(pad),c=>c.charCodeAt(0))
+}
+async function verify(secret:string,payload:string,sigText:string){
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['verify'])
+  return crypto.subtle.verify('HMAC',key,unb64url(sigText),new TextEncoder().encode(payload))
+}
+function finish(ok:boolean,message:string){
+  const data=JSON.stringify({type:'nashville-m365-oauth',ok,message})
+  const safe=message.replace(/[<>&'"]/g,'')
+  return new Response(`<!doctype html><html><body style="font-family:Arial,sans-serif;background:#071524;color:#fff;padding:32px;text-align:center"><h2>${ok?'Microsoft 365 connected':'Microsoft 365 connection failed'}</h2><p>${safe}</p><script>try{window.opener&&window.opener.postMessage(${data},'${APP_URL}')}catch(e){};setTimeout(()=>window.close(),900)</script></body></html>`,{status:ok?200:400,headers:{'content-type':'text/html; charset=utf-8'}})
+}
 
-    if (error) {
-      const origin = JSON.parse(state || '{}').origin || ''
-      return Response.redirect(`${origin}/settings?m365=error&reason=${encodeURIComponent(error)}`)
-    }
+Deno.serve(async req=>{
+  if(req.method!=='GET')return new Response('GET only',{status:405})
+  try{
+    const reqUrl=new URL(req.url)
+    const code=reqUrl.searchParams.get('code')||''
+    const state=reqUrl.searchParams.get('state')||''
+    const oauthError=reqUrl.searchParams.get('error_description')||reqUrl.searchParams.get('error')||''
+    if(oauthError)return finish(false,'Microsoft authorization was cancelled or denied.')
+    if(!code||!state)return finish(false,'Microsoft authorization response was incomplete.')
 
-    if (!code || !state) return new Response(JSON.stringify({ error: 'missing params' }), { status: 400, headers: cors })
+    const supaUrl=Deno.env.get('SUPABASE_URL')||''
+    const service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
+    if(!supaUrl||!service)return finish(false,'Microsoft 365 connection is unavailable.')
 
-    const { employeeEmail, tenantId, origin } = JSON.parse(decodeURIComponent(state))
+    const [payload,sig]=state.split('.')
+    if(!payload||!sig||!(await verify(service,payload,sig)))return finish(false,'The Microsoft connection request is invalid or expired.')
+    const decoded=JSON.parse(new TextDecoder().decode(unb64url(payload)))
+    if(decoded.tenantId!==TENANT||Date.now()>Number(decoded.exp||0))return finish(false,'The Microsoft connection request expired.')
+    const employeeEmail=String(decoded.employeeEmail||'').toLowerCase()
+    if(!employeeEmail)return finish(false,'Employee identity was missing from the connection request.')
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    const admin=createClient(supaUrl,service)
+    const {data:emp}=await admin.from('employees').select('email,status,tenant_id')
+      .eq('tenant_id',TENANT).eq('status','Active').ilike('email',employeeEmail).maybeSingle()
+    if(!emp)return finish(false,'The Nashville employee account is no longer active.')
 
-    // Get Azure app config for this tenant
-    const { data: settings } = await supabase.from('settings')
-      .select('m365_client_id, m365_client_secret, m365_tenant_id')
-      .eq('tenant_id', tenantId).single()
+    const {data:s}=await admin.from('settings').select('m365_client_id,m365_client_secret,m365_tenant_id')
+      .eq('tenant_id',TENANT).maybeSingle()
+    if(!s?.m365_client_id||!s?.m365_client_secret)return finish(false,'Microsoft 365 app credentials are not configured yet.')
 
-    if (!settings?.m365_client_id) {
-      return Response.redirect(`${origin}/settings?m365=error&reason=missing_app_config`)
-    }
-
-    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/m365-oauth-callback`
-
-    // Exchange code for tokens
-    const tokenRes = await fetch(`https://login.microsoftonline.com/${settings.m365_tenant_id || 'common'}/oauth2/v2.0/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id:     settings.m365_client_id,
-        client_secret: settings.m365_client_secret,
+    const redirectUri=`${supaUrl}/functions/v1/m365-oauth-callback`
+    const tenant=String(s.m365_tenant_id||'common')
+    const tokenRes=await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({
+        client_id:s.m365_client_id,
+        client_secret:s.m365_client_secret,
+        grant_type:'authorization_code',
         code,
-        redirect_uri:  redirectUri,
-        grant_type:    'authorization_code',
+        redirect_uri:redirectUri,
+        scope:'openid profile offline_access User.Read Mail.ReadWrite Mail.Send Calendars.ReadWrite'
       })
     })
-    const tokens = await tokenRes.json()
-    if (tokens.error) return Response.redirect(`${origin}/settings?m365=error&reason=${encodeURIComponent(tokens.error_description || tokens.error)}`)
+    const tokens=await tokenRes.json().catch(()=>({}))
+    if(!tokenRes.ok||!tokens.access_token||!tokens.refresh_token)return finish(false,tokens.error_description||'Microsoft token exchange failed.')
 
-    const expiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+    const meRes=await fetch('https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName',{headers:{Authorization:`Bearer ${tokens.access_token}`}})
+    const me=await meRes.json().catch(()=>({}))
+    if(!meRes.ok||!me.id)return finish(false,me?.error?.message||'Could not read the Microsoft mailbox profile.')
+    const mailbox=String(me.mail||me.userPrincipalName||'').toLowerCase()
+    if(!mailbox)return finish(false,'Microsoft did not return a mailbox address.')
 
-    // Get the user's M365 profile
-    const profileRes = await fetch('https://graph.microsoft.com/v1.0/me?$select=id,mail,userPrincipalName,displayName', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    })
-    const profile = await profileRes.json()
-    const m365Email = profile.mail || profile.userPrincipalName
+    const expiry=new Date(Date.now()+Number(tokens.expires_in||3600)*1000).toISOString()
+    const {error:saveErr}=await admin.from('employee_m365_accounts').upsert({
+      employee_email:employeeEmail,
+      tenant_id:TENANT,
+      m365_user_id:String(me.id),
+      m365_email:mailbox,
+      m365_access_token:tokens.access_token,
+      m365_refresh_token:tokens.refresh_token,
+      m365_token_expiry:expiry,
+      m365_last_error:null,
+      m365_email_sync:true,
+      m365_calendar_sync:true
+    },{onConflict:'employee_email'})
+    if(saveErr)return finish(false,'The Microsoft mailbox connection could not be saved.')
 
-    // Upsert the employee's token record
-    await supabase.from('employee_m365_accounts').upsert({
-      employee_email:    employeeEmail,
-      tenant_id:         tenantId,
-      m365_user_id:      profile.id,
-      m365_email:        m365Email,
-      m365_access_token: tokens.access_token,
-      m365_refresh_token: tokens.refresh_token,
-      m365_token_expiry: expiry,
-      m365_last_error:   null,
-    }, { onConflict: 'employee_email' })
-
-    return Response.redirect(`${origin}/email?m365=connected`)
-  } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors })
-  }
+    return finish(true,`Connected ${mailbox} to the Nashville CRM.`)
+  }catch(e){return finish(false,e instanceof Error?e.message:String(e))}
 })
