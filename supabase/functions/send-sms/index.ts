@@ -56,7 +56,7 @@ serve(async(req)=>{
   let platformRelay=false
   if(!romylabsContext && (!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token)){
     const{data:cloudTenant}=await admin.from('tenants').select('tenant_code').eq('id',tenantId).maybeSingle()
-    if(cloudTenant?.tenant_code==='TRC-003'){
+    if(['TRC-003','ADMIN'].includes(String(cloudTenant?.tenant_code||''))){
       const{data:source}=await admin.from('settings').select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did').eq('tenant_id',SIGNALWIRE_SOURCE_TENANT).limit(1).maybeSingle()
       if(source?.sw_space_url&&source?.sw_project_id&&source?.sw_api_token){
         settings={...settings,...source}
