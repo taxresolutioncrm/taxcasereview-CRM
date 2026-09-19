@@ -232,7 +232,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     try{
       const {data,error}=await supabase.storage.from('documents').createSignedUrl(doc.storage_path,300)
       if(error||!data?.signedUrl)throw error||new Error('Could not create secure download link')
-      window.open(data.signedUrl,'_blank','noopener,noreferrer')
+      const a=document.createElement('a')
+      a.href=data.signedUrl
+      a.download=doc.file_name || 'FormaCorp-document'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
     }catch(e){showToast?.('Could not open document: '+(e?.message||e),'err')}
   }
 
@@ -573,7 +578,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       </div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
         <button className="btn sm" onClick={generateSS4} disabled={busy==='ss4'}>{busy==='ss4'?'Generating…':'📄 Generate SS-4 Draft'}</button>
-        <a className="btn sm" href="https://www.irs.gov/businesses/small-businesses-self-employed/get-an-employer-identification-number" target="_blank" rel="noreferrer">🏛️ Open Official IRS EIN</a>
+        <span className="btn sm" style={{cursor:'default'}}>🏛️ EIN workflow stays in FormaCorp</span>
         <button className="btn sm" onClick={saveCurrent} disabled={busy==='save'}>💾 Save EIN Workflow</button>
       </div>
       <div style={{padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,marginBottom:12}}>
@@ -642,7 +647,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <button className="btn sm" onClick={recordAnnualReportFiled}>✅ Record Annual Report Filed</button>
         <button className="btn sm" onClick={syncRegisteredAgentRenewal}>⏰ Sync Agent Renewal</button>
         <button className="btn sm" onClick={generate2553} disabled={busy==='2553'}>{busy==='2553'?'Generating…':'📄 Generate Form 2553'}</button>
-        {caseRecord.state==='FL' && <a className="btn sm" href="https://efile.sunbiz.org/sbs_webapp/" target="_blank" rel="noreferrer">☀️ Florida Annual Report</a>}
+        {caseRecord.state==='FL' && <span className="btn sm" style={{cursor:'default'}}>☀️ Florida annual-report tracking stays in FormaCorp</span>}
       </div>
     </div>}
 
