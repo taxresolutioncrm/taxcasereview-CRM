@@ -478,6 +478,10 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         body:{action:'status',case_id:caseRecord.id,order_id:request.provider_order_id}
       })
       if(error||!data?.ok)throw error||new Error(data?.error||'Bizee status sync failed')
+      const {data:caseState}=await supabase.from('formacorp')
+        .select('fl_filing_status,fl_submitted_at,fl_decision_at,stage')
+        .eq('id',caseRecord.id).maybeSingle()
+      if(caseState) onCasePatch?.(caseState)
       await load()
       showToast?.('✅ Bizee status refreshed inside FormaCorp')
     }catch(e){
