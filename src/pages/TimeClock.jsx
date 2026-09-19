@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import PayrollStatCards from '../components/PayrollStatCards'
 import { useApp } from '../context/AppContext'
+import { FIRM } from '../lib/firmBranding'
 
 const BLANK = { employee:'', date:'', inTime:'', outTime:'', hours:'', notes:'' }
 
@@ -70,20 +71,35 @@ export default function TimeClock() {
   const [now,        setNow]        = useState(new Date())
   const [activeTab,  setActiveTab]  = useState('today')
   const timerRef = useRef(null)
+  const reloadTimerRef = useRef(null)
 
   useEffect(() => {
     load()
     timerRef.current = setInterval(() => setNow(new Date()), 1000)
+    const tenantFilter = FIRM.tenantId ? { filter: `tenant_id=eq.${FIRM.tenantId}` } : {}
+    const scheduleReload = () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+      reloadTimerRef.current = setTimeout(load, 250)
+    }
     const ch = supabase.channel('timeclock-admin-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'timeentries' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'timeentries', ...tenantFilter }, scheduleReload)
       .subscribe()
-    return () => { clearInterval(timerRef.current); supabase.removeChannel(ch) }
-  }, [])
+    return () => {
+      clearInterval(timerRef.current)
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+      supabase.removeChannel(ch)
+    }
+  }, [role, employeeName])
 
   async function load() {
+    let timeQuery = supabase.from('timeentries').select('*').order('created_at', { ascending: false })
+    if (!isPrivileged && employeeName) timeQuery = timeQuery.eq('employee', employeeName).limit(500)
+    const employeeQuery = isPrivileged
+      ? supabase.from('employees').select('*').order('name')
+      : Promise.resolve({ data: [] })
     const [{ data:t }, { data:e }] = await Promise.all([
-      supabase.from('timeentries').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('*').order('name'),
+      timeQuery,
+      employeeQuery,
     ])
     if (t) {
       setItems(t)
