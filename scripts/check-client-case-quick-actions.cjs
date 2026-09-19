@@ -6,6 +6,12 @@ const clientLink=fs.readFileSync('src/components/ClientLink.jsx','utf8')
 const signPage=fs.readFileSync('src/pages/SignPage.jsx','utf8')
 const esignArchive=fs.readFileSync('supabase/functions/esign-archive-upload/index.ts','utf8')
 const esignMigration=fs.readFileSync('supabase/migrations/20260919213000_taxres_family_esign_tokens.sql','utf8')
+const sendFax=fs.readFileSync('supabase/functions/send-fax/index.ts','utf8')
+const app=fs.readFileSync('src/App.jsx','utf8')
+const irsForms=fs.readFileSync('src/lib/irsFormUtils.js','utf8')
+
+const requiredStateForms=['FL_POA.pdf','NC_POA.pdf','TX_POA.pdf','OH_POA.pdf','NY_POA.pdf','PA_POA.pdf','CA_POA.pdf','GA_POA.pdf','IL_POA.pdf','MA_POA.pdf','MO_POA.pdf','OR_POA.pdf','TN_POA.pdf','Washington_POA.pdf','Wyoming.pdf','AZ_POA.pdf','ID_POA.pdf']
+const requiredIrsTemplates=['2848_Pers_RC.pdf','2848_RC_Biz.pdf','8821_Pers_RC.pdf','8821_Biz_RC.pdf','433A_Blank.pdf','433B_Blank.pdf','433D_Blank.pdf','433F_Blank.pdf','433H_Blank.pdf','656L_Blank.pdf','433A_OIC_Blank.pdf']
 
 const checks=[
   ['global client links are real anchors for browser new-tab support',clientLink.includes('<a\n      href={href}')&&clientLink.includes('e.ctrlKey')&&clientLink.includes('e.metaKey')],
@@ -28,6 +34,12 @@ const checks=[
   ['shared e-sign schema provisions signer tokens',esignMigration.includes('signer_token')&&esignMigration.includes("encode(gen_random_bytes(32),'hex')")],
   ['shared e-sign archive is tenant-derived, not Nashville-hardcoded',esignArchive.includes(".eq('id',id).eq('signer_token',token)")&&!esignArchive.includes("const TENANT='489ace07-1a6b-4864-833a-4f8420568b40'")],
   ['shared e-sign archive supports the complete signing lifecycle',['load','sign','read','notify','prepare','finalize'].every(a=>esignArchive.includes(`action==='${a}'`))],
+  ['quick-action public routes exist', ['/portal/:id','/organizer/:id','/sign/:id'].every(r=>app.includes(`path="${r}"`))],
+  ['all configured State POA PDFs exist', requiredStateForms.every(f=>fs.existsSync('public/state-forms/'+f))],
+  ['all IRS pre-fill templates exist', requiredIrsTemplates.every(f=>fs.existsSync('public/templates/'+f))],
+  ['Demo fax uses the TaxRes platform relay',sendFax.includes("'TRC-003','ADMIN'")&&sendFax.includes('platformRelay = true')],
+  ['custom E-Sign upload cannot silently lose its PDF',clients.includes('Custom document upload failed')&&clients.includes('storage_path:path')],
+  ['State POA requires a secure signed document URL',clients.includes('Could not create secure State POA link')&&clients.includes('storage_path:path')],
 ]
 
 let failed=0
