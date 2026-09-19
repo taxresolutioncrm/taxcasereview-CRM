@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
 import { buildFlArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
 import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
+import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -32,7 +33,7 @@ const FL_FIELDS = {
 }
 
 const BLANK = {
-  client_name:'', entity_name:'', entity_type:'LLC', state:'FL',
+  client_id:null, client_name:'', entity_name:'', entity_type:'LLC', state:'FL',
   owners:'', registered_agent:'', business_purpose:'',
   ein:'', state_file_num:'', stage:'Consultation',
   notes:'', formation_date:'', fee:'', fee_paid:false,
@@ -40,7 +41,7 @@ const BLANK = {
 }
 
 const WIZ_BLANK = {
-  entity_type: '', state: '', client_name: '', entity_name: '',
+  entity_type: '', state: '', client_id:null, client_name: '', entity_name: '',
   owners: '', registered_agent: 'Self (Owner)', business_purpose: '',
   service_plan:'Launch',
   ...FL_FIELDS,
@@ -230,6 +231,7 @@ export default function FormaCorp() {
   const [lookup, setLookup] = useState({ open:false, query:'', running:false, result:null })
   const [pdfBusy, setPdfBusy] = useState(false)
   const [flSubmit, setFlSubmit] = useState({ method:'sunbiz_online', faxNumber:'', coverSheet:null, signedArticles:null, busy:false })
+  const [stateFeePayment, setStateFeePayment] = useState(null)
 
   function checkNameSoon(name, state) {
     if (state !== 'FL' || !name || name.trim().length < 3) {
@@ -330,7 +332,7 @@ export default function FormaCorp() {
   }
 
   function chooseWizardClient(c) {
-    setWForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setWForm(f => ({ ...f, client_id:c.id, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
     setWSugg([]); setWShowSug(false)
   }
 
@@ -348,7 +350,7 @@ export default function FormaCorp() {
     const req = stateReqs[wForm.state]
     const fee = req?.llc_filing_fee ? parseFloat(req.llc_filing_fee.replace(/[^0-9.]/g, '')) : null
     const payload = {
-      client_name:wForm.client_name, entity_name:wForm.entity_name, entity_type:wForm.entity_type, state:wForm.state,
+      client_id:wForm.client_id || null, client_name:wForm.client_name, entity_name:wForm.entity_name, entity_type:wForm.entity_type, state:wForm.state,
       owners:wForm.owners, registered_agent:wForm.registered_agent, business_purpose:wForm.business_purpose,
       principal_address:wForm.principal_address || '', mailing_address:wForm.mailing_address || '',
       registered_agent_address:wForm.registered_agent_address || '',
@@ -406,7 +408,7 @@ export default function FormaCorp() {
   }
 
   function chooseClient(c) {
-    setForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setForm(f => ({ ...f, client_id:c.id, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
     setSugg([]); setShowSug(false)
   }
 
@@ -524,8 +526,8 @@ export default function FormaCorp() {
   async function recordFloridaSubmission(c) {
     const tracking = window.prompt('Florida tracking number from the state receipt:', c.fl_tracking_number || '')
     if (!tracking?.trim()) { showToast('A Florida tracking number is required before marking the filing submitted.', 'err'); return }
-    const paymentRef = window.prompt('State payment receipt/reference (optional):', c.fl_payment_reference || '')
-    if (paymentRef === null) return
+    const paymentRef = window.prompt('State payment receipt/reference:', c.fl_payment_reference || '')
+    if (!paymentRef?.trim()) { showToast('A state payment receipt/reference is required before recording a paid state submission.', 'err'); return }
     const pin = window.prompt('Florida filing PIN (optional; usually supplied on rejection):', c.fl_pin || '')
     if (pin === null) return
     await updateFloridaCase(c, {
@@ -570,6 +572,9 @@ export default function FormaCorp() {
   }
 
   async function submitFloridaFax(c) {
+    if (!c.fee_paid || !['received','state_paid','state_account'].includes(String(c.fl_payment_status || 'unpaid'))) {
+      showToast('Collect the state filing fee in FormaCorp before submitting the filing to Florida.', 'err'); return
+    }
     const missing = floridaSubmissionMissing(c)
     if (missing.length) { openFloridaEdit(c, missing); return }
     const digits = String(flSubmit.faxNumber || '').replace(/\D/g,'')
@@ -595,8 +600,6 @@ export default function FormaCorp() {
         fl_submission_method:'prepaid_fax',
         fl_tracking_number:fax.sid || c.fl_tracking_number || '',
         fl_submitted_at:new Date().toISOString(),
-        fl_payment_status:'state_account',
-        fee_paid:true,
         stage:'State Filing',
       }, '📠 Florida filing fax submitted', `Submitted through Prepaid Sunbiz E-File fax via ${fax.provider || 'fax provider'}`)
     } catch (e) {
@@ -735,6 +738,13 @@ export default function FormaCorp() {
             {[['EIN',c.ein||'—'],['State File #',c.state_file_num||'—'],['Fee',c.fee?`$${c.fee}`:'—'],['Fee Paid',c.fee_paid?'✅ Yes':'⏳ Pending'],['Business Purpose',c.business_purpose||'—']].map(([l,v])=>(
               <div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>
             ))}
+            {(() => {
+              const byId = clients.find(x => String(x.id) === String(c.client_id || ''))
+              const byName = clients.filter(x => x.name === c.client_name)
+              const linkedClient = byId || (byName.length === 1 ? byName[0] : null)
+              const amount = Number(isFloridaLlc(c) ? (c.fl_state_fee || floridaStateFee(c)) : (c.fee || 0))
+              return linkedClient && amount > 0 ? <button className="btn pri sm" style={{marginTop:9,width:'100%',justifyContent:'center'}} onClick={()=>setStateFeePayment({ caseRecord:c, client:linkedClient, amount })}>💳 Pay State Filing Fee in FormaCorp</button> : null
+            })()}
           </div>
         </div>
 
@@ -796,7 +806,8 @@ export default function FormaCorp() {
                 <label style={{fontSize:10,color:'var(--t3)'}}>Electronic Filing Cover Sheet<input type="file" accept="application/pdf" onChange={e=>setFlSubmit(x=>({...x,coverSheet:e.target.files?.[0]||null}))} style={{width:'100%',fontSize:11,marginTop:3}}/></label>
                 <label style={{fontSize:10,color:'var(--t3)'}}>Signed Florida Articles PDF<input type="file" accept="application/pdf" onChange={e=>setFlSubmit(x=>({...x,signedArticles:e.target.files?.[0]||null}))} style={{width:'100%',fontSize:11,marginTop:3}}/></label>
               </div>
-              <button className="btn sm" style={{marginTop:8}} onClick={()=>submitFloridaFax(c)} disabled={flSubmit.busy || flSubmitMissing.length>0}>{flSubmit.busy?'⏳ Sending…':'📠 Staff: Submit via Prepaid Sunbiz Fax'}</button>
+              {!c.fee_paid && <div style={{fontSize:10.5,color:'var(--warn)',marginTop:8}}>State fee must be collected in FormaCorp before the filing can be transmitted.</div>}
+              <button className="btn sm" style={{marginTop:8}} onClick={()=>submitFloridaFax(c)} disabled={flSubmit.busy || flSubmitMissing.length>0 || !c.fee_paid}>{flSubmit.busy?'⏳ Sending…':'📠 Staff: Submit via Prepaid Sunbiz Fax'}</button>
             </details>
           </div>
         )}
@@ -847,6 +858,8 @@ export default function FormaCorp() {
             </div>
           </div>
         )}
+
+        {stateFeePayment && <FormaCorpStateFeeModal caseRecord={stateFeePayment.caseRecord} client={stateFeePayment.client} amount={stateFeePayment.amount} onClose={()=>setStateFeePayment(null)} onPaid={async patch=>{ setStateFeePayment(null); setDetail(d=>d?.id===c.id?({...d,...patch}):d); await load() }} showToast={showToast} />}
 
         {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>This cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
       </div>
