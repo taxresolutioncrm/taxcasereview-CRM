@@ -17,6 +17,50 @@ import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
 
 
+const LAZY_RETRY_PREFIX = 'tcr_lazy_retry:'
+
+function isLazyChunkFailure(error) {
+  const msg = String(error?.message || error || '')
+  return /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk .* failed|error loading dynamically imported module/i.test(msg)
+}
+
+function lazyWithRecovery(name, importer) {
+  return lazy(async () => {
+    const key = LAZY_RETRY_PREFIX + name
+    try {
+      const mod = await importer()
+      try { sessionStorage.removeItem(key) } catch (_) {}
+      return mod
+    } catch (error) {
+      if (typeof window !== 'undefined' && isLazyChunkFailure(error)) {
+        let retried = false
+        try { retried = sessionStorage.getItem(key) === '1' } catch (_) {}
+        if (!retried) {
+          try { sessionStorage.setItem(key, '1') } catch (_) {}
+          const url = new URL(window.location.href)
+          url.searchParams.set('__tcr_refresh', Date.now().toString())
+          window.location.replace(url.toString())
+          return new Promise(() => {})
+        }
+        try { sessionStorage.removeItem(key) } catch (_) {}
+      }
+      throw error
+    }
+  })
+}
+
+function clearBuildRefreshMarker() {
+  try {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('__tcr_refresh')) return
+    url.searchParams.delete('__tcr_refresh')
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash)
+  } catch (_) {}
+}
+
+clearBuildRefreshMarker()
+
+
 class PageErrorBoundary extends React.Component {
   constructor(props) {
     super(props)
@@ -53,70 +97,70 @@ class PageErrorBoundary extends React.Component {
 // first thing a visitor (employee or client) sees.
 import Login      from './pages/Login'
 import FamilyPassword from './pages/FamilyPassword'
-const Kiosk = lazy(() => import('./pages/Kiosk'))
-const BookAppointment = lazy(() => import('./pages/BookAppointment'))
-const ManageBooking = lazy(() => import('./pages/ManageBooking'))
-const SignPage = lazy(() => import('./pages/SignPage'))
-const RomyLabsAgreementSign = lazy(() => import('./pages/RomyLabsAgreementSign'))
-const OfficeDocumentSign = lazy(() => import('./pages/OfficeDocumentSign'))
-const MeetingRoom = lazy(() => import('./pages/MeetingRoom'))
-const ScreenShareJoin = lazy(() => import('./pages/ScreenShareJoin'))
-const ScreenShareHost = lazy(() => import('./pages/ScreenShareHost'))
-const ClockIn = lazy(() => import('./pages/ClockIn'))
-const EmployeePortal = lazy(() => import('./pages/EmployeePortal'))
-const ClientPortal = lazy(() => import('./pages/ClientPortal'))
-const OrganizerPage = lazy(() => import('./pages/OrganizerPage'))
-const FinancialIntakePage = lazy(() => import('./pages/FinancialIntakePage'))
-const AuthCallback = lazy(() => import('./pages/AuthCallback'))
-const QuickBooksCallback  = lazy(() => import('./pages/QuickBooksCallback'))
-const XeroCallback = lazy(() => import('./pages/XeroCallback'))
-const NewOffice = lazy(() => import('./pages/NewOffice'))
-const AdminConsole = lazy(() => import('./pages/AdminConsole'))
-const ImpersonateGate = lazy(() => import('./pages/ImpersonateGate'))
-const AdminPortalGuard = lazy(() => import('./pages/AdminPortalGuard'))
-const Training = lazy(() => import('./pages/Training'))
-const Manual   = lazy(() => import('./pages/Manual'))
-const Support = lazy(() => import('./pages/Support'))
+const Kiosk = lazyWithRecovery('Kiosk', () => import('./pages/Kiosk'))
+const BookAppointment = lazyWithRecovery('BookAppointment', () => import('./pages/BookAppointment'))
+const ManageBooking = lazyWithRecovery('ManageBooking', () => import('./pages/ManageBooking'))
+const SignPage = lazyWithRecovery('SignPage', () => import('./pages/SignPage'))
+const RomyLabsAgreementSign = lazyWithRecovery('RomyLabsAgreementSign', () => import('./pages/RomyLabsAgreementSign'))
+const OfficeDocumentSign = lazyWithRecovery('OfficeDocumentSign', () => import('./pages/OfficeDocumentSign'))
+const MeetingRoom = lazyWithRecovery('MeetingRoom', () => import('./pages/MeetingRoom'))
+const ScreenShareJoin = lazyWithRecovery('ScreenShareJoin', () => import('./pages/ScreenShareJoin'))
+const ScreenShareHost = lazyWithRecovery('ScreenShareHost', () => import('./pages/ScreenShareHost'))
+const ClockIn = lazyWithRecovery('ClockIn', () => import('./pages/ClockIn'))
+const EmployeePortal = lazyWithRecovery('EmployeePortal', () => import('./pages/EmployeePortal'))
+const ClientPortal = lazyWithRecovery('ClientPortal', () => import('./pages/ClientPortal'))
+const OrganizerPage = lazyWithRecovery('OrganizerPage', () => import('./pages/OrganizerPage'))
+const FinancialIntakePage = lazyWithRecovery('FinancialIntakePage', () => import('./pages/FinancialIntakePage'))
+const AuthCallback = lazyWithRecovery('AuthCallback', () => import('./pages/AuthCallback'))
+const QuickBooksCallback  = lazyWithRecovery('QuickBooksCallback', () => import('./pages/QuickBooksCallback'))
+const XeroCallback = lazyWithRecovery('XeroCallback', () => import('./pages/XeroCallback'))
+const NewOffice = lazyWithRecovery('NewOffice', () => import('./pages/NewOffice'))
+const AdminConsole = lazyWithRecovery('AdminConsole', () => import('./pages/AdminConsole'))
+const ImpersonateGate = lazyWithRecovery('ImpersonateGate', () => import('./pages/ImpersonateGate'))
+const AdminPortalGuard = lazyWithRecovery('AdminPortalGuard', () => import('./pages/AdminPortalGuard'))
+const Training = lazyWithRecovery('Training', () => import('./pages/Training'))
+const Manual   = lazyWithRecovery('Manual', () => import('./pages/Manual'))
+const Support = lazyWithRecovery('Support', () => import('./pages/Support'))
 
 // Everything behind login is lazy-loaded — each page's code only downloads
 // when you actually navigate to it, instead of all ~30 pages loading upfront
 // in one giant bundle. This is what was making the whole CRM feel slow.
-const Dashboard     = lazy(() => import('./pages/Dashboard'))
-const TimeOff       = lazy(() => import('./pages/TimeOff'))
-const Leads         = lazy(() => import('./pages/Leads'))
-const Clients       = lazy(() => import('./pages/Clients'))
-const Cases         = lazy(() => import('./pages/Cases'))
-const Tasks         = lazy(() => import('./pages/Tasks'))
-const Calendar      = lazy(() => import('./pages/Calendar'))
-const Transcripts   = lazy(() => import('./pages/Transcripts'))
-const IRSPortal     = lazy(() => import('./pages/IRSPortal'))
-const IrsForms      = lazy(() => import('./pages/IrsForms'))
-const StateForms    = lazy(() => import('./pages/StateForms'))
-const IrsReference  = lazy(() => import('./pages/IrsReference'))
-const TaxReturns    = lazy(() => import('./pages/TaxReturns'))
-const Deadlines     = lazy(() => import('./pages/Deadlines'))
-const Estimates     = lazy(() => import('./pages/Estimates'))
-const Invoices      = lazy(() => import('./pages/Invoices'))
-const Payments      = lazy(() => import('./pages/Payments'))
-const AccountsReceivable = lazy(() => import('./pages/AccountsReceivable'))
-const Transactions = lazy(() => import('./pages/Transactions'))
-const Sms           = lazy(() => import('./pages/Sms'))
-const Email         = lazy(() => import('./pages/Email'))
-const Documents     = lazy(() => import('./pages/Documents'))
-const Esign         = lazy(() => import('./pages/TaxOfficeEsign'))
-const TimeClock     = lazy(() => import('./pages/TimeClock'))
-const Payroll       = lazy(() => import('./pages/Payroll'))
-const Employees     = lazy(() => import('./pages/Employees'))
-const ActivityReport= lazy(() => import('./pages/ActivityReport'))
-const Reports       = lazy(() => import('./pages/Reports'))
-const Settings      = lazy(() => import('./pages/Settings'))
-const Dialer        = lazy(() => import('./pages/Dialer'))
-const Chat          = lazy(() => import('./pages/Chat'))
-const Books         = lazy(() => import('./pages/Books'))
-const FormaCorp     = lazy(() => import('./pages/FormaCorp'))
-const Fax           = lazy(() => import('./pages/Fax'))
-const Workflows     = lazy(() => import('./pages/Workflows'))
-const TimeEntry     = lazy(() => import('./pages/TimeEntry'))
+const Dashboard     = lazyWithRecovery('Dashboard', () => import('./pages/Dashboard'))
+const TimeOff       = lazyWithRecovery('TimeOff', () => import('./pages/TimeOff'))
+const Leads         = lazyWithRecovery('Leads', () => import('./pages/Leads'))
+const Clients       = lazyWithRecovery('Clients', () => import('./pages/Clients'))
+const Cases         = lazyWithRecovery('Cases', () => import('./pages/Cases'))
+const Tasks         = lazyWithRecovery('Tasks', () => import('./pages/Tasks'))
+const Calendar      = lazyWithRecovery('Calendar', () => import('./pages/Calendar'))
+const Transcripts   = lazyWithRecovery('Transcripts', () => import('./pages/Transcripts'))
+const IRSPortal     = lazyWithRecovery('IRSPortal', () => import('./pages/IRSPortal'))
+const IrsForms      = lazyWithRecovery('IrsForms', () => import('./pages/IrsForms'))
+const StateForms    = lazyWithRecovery('StateForms', () => import('./pages/StateForms'))
+const IrsReference  = lazyWithRecovery('IrsReference', () => import('./pages/IrsReference'))
+const TaxReturns    = lazyWithRecovery('TaxReturns', () => import('./pages/TaxReturns'))
+const Deadlines     = lazyWithRecovery('Deadlines', () => import('./pages/Deadlines'))
+const Estimates     = lazyWithRecovery('Estimates', () => import('./pages/Estimates'))
+const Invoices      = lazyWithRecovery('Invoices', () => import('./pages/Invoices'))
+const Payments      = lazyWithRecovery('Payments', () => import('./pages/Payments'))
+const AccountsReceivable = lazyWithRecovery('AccountsReceivable', () => import('./pages/AccountsReceivable'))
+const Transactions = lazyWithRecovery('Transactions', () => import('./pages/Transactions'))
+const Sms           = lazyWithRecovery('Sms', () => import('./pages/Sms'))
+const Email         = lazyWithRecovery('Email', () => import('./pages/Email'))
+const Documents     = lazyWithRecovery('Documents', () => import('./pages/Documents'))
+const Esign         = lazyWithRecovery('TaxOfficeEsign', () => import('./pages/TaxOfficeEsign'))
+const TimeClock     = lazyWithRecovery('TimeClock', () => import('./pages/TimeClock'))
+const Payroll       = lazyWithRecovery('Payroll', () => import('./pages/Payroll'))
+const Employees     = lazyWithRecovery('Employees', () => import('./pages/Employees'))
+const ActivityReport= lazyWithRecovery('ActivityReport', () => import('./pages/ActivityReport'))
+const Reports       = lazyWithRecovery('Reports', () => import('./pages/Reports'))
+const Settings      = lazyWithRecovery('Settings', () => import('./pages/Settings'))
+const Dialer        = lazyWithRecovery('Dialer', () => import('./pages/Dialer'))
+const Chat          = lazyWithRecovery('Chat', () => import('./pages/Chat'))
+const Books         = lazyWithRecovery('Books', () => import('./pages/Books'))
+const FormaCorp     = lazyWithRecovery('FormaCorp', () => import('./pages/FormaCorp'))
+const Fax           = lazyWithRecovery('Fax', () => import('./pages/Fax'))
+const Workflows     = lazyWithRecovery('Workflows', () => import('./pages/Workflows'))
+const TimeEntry     = lazyWithRecovery('TimeEntry', () => import('./pages/TimeEntry'))
 
 const style = document.createElement('style')
 style.textContent = `@keyframes spin { to { transform: rotate(360deg) } }`
