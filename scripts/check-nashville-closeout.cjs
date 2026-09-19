@@ -146,6 +146,8 @@ const checks=[
     "?token=",
     "x-internal-cron-token",
     "nashville-esign-mail",
+    "kind:'esign_reminder'",
+    "esign_id:doc.id",
     "platform_internal_secrets",
     "reminder_1_sent_at",
     "event_type:'reminder_sent'",
