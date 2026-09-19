@@ -81,14 +81,20 @@ const checks=[
     "tenant_id=eq.${FIRM.tenantId}",
   ]],
   ['src/pages/Dashboard.jsx',[
-    "select('id,name,status,\"assignedTo\",\"taxFee\",created_at,\"issueType\",source,\"irsBalance\"')",
-    "select('id,name,\"issueType\",\"irsBalance\",created_at')",
+    "supabase.rpc('get_dashboard_snapshot')",
+    "snapshot?.metrics",
+    "snapshot?.recentCases",
   ]],
   ['src/pages/Clients.jsx',[
     "payload.eventType === 'DELETE'",
     "filter: `client_id=eq.${detail.id}`",
     "filter: `clientid=eq.${detail.id}`",
     "eq('client_id', String(clientId))",
+  ]],
+  ['supabase/migrations/20260919_nashville_dashboard_snapshot_scale.sql',[
+    "get_dashboard_snapshot",
+    "mtd1stTrades",
+    "my2ndTradeMtd",
   ]],
   ['supabase/migrations/20260919_nashville_scale_100_users.sql',[
     "idx_employee_portal_sessions_tenant_employee_expires",
