@@ -230,6 +230,28 @@ export default function Employees() {
     setForm(f => ({ ...f, access: role, ...ROLE_PERM_DEFAULTS[role] }))
   }
 
+  async function inviteEmployeeLogin(empLike) {
+    const email = String(empLike?.email || '').trim().toLowerCase()
+    if (!email) { showToast('Employee email is required before sending a login invite.', 'err'); return { ok:false } }
+    const { data, error } = await supabase.functions.invoke('invite-employee', {
+      body: {
+        email,
+        name: String(empLike?.name || '').trim(),
+        redirect_to: window.location.origin + '/?invite=1'
+      }
+    })
+    if (error || data?.error) {
+      showToast('Login invite failed: ' + (data?.error || error?.message || 'Unknown error'), 'err')
+      return { ok:false }
+    }
+    if (data?.already_exists) {
+      showToast(data?.reset_sent ? 'CRM access link sent to ' + email : 'This employee already has a CRM login.')
+      return { ok:true, already_exists:true }
+    }
+    showToast('Login invite sent to ' + email)
+    return { ok:true, invited:true }
+  }
+
   async function save(silent = false) {
     if (!form.name || !form.email) { if (!silent) showToast('Name and email required', 'err'); return false }
     setSaving(true)
@@ -256,8 +278,10 @@ export default function Employees() {
     }
     setSaving(false)
     if (error) { setSaveError(error.message); if (!silent) showToast('Save error: ' + error.message, 'err'); return false }
+    const createdNow = !editing && data?.id
     if (!silent) {
-      showToast(editing ? 'Employee updated!' : 'Employee added!')
+      if (createdNow) await inviteEmployeeLogin(data)
+      else showToast('Employee updated!')
       setShowForm(false)
     } else {
       showToast('Auto-saved', 'ok')
@@ -393,6 +417,7 @@ export default function Employees() {
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑</button>
+                  {can('edit', 'employees') && <button className="btn sm" onClick={() => inviteEmployeeLogin(emp)} title="Send CRM login invite">✉️ Invite</button>}
                   {can('edit', 'employees') && (
                     <>
                       <button className="btn sm" onClick={() => openEdit(emp)}>Edit</button>

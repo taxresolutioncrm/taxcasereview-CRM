@@ -211,3 +211,8 @@ verify_jwt = false
 [functions.taxres-family-password-reset]
 # Public enumeration-safe reset request; Supabase Auth applies its own delivery throttles.
 verify_jwt = false
+
+
+# Authenticated employee onboarding.
+[functions.invite-employee]
+verify_jwt = true
