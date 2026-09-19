@@ -1,10 +1,11 @@
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { formatMoneyInput, parseMoney } from '../lib/money'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import PayrollStatCards from '../components/PayrollStatCards'
 import { hoursFromEntry, buildLineItems, currentPeriod } from '../lib/payrollUtils'
 import { useApp } from '../context/AppContext'
+import { FIRM } from '../lib/firmBranding'
 
 const PAY_METHODS = ['Direct Deposit','Check','Cash']
 
@@ -50,21 +51,30 @@ export default function Payroll() {
   const [deletePunchId,   setDeletePunchId]   = useState(null)
   const [teSearch,        setTeSearch]        = useState('')
   const [teFilterEmp,     setTeFilterEmp]     = useState('All')
+  const payrollReloadTimerRef = useRef(null)
 
   useEffect(() => {
     load()
-    // Auto-sync with TimeClock — keeps Payroll's view of punches and employees fresh in the background
-    const interval = setInterval(() => {
-      supabase.from('timeentries').select('*').then(({ data }) => {
-        if (data) setTimeEntries(data)
-      })
-    }, 5000)
-    const empInterval = setInterval(() => {
-      supabase.from('employees').select('*').order('name').then(({ data }) => {
-        if (data) setEmployees(data)
-      })
-    }, 5000)
-    return () => { clearInterval(interval); clearInterval(empInterval) }
+    const tenantFilter = FIRM.tenantId ? { filter: `tenant_id=eq.${FIRM.tenantId}` } : {}
+    const scheduleRefresh = () => {
+      if (payrollReloadTimerRef.current) clearTimeout(payrollReloadTimerRef.current)
+      payrollReloadTimerRef.current = setTimeout(async () => {
+        const [{ data:t }, { data:e }] = await Promise.all([
+          supabase.from('timeentries').select('*').order('created_at',{ascending:false}),
+          supabase.from('employees').select('*').order('name'),
+        ])
+        if (t) setTimeEntries(t)
+        if (e) setEmployees(e)
+      }, 250)
+    }
+    const channel = supabase.channel('payroll-live')
+      .on('postgres_changes', { event:'*', schema:'public', table:'timeentries', ...tenantFilter }, scheduleRefresh)
+      .on('postgres_changes', { event:'*', schema:'public', table:'employees', ...tenantFilter }, scheduleRefresh)
+      .subscribe()
+    return () => {
+      if (payrollReloadTimerRef.current) clearTimeout(payrollReloadTimerRef.current)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   async function load() {
