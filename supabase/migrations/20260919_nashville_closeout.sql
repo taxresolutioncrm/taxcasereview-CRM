@@ -146,3 +146,137 @@ $$;
 revoke all on function public.dedupe_nashville_book_whip_month(date) from public, anon, authenticated;
 revoke all on function public.system_refresh_nashville_book_whip() from public, anon, authenticated;
 revoke all on function public.system_create_nashville_book_whip_month(date) from public, anon, authenticated;
+
+
+-- Keep the authenticated UI refresh path deduped too.
+CREATE OR REPLACE FUNCTION public.create_book_whip_month(p_month date)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'app_private'
+AS $function$
+declare
+  v_tenant uuid := app_private.current_tenant_id();
+  v_month date := date_trunc('month', p_month)::date;
+  v_prev date;
+  v_count integer;
+begin
+  if v_tenant is null then
+    raise exception 'Tenant context required';
+  end if;
+
+  if not exists (
+    select 1 from public.employees e
+    where e.tenant_id = v_tenant
+      and lower(e.email) = lower(coalesce(auth.jwt()->>'email',''))
+      and e.status = 'Active'
+      and coalesce(e.perm_reports,0) >= 2
+  ) then
+    raise exception 'Reports edit access required';
+  end if;
+
+  select max(snapshot_month)
+    into v_prev
+  from public.book_whip_rows
+  where tenant_id = v_tenant
+    and snapshot_month < v_month;
+
+  insert into public.book_whip_rows (
+    tenant_id,snapshot_month,client_id,client_name,client_since,client_owner,source_created_on,
+    tags,spouse_name,client_display,assigned_associate,financials,last_payment,transcripts,
+    state_res_hold,hold_date,notes,quote,return_quote,resolution_step,chris_flag,johnny_flag,
+    last_contact_date,source,source_file
+  )
+  select
+    c.tenant_id,
+    v_month,
+    c.id,
+    c.name,
+    coalesce(c."clientSince",c.clientsince),
+    coalesce(c."assignedTo",c.assignedto),
+    c.created_at::text,
+    c.tags,
+    coalesce(c."spouseName",c.spousename),
+    c.name,
+    coalesce(c."taxAssociate",prev.assigned_associate),
+    prev.financials,
+    coalesce((
+      select case
+        when p.amount is null or trim(p.amount) = '' then null
+        when trim(p.amount) like '$%' then trim(p.amount) || ' on ' || coalesce(nullif(trim(p.date),''),p.created_at::date::text)
+        else '$' || trim(p.amount) || ' on ' || coalesce(nullif(trim(p.date),''),p.created_at::date::text)
+      end
+      from public.payments p
+      where p.tenant_id = c.tenant_id
+        and (
+          p.client_id = c.id
+          or lower(coalesce(p."clientName",p.clientname,'')) = lower(c.name)
+        )
+      order by p.created_at desc nulls last
+      limit 1
+    ),prev.last_payment),
+    prev.transcripts,
+    prev.state_res_hold,
+    prev.hold_date,
+    coalesce(prev.notes,c.internal_note,c.notes),
+    prev.quote,
+    prev.return_quote,
+    prev.resolution_step,
+    prev.chris_flag,
+    prev.johnny_flag,
+    prev.last_contact_date,
+    case when v_prev is null then 'monthly_generated' else 'monthly_carry_forward' end,
+    null
+  from (
+    select distinct on (tenant_id,name) *
+    from public.clients
+    where tenant_id = v_tenant
+      and deleted_at is null
+      and coalesce(archived,false) = false
+      and lower(coalesce(status,'')) = 'active'
+      and coalesce(name,'') <> ''
+    order by tenant_id,name,created_at desc nulls last,id
+  ) c
+  left join public.book_whip_rows prev
+    on prev.tenant_id = c.tenant_id
+   and prev.snapshot_month = v_prev
+   and lower(prev.client_name) = lower(c.name)
+  on conflict (tenant_id,snapshot_month,client_name) do update
+    set client_id = excluded.client_id,
+        client_since = excluded.client_since,
+        client_owner = excluded.client_owner,
+        source_created_on = excluded.source_created_on,
+        tags = excluded.tags,
+        spouse_name = excluded.spouse_name,
+        client_display = excluded.client_display,
+        assigned_associate = coalesce(public.book_whip_rows.assigned_associate,excluded.assigned_associate),
+        last_payment = coalesce(excluded.last_payment,public.book_whip_rows.last_payment),
+        updated_at = now();
+
+  delete from public.book_whip_rows bw
+  where bw.tenant_id = v_tenant
+    and bw.snapshot_month = v_month
+    and bw.source <> 'uploaded_csv'
+    and not exists (
+      select 1
+      from public.clients c
+      where c.tenant_id = v_tenant
+        and c.deleted_at is null
+        and coalesce(c.archived,false) = false
+        and lower(coalesce(c.status,'')) = 'active'
+        and lower(c.name) = lower(bw.client_name)
+    );
+
+  if v_tenant = '489ace07-1a6b-4864-833a-4f8420568b40'::uuid then
+    perform public.dedupe_nashville_book_whip_month(v_month);
+    perform public.refresh_book_whip_live_fields(v_tenant,v_month);
+  end if;
+
+  select count(*) into v_count
+  from public.book_whip_rows
+  where tenant_id = v_tenant and snapshot_month = v_month;
+
+  return v_count;
+end;
+$function$
+
