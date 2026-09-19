@@ -55,6 +55,9 @@ export default function Sms() {
   const { user, myTenantId } = useApp()
   const [searchParams] = useSearchParams()
   const [sent,    setSent]    = useState([])
+  const [messagePage,setMessagePage] = useState(1)
+  const [messageTotal,setMessageTotal] = useState(0)
+  const MESSAGE_PAGE_SIZE = 250
   const [clients, setClients] = useState([])
   const [form,    setForm]    = useState(BLANK)
   const [sug,     setSug]     = useState([])
@@ -93,16 +96,19 @@ export default function Sms() {
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  },[] )
+  },[messagePage] )
 
   async function load(){
-    const [{data:sms},{data:cls},{data:lds},{data:s}]=await Promise.all([
-      supabase.from('sms_messages').select('*').order('created_at',{ascending:false}),
-      supabase.from('clients').select('id,name,phone,smsConsent'),
-      supabase.from('leads').select('id,name,phone'),
+    const from=(messagePage-1)*MESSAGE_PAGE_SIZE
+    const to=from+MESSAGE_PAGE_SIZE-1
+    const [{data:sms,count:smsCount},{data:cls},{data:lds},{data:s}]=await Promise.all([
+      supabase.from('sms_messages').select('*',{count:'exact'}).order('created_at',{ascending:false}).range(from,to),
+      supabase.from('clients').select('id,name,phone,smsConsent').order('name'),
+      supabase.from('leads').select('id,name,phone').order('name'),
       supabase.from('settings').select('sw_space_url,sw_inbound_did').limit(1).maybeSingle(),
     ])
     if(sms)setSent(sms)
+    setMessageTotal(smsCount||0)
     if(cls)setClients(cls)
     if(lds)setLeads(lds)
     if(s)setSettings(s)
@@ -324,7 +330,15 @@ export default function Sms() {
       {view==='sent'&&(
         <div className="card" style={{padding:0,overflow:'hidden'}}>
           <div style={{padding:'16px 20px',borderBottom:'1px solid var(--br)'}}>
-            <h3 style={{margin:0,fontSize:17,fontWeight:800}}>Messages ({sent.length})</h3>
+            <h3 style={{margin:0,fontSize:17,fontWeight:800}}>Messages ({messageTotal})</h3>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'10px 14px',borderBottom:'1px solid var(--br)',flexWrap:'wrap'}}>
+            <div style={{fontSize:11,color:'var(--t3)'}}>Showing {messageTotal ? ((messagePage-1)*MESSAGE_PAGE_SIZE)+1 : 0}–{Math.min(messagePage*MESSAGE_PAGE_SIZE,messageTotal)} of {messageTotal}</div>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <button className="btn sec" style={{fontSize:11,padding:'4px 9px'}} disabled={messagePage<=1} onClick={()=>setMessagePage(p=>Math.max(1,p-1))}>← Prev</button>
+              <span style={{fontSize:11,color:'var(--t2)'}}>Page {messagePage} / {Math.max(1,Math.ceil(messageTotal/MESSAGE_PAGE_SIZE))}</span>
+              <button className="btn sec" style={{fontSize:11,padding:'4px 9px'}} disabled={messagePage>=Math.max(1,Math.ceil(messageTotal/MESSAGE_PAGE_SIZE))} onClick={()=>setMessagePage(p=>p+1)}>Next →</button>
+            </div>
           </div>
           <div className="ovx">
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
