@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fillForm } from '../../lib/irsFormUtils'
-import { buildOperatingAgreementPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
+import { buildGovernanceDocumentPdf, buildBankingResolutionPdf } from '../../lib/formacorpDocs'
 
 const FL_SERVICE_GUIDE = {
   'Annual Report Filing': { fee:'$138.75', url:'https://dos.fl.gov/sunbiz/manage-business/efile/annual-report', note:'Keeps the LLC active; Florida posts online credit-card filings immediately.' },
@@ -38,7 +38,7 @@ const SERVICES = [
 const LIFECYCLE_TABS = [
   ['overview','Overview'],
   ['ein','EIN'],
-  ['agreement','Operating Agreement'],
+  ['agreement','Governing Documents'],
   ['banking','Banking'],
   ['compliance','Compliance'],
   ['services','Company Services'],
@@ -75,6 +75,9 @@ function StatusPill({value}) {
 }
 
 export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch }) {
+  const isCorporation = caseRecord?.entity_type === 'C-Corp' || caseRecord?.entity_type === 'Non-Profit 501(c)(3)'
+  const governanceLabel = isCorporation ? 'Bylaws & Organizational Action' : 'Operating Agreement'
+  const governanceDocType = isCorporation ? 'FormaCorp Corporate Governance' : 'FormaCorp Operating Agreement'
   const [tab,setTab]=useState('overview')
   const [lifecycle,setLifecycle]=useState(null)
   const [requests,setRequests]=useState([])
@@ -124,7 +127,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       const seed={
         case_id:caseRecord.id,
         service_plan:'Launch',
-        selected_services:['State Filing','EIN','Operating Agreement','Banking','Compliance'],
+        selected_services:['State Filing','EIN','Governing Documents','Operating Agreement','Banking','Compliance'],
         ein_status:caseRecord.ein?'Received':'Not Started',
         ein_responsible_party_name:caseRecord.authorized_representative || caseRecord.client_name || '',
         operating_agreement_status:'Not Started',
@@ -304,22 +307,23 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     await savePatch({ein_status:'Received',ein_received_at:now},'',)
     setBusy('')
     onCasePatch?.({ein:value,stage:'Operating Agreement'})
-    showToast?.('✅ EIN recorded — Operating Agreement is next')
+    showToast?.(`✅ EIN recorded — ${governanceLabel} is next`)
   }
 
   async function generateOperatingAgreement() {
     setBusy('agreement')
     try {
-      const blob=await buildOperatingAgreementPdf(caseRecord,lifecycle)
+      const blob=await buildGovernanceDocumentPdf(caseRecord,lifecycle)
       const stamp=Date.now()
-      const doc=await uploadGenerated(blob,'FormaCorp — Operating Agreement draft',`Operating-Agreement-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
-      await savePatch({operating_agreement_status:'Draft Generated',operating_agreement_generated_at:new Date().toISOString(),operating_agreement_path:doc.path},'✅ Operating Agreement draft generated and filed in Documents')
-    }catch(e){showToast?.('Could not generate Operating Agreement: '+(e?.message||e),'err')}
+      const prefix=isCorporation?'Bylaws-Organizational-Action':'Operating-Agreement'
+      const doc=await uploadGenerated(blob,`FormaCorp — ${governanceLabel} draft`,`${prefix}-${safeFilename(caseRecord.entity_name)}-${stamp}.pdf`)
+      await savePatch({operating_agreement_status:'Draft Generated',operating_agreement_generated_at:new Date().toISOString(),operating_agreement_path:doc.path},`✅ ${governanceLabel} draft generated and filed in Documents`)
+    }catch(e){showToast?.(`Could not generate ${governanceLabel}: `+(e?.message||e),'err')}
     finally{setBusy('')}
   }
 
   async function sendAgreementForSignature() {
-    if(!lifecycle.operating_agreement_path){showToast?.('Generate the Operating Agreement first','err');return}
+    if(!lifecycle.operating_agreement_path){showToast?.(`Generate the ${governanceLabel} first`,'err');return}
     const to=String(caseRecord.correspondence_email||'').trim()
     if(!to){showToast?.('Add the correspondence email before sending for signature','err');return}
     setBusy('esign')
@@ -327,11 +331,11 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       const {data:urlData,error:urlErr}=await supabase.storage.from('documents').createSignedUrl(lifecycle.operating_agreement_path,60*60*24*30)
       if(urlErr||!urlData?.signedUrl)throw urlErr||new Error('Could not create document link')
       const {data:esign,error:esignErr}=await supabase.from('esigns').insert([{
-        doc_type:'FormaCorp Operating Agreement',
+        doc_type:governanceDocType,
         client_name:caseRecord.client_name,
         client_email:to,
-        message:`Please review and sign the Operating Agreement for ${caseRecord.entity_name}.`,
-        pdf_attachments:[{formType:'formacorp_operating_agreement',label:'Operating Agreement',url:urlData.signedUrl}],
+        message:`Please review and sign the ${governanceLabel} for ${caseRecord.entity_name}.`,
+        pdf_attachments:[{formType:isCorporation?'formacorp_corporate_governance':'formacorp_operating_agreement',label:governanceLabel,url:urlData.signedUrl}],
         priority:'Normal',
         status:'Awaiting',
         sent_at:new Date().toISOString(),
@@ -341,12 +345,12 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
       const signUrl=`${window.location.origin}/sign/${esign.id}`
       const {error:mailErr}=await supabase.functions.invoke('send-email',{body:{
         to,
-        subject:`Signature Required: ${caseRecord.entity_name} Operating Agreement`,
-        html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px"><h2>Operating Agreement Ready</h2><p>Please review and sign the Operating Agreement for <strong>${caseRecord.entity_name}</strong>.</p><p style="margin:24px 0"><a href="${signUrl}" style="background:#1d4ed8;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700">Review & Sign</a></p></div>`
+        subject:`Signature Required: ${caseRecord.entity_name} ${governanceLabel}`,
+        html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px"><h2>${governanceLabel} Ready</h2><p>Please review and sign the ${governanceLabel} for <strong>${caseRecord.entity_name}</strong>.</p><p style="margin:24px 0"><a href="${signUrl}" style="background:#1d4ed8;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700">Review & Sign</a></p></div>`
       }})
       await savePatch({operating_agreement_status:'Awaiting Signature',operating_agreement_esign_id:esign.id},'',)
       if(mailErr){await navigator.clipboard.writeText(signUrl).catch(()=>{});showToast?.('Signing request created; email failed, so the signing link was copied','err')}
-      else showToast?.('✅ Operating Agreement sent for e-signature')
+      else showToast?.(`✅ ${governanceLabel} sent for e-signature`)
     }catch(e){showToast?.('Could not create signing request: '+(e?.message||e),'err')}
     finally{setBusy('')}
   }
@@ -355,7 +359,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
     const ok=await savePatch({operating_agreement_status:'Signed',operating_agreement_signed_at:new Date().toISOString()},'',)
     if(!ok)return
     const {error}=await supabase.from('formacorp').update({stage:'Bank Account Setup'}).eq('id',caseRecord.id)
-    if(!error){onCasePatch?.({stage:'Bank Account Setup'});showToast?.('✅ Operating Agreement signed — Banking is next')}
+    if(!error){onCasePatch?.({stage:'Bank Account Setup'});showToast?.(`✅ ${governanceLabel} signed — Banking is next`)}
   }
 
   async function generateBankingResolution() {
@@ -560,7 +564,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         {[
           ['State Formation',caseRecord.state_file_num?'Accepted':'In Progress'],
           ['EIN',caseRecord.ein?'Received':lifecycle.ein_status],
-          ['Operating Agreement',lifecycle.operating_agreement_status],
+          [governanceLabel,lifecycle.operating_agreement_status],
           ['Business Banking',lifecycle.banking_status],
           ['Annual Report',lifecycle.annual_report_status],
           ['Good Standing',lifecycle.good_standing_status],
@@ -597,11 +601,11 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
 
     {tab==='agreement' && <div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-        <Field label="Operating Agreement Status"><select value={lifecycle.operating_agreement_status||'Not Started'} onChange={e=>setLocal('operating_agreement_status',e.target.value)} style={inputStyle}>{['Not Started','Draft Generated','Sent for Review','Awaiting Signature','Signed','Needs Revision'].map(x=><option key={x}>{x}</option>)}</select></Field>
+        <Field label={governanceLabel+" Status"}><select value={lifecycle.operating_agreement_status||'Not Started'} onChange={e=>setLocal('operating_agreement_status',e.target.value)} style={inputStyle}>{['Not Started','Draft Generated','Sent for Review','Awaiting Signature','Signed','Needs Revision'].map(x=><option key={x}>{x}</option>)}</select></Field>
         <Field label="Signed Date"><input type="date" value={lifecycle.operating_agreement_signed_at?String(lifecycle.operating_agreement_signed_at).slice(0,10):''} onChange={e=>setLocal('operating_agreement_signed_at',e.target.value?new Date(e.target.value+'T12:00:00').toISOString():null)} style={inputStyle}/></Field>
       </div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-        <button className="btn sm" onClick={generateOperatingAgreement} disabled={busy==='agreement'}>{busy==='agreement'?'Generating…':'📄 Generate Operating Agreement'}</button>
+        <button className="btn sm" onClick={generateOperatingAgreement} disabled={busy==='agreement'}>{busy==='agreement'?'Generating…':'📄 Generate '+governanceLabel}</button>
         <button className="btn sm" onClick={sendAgreementForSignature} disabled={busy==='esign'}>{busy==='esign'?'Sending…':'✍️ Send for E-Signature'}</button>
         <button className="btn sm" onClick={saveCurrent}>💾 Save</button>
         <button className="btn pri sm" onClick={markAgreementSigned}>✅ Mark Signed & Continue</button>
@@ -619,7 +623,7 @@ export default function FormaCorpLifecycle({ caseRecord, showToast, onCasePatch 
         <Field label="Opening Deposit"><input type="number" min="0" step="0.01" value={lifecycle.bank_opening_deposit ?? ''} onChange={e=>setLocal('bank_opening_deposit',e.target.value===''?null:Number(e.target.value))} style={inputStyle}/></Field>
         <Field label="Bookkeeping Connection"><select value={lifecycle.bookkeeping_status||'Not Connected'} onChange={e=>setLocal('bookkeeping_status',e.target.value)} style={inputStyle}>{['Not Connected','Planned','Connected','Needs Attention'].map(x=><option key={x}>{x}</option>)}</select></Field>
       </div>
-      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:10}}><input type="checkbox" checked={!!lifecycle.bank_documents_ready} onChange={e=>setLocal('bank_documents_ready',e.target.checked)} style={{width:'auto'}}/> Formation document, EIN confirmation, Operating Agreement, and signer ID are ready for the bank.</label>
+      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:10}}><input type="checkbox" checked={!!lifecycle.bank_documents_ready} onChange={e=>setLocal('bank_documents_ready',e.target.checked)} style={{width:'auto'}}/> Formation document, EIN confirmation, governing documents, and signer ID are ready for the bank.</label>
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
         <button className="btn sm" onClick={generateBankingResolution} disabled={busy==='bankdoc'}>{busy==='bankdoc'?'Generating…':'📄 Generate Banking Resolution'}</button>
         <button className="btn sm" onClick={saveCurrent}>💾 Save Banking</button>
