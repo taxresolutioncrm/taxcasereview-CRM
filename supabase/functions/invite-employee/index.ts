@@ -11,14 +11,9 @@ const safe=(v:unknown)=>String(v??'').trim()
 const esc=(v:unknown)=>safe(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 
 async function findAuthUser(admin:any,email:string){
-  for(let page=1;page<=20;page++){
-    const {data,error}=await admin.auth.admin.listUsers({page,perPage:1000})
-    if(error) throw error
-    const hit=(data?.users||[]).find((u:any)=>safe(u.email).toLowerCase()===email)
-    if(hit) return hit
-    if((data?.users||[]).length<1000) break
-  }
-  return null
+  const {data,error}=await admin.rpc('taxres_auth_user_by_email',{target_email:email})
+  if(error) throw error
+  return Array.isArray(data)&&data.length ? data[0] : null
 }
 
 function accessEmailHtml(opts:{name:string,firmName:string,link:string,kind:'invite'|'recovery'}){
@@ -82,10 +77,11 @@ serve(async(req)=>{
     const body=await req.json().catch(()=>({}))
     const email=safe(body.email).toLowerCase()
     const requestedName=safe(body.name)
+    const via=['email','text','both'].includes(safe(body.via).toLowerCase())?safe(body.via).toLowerCase():'email'
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({error:'Valid employee email is required'},400)
 
     const {data:employee}=await admin.from('employees')
-      .select('id,email,name,status,tenant_id')
+      .select('id,email,name,phone,status,tenant_id')
       .eq('tenant_id',tenantId)
       .ilike('email',email)
       .limit(1).maybeSingle()
@@ -122,21 +118,48 @@ serve(async(req)=>{
     const office=tenant?.tenant_code==='TRC-003'?'cloudcpa':tenant?.tenant_code==='DEMO'?'demo':'tcr'
     const accessLink=`${FAMILY_PASSWORD_PAGE}?token_hash=${encodeURIComponent(tokenHash)}&type=${kind}&office=${encodeURIComponent(office)}`
     const html=accessEmailHtml({name:requestedName||employee.name||'',firmName,link:accessLink,kind})
-    const emailRes=await fetch(`${url}/functions/v1/send-email`,{
-      method:'POST',
-      headers:{Authorization:authHeader,apikey:anon,'Content-Type':'application/json'},
-      body:JSON.stringify({
-        to:email,
-        subject:kind==='invite'?`Set up your ${firmName} CRM password`:`Reset your ${firmName} CRM password`,
-        from_name:firmName,
-        from_email:officeReplyTo||undefined,
-        kind:'employee_access',
-        html
+    let emailOk=false, textOk=false
+    let emailError='', textError=''
+
+    if(via==='email'||via==='both'){
+      const emailRes=await fetch(`${url}/functions/v1/send-email`,{
+        method:'POST',
+        headers:{Authorization:authHeader,apikey:anon,'Content-Type':'application/json'},
+        body:JSON.stringify({
+          to:email,
+          subject:kind==='invite'?`Set up your ${firmName} CRM password`:`Reset your ${firmName} CRM password`,
+          from_name:firmName,
+          from_email:officeReplyTo||undefined,
+          kind:'employee_access',
+          html
+        })
       })
-    })
-    const emailBody=await emailRes.json().catch(()=>({}))
-    if(!emailRes.ok||!emailBody?.success){
-      console.error('[invite-employee] delivery failed',emailRes.status,emailBody?.error||'unknown')
+      const emailBody=await emailRes.json().catch(()=>({}))
+      emailOk=!!(emailRes.ok&&emailBody?.success)
+      if(!emailOk) emailError=safe(emailBody?.error||`Email transport returned ${emailRes.status}`)
+    }
+
+    if(via==='text'||via==='both'){
+      if(!safe(employee.phone)){
+        textError='Employee phone number is required for text delivery'
+      }else{
+        const smsRes=await fetch(`${url}/functions/v1/send-sms`,{
+          method:'POST',
+          headers:{Authorization:authHeader,apikey:anon,'Content-Type':'application/json'},
+          body:JSON.stringify({
+            to:employee.phone,
+            body:`${firmName}: ${kind==='invite'?'Set up':'Reset'} your CRM password: ${accessLink}`
+          })
+        })
+        const smsBody=await smsRes.json().catch(()=>({}))
+        textOk=!!(smsRes.ok&&smsBody?.success)
+        if(!textOk) textError=safe(smsBody?.error||`SMS transport returned ${smsRes.status}`)
+      }
+    }
+
+    const requestedSucceeded=(via==='email'&&emailOk)||(via==='text'&&textOk)||(via==='both'&&emailOk&&textOk)
+    const partialSucceeded=(via==='both'&&(emailOk||textOk))
+    if(!requestedSucceeded&&!partialSucceeded){
       return json({
         ok:true,
         invited:kind==='invite',
@@ -146,7 +169,7 @@ serve(async(req)=>{
         access_link:accessLink,
         email,
         employee_id:employee.id,
-        warning:emailBody?.error||'Email transport unavailable'
+        warning:[emailError,textError].filter(Boolean).join(' · ')||'Delivery transport unavailable'
       })
     }
 
@@ -156,10 +179,12 @@ serve(async(req)=>{
       already_exists:!!existing,
       reset_sent:kind==='recovery',
       mode:kind,
-      delivery:'email',
+      delivery:via==='both'?(emailOk&&textOk?'both':emailOk?'email':'text'):via,
       email,
       employee_id:employee.id,
-      auth_user_id:existing?.id||linkData?.user?.id||null
+      auth_user_id:existing?.id||linkData?.user?.id||null,
+      access_link:accessLink,
+      warning:via==='both'&&!(emailOk&&textOk)?[emailError,textError].filter(Boolean).join(' · '):null
     })
   }catch(e){
     console.error('[invite-employee]',e)
