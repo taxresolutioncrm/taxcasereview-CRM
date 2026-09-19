@@ -110,8 +110,8 @@ Deno.serve(async(req)=>{
     const authHeader=req.headers.get('Authorization')||''
     const token=authHeader.replace(/^Bearer\s+/i,'')
     if(!token) return json({error:'Missing authorization'},401)
-    const caller=createClient(url,anonKey,{global:{headers:{Authorization:`Bearer ${token}`}}})
-    const {data:{user},error:userErr}=await caller.auth.getUser()
+    const caller=createClient(url,anonKey,{global:{headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false}})
+    const {data:{user},error:userErr}=await caller.auth.getUser(token)
     if(userErr||!user?.email) return json({error:'Invalid session'},401)
 
     const {data:actor}=await admin.from('employees').select('id,email,status,access,tenant_id').ilike('email',user.email).eq('tenant_id',TENANT).eq('status','Active').maybeSingle()

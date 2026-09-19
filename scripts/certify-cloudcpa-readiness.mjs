@@ -99,7 +99,7 @@ must(employees.includes('Send CRM login invite'),'employee cards expose an expli
 must(inviteEmployee.includes("rpc('current_tenant_id')"),'employee invitation resolves the caller office server-side')
 must(inviteEmployee.includes(".eq('tenant_id',tenantId)"),'employee invitation is tenant scoped')
 must(inviteEmployee.includes("admin.auth.admin.generateLink"),'employee invitation provisions a secure Supabase Auth setup/recovery token')
-must(inviteEmployee.includes("type:kind,email,options"),'new and existing employee logins share the family setup/recovery path')
+must(inviteEmployee.includes("type:'invite', email")&&inviteEmployee.includes("type:'recovery', email"),'new and existing employee logins use supported family setup/recovery link payloads')
 must(inviteEmployee.includes("/functions/v1/send-email"),'employee access email uses the office-authorized CRM mail transport')
 must(inviteEmployee.includes("delivery:'manual'"),'employee access preserves a secure fallback link if office email transport is unavailable')
 must(inviteEmployee.includes("Employee invite permission denied"),'employee invitation enforces office HR/admin permission')
