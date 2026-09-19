@@ -114,6 +114,9 @@ export default function Chat() {
   const [onlineUsers, setOnlineUsers] = useState(new Set()) // names of currently online employees
   const [presenceMeta, setPresenceMeta] = useState({}) // { name: { activity, label } }
   const presenceChRef = useRef(null)
+  const presenceReadyRef = useRef(false)
+  const presenceTrackTimerRef = useRef(null)
+  const presenceActivityRef = useRef({ activity:'online', activityLabel:'Available', callDirection:null })
   const [huddleId, setHuddleId]         = useState(null)  // unique room ID
   const [isHuddleHost, setIsHuddleHost]   = useState(false)
   const [showHuddleInvite, setShowHuddleInvite] = useState(false)
@@ -351,6 +354,7 @@ export default function Chat() {
   // ── Presence: online + live call/huddle state (Slack-style) ──
   useEffect(() => {
     if (!myName || myName === 'You') return
+    presenceReadyRef.current = false
     const presenceCh = supabase.channel(`chat-presence:${FIRM.tenantId || 'default'}`, { config: { presence: { key: myName } } })
     presenceChRef.current = presenceCh
     const syncPresence = () => {
@@ -363,31 +367,54 @@ export default function Chat() {
       }
       setPresenceMeta(next)
     }
+    // Deterministically spread presence announcements across ten seconds.
+    // A 100-person office opening Chat together therefore avoids a login-time
+    // presence burst while message subscriptions remain immediate.
+    const staggerMs = Array.from(myName).reduce((n,ch)=>(n*31+ch.charCodeAt(0))>>>0,0) % 10000
     presenceCh
       .on('presence', { event: 'sync' }, syncPresence)
       .on('presence', { event: 'join' }, syncPresence)
       .on('presence', { event: 'leave' }, syncPresence)
-      .subscribe(async status => {
-        if (status === 'SUBSCRIBED') {
-          await presenceCh.track({ name: myName, online_at: new Date().toISOString(), activity: 'online', activity_label: 'Available' })
-        }
+      .subscribe(status => {
+        if (status !== 'SUBSCRIBED') return
+        if (presenceTrackTimerRef.current) clearTimeout(presenceTrackTimerRef.current)
+        presenceTrackTimerRef.current = setTimeout(async () => {
+          if (presenceChRef.current !== presenceCh) return
+          presenceReadyRef.current = true
+          const a = presenceActivityRef.current
+          await presenceCh.track({
+            name: myName,
+            online_at: new Date().toISOString(),
+            activity: a.activity,
+            activity_label: a.activityLabel,
+            call_direction: a.callDirection,
+          }).catch(() => {})
+        }, staggerMs)
       })
-    return () => { presenceChRef.current = null; supabase.removeChannel(presenceCh) }
+    return () => {
+      presenceReadyRef.current = false
+      if (presenceTrackTimerRef.current) clearTimeout(presenceTrackTimerRef.current)
+      presenceTrackTimerRef.current = null
+      presenceChRef.current = null
+      supabase.removeChannel(presenceCh)
+    }
   }, [myName])
 
-  // Re-track the existing realtime presence whenever this staff member enters
-  // a CRM phone call or Team Chat huddle. No extra polling table is needed.
+  // Re-track only after initial presence registration; before then, cache the
+  // latest activity so the staggered first announcement is already accurate.
   useEffect(() => {
-    const presenceCh = presenceChRef.current
-    if (!presenceCh || !myName || myName === 'You') return
     const activity = huddle ? 'huddle' : calling ? 'call' : 'online'
     const activityLabel = huddle ? 'In a huddle' : calling ? 'On a call' : 'Available'
+    const callDirection = calling ? (activeCall?.entityType || 'crm') : null
+    presenceActivityRef.current = { activity, activityLabel, callDirection }
+    const presenceCh = presenceChRef.current
+    if (!presenceReadyRef.current || !presenceCh || !myName || myName === 'You') return
     presenceCh.track({
       name: myName,
       online_at: new Date().toISOString(),
       activity,
       activity_label: activityLabel,
-      call_direction: calling ? (activeCall?.entityType || 'crm') : null,
+      call_direction: callDirection,
     }).catch(() => {})
   }, [myName, huddle, calling, activeCall?.entityType])
 
