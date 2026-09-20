@@ -26,6 +26,38 @@
     return;
   }
 
+  /* TAXRES_FAMILY_BUILD_REFRESH_20260919:
+   * TaxRes-family tabs can stay open across a deployment and keep an old lazy
+   * FormaCorp chunk in memory. On the first page load after a new release,
+   * force exactly one cache-busted reload so Nashville/TCR/CloudCPA/Demo all
+   * execute the same deployed bundle. */
+  var TAXRES_FAMILY_BUILD = '20260919-formacorp-family-parity-3';
+  var isTaxResFamilyHost =
+    host === 'taxrescrm.app' ||
+    host === 'www.taxrescrm.app' ||
+    host === 'nashville.taxrescrm.app' ||
+    host.endsWith('.taxrescrm.app');
+  if (isTaxResFamilyHost) {
+    try {
+      var buildParam = params.get('__taxres_build') || '';
+      var seenBuild = localStorage.getItem('taxres_family_build') || '';
+      if (buildParam === TAXRES_FAMILY_BUILD) {
+        localStorage.setItem('taxres_family_build', TAXRES_FAMILY_BUILD);
+        var cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('__taxres_build');
+        cleanUrl.searchParams.delete('__taxres_ts');
+        window.history.replaceState({}, '', cleanUrl.pathname + (cleanUrl.search || '') + cleanUrl.hash);
+      } else if (seenBuild !== TAXRES_FAMILY_BUILD) {
+        localStorage.setItem('taxres_family_build', TAXRES_FAMILY_BUILD);
+        var freshUrl = new URL(window.location.href);
+        freshUrl.searchParams.set('__taxres_build', TAXRES_FAMILY_BUILD);
+        freshUrl.searchParams.set('__taxres_ts', String(Date.now()));
+        window.location.replace(freshUrl.toString());
+        return;
+      }
+    } catch (_) {}
+  }
+
   if (host !== 'admin.romylabs.com') return;
 
   /* IOS_CHROME_BFCACHE_FIX_V5_20260830: Chrome on iPhone may restore a fully

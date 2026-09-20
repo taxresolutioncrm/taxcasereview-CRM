@@ -17,6 +17,7 @@ import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
 
 
+const TAXRES_FAMILY_BUILD = '20260919-formacorp-family-parity-3'
 const LAZY_RETRY_PREFIX = 'tcr_lazy_retry:'
 
 function isLazyChunkFailure(error) {
@@ -465,6 +466,35 @@ function AuthRouter() {
 }
 
 export default function App() {
+  // Proactively evict a stale long-lived SPA after a production release.
+  // This prevents one TaxRes-family office from continuing to run an older
+  // lazy page chunk (the Nashville FormaCorp mismatch exposed this).
+  useEffect(() => {
+    let stopped = false
+    const check = async () => {
+      try {
+        const res = await fetch('/taxres-build.json?ts=' + Date.now(), { cache:'no-store' })
+        if (!res.ok) return
+        const remote = await res.json()
+        if (!stopped && remote?.build && remote.build !== TAXRES_FAMILY_BUILD) {
+          const url = new URL(window.location.href)
+          url.searchParams.set('__taxres_build', String(remote.build))
+          url.searchParams.set('__taxres_ts', String(Date.now()))
+          window.location.replace(url.toString())
+        }
+      } catch (_) {}
+    }
+    check()
+    const timer = window.setInterval(check, 60_000)
+    const onVisible = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
   // Auto-logout after 3.5 hours of inactivity — all employees
   useEffect(() => {
     const IDLE_MS = 3.5 * 60 * 60 * 1000
