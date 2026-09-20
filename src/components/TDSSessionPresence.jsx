@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function TDSSessionPresence() {
+export default function TDSSessionPresence({ onStatusChange }) {
   const [status, setStatus] = useState({
     sessionSetupConfigured: false,
     sessionActive: false,
@@ -21,16 +21,25 @@ export default function TDSSessionPresence() {
       })
       if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
-      setStatus({
+      const next = {
         sessionSetupConfigured: Boolean(data?.sessionSetupConfigured),
+        directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured),
         sessionActive: Boolean(data?.sessionActive),
         expiresAt: data?.expiresAt || null,
         organizationName: data?.organizationName || null,
         authorizationError: data?.authorizationError || null,
-      })
+      }
+      setStatus(next)
+      onStatusChange?.(next)
       setError('')
     } catch (e) {
-      setStatus({ sessionSetupConfigured: false, sessionActive: false, expiresAt: null, organizationName: null, authorizationError: null })
+      setStatus({
+        sessionSetupConfigured: false,
+        sessionActive: false,
+        expiresAt: null,
+        organizationName: null,
+        authorizationError: null,
+      })
       setError(e?.message || 'Could not check your IRS TDS session.')
     } finally {
       if (showSpinner) setLoading(false)
@@ -59,6 +68,7 @@ export default function TDSSessionPresence() {
 
       const callbackOrigin = data?.redirectUri ? new URL(data.redirectUri).origin : ''
       if (!callbackOrigin) throw new Error('IRS callback origin was not returned.')
+
       let settled = false
       const cleanup = () => {
         if (settled) return
@@ -81,7 +91,6 @@ export default function TDSSessionPresence() {
       }
       window.addEventListener('message', onMessage)
 
-      // Popup closure is local browser state only; this does not poll Supabase.
       const closeWatch = setInterval(() => {
         if (!popup.closed) return
         cleanup()
@@ -119,54 +128,40 @@ export default function TDSSessionPresence() {
   const minutesLeft = expires ? Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 60000)) : null
 
   return (
-    <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+    <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--s1)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>🔐 IRS TDS Session</div>
-          <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 4, lineHeight: 1.45 }}>
-            Sign in through IRS e-Services with ID.me and 2FA. IRS handles the credentials and organization selection; the CRM keeps only the short-lived authorized session server-side and never stores your IRS password or 2FA code.
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>IRS Sign-In</div>
+          <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3 }}>
+            {status.sessionActive
+              ? `Connected for this practitioner session${status.organizationName ? ` · ${status.organizationName}` : ''}`
+              : 'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.'}
           </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading ? (
             <span style={{ fontSize: 11.5, color: 'var(--t3)' }}>Checking…</span>
           ) : status.sessionActive ? (
             <>
               <span style={{ background: '#15803d', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
-                IRS signed in{minutesLeft !== null ? ` · ${minutesLeft}m left` : ''}
+                Connected{minutesLeft !== null ? ` · ${minutesLeft}m` : ''}
               </span>
-              <button className="btn sec" disabled={busy} onClick={endSession}>{busy ? 'Ending…' : 'End IRS Session'}</button>
+              <button className="btn sec" disabled={busy} onClick={endSession}>{busy ? 'Ending…' : 'Sign Out'}</button>
             </>
           ) : (
             <button className="btn" disabled={busy || !status.sessionSetupConfigured} onClick={signInToIrs}>
-              {busy ? 'Waiting for IRS sign-in…' : 'Sign in to IRS'}
+              {busy ? 'Waiting for IRS…' : 'Sign in to IRS'}
             </button>
           )}
         </div>
       </div>
 
-      {status.sessionActive && (
-        <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--t2)' }}>
-          ✅ Direct transcript requests are enabled for this signed-in practitioner session.
-          {status.organizationName ? <> Organization: <b>{status.organizationName}</b>.</> : null}
-          {expires ? <> Session expires at <b>{expires.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</b>.</> : null}
+      {!loading && !status.sessionActive && !status.sessionSetupConfigured && !error && (
+        <div style={{ marginTop: 8, color: '#b45309', fontSize: 11.5 }}>
+          {status.authorizationError || 'IRS authorization is not configured yet.'}
         </div>
       )}
-
-      {!loading && !status.sessionActive && status.sessionSetupConfigured && !error && (
-        <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--t3)' }}>
-          Sign in before submitting a direct pull. If the IRS session expires while requests are queued, sign in again and retry/resume them.
-        </div>
-      )}
-
-      {!loading && !status.sessionSetupConfigured && !error && (
-        <div style={{ marginTop: 10, fontSize: 11.5, color: '#b45309' }}>
-          ⚠ {status.authorizationError || 'IRS ISP authorization contract is not configured on the Edge Function yet.'} Direct pull remains disabled; manual TDS fallback is unchanged.
-        </div>
-      )}
-
-      {error && <div style={{ marginTop: 10, color: '#f87171', fontSize: 11.5 }}>⚠ {error}</div>}
+      {error && <div style={{ marginTop: 8, color: '#f87171', fontSize: 11.5 }}>{error}</div>}
     </div>
   )
 }
