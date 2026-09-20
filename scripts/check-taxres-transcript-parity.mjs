@@ -43,7 +43,7 @@ for(const n of [
 
 for(const n of [
   'new URL(data.redirectUri).origin',
-  'Sign in through IRS e-Services with ID.me and 2FA',
+  'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.',
   'sessionActive'
 ]) need(session,n)
 
