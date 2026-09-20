@@ -237,3 +237,13 @@ verify_jwt = false
 [functions.employee-access-link]
 # Validates Nashville admin/session or enumeration-safe self reset internally.
 verify_jwt = false
+
+
+# TaxRes family IRS transcript workflow.
+# Staff actions require a signed-in Supabase user; IRS redirects are validated
+# by one-time state inside the callback function.
+[functions.transcript-pull]
+verify_jwt = true
+
+[functions.transcript-pull-callback]
+verify_jwt = false
