@@ -10,6 +10,9 @@ for(const file of [
   'src/lib/transcriptPull.js',
   'src/components/TranscriptPull.jsx',
   'src/components/TDSSessionPresence.jsx',
+  'src/components/TranscriptReports.jsx',
+  'src/lib/irsTranscriptParser.js',
+  'src/pages/IRSPortal.jsx',
   'supabase/config.toml',
   'supabase/migrations/20260920030000_taxres_transcript_family_hardening.sql',
 ]){
@@ -116,4 +119,24 @@ if(fs.existsSync('supabase/migrations/20260920030000_taxres_transcript_family_ha
     'provider_result_keys text[]',
     'provider_filed_keys text[]',
   ]) must(m.includes(needle),'transcript migration missing '+needle)
+}
+
+if(fs.existsSync('src/components/TranscriptReports.jsx')){
+  const r=read('src/components/TranscriptReports.jsx')
+  for(const label of ['Account Overview','CSED Calculations','Penalties and Interest','Payment History','Bankruptcy','Account Transactions','Assessment Overview','Documents']){
+    must(r.includes(label),'TranscriptReports missing '+label)
+  }
+  must(r.includes('a.principal_tax'),'TranscriptReports must use parsed principal tax rather than balance as principal tax')
+}
+if(fs.existsSync('src/lib/irsTranscriptParser.js')){
+  const p=read('src/lib/irsTranscriptParser.js')
+  for(const needle of ['principal_tax: principalTax','payments_credits: paymentCreditTotal','refunds: refundTotal']){
+    must(p.includes(needle),'IRS parser missing '+needle)
+  }
+}
+if(fs.existsSync('src/pages/IRSPortal.jsx')){
+  const p=read('src/pages/IRSPortal.jsx')
+  must(p.includes("import TranscriptReports from '../components/TranscriptReports'"),'IRS Portal must import transcript reports')
+  must(p.includes('<TranscriptReports rows={rows} money={money} openTranscriptFile={openTranscriptFile} />'),'IRS Portal must render transcript reports')
+  must(!p.includes('restricted TDS pull'),'IRS Portal contains obsolete restricted-TDS copy')
 }
