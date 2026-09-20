@@ -61,12 +61,22 @@ for(const n of [
 ]) need(portal,n)
 
 for(const n of [
-  'When IRS TDS ISP is connected',
-  "storeTranscriptAnalysis(file, req.client_name, a, { clientId: req.client_id || null })",
+  'IRS Transcript Delivery',
+  'Sign in once, choose the client, years and transcript types, then request.',
   'Request Transcripts',
+  'Returned PDFs attach to the selected client file automatically.',
+  'Manual PDF fallback',
   'const formClient = uniqueClientForName(form.clientName)',
-  'client_id: client.id'
+  'client_id: client.id',
+  "provider: 'irs_a2a'"
 ]) need(pullUi,n)
+
+if(fs.existsSync(pullUi)){
+  const ui=read(pullUi)
+  for(const old of ['Watched TDS Download Folder','providers.map(p =>','New Transcript Pull Request']){
+    if(ui.includes(old)) failures.push('TranscriptPull: legacy primary UI still present: '+old)
+  }
+}
 
 for(const n of [
   'create table if not exists public.transcript_pull_requests',
