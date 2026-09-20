@@ -2,25 +2,6 @@
 -- Keeps pg_net / pg_cron history bounded and covers advisor-reported FK gaps.
 -- This is intentionally conservative: it does not change application data.
 
-create index if not exists idx_cron_job_run_details_start_time
-  on cron.job_run_details(start_time);
-
-alter table net._http_response set (
-  autovacuum_enabled = true,
-  autovacuum_vacuum_scale_factor = 0.02,
-  autovacuum_vacuum_threshold = 50,
-  autovacuum_analyze_scale_factor = 0.05,
-  autovacuum_analyze_threshold = 50
-);
-
-alter table cron.job_run_details set (
-  autovacuum_enabled = true,
-  autovacuum_vacuum_scale_factor = 0.05,
-  autovacuum_vacuum_threshold = 500,
-  autovacuum_analyze_scale_factor = 0.10,
-  autovacuum_analyze_threshold = 500
-);
-
 create index if not exists idx_formacorp_lifecycle_case_id
   on public.formacorp_lifecycle(case_id);
 create index if not exists idx_product_traffic_channels_channel_key
@@ -111,5 +92,38 @@ select cron.schedule(
   'select public.prune_taxres_operational_history();'
 );
 
--- Trim accumulated history immediately on migration so the project starts from a bounded baseline.
+do $
+declare j record;
+begin
+  for j in select jobid from cron.job where jobname in ('taxres-io-vacuum-net','taxres-io-vacuum-cron')
+  loop
+    perform cron.unschedule(j.jobid);
+  end loop;
+end $;
+
+select cron.schedule(
+  'taxres-io-vacuum-net',
+  '41 4 * * *',
+  'vacuum (analyze) net._http_response;'
+);
+
+select cron.schedule(
+  'taxres-io-vacuum-cron',
+  '47 4 * * *',
+  'vacuum (analyze) cron.job_run_details;'
+);
+
+-- Reclaim the two bloated operational-history relations once at rollout.
+-- pg_net responses are only discarded if no LinkedIn publish is waiting on a response.
+truncate table cron.job_run_details;
+
+do $
+begin
+  if not exists (
+    select 1 from public.linkedin_posts where status='publishing'
+  ) then
+    truncate table net._http_response;
+  end if;
+end $;
+
 select public.prune_taxres_operational_history();
