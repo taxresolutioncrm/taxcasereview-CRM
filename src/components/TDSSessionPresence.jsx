@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function TDSSessionPresence() {
+export default function TDSSessionPresence({ onStatusChange }) {
   const [status, setStatus] = useState({
     sessionSetupConfigured: false,
     sessionActive: false,
@@ -21,13 +21,16 @@ export default function TDSSessionPresence() {
       })
       if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
-      setStatus({
+      const next = {
         sessionSetupConfigured: Boolean(data?.sessionSetupConfigured),
+        directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured),
         sessionActive: Boolean(data?.sessionActive),
         expiresAt: data?.expiresAt || null,
         organizationName: data?.organizationName || null,
         authorizationError: data?.authorizationError || null,
-      })
+      }
+      setStatus(next)
+      onStatusChange?.(next)
       setError('')
     } catch (e) {
       setStatus({
