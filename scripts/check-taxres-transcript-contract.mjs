@@ -11,6 +11,7 @@ for(const file of [
   'src/components/TranscriptPull.jsx',
   'src/components/TDSSessionPresence.jsx',
   'supabase/config.toml',
+  'supabase/migrations/20260920030000_taxres_transcript_family_hardening.sql',
 ]){
   must(fs.existsSync(file), file+': missing')
 }
@@ -53,6 +54,7 @@ if(fs.existsSync('supabase/functions/transcript-pull-callback/index.ts')){
     "window.opener&&window.opener.postMessage",
     "IRS_TDS_CRM_ORIGIN",
     "https://taxrescrm.app",
+    "type: 'taxres-irs-tds-oauth'",
   ]) must(s.includes(needle), 'transcript callback missing '+needle)
 }
 
@@ -102,3 +104,16 @@ if(failures.length){
   process.exit(1)
 }
 console.log('✅ TaxRes transcript sandbox contract passed')
+
+if(fs.existsSync('supabase/migrations/20260920030000_taxres_transcript_family_hardening.sql')){
+  const m=read('supabase/migrations/20260920030000_taxres_transcript_family_hardening.sql')
+  for(const needle of [
+    'add column if not exists client_id text',
+    "current_employee_permission('perm_irs')>=1",
+    "current_employee_permission('perm_irs')>=2",
+    "current_employee_permission('perm_irs')>=3",
+    'revoke all on table public.irs_tds_sessions from anon, authenticated',
+    'provider_result_keys text[]',
+    'provider_filed_keys text[]',
+  ]) must(m.includes(needle),'transcript migration missing '+needle)
+}
