@@ -107,10 +107,12 @@ const checks=[
     "revoke all on function public.esign_public_track_event(text,text,text,integer,text,text,jsonb) from public, anon, authenticated",
   ]],
   ['src/lib/transcriptPull.js',[
-    "client_id: client.id",
+    "tenant_id: tenantId",
+    "client_id: clientId",
     "storage://documents/",
-    "transcripts/${client.id}/",
+    "transcripts/${clientId}/",
     "storage_path: filePath",
+    "clientname: canonicalName",
   ]],
   ['src/pages/IRSPortal.jsx',[
     "openTranscriptFile(row)",
