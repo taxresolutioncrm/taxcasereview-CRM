@@ -1,3 +1,12 @@
+# Deployment freshness controls — the bootstrap guard and build marker must
+# never be served stale or they cannot evict an old CRM bundle.
+/romylabs-admin-hotfix.js
+  Cache-Control: no-store, max-age=0, must-revalidate
+/taxres-build.json
+  Cache-Control: no-store, max-age=0, must-revalidate
+/index.html
+  Cache-Control: no-store, max-age=0, must-revalidate
+
 # HTML / SPA shell must revalidate so users receive the newest deployment.
 /*
   Cache-Control: no-cache, must-revalidate
