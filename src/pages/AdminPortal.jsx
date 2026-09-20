@@ -180,9 +180,27 @@ async function loadPlatformOfficeRowsFresh() {
   // If the batch path is unavailable for any reason, fall back to the existing
   // per-product parallel calls so reporting behavior never depends on batching.
   const requestedProducts = [...taxResTenantFeeds.map(feed => feed.key), ...productKeys]
-  const { data: batchData, error: batchError } = await supabase.functions.invoke('hub-proxy', {
-    body:{ action:'metrics_batch', products:requestedProducts },
-  })
+  const metricsTimeout = (promise, label, ms = 4000) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)),
+  ])
+
+  let batchData = null
+  let batchError = null
+  let batchTimedOut = false
+  try {
+    const response = await metricsTimeout(
+      supabase.functions.invoke('hub-proxy', {
+        body:{ action:'metrics_batch', products:requestedProducts },
+      }),
+      'hub metrics batch',
+    )
+    batchData = response.data
+    batchError = response.error
+  } catch (error) {
+    batchError = error
+    batchTimedOut = /timed out/i.test(String(error?.message || error))
+  }
 
   let tenantFeedResults
   let results
@@ -195,14 +213,33 @@ async function loadPlatformOfficeRowsFresh() {
       const item = batchData.results[productKey] || {}
       return { productKey, data:item.data, error:item.error ? new Error(item.error) : null }
     })
+  } else if (batchTimedOut) {
+    // A hung remote product must never hold the whole Admin Portal hostage.
+    // Keep central directory/billing data visible and mark live usage as partial.
+    tenantFeedResults = taxResTenantFeeds.map(feed => ({ ...feed, data:null, error:batchError }))
+    results = productKeys.map(productKey => ({ productKey, data:null, error:batchError }))
   } else {
     const tenantFeedPromise = Promise.all(taxResTenantFeeds.map(async feed => {
-      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
-      return { ...feed, ...response }
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } }),
+          feed.name + ' metrics',
+        )
+        return { ...feed, ...response }
+      } catch (error) {
+        return { ...feed, data:null, error }
+      }
     }))
     const productFeedPromise = Promise.all(productKeys.map(async productKey => {
-      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
-      return { productKey, ...response }
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:productKey } }),
+          productKey + ' metrics',
+        )
+        return { productKey, ...response }
+      } catch (error) {
+        return { productKey, data:null, error }
+      }
     }))
     ;[tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
   }
