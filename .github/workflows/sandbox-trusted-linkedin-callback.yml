@@ -1,0 +1,36 @@
+name: Sandbox Trusted LinkedIn Callback
+
+on:
+  push:
+    branches:
+      - sandbox/arcvena-linkedin-trusted-callback
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Verify trusted callback contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "const LINKEDIN_REDIRECT_URI = 'https://taxrescrm.app/crm-admin/linkedin/callback'" src/pages/AdminPortal.jsx
+          grep -Fq "const ADMIN_LINKEDIN_CALLBACK = 'https://admin.romylabs.com/crm-admin/linkedin/callback'" src/pages/AdminPortal.jsx
+          grep -Fq "window.location.hostname.toLowerCase() === 'taxrescrm.app'" src/pages/AdminPortal.jsx
+          grep -Fq "oauth_redirect_uri" src/pages/AdminPortal.jsx
+          grep -Fq "w_organization_social" src/pages/AdminPortal.jsx
+          grep -Fq "146118085" supabase/functions/linkedin-publish/index.ts
+          echo TRUSTED_LINKEDIN_CALLBACK_CONTRACT_GREEN
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Green marker
+        run: echo SANDBOX_TRUSTED_LINKEDIN_CALLBACK_GREEN
