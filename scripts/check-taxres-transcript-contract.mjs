@@ -101,13 +101,6 @@ if(fs.existsSync('supabase/config.toml')){
   must(/verify_jwt\s*=\s*false/.test(cb),'transcript callback must allow IRS redirect')
 }
 
-if(failures.length){
-  console.error('TaxRes transcript sandbox contract failed:')
-  failures.forEach(x=>console.error(' - '+x))
-  process.exit(1)
-}
-console.log('✅ TaxRes transcript sandbox contract passed')
-
 if(fs.existsSync('supabase/migrations/20260920030000_taxres_transcript_family_hardening.sql')){
   const m=read('supabase/migrations/20260920030000_taxres_transcript_family_hardening.sql')
   for(const needle of [
@@ -140,3 +133,10 @@ if(fs.existsSync('src/pages/IRSPortal.jsx')){
   must(p.includes('<TranscriptReports rows={rows} money={money} openTranscriptFile={openTranscriptFile} />'),'IRS Portal must render transcript reports')
   must(!p.includes('restricted TDS pull'),'IRS Portal contains obsolete restricted-TDS copy')
 }
+
+if(failures.length){
+  console.error('TaxRes transcript sandbox contract failed:')
+  failures.forEach(x=>console.error(' - '+x))
+  process.exit(1)
+}
+console.log('✅ TaxRes transcript sandbox contract passed')
