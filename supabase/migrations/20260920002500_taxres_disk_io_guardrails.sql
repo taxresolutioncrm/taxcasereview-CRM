@@ -92,14 +92,14 @@ select cron.schedule(
   'select public.prune_taxres_operational_history();'
 );
 
-do $
+do $$
 declare j record;
 begin
   for j in select jobid from cron.job where jobname in ('taxres-io-vacuum-net','taxres-io-vacuum-cron')
   loop
     perform cron.unschedule(j.jobid);
   end loop;
-end $;
+end $$;
 
 select cron.schedule(
   'taxres-io-vacuum-net',
@@ -117,13 +117,13 @@ select cron.schedule(
 -- pg_net responses are only discarded if no LinkedIn publish is waiting on a response.
 truncate table cron.job_run_details;
 
-do $
+do $$
 begin
   if not exists (
     select 1 from public.linkedin_posts where status='publishing'
   ) then
     truncate table net._http_response;
   end if;
-end $;
+end $$;
 
 select public.prune_taxres_operational_history();
