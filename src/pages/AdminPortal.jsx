@@ -112,7 +112,12 @@ const EXTERNAL_OFFICE_PRODUCTS = {
   restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/login' },
 }
 
-async function loadPlatformOfficeRows() {
+let platformOfficeRowsCache = null
+let platformOfficeRowsCacheAt = 0
+let platformOfficeRowsInflight = null
+const PLATFORM_OFFICE_CACHE_MS = 20000
+
+async function loadPlatformOfficeRowsFresh() {
   const [
     { data: taxresRows, error: taxresError },
     { data: registryData, error: registryError },
@@ -175,9 +180,27 @@ async function loadPlatformOfficeRows() {
   // If the batch path is unavailable for any reason, fall back to the existing
   // per-product parallel calls so reporting behavior never depends on batching.
   const requestedProducts = [...taxResTenantFeeds.map(feed => feed.key), ...productKeys]
-  const { data: batchData, error: batchError } = await supabase.functions.invoke('hub-proxy', {
-    body:{ action:'metrics_batch', products:requestedProducts },
-  })
+  const metricsTimeout = (promise, label, ms = 4000) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)),
+  ])
+
+  let batchData = null
+  let batchError = null
+  let batchTimedOut = false
+  try {
+    const response = await metricsTimeout(
+      supabase.functions.invoke('hub-proxy', {
+        body:{ action:'metrics_batch', products:requestedProducts },
+      }),
+      'hub metrics batch',
+    )
+    batchData = response.data
+    batchError = response.error
+  } catch (error) {
+    batchError = error
+    batchTimedOut = /timed out/i.test(String(error?.message || error))
+  }
 
   let tenantFeedResults
   let results
@@ -190,14 +213,31 @@ async function loadPlatformOfficeRows() {
       const item = batchData.results[productKey] || {}
       return { productKey, data:item.data, error:item.error ? new Error(item.error) : null }
     })
+  } else if (batchTimedOut) {
+    tenantFeedResults = taxResTenantFeeds.map(feed => ({ ...feed, data:null, error:batchError }))
+    results = productKeys.map(productKey => ({ productKey, data:null, error:batchError }))
   } else {
     const tenantFeedPromise = Promise.all(taxResTenantFeeds.map(async feed => {
-      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
-      return { ...feed, ...response }
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } }),
+          feed.name + ' metrics',
+        )
+        return { ...feed, ...response }
+      } catch (error) {
+        return { ...feed, data:null, error }
+      }
     }))
     const productFeedPromise = Promise.all(productKeys.map(async productKey => {
-      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
-      return { productKey, ...response }
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:productKey } }),
+          productKey + ' metrics',
+        )
+        return { productKey, ...response }
+      } catch (error) {
+        return { productKey, data:null, error }
+      }
     }))
     ;[tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
   }
@@ -362,9 +402,13 @@ async function loadPlatformOfficeRows() {
   }
 
   if (registrySyncJobs.length) {
-    const registrySyncResults = await Promise.all(registrySyncJobs.map(job => job.promise))
-    registrySyncResults.forEach((syncResult, index) => {
-      if (syncResult?.error) warnings.push(`${registrySyncJobs[index].label} office registry sync failed`)
+    void Promise.allSettled(registrySyncJobs.map(job => job.promise)).then(syncResults => {
+      syncResults.forEach((syncResult, index) => {
+        const error = syncResult.status === 'rejected'
+          ? syncResult.reason
+          : syncResult.value?.error
+        if (error) console.warn('[AdminPortal] office registry sync failed:', registrySyncJobs[index].label, error)
+      })
     })
   }
 
@@ -392,6 +436,24 @@ async function loadPlatformOfficeRows() {
   }
 
   return { rows, warnings:[...new Set(warnings)], externalMetrics }
+}
+
+async function loadPlatformOfficeRows() {
+  const now = Date.now()
+  if (platformOfficeRowsCache && now - platformOfficeRowsCacheAt < PLATFORM_OFFICE_CACHE_MS) {
+    return platformOfficeRowsCache
+  }
+  if (platformOfficeRowsInflight) return platformOfficeRowsInflight
+
+  platformOfficeRowsInflight = loadPlatformOfficeRowsFresh()
+    .then(result => {
+      platformOfficeRowsCache = result
+      platformOfficeRowsCacheAt = Date.now()
+      return result
+    })
+    .finally(() => { platformOfficeRowsInflight = null })
+
+  return platformOfficeRowsInflight
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -4533,15 +4595,13 @@ function CommandCenter() {
       const h = now.getHours()
 
       try {
-        // Load prospects independently so a stats RPC error never zeroes out Sales
-        const prospectsRes = await supabase.from('prospects').select('*').order('created_at', { ascending: false })
-
-        // Stats + tenant overview — may throw; prospects already captured above
-        const withTimeout = (promise, label, ms = 12000) => Promise.race([
+        const prospectsPromise = supabase.from('prospects').select('*').order('created_at', { ascending: false })
+        const withTimeout = (promise, label, ms = 8000) => Promise.race([
           promise,
           new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)),
         ])
-        const [statsRes, tenantsRes, storageRes, taxresDemoRes] = await Promise.all([
+        const [prospectsRes, statsRes, tenantsRes, storageRes, taxresDemoRes] = await Promise.all([
+          withTimeout(prospectsPromise, 'prospects'),
           withTimeout(supabase.rpc('admin_command_center_stats'), 'admin_command_center_stats'),
           withTimeout(supabase.rpc('admin_tenant_overview'), 'admin_tenant_overview'),
           withTimeout(supabase.rpc('admin_storage_stats'), 'admin_storage_stats'),
@@ -7353,6 +7413,12 @@ export default function AdminPortal() {
   const location = useLocation()
   const { logout } = useApp()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [emailMounted, setEmailMounted] = useState(() => location.pathname === '/crm-admin/email')
+
+  useEffect(() => {
+    if (location.pathname === '/crm-admin/email') setEmailMounted(true)
+  }, [location.pathname])
+
   // Swap favicon + title to RomyLabs brand while in the admin portal
   useEffect(() => {
     const prev = document.title
@@ -7462,9 +7528,7 @@ export default function AdminPortal() {
         <div className="rl-admin-mobile-scrim" onClick={()=>setMobileMenuOpen(false)} />
       </div>}
       <div className="rl-admin-main" style={{flex:1,position:'relative',height:'100vh',overflowY:'auto'}}>
-        {/* Persistent SnappyMail iframe — always mounted so compose drafts survive tab switches.
-            Hidden via CSS when not on /email; shown only when on /email route. */}
-        <div style={{
+        {emailMounted && <div style={{
           position:'absolute', inset:0, zIndex:1,
           display: location.pathname === '/crm-admin/email' ? 'flex' : 'none',
           flexDirection:'column'
@@ -7478,7 +7542,7 @@ export default function AdminPortal() {
           <iframe src={WEBMAIL_URL} title="SnappyMail"
             style={{flex:1,border:'none',width:'100%',background:'#0f172a'}}
             allow="clipboard-read; clipboard-write" />
-        </div>
+        </div>}
         <Suspense fallback={<Spinner/>}>
           <Routes>
             <Route path="/command-center" element={<AdminRouteErrorBoundary><CommandCenter/></AdminRouteErrorBoundary>}/>
