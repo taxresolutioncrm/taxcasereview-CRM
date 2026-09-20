@@ -11,6 +11,7 @@ const files = [
   'supabase/migrations/20260918192500_formacorp_taxres_family_compat.sql',
   'supabase/migrations/20260919012000_formacorp_florida_corporation_fields.sql',
   'supabase/migrations/20260919053500_formacorp_state_fee_payment_audit.sql',
+  'supabase/migrations/20260920013000_formacorp_nashville_payment_parity.sql',
   'src/pages/Manual.jsx',
 ]
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
@@ -44,6 +45,7 @@ assert(/eq\('tenant_id',tenantId\)/.test(content), 'State-fee Stripe settings ar
 assert(/stripe_account/.test(content), 'Connected Stripe account routing is missing')
 assert(!/from\('settings'\).*stripe_publishable_key/.test(files.map(p => p.includes('FormaCorpStateFeeModal') ? fs.readFileSync(p,'utf8') : '').join('\n')), 'State-fee browser UI must not depend on direct settings-table access')
 assert(/platformPublishableKey/.test(content), 'Connected Stripe accounts must use the platform publishable key with Stripe-Account routing')
+assert(/489ace07-1a6b-4864-833a-4f8420568b40/.test(content), 'Nashville is missing from FormaCorp platform payment routing')
 assert(/Idempotency-Key/.test(content), 'State-fee PaymentIntent creation must be idempotent')
 assert(/state_fee_payment_intent_id/.test(content), 'State-fee PaymentIntent recovery reference is missing')
 assert(/already_succeeded/.test(content), 'Completed state-fee payment recovery path is missing')
@@ -69,6 +71,7 @@ assert(/Compliance/.test(content), 'Compliance workflow is missing')
 assert(/id:\s*'formacorp'/.test(content), 'CRM Manual is missing the dedicated FormaCorp section')
 assert(/A-to-Z business formation/.test(content), 'CRM Manual is missing the FormaCorp A-to-Z workflow')
 assert(/Pay Government Filing Amount/.test(content), 'CRM Manual is missing in-CRM government filing payment instructions')
+assert(/shared TaxRes-family module/.test(content), 'CRM Manual is missing FormaCorp TaxRes-family parity guidance')
 assert(/Submit via Prepaid Sunbiz Fax/.test(content), 'CRM Manual is missing the prepaid Sunbiz submission instructions')
 assert(/Government funds collected from the client inside FormaCorp/.test(content), 'CRM Manual is missing received-vs-remitted filing-funds guidance')
 assert(/Record approval only after Florida accepts the filing/.test(content), 'CRM Manual is missing the Florida approval gate')

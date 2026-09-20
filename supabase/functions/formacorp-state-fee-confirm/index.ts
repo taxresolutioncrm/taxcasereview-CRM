@@ -5,7 +5,7 @@ const corsHeaders={
   'Access-Control-Allow-Origin':'*',
   'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
 }
-const PLATFORM_STRIPE_TENANTS=new Set(['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','518808b4-10dd-47fd-900e-6c3fc1ff2e7e'])
+const PLATFORM_STRIPE_TENANTS=new Set(['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','518808b4-10dd-47fd-900e-6c3fc1ff2e7e','489ace07-1a6b-4864-833a-4f8420568b40'])
 
 async function stripeGet(secret:string,id:string,connectedAccount?:string|null){
   const res=await fetch('https://api.stripe.com/v1/payment_intents/'+encodeURIComponent(id),{

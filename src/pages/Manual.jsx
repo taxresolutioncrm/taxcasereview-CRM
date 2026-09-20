@@ -258,6 +258,7 @@ const MANUAL_SECTIONS = [
     title: 'FormaCorp — A-to-Z business formation',
     content: [
       { type: 'lead', text: 'FormaCorp keeps the formation workflow in the CRM from intake through state approval, EIN, governing documents, banking, compliance, company services, and permanent document storage. For supported Florida formations, staff can prepare the filing, collect the government filing amount inside the CRM, submit through the supported Sunbiz workflow, and track every state milestone on one record.' },
+      { type: 'info', text: 'FormaCorp is a shared TaxRes-family module. The same current workflow and filing/payment/lifecycle steps apply in Tax Case Review, Nashville Tax Solutions, CloudCPA, Demo, and future TaxRes-family offices; each office remains tenant-isolated and sees only its own formation records.' },
       { type: 'flow', items: ['Draft', 'Ready to Submit', 'Filing Queue', 'Submitted to Florida', 'Under State Review', 'Action Required', 'Approved / Active'] },
       { type: 'h3', text: 'Supported Florida formation types' },
       { type: 'table', headers: ['Entity type', 'Formation document', 'Governing document'], rows: [
