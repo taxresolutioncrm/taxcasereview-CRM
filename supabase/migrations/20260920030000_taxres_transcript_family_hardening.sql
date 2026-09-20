@@ -7,6 +7,7 @@ create table if not exists public.irs_tds_sessions (
   user_id uuid not null,
   user_email text,
   organization_name text,
+  return_origin text,
   state text unique,
   state_expires_at timestamptz,
   access_token_ciphertext text,
@@ -19,6 +20,7 @@ create table if not exists public.irs_tds_sessions (
 );
 
 alter table public.irs_tds_sessions
+  add column if not exists return_origin text,
   add column if not exists refresh_token_ciphertext text,
   add column if not exists access_expires_at timestamptz,
   add column if not exists session_expires_at timestamptz;
