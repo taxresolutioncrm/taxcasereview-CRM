@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { parseTranscriptFile, storeTranscriptAnalysis } from '../lib/transcriptPull'
 import TranscriptPull from '../components/TranscriptPull'
@@ -32,7 +33,11 @@ function money(n) {
 }
 
 export default function IRSPortal() {
+  const location = useLocation()
   const [tab, setTab] = useState('transcripts')
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('new') === '1') setTab('pull')
+  }, [location.search])
 
   // ── shared: client names for pickers ──
   const [clients, setClients] = useState([])
