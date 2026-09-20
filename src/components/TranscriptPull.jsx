@@ -290,7 +290,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       setImported(im => [...im, { file: file.name, client: client.name, year: a.tax_year, type: a.transcript_type }])
       return true
     }
-    setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: a, assignTo: '' }])
+    setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: a, assignTo: '', assignClientId: '' }])
     return false
   }
 
@@ -312,7 +312,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           if (await routeAnalysis(file, a, key)) filed++
           else seenRef.current.add(key)
         } catch (err) {
-          setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: entry.name, file, analysis: null, error: err?.message || 'Import failed', assignTo: '' }])
+          setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: entry.name, file, analysis: null, error: err?.message || 'Import failed', assignTo: '', assignClientId: '' }])
         }
       }
       setLastScan(new Date())
@@ -333,13 +333,16 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }, [requests, clientNames])
 
   async function assignUnmatched(item) {
-    if (!item.assignTo.trim() || !item.analysis) return
+    if (!item.assignClientId || !item.assignTo.trim() || !item.analysis) return
     try {
-      const id = await storeTranscriptAnalysis(item.file, item.assignTo.trim(), item.analysis)
+      const id = await storeTranscriptAnalysis(item.file, item.assignTo.trim(), item.analysis, null, item.assignClientId)
       seenRef.current.add(item.key)
       setUnmatched(u => u.filter(x => x.key !== item.key))
       setImported(im => [...im, { file: item.fileName, client: item.assignTo.trim(), year: item.analysis.tax_year, type: item.analysis.transcript_type }])
-      const open = requests.filter(r => (r.status === 'Requested' || r.status === 'In Progress') && nameKey(r.client_name) === nameKey(item.assignTo))
+      const open = requests.filter(r => (r.status === 'Requested' || r.status === 'In Progress') && (
+        (r.client_id && String(r.client_id) === String(item.assignClientId)) ||
+        (!r.client_id && nameKey(r.client_name) === nameKey(item.assignTo))
+      ))
       if (open[0]) {
         try {
           await refreshCoverage(open[0], id)
@@ -430,8 +433,15 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 ) : (
                   <>
                     <span style={{ color: 'var(--t3)' }}>name on transcript: <b>{u.analysis?.taxpayer_name || 'not found'}</b></span>
-                    <input list="irsportal-clients" placeholder="Assign to client…" value={u.assignTo} style={{ width: 200 }} onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))} />
-                    <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()} onClick={() => assignUnmatched(u)}>File It</button>
+                    <select value={u.assignClientId || ''} style={{ width: 240 }} onChange={e => {
+                      const id = e.target.value
+                      const row = clients.find(c => String(c.id) === String(id))
+                      setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignClientId: id, assignTo: row?.name || '' } : i))
+                    }}>
+                      <option value="">Assign to client…</option>
+                      {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignClientId} onClick={() => assignUnmatched(u)}>File It</button>
                     <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setUnmatched(x => x.filter(i => i.key !== u.key))}>Skip</button>
                   </>
                 )}
