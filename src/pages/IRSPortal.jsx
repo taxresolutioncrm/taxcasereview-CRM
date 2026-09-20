@@ -340,37 +340,103 @@ export default function IRSPortal() {
                             </tr>
                             {expanded === r.id && (
                               <tr key={r.id + '-detail'}>
-                                <td colSpan={9} style={{ padding: '10px 16px', background: 'var(--s1)', borderTop: '1px solid var(--line)' }}>
-                                  {(r.raw_analysis?.transactions || []).length > 0 && (
-                                    <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Transaction History</div>
-                                      <table style={{ borderCollapse: 'collapse', fontSize: 11.5 }}>
-                                        <tbody>
-                                          {(r.raw_analysis.transactions || []).map((t, i) => (
-                                            <tr key={i}>
-                                              <td style={{ padding: '3px 10px 3px 0', color: 'var(--t3)', fontFamily: 'monospace' }}>{t.code}</td>
-                                              <td style={{ padding: '3px 10px 3px 0', color: 'var(--t2)' }}>{t.date}</td>
-                                              <td style={{ padding: '3px 10px 3px 0' }}>{t.description}</td>
-                                              <td style={{ padding: '3px 0', textAlign: 'right' }}>{money(t.amount)}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  )}
-                                  {(r.raw_analysis?.wage_income || []).length > 0 && (
-                                    <div>
-                                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Wage & Income Documents</div>
-                                      {(r.raw_analysis.wage_income || []).map((w, i) => (
-                                        <div key={i} style={{ fontSize: 11.5, color: 'var(--t2)', padding: '2px 0' }}>
-                                          {w.form} — {w.payer} {w.amount ? `(${money(w.amount)})` : ''}
+                                <td colSpan={9} style={{ padding: '14px 16px', background: 'var(--s1)', borderTop: '1px solid var(--line)' }}>
+                                  {(() => {
+                                    const a = r.raw_analysis || {}
+                                    const tx = a.transactions || []
+                                    const payments = tx.filter(t => /payment|credit|refund/i.test(String(t.description || '')))
+                                    const bankruptcy = tx.filter(t => /bankrupt/i.test(String(t.description || '')))
+                                    const assessment = tx.find(t => String(t.code || '') === '150') || null
+                                    const sectionStyle = { background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 9, padding: 12 }
+                                    const labelStyle = { color: 'var(--t3)', fontSize: 10.5, marginBottom: 3 }
+                                    const valueStyle = { fontWeight: 700, fontSize: 12.5 }
+                                    return (
+                                      <div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 10, marginBottom: 10 }}>
+                                          <div style={sectionStyle}>
+                                            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Account Overview</div>
+                                            <div style={labelStyle}>Tax year / transcript</div>
+                                            <div style={valueStyle}>{r.tax_year || '—'} · {r.transcript_type || '—'}</div>
+                                            <div style={{ ...labelStyle, marginTop: 7 }}>Filing status</div>
+                                            <div style={valueStyle}>{a.filing_status || '—'}</div>
+                                            <div style={{ ...labelStyle, marginTop: 7 }}>Account balance</div>
+                                            <div style={valueStyle}>{money(r.total_balance)}</div>
+                                          </div>
+                                          <div style={sectionStyle}>
+                                            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>CSED Calculations</div>
+                                            <div style={labelStyle}>Assessment date</div>
+                                            <div style={valueStyle}>{r.assessment_date || '—'}</div>
+                                            <div style={{ ...labelStyle, marginTop: 7 }}>Estimated CSED</div>
+                                            <div style={valueStyle}>{r.csed_estimate || '—'}</div>
+                                            <div style={{ color: 'var(--t3)', fontSize: 10.5, marginTop: 7 }}>Estimate only; tolling events can extend the date.</div>
+                                          </div>
+                                          <div style={sectionStyle}>
+                                            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Penalties and Interest</div>
+                                            <div style={labelStyle}>Accrued penalties</div>
+                                            <div style={valueStyle}>{money(r.accrued_penalty)}</div>
+                                            <div style={{ ...labelStyle, marginTop: 7 }}>Accrued interest</div>
+                                            <div style={valueStyle}>{money(r.accrued_interest)}</div>
+                                          </div>
+                                          <div style={sectionStyle}>
+                                            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Assessment Overview</div>
+                                            <div style={labelStyle}>Return / assessment transaction</div>
+                                            <div style={valueStyle}>{assessment ? `${assessment.code} · ${assessment.date}` : (r.assessment_date || '—')}</div>
+                                            <div style={{ ...labelStyle, marginTop: 7 }}>Amount</div>
+                                            <div style={valueStyle}>{assessment ? money(assessment.amount) : '—'}</div>
+                                          </div>
                                         </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {(!(r.raw_analysis?.transactions || []).length && !(r.raw_analysis?.wage_income || []).length) && (
-                                    <div style={{ color: 'var(--t3)', fontSize: 12 }}>No transaction or wage detail extracted for this transcript.</div>
-                                  )}
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 10, marginBottom: 10 }}>
+                                          <div style={sectionStyle}>
+                                            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Payment History</div>
+                                            {payments.length ? payments.map((t, i) => (
+                                              <div key={i} style={{ display: 'grid', gridTemplateColumns: '55px 86px 1fr auto', gap: 8, fontSize: 11.5, padding: '3px 0' }}>
+                                                <span style={{ fontFamily: 'monospace', color: 'var(--t3)' }}>{t.code}</span>
+                                                <span style={{ color: 'var(--t2)' }}>{t.date}</span>
+                                                <span>{t.description}</span>
+                                                <span>{money(t.amount)}</span>
+                                              </div>
+                                            )) : <div style={{ color: 'var(--t3)', fontSize: 11.5 }}>No payment/refund transactions extracted.</div>}
+                                          </div>
+                                          <div style={sectionStyle}>
+                                            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Bankruptcy</div>
+                                            {bankruptcy.length ? bankruptcy.map((t, i) => (
+                                              <div key={i} style={{ fontSize: 11.5, padding: '3px 0' }}>{t.date} · {t.description}</div>
+                                            )) : <div style={{ color: 'var(--t3)', fontSize: 11.5 }}>No bankruptcy transactions extracted.</div>}
+                                          </div>
+                                        </div>
+
+                                        <div style={{ ...sectionStyle, marginBottom: 10 }}>
+                                          <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Account Transactions</div>
+                                          {tx.length ? (
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                                              <tbody>
+                                                {tx.map((t, i) => (
+                                                  <tr key={i} style={{ borderTop: i ? '1px solid var(--line)' : 'none' }}>
+                                                    <td style={{ padding: '5px 10px 5px 0', color: 'var(--t3)', fontFamily: 'monospace', width: 55 }}>{t.code}</td>
+                                                    <td style={{ padding: '5px 10px 5px 0', color: 'var(--t2)', width: 90 }}>{t.date}</td>
+                                                    <td style={{ padding: '5px 10px 5px 0' }}>{t.description}</td>
+                                                    <td style={{ padding: '5px 0', textAlign: 'right', width: 110 }}>{money(t.amount)}</td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          ) : <div style={{ color: 'var(--t3)', fontSize: 11.5 }}>No account transactions extracted.</div>}
+                                        </div>
+
+                                        {(a.wage_income || []).length > 0 && (
+                                          <div style={sectionStyle}>
+                                            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Wage & Income Documents</div>
+                                            {(a.wage_income || []).map((w, i) => (
+                                              <div key={i} style={{ fontSize: 11.5, color: 'var(--t2)', padding: '3px 0' }}>
+                                                {w.form} — {w.payer} {w.amount ? `(${money(w.amount)})` : ''}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
                                 </td>
                               </tr>
                             )}
