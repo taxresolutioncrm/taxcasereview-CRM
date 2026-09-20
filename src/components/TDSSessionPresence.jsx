@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function TDSSessionPresence() {
+export default function TDSSessionPresence({ onSessionChange }) {
   const [status, setStatus] = useState({
     sessionSetupConfigured: false,
     sessionActive: false,
@@ -29,6 +29,7 @@ export default function TDSSessionPresence() {
         authorizationError: data?.authorizationError || null,
       })
       setError('')
+      if (onSessionChange) await onSessionChange()
     } catch (e) {
       setStatus({ sessionSetupConfigured: false, sessionActive: false, expiresAt: null, organizationName: null, authorizationError: null })
       setError(e?.message || 'Could not check your IRS TDS session.')
