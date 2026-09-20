@@ -433,7 +433,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         </div>
 
         <div style={{ padding: 18 }}>
-          <TDSSessionPresence />
+          <TDSSessionPresence onStatusChange={(st) => {
+            setProviders(current => current.map(p => p.id === 'irs_a2a'
+              ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
+              : p))
+          }} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1.4fr) minmax(180px,.8fr)', gap: 12, alignItems: 'start' }}>
             <div>
