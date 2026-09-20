@@ -40,6 +40,8 @@ if(fs.existsSync('supabase/functions/transcript-pull/index.ts')){
     "provider_result_keys",
     "storage.from('documents')",
     "upsert: false",
+    "return_origin: returnOrigin",
+    "IRS_TDS_ALLOWED_ORIGINS",
   ]) must(s.includes(needle), 'transcript-pull missing '+needle)
   must(!/canopytax\.com/i.test(s),'transcript-pull must not depend on Canopy private APIs')
   must(!/irs[_ -]?(password|2fa|two.?factor)[_ -]?(secret|code)?/i.test(s),'transcript-pull must never handle IRS password/2FA secrets')
@@ -58,6 +60,8 @@ if(fs.existsSync('supabase/functions/transcript-pull-callback/index.ts')){
     "IRS_TDS_CRM_ORIGIN",
     "https://taxrescrm.app",
     "type: 'taxres-irs-tds-oauth'",
+    "session.return_origin",
+    "IRS_TDS_ALLOWED_ORIGINS",
   ]) must(s.includes(needle), 'transcript callback missing '+needle)
 }
 
@@ -79,7 +83,9 @@ if(fs.existsSync('src/lib/transcriptPull.js')){
 if(fs.existsSync('src/components/TranscriptPull.jsx')){
   const s=read('src/components/TranscriptPull.jsx')
   must(s.includes('<TDSSessionPresence onSessionChange={refreshProviders} />'),'TranscriptPull must refresh provider capability after IRS sign-in')
-  must(s.includes('client_id: poa.client_id || null'),'TranscriptPull must persist stable client identity')
+  must(s.includes('client_id: form.clientId || poa.client_id || null'),'TranscriptPull must persist stable client identity')
+  must(s.includes("clients = []"),'TranscriptPull must receive stable client records')
+  must(s.includes("assignClientId"),'TranscriptPull manual assignment must preserve stable client identity')
   must(s.includes('Retry Direct'),'TranscriptPull must support provider retry')
 }
 
@@ -109,6 +115,7 @@ if(fs.existsSync('supabase/migrations/20260920030000_taxres_transcript_family_ha
     "current_employee_permission('perm_irs')>=2",
     "current_employee_permission('perm_irs')>=3",
     'revoke all on table public.irs_tds_sessions from anon, authenticated',
+    'add column if not exists return_origin text',
     'provider_result_keys text[]',
     'provider_filed_keys text[]',
   ]) must(m.includes(needle),'transcript migration missing '+needle)
@@ -131,6 +138,9 @@ if(fs.existsSync('src/pages/IRSPortal.jsx')){
   const p=read('src/pages/IRSPortal.jsx')
   must(p.includes("import TranscriptReports from '../components/TranscriptReports'"),'IRS Portal must import transcript reports')
   must(p.includes('<TranscriptReports rows={rows} money={money} openTranscriptFile={openTranscriptFile} />'),'IRS Portal must render transcript reports')
+  must(p.includes("select('id,name')"),'IRS Portal must load stable client IDs')
+  must(p.includes("client_id: poaForm.clientId || null"),'POA records must persist stable client identity')
+  must(p.includes("clients={clients}"),'IRS Portal must pass stable client records into transcript pulls')
   must(!p.includes('restricted TDS pull'),'IRS Portal contains obsolete restricted-TDS copy')
 }
 
