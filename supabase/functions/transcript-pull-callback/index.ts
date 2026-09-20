@@ -121,12 +121,12 @@ serve(async (req) => {
       client_assertion: await createClientAssertion(),
     })
     const tokenResp = await fetch(TOKEN_URL(), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form }), text = await tokenResp.text()
-    let tokenData: any = {}; try { tokenData = text ? JSON.parse(text) : {} } catch { return html('IRS TDS connection failed', `IRS token exchange returned an unexpected response (${tokenResp.status}).`, 502) }
-    if (!tokenResp.ok) return html('IRS TDS connection failed', `IRS token exchange failed (${tokenResp.status}).`, 502)
-    const accessToken = String(tokenData?.access_token || '').trim(), refreshToken = String(tokenData?.refresh_token || '').trim(); if (!accessToken || !refreshToken) return html('IRS TDS connection failed', 'IRS token response did not include both access and refresh tokens.', 502)
+    let tokenData: any = {}; try { tokenData = text ? JSON.parse(text) : {} } catch { return html('IRS TDS connection failed', `IRS token exchange returned an unexpected response (${tokenResp.status}).`, 502, returnOrigin) }
+    if (!tokenResp.ok) return html('IRS TDS connection failed', `IRS token exchange failed (${tokenResp.status}).`, 502, returnOrigin)
+    const accessToken = String(tokenData?.access_token || '').trim(), refreshToken = String(tokenData?.refresh_token || '').trim(); if (!accessToken || !refreshToken) return html('IRS TDS connection failed', 'IRS token response did not include both access and refresh tokens.', 502, returnOrigin)
     const seconds = Math.max(60, Math.min(Number(tokenData?.expires_in || 900) || 900, 900)), now = Date.now()
     const { error: saveErr } = await service.from('irs_tds_sessions').update({ access_token_ciphertext: await encryptText(accessToken), refresh_token_ciphertext: await encryptText(refreshToken), access_expires_at: new Date(now + seconds * 1000).toISOString(), session_expires_at: new Date(now + 60 * 60 * 1000).toISOString(), updated_at: new Date().toISOString() }).eq('id', session.id)
-    if (saveErr) return html('IRS TDS connection failed', 'Authorization succeeded but the CRM could not store the short-lived session.', 500)
+    if (saveErr) return html('IRS TDS connection failed', 'Authorization succeeded but the CRM could not store the short-lived session.', 500, returnOrigin)
     return html('IRS TDS connected', 'You can close this window and return to the CRM.', 200, returnOrigin)
   } catch (e) { return html('IRS TDS connection failed', e instanceof Error ? e.message : 'Unexpected callback error.', 500) }
 })
