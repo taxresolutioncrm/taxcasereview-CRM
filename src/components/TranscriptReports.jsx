@@ -68,8 +68,8 @@ export default function TranscriptReports({ rows, money, openTranscriptFile }) {
           <tbody>{rows.map(r => {
             const a = r.raw_analysis || {}
             const tx = a.transactions || []
-            const payments = tx.filter(t => /payment|credit|withholding|estimated tax/i.test(String(t.description || ''))).reduce((n,t) => n + Math.abs(Number(t.amount || 0)),0)
-            const refunds = tx.filter(t => /refund/i.test(String(t.description || ''))).reduce((n,t) => n + Math.abs(Number(t.amount || 0)),0)
+            const payments = a.payments_credits ?? tx.filter(t => !/refund/i.test(String(t.description || '')) && /payment|credit|withholding|estimated tax/i.test(String(t.description || ''))).reduce((n,t) => n + Math.abs(Number(t.amount || 0)),0)
+            const refunds = a.refunds ?? tx.filter(t => /refund/i.test(String(t.description || ''))).reduce((n,t) => n + Math.abs(Number(t.amount || 0)),0)
             const filed = r.flags?.unfiled_return ? 'No record' : (a.return_filed_date ? 'Yes' : '—')
             return <tr key={r.id} style={{ borderTop: '1px solid var(--line)' }}>
               <td style={{ padding: '7px 9px', fontWeight: 700 }}>{r.tax_year || '—'}</td>
@@ -77,7 +77,7 @@ export default function TranscriptReports({ rows, money, openTranscriptFile }) {
               <td style={{ padding: '7px 9px' }}>{filed}</td>
               <td style={{ padding: '7px 9px' }}>{a.return_filed_date || '—'}</td>
               <td style={{ padding: '7px 9px' }}>{a.filing_status || '—'}</td>
-              <td style={{ padding: '7px 9px', textAlign: 'right' }}>{money(r.total_balance)}</td>
+              <td style={{ padding: '7px 9px', textAlign: 'right' }}>{money(a.principal_tax)}</td>
               <td style={{ padding: '7px 9px', textAlign: 'right' }}>{money(r.accrued_interest)}</td>
               <td style={{ padding: '7px 9px', textAlign: 'right' }}>{money(r.accrued_penalty)}</td>
               <td style={{ padding: '7px 9px', textAlign: 'right' }}>{payments ? money(payments) : '—'}</td>
