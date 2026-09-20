@@ -125,33 +125,44 @@ export async function parseTranscriptFile(file) {
 }
 
 export async function storeTranscriptAnalysis(file, clientName, a, existing = null) {
-  const client = clientName.trim()
-  if (!client) throw new Error('Client name is required before filing a transcript.')
+  const clientNameInput = String(clientName || '').trim()
+  if (!clientNameInput) throw new Error('Client name is required before filing a transcript.')
   if (!file) throw new Error('Transcript PDF is required.')
+
+  const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
+  if (tenantErr || !tenantId) throw new Error(`Could not resolve office tenant: ${tenantErr?.message || 'No tenant returned'}`)
+
   let clientId = existing?.clientId || null
-  if (!clientId) {
-    const { data: matches, error: clientErr } = await supabase.from('clients').select('id').eq('name', client).limit(2)
-    if (!clientErr && matches?.length === 1) clientId = matches[0].id
+  let canonicalName = clientNameInput
+  if (clientId) {
+    const { data: row, error } = await supabase.from('clients').select('id,name').eq('tenant_id', tenantId).eq('id', clientId).maybeSingle()
+    if (error || !row) throw new Error('The transcript client is no longer available in this office.')
+    canonicalName = row.name || canonicalName
+  } else {
+    const { data: matches, error } = await supabase.from('clients').select('id,name').eq('tenant_id', tenantId).ilike('name', clientNameInput).limit(2)
+    if (error) throw new Error(error.message)
+    if ((matches || []).length !== 1) throw new Error((matches || []).length === 0
+      ? `Could not resolve "${clientNameInput}" to one client in this office.`
+      : `More than one client matches "${clientNameInput}". Select the exact client record.`)
+    clientId = matches[0].id
+    canonicalName = matches[0].name || canonicalName
   }
-  const safeClient = client.replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 100) || 'client'
+
   const safeFile = String(file.name || 'transcript.pdf').replace(/[\\/\r\n]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 140) || 'transcript.pdf'
   const uploadedHere = !existing?.filePath
-  const filePath = existing?.filePath || `transcripts/${safeClient}/${crypto.randomUUID()}-${safeFile}`
+  const filePath = existing?.filePath || `transcripts/${clientId}/${crypto.randomUUID()}-${safeFile}`
   if (uploadedHere) {
     const { error: uploadErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
     if (uploadErr) throw new Error(`Transcript PDF upload failed: ${uploadErr.message}`)
   }
+
+  const durableUrl = `storage://documents/${filePath}`
   let analysisId = null
   try {
-    let fileUrl = existing?.signedUrl || null
-    if (!fileUrl) {
-      const { data: signed, error: signErr } = await supabase.storage.from('documents').createSignedUrl(filePath, 900)
-      if (signErr || !signed?.signedUrl) throw new Error(`Secure transcript link failed: ${signErr?.message || 'No signed URL returned'}`)
-      fileUrl = signed.signedUrl
-    }
     const { data: analysis, error: analysisErr } = await supabase.from('transcript_analyses').insert({
+      tenant_id: tenantId,
       client_id: clientId,
-      client_name: client,
+      client_name: canonicalName,
       tax_year: a.tax_year || null,
       transcript_type: a.transcript_type || null,
       total_balance: a.account_balance ?? null,
@@ -161,20 +172,23 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
       csed_estimate: a.csed_estimate || null,
       flags: a.flags || {},
       raw_analysis: a,
-      file_url: fileUrl,
+      file_url: durableUrl,
       file_path: filePath,
     }).select('id').single()
     if (analysisErr || !analysis?.id) throw new Error(`Transcript analysis save failed: ${analysisErr?.message || 'No analysis ID returned'}`)
     analysisId = analysis.id
+
     const title = ['IRS', a.transcript_type || 'Transcript', a.tax_year || ''].filter(Boolean).join(' ')
     const bal = a.account_balance
     const { error: documentErr } = await supabase.from('documents').insert([{
+      tenant_id: tenantId,
       name: title,
-      client,
+      client: canonicalName,
+      clientname: canonicalName,
       client_id: clientId,
       docType: 'Transcripts',
       notes: bal !== null && bal !== undefined ? `Auto-imported. Balance: $${Number(bal).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'Auto-imported.',
-      file_url: fileUrl,
+      file_url: durableUrl,
       storage_path: filePath,
       file_name: file.name,
       file_size: file.size,
@@ -192,7 +206,6 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
     throw e
   }
 }
-
 async function finalizeDirectDelivery(req, result) {
   if (!result?.signedUrl || !result?.filePath || !result?.resultKey) throw new Error('IRS TDS delivered a transcript without a complete secure result reference.')
   const response = await fetch(result.signedUrl)
