@@ -11,9 +11,9 @@ import {
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
-const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'manual', notes: '' }
+const BLANK = { clientId: '', clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'manual', notes: '' }
 
-export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa, onImported }) {
+export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
   const [providers, setProviders] = useState(PULL_PROVIDERS.map(p => ({ ...p })))
   const [requests, setRequests] = useState([])
@@ -126,10 +126,15 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
     }
   }
 
-  function poaOnFile(clientName) {
-    return poas.find(p => p.status === 'On File' && nameKey(p.client_name) === nameKey(clientName))
+  function poaOnFile(clientName, clientId = '') {
+    if (clientId) {
+      const byId = poas.find(p => p.status === 'On File' && String(p.client_id || '') === String(clientId))
+      if (byId) return byId
+    }
+    const matches = poas.filter(p => p.status === 'On File' && nameKey(p.client_name) === nameKey(clientName))
+    return matches.length === 1 ? matches[0] : null
   }
-  const formPoa = poaOnFile(form.clientName)
+  const formPoa = poaOnFile(form.clientName, form.clientId)
 
   function openNewRequest() {
     const direct = providers.find(p => p.id === 'irs_a2a' && p.available)
@@ -139,7 +144,7 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
 
   async function createRequest() {
     if (!form.clientName.trim() || form.types.length === 0) return
-    const poa = poaOnFile(form.clientName)
+    const poa = poaOnFile(form.clientName, form.clientId)
     const provider = getProvider(form.provider, providers)
     if (!poa || !provider?.available) return
     setSaving(true)
@@ -148,7 +153,7 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
       const row = {
         id: crypto.randomUUID(),
         client_name: form.clientName.trim(),
-        client_id: poa.client_id || null,
+        client_id: form.clientId || poa.client_id || null,
         transcript_types: form.types,
         tax_years: form.taxYears.trim() || null,
         provider: form.provider,
@@ -265,7 +270,7 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
     const open = requests.filter(r => r.status === 'Requested' || r.status === 'In Progress')
     const req = open.find(r => namesMatch(tp, r.client_name))
     if (req) {
-      const id = await storeTranscriptAnalysis(file, req.client_name, a)
+      const id = await storeTranscriptAnalysis(file, req.client_name, a, null, req.client_id || null)
       seenRef.current.add(key)
       setUnmatched(u => u.filter(x => x.key !== key))
       setImported(im => [...im, { file: file.name, client: req.client_name, year: a.tax_year, type: a.transcript_type }])
@@ -276,12 +281,13 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
       }
       return true
     }
-    const client = clientNames.find(c => namesMatch(tp, c))
-    if (client) {
-      await storeTranscriptAnalysis(file, client, a)
+    const clientMatches = clients.filter(c => namesMatch(tp, c.name))
+    if (clientMatches.length === 1) {
+      const client = clientMatches[0]
+      await storeTranscriptAnalysis(file, client.name, a, null, client.id)
       seenRef.current.add(key)
       setUnmatched(u => u.filter(x => x.key !== key))
-      setImported(im => [...im, { file: file.name, client, year: a.tax_year, type: a.transcript_type }])
+      setImported(im => [...im, { file: file.name, client: client.name, year: a.tax_year, type: a.transcript_type }])
       return true
     }
     setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: a, assignTo: '' }])
@@ -492,7 +498,14 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-                <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Client name" />
+                <select value={form.clientId || ''} onChange={e => {
+                  const id = e.target.value
+                  const row = clients.find(c => String(c.id) === String(id))
+                  setForm(f => ({ ...f, clientId: id, clientName: row?.name || '' }))
+                }} style={inputStyle}>
+                  <option value="">Select client…</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
                 {form.clientName.trim() && (formPoa ? (
                   <div style={{ fontSize: 11.5, color: '#15803d', marginTop: 4 }}>✅ POA on file — Form {formPoa.form_type}{formPoa.tax_years ? ` · years ${formPoa.tax_years}` : ''}</div>
                 ) : (
@@ -516,7 +529,7 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button className="btn sec" onClick={() => setModal(false)}>Cancel</button>
-              <button className="btn" disabled={saving || !form.clientName.trim() || form.types.length === 0 || !formPoa || !getProvider(form.provider, providers)?.available} onClick={createRequest}>{saving ? 'Creating…' : form.provider === 'irs_a2a' ? 'Submit Direct Pull' : 'Create Request'}</button>
+              <button className="btn" disabled={saving || !form.clientId || !form.clientName.trim() || form.types.length === 0 || !formPoa || !getProvider(form.provider, providers)?.available} onClick={createRequest}>{saving ? 'Creating…' : form.provider === 'irs_a2a' ? 'Submit Direct Pull' : 'Create Request'}</button>
             </div>
           </div>
         </div>
