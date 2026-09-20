@@ -4,7 +4,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const env = (name: string) => (Deno.env.get(name) || '').trim()
 const TOKEN_URL = () => env('IRS_TDS_ISP_TOKEN_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/token'
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
-const CRM_ORIGIN = env('IRS_TDS_CRM_ORIGIN') || 'https://taxrescrm.app'
+const DEFAULT_CRM_ORIGIN = env('IRS_TDS_CRM_ORIGIN') || 'https://taxrescrm.app'
+function safeCrmOrigin(value: string) {
+  try {
+    const u = new URL(value || DEFAULT_CRM_ORIGIN)
+    const configured = env('IRS_TDS_ALLOWED_ORIGINS').split(',').map(v => v.trim()).filter(Boolean)
+    if (configured.includes(u.origin)) return u.origin
+    if (u.protocol === 'https:' && (u.hostname === 'taxrescrm.app' || u.hostname.endsWith('.taxrescrm.app'))) return u.origin
+  } catch { /* fail closed */ }
+  return DEFAULT_CRM_ORIGIN
+}
+
 
 function b64url(bytes: Uint8Array) { let s = ''; bytes.forEach(b => { s += String.fromCharCode(b) }); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '') }
 function b64urlJson(value: unknown) { return b64url(new TextEncoder().encode(JSON.stringify(value))) }
@@ -56,13 +66,13 @@ async function createClientAssertion() {
 }
 async function tokenKey() { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env('SUPABASE_SERVICE_ROLE_KEY') + ':irs-tds-session:v2')); return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt']) }
 async function encryptText(value: string) { const iv = new Uint8Array(12); crypto.getRandomValues(iv); const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await tokenKey(), new TextEncoder().encode(value))); return `${b64url(iv)}.${b64url(cipher)}` }
-function html(title: string, message: string, status = 200) {
+function html(title: string, message: string, status = 200, returnOrigin = DEFAULT_CRM_ORIGIN) {
   const payload = JSON.stringify({
     type: 'taxres-irs-tds-oauth',
     ok: status < 400,
     message,
   }).replace(/</g, '\\u003c')
-  const target = JSON.stringify(CRM_ORIGIN)
+  const target = JSON.stringify(safeCrmOrigin(returnOrigin))
   return new Response(
     `<!doctype html><html><body style="font-family:system-ui;padding:32px"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p><script>try{window.opener&&window.opener.postMessage(${payload},${target})}catch(e){};setTimeout(()=>window.close(),1200)</script></body></html>`,
     {
@@ -100,8 +110,9 @@ serve(async (req) => {
       .maybeSingle()
     if (claimErr || !claimed?.id) return html('IRS TDS connection failed', 'This IRS authorization response was already used. Start a new sign-in from the CRM.', 400)
 
-    if (providerError) return html('IRS TDS connection denied', providerError, 400)
-    if (!code) return html('IRS TDS connection failed', 'IRS authorization did not return a code.', 400)
+    const returnOrigin = safeCrmOrigin(String(session.return_origin || ''))
+    if (providerError) return html('IRS TDS connection denied', providerError, 400, returnOrigin)
+    if (!code) return html('IRS TDS connection failed', 'IRS authorization did not return a code.', 400, returnOrigin)
     const form = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
@@ -116,6 +127,6 @@ serve(async (req) => {
     const seconds = Math.max(60, Math.min(Number(tokenData?.expires_in || 900) || 900, 900)), now = Date.now()
     const { error: saveErr } = await service.from('irs_tds_sessions').update({ access_token_ciphertext: await encryptText(accessToken), refresh_token_ciphertext: await encryptText(refreshToken), access_expires_at: new Date(now + seconds * 1000).toISOString(), session_expires_at: new Date(now + 60 * 60 * 1000).toISOString(), updated_at: new Date().toISOString() }).eq('id', session.id)
     if (saveErr) return html('IRS TDS connection failed', 'Authorization succeeded but the CRM could not store the short-lived session.', 500)
-    return html('IRS TDS connected', 'You can close this window and return to the CRM.')
+    return html('IRS TDS connected', 'You can close this window and return to the CRM.', 200, returnOrigin)
   } catch (e) { return html('IRS TDS connection failed', e instanceof Error ? e.message : 'Unexpected callback error.', 500) }
 })
