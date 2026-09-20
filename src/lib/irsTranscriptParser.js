@@ -111,6 +111,17 @@ export function parseIrsTranscript(text) {
   const codes = new Set(transactions.map(t => t.code))
 
   const tc150 = transactions.find(t => t.code === '150')
+  const assessmentCodes = new Set(['150','290','300','308'])
+  const principalTaxParts = transactions.filter(t => assessmentCodes.has(t.code) && Number.isFinite(Number(t.amount)))
+  const principalTax = principalTaxParts.length
+    ? principalTaxParts.reduce((sum, t) => sum + Number(t.amount || 0), 0)
+    : null
+  const paymentCreditTotal = transactions
+    .filter(t => !/refund/i.test(String(t.description || '')) && /payment|credit|withholding|estimated tax/i.test(String(t.description || '')))
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0)
+  const refundTotal = transactions
+    .filter(t => /refund/i.test(String(t.description || '')))
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0)
   const accountBalance = grabAmount(text, 'ACCOUNT BALANCE')
   const nonFiling = type === 'Verification of Non-Filing' ||
     /couldn'?t be found|no record of (?:a )?return filed/i.test(text)
@@ -121,6 +132,9 @@ export function parseIrsTranscript(text) {
     taxpayer_name: grabText(text, '(?:NAME\\(S\\) SHOWN ON RETURN|Taxpayer Name)') || null,
     filing_status: grabText(text, 'FILING STATUS'),
     account_balance: accountBalance,
+    principal_tax: principalTax,
+    payments_credits: paymentCreditTotal || null,
+    refunds: refundTotal || null,
     accrued_penalty: grabAmount(text, 'ACCRUED PENALTY'),
     accrued_interest: grabAmount(text, 'ACCRUED INTEREST'),
     adjusted_gross_income: grabAmount(text, 'ADJUSTED GROSS INCOME'),
