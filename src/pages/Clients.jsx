@@ -971,11 +971,11 @@ export default function Clients() {
   const openedFromCases = searchParams.get('from') === 'cases'
   const { user, searchQ, myTenantId } = useApp()
 
-  // Cache settings at load time — avoids re-fetching signalwire_backend on every action
+  // Cache office communications settings at load time
   const settingsRef = useRef(null)
   async function getSettings() {
     if (settingsRef.current) return settingsRef.current
-    const { data } = await supabase.from('settings').select('signalwire_backend,sw_inbound_did,sw_space_url').limit(1).maybeSingle()
+    const { data } = await supabase.from('settings').select('sw_inbound_did,sw_space_url').limit(1).maybeSingle()
     settingsRef.current = data || {}
     return settingsRef.current
   }
