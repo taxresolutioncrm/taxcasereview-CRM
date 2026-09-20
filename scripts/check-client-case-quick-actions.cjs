@@ -12,10 +12,8 @@ const docUtils=fs.readFileSync('src/lib/docUtils.js','utf8')
 const organizerRpcMigration=fs.readFileSync('supabase/migrations/20260919235000_taxres_family_organizer_public_rpcs.sql','utf8')
 const sendSms=fs.readFileSync('supabase/functions/send-sms/index.ts','utf8')
 const sendFax=fs.readFileSync('supabase/functions/send-fax/index.ts','utf8')
-const sendFax=fs.readFileSync('supabase/functions/send-fax/index.ts','utf8')
 const app=fs.readFileSync('src/App.jsx','utf8')
 const irsForms=fs.readFileSync('src/lib/irsFormUtils.js','utf8')
-const docUtils=fs.readFileSync('src/lib/docUtils.js','utf8')
 
 const requiredStateForms=['FL_POA.pdf','NC_POA.pdf','TX_POA.pdf','OH_POA.pdf','NY_POA.pdf','PA_POA.pdf','CA_POA.pdf','GA_POA.pdf','IL_POA.pdf','MA_POA.pdf','MO_POA.pdf','OR_POA.pdf','TN_POA.pdf','Washington_POA.pdf','Wyoming.pdf','AZ_POA.pdf','ID_POA.pdf']
 const requiredIrsTemplates=['2848_Pers_RC.pdf','2848_RC_Biz.pdf','8821_Pers_RC.pdf','8821_Biz_RC.pdf','433A_Blank.pdf','433B_Blank.pdf','433D_Blank.pdf','433F_Blank.pdf','433H_Blank.pdf','656L_Blank.pdf','433A_OIC_Blank.pdf']
