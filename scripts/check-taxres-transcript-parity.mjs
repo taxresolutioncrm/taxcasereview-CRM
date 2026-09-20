@@ -43,7 +43,7 @@ for(const n of [
 
 for(const n of [
   'new URL(data.redirectUri).origin',
-  'Sign in through IRS e-Services with ID.me and 2FA',
+  'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.',
   'sessionActive'
 ]) need(session,n)
 
@@ -54,19 +54,32 @@ for(const n of [
 
 for(const n of [
   'Transcript Analysis','Pull Transcripts','POA / CAF Tracker',
-  'Transaction History','Wage & Income Documents','Est. CSED',
+  'Account Overview','CSED Calculations','Penalties and Interest','Payment History','Bankruptcy','Account Transactions','Assessment Overview',
+  'Wage & Income Documents','Est. CSED',
   "client_id: clientRow.id",
   "storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })",
   "<TranscriptPull clientNames={clientNames} clients={clients}"
 ]) need(portal,n)
 
 for(const n of [
-  'When IRS TDS ISP is connected',
-  "storeTranscriptAnalysis(file, req.client_name, a, { clientId: req.client_id || null })",
+  'IRS Transcript Delivery',
+  'Sign in once, choose the client, years and transcript types, then request.',
   'Request Transcripts',
+  'Returned PDFs attach to the selected client file automatically.',
+  'Manual PDF fallback',
+  'onStatusChange={(st) =>',
+  'directAvailable',
   'const formClient = uniqueClientForName(form.clientName)',
-  'client_id: client.id'
+  'client_id: client.id',
+  "provider: 'irs_a2a'"
 ]) need(pullUi,n)
+
+if(fs.existsSync(pullUi)){
+  const ui=read(pullUi)
+  for(const old of ['Watched TDS Download Folder','providers.map(p =>','New Transcript Pull Request']){
+    if(ui.includes(old)) failures.push('TranscriptPull: legacy primary UI still present: '+old)
+  }
+}
 
 for(const n of [
   'create table if not exists public.transcript_pull_requests',

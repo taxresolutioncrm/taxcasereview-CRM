@@ -513,8 +513,13 @@ export default function Sidebar() {
           return
         }
       } catch (_) {}
-      // Normal path — RLS scopes to the logged-in tenant automatically.
-      const { data: s } = await supabase.from('settings').select('name,tagline,logourl').limit(1).maybeSingle()
+      // Normal path — bind branding to the active tenant explicitly.
+      const { data: tenantId } = await supabase.rpc('current_tenant_id')
+      if (!tenantId) return
+      const { data: s } = await supabase.from('settings')
+        .select('name,tagline,logourl')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
       if (s?.name) {
         setFirmName(s.name)
         FIRM.name = s.name
@@ -568,7 +573,7 @@ export default function Sidebar() {
           if (item.badge === 'timeoff') return sum + Number(pendingTimeOff || 0)
           return sum + Number(BADGE_COUNTS[item.badge] || 0)
         }, 0)
-        const sectionNeedsAttention = !section.always && !isOpen && sectionAlertCount > 0
+        const sectionNeedsAttention = !section.always && section.key !== 'clientwork' && !isOpen && sectionAlertCount > 0
 
         return (
           <div key={section.key}>
