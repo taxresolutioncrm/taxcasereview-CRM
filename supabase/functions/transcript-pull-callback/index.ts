@@ -105,6 +105,7 @@ serve(async (req) => {
     const form = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
+      redirect_uri: env('IRS_TDS_REDIRECT_URI'),
       client_assertion_type: ASSERTION_TYPE,
       client_assertion: await createClientAssertion(),
     })
