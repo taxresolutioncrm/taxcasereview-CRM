@@ -3,17 +3,15 @@ import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { parseTranscriptFile, storeTranscriptAnalysis } from '../lib/transcriptPull'
 import TranscriptPull from '../components/TranscriptPull'
+import TranscriptReports from '../components/TranscriptReports'
 
 // ── IRS Portal ──
 // Two tools that together close the POA -> transcripts loop:
 //
-// 1. Transcript Analysis: upload IRS transcript PDFs (pulled from TDS /
-//    e-Services the normal way), parse them with the parse-transcript
-//    edge function (Claude), and get per-year balances, penalties,
-//    interest, assessment dates, CSED estimates, transaction history and
-//    compliance flags — the analysis layer Canopy sells, minus the
-//    restricted TDS pull (that requires IRS A2A software approval, on the
-//    roadmap).
+// 1. Transcript Analysis: IRS TDS direct delivery or manual PDF fallback,
+//    parsed deterministically into per-year balances, penalties, interest,
+//    assessment dates, CSED estimates, transaction history, wage/income data,
+//    and report views. IRS credentials and 2FA remain on the IRS/ID.me flow.
 //
 // 2. POA / CAF Tracker: every client's 2848/8821 lifecycle in one table —
 //    Draft -> Signed -> Submitted -> On File — with the signed form
@@ -254,8 +252,8 @@ export default function IRSPortal() {
               {parseStatus && <span style={{ fontSize: 12.5, color: 'var(--t2)' }}>{parseStatus}</span>}
             </div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 8 }}>
-              Pull transcripts from IRS e-Services / TDS as usual, then drop the PDFs here. Each file is parsed into
-              balances, penalties, interest, assessment dates, an estimated CSED, transaction history and compliance flags.
+              Manual fallback: upload IRS transcript PDFs here. Direct IRS TDS deliveries are filed and analyzed automatically.
+              Each transcript is normalized into balances, penalties, interest, assessment dates, estimated CSED, transactions and compliance flags.
             </div>
           </div>
 
@@ -274,6 +272,7 @@ export default function IRSPortal() {
                     </div>
                     <button className="btn sec" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => copySummary(rows, client)}>📋 Copy Client Summary</button>
                   </div>
+                  <TranscriptReports rows={rows} money={money} openTranscriptFile={openTranscriptFile} />
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                       <tr style={{ color: 'var(--t3)', textAlign: 'left' }}>
