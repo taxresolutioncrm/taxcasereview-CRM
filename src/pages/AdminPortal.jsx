@@ -12,11 +12,11 @@ import { useApp } from '../context/AppContext'
 import AIAssistant from '../components/AIAssistant'
 import { CallProvider, useCall } from '../context/CallContext'
 import ActiveCallBar from '../components/calling/ActiveCallBar'
-import RomyLabsBilling from '../components/admin/RomyLabsBilling'
-import TrafficCoverage from '../components/admin/TrafficCoverage'
-import CredentialVault from '../components/admin/CredentialVault'
-import UniversalOfficeESign from '../components/admin/UniversalOfficeESign'
 const AdminChatPage = lazy(() => import('./AdminChat'))
+const RomyLabsBilling = lazy(() => import('../components/admin/RomyLabsBilling'))
+const TrafficCoverage = lazy(() => import('../components/admin/TrafficCoverage'))
+const CredentialVault = lazy(() => import('../components/admin/CredentialVault'))
+const UniversalOfficeESign = lazy(() => import('../components/admin/UniversalOfficeESign'))
 
 const ESignaturesHub = lazy(() => import('./ESignaturesHub'))
 const NewOffice    = lazy(() => import('./NewOffice'))
