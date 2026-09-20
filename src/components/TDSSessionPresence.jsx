@@ -29,7 +29,6 @@ export default function TDSSessionPresence({ onSessionChange }) {
         authorizationError: data?.authorizationError || null,
       })
       setError('')
-      if (onSessionChange) await onSessionChange()
     } catch (e) {
       setStatus({ sessionSetupConfigured: false, sessionActive: false, expiresAt: null, organizationName: null, authorizationError: null })
       setError(e?.message || 'Could not check your IRS TDS session.')
@@ -69,7 +68,7 @@ export default function TDSSessionPresence({ onSessionChange }) {
       }
       const onMessage = async (event) => {
         const msg = event?.data
-        if (event.origin !== callbackOrigin || msg?.type !== 'nashville-irs-tds-oauth') return
+        if (event.origin !== callbackOrigin || msg?.type !== 'taxres-irs-tds-oauth') return
         cleanup()
         setBusy(false)
         if (!msg.ok) {
@@ -78,6 +77,7 @@ export default function TDSSessionPresence({ onSessionChange }) {
           return
         }
         await loadStatus(false)
+        if (onSessionChange) await onSessionChange()
       }
       window.addEventListener('message', onMessage)
 
@@ -107,6 +107,7 @@ export default function TDSSessionPresence({ onSessionChange }) {
       if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
       await loadStatus(false)
+      if (onSessionChange) await onSessionChange()
       setError('')
     } catch (e) {
       setError(e?.message || 'Could not end the IRS TDS session.')
