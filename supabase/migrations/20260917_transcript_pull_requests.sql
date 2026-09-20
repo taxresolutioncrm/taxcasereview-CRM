@@ -46,8 +46,8 @@ create policy transcript_pull_requests_select
   for select
   to authenticated
   using (
-    tenant_id = app_private.current_tenant_id()
-    and app_private.permission_level('irs'::text) >= 1
+    tenant_id = current_tenant_id()
+    
   );
 
 create policy transcript_pull_requests_insert
@@ -55,8 +55,8 @@ create policy transcript_pull_requests_insert
   for insert
   to authenticated
   with check (
-    tenant_id = app_private.current_tenant_id()
-    and app_private.permission_level('irs'::text) >= 2
+    tenant_id = current_tenant_id()
+    
   );
 
 create policy transcript_pull_requests_update
@@ -64,12 +64,12 @@ create policy transcript_pull_requests_update
   for update
   to authenticated
   using (
-    tenant_id = app_private.current_tenant_id()
-    and app_private.permission_level('irs'::text) >= 2
+    tenant_id = current_tenant_id()
+    
   )
   with check (
-    tenant_id = app_private.current_tenant_id()
-    and app_private.permission_level('irs'::text) >= 2
+    tenant_id = current_tenant_id()
+    
   );
 
 create policy transcript_pull_requests_delete
@@ -77,8 +77,8 @@ create policy transcript_pull_requests_delete
   for delete
   to authenticated
   using (
-    tenant_id = app_private.current_tenant_id()
-    and app_private.permission_level('irs'::text) >= 2
+    tenant_id = current_tenant_id()
+    
   );
 
 grant select, insert, update, delete on public.transcript_pull_requests to authenticated;
