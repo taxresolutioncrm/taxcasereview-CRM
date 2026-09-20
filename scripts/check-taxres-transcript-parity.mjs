@@ -54,7 +54,8 @@ for(const n of [
 
 for(const n of [
   'Transcript Analysis','Pull Transcripts','POA / CAF Tracker',
-  'Transaction History','Wage & Income Documents','Est. CSED',
+  'Account Overview','CSED Calculations','Penalties and Interest','Payment History','Bankruptcy','Account Transactions','Assessment Overview',
+  'Wage & Income Documents','Est. CSED',
   "client_id: clientRow.id",
   "storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })",
   "<TranscriptPull clientNames={clientNames} clients={clients}"
