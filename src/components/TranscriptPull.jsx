@@ -375,7 +375,7 @@ export default function TranscriptPull({ clientNames = [], poas = [], onGoToPoa,
         ))}
       </div>
 
-      <TDSSessionPresence />
+      <TDSSessionPresence onSessionChange={refreshProviders} />
 
       <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
