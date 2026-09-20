@@ -237,3 +237,14 @@ verify_jwt = false
 [functions.employee-access-link]
 # Validates Nashville admin/session or enumeration-safe self reset internally.
 verify_jwt = false
+
+
+# TaxRes-family IRS e-Services / TDS transcript workflow.
+# Browser actions require an authenticated CRM employee JWT.
+[functions.transcript-pull]
+verify_jwt = true
+
+# IRS OAuth callback is invoked by the provider redirect; state is validated
+# server-side against the one-time irs_tds_sessions authorization record.
+[functions.transcript-pull-callback]
+verify_jwt = false
