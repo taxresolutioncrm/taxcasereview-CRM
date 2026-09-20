@@ -1,70 +1,69 @@
-// ── Transcript pull layer (provider-agnostic) ──
-//
-// How Canopy actually does it: their transcript pull runs over the IRS's
-// sanctioned TDS Application-to-Application (A2A) channel as an enrolled
-// software provider, keyed to the firm's CAF number and an active 2848/8821.
-// Their original tool automated e-Services logins and the IRS shut it down
-// in Sept 2018 — login automation is never an option here (it risks the
-// firm's CAF / e-Services standing).
-//
-// So this layer is built to Canopy parity with a swappable backend:
-//   • manual      — live today. Practitioner pulls from TDS; the watched
-//                   folder auto-imports, parses, matches and files.
-//   • irs_a2a     — the Canopy channel. Goes live when TCR's IRS
-//                   software-provider (A2A) enrollment is approved.
-//   • partner_api — optional bridge: an IRS-authorized API partner
-//                   (TaxStatus-style, 8821-based) while A2A is pending.
-//
-// submitToProvider() is the single swap point — when a real backend lands,
-// it invokes the `transcript-pull` edge function and nothing in the UI
-// changes.
-
 import { supabase } from './supabase'
 import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
 
-export const PULL_PROVIDERS = [
-  {
-    id: 'manual',
-    label: 'Manual — IRS e-Services (TDS)',
-    chip: 'Active',
-    available: true,
-    note: 'Pull from TDS as usual. The watched folder below auto-imports, parses and files every download against the right client and request.',
-  },
-  {
-    id: 'irs_a2a',
-    label: 'IRS TDS A2A (direct pull)',
-    chip: 'Enrollment pending',
-    available: false,
-    note: 'The channel Canopy uses: automated TDS pulls as an IRS-enrolled software provider, gated on CAF + active POA. Activates here the moment enrollment is approved — no UI change.',
-  },
-  {
-    id: 'partner_api',
-    label: 'Authorized API partner',
-    chip: 'Evaluating',
-    available: false,
-    note: 'IRS-authorized partner API (8821-based, TaxStatus-style) as an optional bridge while A2A enrollment completes.',
-  },
-]
-
-export function getProvider(id) {
-  return PULL_PROVIDERS.find(p => p.id === id) || PULL_PROVIDERS[0]
+const MANUAL_PROVIDER = {
+  id: 'manual',
+  label: 'Manual — IRS e-Services (TDS)',
+  chip: 'Fallback',
+  available: true,
+  note: 'Manual fallback: pull from IRS TDS and let the CRM auto-import, parse and file the downloaded PDF.',
 }
 
-// Single backend swap point.
+const DIRECT_PROVIDER = {
+  id: 'irs_a2a',
+  label: 'IRS TDS — ISP',
+  chip: 'Connection required',
+  available: false,
+  sessionActive: false,
+  note: 'Sign in to IRS e-Services with ID.me, select the TDS organization, and pull authorized transcripts during the one-hour ISP session.'
+}
+
+export const PULL_PROVIDERS = [MANUAL_PROVIDER, DIRECT_PROVIDER]
+const activeDirectPolls = new Set()
+
+async function refreshProviderCapability() {
+  try {
+    const { data, error } = await supabase.functions.invoke('transcript-pull', { body: { action: 'capabilities' } })
+    if (error) throw error
+    DIRECT_PROVIDER.available = Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured)
+    DIRECT_PROVIDER.sessionActive = Boolean(data?.sessionActive)
+    DIRECT_PROVIDER.chip = !DIRECT_PROVIDER.available ? 'Connection required' : DIRECT_PROVIDER.sessionActive ? 'IRS signed in' : 'Sign in required'
+  } catch {
+    DIRECT_PROVIDER.available = false
+    DIRECT_PROVIDER.sessionActive = false
+    DIRECT_PROVIDER.chip = 'Connection required'
+  }
+  return PULL_PROVIDERS.map(p => ({ ...p }))
+}
+
+export async function loadPullProviders() { return refreshProviderCapability() }
+
+export function getProvider(id, providers = PULL_PROVIDERS) {
+  return providers.find(p => p.id === id) || providers[0]
+}
+
 export async function submitToProvider(providerId, requestRow) {
-  const p = getProvider(providerId)
-  if (!p.available) throw new Error(`${p.label} isn't live yet.`)
-  if (p.id === 'manual') return { status: 'Requested' } // fulfilled via TDS + watched folder
-  // Future (A2A / partner):
-  // const { data, error } = await supabase.functions.invoke('transcript-pull',
-  //   { body: { requestId: requestRow.id, provider: p.id } })
-  // if (error) throw error
-  // return data
-  return { status: 'Requested' }
+  if (providerId === 'manual') return { status: 'Requested' }
+  if (providerId !== 'irs_a2a') throw new Error('Unsupported transcript provider.')
+  if (!requestRow?.id) throw new Error('Direct IRS TDS requires a saved pull request.')
+  const { data, error } = await supabase.functions.invoke('transcript-pull', {
+    body: { action: 'submit', requestId: requestRow.id },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  if (typeof window !== 'undefined') setTimeout(() => startDirectPolling(requestRow.id), 2000)
+  return data
 }
 
-// ── Year spec helpers ──
-// "2019-2024" / "2019, 2021" / "2019 2021" → Set('2019','2020',…)
+export async function checkDirectPull(requestId) {
+  const { data, error } = await supabase.functions.invoke('transcript-pull', {
+    body: { action: 'status', requestId },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
 export function parseYearSpec(spec) {
   const out = new Set()
   if (!spec) return out
@@ -79,11 +78,32 @@ export function parseYearSpec(spec) {
   return out
 }
 
-// ── Name matching ──
-// Transcript header ("NAME(S) SHOWN ON RETURN") is uppercase, may include a
-// spouse ("JOHN Q & JANE DOE") or trail an address fragment. A client
-// matches when every token of the client's name appears among the
-// transcript-name tokens (initials match on first letter).
+function typeKey(v) {
+  let x = String(v || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (x === 'tax return transcript') x = 'return transcript'
+  if (x === 'wage income') x = 'wage and income'
+  if (x === 'wage income transcript') x = 'wage and income transcript'
+  return x
+}
+
+function sameTranscriptType(a, b) {
+  const x = typeKey(a), y = typeKey(b)
+  if (!x || !y) return false
+  return x === y || x.includes(y) || y.includes(x)
+}
+
+export function requestCoverageSatisfied(req, rows) {
+  const wantedYears = parseYearSpec(req?.tax_years)
+  const wantedTypes = (req?.transcript_types || []).filter(Boolean)
+  const have = rows || []
+  if (wantedYears.size === 0 && wantedTypes.length === 0) return have.length > 0
+  if (wantedYears.size > 0 && wantedTypes.length > 0) {
+    return [...wantedYears].every(year => wantedTypes.every(type => have.some(r => String(r.tax_year || '') === year && sameTranscriptType(r.transcript_type, type))))
+  }
+  if (wantedYears.size > 0) return [...wantedYears].every(year => have.some(r => String(r.tax_year || '') === year))
+  return wantedTypes.every(type => have.some(r => sameTranscriptType(r.transcript_type, type)))
+}
+
 export function nameKey(s) {
   return String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -95,88 +115,183 @@ export function namesMatch(transcriptName, clientName) {
   const tTok = t.split(' ')
   const cTok = c.split(' ').filter(w => !['JR', 'SR', 'II', 'III', 'IV'].includes(w))
   if (cTok.length === 0) return false
-  return cTok.every(w =>
-    w.length === 1 ? tTok.some(x => x[0] === w) : tTok.includes(w)
-  )
+  return cTok.every(w => w.length === 1 ? tTok.some(x => x[0] === w) : tTok.includes(w))
 }
 
-// ── Parse / store (split so the importer can identify before filing) ──
 export async function parseTranscriptFile(file) {
   const text = await extractPdfText(file)
-  if (!text || text.trim().length < 40) {
-    throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
-  }
+  if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
   return parseIrsTranscript(text)
 }
 
-// Mirrors the insert on the Transcript Analysis tab so both paths file
-// identical rows.
-export async function storeTranscriptAnalysis(file, clientName, a) {
-  const normalizedClientName = clientName.trim()
-  const { data: tenantId } = await supabase.rpc('current_tenant_id')
-  const { data: matches, error: clientErr } = await supabase.from('clients')
-    .select('id,name')
-    .eq('tenant_id', tenantId)
-    .ilike('name', normalizedClientName)
-    .limit(2)
-  if (clientErr) throw new Error(clientErr.message)
-  if ((matches || []).length !== 1) {
-    throw new Error((matches || []).length === 0
-      ? `Could not resolve "${normalizedClientName}" to a Nashville client.`
-      : `More than one Nashville client matches "${normalizedClientName}". Assign the transcript manually.`)
+export async function storeTranscriptAnalysis(file, clientName, a, existing = null) {
+  const client = clientName.trim()
+  if (!client) throw new Error('Client name is required before filing a transcript.')
+  if (!file) throw new Error('Transcript PDF is required.')
+  let clientId = existing?.clientId || null
+  if (!clientId) {
+    const { data: matches, error: clientErr } = await supabase.from('clients').select('id').eq('name', client).limit(2)
+    if (!clientErr && matches?.length === 1) clientId = matches[0].id
   }
-
-  const client = matches[0]
-  let filePath = null
+  const safeClient = client.replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 100) || 'client'
+  const safeFile = String(file.name || 'transcript.pdf').replace(/[\\/\r\n]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 140) || 'transcript.pdf'
+  const uploadedHere = !existing?.filePath
+  const filePath = existing?.filePath || `transcripts/${safeClient}/${crypto.randomUUID()}-${safeFile}`
+  if (uploadedHere) {
+    const { error: uploadErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
+    if (uploadErr) throw new Error(`Transcript PDF upload failed: ${uploadErr.message}`)
+  }
+  let analysisId = null
   try {
-    const safeFile = String(file.name || 'transcript.pdf').replace(/[^A-Za-z0-9._-]+/g, '-')
-    filePath = `transcripts/${client.id}/${Date.now()}-${safeFile}`
-    const { error: upErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
-    if (upErr) throw upErr
+    let fileUrl = existing?.signedUrl || null
+    if (!fileUrl) {
+      const { data: signed, error: signErr } = await supabase.storage.from('documents').createSignedUrl(filePath, 900)
+      if (signErr || !signed?.signedUrl) throw new Error(`Secure transcript link failed: ${signErr?.message || 'No signed URL returned'}`)
+      fileUrl = signed.signedUrl
+    }
+    const { data: analysis, error: analysisErr } = await supabase.from('transcript_analyses').insert({
+      client_id: clientId,
+      client_name: client,
+      tax_year: a.tax_year || null,
+      transcript_type: a.transcript_type || null,
+      total_balance: a.account_balance ?? null,
+      accrued_penalty: a.accrued_penalty ?? null,
+      accrued_interest: a.accrued_interest ?? null,
+      assessment_date: a.assessment_date || null,
+      csed_estimate: a.csed_estimate || null,
+      flags: a.flags || {},
+      raw_analysis: a,
+      file_url: fileUrl,
+      file_path: filePath,
+    }).select('id').single()
+    if (analysisErr || !analysis?.id) throw new Error(`Transcript analysis save failed: ${analysisErr?.message || 'No analysis ID returned'}`)
+    analysisId = analysis.id
+    const title = ['IRS', a.transcript_type || 'Transcript', a.tax_year || ''].filter(Boolean).join(' ')
+    const bal = a.account_balance
+    const { error: documentErr } = await supabase.from('documents').insert([{
+      name: title,
+      client,
+      client_id: clientId,
+      docType: 'Transcripts',
+      notes: bal !== null && bal !== undefined ? `Auto-imported. Balance: $${Number(bal).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'Auto-imported.',
+      file_url: fileUrl,
+      storage_path: filePath,
+      file_name: file.name,
+      file_size: file.size,
+      created_at: new Date().toISOString(),
+    }])
+    if (documentErr) throw new Error(`Client document filing failed: ${documentErr.message}`)
+    return analysisId
   } catch (e) {
-    throw new Error(`Transcript file upload failed: ${e?.message || e}`)
+    if (analysisId) {
+      try { await supabase.from('transcript_analyses').delete().eq('id', analysisId) } catch { /* best-effort rollback */ }
+    }
+    if (uploadedHere) {
+      try { await supabase.storage.from('documents').remove([filePath]) } catch { /* best-effort rollback */ }
+    }
+    throw e
   }
+}
 
-  const storageUrl = `storage://documents/${filePath}`
-  const { data, error } = await supabase.from('transcript_analyses').insert({
-    tenant_id: tenantId,
-    client_id: client.id,
-    client_name: client.name,
-    tax_year: a.tax_year || null,
-    transcript_type: a.transcript_type || null,
-    total_balance: a.account_balance ?? null,
-    accrued_penalty: a.accrued_penalty ?? null,
-    accrued_interest: a.accrued_interest ?? null,
-    assessment_date: a.assessment_date || null,
-    csed_estimate: a.csed_estimate || null,
-    flags: a.flags || {},
-    raw_analysis: a,
-    file_url: storageUrl,
-    file_path: filePath,
-  }).select('id').single()
-  if (error) {
-    await supabase.storage.from('documents').remove([filePath]).catch(()=>{})
-    throw new Error(error.message)
+async function finalizeDirectDelivery(req, result) {
+  if (!result?.signedUrl || !result?.filePath || !result?.resultKey) throw new Error('IRS TDS delivered a transcript without a complete secure result reference.')
+  const response = await fetch(result.signedUrl)
+  if (!response.ok) throw new Error(`Could not download delivered IRS transcript (${response.status}).`)
+  const blob = await response.blob()
+  const file = new File([blob], `IRS-TDS-${req.id}-${result.resultKey.slice(0, 12)}.pdf`, { type: 'application/pdf' })
+  const analysis = await parseTranscriptFile(file)
+  const analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl, clientId: req.client_id || null })
+  const ids = new Set(req.result_analysis_ids || [])
+  ids.add(analysisId)
+  const filedKeys = new Set(req.provider_filed_keys || [])
+  filedKeys.add(result.resultKey)
+  const idList = [...ids]
+  const { data: coveredRows, error: coveredErr } = await supabase.from('transcript_analyses').select('id,tax_year,transcript_type').in('id', idList)
+  if (coveredErr) throw new Error(coveredErr.message)
+  const completed = requestCoverageSatisfied(req, coveredRows || [])
+  const { error } = await supabase.from('transcript_pull_requests').update({
+    result_analysis_ids: idList,
+    provider_filed_keys: [...filedKeys],
+    provider_status: completed ? 'Filed' : 'In Progress',
+    provider_error: null,
+    provider_last_checked_at: new Date().toISOString(),
+    status: completed ? 'Completed' : 'In Progress',
+    completed_at: completed ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', req.id)
+  if (error) throw new Error(error.message)
+  return completed
+}
+
+async function pollDirectOnce(requestId) {
+  const { data: req, error } = await supabase.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle()
+  if (error) return false
+  if (!req) return true
+  if (req.status === 'Canceled' || ['Filed','Partial','Error'].includes(req.provider_status)) return true
+  try {
+    const result = await checkDirectPull(requestId)
+    if (result?.status === 'Filed') return true
+    if (result?.status === 'Delivered') return await finalizeDirectDelivery(req, result)
+    if (result?.terminalError) {
+      await supabase.from('transcript_pull_requests').update({
+        provider_status: 'Error',
+        provider_error: result?.remoteStatus || result?.status || 'IRS TDS request ended with an error.',
+        provider_last_checked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', requestId)
+      return true
+    }
+    if (result?.terminal) {
+      const ids = req.result_analysis_ids || []
+      let rows = []
+      if (ids.length) {
+        const { data, error: coverageErr } = await supabase.from('transcript_analyses').select('id,tax_year,transcript_type').in('id', ids)
+        if (coverageErr) throw coverageErr
+        rows = data || []
+      }
+      const covered = requestCoverageSatisfied(req, rows)
+      await supabase.from('transcript_pull_requests').update({
+        provider_status: covered ? 'Filed' : 'Partial',
+        provider_error: covered ? null : 'IRS completed the request, but some requested transcript coverage was not returned.',
+        provider_last_checked_at: new Date().toISOString(),
+        status: 'Completed',
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', requestId)
+      return true
+    }
+    return false
+  } catch (e) {
+    await supabase.from('transcript_pull_requests').update({ provider_error: e?.message || 'IRS TDS status check failed.', provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
+    return false
   }
+}
 
-  // File it in the authoritative client Documents → Transcripts folder.
-  const title = ['IRS', a.transcript_type || 'Transcript', a.tax_year || ''].filter(Boolean).join(' ')
-  const bal = a.account_balance
-  const { error: docErr } = await supabase.from('documents').insert([{
-    tenant_id: tenantId,
-    client_id: client.id,
-    client: client.name,
-    clientname: client.name,
-    name: title,
-    docType: 'Transcripts',
-    notes: bal !== null && bal !== undefined ? `Auto-imported. Balance: ${Number(bal).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : 'Auto-imported.',
-    file_url: storageUrl,
-    storage_path: filePath,
-    file_name: file.name,
-    file_size: file.size,
-    created_at: new Date().toISOString(),
-  }])
-  if (docErr) throw new Error(`Transcript analysis saved, but client filing failed: ${docErr.message}`)
+function startDirectPolling(requestId) {
+  if (!requestId || activeDirectPolls.has(requestId) || typeof window === 'undefined') return
+  activeDirectPolls.add(requestId)
+  let timer = null
+  const stop = () => {
+    if (timer) clearInterval(timer)
+    activeDirectPolls.delete(requestId)
+  }
+  const run = async () => { if (await pollDirectOnce(requestId)) stop() }
+  timer = setInterval(run, 30000)
+  run()
+}
 
-  return data?.id || null
+async function resumeDirectPulls() {
+  try {
+    const { data } = await supabase.from('transcript_pull_requests')
+      .select('id')
+      .eq('provider', 'irs_a2a')
+      .not('provider_request_id', 'is', null)
+      .or('provider_status.neq.Filed,status.neq.Completed')
+    for (const row of data || []) startDirectPolling(row.id)
+  } catch { /* page can still use the manual path */ }
+}
+
+if (typeof window !== 'undefined') {
+  setTimeout(() => refreshProviderCapability(), 0)
+  setTimeout(() => resumeDirectPulls(), 2000)
 }
