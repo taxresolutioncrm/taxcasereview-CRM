@@ -129,11 +129,19 @@ test('sidebar renders stable notification badges', async ({ page }) => {
   await expect(email.locator('.nav-badge')).toHaveText('2')
   await expect(tasks.locator('.nav-badge')).toHaveText('5')
 
+  const clientWork = page.getByText('Client Work',{exact:true})
   const leads = page.getByRole('link',{name:/Leads/}).first()
-  if (!(await leads.isVisible().catch(()=>false))) await page.getByText('Client Work',{exact:true}).click()
+  if (!(await leads.isVisible().catch(()=>false))) await clientWork.click()
   const cases = page.getByRole('link',{name:/Cases/}).first()
   await expect(leads).toBeVisible()
   await expect(cases).toBeVisible()
+  await expect(leads.locator('.nav-badge')).toHaveText('4')
+  await expect(cases.locator('.nav-badge')).toHaveText('3')
+  await clientWork.click()
+  await expect(leads).not.toBeVisible()
+  await expect(clientWork.locator('xpath=..').locator('.nav-badge')).toHaveCount(0)
+  await clientWork.click()
+  await expect(leads).toBeVisible()
 
   // Leads/Clients/Cases are unseen-notification badges. They intentionally clear
   // as soon as that section is acknowledged, so the smoke test must not require
