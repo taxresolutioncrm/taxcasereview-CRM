@@ -17,6 +17,10 @@ requireMarker("const prospectsPromise = supabase.from('prospects')", 'Command Ce
 requireMarker("withTimeout(prospectsPromise, 'prospects')", 'Command Center prospect query is not part of the parallel load')
 requireMarker("const [emailMounted, setEmailMounted]", 'Lazy SnappyMail mount state is missing')
 requireMarker('{emailMounted && <div style={{', 'SnappyMail iframe is not lazy-mounted')
+requireMarker("client_count:null", 'Registry fallback must not fabricate client counts when live usage is unavailable')
+requireMarker("lead_count:null", 'Registry fallback must not fabricate lead counts when live usage is unavailable')
+requireMarker("storage_bytes:null", 'Registry fallback must not fabricate storage usage when live usage is unavailable')
+requireMarker("r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)", 'Overview must render unknown storage as unavailable, not zero')
 forbidMarker("const prospectsRes = await supabase.from('prospects')", 'Command Center prospects are still serial')
 forbidMarker('const registrySyncResults = await Promise.all(registrySyncJobs.map(job => job.promise))', 'Registry writes are still on the Overview critical path')
 
