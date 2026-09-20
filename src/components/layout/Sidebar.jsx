@@ -26,7 +26,6 @@ const SECTIONS = [
   {
     key: 'clientwork',
     label: 'Client Work',
-    showBadge: false,
     items: [
       { path: '/leads',     icon: LeadIcon,    label: 'Leads',         badge: 'leads',     section: 'leads' },
       { path: '/clients',   icon: ClientIcon,  label: 'Clients',       badge: 'clients',   section: 'clients' },
@@ -574,7 +573,7 @@ export default function Sidebar() {
           if (item.badge === 'timeoff') return sum + Number(pendingTimeOff || 0)
           return sum + Number(BADGE_COUNTS[item.badge] || 0)
         }, 0)
-        const sectionNeedsAttention = !section.always && section.showBadge !== false && !isOpen && sectionAlertCount > 0
+        const sectionNeedsAttention = !section.always && section.key !== 'clientwork' && !isOpen && sectionAlertCount > 0
 
         return (
           <div key={section.key}>
