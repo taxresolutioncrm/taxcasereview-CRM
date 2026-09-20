@@ -5,6 +5,22 @@
 create index if not exists idx_cron_job_run_details_start_time
   on cron.job_run_details(start_time);
 
+alter table net._http_response set (
+  autovacuum_enabled = true,
+  autovacuum_vacuum_scale_factor = 0.02,
+  autovacuum_vacuum_threshold = 50,
+  autovacuum_analyze_scale_factor = 0.05,
+  autovacuum_analyze_threshold = 50
+);
+
+alter table cron.job_run_details set (
+  autovacuum_enabled = true,
+  autovacuum_vacuum_scale_factor = 0.05,
+  autovacuum_vacuum_threshold = 500,
+  autovacuum_analyze_scale_factor = 0.10,
+  autovacuum_analyze_threshold = 500
+);
+
 create index if not exists idx_formacorp_lifecycle_case_id
   on public.formacorp_lifecycle(case_id);
 create index if not exists idx_product_traffic_channels_channel_key
