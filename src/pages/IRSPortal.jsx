@@ -3,17 +3,15 @@ import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { parseTranscriptFile, storeTranscriptAnalysis } from '../lib/transcriptPull'
 import TranscriptPull from '../components/TranscriptPull'
+import TranscriptReports from '../components/TranscriptReports'
 
 // ── IRS Portal ──
 // Two tools that together close the POA -> transcripts loop:
 //
-// 1. Transcript Analysis: upload IRS transcript PDFs (pulled from TDS /
-//    e-Services the normal way), parse them with the parse-transcript
-//    edge function (Claude), and get per-year balances, penalties,
-//    interest, assessment dates, CSED estimates, transaction history and
-//    compliance flags — the analysis layer Canopy sells, minus the
-//    restricted TDS pull (that requires IRS A2A software approval, on the
-//    roadmap).
+// 1. Transcript Analysis: IRS TDS direct delivery or manual PDF fallback,
+//    parsed deterministically into per-year balances, penalties, interest,
+//    assessment dates, CSED estimates, transaction history, wage/income data,
+//    and report views. IRS credentials and 2FA remain on the IRS/ID.me flow.
 //
 // 2. POA / CAF Tracker: every client's 2848/8821 lifecycle in one table —
 //    Draft -> Signed -> Submitted -> On File — with the signed form
@@ -22,7 +20,7 @@ import TranscriptPull from '../components/TranscriptPull'
 
 const POA_STATUSES = ['Draft', 'Signed', 'Submitted', 'On File', 'Rejected']
 const POA_METHODS = ['IRS Online (Tax Pro)', 'Fax to CAF — Ogden', 'Fax to CAF — Memphis', 'Fax to CAF — Philadelphia (Intl)', 'Mail']
-const POA_BLANK = { clientName: '', formType: '2848', taxYears: '', status: 'Draft', signedDate: '', submittedDate: '', cafConfirmedDate: '', submissionMethod: 'IRS Online (Tax Pro)', notes: '', fileUrl: '' }
+const POA_BLANK = { clientId: '', clientName: '', formType: '2848', taxYears: '', status: 'Draft', signedDate: '', submittedDate: '', cafConfirmedDate: '', submissionMethod: 'IRS Online (Tax Pro)', notes: '', fileUrl: '' }
 
 const STATUS_COLORS = {
   'Draft': '#64748b', 'Signed': '#2563eb', 'Submitted': '#b45309',
@@ -42,16 +40,22 @@ export default function IRSPortal() {
   }, [location.search])
 
   // ── shared: client names for pickers ──
+  const [clients, setClients] = useState([])
   const [clientNames, setClientNames] = useState([])
   useEffect(() => {
-    supabase.from('clients').select('name').order('name')
-      .then(({ data }) => setClientNames((data || []).map(c => c.name).filter(Boolean)))
+    supabase.from('clients').select('id,name').order('name')
+      .then(({ data }) => {
+        const rows = (data || []).filter(c => c.id && c.name)
+        setClients(rows)
+        setClientNames(rows.map(c => c.name))
+      })
   }, [])
 
   // ═══════════ TRANSCRIPT ANALYSIS ═══════════
   const [analyses, setAnalyses] = useState([])
   const [tLoading, setTLoading] = useState(true)
   const [uploadClient, setUploadClient] = useState('')
+  const [uploadClientId, setUploadClientId] = useState('')
   const [parsing, setParsing] = useState(false)
   const [parseStatus, setParseStatus] = useState('')
   const [expanded, setExpanded] = useState(null)
@@ -79,7 +83,7 @@ export default function IRSPortal() {
         // Storage, analysis row inserted, and the doc filed in the client's
         // Documents → Transcripts folder.
         const a = await parseTranscriptFile(file)
-        await storeTranscriptAnalysis(file, uploadClient, a)
+        await storeTranscriptAnalysis(file, uploadClient, a, null, uploadClientId || null)
         done++
       } catch (err) {
         setParseStatus(`❌ ${file.name}: ${err.message}`)
@@ -175,6 +179,7 @@ export default function IRSPortal() {
     setPoaSaving(true)
     const payload = {
       client_name: poaForm.clientName.trim(),
+      client_id: poaForm.clientId || null,
       form_type: poaForm.formType,
       tax_years: poaForm.taxYears,
       status: poaForm.status,
@@ -241,10 +246,17 @@ export default function IRSPortal() {
           <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 16, marginBottom: 18 }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Upload & Analyze Transcripts</div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input list="irsportal-clients" placeholder="Client name…" value={uploadClient}
-                onChange={e => setUploadClient(e.target.value)} style={{ width: 240 }} />
+              <select value={uploadClientId} onChange={e => {
+                const id = e.target.value
+                const row = clients.find(c => String(c.id) === String(id))
+                setUploadClientId(id)
+                setUploadClient(row?.name || '')
+              }} style={{ width: 280 }}>
+                <option value="">Select client…</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
               <datalist id="irsportal-clients">
-                {clientNames.map(n => <option key={n} value={n} />)}
+                {clientNames.map((n, i) => <option key={n + ':' + i} value={n} />)}
               </datalist>
               <label className="btn" style={{ cursor: parsing ? 'wait' : 'pointer', opacity: parsing ? 0.7 : 1 }}>
                 {parsing ? '⏳ Analyzing…' : '📄 Upload Transcript PDF(s)'}
@@ -254,8 +266,8 @@ export default function IRSPortal() {
               {parseStatus && <span style={{ fontSize: 12.5, color: 'var(--t2)' }}>{parseStatus}</span>}
             </div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 8 }}>
-              Pull transcripts from IRS e-Services / TDS as usual, then drop the PDFs here. Each file is parsed into
-              balances, penalties, interest, assessment dates, an estimated CSED, transaction history and compliance flags.
+              Manual fallback: upload IRS transcript PDFs here. Direct IRS TDS deliveries are filed and analyzed automatically.
+              Each transcript is normalized into balances, penalties, interest, assessment dates, estimated CSED, transactions and compliance flags.
             </div>
           </div>
 
@@ -274,6 +286,7 @@ export default function IRSPortal() {
                     </div>
                     <button className="btn sec" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => copySummary(rows, client)}>📋 Copy Client Summary</button>
                   </div>
+                  <TranscriptReports rows={rows} money={money} openTranscriptFile={openTranscriptFile} />
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                       <tr style={{ color: 'var(--t3)', textAlign: 'left' }}>
@@ -363,7 +376,7 @@ export default function IRSPortal() {
 
       {/* ═══════════ PULL TRANSCRIPTS TAB ═══════════ */}
       {tab === 'pull' && (
-        <TranscriptPull clientNames={clientNames} poas={poas}
+        <TranscriptPull clientNames={clientNames} clients={clients} poas={poas}
           onGoToPoa={() => setTab('poa')} onImported={loadAnalyses} />
       )}
 
@@ -407,7 +420,7 @@ export default function IRSPortal() {
                           <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }}
                             onClick={() => {
                               setPoaForm({
-                                clientName: p.client_name, formType: p.form_type, taxYears: p.tax_years || '',
+                                clientId: p.client_id || '', clientName: p.client_name, formType: p.form_type, taxYears: p.tax_years || '',
                                 status: p.status, signedDate: p.signed_date || '', submittedDate: p.submitted_date || '',
                                 cafConfirmedDate: p.caf_confirmed_date || '', submissionMethod: p.submission_method || 'IRS Online (Tax Pro)',
                                 notes: p.notes || '', fileUrl: p.file_url || '',
@@ -435,7 +448,14 @@ export default function IRSPortal() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-                <input list="irsportal-clients" value={poaForm.clientName} onChange={e => pf('clientName', e.target.value)} style={inputStyle} placeholder="Client name" />
+                <select value={poaForm.clientId || ''} onChange={e => {
+                  const id = e.target.value
+                  const row = clients.find(c => String(c.id) === String(id))
+                  setPoaForm(f => ({ ...f, clientId: id, clientName: row?.name || '' }))
+                }} style={inputStyle}>
+                  <option value="">Select client…</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </div>
               <div>
                 <label style={{ fontSize: 11, color: 'var(--t3)' }}>Form</label>
