@@ -58,7 +58,7 @@ async function tokenKey() { const digest = await crypto.subtle.digest('SHA-256',
 async function encryptText(value: string) { const iv = new Uint8Array(12); crypto.getRandomValues(iv); const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await tokenKey(), new TextEncoder().encode(value))); return `${b64url(iv)}.${b64url(cipher)}` }
 function html(title: string, message: string, status = 200) {
   const payload = JSON.stringify({
-    type: 'nashville-irs-tds-oauth',
+    type: 'taxres-irs-tds-oauth',
     ok: status < 400,
     message,
   }).replace(/</g, '\\u003c')
