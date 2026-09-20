@@ -786,6 +786,7 @@ function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
+  const [sortConfig, setSortConfig] = useState({ key:'firm_name', direction:'asc' })
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -819,6 +820,47 @@ function Overview() {
   const totalStorage = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
   const totalCollected = (stats||[]).reduce((s,r) => s+Number(r.total_collected||0), 0)
   const totalTx        = (stats||[]).reduce((s,r) => s+Number(r.transaction_count||0), 0)
+
+  const SORT_COLUMNS = [
+    { label:'Firm', key:'firm_name', type:'text' },
+    { label:'Status', key:'status', type:'text' },
+    { label:'Plan', key:'plan_tier', type:'text' },
+    { label:'Seats / Staff', key:'seats_staff', type:'number' },
+    { label:'Clients', key:'client_count', type:'number' },
+    { label:'Cases', key:'cases_count', type:'number' },
+    { label:'Transactions', key:'transaction_count', type:'number' },
+    { label:'Storage', key:'storage_bytes', type:'number' },
+    { label:'Collected', key:'total_collected', type:'number' },
+    { label:'MRR', key:'effective_monthly', type:'number' },
+    { label:'Last Activity', key:'last_activity', type:'date' },
+  ]
+
+  const sortValue = (row, key) => {
+    if (key === 'seats_staff') return row.billing_seats ?? row.employee_count ?? null
+    if (key === 'last_activity') return row.last_activity ? new Date(row.last_activity).getTime() : null
+    return row[key] ?? null
+  }
+
+  const sortedStats = stats ? [...stats].sort((a,b) => {
+    const av = sortValue(a, sortConfig.key)
+    const bv = sortValue(b, sortConfig.key)
+    if (av == null && bv == null) return String(a.firm_name||'').localeCompare(String(b.firm_name||''))
+    if (av == null) return 1
+    if (bv == null) return -1
+    const column = SORT_COLUMNS.find(col => col.key === sortConfig.key)
+    const comparison = column?.type === 'text'
+      ? String(av).localeCompare(String(bv), undefined, { numeric:true, sensitivity:'base' })
+      : Number(av) - Number(bv)
+    if (comparison === 0) return String(a.firm_name||'').localeCompare(String(b.firm_name||''))
+    return sortConfig.direction === 'asc' ? comparison : -comparison
+  }) : null
+
+  const toggleSort = key => {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
 
   const h = new Date().getHours()
   const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
@@ -859,22 +901,37 @@ function Overview() {
       <div style={{ ...S.card, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch' }}>
         <table style={{ width:'100%', minWidth:1180, borderCollapse:'separate', borderSpacing:0, fontSize:13 }}>
           <thead>
-            <tr>{['Firm','Status','Plan','Seats / Staff','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map((h,index,headers)=>(
-              <th key={h || 'actions'} style={{
-                ...S.th,
-                whiteSpace:'nowrap',
-                ...(index===headers.length-1 ? {
-                  position:'sticky', right:0, zIndex:3,
-                  background:'#171625',
-                  boxShadow:'-8px 0 12px rgba(8,7,20,.35)',
-                  minWidth:90,
-                } : {})
-              }}>{h}</th>
-            ))}</tr>
+            <tr>
+              {SORT_COLUMNS.map(column => {
+                const active = sortConfig.key === column.key
+                return (
+                  <th key={column.key} style={{ ...S.th, whiteSpace:'nowrap' }}>
+                    <button
+                      type="button"
+                      onClick={()=>toggleSort(column.key)}
+                      aria-label={`Sort by ${column.label} ${active && sortConfig.direction === 'asc' ? 'descending' : 'ascending'}`}
+                      style={{
+                        padding:0,border:'none',background:'transparent',color:active?'#cbd5e1':'#475569',
+                        font:'inherit',fontWeight:700,textTransform:'inherit',letterSpacing:'inherit',
+                        cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap'
+                      }}>
+                      {column.label}
+                      <span aria-hidden="true" style={{fontSize:9,color:active?'#a5b4fc':'#334155'}}>
+                        {active ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </button>
+                  </th>
+                )
+              })}
+              <th key="actions" style={{
+                ...S.th,whiteSpace:'nowrap',position:'sticky',right:0,zIndex:3,
+                background:'#171625',boxShadow:'-8px 0 12px rgba(8,7,20,.35)',minWidth:90,
+              }} />
+            </tr>
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            stats.map(r => (
+            sortedStats.map(r => (
               <tr key={r.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/crm-admin/offices/${r.id}`)}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
