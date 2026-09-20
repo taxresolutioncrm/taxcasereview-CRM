@@ -8,12 +8,10 @@ import TranscriptPull from '../components/TranscriptPull'
 // Two tools that together close the POA -> transcripts loop:
 //
 // 1. Transcript Analysis: upload IRS transcript PDFs (pulled from TDS /
-//    e-Services the normal way), parse them with the parse-transcript
-//    edge function (Claude), and get per-year balances, penalties,
-//    interest, assessment dates, CSED estimates, transaction history and
-//    compliance flags — the analysis layer Canopy sells, minus the
-//    restricted TDS pull (that requires IRS A2A software approval, on the
-//    roadmap).
+//    e-Services/TDS), parse them deterministically in-browser, and get
+//    per-year balances, penalties, interest, assessment dates, CSED estimates,
+//    transaction history and compliance flags. Direct ISP-authorized TDS pulls
+//    use the signed-in practitioner's short-lived IRS e-Services session.
 //
 // 2. POA / CAF Tracker: every client's 2848/8821 lifecycle in one table —
 //    Draft -> Signed -> Submitted -> On File — with the signed form
@@ -22,7 +20,7 @@ import TranscriptPull from '../components/TranscriptPull'
 
 const POA_STATUSES = ['Draft', 'Signed', 'Submitted', 'On File', 'Rejected']
 const POA_METHODS = ['IRS Online (Tax Pro)', 'Fax to CAF — Ogden', 'Fax to CAF — Memphis', 'Fax to CAF — Philadelphia (Intl)', 'Mail']
-const POA_BLANK = { clientName: '', formType: '2848', taxYears: '', status: 'Draft', signedDate: '', submittedDate: '', cafConfirmedDate: '', submissionMethod: 'IRS Online (Tax Pro)', notes: '', fileUrl: '' }
+const POA_BLANK = { clientId: '', clientName: '', formType: '2848', taxYears: '', status: 'Draft', signedDate: '', submittedDate: '', cafConfirmedDate: '', submissionMethod: 'IRS Online (Tax Pro)', notes: '', fileUrl: '' }
 
 const STATUS_COLORS = {
   'Draft': '#64748b', 'Signed': '#2563eb', 'Submitted': '#b45309',
@@ -42,10 +40,17 @@ export default function IRSPortal() {
   }, [location.search])
 
   // ── shared: client names for pickers ──
-  const [clientNames, setClientNames] = useState([])
+  const [clients, setClients] = useState([])
+  const clientNames = clients.map(c => c.name).filter(Boolean)
+  function resolveClientByName(name) {
+    const key = String(name || '').trim().toLowerCase()
+    if (!key) return null
+    const matches = clients.filter(c => String(c.name || '').trim().toLowerCase() === key)
+    return matches.length === 1 ? matches[0] : null
+  }
   useEffect(() => {
-    supabase.from('clients').select('name').order('name')
-      .then(({ data }) => setClientNames((data || []).map(c => c.name).filter(Boolean)))
+    supabase.from('clients').select('id,name').order('name')
+      .then(({ data }) => setClients((data || []).filter(c => c?.id && c?.name)))
   }, [])
 
   // ═══════════ TRANSCRIPT ANALYSIS ═══════════
@@ -59,9 +64,16 @@ export default function IRSPortal() {
 
   async function loadAnalyses() {
     setTLoading(true)
-    const { data } = await supabase.from('transcript_analyses').select('*').order('created_at', { ascending: false })
-    setAnalyses(data || [])
-    setTLoading(false)
+    try {
+      const { data, error } = await supabase.from('transcript_analyses').select('*').order('created_at', { ascending: false })
+      if (error) throw new Error(error.message)
+      setAnalyses(data || [])
+    } catch (e) {
+      setAnalyses([])
+      setParseStatus(`❌ Could not load transcript analyses: ${e?.message || 'Unknown error'}`)
+    } finally {
+      setTLoading(false)
+    }
   }
   useEffect(() => { loadAnalyses() }, [])
 
@@ -70,6 +82,8 @@ export default function IRSPortal() {
     e.target.value = ''
     if (files.length === 0) return
     if (!uploadClient.trim()) { setParseStatus('❌ Pick or type the client name first.'); return }
+    const uploadClientRow = resolveClientByName(uploadClient)
+    if (!uploadClientRow) { setParseStatus('❌ Select one unique client record before filing the transcript.'); return }
     setParsing(true)
     let done = 0
     for (const file of files) {
@@ -79,49 +93,61 @@ export default function IRSPortal() {
         // Storage, analysis row inserted, and the doc filed in the client's
         // Documents → Transcripts folder.
         const a = await parseTranscriptFile(file)
-        await storeTranscriptAnalysis(file, uploadClient, a)
+        await storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })
         done++
       } catch (err) {
-        setParseStatus(`❌ ${file.name}: ${err.message}`)
+        setParseStatus(`❌ ${file.name}: ${err?.message || 'Analysis failed'}`)
         setParsing(false)
-        loadAnalyses()
+        await loadAnalyses()
         return
       }
     }
     setParseStatus(`✅ Analyzed ${done} transcript${done === 1 ? '' : 's'}.`)
     setParsing(false)
-    loadAnalyses()
+    await loadAnalyses()
     setTimeout(() => setParseStatus(''), 6000)
+  }
+
+  async function openTranscriptPdf(row) {
+    const popup = window.open('about:blank', '_blank')
+    if (!popup) {
+      setParseStatus('❌ Could not open transcript PDF: the browser blocked the PDF window. Allow pop-ups for this CRM and try again.')
+      return
+    }
+    try {
+      popup.opener = null
+      let url = row?.file_url || null
+      if (row?.file_path) {
+        const { data, error } = await supabase.storage.from('documents').createSignedUrl(row.file_path, 900)
+        if (error) throw new Error(error.message)
+        url = data?.signedUrl || null
+      }
+      if (!url) throw new Error('Transcript PDF is unavailable.')
+      popup.location.replace(url)
+    } catch (e) {
+      popup.close()
+      setParseStatus(`❌ Could not open transcript PDF: ${e?.message || 'Unknown error'}`)
+    }
   }
 
   async function deleteAnalysis(id) {
     const row = analyses.find(a => a.id === id)
-    if (row?.file_path) await supabase.storage.from('documents').remove([row.file_path]).catch(() => {})
-    if (row?.file_url) await supabase.from('documents').delete().eq('file_url', row.file_url)
-    await supabase.from('transcript_analyses').delete().eq('id', id)
-    setTDel(null)
-    loadAnalyses()
-  }
-
-  async function openTranscriptFile(row) {
-    const tab = window.open('about:blank', '_blank')
-    if (tab) tab.opener = null
     try {
-      let url = row?.file_url || ''
-      const path = row?.file_path
-        || (String(url).startsWith('storage://documents/') ? String(url).replace('storage://documents/', '') : '')
-      if (path) {
-        const { data, error } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
-        if (error || !data?.signedUrl) throw error || new Error('Could not authorize transcript file')
-        url = data.signedUrl
+      if (row?.file_path) {
+        const { error: docErr } = await supabase.from('documents').delete().eq('storage_path', row.file_path)
+        if (docErr) throw new Error(`Document record delete failed: ${docErr.message}`)
+        const { error: storageErr } = await supabase.storage.from('documents').remove([row.file_path])
+        if (storageErr) throw new Error(`PDF storage delete failed: ${storageErr.message}`)
+      } else if (row?.file_url) {
+        const { error: docErr } = await supabase.from('documents').delete().eq('file_url', row.file_url)
+        if (docErr) throw new Error(`Document record delete failed: ${docErr.message}`)
       }
-      if (!url) throw new Error('Transcript file is unavailable')
-      if (tab) tab.location.href = url
-      else setParseStatus('❌ Allow pop-ups to open transcript PDFs.')
+      const { error: analysisErr } = await supabase.from('transcript_analyses').delete().eq('id', id)
+      if (analysisErr) throw new Error(`Analysis delete failed: ${analysisErr.message}`)
+      setTDel(null)
+      await loadAnalyses()
     } catch (e) {
-      if (tab) tab.close()
-      setParseStatus('❌ ' + (e?.message || e))
-      setTimeout(() => setParseStatus(''), 6000)
+      setParseStatus(`❌ Could not delete transcript analysis: ${e?.message || 'Unknown error'}`)
     }
   }
 
@@ -172,9 +198,12 @@ export default function IRSPortal() {
 
   async function savePoa() {
     if (!poaForm.clientName.trim()) return
+    const clientRow = poaForm.clientId ? clients.find(c => c.id === poaForm.clientId) : resolveClientByName(poaForm.clientName)
+    if (!clientRow) { alert('Select one unique client record before saving the POA.'); return }
     setPoaSaving(true)
     const payload = {
-      client_name: poaForm.clientName.trim(),
+      client_id: clientRow.id,
+      client_name: clientRow.name,
       form_type: poaForm.formType,
       tax_years: poaForm.taxYears,
       status: poaForm.status,
@@ -202,8 +231,8 @@ export default function IRSPortal() {
     const path = `poa/${(poaForm.clientName || 'unknown').replace(/[^A-Za-z0-9 _-]/g, '')}/${Date.now()}-${file.name}`
     const { error } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
     if (error) { alert('Upload failed: ' + error.message); return }
-    const { data: u } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-    pf('fileUrl', u?.signedUrl || '')
+    const { data: u } = supabase.storage.from('documents').getPublicUrl(path)
+    pf('fileUrl', u?.publicUrl || '')
   }
 
   async function deletePoa(id) {
@@ -220,7 +249,7 @@ export default function IRSPortal() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>🏛️ IRS Portal</h1>
           <div style={{ color: 'var(--t3)', fontSize: 12, marginTop: 4 }}>
-            Transcript analysis and POA / CAF tracking in one place.
+            IRS transcript requests, transcript analysis, and POA / CAF tracking in one place.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -254,7 +283,7 @@ export default function IRSPortal() {
               {parseStatus && <span style={{ fontSize: 12.5, color: 'var(--t2)' }}>{parseStatus}</span>}
             </div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 8 }}>
-              Pull transcripts from IRS e-Services / TDS as usual, then drop the PDFs here. Each file is parsed into
+              Direct ISP-authorized pulls are available from Pull Transcripts. Manual IRS e-Services/TDS PDFs remain supported here as a fallback. Each file is parsed into
               balances, penalties, interest, assessment dates, an estimated CSED, transaction history and compliance flags.
             </div>
           </div>
@@ -305,7 +334,7 @@ export default function IRSPortal() {
                                   ))}
                               </td>
                               <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                                {(r.file_url || r.file_path) && <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={e => { e.stopPropagation(); openTranscriptFile(r) }}>PDF</button>}
+                                {(r.file_path || r.file_url) && <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={e => { e.stopPropagation(); openTranscriptPdf(r) }}>PDF</button>}
                                 <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={e => { e.stopPropagation(); setTDel(r.id) }}>✕</button>
                               </td>
                             </tr>
@@ -363,7 +392,7 @@ export default function IRSPortal() {
 
       {/* ═══════════ PULL TRANSCRIPTS TAB ═══════════ */}
       {tab === 'pull' && (
-        <TranscriptPull clientNames={clientNames} poas={poas}
+        <TranscriptPull clientNames={clientNames} clients={clients} poas={poas}
           onGoToPoa={() => setTab('poa')} onImported={loadAnalyses} />
       )}
 
@@ -407,7 +436,7 @@ export default function IRSPortal() {
                           <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }}
                             onClick={() => {
                               setPoaForm({
-                                clientName: p.client_name, formType: p.form_type, taxYears: p.tax_years || '',
+                                clientId: p.client_id || '', clientName: p.client_name, formType: p.form_type, taxYears: p.tax_years || '',
                                 status: p.status, signedDate: p.signed_date || '', submittedDate: p.submitted_date || '',
                                 cafConfirmedDate: p.caf_confirmed_date || '', submissionMethod: p.submission_method || 'IRS Online (Tax Pro)',
                                 notes: p.notes || '', fileUrl: p.file_url || '',
@@ -435,7 +464,11 @@ export default function IRSPortal() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-                <input list="irsportal-clients" value={poaForm.clientName} onChange={e => pf('clientName', e.target.value)} style={inputStyle} placeholder="Client name" />
+                <input list="irsportal-clients" value={poaForm.clientName} onChange={e => {
+                  const name = e.target.value
+                  const row = resolveClientByName(name)
+                  setPoaForm(f => ({ ...f, clientName: name, clientId: row?.id || '' }))
+                }} style={inputStyle} placeholder="Client name" />
               </div>
               <div>
                 <label style={{ fontSize: 11, color: 'var(--t3)' }}>Form</label>

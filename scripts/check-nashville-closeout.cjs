@@ -107,14 +107,14 @@ const checks=[
     "revoke all on function public.esign_public_track_event(text,text,text,integer,text,text,jsonb) from public, anon, authenticated",
   ]],
   ['src/lib/transcriptPull.js',[
-    "client_id: client.id",
+    "client_id: clientId",
     "storage://documents/",
-    "transcripts/${client.id}/",
+    "transcripts/${clientId}/",
     "storage_path: filePath",
   ]],
   ['src/pages/IRSPortal.jsx',[
-    "openTranscriptFile(row)",
-    "createSignedUrl(path, 3600)",
+    "openTranscriptPdf(row)",
+    "createSignedUrl(row.file_path, 900)",
   ]],
   ['supabase/migrations/20260919_nashville_transcript_indexes.sql',[
     "idx_transcript_analyses_tenant_client_year",
