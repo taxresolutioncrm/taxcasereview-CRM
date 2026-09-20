@@ -11,7 +11,7 @@ import {
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
-const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'manual', notes: '' }
+const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
@@ -26,6 +26,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [retryingId, setRetryingId] = useState(null)
   const [delId, setDelId] = useState(null)
   const [msg, setMsg] = useState('')
+  const [fallbackOpen, setFallbackOpen] = useState(false)
 
   const dirRef = useRef(null)
   const seenRef = useRef(new Set())
@@ -372,180 +373,215 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   const importedCount = (r) => (r.result_analysis_ids || []).length
   const inputStyle = { width: '100%', boxSizing: 'border-box' }
+  const direct = getProvider('irs_a2a', providers)
+  const canRequest = Boolean(formClient && formPoa && direct?.available && direct?.sessionActive && form.types.length > 0 && form.taxYears.trim())
+
+  async function submitCanopyStyleRequest() {
+    ff('provider', 'irs_a2a')
+    const nextForm = { ...form, provider: 'irs_a2a' }
+    if (!nextForm.clientName.trim() || nextForm.types.length === 0 || !nextForm.taxYears.trim()) return
+    const client = uniqueClientForName(nextForm.clientName)
+    const poa = poaOnFile(nextForm.clientName)
+    if (!client || !poa || !direct?.available || !direct?.sessionActive) return
+    setSaving(true)
+    let saved = false
+    try {
+      const row = {
+        id: crypto.randomUUID(),
+        client_name: client.name,
+        client_id: client.id,
+        transcript_types: nextForm.types,
+        tax_years: nextForm.taxYears.trim(),
+        provider: 'irs_a2a',
+        status: 'Requested',
+        poa_record_id: poa.id,
+        requested_by: employeeName || null,
+        notes: nextForm.notes || null,
+      }
+      const { error } = await supabase.from('transcript_pull_requests').insert([row])
+      if (error) throw new Error(error.message)
+      saved = true
+      await submitToProvider('irs_a2a', row)
+      setForm(BLANK)
+      await loadRequests()
+      flash('✅ Transcript request sent to IRS. Returned PDFs will be filed to this client automatically.')
+    } catch (e) {
+      if (saved) {
+        await loadRequests()
+        flash('⚠ Request saved, but IRS submission failed: ' + (e?.message || 'Unknown error') + '.')
+      } else {
+        flash('❌ ' + (e?.message || 'Could not request transcripts.'))
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div>
-      {legacyCount > 0 && (
-        <div style={{ background: 'rgba(37,99,235,0.1)', border: '1px solid #2563eb', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontWeight: 700, fontSize: 13 }}>📥 {legacyCount} request{legacyCount === 1 ? '' : 's'} from the old Transcripts tab</div>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3 }}>Bring your existing transcript request history into Pull Transcripts. Originals are kept and marked migrated — nothing is deleted.</div>
-          </div>
-          <button className="btn" disabled={migrating} onClick={migrateLegacy}>{migrating ? 'Migrating…' : `Migrate ${legacyCount}`}</button>
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginBottom: 16 }}>
-        {providers.map(p => (
-          <div key={p.id} style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', opacity: p.available ? 1 : 0.75 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{p.label}</div>
-              <span style={{ background: p.id === 'irs_a2a' && p.available && !p.sessionActive ? '#b45309' : p.available ? '#15803d' : '#64748b', color: '#fff', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{p.chip}</span>
+      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>IRS Transcript Delivery</div>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 4 }}>
+              Sign in once, choose the client, years and transcript types, then request. Returned IRS PDFs are filed to that client automatically and analyzed in the CRM.
             </div>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 6, lineHeight: 1.45 }}>{p.note}</div>
           </div>
-        ))}
+          <span style={{ background: direct?.sessionActive ? '#15803d' : '#64748b', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
+            {direct?.sessionActive ? 'IRS session active' : 'IRS sign-in required'}
+          </span>
+        </div>
+
+        <div style={{ padding: 18 }}>
+          <TDSSessionPresence />
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1.4fr) minmax(180px,.8fr)', gap: 12, alignItems: 'start' }}>
+            <div>
+              <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
+              <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Search or select client" />
+              {form.clientName.trim() && (!formClient ? (
+                <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>Select one exact client record.</div>
+              ) : formPoa ? (
+                <div style={{ fontSize: 11.5, color: '#15803d', marginTop: 5 }}>POA on file · Form {formPoa.form_type}{formPoa.tax_years ? ` · ${formPoa.tax_years}` : ''}</div>
+              ) : (
+                <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>
+                  POA must be On File before requesting transcripts.{' '}
+                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => onGoToPoa && onGoToPoa()}>Open POA / CAF Tracker</span>
+                </div>
+              ))}
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
+              <input value={form.taxYears} onChange={e => ff('taxYears', e.target.value)} style={inputStyle} placeholder="2019-2024" />
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, color: 'var(--t3)' }}>Transcript Types</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7 }}>
+              {TRANSCRIPT_TYPES.map(t => {
+                const checked = form.types.includes(t)
+                return (
+                  <label key={t} style={{
+                    border: '1px solid var(--line)', borderRadius: 8, padding: '7px 9px', cursor: 'pointer',
+                    background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 700 : 500
+                  }}>
+                    <input type="checkbox" checked={checked} onChange={e => ff('types', e.target.checked ? [...form.types, t] : form.types.filter(x => x !== t))} style={{ marginRight: 6 }} />
+                    {t}
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, color: 'var(--t3)' }}>Notes <span style={{ color: 'var(--t3)' }}>(optional)</span></label>
+            <textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={inputStyle} placeholder="Internal note for this request" />
+          </div>
+
+          {!direct?.available && (
+            <div style={{ marginTop: 12, color: '#b45309', fontSize: 11.5 }}>
+              IRS direct connection is not configured yet. The request controls remain here so the workflow does not change when the connection is enabled.
+            </div>
+          )}
+          {direct?.available && !direct?.sessionActive && (
+            <div style={{ marginTop: 12, color: 'var(--t3)', fontSize: 11.5 }}>Sign in to IRS above to enable transcript requests for the one-hour session.</div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5 }}>
+              {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
+              {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
+            </div>
+            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest}>
+              {saving ? 'Requesting…' : 'Request Transcripts'}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <TDSSessionPresence />
-
-      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>📂 Watched TDS Download Folder</div>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 4 }}>
-              Manual fallback only. Point this at the folder where you save TDS downloads. Every new PDF is parsed in the browser,
-              matched to the client by the name on the transcript, and securely filed with its analysis in the CRM.
-              Each agent connects their own browser's local download folder.
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>Transcript Requests</div>
+          <button className="btn sec" style={{ fontSize: 10.5, padding: '4px 9px' }} onClick={() => loadRequests()}>Refresh</button>
+        </div>
+        {loading ? <div style={{ color: 'var(--t3)', fontSize: 13 }}>Loading…</div> :
+          requests.length === 0 ? (
+            <div style={{ color: 'var(--t3)', fontSize: 12.5, padding: '12px 0' }}>No transcript requests yet.</div>
+          ) : (
+            <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: 'var(--t3)', textAlign: 'left' }}>
+                    {['Client', 'Types', 'Years', 'Status', 'Filed', 'Requested', ''].map(h => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {requests.map(r => (
+                    <tr key={r.id} style={{ borderTop: '1px solid var(--line)' }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 700 }}>{r.client_name}</td>
+                      <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{(r.transcript_types || []).join(', ') || '—'}</td>
+                      <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{r.tax_years || '—'}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{ background: REQ_COLORS[r.status] || '#64748b', color: '#fff', borderRadius: 6, padding: '2px 9px', fontSize: 10.5, fontWeight: 700 }}>{r.status}</span>
+                        {r.provider_status && <div style={{ color: r.provider_error ? '#f87171' : 'var(--t3)', fontSize: 10, marginTop: 3 }}>{r.provider_status}{r.provider_error ? ` · ${r.provider_error}` : ''}</div>}
+                      </td>
+                      <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{importedCount(r)}</td>
+                      <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                        {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry'}</button>}
+                        <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {!fsSupported ? (
-              <span style={{ color: 'var(--t3)', fontSize: 12 }}>This browser can't watch folders — use Chrome/Edge, or upload on the Transcript Analysis tab.</span>
-            ) : dirName ? (
-              <>
-                <span style={{ fontSize: 12, color: 'var(--t2)' }}>
-                  Watching <b>{dirName}</b>{lastScan ? ` · last scan ${lastScan.toLocaleTimeString()}` : ''} · rescans every 30s
-                </span>
-                <button className="btn sec" disabled={scanning} onClick={() => scanFolder(true)}>{scanning ? '⏳ Scanning…' : '🔄 Scan Now'}</button>
-                <button className="btn sec" onClick={disconnectFolder}>Disconnect</button>
-              </>
-            ) : (
-              <button className="btn" onClick={connectFolder}>Connect Download Folder</button>
+          )}
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+        <button className="btn sec" style={{ fontSize: 11 }} onClick={() => setFallbackOpen(v => !v)}>
+          {fallbackOpen ? 'Hide manual fallback' : 'Manual PDF fallback'}
+        </button>
+        {fallbackOpen && (
+          <div style={{ marginTop: 10, background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>Manual IRS TDS fallback</div>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 4 }}>
+              Use this only when direct IRS delivery is unavailable. Connect the folder where IRS TDS PDFs are saved; new PDFs are parsed and filed to the matching client.
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {!fsSupported ? (
+                <span style={{ color: 'var(--t3)', fontSize: 12 }}>Folder watching requires Chrome or Edge. Manual upload remains available on Transcript Analysis.</span>
+              ) : dirName ? (
+                <>
+                  <span style={{ fontSize: 12, color: 'var(--t2)' }}>Watching <b>{dirName}</b>{lastScan ? ` · last scan ${lastScan.toLocaleTimeString()}` : ''}</span>
+                  <button className="btn sec" disabled={scanning} onClick={() => scanFolder(true)}>{scanning ? 'Scanning…' : 'Scan Now'}</button>
+                  <button className="btn sec" onClick={disconnectFolder}>Disconnect</button>
+                </>
+              ) : (
+                <button className="btn sec" onClick={connectFolder}>Connect Download Folder</button>
+              )}
+            </div>
+            {unmatched.length > 0 && (
+              <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>Needs a client ({unmatched.length})</div>
+                {unmatched.map(u => (
+                  <div key={u.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0', fontSize: 12 }}>
+                    <span style={{ minWidth: 200 }}>{u.fileName}</span>
+                    {u.error ? <span style={{ color: '#f87171' }}>{u.error}</span> : (
+                      <>
+                        <input list="irsportal-clients" placeholder="Assign to client…" value={u.assignTo} style={{ width: 200 }} onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))} />
+                        <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()} onClick={() => assignUnmatched(u)}>File It</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-        </div>
-        {imported.length > 0 && (
-          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--t2)' }}>
-            {imported.slice(-6).map((i, k) => (
-              <div key={k}>✅ {i.file} → <b>{i.client}</b> {i.year ? `(${i.year}` : ''}{i.type ? `${i.year ? ', ' : '('}${i.type})` : i.year ? ')' : ''}</div>
-            ))}
-          </div>
-        )}
-        {unmatched.length > 0 && (
-          <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>Needs a client ({unmatched.length})</div>
-            {unmatched.map(u => (
-              <div key={u.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0', fontSize: 12 }}>
-                <span style={{ minWidth: 200 }}>{u.fileName}</span>
-                {u.error ? (
-                  <>
-                    <span style={{ color: '#f87171' }}>{u.error}</span>
-                    <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setUnmatched(x => x.filter(i => i.key !== u.key))}>Dismiss</button>
-                  </>
-                ) : (
-                  <>
-                    <span style={{ color: 'var(--t3)' }}>name on transcript: <b>{u.analysis?.taxpayer_name || 'not found'}</b></span>
-                    <input list="irsportal-clients" placeholder="Assign to client…" value={u.assignTo} style={{ width: 200 }} onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))} />
-                    <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()} onClick={() => assignUnmatched(u)}>File It</button>
-                    <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setUnmatched(x => x.filter(i => i.key !== u.key))}>Skip</button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
         )}
       </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ color: 'var(--t3)', fontSize: 12 }}>
-          Requests require a POA <b>On File</b>. When IRS TDS ISP is connected, the CRM retrieves and files delivered transcripts automatically.
-          {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
-        </div>
-        <button className="btn" onClick={openNewRequest}>+ New Pull Request</button>
-      </div>
-
-      {loading ? <div style={{ color: 'var(--t3)', fontSize: 13 }}>Loading…</div> :
-        requests.length === 0 ? (
-          <div style={{ color: 'var(--t3)', fontSize: 13 }}>No pull requests yet. Create one for each client whose transcripts you're pulling.</div>
-        ) : (
-          <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ color: 'var(--t3)', textAlign: 'left' }}>
-                  {['Client', 'Transcripts', 'Years', 'Provider', 'Status', 'Filed', 'Requested', ''].map(h => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map(r => (
-                  <tr key={r.id} style={{ borderTop: '1px solid var(--line)' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 700 }}>{r.client_name}</td>
-                    <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{(r.transcript_types || []).join(', ') || '—'}</td>
-                    <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{r.tax_years || '—'}</td>
-                    <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{getProvider(r.provider, providers).label.split(' — ')[0]}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <span style={{ background: REQ_COLORS[r.status] || '#64748b', color: '#fff', borderRadius: 6, padding: '2px 9px', fontSize: 10.5, fontWeight: 700 }}>{r.status}</span>
-                      {r.provider === 'irs_a2a' && r.provider_status && <div style={{ color: r.provider_error ? '#f87171' : 'var(--t3)', fontSize: 10, marginTop: 3 }}>{r.provider_status}{r.provider_error ? ` · ${r.provider_error}` : ''}</div>}
-                    </td>
-                    <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{importedCount(r)}</td>
-                    <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
-                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                      {r.provider === 'manual' && <a className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} href="https://www.irs.gov/e-services" target="_blank" rel="noreferrer">↗ TDS</a>}
-                      {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry IRS'}</button>}
-                      {r.provider === 'manual' && (r.status === 'Requested' || r.status === 'In Progress') && <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={() => setStatus(r.id, 'Completed')}>Mark Complete</button>}
-                      {r.provider === 'manual' && r.status === 'Completed' && <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={() => setStatus(r.id, 'In Progress')}>Reopen</button>}
-                      <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-      <div style={{ color: 'var(--t3)', fontSize: 11, marginTop: 10 }}>
-        IRS TDS requests auto-complete after the requested tax-year coverage is filed. Manual TDS remains available as the fallback path.
-      </div>
-
-      {modal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setModal(false)}>
-          <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 12, padding: 20, width: 'min(540px, 94vw)', maxHeight: '88vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>New Transcript Pull Request</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-                <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Client name" />
-                {form.clientName.trim() && (!formClient ? (
-                  <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 4 }}>❌ Select one unique client record.</div>
-                ) : formPoa ? (
-                  <div style={{ fontSize: 11.5, color: '#15803d', marginTop: 4 }}>✅ POA on file — Form {formPoa.form_type}{formPoa.tax_years ? ` · years ${formPoa.tax_years}` : ''}</div>
-                ) : (
-                  <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 4 }}>❌ No POA with status <b>On File</b> for this client — TDS access requires one.{' '}<span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => { setModal(false); onGoToPoa && onGoToPoa() }}>Record it in the POA / CAF Tracker</span> first.</div>
-                ))}
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 11, color: 'var(--t3)' }}>Transcript Types</label>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
-                  {TRANSCRIPT_TYPES.map(t => (
-                    <label key={t} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={form.types.includes(t)} onChange={e => ff('types', e.target.checked ? [...form.types, t] : form.types.filter(x => x !== t))} />
-                      {t}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div><label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label><input value={form.taxYears} onChange={e => ff('taxYears', e.target.value)} style={inputStyle} placeholder="2019-2024" /></div>
-              <div><label style={{ fontSize: 11, color: 'var(--t3)' }}>Provider</label><select value={form.provider} onChange={e => ff('provider', e.target.value)} style={inputStyle}>{providers.map(p => <option key={p.id} value={p.id} disabled={!p.available}>{p.label}{p.available ? '' : ` (${p.chip.toLowerCase()})`}</option>)}</select></div>
-              <div style={{ gridColumn: '1 / -1' }}><label style={{ fontSize: 11, color: 'var(--t3)' }}>Notes</label><textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={inputStyle} /></div>
-              {directNeedsSignIn && <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#b45309' }}>⚠ IRS ISP is configured, but this practitioner does not have an active one-hour IRS session. Close this request window, use <b>Sign in to IRS</b> above, then submit.</div>}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button className="btn sec" onClick={() => setModal(false)}>Cancel</button>
-              <button className="btn" disabled={saving || !form.clientName.trim() || !formClient || form.types.length === 0 || !formPoa || !formProvider?.available || directNeedsSignIn} onClick={createRequest}>{saving ? 'Creating…' : form.provider === 'irs_a2a' ? 'Request Transcripts' : 'Create Request'}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {delId && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
