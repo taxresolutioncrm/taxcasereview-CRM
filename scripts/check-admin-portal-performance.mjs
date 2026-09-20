@@ -26,6 +26,11 @@ requireMarker("client_count:null", 'Registry fallback must not fabricate client 
 requireMarker("lead_count:null", 'Registry fallback must not fabricate lead counts when live usage is unavailable')
 requireMarker("storage_bytes:null", 'Registry fallback must not fabricate storage usage when live usage is unavailable')
 requireMarker("r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)", 'Overview must render unknown storage as unavailable, not zero')
+requireMarker("const [sortConfig, setSortConfig] = useState({ key:'firm_name', direction:'asc' })", 'Overview sortable column state is missing')
+requireMarker("const SORT_COLUMNS = [", 'Overview sortable column registry is missing')
+requireMarker("const toggleSort = key =>", 'Overview sort toggle is missing')
+requireMarker("sortedStats.map(r => (", 'Overview rows are not rendered from sorted data')
+requireMarker("current.key === key && current.direction === 'asc' ? 'desc' : 'asc'", 'Overview headers do not toggle ascending/descending')
 forbidMarker("const prospectsRes = await supabase.from('prospects')", 'Command Center prospects are still serial')
 forbidMarker('const registrySyncResults = await Promise.all(registrySyncJobs.map(job => job.promise))', 'Registry writes are still on the Overview critical path')
 
