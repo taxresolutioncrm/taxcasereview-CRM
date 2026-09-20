@@ -189,6 +189,10 @@ export default function Cases() {
   }
 
   function openDetail(c) { setDetail(c); loadCaseNotes(c.id); navigate('/cases/' + c.id, { replace: false }) }
+  function clientHrefForCase(c) {
+    const hit = clients.find(x => String(x.name || '').trim().toLowerCase() === String(c.clientName || '').trim().toLowerCase())
+    return hit?.id ? `/clients/${hit.id}?from=cases` : ''
+  }
   function openEdit(c) { setForm({ ...BLANK, ...c }); setEditCase(c) }
 
   // ── Stat summary for list header ─────────────────────────────────────────────
@@ -478,7 +482,16 @@ export default function Cases() {
                   return (
                     <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(c)}>
                       <td style={{ color: 'var(--t3)', fontSize: 11 }}>{c.caseNum}</td>
-                      <td style={{ fontWeight: 700, fontSize: 13 }} onClick={e=>e.stopPropagation()}><ClientLink name={c.clientName} /></td>
+                      <td style={{ fontWeight: 700, fontSize: 13 }} onClick={e=>e.stopPropagation()}>
+                        {clientHrefForCase(c)
+                          ? <a
+                              href={clientHrefForCase(c)}
+                              onClick={e=>e.stopPropagation()}
+                              style={{ color:'var(--bad)', textDecoration:'underline', textUnderlineOffset:2, fontWeight:700 }}
+                              title="Open client file"
+                            >{c.clientName}</a>
+                          : <span>{c.clientName}</span>}
+                      </td>
                       <td><span className="bdg bb" style={{fontSize:12,padding:'3px 9px'}}>{c.caseType}</span></td>
                       <td style={{ color: c.irsBalance ? 'var(--bad)' : 'var(--t3)', fontWeight: 600 }}>{fmt$(c.irsBalance)}</td>
                       <td>

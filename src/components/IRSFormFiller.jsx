@@ -112,18 +112,17 @@ export default function IRSFormFiller({ client, onClose }) {
         client_email: client.email || '',
         client_phone: client.phone || '',
         message: `Please review and sign your ${label}.`,
-        pdf_attachments: [{ formType, label, url: urlData?.signedUrl || '' }],
+        pdf_attachments: [{ formType, label, url: urlData?.signedUrl || '', storage_path: path }],
         priority: 'Normal',
         status: 'Awaiting',
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
+        tenant_id: FIRM.tenantId || undefined,
       }]).select().single();
       if (esignErr) throw new Error(esignErr.message);
 
       const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`;
-      await navigator.clipboard.writeText(sigUrl).catch(() => {});
-
-      let emailSent = false, smsSent = false;
+let emailSent = false, smsSent = false;
 
       if ((sendVia === 'email' || sendVia === 'both') && client.email) {
         const { error: eErr } = await supabase.functions.invoke('send-email', {
@@ -149,19 +148,19 @@ export default function IRSFormFiller({ client, onClose }) {
       }
 
       if ((sendVia === 'sms' || sendVia === 'both') && client.phone) {
-        const { data: cfg } = await supabase.from('settings').select('signalwire_backend').limit(1).maybeSingle();
-        if (cfg?.signalwire_backend) {
-          try {
-            await fetch(cfg.signalwire_backend + '/sms/send', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: client.phone, body: `${FIRM.name || 'Tax Case Review'}: please sign your ${label}: ${sigUrl}` })
-            });
-            smsSent = true;
-          } catch (_) {}
-        }
+        try {
+          const { data: smsData, error: smsErr } = await supabase.functions.invoke('send-sms', {
+            body: {
+              to: client.phone,
+              body: `${FIRM.name || 'Tax Case Review'}: please sign your ${label}: ${sigUrl}`,
+              client_id: client.id || null,
+            }
+          });
+          smsSent = !smsErr && !!smsData?.success;
+        } catch (_) {}
       }
 
-      setSentMsg(emailSent || smsSent ? '✅ Sent for signature!' : '✅ Signing link copied to clipboard');
+      setSentMsg(emailSent || smsSent ? '✅ Sent for signature!' : '✅ Signing request created — delivery was not completed');
       setTimeout(() => setSentMsg(''), 4000);
     } catch (e) {
       setError(e.message);

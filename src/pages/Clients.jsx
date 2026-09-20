@@ -241,11 +241,14 @@ function InlineFaxForm({ client, onClose, showToast, onLogged }) {
       if (invokeErr) throw invokeErr
       if (!resData?.success) throw new Error(resData?.error || 'Fax provider rejected the send')
 
-      await supabase.from('fax_logs').insert([{
-        to_number:toFull, client_name:client?.name, subject, notes,
-        file_name:file?.name||null, file_url:fileUrl, status:'Sent',
-        ...(resData?.provider === 'telnyx' ? { telnyx_fax_id: resData?.sid || null } : { signalwire_fax_id: resData?.sid || null }), sent_at:new Date().toISOString(), created_at:new Date().toISOString()
-      }])
+      const faxBackendAlreadyLogs = resData?.backend_logged || window.location.hostname.toLowerCase() === 'nashville.taxrescrm.app'
+      if (!faxBackendAlreadyLogs) {
+        await supabase.from('fax_logs').insert([{
+          to_number:toFull, client_name:client?.name, subject, notes,
+          file_name:file?.name||null, file_url:fileUrl, status:'Sent',
+          ...(resData?.provider === 'telnyx' ? { telnyx_fax_id: resData?.sid || null } : { signalwire_fax_id: resData?.sid || null }), sent_at:new Date().toISOString(), created_at:new Date().toISOString()
+        }])
+      }
 
       const { data: { user } } = await supabase.auth.getUser()
       const actor = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
@@ -303,6 +306,8 @@ function InlineEsignForm({ client, onClose, showToast }) {
   const [saving,   setSaving]   = useState(false)
   const [link,     setLink]     = useState('')
   const [customFile, setCustomFile] = useState(null)
+  const [sendVia, setSendVia] = useState(client?.email ? 'email' : 'sms')
+  const [delivered, setDelivered] = useState([])
 
   async function create() {
     if(docType==='Custom Document' && !message.trim() && !customFile){
@@ -314,30 +319,60 @@ function InlineEsignForm({ client, onClose, showToast }) {
       try{
         const path=`esign-custom/${(client?.name||'client').replace(/[^A-Za-z0-9 _-]/g,'')}/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
-        if(!upErr){
-          const{data:u}=await supabase.storage.from('documents').createSignedUrl(path, 3600)
-          pdfAttachments=[{formType:'custom',label:customFile.name,url:u?.signedUrl||null}]
-        }
-      }catch(e){console.error('custom upload:',e)}
+        if(upErr) throw upErr
+        const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path, 3600)
+        if(signErr || !u?.signedUrl) throw signErr || new Error('Could not create secure document link')
+        pdfAttachments=[{formType:'custom',label:customFile.name,url:u.signedUrl,storage_path:path}]
+      }catch(e){
+        console.error('custom upload:',e)
+        setSaving(false)
+        showToast('Custom document upload failed: '+(e?.message||'Unknown upload error'),'err')
+        return
+      }
     }
     const { data, error } = await supabase.from('esigns').insert([{
       doc_type: docType, client_name: client?.name, client_email: client?.email||'', client_phone: client?.phone||'',
-      message, pdf_attachments:pdfAttachments, priority, status:'Awaiting', sent_at: new Date().toISOString(), created_at: new Date().toISOString()
+      message, pdf_attachments:pdfAttachments, priority, status:'Awaiting', sent_at: new Date().toISOString(), created_at: new Date().toISOString(),
+      tenant_id: FIRM.tenantId || undefined
     }]).select().single()
-    setSaving(false)
-    if (error) { showToast('Error: '+error.message,'err'); return }
+    if (error) { setSaving(false); showToast('Error: '+error.message,'err'); return }
     const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
     setLink(url)
-    navigator.clipboard.writeText(url).catch(()=>{})
-    showToast('✅ Signing link copied!')
+
+    let emailSent=false, smsSent=false
+    if ((sendVia==='email'||sendVia==='both') && client?.email) {
+      try {
+        const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', {
+          body:{
+            tenant_id:FIRM.tenantId||undefined,
+            to:client.email,
+            subject:`Action Required: Sign Your ${docType} — ${firmName()}`,
+            html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Signature Requested</h2><p>Hi <strong>${client.name}</strong>,</p><p>${message}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign</a></p><p style="font-size:12px;color:#64748b;word-break:break-all">${url}</p><p><strong>${firmName()}</strong></p></div>`
+          }
+        })
+        emailSent=!emailErr && emailData?.success!==false
+      } catch(_) {}
+    }
+    if ((sendVia==='sms'||sendVia==='both') && client?.phone) {
+      try {
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:client.phone,body:`${firmName()}: please review and sign your ${docType}: ${url}`,client_id:client.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
+      } catch(_) {}
+    }
+    const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+    setDelivered(sent)
+    setSaving(false)
+    showToast(sent.length ? `✅ Signing request sent via ${sent.join(' & ')}!` : '✅ Signing link created — delivery was not completed')
   }
 
   if (link) return (
     <div style={{padding:'0 4px 4px'}}>
       <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>✅ Signing link created & copied!</div>
-        <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all',marginBottom:8}}>{link}</div>
-        <div style={{fontSize:11,color:'var(--t2)'}}>Send this link to <strong>{client?.name}</strong> via email or SMS. When they sign, their IP address and timestamp are automatically recorded and a copy is saved to their documents.</div>
+        <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>{delivered.length ? `✅ Signing request sent via ${delivered.join(' & ')}!` : '✅ Signing link created!'}</div>
+        <a href={link} target="_blank" rel="noreferrer" style={{display:'block',fontSize:11,color:'var(--blue)',wordBreak:'break-all',marginBottom:8}}>{link}</a>
+        <div style={{fontSize:11,color:'var(--t2)'}}>When they sign, their IP address and timestamp are automatically recorded and a copy is saved to their documents.</div>
       </div>
       <button className="btn sec" style={{width:'100%',justifyContent:'center'}} onClick={onClose}>Done</button>
     </div>
@@ -366,13 +401,25 @@ function InlineEsignForm({ client, onClose, showToast }) {
           <option>Normal</option><option>High</option><option>Urgent</option>
         </select>
       </div>
+      <div className="field"><label>Send Via</label>
+        <div style={{display:'flex',gap:8}}>
+          {[['email','Email'],['sms','Text'],['both','Both']].map(([v,l])=>(
+            <button key={v} type="button" onClick={()=>setSendVia(v)}
+              disabled={(v==='email'&&!client?.email)||(v==='sms'&&!client?.phone)||(v==='both'&&(!client?.email||!client?.phone))}
+              style={{flex:1,padding:'7px 4px',borderRadius:7,border:'1px solid',fontSize:12,fontWeight:600,cursor:'pointer',
+                borderColor:sendVia===v?'var(--blue)':'var(--br)',background:sendVia===v?'var(--blue)22':'var(--s2)',color:sendVia===v?'var(--blue)':'var(--t2)'}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
       <div style={{background:'var(--s2)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--t3)',marginBottom:14,lineHeight:1.6}}>
-        💡 A unique signing link will be generated. Send to client via email or SMS. Their signature, IP, and timestamp are all recorded automatically.
+        💡 A unique signing link will be generated and delivered using the selected channel. Their signature, IP, and timestamp are recorded automatically.
       </div>
       <div style={{display:'flex',gap:8}}>
         <button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={onClose}>Cancel</button>
         <button className="btn pri" style={{flex:1,justifyContent:'center',background:'#7c3aed',borderColor:'#7c3aed'}} onClick={create} disabled={saving}>
-          {saving?'Creating…':'✍️ Create & Copy Link'}
+          {saving?'Creating…':'✍️ Create Signing Link'}
         </button>
       </div>
     </div>
@@ -390,7 +437,6 @@ function InlinePortalForm({ client, onClose, showToast }) {
 
   async function send() {
     setSending(true)
-    await navigator.clipboard.writeText(url).catch(() => {})
     let emailSent = false, smsSent = false
     // Safety net: never leave "Sending..." stuck if email/SMS are not configured
     const sendTimeout = setTimeout(() => { setSending(false); setDone({ sent: [], timedOut: true }) }, 12000)
@@ -532,7 +578,7 @@ function InlinePortalForm({ client, onClose, showToast }) {
     <div style={{padding:'0 4px 4px'}}>
       <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>
-          {done.sent.length ? `✅ Portal link sent via ${done.sent.join(' & ')}!` : '📋 Link copied to clipboard'}
+          {done.sent.length ? `✅ Portal link sent via ${done.sent.join(' & ')}!` : '📋 Link ready to share'}
         </div>
         {!done.sent.length && <div style={{fontSize:11,color:'var(--warn)',marginBottom:6}}>Email/SMS not configured — share the link manually.</div>}
         <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all'}}>{url}</div>
@@ -600,7 +646,6 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     }
 
     const url = window.location.origin + '/organizer/' + orgId
-    await navigator.clipboard.writeText(url).catch(() => {})
     let emailSent = false, smsSent = false
     if ((sendVia === 'email' || sendVia === 'both') && client?.email) {
       try {
@@ -631,7 +676,7 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     <div style={{padding:'0 4px 4px'}}>
       <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
         <div style={{fontSize:12,fontWeight:700,color:'var(--ok)',marginBottom:6}}>
-          {done.sent.length ? `✅ Organizer link sent via ${done.sent.join(' & ')}!` : '📋 Link copied to clipboard'}
+          {done.sent.length ? `✅ Organizer link sent via ${done.sent.join(' & ')}!` : '📋 Link ready to share'}
         </div>
         {!done.sent.length && <div style={{fontSize:11,color:'var(--warn)',marginBottom:6}}>Email/SMS not configured — share the link manually.</div>}
         <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all'}}>{done.url}</div>
@@ -923,13 +968,14 @@ export default function Clients() {
   const navigate = useNavigate()
   const { id: urlId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
+  const openedFromCases = searchParams.get('from') === 'cases'
   const { user, searchQ, myTenantId } = useApp()
 
-  // Cache settings at load time — avoids re-fetching signalwire_backend on every action
+  // Cache office communications settings at load time
   const settingsRef = useRef(null)
   async function getSettings() {
     if (settingsRef.current) return settingsRef.current
-    const { data } = await supabase.from('settings').select('signalwire_backend,sw_inbound_did,sw_space_url').limit(1).maybeSingle()
+    const { data } = await supabase.from('settings').select('sw_inbound_did,sw_space_url').limit(1).maybeSingle()
     settingsRef.current = data || {}
     return settingsRef.current
   }
@@ -972,6 +1018,9 @@ export default function Clients() {
   const [addModalTab, setAddModalTab] = useState('addendum') // 'addendum' | 'charge'
   const [addForm,     setAddForm]     = useState({ resolutionFee:'', paymentPlan:'', startDate:'', notes:'', services:[], sendVia:'email' })
   const [addendumSending, setAddendumSending] = useState(false)
+  const [rewriteModal, setRewriteModal] = useState(false)
+  const [rewriteSaving, setRewriteSaving] = useState(false)
+  const [rewriteForm, setRewriteForm] = useState({ resolutionFee:'', paymentPlan:'', startDate:'', notes:'', services:[], sendVia:'email' })
   const [showChargeModal, setShowChargeModal] = useState(false)
   const [poaModal, setPoaModal] = useState(false)
   const [poaClient, setPoaClient] = useState(null)
@@ -1613,17 +1662,18 @@ export default function Clients() {
       const path = `docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
       if (upErr) throw new Error(upErr.message)
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      if (signedUrlErr || !urlData?.signedUrl) throw new Error(signedUrlErr?.message || 'Could not create secure State POA link')
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
         doc_type: `State POA — ${formDef.state} (${formDef.num})`,
         client_name: client.name, client_email: client.email||'', client_phone: client.phone||'',
         message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${FIRM.name || 'Tax Case Review'} to represent you before the ${formDef.state} tax authority.`,
-        pdf_attachments: [{ formType:'state_poa', label:`${formDef.state} POA — ${formDef.label}`, url:urlData?.signedUrl || '' }],
+        pdf_attachments: [{ formType:'state_poa', label:`${formDef.state} POA — ${formDef.label}`, url:urlData.signedUrl, storage_path:path }],
         priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
+        tenant_id: FIRM.tenantId || undefined,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
       const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
-      await navigator.clipboard.writeText(sigUrl).catch(()=>{})
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && client.email) {
         const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
@@ -1639,7 +1689,7 @@ export default function Clients() {
       }
       await insertClientNote({ clientname:client.name, content:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, created_by:actor, visible_to_client:false, created_at:new Date().toISOString() })
       setPoaModal(false)
-      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing link copied to clipboard')
+      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing request created — delivery was not completed')
     } catch(e) { showToast('Error: '+e.message) }
     setPoaSending(false)
   }
@@ -1658,8 +1708,6 @@ export default function Clients() {
     if (res.error) { setAddendumSending(false); showToast('Error: '+res.error); return }
 
     const url = res.url
-    await navigator.clipboard.writeText(url).catch(()=>{})
-
     // Generate Stripe checkout link for resolution fee so client can pay inline
     let stripePayUrl = null
     try {
@@ -1741,6 +1789,76 @@ export default function Clients() {
     setAddModal(false)
     loadRelated(c.name)
     showToast(emailSent||smsSent ? '✅ Addendum sent for signature!' : '⚠️ Link copied — configure email/SMS to send automatically')
+  }
+
+  async function saveRewritePlan() {
+    if (!rewriteForm.resolutionFee || !detail) { showToast('Enter the new resolution fee first'); return }
+    const fee = Number(rewriteForm.resolutionFee)
+    if (!Number.isFinite(fee) || fee <= 0) { showToast('Enter a valid resolution fee'); return }
+    const via = rewriteForm.sendVia || 'email'
+    if ((via === 'email' || via === 'both') && !detail.email) { showToast('Client has no email on file'); return }
+    if ((via === 'sms' || via === 'both') && !detail.phone) { showToast('Client has no phone on file'); return }
+
+    setRewriteSaving(true)
+    try {
+      const actor = resolveActorName(user, employees)
+      const plan = {
+        ...rewriteForm,
+        services: Array.isArray(rewriteForm.services) ? rewriteForm.services : [],
+      }
+
+      // Generate the replacement agreement first. Client terms are not changed
+      // unless a valid token-bound signing request exists.
+      const res = await sendAddendumForSignature(detail, plan, supabase, actor)
+      if (res.error) throw new Error(res.error)
+      const url = res.url
+      let emailSent=false, smsSent=false
+      if ((via==='email'||via==='both') && detail.email) {
+        const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', { body: {
+          tenant_id: FIRM.tenantId || undefined,
+          to: detail.email,
+          subject: `Action Required: Review Your New Payment Plan — ${firmName()}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Updated Service Plan</h2><p>Hi <strong>${detail.name}</strong>,</p><p>Your updated service/payment plan is ready for review and signature.</p><p><strong>Resolution fee:</strong> ${fee.toLocaleString()}${plan.paymentPlan ? `<br><strong>New payment:</strong> ${Number(plan.paymentPlan).toLocaleString()}/mo` : ''}${plan.startDate ? `<br><strong>Start date:</strong> ${plan.startDate}` : ''}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign New Plan</a></p><p>If you have questions, reply to this message before signing.</p><p><strong>${firmName()}</strong></p></div>`
+        }})
+        emailSent = !emailErr && emailData?.success !== false
+      }
+      if ((via==='sms'||via==='both') && detail.phone) {
+        const { data:smsData, error:smsErr } = await supabase.functions.invoke('send-sms', { body: {
+          to: detail.phone,
+          body: `${firmName()}: your updated service/payment plan is ready to review and sign: ${url}`,
+          client_id: detail.id || null
+        }})
+        smsSent = !smsErr && !!smsData?.success
+      }
+
+      const nextChanges = Number(detail.payment_plan_changes || 0) + 1
+      const { error:updateErr } = await supabase.from('clients').update({
+        contractFee: fee,
+        services: plan.services,
+        payment_plan_changes: nextChanges,
+      }).eq('id', detail.id)
+      if (updateErr) throw updateErr
+
+      const servicesText = plan.services.length ? ` · Services: ${plan.services.join(', ')}` : ''
+      const paymentText = plan.paymentPlan ? ` · New payment: ${Number(plan.paymentPlan).toLocaleString()}/mo` : ''
+      const startText = plan.startDate ? ` · Starts: ${plan.startDate}` : ''
+      await insertClientNote({
+        clientname: detail.name,
+        content: `🔄 Rewrite created — Default → New Plan · Resolution fee: ${fee.toLocaleString()}${paymentText}${startText}${servicesText}`,
+        created_by: actor,
+        created_at: new Date().toISOString(),
+      })
+
+      const { data:fresh } = await supabase.from('clients').select('*').eq('id',detail.id).single()
+      if (fresh) setDetail(fresh)
+      loadRelated(detail.name, detail.id)
+      setRewriteModal(false)
+      showToast(emailSent||smsSent ? '✅ Rewrite saved and sent for signature!' : '✅ Rewrite saved — delivery was not completed')
+    } catch (e) {
+      showToast('Rewrite error: ' + (e?.message || 'Unable to create new plan'))
+    } finally {
+      setRewriteSaving(false)
+    }
   }
 
   async function addPaymentForClient() {
@@ -1922,7 +2040,7 @@ export default function Clients() {
         {/* Back + top actions */}
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap'}}>
           <button className="btn" style={{padding:'8px 16px',fontSize:13,fontWeight:600}} onClick={()=>{setDetail(null);navigate('/clients',{replace:true})}}>← Back to Clients</button>
-          <button className="btn" style={{padding:'8px 16px',fontSize:13,fontWeight:600}} onClick={()=>navigate('/cases')}>← Back to Cases</button>
+          <a href="/cases" className={openedFromCases ? "btn pri" : "btn"} style={{padding:'8px 16px',fontSize:13,fontWeight:600,textDecoration:'none'}}>← Back to Cases</a>
           <button className="btn pri" style={{marginLeft:'auto',padding:'8px 18px',fontSize:13,fontWeight:700}} onClick={()=>openEdit(c)}>✏️ Edit</button>
           {c.archived ? (
             <button className="btn" style={{padding:'8px 18px',fontSize:13,fontWeight:700}} onClick={()=>restoreClient(c.id)}>↩ Restore</button>
@@ -2098,7 +2216,7 @@ export default function Clients() {
         <div className="card" style={{marginBottom:12}}>
           <div style={{fontSize:10,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Quick Actions</div>
           <div className="ovx">
-          <div style={{display:'grid',gridTemplateColumns:'repeat(9, 1fr)',gap:8,minWidth:800}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(10, 1fr)',gap:8,minWidth:800}}>
             <ActionBtn color="#0891b2" icon="📅" label="Schedule" sub="Book Appointment" onClick={()=>setBookingClient(c)}/>
             <ActionBtn color="#7c3aed" icon="✅" label="Add Task" sub="Assign Work" onClick={()=>{setTaskTitle('');setTaskPriority('Normal');setTaskDueDate('');setTaskModal(true)}}/>
             <ActionBtn color="#dc2626" icon="📠" label="Send Fax" sub="SignalWire Fax" onClick={()=>{setFaxClient(c);setFaxModal(true)}}/>
@@ -2110,7 +2228,8 @@ export default function Clients() {
               } catch (err) { showToast('Error opening form: ' + err.message) }
             }}/>
             <ActionBtn color="#0f766e" icon="🏛️" label="Pre-Fill State POA" sub={c.state ? c.state+' Form' : 'State Form'} onClick={()=>{ setPoaClient(c); setPoaModal(true) }}/>
-            <ActionBtn color="#d97706" icon="📋" label="Addendum" sub="Add Services" onClick={()=>{setAddForm({resolutionFee:String(c.contractFee||''),paymentPlan:'',startDate:'',notes:'',services:(()=>{try{return JSON.parse(c.services||'[]')}catch{return []}})(),sendVia:'email',trade1Amount:c.trade1Amount||'',trade1Date:c.trade1Date||'',trade2Amount:c.trade2Amount||'',trade2Date:c.trade2Date||'',trade3Amount:c.trade3Amount||'',trade3Date:c.trade3Date||''});setAddModal(true)}}/>
+            <ActionBtn color="#d97706" icon="📋" label="Addendum" sub="Add Services" onClick={()=>{setAddForm({resolutionFee:String(c.contractFee||''),paymentPlan:'',startDate:'',notes:'',services:Array.isArray(c.services)?c.services:[],sendVia:'email',trade1Amount:c.trade1Amount||'',trade1Date:c.trade1Date||'',trade2Amount:c.trade2Amount||'',trade2Date:c.trade2Date||'',trade3Amount:c.trade3Amount||'',trade3Date:c.trade3Date||''});setAddModal(true)}}/>
+            <ActionBtn color="#991b1b" icon="🔄" label="Rewrite" sub="Default → New Plan" onClick={()=>{setRewriteForm({resolutionFee:String(c.contractFee||''),paymentPlan:'',startDate:'',notes:'',services:Array.isArray(c.services)?c.services:[],sendVia:'email'});setRewriteModal(true)}}/>
             <ActionBtn color="#0ea5e9" icon="🔓" label="Client Portal" sub="Compliance Access" onClick={()=>{setPortalClient(c);setPortalModal(true)}}/>
             <ActionBtn color="#4338ca" icon="🧾" label="Tax Organizer" sub="Send for Filing" onClick={()=>{setOrgClient(c);setOrgModal(true)}}/>
           </div>
@@ -3099,6 +3218,58 @@ export default function Clients() {
                   💳 Open Stripe Charge Form →
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {rewriteModal&&(
+          <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setRewriteModal(false)}>
+            <div className="modal" style={{width:580,maxHeight:'88vh',overflowY:'auto'}}>
+              <div className="mh">
+                <span className="mt">🔄 Rewrite — Default → New Plan</span>
+                <button className="xbtn" onClick={()=>setRewriteModal(false)}>&times;</button>
+              </div>
+              <div style={{fontSize:12,color:'var(--t3)',marginBottom:16,lineHeight:1.6}}>
+                Replace the defaulted terms with a new service/payment plan for <strong>{c.name}</strong>. The new plan is saved to the client file and sent as a fresh token-secured agreement.
+              </div>
+              <div className="fg2">
+                <div className="field"><label>New Resolution Fee ($) *</label>
+                  <input type="text" inputMode="decimal" value={formatMoneyInput(rewriteForm.resolutionFee)}
+                    onChange={e=>setRewriteForm(f=>({...f,resolutionFee:parseMoney(e.target.value)}))}/>
+                </div>
+                <div className="field"><label>New Monthly Payment ($)</label>
+                  <input type="text" inputMode="decimal" value={formatMoneyInput(rewriteForm.paymentPlan)}
+                    onChange={e=>setRewriteForm(f=>({...f,paymentPlan:parseMoney(e.target.value)}))}/>
+                </div>
+              </div>
+              <div className="field"><label>New Plan Start Date</label>
+                <input type="date" value={rewriteForm.startDate} onChange={e=>setRewriteForm(f=>({...f,startDate:e.target.value}))}/>
+              </div>
+              <div className="field"><label>Services on New Plan</label>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:7,marginTop:6}}>
+                  {RESOLUTION_SERVICES.map(svc=>{
+                    const on=(rewriteForm.services||[]).includes(svc)
+                    return <label key={svc} style={{display:'flex',gap:7,alignItems:'center',fontSize:12,cursor:'pointer'}}>
+                      <input type="checkbox" checked={on} onChange={()=>setRewriteForm(f=>({...f,services:on?f.services.filter(x=>x!==svc):[...f.services,svc]}))}/>
+                      <span>{svc}</span>
+                    </label>
+                  })}
+                </div>
+              </div>
+              <div className="field"><label>Internal / Plan Notes</label>
+                <textarea value={rewriteForm.notes} onChange={e=>setRewriteForm(f=>({...f,notes:e.target.value}))} style={{minHeight:70}}/>
+              </div>
+              <div className="field"><label>Send Via</label>
+                <select value={rewriteForm.sendVia} onChange={e=>setRewriteForm(f=>({...f,sendVia:e.target.value}))}>
+                  <option value="email">Email</option>
+                  <option value="sms">Text Message</option>
+                  <option value="both">Email + Text</option>
+                </select>
+              </div>
+              <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontWeight:700}}
+                disabled={rewriteSaving||!rewriteForm.resolutionFee} onClick={saveRewritePlan}>
+                {rewriteSaving?'Creating New Plan…':'🔄 Save & Send New Plan'}
+              </button>
             </div>
           </div>
         )}
