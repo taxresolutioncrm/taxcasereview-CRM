@@ -30,7 +30,13 @@ export default function TDSSessionPresence() {
       })
       setError('')
     } catch (e) {
-      setStatus({ sessionSetupConfigured: false, sessionActive: false, expiresAt: null, organizationName: null, authorizationError: null })
+      setStatus({
+        sessionSetupConfigured: false,
+        sessionActive: false,
+        expiresAt: null,
+        organizationName: null,
+        authorizationError: null,
+      })
       setError(e?.message || 'Could not check your IRS TDS session.')
     } finally {
       if (showSpinner) setLoading(false)
@@ -40,7 +46,85 @@ export default function TDSSessionPresence() {
   useEffect(() => {
     loadStatus(true)
     const refresh = setInterval(() => loadStatus(false), 15000)
-    return (
+    return () => clearInterval(refresh)
+  }, [])
+
+  async function signInToIrs() {
+    setBusy(true)
+    setError('')
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
+        body: { action: 'begin-session' },
+      })
+      if (fnError) throw fnError
+      if (data?.error) throw new Error(data.error)
+      if (!data?.authorizationUrl) throw new Error('IRS authorization URL was not returned.')
+
+      const popup = window.open(data.authorizationUrl, 'irs-tds-auth', 'popup,width=780,height=760,resizable=yes,scrollbars=yes')
+      if (!popup) throw new Error('Your browser blocked the IRS sign-in window. Allow popups for this CRM and try again.')
+
+      const callbackOrigin = data?.redirectUri ? new URL(data.redirectUri).origin : ''
+      if (!callbackOrigin) throw new Error('IRS callback origin was not returned.')
+
+      let settled = false
+      const cleanup = () => {
+        if (settled) return
+        settled = true
+        window.removeEventListener('message', onMessage)
+        clearInterval(closeWatch)
+        clearTimeout(deadlineTimer)
+      }
+      const onMessage = async (event) => {
+        const msg = event?.data
+        if (event.origin !== callbackOrigin || msg?.type !== 'taxres-irs-tds-oauth') return
+        cleanup()
+        setBusy(false)
+        if (!msg.ok) {
+          setError(msg.message || 'IRS authorization failed.')
+          await loadStatus(false)
+          return
+        }
+        await loadStatus(false)
+      }
+      window.addEventListener('message', onMessage)
+
+      const closeWatch = setInterval(() => {
+        if (!popup.closed) return
+        cleanup()
+        setBusy(false)
+      }, 1000)
+      const deadlineTimer = setTimeout(() => {
+        cleanup()
+        setBusy(false)
+        setError('IRS sign-in did not finish within 10 minutes. Start a new IRS session and try again.')
+      }, 10 * 60 * 1000)
+    } catch (e) {
+      setBusy(false)
+      setError(e?.message || 'Could not start IRS sign-in.')
+    }
+  }
+
+  async function endSession() {
+    setBusy(true)
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
+        body: { action: 'end-session' },
+      })
+      if (fnError) throw fnError
+      if (data?.error) throw new Error(data.error)
+      await loadStatus(false)
+      setError('')
+    } catch (e) {
+      setError(e?.message || 'Could not end the IRS TDS session.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const expires = status.expiresAt ? new Date(status.expiresAt) : null
+  const minutesLeft = expires ? Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 60000)) : null
+
+  return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--s1)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
