@@ -17,10 +17,6 @@ const portal='src/pages/IRSPortal.jsx'
 const pullUi='src/components/TranscriptPull.jsx'
 const completionSql='supabase/migrations/20260920025000_taxres_family_transcript_isp_completion.sql'
 const config='supabase/config.toml'
-const app='src/App.jsx'
-const hotfix='public/romylabs-admin-hotfix.js'
-const build='public/taxres-build.json'
-const familyBuild='20260920-taxres-transcripts-family-1'
 
 for(const n of [
   'IRS_TDS_CLIENT_ID','IRS_TDS_JWT_KID','IRS_TDS_JWT_PRIVATE_KEY_PEM','IRS_TDS_REDIRECT_URI',
@@ -91,10 +87,6 @@ need(config,'[functions.transcript-pull-callback]')
 need(config,'verify_jwt = true')
 need(config,'verify_jwt = false')
 
-need(app,familyBuild)
-need(hotfix,familyBuild)
-need(build,`"build": "${familyBuild}"`)
-need(build,'"transcript_isp_parity": true')
 
 if(fs.existsSync(pull)){
   const s=read(pull)

@@ -1,7 +1,6 @@
 {
-  "build": "20260920-taxres-transcripts-family-1",
+  "build": "20260919-formacorp-family-parity-3",
   "formacorp_wizard_steps": 5,
   "registered_agent_default": "",
-  "taxres_family_parity": true,
-  "transcript_isp_parity": true
+  "taxres_family_parity": true
 }
