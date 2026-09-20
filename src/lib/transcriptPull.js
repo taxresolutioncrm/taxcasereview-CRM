@@ -117,13 +117,17 @@ export async function parseTranscriptFile(file) {
   return parseIrsTranscript(text)
 }
 
-export async function storeTranscriptAnalysis(file, clientName, a, existing = null) {
+export async function storeTranscriptAnalysis(file, clientName, a, existing = null, explicitClientId = null) {
   const client = clientName.trim()
   if (!client) throw new Error('Client name is required before filing a transcript.')
   if (!file) throw new Error('Transcript PDF is required.')
-  let clientId = null
-  const { data: matches, error: clientErr } = await supabase.from('clients').select('id').eq('name', client).limit(2)
-  if (!clientErr && matches?.length === 1) clientId = matches[0].id
+  let clientId = explicitClientId || null
+  if (!clientId) {
+    const { data: matches, error: clientErr } = await supabase.from('clients').select('id').eq('name', client).limit(2)
+    if (clientErr) throw new Error(`Could not resolve transcript client: ${clientErr.message}`)
+    if (!matches || matches.length !== 1) throw new Error('Transcript filing requires one stable client record. Select the client by record before filing.')
+    clientId = matches[0].id
+  }
   const safeClient = client.replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 100) || 'client'
   const safeFile = String(file.name || 'transcript.pdf').replace(/[\\/\r\n]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 140) || 'transcript.pdf'
   const uploadedHere = !existing?.filePath
@@ -142,6 +146,7 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
     }
     const { data: analysis, error: analysisErr } = await supabase.from('transcript_analyses').insert({
       client_name: client,
+      client_id: clientId,
       tax_year: a.tax_year || null,
       transcript_type: a.transcript_type || null,
       total_balance: a.account_balance ?? null,
@@ -190,7 +195,7 @@ async function finalizeDirectDelivery(req, result) {
   const blob = await response.blob()
   const file = new File([blob], `IRS-TDS-${req.id}-${result.resultKey.slice(0, 12)}.pdf`, { type: 'application/pdf' })
   const analysis = await parseTranscriptFile(file)
-  const analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl })
+  const analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl }, req.client_id || null)
   const ids = new Set(req.result_analysis_ids || [])
   ids.add(analysisId)
   const filedKeys = new Set(req.provider_filed_keys || [])
