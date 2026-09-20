@@ -12,11 +12,11 @@ import { useApp } from '../context/AppContext'
 import AIAssistant from '../components/AIAssistant'
 import { CallProvider, useCall } from '../context/CallContext'
 import ActiveCallBar from '../components/calling/ActiveCallBar'
-import RomyLabsBilling from '../components/admin/RomyLabsBilling'
-import TrafficCoverage from '../components/admin/TrafficCoverage'
-import CredentialVault from '../components/admin/CredentialVault'
-import UniversalOfficeESign from '../components/admin/UniversalOfficeESign'
 const AdminChatPage = lazy(() => import('./AdminChat'))
+const RomyLabsBilling = lazy(() => import('../components/admin/RomyLabsBilling'))
+const TrafficCoverage = lazy(() => import('../components/admin/TrafficCoverage'))
+const CredentialVault = lazy(() => import('../components/admin/CredentialVault'))
+const UniversalOfficeESign = lazy(() => import('../components/admin/UniversalOfficeESign'))
 
 const ESignaturesHub = lazy(() => import('./ESignaturesHub'))
 const NewOffice    = lazy(() => import('./NewOffice'))
@@ -112,7 +112,12 @@ const EXTERNAL_OFFICE_PRODUCTS = {
   restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/login' },
 }
 
-async function loadPlatformOfficeRows() {
+let platformOfficeRowsCache = null
+let platformOfficeRowsCacheAt = 0
+let platformOfficeRowsInflight = null
+const PLATFORM_OFFICE_CACHE_MS = 20000
+
+async function loadPlatformOfficeRowsFresh() {
   const [
     { data: taxresRows, error: taxresError },
     { data: registryData, error: registryError },
@@ -175,9 +180,27 @@ async function loadPlatformOfficeRows() {
   // If the batch path is unavailable for any reason, fall back to the existing
   // per-product parallel calls so reporting behavior never depends on batching.
   const requestedProducts = [...taxResTenantFeeds.map(feed => feed.key), ...productKeys]
-  const { data: batchData, error: batchError } = await supabase.functions.invoke('hub-proxy', {
-    body:{ action:'metrics_batch', products:requestedProducts },
-  })
+  const metricsTimeout = (promise, label, ms = 4000) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)),
+  ])
+
+  let batchData = null
+  let batchError = null
+  let batchTimedOut = false
+  try {
+    const response = await metricsTimeout(
+      supabase.functions.invoke('hub-proxy', {
+        body:{ action:'metrics_batch', products:requestedProducts },
+      }),
+      'hub metrics batch',
+    )
+    batchData = response.data
+    batchError = response.error
+  } catch (error) {
+    batchError = error
+    batchTimedOut = /timed out/i.test(String(error?.message || error))
+  }
 
   let tenantFeedResults
   let results
@@ -190,14 +213,31 @@ async function loadPlatformOfficeRows() {
       const item = batchData.results[productKey] || {}
       return { productKey, data:item.data, error:item.error ? new Error(item.error) : null }
     })
+  } else if (batchTimedOut) {
+    tenantFeedResults = taxResTenantFeeds.map(feed => ({ ...feed, data:null, error:batchError }))
+    results = productKeys.map(productKey => ({ productKey, data:null, error:batchError }))
   } else {
     const tenantFeedPromise = Promise.all(taxResTenantFeeds.map(async feed => {
-      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } })
-      return { ...feed, ...response }
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:feed.key } }),
+          feed.name + ' metrics',
+        )
+        return { ...feed, ...response }
+      } catch (error) {
+        return { ...feed, data:null, error }
+      }
     }))
     const productFeedPromise = Promise.all(productKeys.map(async productKey => {
-      const response = await supabase.functions.invoke('hub-proxy', { body:{ product:productKey } })
-      return { productKey, ...response }
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:productKey } }),
+          productKey + ' metrics',
+        )
+        return { productKey, ...response }
+      } catch (error) {
+        return { productKey, data:null, error }
+      }
     }))
     ;[tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
   }
@@ -239,12 +279,12 @@ async function loadPlatformOfficeRows() {
         product:office.product_key,
         firm_name:office.firm_name || `${cfg.label} Office`,
         brand_color:cfg.color,
-        employee_count:Number(office.seats || 0),
-        client_count:0,
-        lead_count:0,
-        storage_bytes:0,
-        total_collected:0,
-        transaction_count:0,
+        employee_count:office.seats == null ? null : Number(office.seats),
+        client_count:null,
+        lead_count:null,
+        storage_bytes:null,
+        total_collected:null,
+        transaction_count:null,
         status:office.status || 'active',
         plan_tier:cfg.label,
         effective_monthly:Number(office.monthly_amount || 0),
@@ -362,9 +402,13 @@ async function loadPlatformOfficeRows() {
   }
 
   if (registrySyncJobs.length) {
-    const registrySyncResults = await Promise.all(registrySyncJobs.map(job => job.promise))
-    registrySyncResults.forEach((syncResult, index) => {
-      if (syncResult?.error) warnings.push(`${registrySyncJobs[index].label} office registry sync failed`)
+    void Promise.allSettled(registrySyncJobs.map(job => job.promise)).then(syncResults => {
+      syncResults.forEach((syncResult, index) => {
+        const error = syncResult.status === 'rejected'
+          ? syncResult.reason
+          : syncResult.value?.error
+        if (error) console.warn('[AdminPortal] office registry sync failed:', registrySyncJobs[index].label, error)
+      })
     })
   }
 
@@ -392,6 +436,24 @@ async function loadPlatformOfficeRows() {
   }
 
   return { rows, warnings:[...new Set(warnings)], externalMetrics }
+}
+
+async function loadPlatformOfficeRows() {
+  const now = Date.now()
+  if (platformOfficeRowsCache && now - platformOfficeRowsCacheAt < PLATFORM_OFFICE_CACHE_MS) {
+    return platformOfficeRowsCache
+  }
+  if (platformOfficeRowsInflight) return platformOfficeRowsInflight
+
+  platformOfficeRowsInflight = loadPlatformOfficeRowsFresh()
+    .then(result => {
+      platformOfficeRowsCache = result
+      platformOfficeRowsCacheAt = Date.now()
+      return result
+    })
+    .finally(() => { platformOfficeRowsInflight = null })
+
+  return platformOfficeRowsInflight
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -724,6 +786,7 @@ function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
+  const [sortConfig, setSortConfig] = useState({ key:'firm_name', direction:'asc' })
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -757,6 +820,47 @@ function Overview() {
   const totalStorage = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
   const totalCollected = (stats||[]).reduce((s,r) => s+Number(r.total_collected||0), 0)
   const totalTx        = (stats||[]).reduce((s,r) => s+Number(r.transaction_count||0), 0)
+
+  const SORT_COLUMNS = [
+    { label:'Firm', key:'firm_name', type:'text' },
+    { label:'Status', key:'status', type:'text' },
+    { label:'Plan', key:'plan_tier', type:'text' },
+    { label:'Seats / Staff', key:'seats_staff', type:'number' },
+    { label:'Clients', key:'client_count', type:'number' },
+    { label:'Cases', key:'cases_count', type:'number' },
+    { label:'Transactions', key:'transaction_count', type:'number' },
+    { label:'Storage', key:'storage_bytes', type:'number' },
+    { label:'Collected', key:'total_collected', type:'number' },
+    { label:'MRR', key:'effective_monthly', type:'number' },
+    { label:'Last Activity', key:'last_activity', type:'date' },
+  ]
+
+  const sortValue = (row, key) => {
+    if (key === 'seats_staff') return row.billing_seats ?? row.employee_count ?? null
+    if (key === 'last_activity') return row.last_activity ? new Date(row.last_activity).getTime() : null
+    return row[key] ?? null
+  }
+
+  const sortedStats = stats ? [...stats].sort((a,b) => {
+    const av = sortValue(a, sortConfig.key)
+    const bv = sortValue(b, sortConfig.key)
+    if (av == null && bv == null) return String(a.firm_name||'').localeCompare(String(b.firm_name||''))
+    if (av == null) return 1
+    if (bv == null) return -1
+    const column = SORT_COLUMNS.find(col => col.key === sortConfig.key)
+    const comparison = column?.type === 'text'
+      ? String(av).localeCompare(String(bv), undefined, { numeric:true, sensitivity:'base' })
+      : Number(av) - Number(bv)
+    if (comparison === 0) return String(a.firm_name||'').localeCompare(String(b.firm_name||''))
+    return sortConfig.direction === 'asc' ? comparison : -comparison
+  }) : null
+
+  const toggleSort = key => {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
 
   const h = new Date().getHours()
   const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
@@ -797,22 +901,37 @@ function Overview() {
       <div style={{ ...S.card, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch' }}>
         <table style={{ width:'100%', minWidth:1180, borderCollapse:'separate', borderSpacing:0, fontSize:13 }}>
           <thead>
-            <tr>{['Firm','Status','Plan','Seats / Staff','Clients','Cases','Transactions','Storage','Collected','MRR','Last Activity',''].map((h,index,headers)=>(
-              <th key={h || 'actions'} style={{
-                ...S.th,
-                whiteSpace:'nowrap',
-                ...(index===headers.length-1 ? {
-                  position:'sticky', right:0, zIndex:3,
-                  background:'#171625',
-                  boxShadow:'-8px 0 12px rgba(8,7,20,.35)',
-                  minWidth:90,
-                } : {})
-              }}>{h}</th>
-            ))}</tr>
+            <tr>
+              {SORT_COLUMNS.map(column => {
+                const active = sortConfig.key === column.key
+                return (
+                  <th key={column.key} style={{ ...S.th, whiteSpace:'nowrap' }}>
+                    <button
+                      type="button"
+                      onClick={()=>toggleSort(column.key)}
+                      aria-label={`Sort by ${column.label} ${active && sortConfig.direction === 'asc' ? 'descending' : 'ascending'}`}
+                      style={{
+                        padding:0,border:'none',background:'transparent',color:active?'#cbd5e1':'#475569',
+                        font:'inherit',fontWeight:700,textTransform:'inherit',letterSpacing:'inherit',
+                        cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap'
+                      }}>
+                      {column.label}
+                      <span aria-hidden="true" style={{fontSize:9,color:active?'#a5b4fc':'#334155'}}>
+                        {active ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </button>
+                  </th>
+                )
+              })}
+              <th key="actions" style={{
+                ...S.th,whiteSpace:'nowrap',position:'sticky',right:0,zIndex:3,
+                background:'#171625',boxShadow:'-8px 0 12px rgba(8,7,20,.35)',minWidth:90,
+              }} />
+            </tr>
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            stats.map(r => (
+            sortedStats.map(r => (
               <tr key={r.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/crm-admin/offices/${r.id}`)}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
@@ -828,7 +947,7 @@ function Overview() {
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.transaction_count == null ? '—' : Number(r.transaction_count).toLocaleString()}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{fmtBytes(r.storage_bytes)}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected == null ? '—' : `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}`}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:700 }}>
                   {r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—'}
@@ -4533,15 +4652,13 @@ function CommandCenter() {
       const h = now.getHours()
 
       try {
-        // Load prospects independently so a stats RPC error never zeroes out Sales
-        const prospectsRes = await supabase.from('prospects').select('*').order('created_at', { ascending: false })
-
-        // Stats + tenant overview — may throw; prospects already captured above
-        const withTimeout = (promise, label, ms = 12000) => Promise.race([
+        const prospectsPromise = supabase.from('prospects').select('*').order('created_at', { ascending: false })
+        const withTimeout = (promise, label, ms = 8000) => Promise.race([
           promise,
           new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)),
         ])
-        const [statsRes, tenantsRes, storageRes, taxresDemoRes] = await Promise.all([
+        const [prospectsRes, statsRes, tenantsRes, storageRes, taxresDemoRes] = await Promise.all([
+          withTimeout(prospectsPromise, 'prospects'),
           withTimeout(supabase.rpc('admin_command_center_stats'), 'admin_command_center_stats'),
           withTimeout(supabase.rpc('admin_tenant_overview'), 'admin_tenant_overview'),
           withTimeout(supabase.rpc('admin_storage_stats'), 'admin_storage_stats'),
@@ -7353,6 +7470,12 @@ export default function AdminPortal() {
   const location = useLocation()
   const { logout } = useApp()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [emailMounted, setEmailMounted] = useState(() => location.pathname === '/crm-admin/email')
+
+  useEffect(() => {
+    if (location.pathname === '/crm-admin/email') setEmailMounted(true)
+  }, [location.pathname])
+
   // Swap favicon + title to RomyLabs brand while in the admin portal
   useEffect(() => {
     const prev = document.title
@@ -7462,9 +7585,7 @@ export default function AdminPortal() {
         <div className="rl-admin-mobile-scrim" onClick={()=>setMobileMenuOpen(false)} />
       </div>}
       <div className="rl-admin-main" style={{flex:1,position:'relative',height:'100vh',overflowY:'auto'}}>
-        {/* Persistent SnappyMail iframe — always mounted so compose drafts survive tab switches.
-            Hidden via CSS when not on /email; shown only when on /email route. */}
-        <div style={{
+        {emailMounted && <div style={{
           position:'absolute', inset:0, zIndex:1,
           display: location.pathname === '/crm-admin/email' ? 'flex' : 'none',
           flexDirection:'column'
@@ -7478,7 +7599,7 @@ export default function AdminPortal() {
           <iframe src={WEBMAIL_URL} title="SnappyMail"
             style={{flex:1,border:'none',width:'100%',background:'#0f172a'}}
             allow="clipboard-read; clipboard-write" />
-        </div>
+        </div>}
         <Suspense fallback={<Spinner/>}>
           <Routes>
             <Route path="/command-center" element={<AdminRouteErrorBoundary><CommandCenter/></AdminRouteErrorBoundary>}/>
