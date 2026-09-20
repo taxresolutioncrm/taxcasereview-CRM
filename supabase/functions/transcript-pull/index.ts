@@ -13,6 +13,16 @@ const env = (name: string) => (Deno.env.get(name) || '').trim()
 const AUTHORIZE_URL = () => env('IRS_TDS_ISP_AUTHORIZE_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/authorize'
 const TOKEN_URL = () => env('IRS_TDS_ISP_TOKEN_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/token'
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+const DEFAULT_CRM_ORIGIN = 'https://taxrescrm.app'
+function safeCrmOrigin(value: string) {
+  try {
+    const u = new URL(value || DEFAULT_CRM_ORIGIN)
+    const configured = env('IRS_TDS_ALLOWED_ORIGINS').split(',').map(v => v.trim()).filter(Boolean)
+    if (configured.includes(u.origin)) return u.origin
+    if (u.protocol === 'https:' && (u.hostname === 'taxrescrm.app' || u.hostname.endsWith('.taxrescrm.app'))) return u.origin
+  } catch { /* fail closed */ }
+  return DEFAULT_CRM_ORIGIN
+}
 
 const authorizationConfigured = () => Boolean(
   env('IRS_TDS_CLIENT_ID') &&
@@ -204,7 +214,8 @@ serve(async (req) => {
     if (action === 'begin-session') {
       const authError = await authorizationConfigError()
       if (authError) return json({ error: authError, code: 'IRS_ISP_NOT_CONFIGURED' }, 409)
-      const state = randomToken(32), { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' }); if (error) throw new Error(error.message)
+      const returnOrigin = safeCrmOrigin(req.headers.get('origin') || '')
+      const state = randomToken(32), { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, return_origin: returnOrigin, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' }); if (error) throw new Error(error.message)
       const u = new URL(AUTHORIZE_URL())
       u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID'))
       u.searchParams.set('response_type', 'code')
