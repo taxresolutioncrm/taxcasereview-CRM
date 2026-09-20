@@ -208,6 +208,7 @@ serve(async (req) => {
       const u = new URL(AUTHORIZE_URL())
       u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID'))
       u.searchParams.set('response_type', 'code')
+      u.searchParams.set('redirect_uri', env('IRS_TDS_REDIRECT_URI'))
       u.searchParams.set('state', state)
       return json({ ok: true, authorizationUrl: u.toString(), redirectUri: env('IRS_TDS_REDIRECT_URI') })
     }
