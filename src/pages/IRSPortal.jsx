@@ -22,7 +22,7 @@ import TranscriptPull from '../components/TranscriptPull'
 
 const POA_STATUSES = ['Draft', 'Signed', 'Submitted', 'On File', 'Rejected']
 const POA_METHODS = ['IRS Online (Tax Pro)', 'Fax to CAF — Ogden', 'Fax to CAF — Memphis', 'Fax to CAF — Philadelphia (Intl)', 'Mail']
-const POA_BLANK = { clientName: '', formType: '2848', taxYears: '', status: 'Draft', signedDate: '', submittedDate: '', cafConfirmedDate: '', submissionMethod: 'IRS Online (Tax Pro)', notes: '', fileUrl: '' }
+const POA_BLANK = { clientId: '', clientName: '', formType: '2848', taxYears: '', status: 'Draft', signedDate: '', submittedDate: '', cafConfirmedDate: '', submissionMethod: 'IRS Online (Tax Pro)', notes: '', fileUrl: '' }
 
 const STATUS_COLORS = {
   'Draft': '#64748b', 'Signed': '#2563eb', 'Submitted': '#b45309',
@@ -41,11 +41,18 @@ export default function IRSPortal() {
     if (new URLSearchParams(location.search).get('new') === '1') setTab('pull')
   }, [location.search])
 
-  // ── shared: client names for pickers ──
-  const [clientNames, setClientNames] = useState([])
+  // ── shared: stable client identities for pickers ──
+  const [clients, setClients] = useState([])
+  const clientNames = clients.map(c => c.name).filter(Boolean)
+  function resolveClientByName(name) {
+    const key = String(name || '').trim().toLowerCase()
+    if (!key) return null
+    const matches = clients.filter(c => String(c.name || '').trim().toLowerCase() === key)
+    return matches.length === 1 ? matches[0] : null
+  }
   useEffect(() => {
-    supabase.from('clients').select('name').order('name')
-      .then(({ data }) => setClientNames((data || []).map(c => c.name).filter(Boolean)))
+    supabase.from('clients').select('id,name').order('name')
+      .then(({ data }) => setClients((data || []).filter(c => c?.id && c?.name)))
   }, [])
 
   // ═══════════ TRANSCRIPT ANALYSIS ═══════════
@@ -70,6 +77,8 @@ export default function IRSPortal() {
     e.target.value = ''
     if (files.length === 0) return
     if (!uploadClient.trim()) { setParseStatus('❌ Pick or type the client name first.'); return }
+    const uploadClientRow = resolveClientByName(uploadClient)
+    if (!uploadClientRow) { setParseStatus('❌ Select one unique client record before filing the transcript.'); return }
     setParsing(true)
     let done = 0
     for (const file of files) {
@@ -79,7 +88,7 @@ export default function IRSPortal() {
         // Storage, analysis row inserted, and the doc filed in the client's
         // Documents → Transcripts folder.
         const a = await parseTranscriptFile(file)
-        await storeTranscriptAnalysis(file, uploadClient, a)
+        await storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })
         done++
       } catch (err) {
         setParseStatus(`❌ ${file.name}: ${err.message}`)
@@ -172,9 +181,12 @@ export default function IRSPortal() {
 
   async function savePoa() {
     if (!poaForm.clientName.trim()) return
+    const clientRow = poaForm.clientId ? clients.find(c => c.id === poaForm.clientId) : resolveClientByName(poaForm.clientName)
+    if (!clientRow) { alert('Select one unique client record before saving the POA.'); return }
     setPoaSaving(true)
     const payload = {
-      client_name: poaForm.clientName.trim(),
+      client_id: clientRow.id,
+      client_name: clientRow.name,
       form_type: poaForm.formType,
       tax_years: poaForm.taxYears,
       status: poaForm.status,
@@ -199,11 +211,12 @@ export default function IRSPortal() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    const path = `poa/${(poaForm.clientName || 'unknown').replace(/[^A-Za-z0-9 _-]/g, '')}/${Date.now()}-${file.name}`
+    const poaClient = poaForm.clientId ? clients.find(c => c.id === poaForm.clientId) : resolveClientByName(poaForm.clientName)
+    const safeClientKey = poaClient?.id || (poaForm.clientName || 'unknown').replace(/[^A-Za-z0-9 _-]/g, '')
+    const path = `poa/${safeClientKey}/${Date.now()}-${file.name}`
     const { error } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
     if (error) { alert('Upload failed: ' + error.message); return }
-    const { data: u } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-    pf('fileUrl', u?.signedUrl || '')
+    pf('fileUrl', `storage://documents/${path}`)
   }
 
   async function deletePoa(id) {
@@ -220,7 +233,7 @@ export default function IRSPortal() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>🏛️ IRS Portal</h1>
           <div style={{ color: 'var(--t3)', fontSize: 12, marginTop: 4 }}>
-            Transcript analysis and POA / CAF tracking in one place.
+            IRS transcript requests, transcript analysis, and POA / CAF tracking in one place.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -254,7 +267,7 @@ export default function IRSPortal() {
               {parseStatus && <span style={{ fontSize: 12.5, color: 'var(--t2)' }}>{parseStatus}</span>}
             </div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 8 }}>
-              Pull transcripts from IRS e-Services / TDS as usual, then drop the PDFs here. Each file is parsed into
+              Direct ISP-authorized pulls are available from Pull Transcripts. Manual IRS e-Services/TDS PDFs remain supported here as a fallback. Each file is parsed into
               balances, penalties, interest, assessment dates, an estimated CSED, transaction history and compliance flags.
             </div>
           </div>
@@ -363,7 +376,7 @@ export default function IRSPortal() {
 
       {/* ═══════════ PULL TRANSCRIPTS TAB ═══════════ */}
       {tab === 'pull' && (
-        <TranscriptPull clientNames={clientNames} poas={poas}
+        <TranscriptPull clientNames={clientNames} clients={clients} poas={poas}
           onGoToPoa={() => setTab('poa')} onImported={loadAnalyses} />
       )}
 
@@ -407,7 +420,7 @@ export default function IRSPortal() {
                           <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }}
                             onClick={() => {
                               setPoaForm({
-                                clientName: p.client_name, formType: p.form_type, taxYears: p.tax_years || '',
+                                clientId: p.client_id || '', clientName: p.client_name, formType: p.form_type, taxYears: p.tax_years || '',
                                 status: p.status, signedDate: p.signed_date || '', submittedDate: p.submitted_date || '',
                                 cafConfirmedDate: p.caf_confirmed_date || '', submissionMethod: p.submission_method || 'IRS Online (Tax Pro)',
                                 notes: p.notes || '', fileUrl: p.file_url || '',
@@ -435,7 +448,11 @@ export default function IRSPortal() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-                <input list="irsportal-clients" value={poaForm.clientName} onChange={e => pf('clientName', e.target.value)} style={inputStyle} placeholder="Client name" />
+                <input list="irsportal-clients" value={poaForm.clientName} onChange={e => {
+                  const name = e.target.value
+                  const row = resolveClientByName(name)
+                  setPoaForm(f => ({ ...f, clientName: name, clientId: row?.id || '' }))
+                }} style={inputStyle} placeholder="Client name" />
               </div>
               <div>
                 <label style={{ fontSize: 11, color: 'var(--t3)' }}>Form</label>
