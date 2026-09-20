@@ -279,12 +279,12 @@ async function loadPlatformOfficeRowsFresh() {
         product:office.product_key,
         firm_name:office.firm_name || `${cfg.label} Office`,
         brand_color:cfg.color,
-        employee_count:Number(office.seats || 0),
-        client_count:0,
-        lead_count:0,
-        storage_bytes:0,
-        total_collected:0,
-        transaction_count:0,
+        employee_count:office.seats == null ? null : Number(office.seats),
+        client_count:null,
+        lead_count:null,
+        storage_bytes:null,
+        total_collected:null,
+        transaction_count:null,
         status:office.status || 'active',
         plan_tier:cfg.label,
         effective_monthly:Number(office.monthly_amount || 0),
@@ -890,7 +890,7 @@ function Overview() {
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.transaction_count == null ? '—' : Number(r.transaction_count).toLocaleString()}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{fmtBytes(r.storage_bytes)}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected == null ? '—' : `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}`}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:700 }}>
                   {r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—'}
