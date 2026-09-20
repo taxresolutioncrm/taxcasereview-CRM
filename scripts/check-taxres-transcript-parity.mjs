@@ -66,6 +66,8 @@ for(const n of [
   'Request Transcripts',
   'Returned PDFs attach to the selected client file automatically.',
   'Manual PDF fallback',
+  'onStatusChange={(st) =>',
+  'directAvailable',
   'const formClient = uniqueClientForName(form.clientName)',
   'client_id: client.id',
   "provider: 'irs_a2a'"
