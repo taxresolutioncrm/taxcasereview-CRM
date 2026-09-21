@@ -179,10 +179,15 @@ export default function TaxReturns() {
   const [setupNeeded, setSetupNeeded] = useState(false)
   const [preparer, setPreparer] = useState({ name:'', ptin:'', caf:'', efin:'' })
 
-  useEffect(() => { load(); loadPreparer() }, [])
+  useEffect(() => { if (user) { load(); loadPreparer() } }, [user?.id])
 
   async function loadPreparer() {
-    const { data } = await supabase.from('settings').select('preparer_name,ptin,caf_number,efin').limit(1).maybeSingle()
+    const tid = user?.app_metadata?.tenant_id || user?.user_metadata?.tenant_id
+    if (!tid) return
+    const { data } = await supabase.from('settings')
+      .select('preparer_name,ptin,caf_number,efin')
+      .eq('tenant_id', tid)
+      .maybeSingle()
     if (data) setPreparer({ name: data.preparer_name || '', ptin: data.ptin || '', caf: data.caf_number || '', efin: data.efin || '' })
   }
 
