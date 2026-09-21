@@ -258,7 +258,7 @@ export default function IRSPortal() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
         {[
           ['pull', 'Pull Transcripts'],
           ['transcripts', 'Transcript Analysis'],
@@ -270,6 +270,7 @@ export default function IRSPortal() {
           <button
             key={k}
             className={tab === k || (tab === 'pull' && ['session','history','manual'].includes(k)) ? 'btn' : 'btn sec'}
+            style={{ minHeight: 34, padding: '7px 12px', fontWeight: 700 }}
             onClick={() => {
               if (k === 'pull' || k === 'transcripts' || k === 'poa') {
                 setTab(k)
