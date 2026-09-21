@@ -1769,6 +1769,10 @@ export default function TaxReturns() {
                         ? `Ready through ${efileStatus.providerName || 'configured e-file transmitter'}.`
                         : efileStatus.message || 'E-file is locked until both the office EFIN and approved transmitter connection are configured.'}
                   </div>
+                  {!efileStatus.loading && <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:12}}>
+                    <span style={{fontSize:10.5,fontWeight:800,borderRadius:999,padding:'4px 8px',background:efileStatus.efinPresent?'rgba(34,197,94,.14)':'rgba(245,158,11,.14)',color:efileStatus.efinPresent?'#22c55e':'#f59e0b'}}>EFIN {efileStatus.efinPresent?'Ready':'Missing'}</span>
+                    <span style={{fontSize:10.5,fontWeight:800,borderRadius:999,padding:'4px 8px',background:efileStatus.adapterConfigured?'rgba(34,197,94,.14)':'rgba(245,158,11,.14)',color:efileStatus.adapterConfigured?'#22c55e':'#f59e0b'}}>Transmitter {efileStatus.adapterConfigured?'Connected':'Not configured'}</span>
+                  </div>}
                   <button className="btn ok" style={{ width: '100%', justifyContent: 'center', opacity: efileStatus.configured && current?.id && form.status === 'Ready to File' ? 1 : 0.4 }}
                     disabled={!efileStatus.configured || !current?.id || form.status !== 'Ready to File'}
                     onClick={async () => {
