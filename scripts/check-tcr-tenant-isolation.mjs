@@ -9,6 +9,8 @@ const app = read('src/context/AppContext.jsx')
 const sidebar = read('src/components/layout/Sidebar.jsx')
 const migration = read('supabase/migrations/20260921211500_restore_employee_tenant_isolation.sql')
 const ioMigration = read('supabase/migrations/20260920002500_taxres_disk_io_guardrails.sql')
+const reports = read('src/pages/Reports.jsx')
+const employees = read('src/pages/Employees.jsx')
 
 must(chat.includes("const { user, role, myTenantId } = useApp()"), 'Chat must resolve the active tenant from AppContext')
 must(chat.includes("const chatTenantId = myTenantId || null"), 'Chat must fail closed instead of deriving tenant from messages/branding')
@@ -25,6 +27,10 @@ must(app.includes("await supabase.rpc('set_admin_tenant_override', { p_tenant_id
 must(app.includes("supabase.rpc('set_admin_tenant_override', { p_tenant_id: null })"), 'Normal sign-in must clear stale database tenant overrides')
 must(sidebar.includes(".eq('tenant_id', myTenantId)"), 'Sidebar unread chat query must be tenant-scoped')
 must(sidebar.includes("payload.new?.tenant_id === myTenantId"), 'Sidebar realtime badge must reject foreign-tenant rows')
+must(reports.includes("bookwhip-scroll"), 'TCR Book Whip must keep Nashville-style horizontal scroll treatment')
+must(reports.includes("bookWhipMonths.map"), 'TCR Book Whip must expose available monthly snapshots')
+must(!reports.includes("Nashville_Book_Whip_"), 'TCR Book Whip export must remain office-neutral')
+must(employees.includes("gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))'"), 'Employee cards must use the widened responsive layout')
 
 must(/create policy hide_qa_certification_employees_from_staff[\s\S]*?as restrictive[\s\S]*?for select/i.test(ioMigration),
   'I/O migration must not recreate employee visibility policy as PERMISSIVE')
