@@ -10,6 +10,29 @@ for(const needle of [
   "tcr-password-eye",
 ]) if(!s.includes(needle)) failures.push('TaxRes login missing '+needle)
 
+
+const family='src/pages/FamilyPassword.jsx'
+const portal='src/pages/EmployeePortal.jsx'
+for(const n of [
+  "const [showPassword,setShowPassword]=useState(false)",
+  "const [showConfirm,setShowConfirm]=useState(false)",
+  "type={showPassword?'text':'password'}",
+  "type={showConfirm?'text':'password'}",
+  "Show new password",
+  "Show confirmation password"
+]) {
+  const text=fs.readFileSync(family,'utf8')
+  if(!text.includes(n)) failures.push('TaxRes family password setup missing '+n)
+}
+for(const n of [
+  "const [showLoginPin, setShowLoginPin] = useState(false)",
+  "type={showLoginPin ? 'text' : 'password'}",
+  "aria-label={showLoginPin ? 'Hide PIN' : 'Show PIN'}"
+]) {
+  const text=fs.readFileSync(portal,'utf8')
+  if(!text.includes(n)) failures.push('Employee portal PIN visibility missing '+n)
+}
+
 if(failures.length){
   console.error('TaxRes password visibility contract failed:')
   failures.forEach(x=>console.error(' - '+x))
