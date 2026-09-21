@@ -102,6 +102,7 @@ export default function EmployeePortal() {
     return () => clearTimeout(t)
   }, [loginEmail, screen])
   const [pin, setPin] = useState('')
+  const [showLoginPin, setShowLoginPin] = useState(false)
   const [changingPin, setChangingPin] = useState(false)
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
@@ -429,16 +430,22 @@ export default function EmployeePortal() {
           autoFocus
         />
         <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>PIN</label>
-        <input
-          type="password"
-          value={pin}
-          onChange={e => { setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)); setLoginErr('') }}
-          onKeyDown={e => e.key === 'Enter' && handleLogin()}
-          placeholder="••••"
-          inputMode="numeric"
-          autoComplete="off"
-          style={{ width: '100%', padding: '14px 16px', background: '#0f172a', border: '1px solid #1e3a5f', borderRadius: 12, color: '#f1f5f9', fontSize: 24, letterSpacing: 10, outline: 'none', boxSizing: 'border-box', marginBottom: 14, fontFamily: 'inherit', textAlign: 'center', colorScheme: 'dark' }}
-        />
+        <div style={{ position: 'relative', marginBottom: 14 }}>
+          <input
+            type={showLoginPin ? 'text' : 'password'}
+            value={pin}
+            onChange={e => { setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)); setLoginErr('') }}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder="••••"
+            inputMode="numeric"
+            autoComplete="off"
+            style={{ width: '100%', padding: '14px 48px 14px 16px', background: '#0f172a', border: '1px solid #1e3a5f', borderRadius: 12, color: '#f1f5f9', fontSize: 24, letterSpacing: showLoginPin ? 4 : 10, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', textAlign: 'center', colorScheme: 'dark' }}
+          />
+          <button type="button" onClick={() => setShowLoginPin(v => !v)} aria-label={showLoginPin ? 'Hide PIN' : 'Show PIN'} aria-pressed={showLoginPin}
+            style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', width:34, height:34, border:0, borderRadius:8, background:'transparent', color:'#94a3b8', cursor:'pointer', display:'grid', placeItems:'center' }}>
+            <span aria-hidden="true" style={{fontSize:18}}>{showLoginPin ? '◉' : '◎'}</span>
+          </button>
+        </div>
         {loginErr && <p style={{ color: '#f87171', fontSize: 13, margin: '0 0 12px', textAlign: 'center' }}>{loginErr}</p>}
         <button onClick={handleLogin} disabled={logging || !loginEmail.trim() || !pin.trim()}
           style={{ width: '100%', padding: 15, background: (loginEmail.trim() && pin.trim()) ? '#16a34a' : '#1a2744', border: 'none', borderRadius: 12, color: '#fff', fontSize: 16, fontWeight: 700, cursor: (loginEmail.trim() && pin.trim()) ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'background .2s' }}>
