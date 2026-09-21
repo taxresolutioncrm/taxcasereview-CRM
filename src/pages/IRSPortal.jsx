@@ -253,6 +253,15 @@ export default function IRSPortal() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn"
+            onClick={() => {
+              setTab('pull')
+              setTimeout(() => document.getElementById('irs-session-status')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+            }}
+          >
+            Connect IRS / ID.me
+          </button>
           <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer">↗ Submit 2848 / 8821</a>
         </div>
       </div>
