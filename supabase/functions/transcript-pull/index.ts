@@ -253,6 +253,7 @@ serve(async (req) => {
         expiresAt: sessionActive ? session.session_expires_at : null,
         accessExpiresAt: sessionActive ? session.access_expires_at : null,
         organizationName: sessionActive ? session.organization_name : null,
+        userEmail: userData.user.email || null,
       })
     }
     if (action === 'begin-session') {
