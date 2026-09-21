@@ -178,8 +178,33 @@ export default function TaxReturns() {
   const [tab, setTab]           = useState('income')
   const [setupNeeded, setSetupNeeded] = useState(false)
   const [preparer, setPreparer] = useState({ name:'', ptin:'', caf:'', efin:'' })
+  const [efileStatus, setEfileStatus] = useState({ loading:true, configured:false, providerName:'', efinPresent:false, adapterConfigured:false, message:'' })
 
-  useEffect(() => { if (user) { load(); loadPreparer() } }, [user?.id])
+  useEffect(() => { if (user) { load(); loadPreparer(); loadEfileStatus() } }, [user?.id])
+
+  async function loadEfileStatus() {
+    setEfileStatus(s => ({ ...s, loading:true }))
+    const { data, error } = await supabase.functions.invoke('submit-to-irs', { body: { action:'status' } })
+    if (error || !data?.success) {
+      setEfileStatus({
+        loading:false,
+        configured:false,
+        providerName:'',
+        efinPresent:false,
+        adapterConfigured:false,
+        message:data?.error || error?.message || 'E-file configuration could not be verified.'
+      })
+      return
+    }
+    setEfileStatus({
+      loading:false,
+      configured:Boolean(data.configured),
+      providerName:data.providerName || '',
+      efinPresent:Boolean(data.efinPresent),
+      adapterConfigured:Boolean(data.adapterConfigured),
+      message:data.message || ''
+    })
+  }
 
   async function loadPreparer() {
     const tid = user?.app_metadata?.tenant_id || user?.user_metadata?.tenant_id
@@ -1663,19 +1688,22 @@ export default function TaxReturns() {
                   <button className="btn pri" style={{ width: '100%', justifyContent: 'center' }} onClick={printReturn}>Print / Preview</button>
                 </div>
 
-                <div style={{ padding: 16, borderRadius: 10, border: `1px solid ${preparer.efin ? 'rgba(34,197,94,.4)' : 'var(--br)'}`, background: preparer.efin ? 'rgba(34,197,94,.07)' : 'var(--s2)' }}>
+                <div style={{ padding: 16, borderRadius: 10, border: `1px solid ${efileStatus.configured ? 'rgba(34,197,94,.4)' : 'rgba(245,158,11,.35)'}`, background: efileStatus.configured ? 'rgba(34,197,94,.07)' : 'rgba(245,158,11,.06)' }}>
                   <div style={{ fontSize: 22, marginBottom: 8 }}>🏛️</div>
                   <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tx)', marginBottom: 4 }}>E-file Federal Return</div>
                   <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.5 }}>
-                    {preparer.efin
-                      ? `This office EFIN ${preparer.efin} is on file. Transmission uses the configured IRS-approved e-file transmitter/software connection.`
-                      : 'Add this office EFIN in Settings → Integrations. An approved transmitter/software connection is also required.'}
+                    {efileStatus.loading
+                      ? 'Checking e-file configuration…'
+                      : efileStatus.configured
+                        ? `Ready through ${efileStatus.providerName || 'configured e-file transmitter'}.`
+                        : efileStatus.message || 'E-file is locked until both the office EFIN and approved transmitter connection are configured.'}
                   </div>
-                  <button className="btn ok" style={{ width: '100%', justifyContent: 'center', opacity: preparer.efin && current?.id && form.status === 'Ready to File' ? 1 : 0.4 }}
-                    disabled={!preparer.efin || !current?.id || form.status !== 'Ready to File'}
+                  <button className="btn ok" style={{ width: '100%', justifyContent: 'center', opacity: efileStatus.configured && current?.id && form.status === 'Ready to File' ? 1 : 0.4 }}
+                    disabled={!efileStatus.configured || !current?.id || form.status !== 'Ready to File'}
                     onClick={async () => {
                       if (!current?.id) { showToast('⚠️ Save the return before e-filing'); return }
                       if (!preparer.efin) { showToast('⚠️ Enter this office EFIN first'); return }
+                      if (!efileStatus.configured) { showToast('⚠️ E-file is locked until the approved transmitter connection is configured'); return }
                       if (form.status !== 'Ready to File') { showToast('⚠️ Set status to Ready to File first'); return }
                       showToast('📡 Sending to e-file transmitter…')
                       const { data, error } = await supabase.functions.invoke('submit-to-irs', {
@@ -1707,6 +1735,7 @@ export default function TaxReturns() {
                     }}>
                     🏛️ E-file Return
                   </button>
+                  {!efileStatus.loading && !efileStatus.configured && <div style={{fontSize:10,color:'var(--warn)',marginTop:8}}>Transmitter connection is not configured for this office. E-file remains locked.</div>}
                   {form.status !== 'Ready to File' && <div style={{fontSize:10,color:'var(--warn)',marginTop:8}}>Set status to <strong>Ready to File</strong> before transmission.</div>}
                 </div>
 
