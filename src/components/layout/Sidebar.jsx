@@ -107,7 +107,7 @@ const SECTIONS = [
 ]
 
 export default function Sidebar() {
-  const { user, logout, can, role, mobileNavOpen, setMobileNavOpen, employeeName, planTier } = useApp()
+  const { user, logout, can, role, mobileNavOpen, setMobileNavOpen, employeeName, planTier, myTenantId } = useApp()
   const location = useLocation()
   const navigate = useNavigate()
   const [logoUrl, setLogoUrl] = useState(() => FIRM.logoUrl || null)
@@ -462,6 +462,7 @@ export default function Sidebar() {
       const { count } = await supabase
         .from('chat_messages')
         .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', myTenantId)
         .gt('created_at', lastSeen)
         .neq('sender', employeeName || user?.email || '')
       setUnreadChat(count || 0)
@@ -478,7 +479,7 @@ export default function Sidebar() {
     // Realtime — new chat message arrives
     const ch = supabase.channel('sidebar-chat-badge')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
-        if (payload.new?.sender !== (employeeName || user?.email || '')) {
+        if (myTenantId && payload.new?.tenant_id === myTenantId && payload.new?.sender !== (employeeName || user?.email || '')) {
           const isOnChat = window.location.pathname.includes('/chat')
           if (isOnChat) {
             localStorage.setItem(storageKey, new Date().toISOString())
@@ -489,7 +490,7 @@ export default function Sidebar() {
       })
       .subscribe()
     return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user?.email, employeeName, location.pathname])
+  }, [user?.email, employeeName, location.pathname, myTenantId])
 
   const [tagline,  setTagline]  = useState('IRS Resolution Services')
 
