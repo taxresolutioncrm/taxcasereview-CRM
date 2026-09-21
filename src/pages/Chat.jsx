@@ -90,7 +90,7 @@ function ChatAttachmentLink({ url, name }) {
 }
 
 export default function Chat() {
-  const { user, role } = useApp()
+  const { user, role, myTenantId } = useApp()
   const { calling, active: activeCall } = useCall()
   const canManageChannels = ['Super Admin','Admin'].includes(role)
   // Deep link from a chat notification: /chat?c=<channel id>. Falls back to
@@ -282,7 +282,7 @@ export default function Chat() {
   const dmPair = (a, b) => 'dm_' + [String(a), String(b)].sort().join('__')
   const isChannel = !active.id.startsWith('dm_')
   const channelId = (!isChannel && active.empId && myEmpId) ? dmPair(myEmpId, active.empId) : active.id
-  const chatTenantId = messages.find(m=>m?.tenant_id)?.tenant_id || FIRM.tenantId
+  const chatTenantId = myTenantId || null
 
   const customEmojiMap = useMemo(() => Object.fromEntries(customEmojis.map(e=>[':'+e.name+':',e])), [customEmojis])
 
@@ -303,7 +303,7 @@ export default function Chat() {
 
   const loadCustomEmojis = useCallback(async () => {
     if(!chatTenantId) return
-    const { data, error } = await supabase.from('chat_custom_emojis').select('id,name,image_path,created_by,created_at').order('name')
+    const { data, error } = await supabase.from('chat_custom_emojis').select('id,name,image_path,created_by,created_at').eq('tenant_id', chatTenantId).order('name')
     if(error) return
     const rows=await Promise.all((data||[]).map(async e=>{
       const { data:urlData }=await supabase.storage.from('chat-emojis').createSignedUrl(e.image_path,31536000)
@@ -321,7 +321,7 @@ export default function Chat() {
     const path=`${chatTenantId}/${Date.now()}_${name}.${ext}`
     const { error:upErr }=await supabase.storage.from('chat-emojis').upload(path,file,{upsert:false,contentType:file.type||undefined})
     if(upErr){ showToast('Custom emoji upload failed: '+upErr.message); return }
-    const { error:dbErr }=await supabase.from('chat_custom_emojis').insert([{name,image_path:path,created_by:myName}])
+    const { error:dbErr }=await supabase.from('chat_custom_emojis').insert([{tenant_id:chatTenantId,name,image_path:path,created_by:myName}])
     if(dbErr){
       await supabase.storage.from('chat-emojis').remove([path])
       showToast(dbErr.code==='23505' ? ':'+name+': already exists' : 'Custom emoji save failed: '+dbErr.message)
@@ -333,7 +333,7 @@ export default function Chat() {
 
   // ── load channels from DB on mount ── [v3 - cache busted]
   useEffect(() => {
-    console.log('[Chat v3] loading channels from DB'); supabase.from('chat_channels').select('*').order('position').order('label')
+    if (!myTenantId) { setDbChannels([]); return }\n    console.log('[Chat v4] loading tenant-scoped channels'); supabase.from('chat_channels').select('*').eq('tenant_id', myTenantId).order('position').order('label')
       .then(({ data }) => {
         if (data?.length) setDbChannels(data.map(c => ({ id: c.id, label: c.label, desc: c.description || '' })))
       })
@@ -351,7 +351,7 @@ export default function Chat() {
   // ── Presence: online + live call/huddle state (Slack-style) ──
   useEffect(() => {
     if (!myName || myName === 'You') return
-    const presenceCh = supabase.channel(`chat-presence:${FIRM.tenantId || 'default'}`, { config: { presence: { key: myName } } })
+    const presenceCh = supabase.channel(`chat-presence:${myTenantId || 'unresolved'}`, { config: { presence: { key: myName } } })
     presenceChRef.current = presenceCh
     const syncPresence = () => {
       const state = presenceCh.presenceState()
@@ -402,7 +402,7 @@ export default function Chat() {
 
   // ── fetch all employees for DM list ──
   useEffect(() => {
-    supabase.from('employees').select('id, name, role, avatar_url, email').order('name').then(({ data }) => {
+    if (!myTenantId) { setTEAM([]); setMyEmpId(null); setMyRealName(null); return }\n    supabase.from('employees').select('id, name, role, avatar_url, email').eq('tenant_id', myTenantId).order('name').then(({ data }) => {
       if (!data) return
       const me = data.find(e => e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase())
       if (me) { setMyEmpId(me.id); setMyRealName(me.name) }
@@ -515,7 +515,7 @@ export default function Chat() {
       const dmOther = 'dm_' + active.empId
       const dmMine  = myEmpId ? 'dm_' + myEmpId : null
       const chans   = [...new Set([dmOther, ...(pair ? [pair] : []), ...(dmMine ? [dmMine] : [])])]
-      const res = await supabase.from('chat_messages').select('*').in('channel', chans)
+      const res = await supabase.from('chat_messages').select('*').eq('tenant_id', myTenantId).in('channel', chans)
         .order('created_at', { ascending: true }).limit(600)
       error = res.error
       data = (res.data || []).filter(m =>
@@ -524,7 +524,7 @@ export default function Chat() {
         (dmMine && m.channel === dmMine && m.sender === active.name) // legacy: them → me
       )
     } else {
-      const res = await supabase.from('chat_messages').select('*').eq('channel', channelId)
+      const res = await supabase.from('chat_messages').select('*').eq('tenant_id', myTenantId).eq('channel', channelId)
         .order('created_at', { ascending: true }).limit(300)
       data = res.data; error = res.error
     }
@@ -603,7 +603,7 @@ export default function Chat() {
     const text = input.trim()
     if (!text || sending) return
     setSending(true)
-    const payload = { channel: channelId, sender: myName, text, created_at: new Date().toISOString() }
+    const payload = { tenant_id: myTenantId, channel: channelId, sender: myName, text, created_at: new Date().toISOString() }
     if (thread) payload.reply_to = thread.id
     await supabase.from('chat_messages').insert([payload])
     setSending(false); setInput(''); setThread(null)
