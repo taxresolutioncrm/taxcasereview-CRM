@@ -333,11 +333,12 @@ export default function Chat() {
 
   // ── load channels from DB on mount ── [v3 - cache busted]
   useEffect(() => {
-    if (!myTenantId) { setDbChannels([]); return }\n    console.log('[Chat v4] loading tenant-scoped channels'); supabase.from('chat_channels').select('*').eq('tenant_id', myTenantId).order('position').order('label')
+    if (!myTenantId) { setDbChannels([]); return }
+    console.log('[Chat v4] loading tenant-scoped channels'); supabase.from('chat_channels').select('*').eq('tenant_id', myTenantId).order('position').order('label')
       .then(({ data }) => {
         if (data?.length) setDbChannels(data.map(c => ({ id: c.id, label: c.label, desc: c.description || '' })))
       })
-  }, [])
+  }, [myTenantId])
 
   // ── escape page-content padding ──
   useEffect(() => {
@@ -402,7 +403,8 @@ export default function Chat() {
 
   // ── fetch all employees for DM list ──
   useEffect(() => {
-    if (!myTenantId) { setTEAM([]); setMyEmpId(null); setMyRealName(null); return }\n    supabase.from('employees').select('id, name, role, avatar_url, email').eq('tenant_id', myTenantId).order('name').then(({ data }) => {
+    if (!myTenantId) { setTEAM([]); setMyEmpId(null); setMyRealName(null); return }
+    supabase.from('employees').select('id, name, role, avatar_url, email').eq('tenant_id', myTenantId).order('name').then(({ data }) => {
       if (!data) return
       const me = data.find(e => e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase())
       if (me) { setMyEmpId(me.id); setMyRealName(me.name) }
@@ -430,7 +432,7 @@ export default function Chat() {
       } catch (_) {}
       setTEAM(roster)
     })
-  }, [user?.email])
+  }, [user?.email, myTenantId])
 
   // ── per-viewer rep prefs (hidden / VIP) ──
   useEffect(() => {
@@ -538,7 +540,7 @@ export default function Chat() {
       return
     }
     setMessages(data || [])
-  }, [channelId, isChannel, active.empId, active.name, myEmpId, myName])
+  }, [channelId, isChannel, active.empId, active.name, myEmpId, myName, myTenantId])
 
   useEffect(() => {
     loadMessages(); inputRef.current?.focus()
@@ -547,6 +549,7 @@ export default function Chat() {
     const rt = supabase.channel('chat-active-' + channelId)
     rt.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages',
       filter: `channel=eq.${channelId}` }, ({ new: msg }) => {
+      if (!myTenantId || msg?.tenant_id !== myTenantId) return
       loadMessages(true)
     }).subscribe()
     // 60-second heartbeat as a fallback for any missed realtime events.
@@ -601,7 +604,7 @@ export default function Chat() {
 
   async function send() {
     const text = input.trim()
-    if (!text || sending) return
+    if (!text || sending || !myTenantId) return
     setSending(true)
     const payload = { tenant_id: myTenantId, channel: channelId, sender: myName, text, created_at: new Date().toISOString() }
     if (thread) payload.reply_to = thread.id
@@ -609,9 +612,9 @@ export default function Chat() {
     setSending(false); setInput(''); setThread(null)
     loadMessages(true)
     // Forward to Slack if sync is enabled for this tenant (fire-and-forget, never blocks the UI)
-    if (FIRM.tenantId && isChannel) {
+    if (myTenantId && isChannel) {
       supabase.functions.invoke('slack-send', {
-        body: { tenant_id: FIRM.tenantId, channel: channelId, sender: myName, text }
+        body: { tenant_id: myTenantId, channel: channelId, sender: myName, text }
       }).catch(() => {})
     }
   }
@@ -627,7 +630,7 @@ export default function Chat() {
     const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, file, { upsert: false })
     if (upErr) { alert('Upload failed: ' + upErr.message); return }
     const { error: msgErr } = await supabase.from('chat_messages').insert([{
-      channel: channelId, sender: myName, text: '',
+      tenant_id: chatTenantId, channel: channelId, sender: myName, text: '',
       attachment_url: 'storage://chat-attachments/' + path, attachment_name: file.name,
       created_at: new Date().toISOString()
     }])
@@ -846,17 +849,17 @@ export default function Chat() {
   }, [])
 
   function addChannel() {
-    if (!canManageChannels) return
+    if (!canManageChannels || !myTenantId) return
     const name = newChanName.trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'')
     if (!name) return
     const newChan = { id: 'ch_'+name.toLowerCase().replace(/\s+/g,'-'), label: name, desc: '' }
     // Persist to DB
     supabase.from('chat_channels').insert([{
       id: newChan.id, label: newChan.label, description: '',
-      position: 99, tenant_id: undefined // DB default fills this via current_tenant_id()
+      position: 99, tenant_id: myTenantId
     }]).then(() => {
       // Reload all channels to pick up the new one with correct tenant scoping
-      supabase.from('chat_channels').select('*').order('position').order('label')
+      supabase.from('chat_channels').select('*').eq('tenant_id', myTenantId).order('position').order('label')
         .then(({ data }) => { if (data?.length) setDbChannels(data.map(c => ({ id: c.id, label: c.label, desc: c.description || '' }))) })
     })
     setDbChannels(c => [...c, newChan])
@@ -1092,7 +1095,7 @@ export default function Chat() {
         <DraftsView TEAM={TEAM} myName={myName} channels={allChannels} />
       ) : active.id === 'directories' ? (
         <DirectoriesView TEAM={TEAM} myName={myName} myEmail={user?.email} onUpdated={() => {
-          supabase.from('employees').select('id, name, role, avatar_url, email').order('name').then(({ data }) => {
+          supabase.from('employees').select('id, name, role, avatar_url, email').eq('tenant_id', myTenantId).order('name').then(({ data }) => {
             if (!data) return
             setTEAM(data.map(e => ({ id: 'dm_' + e.id, empId: e.id, name: e.name, role: e.role || '', color: colorFor(e.name), avatarUrl: e.avatar_url || null, email: e.email || '' })))
           })
