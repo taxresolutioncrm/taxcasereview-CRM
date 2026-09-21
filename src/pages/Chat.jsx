@@ -506,6 +506,11 @@ export default function Chat() {
   }, [chanMenu])
 
   const loadMessages = useCallback(async (silent = false) => {
+    if (!myTenantId) {
+      setMessages([])
+      if (!silent) setLoading(false)
+      return
+    }
     if (!silent) setLoading(true)
     let data, error
     if (!isChannel && active.empId) {
@@ -543,6 +548,7 @@ export default function Chat() {
   }, [channelId, isChannel, active.empId, active.name, myEmpId, myName, myTenantId])
 
   useEffect(() => {
+    if (!myTenantId) { setMessages([]); return }
     loadMessages(); inputRef.current?.focus()
     // Realtime subscription: new messages appear instantly without waiting for the poller.
     // The channel name includes channelId so it rebuilds automatically when switching conversations.
@@ -559,7 +565,7 @@ export default function Chat() {
       clearInterval(pollerRef.current)
       supabase.removeChannel(rt)
     }
-  }, [loadMessages, channelId])
+  }, [loadMessages, channelId, myTenantId])
 
   useEffect(() => {
     if (!showSearch) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
