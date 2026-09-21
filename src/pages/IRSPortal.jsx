@@ -49,7 +49,7 @@ export default function IRSPortal() {
     return matches.length === 1 ? matches[0] : null
   }
   useEffect(() => {
-    supabase.from('clients').select('id,name').order('name')
+    supabase.from('clients').select('id,name,ssn,dob,taxYears').order('name')
       .then(({ data }) => setClients((data || []).filter(c => c?.id && c?.name)))
   }, [])
 
@@ -258,9 +258,30 @@ export default function IRSPortal() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
-        {[['pull', '📡 Pull Transcripts'], ['transcripts', '📊 Transcript Analysis'], ['poa', '📝 POA / CAF Tracker']].map(([k, label]) => (
-          <button key={k} className={tab === k ? 'btn' : 'btn sec'} onClick={() => setTab(k)}>{label}</button>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+        {[
+          ['pull', 'Pull Transcripts'],
+          ['transcripts', 'Transcript Analysis'],
+          ['poa', 'POA / CAF Tracker'],
+          ['session', 'Session Status'],
+          ['history', 'Request History'],
+          ['manual', 'Manual Upload (Fallback)'],
+        ].map(([k, label]) => (
+          <button
+            key={k}
+            className={tab === k || (tab === 'pull' && ['session','history','manual'].includes(k)) ? 'btn' : 'btn sec'}
+            onClick={() => {
+              if (k === 'pull' || k === 'transcripts' || k === 'poa') {
+                setTab(k)
+                return
+              }
+              setTab('pull')
+              const id = k === 'session' ? 'irs-session-status' : k === 'history' ? 'irs-request-history' : 'irs-manual-fallback'
+              setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+            }}
+          >
+            {label}
+          </button>
         ))}
       </div>
 
