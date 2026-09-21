@@ -20,6 +20,8 @@ must(chat.includes("payload?.new?.tenant_id !== myTenantId"), 'Active-chat realt
 must(!chat.includes("tenant_id: undefined // DB default fills this via current_tenant_id()"), 'Chat channel writes must not rely on an implicit tenant default')
 
 must(app.includes("payload?.new?.tenant_id !== myTenantId"), 'Global realtime notifications must reject foreign-tenant rows')
+must(app.includes("await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null })"), 'Normal startup must clear stale database tenant overrides')
+must(app.includes("supabase.rpc('set_admin_tenant_override', { p_tenant_id: null })"), 'Normal sign-in must clear stale database tenant overrides')
 must(sidebar.includes(".eq('tenant_id', myTenantId)"), 'Sidebar unread chat query must be tenant-scoped')
 must(sidebar.includes("payload.new?.tenant_id === myTenantId"), 'Sidebar realtime badge must reject foreign-tenant rows')
 
