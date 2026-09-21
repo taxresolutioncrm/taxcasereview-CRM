@@ -52,3 +52,4 @@ if(failures.length){
   process.exit(1)
 }
 console.log('✅ TaxRes password visibility contract passed')
+// Password/PIN visibility coverage includes login, setup, portal, and kiosk.
