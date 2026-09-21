@@ -939,6 +939,7 @@ const MANUAL_SECTIONS = [
       { type: 'steps', items: [
         { title: 'Create or open the return', desc: 'Confirm taxpayer/client, year, return type, filing status, preparer, and the required tax documents.' },
         { title: 'Work through preparation and review', desc: 'Use the return’s status to show whether it is being prepared, reviewed internally, waiting on the client, or ready to file.' },
+        { title: 'E-file through the configured transmitter', desc: 'Each office uses its own EFIN. The EFIN identifies the authorized firm/ERO; actual electronic transmission must use the configured IRS-approved/tested software or authorized transmitter connection. Save the return and set it to Ready to File before sending.' },
         { title: 'Record filing accurately', desc: 'Mark Filed only after the filing event occurred. Record acceptance/rejection separately so “filed” is not mistaken for “accepted.”' },
         { title: 'Keep the source documents attached', desc: 'W-2s, K-1s, supporting schedules, organizer material, and filing evidence stay attached to the taxpayer/client record.' },
       ]},
