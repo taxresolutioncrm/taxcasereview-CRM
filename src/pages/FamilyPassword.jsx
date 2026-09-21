@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 export default function FamilyPassword(){
   const [password,setPassword]=useState('')
   const [confirm,setConfirm]=useState('')
+  const [showPassword,setShowPassword]=useState(false)
+  const [showConfirm,setShowConfirm]=useState(false)
   const [ready,setReady]=useState(false)
   const [saving,setSaving]=useState(false)
   const [message,setMessage]=useState('Checking your secure TaxRes family link…')
@@ -64,9 +66,19 @@ export default function FamilyPassword(){
       {error&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',color:'#b91c1c',borderRadius:8,padding:'10px 12px',fontSize:12,lineHeight:1.5,marginBottom:16}}>{error}</div>}
       {ready&&<form onSubmit={save}>
         <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748b',marginBottom:6,textTransform:'uppercase'}}>New Password</label>
-        <input type="password" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 12px',borderRadius:8,border:'1px solid #cbd5e1',marginBottom:14}}/>
+        <div style={{position:'relative',marginBottom:14}}>
+          <input type={showPassword?'text':'password'} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 46px 11px 12px',borderRadius:8,border:'1px solid #cbd5e1'}}/>
+          <button type="button" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Hide new password':'Show new password'} aria-pressed={showPassword} style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',width:34,height:34,border:0,borderRadius:7,background:'transparent',color:'#64748b',cursor:'pointer',display:'grid',placeItems:'center'}}>
+            {showPassword?<span aria-hidden="true" style={{fontSize:18}}>◉</span>:<span aria-hidden="true" style={{fontSize:18}}>◎</span>}
+          </button>
+        </div>
         <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748b',marginBottom:6,textTransform:'uppercase'}}>Confirm Password</label>
-        <input type="password" autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 12px',borderRadius:8,border:'1px solid #cbd5e1',marginBottom:18}}/>
+        <div style={{position:'relative',marginBottom:18}}>
+          <input type={showConfirm?'text':'password'} autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 46px 11px 12px',borderRadius:8,border:'1px solid #cbd5e1'}}/>
+          <button type="button" onClick={()=>setShowConfirm(v=>!v)} aria-label={showConfirm?'Hide confirmation password':'Show confirmation password'} aria-pressed={showConfirm} style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',width:34,height:34,border:0,borderRadius:7,background:'transparent',color:'#64748b',cursor:'pointer',display:'grid',placeItems:'center'}}>
+            {showConfirm?<span aria-hidden="true" style={{fontSize:18}}>◉</span>:<span aria-hidden="true" style={{fontSize:18}}>◎</span>}
+          </button>
+        </div>
         <button type="submit" disabled={saving} style={{width:'100%',padding:'12px 14px',border:0,borderRadius:8,background:'#1A7FD4',color:'#fff',fontWeight:800,cursor:'pointer',opacity:saving?.7:1}}>{saving?'Saving…':'Create TaxRes Family Password'}</button>
       </form>}
     </div>
