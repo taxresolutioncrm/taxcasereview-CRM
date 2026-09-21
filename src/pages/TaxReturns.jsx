@@ -435,8 +435,7 @@ export default function TaxReturns() {
   async function save() {
     if (!form.clientName) { showToast('Client name required'); return }
     setSaving(true)
-    const returnNum = current?.returnNum || form.returnNum || ('TR-' + Date.now().toString().slice(-6))
-    const payload = toDbReturnPayload({ ...form, returnNum }, { updated_at: new Date().toISOString() })
+    const payload = toDbReturnPayload(form, { updated_at: new Date().toISOString() })
     let error
     if (current?.id) {
       ;({ error } = await supabase.from('tax_returns').update(payload).eq('id', current.id))
