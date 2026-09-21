@@ -34,7 +34,7 @@ function money(n) {
 
 export default function IRSPortal() {
   const location = useLocation()
-  const [tab, setTab] = useState('transcripts')
+  const [tab, setTab] = useState('pull')
   useEffect(() => {
     if (new URLSearchParams(location.search).get('new') === '1') setTab('pull')
   }, [location.search])
@@ -259,7 +259,7 @@ export default function IRSPortal() {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
-        {[['transcripts', '📊 Transcript Analysis'], ['pull', '📡 Pull Transcripts'], ['poa', '📝 POA / CAF Tracker']].map(([k, label]) => (
+        {[['pull', '📡 Pull Transcripts'], ['transcripts', '📊 Transcript Analysis'], ['poa', '📝 POA / CAF Tracker']].map(([k, label]) => (
           <button key={k} className={tab === k ? 'btn' : 'btn sec'} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
