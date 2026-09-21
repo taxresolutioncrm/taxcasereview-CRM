@@ -43,7 +43,7 @@ for(const n of [
 
 for(const n of [
   'new URL(data.redirectUri).origin',
-  'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.',
+  'Connect securely to IRS e-Services / ID.me. Authentication opens in a secure IRS window and returns you to this CRM session.',
   'sessionActive'
 ]) need(session,n)
 
@@ -63,6 +63,9 @@ for(const n of [
 
 for(const n of [
   'IRS Transcript Delivery',
+  'Add a tax year…',
+  'Choose one or more years from the dropdown.',
+
   'Sign in once, choose the client, years and transcript types, then request.',
   'Request Transcripts',
   'Returned PDFs attach to the selected client file automatically.',
@@ -106,6 +109,12 @@ need(config,'[functions.transcript-pull-callback]')
 need(config,'verify_jwt = true')
 need(config,'verify_jwt = false')
 
+
+if(fs.existsSync(portal)){
+  const portalUi=read(portal)
+  if(portalUi.includes('href="https://www.irs.gov/e-services"')) failures.push('IRSPortal: external IRS e-Services link must not be primary')
+  if(!portalUi.includes('Connect IRS / ID.me')) failures.push('IRSPortal: in-CRM IRS connection entry is missing')
+}
 
 if(fs.existsSync(pull)){
   const s=read(pull)
