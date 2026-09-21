@@ -434,7 +434,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
 
   const workflowSteps = [
-    ['1','IRS Sign In','Sign in to IRS e-Services with your ID.me account.'],
+    ['1','Connect IRS','Authenticate securely with IRS / ID.me without leaving the CRM workflow.'],
     ['2','Select Client','Choose the exact client and verify POA coverage.'],
     ['3','Choose Years & Types','Select tax years and transcript types.'],
     ['4','Request Transcripts','Pull from IRS and auto-file to client.'],
