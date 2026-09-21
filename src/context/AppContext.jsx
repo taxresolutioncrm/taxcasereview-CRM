@@ -354,7 +354,10 @@ export function AppProvider({ children }) {
         if (cancelled) return
         try {
           const ch = supabase.channel(`${name}-${Date.now()}`)
-          ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table }, handler)
+          ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table }, payload => {
+            if (!myTenantId || payload?.new?.tenant_id !== myTenantId) return
+            handler(payload)
+          })
             .subscribe(status => {
               if (cancelled) return
               if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -430,7 +433,7 @@ export function AppProvider({ children }) {
       pendingTimeouts.forEach(t => clearTimeout(t))
       channels.forEach(ch => { try { supabase.removeChannel(ch) } catch (_) {} })
     }
-  }, [user])
+  }, [user, myTenantId])
 
   // Appointment reminders — browser notification + sound ~30 min before a
   // scheduled appointment. notifiedIds lives outside the effect so it
