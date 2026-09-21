@@ -10,6 +10,7 @@ const sidebar = read('src/components/layout/Sidebar.jsx')
 const migration = read('supabase/migrations/20260921211500_restore_employee_tenant_isolation.sql')
 const ioMigration = read('supabase/migrations/20260920002500_taxres_disk_io_guardrails.sql')
 const reports = read('src/pages/Reports.jsx')
+const tenantResolution = read('supabase/migrations/20260921214500_fail_closed_ambiguous_tenant_resolution.sql')
 const employees = read('src/pages/Employees.jsx')
 
 must(chat.includes("const { user, role, myTenantId } = useApp()"), 'Chat must resolve the active tenant from AppContext')
@@ -36,6 +37,9 @@ must(/create policy hide_qa_certification_employees_from_staff[\s\S]*?as restric
   'I/O migration must not recreate employee visibility policy as PERMISSIVE')
 must(/create policy hide_qa_certification_employees_from_staff[\s\S]*?as restrictive[\s\S]*?for select/i.test(migration),
   'Employee QA visibility policy must remain RESTRICTIVE')
+must(tenantResolution.includes("count(distinct e.tenant_id) as tenant_count"), 'Tenant resolution must detect cross-tenant identity ambiguity')
+must(tenantResolution.includes("when (select tenant_count from employee_tenants)=1"), 'Tenant resolution must fail closed unless exactly one employee tenant matches')
+must(!tenantResolution.includes("where lower(e.email)=lower(auth.email()) and e.status='Active' limit 1"), 'Tenant resolution must never choose an arbitrary employee tenant with LIMIT 1')
 must(/policyname='hide_qa_certification_employees_from_staff'[\s\S]*?RESTRICTIVE/i.test(migration),
   'Employee isolation migration must self-verify the policy mode')
 
