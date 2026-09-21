@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 export default function FamilyPassword(){
   const [password,setPassword]=useState('')
   const [confirm,setConfirm]=useState('')
+  const [showPassword,setShowPassword]=useState(false)
+  const [showConfirm,setShowConfirm]=useState(false)
   const [ready,setReady]=useState(false)
   const [saving,setSaving]=useState(false)
   const [message,setMessage]=useState('Checking your secure TaxRes family link…')
@@ -64,9 +66,23 @@ export default function FamilyPassword(){
       {error&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',color:'#b91c1c',borderRadius:8,padding:'10px 12px',fontSize:12,lineHeight:1.5,marginBottom:16}}>{error}</div>}
       {ready&&<form onSubmit={save}>
         <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748b',marginBottom:6,textTransform:'uppercase'}}>New Password</label>
-        <input type="password" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 12px',borderRadius:8,border:'1px solid #cbd5e1',marginBottom:14}}/>
+        <div style={{position:'relative',marginBottom:14}}>
+          <input type={showPassword?'text':'password'} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 44px 11px 12px',borderRadius:8,border:'1px solid #cbd5e1'}}/>
+          <button type="button" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Hide new password':'Show new password'} aria-pressed={showPassword} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',width:32,height:32,border:0,borderRadius:7,background:'transparent',color:'#64748b',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{showPassword?(
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.6 10.6 0 0 1 12 4c5.5 0 9.5 5 9.5 5a15.8 15.8 0 0 1-3.1 3.7"/><path d="M6.2 6.2C4 7.7 2.5 10 2.5 10S6.5 16 12 16c1 0 2-.2 2.9-.5"/></svg>
+          ):(
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 12S6.5 6 12 6s9.5 6 9.5 6-4 6-9.5 6S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+          )}</button>
+        </div>
         <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748b',marginBottom:6,textTransform:'uppercase'}}>Confirm Password</label>
-        <input type="password" autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 12px',borderRadius:8,border:'1px solid #cbd5e1',marginBottom:18}}/>
+        <div style={{position:'relative',marginBottom:18}}>
+          <input type={showConfirm?'text':'password'} autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)} style={{width:'100%',boxSizing:'border-box',padding:'11px 44px 11px 12px',borderRadius:8,border:'1px solid #cbd5e1'}}/>
+          <button type="button" onClick={()=>setShowConfirm(v=>!v)} aria-label={showConfirm?'Hide confirmation password':'Show confirmation password'} aria-pressed={showConfirm} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',width:32,height:32,border:0,borderRadius:7,background:'transparent',color:'#64748b',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{showConfirm?(
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.6 10.6 0 0 1 12 4c5.5 0 9.5 5 9.5 5a15.8 15.8 0 0 1-3.1 3.7"/><path d="M6.2 6.2C4 7.7 2.5 10 2.5 10S6.5 16 12 16c1 0 2-.2 2.9-.5"/></svg>
+          ):(
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 12S6.5 6 12 6s9.5 6 9.5 6-4 6-9.5 6S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+          )}</button>
+        </div>
         <button type="submit" disabled={saving} style={{width:'100%',padding:'12px 14px',border:0,borderRadius:8,background:'#1A7FD4',color:'#fff',fontWeight:800,cursor:'pointer',opacity:saving?.7:1}}>{saving?'Saving…':'Create TaxRes Family Password'}</button>
       </form>}
     </div>

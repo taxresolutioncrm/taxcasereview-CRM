@@ -7,6 +7,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
     sessionActive: false,
     expiresAt: null,
     organizationName: null,
+    userEmail: null,
     authorizationError: null,
   })
   const [loading, setLoading] = useState(true)
@@ -27,6 +28,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
         sessionActive: Boolean(data?.sessionActive),
         expiresAt: data?.expiresAt || null,
         organizationName: data?.organizationName || null,
+        userEmail: data?.userEmail || null,
         authorizationError: data?.authorizationError || null,
       }
       setStatus(next)
@@ -38,6 +40,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
         sessionActive: false,
         expiresAt: null,
         organizationName: null,
+        userEmail: null,
         authorizationError: null,
       })
       setError(e?.message || 'Could not check your IRS TDS session.')
@@ -126,6 +129,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
 
   const expires = status.expiresAt ? new Date(status.expiresAt) : null
   const minutesLeft = expires ? Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 60000)) : null
+  const expiresLabel = expires ? expires.toLocaleString() : '—'
 
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--s1)' }}>
@@ -137,6 +141,13 @@ export default function TDSSessionPresence({ onStatusChange }) {
               ? `Connected for this practitioner session${status.organizationName ? ` · ${status.organizationName}` : ''}`
               : 'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.'}
           </div>
+          {status.sessionActive && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 10px', marginTop: 9, fontSize: 11.5 }}>
+              <span style={{ color: 'var(--t3)' }}>User</span><span style={{ fontWeight: 700 }}>{status.userEmail || 'Authenticated IRS practitioner'}</span>
+              <span style={{ color: 'var(--t3)' }}>Session expires</span><span style={{ fontWeight: 700 }}>{expiresLabel}</span>
+              <span style={{ color: 'var(--t3)' }}>Time remaining</span><span style={{ fontWeight: 700 }}>{minutesLeft !== null ? `${minutesLeft} minutes` : '—'}</span>
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {loading ? (
@@ -146,6 +157,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
               <span style={{ background: '#15803d', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
                 Connected{minutesLeft !== null ? ` · ${minutesLeft}m` : ''}
               </span>
+              <button className="btn sec" disabled={busy} onClick={() => loadStatus(true)}>Refresh Session</button>
               <button className="btn sec" disabled={busy} onClick={endSession}>{busy ? 'Ending…' : 'Sign Out'}</button>
             </>
           ) : (
