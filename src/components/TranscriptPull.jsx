@@ -417,8 +417,26 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     }
   }
 
+  const workflowSteps = [
+    ['1','IRS Sign In','Sign in to IRS e-Services with your ID.me account.'],
+    ['2','Select Client','Choose the exact client and verify POA coverage.'],
+    ['3','Choose Years & Types','Select tax years and transcript types.'],
+    ['4','Request Transcripts','Pull from IRS and auto-file to client.'],
+    ['5','Review & Analyze','PDFs save to Documents → Transcripts and are analyzed.'],
+  ]
+
   return (
     <div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,minmax(0,1fr))', gap:10, marginBottom:16 }}>
+        {workflowSteps.map(([n,title,desc]) => (
+          <div key={n} style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, padding:'12px 12px 11px', minHeight:92 }}>
+            <div style={{ width:26,height:26,borderRadius:'50%',background:'var(--blue)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,marginBottom:8 }}>{n}</div>
+            <div style={{fontSize:12,fontWeight:800,marginBottom:4}}>{title}</div>
+            <div style={{fontSize:10.5,color:'var(--t3)',lineHeight:1.35}}>{desc}</div>
+          </div>
+        ))}
+      </div>
+
       <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
@@ -498,14 +516,18 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
             </div>
             <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest}>
-              {saving ? 'Requesting…' : 'Request Transcripts'}
+              {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
             </button>
           </div>
         </div>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(280px,.42fr)', gap:14, marginBottom:16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>Recent Transcript Requests</div>
+            <button className="btn sec" style={{ fontSize: 10.5, padding: '4px 9px' }} onClick={() => loadRequests()}>View All / Refresh</button>
+          </div>
           <div style={{ fontWeight: 700, fontSize: 13 }}>Transcript Requests</div>
           <button className="btn sec" style={{ fontSize: 10.5, padding: '4px 9px' }} onClick={() => loadRequests()}>Refresh</button>
         </div>
@@ -542,6 +564,19 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               </table>
             </div>
           )}
+        </div>
+        <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, padding:14, alignSelf:'start' }}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+            <div style={{fontWeight:800,fontSize:13}}>Auto-File Destination</div>
+            <span style={{fontSize:10,fontWeight:800,color:'#fff',background:'#15803d',borderRadius:6,padding:'3px 8px'}}>Enabled</span>
+          </div>
+          <div style={{fontSize:11.5,color:'var(--t3)',marginTop:8,lineHeight:1.5}}>Returned transcripts are automatically saved to the selected client record.</div>
+          <div style={{fontSize:11.5,marginTop:10,lineHeight:1.7}}>
+            <div><b>Location:</b> Documents → Transcripts</div>
+            <div><b>Access:</b> Restricted by tenant/RLS</div>
+            <div><b>Analysis:</b> Automatically parsed into Transcript Analysis</div>
+          </div>
+        </div>
       </div>
 
       <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
