@@ -870,19 +870,31 @@ export default function EmployeePortal() {
               <div>
                 <div style={{ marginBottom: 10 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>NEW PIN (4–6 digits)</label>
-                  <input type="password" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0,6))}
-                    placeholder="••••" inputMode="numeric" maxLength={6}
-                    style={{ width: '100%', padding: '12px 14px', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, color: '#f1f5f9', fontSize: 20, letterSpacing: 8, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', textAlign: 'center' }} />
+                  <div style={{position:'relative'}}>
+                    <input type={showNewPin?'text':'password'} value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0,6))}
+                      placeholder="••••" inputMode="numeric" maxLength={6}
+                      style={{ width: '100%', padding: '12px 46px 12px 14px', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, color: '#f1f5f9', fontSize: 20, letterSpacing: showNewPin?4:8, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', textAlign: 'center' }} />
+                    <button type="button" onClick={()=>setShowNewPin(v=>!v)} aria-label={showNewPin?'Hide new PIN':'Show new PIN'} aria-pressed={showNewPin}
+                      style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',width:34,height:34,border:0,borderRadius:8,background:'transparent',color:'#94a3b8',cursor:'pointer'}}>
+                      <span aria-hidden="true">{showNewPin?'◉':'◎'}</span>
+                    </button>
+                  </div>
                 </div>
                 <div style={{ marginBottom: 10 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>CONFIRM NEW PIN</label>
-                  <input type="password" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0,6))}
-                    placeholder="••••" inputMode="numeric" maxLength={6}
-                    style={{ width: '100%', padding: '12px 14px', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, color: '#f1f5f9', fontSize: 20, letterSpacing: 8, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', textAlign: 'center' }} />
+                  <div style={{position:'relative'}}>
+                    <input type={showConfirmPin?'text':'password'} value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0,6))}
+                      placeholder="••••" inputMode="numeric" maxLength={6}
+                      style={{ width: '100%', padding: '12px 46px 12px 14px', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, color: '#f1f5f9', fontSize: 20, letterSpacing: showConfirmPin?4:8, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', textAlign: 'center' }} />
+                    <button type="button" onClick={()=>setShowConfirmPin(v=>!v)} aria-label={showConfirmPin?'Hide confirmation PIN':'Show confirmation PIN'} aria-pressed={showConfirmPin}
+                      style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',width:34,height:34,border:0,borderRadius:8,background:'transparent',color:'#94a3b8',cursor:'pointer'}}>
+                      <span aria-hidden="true">{showConfirmPin?'◉':'◎'}</span>
+                    </button>
+                  </div>
                 </div>
                 {pinMsg && <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>{pinMsg}</div>}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { setChangingPin(false); setNewPin(''); setConfirmPin(''); setPinMsg('') }}
+                  <button onClick={() => { setChangingPin(false); setNewPin(''); setConfirmPin(''); setShowNewPin(false); setShowConfirmPin(false); setPinMsg('') }}
                     style={{ flex: 1, padding: '10px 14px', background: '#1e293b', border: '1px solid #334155', borderRadius: 10, color: '#94a3b8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                     Cancel
                   </button>
