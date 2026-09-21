@@ -416,7 +416,7 @@ export default function Employees() {
   )
 
   return (
-    <div style={{padding:'20px 24px',maxWidth:1100,margin:'0 auto'}}>
+    <div style={{padding:'20px 24px',maxWidth:1440,margin:'0 auto',boxSizing:'border-box'}}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
@@ -452,10 +452,10 @@ export default function Employees() {
           <div style={{ fontSize: 13, marginTop: 4 }}>Add your first team member to get started</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: 16 }}>
           {filtered.map(emp => (
-            <div key={emp.id} className="card" style={{ padding: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+            <div key={emp.id} className="card" style={{ padding: 20, minWidth:0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns:'48px minmax(0,1fr)', gap: 14, alignItems:'start' }}>
                 {/* Avatar */}
                 <div style={{
                   width: 48, height: 48, borderRadius: '50%',
@@ -470,7 +470,7 @@ export default function Employees() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--tx)' }}>{emp.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 2 }}>{emp.title || emp.role || 'Staff'}</div>
-                  <div style={{ fontSize: 12, color: 'var(--t3)' }}>{emp.email}</div>
+                  <div style={{ fontSize: 12, color: 'var(--t3)', overflowWrap:'anywhere' }}>{emp.email}</div>
                   <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20,
@@ -480,7 +480,7 @@ export default function Employees() {
                     }}>{emp.role || emp.title || emp.access || 'Staff'}</span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <div style={{ gridColumn:'1 / -1', display: 'flex', gap: 6, flexWrap:'wrap', justifyContent:'flex-end', marginTop:2 }}>
                   <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑</button>
                   {can('edit', 'employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite">✉️ Invite</button>}
                   {can('edit', 'employees') && (
