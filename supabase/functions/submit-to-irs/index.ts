@@ -5,140 +5,172 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-
-// IRS MeF Production endpoint
-const IRS_MEF_URL = 'https://la.www4.irs.gov/mef/MeFTransmitterService'
-// IRS MeF Test endpoint (use this until EFIN is approved for production)
-const IRS_MEF_TEST_URL = 'https://la1.www4.irs.gov/mef/MeFTransmitterService'
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
+const cleanDigits = (v: unknown) => String(v || '').replace(/\D/g, '')
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+  if (req.method !== 'POST') return json({ success:false, error:'POST only' }, 405)
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    const authHeader = req.headers.get('Authorization') || ''
+    if (!authHeader.startsWith('Bearer ')) return json({ success:false, error:'Authentication required' }, 401)
 
-    const { returnData, preparerData, testMode = true } = await req.json()
+    const url = Deno.env.get('SUPABASE_URL')!
+    const anon = Deno.env.get('SUPABASE_ANON_KEY')!
+    const serviceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } } })
+    const admin = createClient(url, serviceRole)
 
-    if (!preparerData?.efin) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'EFIN is required for IRS e-file submission. Add your EFIN in Settings → Firm Info.'
-      }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } })
+    const { data:userData, error:userError } = await caller.auth.getUser()
+    if (userError || !userData?.user) return json({ success:false, error:'Invalid session' }, 401)
+
+    const { data:tenantId, error:tenantError } = await caller.rpc('current_tenant_id')
+    if (tenantError || !tenantId) return json({ success:false, error:'No active office/tenant context' }, 403)
+
+    const body = await req.json().catch(() => ({}))
+    const action = String(body?.action || 'submit')
+    const adapterUrl = Deno.env.get('EFILE_ADAPTER_URL') || ''
+    const adapterToken = Deno.env.get('EFILE_ADAPTER_TOKEN') || ''
+    const providerName = Deno.env.get('EFILE_PROVIDER_NAME') || 'Approved e-file transmitter'
+
+    const { data:settings, error:settingsError } = await admin
+      .from('settings')
+      .select('tenant_id,name,firmname,ein,preparer_name,ptin,efin')
+      .eq('tenant_id', tenantId)
+      .limit(1)
+      .maybeSingle()
+    if (settingsError || !settings) return json({ success:false, error:'Could not load this office e-file settings' }, 500)
+
+    const efin = cleanDigits(settings.efin)
+    const configured = Boolean(adapterUrl && adapterToken && efin.length === 6)
+
+    if (action === 'status') {
+      return json({
+        success:true,
+        configured,
+        providerName,
+        efinPresent: efin.length === 6,
+        adapterConfigured: Boolean(adapterUrl && adapterToken),
+        message: configured
+          ? 'E-file transmission is configured for this office.'
+          : 'E-file requires this office\'s valid 6-digit EFIN plus an approved transmitter/software adapter.'
+      })
     }
 
-    if (preparerData.efin.length !== 6) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'EFIN must be exactly 6 digits.'
-      }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } })
+    if (efin.length !== 6) {
+      return json({ success:false, code:'EFIN_REQUIRED', error:'A valid 6-digit EFIN is required for this office. Add it in Settings → Integrations → IRS Preparer Credentials.' }, 400)
     }
 
-    // Build the IRS MeF SOAP envelope
-    const submissionId = `${preparerData.efin}${new Date().getFullYear()}${Date.now().toString().slice(-8)}`
-    const timestamp = new Date().toISOString()
+    if (!adapterUrl || !adapterToken) {
+      return json({
+        success:false,
+        code:'TRANSMITTER_NOT_CONFIGURED',
+        error:'E-file transmitter is not configured yet. An EFIN identifies the firm/ERO, but IRS e-file transmission must use approved/tested software or an authorized transmitter connection.'
+      }, 409)
+    }
 
-    const soapEnvelope = `<?xml version="1.0" encoding="UTF-8"?>
-<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
-  xmlns:mef="http://www.irs.gov/efile">
-  <SOAP-ENV:Header>
-    <mef:MessageHeader>
-      <mef:MessageID>${submissionId}</mef:MessageID>
-      <mef:Timestamp>${timestamp}</mef:Timestamp>
-      <mef:EFIN>${preparerData.efin}</mef:EFIN>
-    </mef:MessageHeader>
-  </SOAP-ENV:Header>
-  <SOAP-ENV:Body>
-    <mef:SendSubmissionsRequest>
-      <mef:SubmissionDataList>
-        <mef:SubmissionData>
-          <mef:SubmissionID>${submissionId}</mef:SubmissionID>
-          <mef:TaxPeriodEndDate>${returnData.taxYear}-12-31</mef:TaxPeriodEndDate>
-          <mef:ReturnData>
-            <mef:ReturnHeader>
-              <mef:FilingType>Individual</mef:FilingType>
-              <mef:TaxYear>${returnData.taxYear}</mef:TaxYear>
-              <mef:TaxPeriodBeginDate>${returnData.taxYear}-01-01</mef:TaxPeriodBeginDate>
-              <mef:TaxPeriodEndDate>${returnData.taxYear}-12-31</mef:TaxPeriodEndDate>
-              <mef:Filer>
-                <mef:Name>${returnData.clientName || ''}</mef:Name>
-                <mef:SSN>${returnData.ssn || ''}</mef:SSN>
-                <mef:FilingStatus>${returnData.filingStatus || 'Single'}</mef:FilingStatus>
-              </mef:Filer>
-              <mef:Preparer>
-                <mef:Name>${preparerData.name || ''}</mef:Name>
-                <mef:PTIN>${preparerData.ptin || ''}</mef:PTIN>
-                <mef:EFIN>${preparerData.efin}</mef:EFIN>
-              </mef:Preparer>
-            </mef:ReturnHeader>
-            <mef:ReturnData>
-              <mef:IRS1040>
-                <mef:TotalIncome>${returnData.grossIncome || 0}</mef:TotalIncome>
-                <mef:AdjustedGrossIncome>${returnData.agi || 0}</mef:AdjustedGrossIncome>
-                <mef:TaxableIncome>${returnData.taxableIncome || 0}</mef:TaxableIncome>
-                <mef:TotalTax>${returnData.estimatedTax || 0}</mef:TotalTax>
-                <mef:TotalPayments>${returnData.withholding || 0}</mef:TotalPayments>
-                <mef:RefundAmount>${returnData.refund || 0}</mef:RefundAmount>
-                <mef:AmountOwed>${returnData.amountOwed || 0}</mef:AmountOwed>
-              </mef:IRS1040>
-            </mef:ReturnData>
-          </mef:ReturnData>
-        </mef:SubmissionData>
-      </mef:SubmissionDataList>
-    </mef:SendSubmissionsRequest>
-  </SOAP-ENV:Body>
-</SOAP-ENV:Envelope>`
+    const returnData = body?.returnData || {}
+    const returnId = String(body?.returnId || returnData?.id || '')
+    if (!returnId) return json({ success:false, error:'Save the return before e-filing.' }, 400)
+    if (!returnData?.clientName || !returnData?.taxYear || !returnData?.returnType) {
+      return json({ success:false, error:'Client, tax year, and return type are required.' }, 400)
+    }
+    if (String(returnData?.status || '') !== 'Ready to File') {
+      return json({ success:false, error:'Set the return status to Ready to File before transmission.' }, 409)
+    }
 
-    const endpoint = testMode ? IRS_MEF_TEST_URL : IRS_MEF_URL
+    const { data:returnRow, error:returnError } = await admin
+      .from('tax_returns')
+      .select('id,tenant_id,status')
+      .eq('id', returnId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    if (returnError || !returnRow) return json({ success:false, error:'Return not found in this office.' }, 404)
 
-    const irsRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': 'SendSubmissions',
-        'User-Agent': 'TaxResCRM/1.0',
+    const payload = {
+      source: 'TaxRes CRM',
+      tenantId,
+      returnId,
+      firm: {
+        name: settings.name || settings.firmname || 'TaxRes CRM',
+        ein: settings.ein || '',
+        efin,
+        preparerName: settings.preparer_name || '',
+        ptin: settings.ptin || '',
       },
-      body: soapEnvelope
+      returnData,
+      requestedBy: userData.user.email || userData.user.id,
+    }
+
+    const providerRes = await fetch(adapterUrl, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${adapterToken}`,
+        'X-Efile-Source':'taxres-crm',
+      },
+      body:JSON.stringify(payload),
     })
 
-    const responseText = await irsRes.text()
+    const raw = await providerRes.text()
+    let providerData:any = {}
+    try { providerData = raw ? JSON.parse(raw) : {} } catch { providerData = { raw: raw.slice(0,1000) } }
 
-    // Parse acknowledgment from IRS response
-    const accepted = responseText.includes('Accepted') || responseText.includes('A')
-    const rejected = responseText.includes('Rejected') || responseText.includes('R')
-    const ackNum   = responseText.match(/<AcknowledgementNumber>([^<]+)<\/AcknowledgementNumber>/)?.[1] || submissionId
-
-    if (irsRes.ok || accepted) {
-      return new Response(JSON.stringify({
-        success: true,
-        submissionId,
-        ackNumber: ackNum,
-        status: 'Accepted',
-        message: `Return accepted by IRS. Acknowledgement: ${ackNum}`,
-        testMode
-      }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } })
-    } else {
-      // Extract error details from IRS response
-      const errorMsg = responseText.match(/<ErrorMessage>([^<]+)<\/ErrorMessage>/)?.[1] ||
-                       responseText.match(/<faultstring>([^<]+)<\/faultstring>/)?.[1] ||
-                       'IRS returned an error. Check return data and try again.'
-
-      return new Response(JSON.stringify({
-        success: false,
-        submissionId,
-        error: errorMsg,
-        rawResponse: responseText.slice(0, 500),
-        testMode
-      }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } })
+    if (!providerRes.ok || providerData?.success === false) {
+      const message = providerData?.error || providerData?.message || `E-file provider returned HTTP ${providerRes.status}`
+      try {
+        await admin.from('efile_submissions').insert({
+          tenant_id:tenantId,
+          tax_return_id:returnId,
+          provider:providerName,
+          status:'error',
+          error_message:String(message).slice(0,2000),
+          requested_by:userData.user.email || userData.user.id,
+        })
+      } catch (_) {}
+      return json({ success:false, code:'PROVIDER_ERROR', error:message }, 502)
     }
 
+    const providerStatus = String(providerData?.status || 'Submitted')
+    const submissionId = String(providerData?.submissionId || providerData?.submission_id || '')
+    const ackNumber = String(providerData?.ackNumber || providerData?.ack_number || '')
+    const normalized = /accept/i.test(providerStatus) ? 'Accepted'
+      : /reject/i.test(providerStatus) ? 'Rejected'
+      : 'Filed'
+
+    await admin.from('efile_submissions').insert({
+      tenant_id:tenantId,
+      tax_return_id:returnId,
+      provider:providerName,
+      provider_submission_id:submissionId || null,
+      acknowledgement_number:ackNumber || null,
+      status:providerStatus,
+      requested_by:userData.user.email || userData.user.id,
+      provider_response:providerData,
+    })
+
+    await admin.from('tax_returns').update({
+      status:normalized,
+      efile_provider:providerName,
+      efile_submission_id:submissionId || null,
+      efile_ack_number:ackNumber || null,
+      efile_status:providerStatus,
+      efile_submitted_at:new Date().toISOString(),
+      updated_at:new Date().toISOString(),
+    }).eq('id', returnId).eq('tenant_id', tenantId)
+
+    return json({
+      success:true,
+      providerName,
+      status:providerStatus,
+      submissionId,
+      ackNumber,
+      message: providerData?.message || `Return sent through ${providerName}.`,
+    })
   } catch (e) {
     console.error('submit-to-irs error:', e)
-    return new Response(JSON.stringify({
-      success: false,
-      error: (e as Error).message
-    }), { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } })
+    return json({ success:false, error:(e as Error).message }, 500)
   }
 })
