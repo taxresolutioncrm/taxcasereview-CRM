@@ -150,8 +150,9 @@ export function AppProvider({ children }) {
   }
 
   useEffect(() => {
-    loadBrandColor()
-    loadFirmBranding()   // fills FIRM for email/document templates
+    // Do not load any tenant-bound branding/data until the persisted admin
+    // override has been synchronized below. A stale override can otherwise
+    // cause an initial cross-office read before the normal session is reset.
     supabase.auth.getSession().then(async ({ data }) => {
       if (data.session?.user) {
         const inviteSetup = new URLSearchParams(window.location.search).get('invite') === '1'
