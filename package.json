@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --port 5173",
     "check-polling": "node scripts/check-polling-intervals.cjs",
+    "check-tenant-isolation": "node scripts/check-tcr-tenant-isolation.mjs",
     "check-critical-workflows": "node scripts/check-critical-workflow-invariants.cjs",
     "check-formacorp-native": "node scripts/check-formacorp-native-invariants.cjs",
     "check-manual-sync": "node scripts/check-manual-sync.cjs",
@@ -25,7 +26,7 @@
     "ui:quick-create": "node scripts/fix-quick-create-routes.mjs",
     "ui:navigation-audit": "node scripts/audit-ui-navigation.mjs",
     "source:verify-current": "git diff --exit-code -- src scripts package.json vite.config.js 2>/dev/null || (echo 'ERROR: prebuild repair scripts changed tracked source. Commit the source fix instead of building mutated source.' && exit 1)",
-    "prebuild": "npm run cloudcpa:readiness && npm run check-family-auth && npm run check-password-visibility && npm run check-nashville-closeout && npm run check-polling && npm run check-supabase-io-guardrails && npm run check-client-work-header-badge && npm run check-admin-portal-performance && npm run check-critical-workflows && npm run check-client-case-quick-actions && npm run check-formacorp-native && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run sidebar:badge-rpc && npm run dashboard:glow && npm run forms:state-esign-prefill && npm run forms:irs-current && npm run reports:accuracy && npm run accounting:oauth-state && npm run admin:metrics-proxy && npm run admin:product-usage-labels && npm run cases:modal-scope && npm run ui:quick-create && npm run ui:navigation-audit && npm run source:verify-current && npm run check-transcripts && npm run check-transcript-parser && npm run check-transcript-coverage",
+    "prebuild": "npm run check-tenant-isolation && npm run cloudcpa:readiness && npm run check-family-auth && npm run check-password-visibility && npm run check-nashville-closeout && npm run check-polling && npm run check-supabase-io-guardrails && npm run check-client-work-header-badge && npm run check-admin-portal-performance && npm run check-critical-workflows && npm run check-client-case-quick-actions && npm run check-formacorp-native && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run sidebar:badge-rpc && npm run dashboard:glow && npm run forms:state-esign-prefill && npm run forms:irs-current && npm run reports:accuracy && npm run accounting:oauth-state && npm run admin:metrics-proxy && npm run admin:product-usage-labels && npm run cases:modal-scope && npm run ui:quick-create && npm run ui:navigation-audit && npm run source:verify-current && npm run check-transcripts && npm run check-transcript-parser && npm run check-transcript-coverage",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist --dotfiles",
