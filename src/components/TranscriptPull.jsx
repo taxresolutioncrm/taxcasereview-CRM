@@ -11,6 +11,7 @@ import {
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
+const TAX_YEARS = Array.from({ length: 8 }, (_, i) => String(new Date().getFullYear() - 1 - i))
 const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
@@ -374,7 +375,22 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const importedCount = (r) => (r.result_analysis_ids || []).length
   const inputStyle = { width: '100%', boxSizing: 'border-box' }
   const direct = getProvider('irs_a2a', providers)
-  const canRequest = Boolean(formClient && formPoa && direct?.available && direct?.sessionActive && form.types.length > 0 && form.taxYears.trim())
+  const selectedYears = parseYearSpec(form.taxYears)
+  const poaYears = formPoa ? parseYearSpec(formPoa.tax_years || '') : []
+  const selectedYearsCovered = Boolean(formPoa && selectedYears.length > 0 && poaYears.length > 0 && selectedYears.every(y => poaYears.includes(y)))
+  const canRequest = Boolean(formClient && formPoa && selectedYearsCovered && direct?.available && direct?.sessionActive && form.types.length > 0)
+
+  function toggleTaxYear(year) {
+    const next = new Set(selectedYears)
+    if (next.has(year)) next.delete(year)
+    else next.add(year)
+    ff('taxYears', [...next].sort((a, b) => Number(b) - Number(a)).join(','))
+  }
+
+  function maskedSsn(value) {
+    const digits = String(value || '').replace(/\D/g, '')
+    return digits ? `***-**-${digits.slice(-4)}` : 'Not on file'
+  }
 
   async function submitCanopyStyleRequest() {
     ff('provider', 'irs_a2a')
@@ -451,11 +467,13 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         </div>
 
         <div style={{ padding: 18 }}>
-          <TDSSessionPresence onStatusChange={(st) => {
-            setProviders(current => current.map(p => p.id === 'irs_a2a'
-              ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
-              : p))
-          }} />
+          <div id="irs-session-status" style={{ scrollMarginTop: 20 }}>
+            <TDSSessionPresence onStatusChange={(st) => {
+              setProviders(current => current.map(p => p.id === 'irs_a2a'
+                ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
+                : p))
+            }} />
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1.4fr) minmax(180px,.8fr)', gap: 12, alignItems: 'start' }}>
             <div>
@@ -463,18 +481,48 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Search or select client" />
               {form.clientName.trim() && (!formClient ? (
                 <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>Select one exact client record.</div>
-              ) : formPoa ? (
-                <div style={{ fontSize: 11.5, color: '#15803d', marginTop: 5 }}>POA on file · Form {formPoa.form_type}{formPoa.tax_years ? ` · ${formPoa.tax_years}` : ''}</div>
               ) : (
-                <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>
-                  POA must be On File before requesting transcripts.{' '}
-                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => onGoToPoa && onGoToPoa()}>Open POA / CAF Tracker</span>
+                <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 9, padding: 10, background: 'var(--s1)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 12.5 }}>{formClient.name}</div>
+                      <div style={{ color: 'var(--t3)', fontSize: 11, marginTop: 4 }}>
+                        SSN {maskedSsn(formClient.ssn)} · DOB {formClient.dob || 'Not on file'}
+                      </div>
+                    </div>
+                    <span style={{ background: formPoa ? '#15803d' : '#b91c1c', color: '#fff', borderRadius: 6, padding: '4px 8px', fontSize: 10.5, fontWeight: 800, alignSelf: 'flex-start' }}>
+                      {formPoa ? 'POA On File' : 'POA Required'}
+                    </span>
+                  </div>
+                  {formPoa ? (
+                    <div style={{ fontSize: 11.5, color: selectedYears.length === 0 ? 'var(--t3)' : selectedYearsCovered ? '#15803d' : '#f87171', marginTop: 7 }}>
+                      Form {formPoa.form_type}{formPoa.tax_years ? ` · POA years: ${formPoa.tax_years}` : ''}{selectedYears.length ? selectedYearsCovered ? ' · Selected years valid' : ' · Selected years are not fully covered by this POA' : ' · Select tax years to validate coverage'}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 7 }}>
+                      POA must be On File before requesting transcripts.{' '}
+                      <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => onGoToPoa && onGoToPoa()}>Open POA / CAF Tracker</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
-              <input value={form.taxYears} onChange={e => ff('taxYears', e.target.value)} style={inputStyle} placeholder="2019-2024" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 6, marginTop: 7 }}>
+                {TAX_YEARS.map(year => {
+                  const checked = selectedYears.includes(year)
+                  return (
+                    <label key={year} style={{
+                      border: '1px solid var(--line)', borderRadius: 8, padding: '7px 8px', cursor: 'pointer',
+                      background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 800 : 500,
+                    }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleTaxYear(year)} style={{ marginRight: 6 }} />
+                      {year}
+                    </label>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
@@ -515,7 +563,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
               {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
             </div>
-            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest}>
+            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 260, minHeight: 44, fontWeight: 800 }}>
               {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
             </button>
           </div>
@@ -523,7 +571,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(280px,.42fr)', gap:14, marginBottom:16 }}>
-        <div>
+        <div id="irs-request-history" style={{ scrollMarginTop: 20 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
             <div style={{ fontWeight:700, fontSize:13 }}>Recent Transcript Requests</div>
             <button className="btn sec" style={{ fontSize:10.5, padding:'4px 9px' }} onClick={() => loadRequests()}>View All / Refresh</button>
@@ -576,7 +624,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+      <div id="irs-manual-fallback" style={{ borderTop: '1px solid var(--line)', paddingTop: 12, scrollMarginTop: 20 }}>
         <button className="btn sec" style={{ fontSize: 11 }} onClick={() => setFallbackOpen(v => !v)}>
           {fallbackOpen ? 'Hide manual fallback' : 'Manual PDF fallback'}
         </button>
