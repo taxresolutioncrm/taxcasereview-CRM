@@ -33,6 +33,15 @@ requireMarker("sortedStats.map(r => (", 'Overview rows are not rendered from sor
 requireMarker("current.key === key && current.direction === 'asc' ? 'desc' : 'asc'", 'Overview headers do not toggle ascending/descending')
 forbidMarker("const prospectsRes = await supabase.from('prospects')", 'Command Center prospects are still serial')
 forbidMarker('const registrySyncResults = await Promise.all(registrySyncJobs.map(job => job.promise))', 'Registry writes are still on the Overview critical path')
+requireMarker("const NASH_TENANT", 'Nashville tenant identity is missing from Admin Portal')
+requireMarker("Nashville Tax Solutions", 'Nashville office label is missing from Admin Portal')
+requireMarker("Tax Res CRM Demo", 'TaxRes demo office identity is missing from Admin Portal')
+requireMarker("employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0)", 'Nashville/live staff count is not authoritative')
+requireMarker("cases_count:Number(metrics.open_jobs ?? metrics.active_cases ?? rows[idx].cases_count ?? 0)", 'Live case count is not authoritative')
+requireMarker("last_activity:metrics.last_activity ?? result.data?.offices?.[0]?.last_activity ?? rows[idx].last_activity ?? null", 'Live activity timestamp is not authoritative')
+requireMarker("billing_seats", 'Seat/billing count is not surfaced')
+requireMarker("Seats / Staff", 'Admin Portal does not visibly distinguish paid seats from staff')
+
 
 if (failures.length) {
   console.error('Admin Portal performance guard FAILED')
