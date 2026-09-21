@@ -38,6 +38,7 @@ create policy tenant_isolation on public.settings
 
 drop policy if exists hide_qa_certification_employees_from_staff on public.employees;
 create policy hide_qa_certification_employees_from_staff on public.employees
+  as restrictive
   for select to authenticated
   using (
     (
