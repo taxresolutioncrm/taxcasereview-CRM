@@ -1564,8 +1564,8 @@ export default function Chat() {
           {canManageChannels && !['general','cases','billing','irs','hr'].includes(chanMenu.conv.id) && (
             <>
               <MenuDivider/>
-              <MenuItem danger onClick={() => { supabase.from('chat_channels').delete().eq('id', chanMenu.conv.id).then(() => {
-                  supabase.from('chat_channels').select('*').order('position').order('label')
+              <MenuItem danger onClick={() => { supabase.from('chat_channels').delete().eq('tenant_id', myTenantId).eq('id', chanMenu.conv.id).then(() => {
+                  supabase.from('chat_channels').select('*').eq('tenant_id', myTenantId).order('position').order('label')
                     .then(({ data }) => { if (data?.length) setDbChannels(data.map(c => ({ id: c.id, label: c.label, desc: c.description || '' }))) })
                 })
                 setDbChannels(c => c.filter(ch => ch.id !== chanMenu.conv.id))
