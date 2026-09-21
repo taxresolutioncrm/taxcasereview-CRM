@@ -106,6 +106,8 @@ export default function EmployeePortal() {
   const [changingPin, setChangingPin] = useState(false)
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
+  const [showNewPin, setShowNewPin] = useState(false)
+  const [showConfirmPin, setShowConfirmPin] = useState(false)
   const [pinMsg, setPinMsg] = useState('')
   const [emp, setEmp] = useState(null)
   const [empToken, setEmpToken] = useState(null) // employee_portal_sessions token — auth for all portal RPCs
@@ -224,7 +226,7 @@ export default function EmployeePortal() {
     const { error } = await supabase.rpc('emp_change_pin', { p_token: empToken, p_new_pin: newPin })
     if (error) { setPinMsg('Error saving PIN: ' + error.message); return }
     setEmp(e => ({ ...e, has_pin: true }))
-    setChangingPin(false); setNewPin(''); setConfirmPin(''); setPinMsg('')
+    setChangingPin(false); setNewPin(''); setConfirmPin(''); setShowNewPin(false); setShowConfirmPin(false); setPinMsg('')
     alert('✅ PIN updated successfully!')
   }
 
