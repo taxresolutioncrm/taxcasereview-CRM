@@ -12,7 +12,10 @@ const ioMigration = read('supabase/migrations/20260920002500_taxres_disk_io_guar
 const reports = read('src/pages/Reports.jsx')
 const tenantResolution = read('supabase/migrations/20260921214500_fail_closed_ambiguous_tenant_resolution.sql')
 const employees = read('src/pages/Employees.jsx')
+const supabaseClient = read('src/lib/supabase.js')
 
+must(supabaseClient.includes("EXPECTED_SUPABASE_PROJECT_REF = 'mpxgxfqdbquzkrvvejkh'"), 'Central CRM must pin the TaxResolution Supabase project ref')
+must(supabaseClient.includes("if (configuredProjectRef !== EXPECTED_SUPABASE_PROJECT_REF)"), 'Central CRM must refuse to start on the wrong Supabase project')
 must(chat.includes("const { user, role, myTenantId } = useApp()"), 'Chat must resolve the active tenant from AppContext')
 must(chat.includes("const chatTenantId = myTenantId || null"), 'Chat must fail closed instead of deriving tenant from messages/branding')
 must(chat.includes(".from('employees').select('id, name, role, avatar_url, email').eq('tenant_id', myTenantId)"), 'Chat employee roster must be tenant-scoped')
