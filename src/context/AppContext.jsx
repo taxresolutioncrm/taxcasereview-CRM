@@ -152,15 +152,26 @@ export function AppProvider({ children }) {
   useEffect(() => {
     loadBrandColor()
     loadFirmBranding()   // fills FIRM for email/document templates
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (data.session?.user) {
         const inviteSetup = new URLSearchParams(window.location.search).get('invite') === '1'
         if (inviteSetup) {
           window.location.href = '/settings?reset_password=1'
           return
         }
+        const isImpersonated = new URLSearchParams(window.location.search).get('imp') === '1'
+        if (!isImpersonated) {
+          // A platform-admin override is stored in the database for up to 8 hours.
+          // Clearing only sessionStorage is not enough: current_tenant_id() would
+          // continue resolving the prior office after a normal TCR reload/login.
+          try { sessionStorage.removeItem('admin_impersonation') } catch (_) {}
+          try { await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null }) } catch (_) {}
+        }
         setUser(data.session.user)
         loadRole(data.session.user.email)
+        loadBrandColor()
+        loadFirmBranding()
+        checkTenantStatus()
       }
       setChecking(false)
     })
@@ -191,9 +202,15 @@ export function AppProvider({ children }) {
               return
             }
           }
-          // Normal login — wipe any leftover impersonation context
+          // Normal login — wipe BOTH browser and database impersonation state.
+          // The DB override otherwise remains authoritative for 8 hours and can
+          // route a platform-admin TCR session back into the prior office.
           if (_event === 'SIGNED_IN') {
             sessionStorage.removeItem('admin_impersonation')
+            supabase.rpc('set_admin_tenant_override', { p_tenant_id: null })
+              .then(() => { loadRole(session.user.email); loadBrandColor(); loadFirmBranding(); checkTenantStatus() })
+              .catch(() => { loadRole(session.user.email); loadBrandColor(); loadFirmBranding(); checkTenantStatus() })
+            return
           }
         } catch (_) {}
         loadRole(session.user.email); loadBrandColor(); loadFirmBranding(); checkTenantStatus()
