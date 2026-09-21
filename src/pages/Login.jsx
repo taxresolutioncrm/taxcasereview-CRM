@@ -64,6 +64,11 @@ const CSS = `
 .tcr-login-field2 label{display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:5px}
 .tcr-login-field2 input{width:100%;padding:11px 14px;font-size:14px;border:1.5px solid #E2E8F0;border-radius:10px;background:#F8FAFC;color:#0F172A;outline:none;box-sizing:border-box;transition:border-color .15s,box-shadow .15s,background .15s;font-family:inherit}
 .tcr-login-field2 input:focus{border-color:#1A7FD4;box-shadow:0 0 0 3px rgba(26,127,212,.12);background:#fff}
+.tcr-password-wrap{position:relative}
+.tcr-password-wrap input{padding-right:46px}
+.tcr-password-eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:transparent;color:#64748B;cursor:pointer}
+.tcr-password-eye:hover{background:#EFF4F8;color:#1A7FD4}
+.tcr-password-eye:focus-visible{outline:2px solid #1A7FD4;outline-offset:1px}
 .tcr-login-btn2{width:100%;padding:13px;font-size:14.5px;font-weight:700;background:#1A7FD4;color:#fff;border:0;border-radius:10px;cursor:pointer;margin-top:8px;transition:background .15s,transform .1s,box-shadow .15s;font-family:inherit;box-shadow:0 4px 14px rgba(26,127,212,.35)}
 .tcr-login-btn2:hover:not(:disabled){background:#1567B8;box-shadow:0 6px 18px rgba(26,127,212,.45)}
 .tcr-login-btn2:active:not(:disabled){transform:translateY(1px)}
@@ -77,6 +82,7 @@ export default function Login() {
   const { login, showToast } = useApp()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -224,7 +230,15 @@ export default function Login() {
               </div>
               <div className="tcr-login-field2">
                 <label htmlFor="tcr-password">{t.password}</label>
-                <input id="tcr-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+                <div className="tcr-password-wrap">
+                  <input id="tcr-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+                  <button type="button" className="tcr-password-eye" onClick={() => setShowPassword(v => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}>
+                    {showPassword
+                      ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.9 4.2A10.9 10.9 0 0112 4c5 0 9.3 3.6 10 8a10.7 10.7 0 01-2 4.2"/><path d="M6.6 6.6A10.8 10.8 0 002 12c.7 4.4 5 8 10 8a10.8 10.8 0 005.4-1.4"/></svg>
+                      : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>}
+                  </button>
+                </div>
               </div>
               <div style={{display:'flex',justifyContent:'flex-end',marginTop:-10,marginBottom:12}}>
                 <button type="button" onClick={sendPasswordReset} disabled={resetting}
