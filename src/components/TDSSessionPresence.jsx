@@ -135,11 +135,11 @@ export default function TDSSessionPresence({ onStatusChange }) {
     <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '11px 13px', marginBottom: 14, background: 'var(--s1)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 800, fontSize: 13 }}>IRS Sign-In</div>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>IRS / ID.me Connection</div>
           <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
             {status.sessionActive
               ? `Connected for this practitioner session${status.organizationName ? ` · ${status.organizationName}` : ''}`
-              : 'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.'}
+              : 'Connect securely to IRS e-Services / ID.me. Authentication opens in a secure IRS window and returns you to this CRM session.'}
           </div>
           {status.sessionActive && (
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 10px', marginTop: 9, fontSize: 11.5 }}>
@@ -162,7 +162,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
             </>
           ) : (
             <button className="btn" disabled={busy || !status.sessionSetupConfigured} onClick={signInToIrs}>
-              {busy ? 'Waiting for IRS…' : 'Sign in to IRS'}
+              {busy ? 'Waiting for IRS…' : 'Connect IRS / ID.me'}
             </button>
           )}
         </div>
@@ -170,7 +170,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
 
       {!loading && !status.sessionActive && !status.sessionSetupConfigured && !error && (
         <div style={{ marginTop: 8, color: '#f59e0b', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '7px 9px' }}>
-          {status.authorizationError || 'IRS authorization is not configured yet.'}
+          {status.authorizationError || 'IRS connection setup is incomplete. Configure the IRS TDS connection in Settings → Integrations, then return here to connect your IRS / ID.me session.'}
         </div>
       )}
       {error && <div style={{ marginTop: 8, color: '#f87171', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.22)', borderRadius: 8, padding: '7px 9px' }}>{error}</div>}
