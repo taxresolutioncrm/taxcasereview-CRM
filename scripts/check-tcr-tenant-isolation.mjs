@@ -8,6 +8,7 @@ const chat = read('src/pages/Chat.jsx')
 const app = read('src/context/AppContext.jsx')
 const sidebar = read('src/components/layout/Sidebar.jsx')
 const migration = read('supabase/migrations/20260921211500_restore_employee_tenant_isolation.sql')
+const ioMigration = read('supabase/migrations/20260920002500_taxres_disk_io_guardrails.sql')
 
 must(chat.includes("const { user, role, myTenantId } = useApp()"), 'Chat must resolve the active tenant from AppContext')
 must(chat.includes("const chatTenantId = myTenantId || null"), 'Chat must fail closed instead of deriving tenant from messages/branding')
@@ -25,6 +26,8 @@ must(app.includes("supabase.rpc('set_admin_tenant_override', { p_tenant_id: null
 must(sidebar.includes(".eq('tenant_id', myTenantId)"), 'Sidebar unread chat query must be tenant-scoped')
 must(sidebar.includes("payload.new?.tenant_id === myTenantId"), 'Sidebar realtime badge must reject foreign-tenant rows')
 
+must(/create policy hide_qa_certification_employees_from_staff[\s\S]*?as restrictive[\s\S]*?for select/i.test(ioMigration),
+  'I/O migration must not recreate employee visibility policy as PERMISSIVE')
 must(/create policy hide_qa_certification_employees_from_staff[\s\S]*?as restrictive[\s\S]*?for select/i.test(migration),
   'Employee QA visibility policy must remain RESTRICTIVE')
 must(/policyname='hide_qa_certification_employees_from_staff'[\s\S]*?RESTRICTIVE/i.test(migration),
