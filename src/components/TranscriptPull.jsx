@@ -11,7 +11,7 @@ import {
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
-const TAX_YEARS = Array.from({ length: 8 }, (_, i) => String(new Date().getFullYear() - 1 - i))
+const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
 const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
@@ -509,19 +509,34 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             </div>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(72px,1fr))', gap: 6, marginTop: 7 }}>
-                {TAX_YEARS.map(year => {
-                  const checked = selectedYears.has(year)
-                  return (
-                    <label key={year} style={{
-                      border: '1px solid var(--line)', borderRadius: 9, padding: '8px 9px', cursor: 'pointer',
-                      background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 800 : 500,
-                    }}>
-                      <input type="checkbox" checked={checked} onChange={() => toggleTaxYear(year)} style={{ marginRight: 6 }} />
-                      {year}
-                    </label>
-                  )
-                })}
+              <select
+                value=""
+                onChange={e => {
+                  const year = e.target.value
+                  if (!year) return
+                  const next = new Set(selectedYears)
+                  next.add(year)
+                  ff('taxYears', [...next].sort((a, b) => Number(b) - Number(a)).join(','))
+                }}
+                style={{ ...inputStyle, marginTop: 7, minHeight: 38 }}
+              >
+                <option value="">Add a tax year…</option>
+                {TAX_YEARS.filter(year => !selectedYears.has(year)).map(year => <option key={year} value={year}>{year}</option>)}
+              </select>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, minHeight: 30 }}>
+                {[...selectedYears].sort((a, b) => Number(b) - Number(a)).map(year => (
+                  <button
+                    key={year}
+                    type="button"
+                    className="btn sec"
+                    onClick={() => toggleTaxYear(year)}
+                    style={{ padding: '5px 9px', fontSize: 11, borderRadius: 8 }}
+                    title={`Remove ${year}`}
+                  >
+                    {year} ×
+                  </button>
+                ))}
+                {selectedYears.size === 0 && <span style={{ color: 'var(--t3)', fontSize: 11.5, paddingTop: 7 }}>Choose one or more years from the dropdown.</span>}
               </div>
             </div>
           </div>
