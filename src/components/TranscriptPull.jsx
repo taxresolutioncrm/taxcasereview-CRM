@@ -11,6 +11,7 @@ import {
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
+const TAX_YEARS = Array.from({ length: 8 }, (_, i) => String(new Date().getFullYear() - 1 - i))
 const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
@@ -374,7 +375,22 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const importedCount = (r) => (r.result_analysis_ids || []).length
   const inputStyle = { width: '100%', boxSizing: 'border-box' }
   const direct = getProvider('irs_a2a', providers)
-  const canRequest = Boolean(formClient && formPoa && direct?.available && direct?.sessionActive && form.types.length > 0 && form.taxYears.trim())
+  const selectedYears = parseYearSpec(form.taxYears)
+  const poaYears = formPoa ? parseYearSpec(formPoa.tax_years || '') : []
+  const selectedYearsCovered = Boolean(formPoa && selectedYears.length > 0 && poaYears.length > 0 && selectedYears.every(y => poaYears.includes(y)))
+  const canRequest = Boolean(formClient && formPoa && selectedYearsCovered && direct?.available && direct?.sessionActive && form.types.length > 0)
+
+  function toggleTaxYear(year) {
+    const next = new Set(selectedYears)
+    if (next.has(year)) next.delete(year)
+    else next.add(year)
+    ff('taxYears', [...next].sort((a, b) => Number(b) - Number(a)).join(','))
+  }
+
+  function maskedSsn(value) {
+    const digits = String(value || '').replace(/\D/g, '')
+    return digits ? `***-**-${digits.slice(-4)}` : 'Not on file'
+  }
 
   async function submitCanopyStyleRequest() {
     ff('provider', 'irs_a2a')
@@ -417,8 +433,26 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     }
   }
 
+  const workflowSteps = [
+    ['1','IRS Sign In','Sign in to IRS e-Services with your ID.me account.'],
+    ['2','Select Client','Choose the exact client and verify POA coverage.'],
+    ['3','Choose Years & Types','Select tax years and transcript types.'],
+    ['4','Request Transcripts','Pull from IRS and auto-file to client.'],
+    ['5','Review & Analyze','PDFs save to Documents → Transcripts and are analyzed.'],
+  ]
+
   return (
     <div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,minmax(0,1fr))', gap:10, marginBottom:16 }}>
+        {workflowSteps.map(([n,title,desc]) => (
+          <div key={n} style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, padding:'12px 12px 11px', minHeight:92 }}>
+            <div style={{ width:26,height:26,borderRadius:'50%',background:'var(--blue)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,marginBottom:8 }}>{n}</div>
+            <div style={{fontSize:12,fontWeight:800,marginBottom:4}}>{title}</div>
+            <div style={{fontSize:10.5,color:'var(--t3)',lineHeight:1.35}}>{desc}</div>
+          </div>
+        ))}
+      </div>
+
       <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
@@ -433,11 +467,13 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         </div>
 
         <div style={{ padding: 18 }}>
-          <TDSSessionPresence onStatusChange={(st) => {
-            setProviders(current => current.map(p => p.id === 'irs_a2a'
-              ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
-              : p))
-          }} />
+          <div id="irs-session-status" style={{ scrollMarginTop: 20 }}>
+            <TDSSessionPresence onStatusChange={(st) => {
+              setProviders(current => current.map(p => p.id === 'irs_a2a'
+                ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
+                : p))
+            }} />
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1.4fr) minmax(180px,.8fr)', gap: 12, alignItems: 'start' }}>
             <div>
@@ -445,18 +481,48 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Search or select client" />
               {form.clientName.trim() && (!formClient ? (
                 <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>Select one exact client record.</div>
-              ) : formPoa ? (
-                <div style={{ fontSize: 11.5, color: '#15803d', marginTop: 5 }}>POA on file · Form {formPoa.form_type}{formPoa.tax_years ? ` · ${formPoa.tax_years}` : ''}</div>
               ) : (
-                <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>
-                  POA must be On File before requesting transcripts.{' '}
-                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => onGoToPoa && onGoToPoa()}>Open POA / CAF Tracker</span>
+                <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 9, padding: 10, background: 'var(--s1)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 12.5 }}>{formClient.name}</div>
+                      <div style={{ color: 'var(--t3)', fontSize: 11, marginTop: 4 }}>
+                        SSN {maskedSsn(formClient.ssn)} · DOB {formClient.dob || 'Not on file'}
+                      </div>
+                    </div>
+                    <span style={{ background: formPoa ? '#15803d' : '#b91c1c', color: '#fff', borderRadius: 6, padding: '4px 8px', fontSize: 10.5, fontWeight: 800, alignSelf: 'flex-start' }}>
+                      {formPoa ? 'POA On File' : 'POA Required'}
+                    </span>
+                  </div>
+                  {formPoa ? (
+                    <div style={{ fontSize: 11.5, color: selectedYears.length === 0 ? 'var(--t3)' : selectedYearsCovered ? '#15803d' : '#f87171', marginTop: 7 }}>
+                      Form {formPoa.form_type}{formPoa.tax_years ? ` · POA years: ${formPoa.tax_years}` : ''}{selectedYears.length ? selectedYearsCovered ? ' · Selected years valid' : ' · Selected years are not fully covered by this POA' : ' · Select tax years to validate coverage'}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 7 }}>
+                      POA must be On File before requesting transcripts.{' '}
+                      <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => onGoToPoa && onGoToPoa()}>Open POA / CAF Tracker</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
-              <input value={form.taxYears} onChange={e => ff('taxYears', e.target.value)} style={inputStyle} placeholder="2019-2024" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 6, marginTop: 7 }}>
+                {TAX_YEARS.map(year => {
+                  const checked = selectedYears.includes(year)
+                  return (
+                    <label key={year} style={{
+                      border: '1px solid var(--line)', borderRadius: 8, padding: '7px 8px', cursor: 'pointer',
+                      background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 800 : 500,
+                    }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleTaxYear(year)} style={{ marginRight: 6 }} />
+                      {year}
+                    </label>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
@@ -497,54 +563,68 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
               {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
             </div>
-            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest}>
-              {saving ? 'Requesting…' : 'Request Transcripts'}
+            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 260, minHeight: 44, fontWeight: 800 }}>
+              {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
             </button>
           </div>
         </div>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>Transcript Requests</div>
-          <button className="btn sec" style={{ fontSize: 10.5, padding: '4px 9px' }} onClick={() => loadRequests()}>Refresh</button>
-        </div>
-        {loading ? <div style={{ color: 'var(--t3)', fontSize: 13 }}>Loading…</div> :
-          requests.length === 0 ? (
-            <div style={{ color: 'var(--t3)', fontSize: 12.5, padding: '12px 0' }}>No transcript requests yet.</div>
-          ) : (
-            <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ color: 'var(--t3)', textAlign: 'left' }}>
-                    {['Client', 'Types', 'Years', 'Status', 'Filed', 'Requested', ''].map(h => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {requests.map(r => (
-                    <tr key={r.id} style={{ borderTop: '1px solid var(--line)' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 700 }}>{r.client_name}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{(r.transcript_types || []).join(', ') || '—'}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{r.tax_years || '—'}</td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span style={{ background: REQ_COLORS[r.status] || '#64748b', color: '#fff', borderRadius: 6, padding: '2px 9px', fontSize: 10.5, fontWeight: 700 }}>{r.status}</span>
-                        {r.provider_status && <div style={{ color: r.provider_error ? '#f87171' : 'var(--t3)', fontSize: 10, marginTop: 3 }}>{r.provider_status}{r.provider_error ? ` · ${r.provider_error}` : ''}</div>}
-                      </td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{importedCount(r)}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
-                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                        {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry'}</button>}
-                        <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
-                      </td>
+      <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(280px,.42fr)', gap:14, marginBottom:16 }}>
+        <div id="irs-request-history" style={{ scrollMarginTop: 20 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+            <div style={{ fontWeight:700, fontSize:13 }}>Recent Transcript Requests</div>
+            <button className="btn sec" style={{ fontSize:10.5, padding:'4px 9px' }} onClick={() => loadRequests()}>View All / Refresh</button>
+          </div>
+          {loading ? <div style={{ color:'var(--t3)', fontSize:13 }}>Loading…</div> :
+            requests.length === 0 ? (
+              <div style={{ color:'var(--t3)', fontSize:12.5, padding:'12px 0' }}>No transcript requests yet.</div>
+            ) : (
+              <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, overflow:'hidden' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ color:'var(--t3)', textAlign:'left' }}>
+                      {['Client','Types','Years','Status','Filed','Requested',''].map(h => <th key={h} style={{ padding:'8px 12px', fontWeight:600 }}>{h}</th>)}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {requests.map(r => (
+                      <tr key={r.id} style={{ borderTop:'1px solid var(--line)' }}>
+                        <td style={{ padding:'8px 12px', fontWeight:700 }}>{r.client_name}</td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)', fontSize:11 }}>{(r.transcript_types || []).join(', ') || '—'}</td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)' }}>{r.tax_years || '—'}</td>
+                        <td style={{ padding:'8px 12px' }}>
+                          <span style={{ background:REQ_COLORS[r.status] || '#64748b', color:'#fff', borderRadius:6, padding:'2px 9px', fontSize:10.5, fontWeight:700 }}>{r.status}</span>
+                          {r.provider_status && <div style={{ color:r.provider_error ? '#f87171' : 'var(--t3)', fontSize:10, marginTop:3 }}>{r.provider_status}{r.provider_error ? ` · ${r.provider_error}` : ''}</div>}
+                        </td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)' }}>{importedCount(r)}</td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)', fontSize:11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
+                        <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                          {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize:10, padding:'3px 8px', marginRight:4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry'}</button>}
+                          <button className="btn sec" style={{ fontSize:10, padding:'3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+        </div>
+        <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, padding:14, alignSelf:'start' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+            <div style={{ fontWeight:800, fontSize:13 }}>Auto-File Destination</div>
+            <span style={{ fontSize:10, fontWeight:800, color:'#fff', background:'#15803d', borderRadius:6, padding:'3px 8px' }}>Enabled</span>
+          </div>
+          <div style={{ fontSize:11.5, color:'var(--t3)', marginTop:8, lineHeight:1.5 }}>Returned transcripts are automatically saved to the selected client record.</div>
+          <div style={{ fontSize:11.5, marginTop:10, lineHeight:1.7 }}>
+            <div><b>Location:</b> Documents → Transcripts</div>
+            <div><b>Access:</b> Restricted by tenant/RLS</div>
+            <div><b>Analysis:</b> Automatically parsed into Transcript Analysis</div>
+          </div>
+        </div>
       </div>
 
-      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+      <div id="irs-manual-fallback" style={{ borderTop: '1px solid var(--line)', paddingTop: 12, scrollMarginTop: 20 }}>
         <button className="btn sec" style={{ fontSize: 11 }} onClick={() => setFallbackOpen(v => !v)}>
           {fallbackOpen ? 'Hide manual fallback' : 'Manual PDF fallback'}
         </button>
