@@ -76,6 +76,12 @@ for(const n of [
 
 if(fs.existsSync(pullUi)){
   const ui=read(pullUi)
+  if(ui.includes('selectedYears.includes(') || ui.includes('selectedYears.length') || ui.includes('selectedYears.every(') || ui.includes('poaYears.length') || ui.includes('poaYears.includes(')) {
+    failures.push('TranscriptPull: parseYearSpec returns Set; array-only year methods would crash IRS Portal')
+  }
+  if(!ui.includes('selectedYears.has(year)') || !ui.includes('selectedYears.size') || !ui.includes('poaYears.size') || !ui.includes('poaYears.has(y)')) {
+    failures.push('TranscriptPull: Set-safe tax-year handling contract is incomplete')
+  }
   for(const old of ['Watched TDS Download Folder','providers.map(p =>','New Transcript Pull Request']){
     if(ui.includes(old)) failures.push('TranscriptPull: legacy primary UI still present: '+old)
   }

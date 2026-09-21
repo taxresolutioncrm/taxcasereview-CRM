@@ -376,8 +376,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const inputStyle = { width: '100%', boxSizing: 'border-box' }
   const direct = getProvider('irs_a2a', providers)
   const selectedYears = parseYearSpec(form.taxYears)
-  const poaYears = formPoa ? parseYearSpec(formPoa.tax_years || '') : []
-  const selectedYearsCovered = Boolean(formPoa && selectedYears.length > 0 && poaYears.length > 0 && selectedYears.every(y => poaYears.includes(y)))
+  const poaYears = formPoa ? parseYearSpec(formPoa.tax_years || '') : new Set()
+  const selectedYearsCovered = Boolean(formPoa && selectedYears.size > 0 && poaYears.size > 0 && [...selectedYears].every(y => poaYears.has(y)))
   const canRequest = Boolean(formClient && formPoa && selectedYearsCovered && direct?.available && direct?.sessionActive && form.types.length > 0)
 
   function toggleTaxYear(year) {
@@ -443,21 +443,21 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   return (
     <div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,minmax(0,1fr))', gap:10, marginBottom:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:10, marginBottom:16 }}>
         {workflowSteps.map(([n,title,desc]) => (
-          <div key={n} style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, padding:'12px 12px 11px', minHeight:92 }}>
-            <div style={{ width:26,height:26,borderRadius:'50%',background:'var(--blue)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,marginBottom:8 }}>{n}</div>
-            <div style={{fontSize:12,fontWeight:800,marginBottom:4}}>{title}</div>
-            <div style={{fontSize:10.5,color:'var(--t3)',lineHeight:1.35}}>{desc}</div>
+          <div key={n} style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:12, padding:'13px 14px 12px', minHeight:88 }}>
+            <div style={{ width:28,height:28,borderRadius:'50%',background:'var(--blue)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11.5,fontWeight:800,marginBottom:8 }}>{n}</div>
+            <div style={{fontSize:12.5,fontWeight:800,marginBottom:4}}>{title}</div>
+            <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.45}}>{desc}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>IRS Transcript Delivery</div>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 4 }}>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>IRS Transcript Delivery</div>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 5, lineHeight: 1.45 }}>
               Sign in once, choose the client, years and transcript types, then request. Returned IRS PDFs are filed to that client automatically and analyzed in the CRM.
             </div>
           </div>
@@ -466,7 +466,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           </span>
         </div>
 
-        <div style={{ padding: 18 }}>
+        <div style={{ padding: 16 }}>
           <div id="irs-session-status" style={{ scrollMarginTop: 20 }}>
             <TDSSessionPresence onStatusChange={(st) => {
               setProviders(current => current.map(p => p.id === 'irs_a2a'
@@ -475,7 +475,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             }} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1.4fr) minmax(180px,.8fr)', gap: 12, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12, alignItems: 'start' }}>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
               <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Search or select client" />
@@ -495,8 +495,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     </span>
                   </div>
                   {formPoa ? (
-                    <div style={{ fontSize: 11.5, color: selectedYears.length === 0 ? 'var(--t3)' : selectedYearsCovered ? '#15803d' : '#f87171', marginTop: 7 }}>
-                      Form {formPoa.form_type}{formPoa.tax_years ? ` · POA years: ${formPoa.tax_years}` : ''}{selectedYears.length ? selectedYearsCovered ? ' · Selected years valid' : ' · Selected years are not fully covered by this POA' : ' · Select tax years to validate coverage'}
+                    <div style={{ fontSize: 11.5, color: selectedYears.size === 0 ? 'var(--t3)' : selectedYearsCovered ? '#15803d' : '#f87171', marginTop: 7 }}>
+                      Form {formPoa.form_type}{formPoa.tax_years ? ` · POA years: ${formPoa.tax_years}` : ''}{selectedYears.size ? selectedYearsCovered ? ' · Selected years valid' : ' · Selected years are not fully covered by this POA' : ' · Select tax years to validate coverage'}
                     </div>
                   ) : (
                     <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 7 }}>
@@ -509,12 +509,12 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             </div>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 6, marginTop: 7 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(72px,1fr))', gap: 6, marginTop: 7 }}>
                 {TAX_YEARS.map(year => {
-                  const checked = selectedYears.includes(year)
+                  const checked = selectedYears.has(year)
                   return (
                     <label key={year} style={{
-                      border: '1px solid var(--line)', borderRadius: 8, padding: '7px 8px', cursor: 'pointer',
+                      border: '1px solid var(--line)', borderRadius: 9, padding: '8px 9px', cursor: 'pointer',
                       background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 800 : 500,
                     }}>
                       <input type="checkbox" checked={checked} onChange={() => toggleTaxYear(year)} style={{ marginRight: 6 }} />
@@ -533,7 +533,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 const checked = form.types.includes(t)
                 return (
                   <label key={t} style={{
-                    border: '1px solid var(--line)', borderRadius: 8, padding: '7px 9px', cursor: 'pointer',
+                    border: '1px solid var(--line)', borderRadius: 9, padding: '8px 10px', cursor: 'pointer',
                     background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 700 : 500
                   }}>
                     <input type="checkbox" checked={checked} onChange={e => ff('types', e.target.checked ? [...form.types, t] : form.types.filter(x => x !== t))} style={{ marginRight: 6 }} />
@@ -546,11 +546,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
           <div style={{ marginTop: 14 }}>
             <label style={{ fontSize: 11, color: 'var(--t3)' }}>Notes <span style={{ color: 'var(--t3)' }}>(optional)</span></label>
-            <textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={inputStyle} placeholder="Internal note for this request" />
+            <textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 58, resize: 'vertical' }} placeholder="Internal note for this request" />
           </div>
 
           {!direct?.available && (
-            <div style={{ marginTop: 12, color: '#b45309', fontSize: 11.5 }}>
+            <div style={{ marginTop: 12, color: '#f59e0b', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '8px 10px' }}>
               IRS direct connection is not configured yet. The request controls remain here so the workflow does not change when the connection is enabled.
             </div>
           )}
@@ -563,14 +563,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
               {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
             </div>
-            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 260, minHeight: 44, fontWeight: 800 }}>
+            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 230, minHeight: 42, fontWeight: 800 }}>
               {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
             </button>
           </div>
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(280px,.42fr)', gap:14, marginBottom:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.6fr) minmax(300px,.55fr)', gap:14, marginBottom:16 }}>
         <div id="irs-request-history" style={{ scrollMarginTop: 20 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
             <div style={{ fontWeight:700, fontSize:13 }}>Recent Transcript Requests</div>
@@ -631,7 +631,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         {fallbackOpen && (
           <div style={{ marginTop: 10, background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Manual IRS TDS fallback</div>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 4 }}>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 5, lineHeight: 1.45 }}>
               Use this only when direct IRS delivery is unavailable. Connect the folder where IRS TDS PDFs are saved; new PDFs are parsed and filed to the matching client.
             </div>
             <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -132,11 +132,11 @@ export default function TDSSessionPresence({ onStatusChange }) {
   const expiresLabel = expires ? expires.toLocaleString() : '—'
 
   return (
-    <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: 'var(--s1)' }}>
+    <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '11px 13px', marginBottom: 14, background: 'var(--s1)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>IRS Sign-In</div>
-          <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3 }}>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>IRS Sign-In</div>
+          <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
             {status.sessionActive
               ? `Connected for this practitioner session${status.organizationName ? ` · ${status.organizationName}` : ''}`
               : 'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.'}
@@ -169,11 +169,11 @@ export default function TDSSessionPresence({ onStatusChange }) {
       </div>
 
       {!loading && !status.sessionActive && !status.sessionSetupConfigured && !error && (
-        <div style={{ marginTop: 8, color: '#b45309', fontSize: 11.5 }}>
+        <div style={{ marginTop: 8, color: '#f59e0b', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '7px 9px' }}>
           {status.authorizationError || 'IRS authorization is not configured yet.'}
         </div>
       )}
-      {error && <div style={{ marginTop: 8, color: '#f87171', fontSize: 11.5 }}>{error}</div>}
+      {error && <div style={{ marginTop: 8, color: '#f87171', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.22)', borderRadius: 8, padding: '7px 9px' }}>{error}</div>}
     </div>
   )
 }
