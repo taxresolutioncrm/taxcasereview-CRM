@@ -13,6 +13,7 @@ for(const needle of [
 
 const family='src/pages/FamilyPassword.jsx'
 const portal='src/pages/EmployeePortal.jsx'
+const clock='src/pages/ClockIn.jsx'
 for(const n of [
   "const [showPassword,setShowPassword]=useState(false)",
   "const [showConfirm,setShowConfirm]=useState(false)",
@@ -27,10 +28,22 @@ for(const n of [
 for(const n of [
   "const [showLoginPin, setShowLoginPin] = useState(false)",
   "type={showLoginPin ? 'text' : 'password'}",
-  "aria-label={showLoginPin ? 'Hide PIN' : 'Show PIN'}"
+  "aria-label={showLoginPin ? 'Hide PIN' : 'Show PIN'}",
+  "const [showNewPin, setShowNewPin] = useState(false)",
+  "const [showConfirmPin, setShowConfirmPin] = useState(false)",
+  "type={showNewPin?'text':'password'}",
+  "type={showConfirmPin?'text':'password'}"
 ]) {
   const text=fs.readFileSync(portal,'utf8')
   if(!text.includes(n)) failures.push('Employee portal PIN visibility missing '+n)
+}
+for(const n of [
+  "[showPin,setShowPin]=useState(false)",
+  "type={showPin?'text':'password'}",
+  "aria-label={showPin?'Hide PIN':'Show PIN'}"
+]) {
+  const text=fs.readFileSync(clock,'utf8')
+  if(!text.includes(n)) failures.push('Time clock PIN visibility missing '+n)
 }
 
 if(failures.length){
