@@ -79,6 +79,79 @@ const BLANK_RETURN = {
   st_localTax: '', st_localJurisdiction: '',
 }
 
+const TAX_RETURN_DB_MAP = {
+  "returnNum": "returnnum",
+  "clientName": "clientname",
+  "taxYear": "taxyear",
+  "returnType": "returntype",
+  "filingStatus": "filingstatus",
+  "status": "status",
+  "assignedTo": "assignedto",
+  "wages": "wages",
+  "interest": "interest",
+  "dividends": "dividends",
+  "capitalGains": "capitalgains",
+  "businessIncome": "businessincome",
+  "rentalIncome": "rentalincome",
+  "retirementIncome": "retirementincome",
+  "socialSecurity": "socialsecurity",
+  "otherIncome": "otherincome",
+  "studentLoanInterest": "studentloaninterest",
+  "iraDeduction": "iradeduction",
+  "selfEmployedHealth": "selfemployedhealth",
+  "selfEmployedTax": "selfemployedtax",
+  "alimonyPaid": "alimonypaid",
+  "otherAdjustments": "otheradjustments",
+  "deductionType": "deductiontype",
+  "itemizedDeductions": "itemizeddeductions",
+  "stateLocalTax": "statelocaltax",
+  "mortgageInterest": "mortgageinterest",
+  "charitableContrib": "charitablecontrib",
+  "medicalExpenses": "medicalexpenses",
+  "childTaxCredit": "childtaxcredit",
+  "earnedIncomeCredit": "earnedincomecredit",
+  "childCareCredit": "childcarecredit",
+  "educationCredit": "educationcredit",
+  "otherCredits": "othercredits",
+  "withholding": "withholding",
+  "estimatedPayments": "estimatedpayments",
+  "refundable": "refundable",
+  "notes": "notes"
+}
+const TAX_RETURN_NUMERIC_FIELDS = new Set(["wages","interest","dividends","capitalGains","businessIncome","rentalIncome","retirementIncome","socialSecurity","otherIncome","studentLoanInterest","iraDeduction","selfEmployedHealth","selfEmployedTax","alimonyPaid","otherAdjustments","itemizedDeductions","stateLocalTax","mortgageInterest","charitableContrib","medicalExpenses","childTaxCredit","earnedIncomeCredit","childCareCredit","educationCredit","otherCredits","withholding","estimatedPayments","refundable"])
+const TAX_RETURN_META_FIELDS = new Set(['id','created_at','updated_at','tenant_id','client_id','efile_provider','efile_submission_id','efile_ack_number','efile_status','efile_submitted_at','data'])
+
+function normalizeDbValue(uiKey, value) {
+  if (TAX_RETURN_NUMERIC_FIELDS.has(uiKey) && (value === '' || value === undefined)) return null
+  return value ?? null
+}
+
+function toDbReturnPayload(form, extra = {}) {
+  const payload = {}
+  const baseKeys = new Set(Object.keys(TAX_RETURN_DB_MAP))
+  for (const [uiKey, dbKey] of Object.entries(TAX_RETURN_DB_MAP)) {
+    payload[dbKey] = normalizeDbValue(uiKey, form[uiKey])
+  }
+  const data = {}
+  for (const [key, value] of Object.entries(form || {})) {
+    if (baseKeys.has(key) || TAX_RETURN_META_FIELDS.has(key)) continue
+    data[key] = value
+  }
+  payload.data = data
+  return { ...payload, ...extra }
+}
+
+function fromDbReturn(row) {
+  const out = { ...BLANK_RETURN, ...(row?.data && typeof row.data === 'object' ? row.data : {}) }
+  for (const [uiKey, dbKey] of Object.entries(TAX_RETURN_DB_MAP)) {
+    if (row?.[dbKey] !== undefined && row?.[dbKey] !== null) out[uiKey] = row[dbKey]
+  }
+  for (const key of TAX_RETURN_META_FIELDS) {
+    if (row?.[key] !== undefined) out[key] = row[key]
+  }
+  return out
+}
+
 const TAX_RULES = {
   '2024': {
     standard: { 'Single': 14600, 'Married Filing Jointly': 29200, 'Married Filing Separately': 14600, 'Head of Household': 21900, 'Qualifying Surviving Spouse': 29200 },
@@ -227,7 +300,7 @@ export default function TaxReturns() {
       setSetupNeeded(true)
     } else {
       setSetupNeeded(false)
-      setReturns(r.data || [])
+      setReturns((r.data || []).map(fromDbReturn))
     }
     setClients(c.data || [])
     setEmployees(e.data || [])
@@ -362,14 +435,12 @@ export default function TaxReturns() {
   async function save() {
     if (!form.clientName) { showToast('Client name required'); return }
     setSaving(true)
-    const payload = { ...form, updated_at: new Date().toISOString() }
+    const payload = toDbReturnPayload(form, { updated_at: new Date().toISOString() })
     let error
     if (current?.id) {
       ;({ error } = await supabase.from('tax_returns').update(payload).eq('id', current.id))
     } else {
       payload.created_at = new Date().toISOString()
-      const returnNum = 'TR-' + Date.now().toString().slice(-6)
-      payload.returnNum = returnNum
       ;({ error } = await supabase.from('tax_returns').insert([payload]))
     }
     setSaving(false)
@@ -1698,6 +1769,10 @@ export default function TaxReturns() {
                         ? `Ready through ${efileStatus.providerName || 'configured e-file transmitter'}.`
                         : efileStatus.message || 'E-file is locked until both the office EFIN and approved transmitter connection are configured.'}
                   </div>
+                  {!efileStatus.loading && <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:12}}>
+                    <span style={{fontSize:10.5,fontWeight:800,borderRadius:999,padding:'4px 8px',background:efileStatus.efinPresent?'rgba(34,197,94,.14)':'rgba(245,158,11,.14)',color:efileStatus.efinPresent?'#22c55e':'#f59e0b'}}>EFIN {efileStatus.efinPresent?'Ready':'Missing'}</span>
+                    <span style={{fontSize:10.5,fontWeight:800,borderRadius:999,padding:'4px 8px',background:efileStatus.adapterConfigured?'rgba(34,197,94,.14)':'rgba(245,158,11,.14)',color:efileStatus.adapterConfigured?'#22c55e':'#f59e0b'}}>Transmitter {efileStatus.adapterConfigured?'Connected':'Not configured'}</span>
+                  </div>}
                   <button className="btn ok" style={{ width: '100%', justifyContent: 'center', opacity: efileStatus.configured && current?.id && form.status === 'Ready to File' ? 1 : 0.4 }}
                     disabled={!efileStatus.configured || !current?.id || form.status !== 'Ready to File'}
                     onClick={async () => {
