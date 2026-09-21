@@ -479,7 +479,8 @@ export default function Settings() {
                 <strong style={{ color: 'var(--blue)' }}>📌 Where to find these:</strong><br/>
                 PTIN — IRS PTIN system at <strong>irs.gov/ptin</strong><br/>
                 CAF# — Your IRS Centralized Authorization File number (shown on Form 2848)<br/>
-                EFIN — IRS e-Services at <strong>irs.gov/e-services</strong> (required to e-file)
+                EFIN — IRS e-Services at <strong>irs.gov/e-services</strong> (required for this office/ERO)<br/>
+                <strong>Transmission:</strong> EFIN alone does not create a direct IRS connection. The CRM must also be connected to IRS-approved/tested e-file software or an authorized transmitter.
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn pri" onClick={saveFirm} disabled={saving}>{saving ? 'Saving…' : 'Save Credentials'}</button>
