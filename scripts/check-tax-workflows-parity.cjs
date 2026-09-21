@@ -14,7 +14,7 @@ for (const bad of ['selectedYears.includes(','selectedYears.length','selectedYea
 }
 
 const returns = 'src/pages/TaxReturns.jsx'
-for (const n of ['Ready to File','submit-to-irs','Accepted','Rejected','EFIN','efileStatus','TAX_RETURN_DB_MAP','toDbReturnPayload','fromDbReturn','payload.data']) need(returns,n)
+for (const n of ['Ready to File','submit-to-irs','Accepted','Rejected','EFIN','efileStatus','efileStatus.efinPresent','efileStatus.adapterConfigured','TAX_RETURN_DB_MAP','toDbReturnPayload','fromDbReturn','payload.data']) need(returns,n)
 need('supabase/migrations/20260921231000_tax_returns_data_payload.sql','add column if not exists data jsonb','Tax Returns extended-data migration')
 const r = read(returns)
 if (/create table if not exists tax_returns|create policy\s+["']anon_all/i.test(r)) failures.push('TaxReturns must not ship browser-facing SQL or anon_all setup instructions')
