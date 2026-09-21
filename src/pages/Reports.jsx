@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FIRM } from '../lib/firmBranding'
 import { supabase } from '../lib/supabase'
@@ -42,6 +42,8 @@ export default function Reports() {
   const [bookWhipAssociate,setBookWhipAssociate] = useState('all')
   const [bookWhipFilter,setBookWhipFilter] = useState('all')
   const [bookWhipSort,setBookWhipSort] = useState({key:'client_name',direction:'asc'})
+  const [bookWhipMonths,setBookWhipMonths] = useState([])
+  const bookWhipTableScrollRef = useRef(null)
   const [bookWhipPage,setBookWhipPage] = useState(1)
   const BOOK_WHIP_PAGE_SIZE = 100
 
@@ -49,6 +51,7 @@ export default function Reports() {
   useEffect(() => { if (user) loadAll() }, [user?.id])
   useEffect(() => {
     if (!user || tab !== 'bookwhip') return
+    loadBookWhipMonths()
     loadBookWhip(bookWhipMonth)
   }, [user?.id,tab,bookWhipMonth])
   useEffect(() => {
@@ -96,6 +99,14 @@ export default function Reports() {
     }
   }
 
+  async function loadBookWhipMonths() {
+    const { data: months, error } = await supabase.from('book_whip_rows')
+      .select('snapshot_month').order('snapshot_month',{ascending:false}).limit(5000)
+    if (error) { console.error('Book Whip months:', error.message); return }
+    const uniq = [...new Set((months || []).map(r=>r.snapshot_month).filter(Boolean))]
+    setBookWhipMonths(uniq)
+  }
+
   async function loadBookWhip(month) {
     if (!month) return
     setBookWhipLoading(true)
@@ -111,6 +122,7 @@ export default function Reports() {
     const { error } = await supabase.rpc('create_book_whip_month',{p_month:bookWhipMonth})
     setBookWhipLoading(false)
     if (error) { console.error('Book Whip refresh failed:',error); return }
+    await loadBookWhipMonths()
     await loadBookWhip(bookWhipMonth)
   }
 
@@ -363,85 +375,76 @@ export default function Reports() {
       </div>
 
       {/* ── BOOK WHIP ── */}
-      {tab==='bookwhip'&&(
-        <div>
-          <div className="card" style={{padding:14,marginBottom:12}}>
-            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-              <div style={{fontWeight:800,marginRight:6}}>📚 Monthly Book Whip</div>
-              <input type="month" value={bookWhipMonth.slice(0,7)} onChange={e=>setBookWhipMonth(e.target.value+'-01')} style={{padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,color:'var(--tx)'}}/>
-              <input value={bookWhipSearch} onChange={e=>setBookWhipSearch(e.target.value)} placeholder="Search client, notes, payment…" style={{minWidth:220,flex:'1 1 220px',padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,color:'var(--tx)'}}/>
-              <select value={bookWhipAssociate} onChange={e=>setBookWhipAssociate(e.target.value)} style={{padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,color:'var(--tx)'}}>
-                <option value="all">All Associates</option>
-                {bookWhipAssociates.map(a=><option key={a} value={a}>{a}</option>)}
-              </select>
-              <button className="btn sec" disabled={bookWhipLoading} onClick={createBookWhipMonth}>＋ Create / Refresh Month</button>
-              <button className="btn sec" disabled={!sortedBookWhip.length} onClick={()=>exportExcel([bookWhipHeaders,...bookWhipExportRows],`Book_Whip_${bookWhipMonth.slice(0,7)}`)}>📊 Excel</button>
-            </div>
-          </div>
-
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(140px,1fr))',gap:10,marginBottom:12}}>
-            {[
-              ['all','Clients in Book Whip',bookWhipBase.length],
-              ['financials','Financials Missing',bookWhipBase.filter(r=>!String(r.financials||'').trim()).length],
-              ['transcripts','Transcript Issues',bookWhipBase.filter(r=>!!String(r.transcripts||'').trim()&&!['yes','complete','completed','received'].includes(normalizeStatus(r.transcripts))).length],
-              ['contact','No Recent Contact',bookWhipBase.filter(r=>!String(r.last_contact_date||'').trim()).length],
-            ].map(([key,label,value])=>(
-              <button key={key} type="button" onClick={()=>setBookWhipFilter(key)}
-                className="card"
-                style={{padding:16,textAlign:'left',cursor:'pointer',border:bookWhipFilter===key?'1px solid var(--blue)':'1px solid var(--br)',background:bookWhipFilter===key?'var(--blt)':'var(--s1)'}}>
-                <div style={{fontSize:24,fontWeight:800,color:'var(--tx)'}}>{value}</div>
-                <div style={{fontSize:12,fontWeight:700,color:'var(--t2)',marginTop:5}}>{label}</div>
-                <div style={{fontSize:10,color:'var(--t3)',marginTop:5}}>Click to filter</div>
-              </button>
-            ))}
-          </div>
-
-          {bookWhipLoading ? <div style={{padding:40,textAlign:'center',color:'var(--t3)'}}>Loading Book Whip…</div> :
-           sortedBookWhip.length===0 ? <div className="card"><Empty msg="No Book Whip rows match this filter."/></div> :
-           <div className="card" style={{padding:0,overflow:'hidden'}}>
-             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--br)',flexWrap:'wrap'}}>
-               <div style={{fontSize:11,color:'var(--t3)'}}>Showing {sortedBookWhip.length ? ((safeBookWhipPage-1)*BOOK_WHIP_PAGE_SIZE)+1 : 0}–{Math.min(safeBookWhipPage*BOOK_WHIP_PAGE_SIZE,sortedBookWhip.length)} of {sortedBookWhip.length}</div>
-               <div style={{display:'flex',alignItems:'center',gap:6}}>
-                 <button className="btn sec" style={{fontSize:10,padding:'4px 9px'}} disabled={safeBookWhipPage<=1} onClick={()=>setBookWhipPage(p=>Math.max(1,p-1))}>← Prev</button>
-                 <span style={{fontSize:11,color:'var(--t2)'}}>Page {safeBookWhipPage} / {bookWhipPageCount}</span>
-                 <button className="btn sec" style={{fontSize:10,padding:'4px 9px'}} disabled={safeBookWhipPage>=bookWhipPageCount} onClick={()=>setBookWhipPage(p=>Math.min(bookWhipPageCount,p+1))}>Next →</button>
-               </div>
-             </div>
-             <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'68vh'}}>
-             <table style={{borderCollapse:'collapse',fontSize:11,minWidth:3000,width:'max-content'}}>
-               <thead style={{position:'sticky',top:0,zIndex:2,background:'var(--s1)'}}><tr>{bookWhipColumns.map(([key,label])=><th key={key} style={{textAlign:'left',padding:'8px 7px',borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}><button type="button" onClick={()=>toggleBookWhipSort(key)} style={{background:'none',border:0,padding:0,color:'inherit',font:'inherit',fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}} title={`Sort ${label} ${bookWhipSort.key===key&&bookWhipSort.direction==='asc'?'descending':'ascending'}`}>{label}<span style={{fontSize:9,opacity:bookWhipSort.key===key?1:.35}}>{bookWhipSort.key===key?(bookWhipSort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead>
-               <tbody>{pagedBookWhip.map(r=><tr key={r.id}>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',fontWeight:700,minWidth:210,whiteSpace:'nowrap',position:'sticky',left:0,background:'var(--s1)',zIndex:1}}>
-                   <button type="button" onClick={()=>r.client_id&&navigate(`/clients/${r.client_id}`)} title="Open client"
-                     style={{all:'unset',cursor:r.client_id?'pointer':'default',color:r.client_id?'var(--blue)':'var(--tx)',fontWeight:700}}>
-                     {cleanBookWhipName(r)||'—'}
-                   </button>
-                 </td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{fmtBookWhipDate(r.client_since)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{r.client_owner||'—'}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{fmtBookWhipDate(r.source_created_on)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{r.tags||'—'}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{r.spouse_name||'—'}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}>{cleanBookWhipName(r)||'—'}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'assigned_associate',110)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'financials',85)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'last_payment',145)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'transcripts',100)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'state_res_hold',120)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'hold_date',100)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'notes',240,true)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'quote',90)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'return_quote',95)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'resolution_step',105)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'chris_flag',60)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'johnny_flag',60)}</td>
-                 <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'last_contact_date',105)}</td>
-               </tr>)}</tbody>
-             </table>
-             </div>
-           </div>}
+      {tab==='bookwhip' && <>
+      <div className="card" style={{padding:14,marginBottom:12}}>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <div style={{fontWeight:800,marginRight:6}}>📚 Monthly Book Whip</div>
+          <input type="month" value={bookWhipMonth.slice(0,7)} onChange={e=>setBookWhipMonth(e.target.value+'-01')} style={{padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,color:'var(--tx)'}} />
+          <input value={bookWhipSearch} onChange={e=>setBookWhipSearch(e.target.value)} placeholder="Search client, notes, payment…" style={{minWidth:240,flex:'1 1 240px',padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,color:'var(--tx)'}} />
+          <select value={bookWhipAssociate} onChange={e=>setBookWhipAssociate(e.target.value)} style={{padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,color:'var(--tx)'}}>
+            <option value="all">All Associates</option>
+            {bookWhipAssociates.map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+          <button className="btn sec" disabled={bookWhipLoading} onClick={createBookWhipMonth}>＋ Create / Refresh Month</button>
+          <button className="btn sec" disabled={!sortedBookWhip.length} onClick={()=>exportExcel([bookWhipHeaders,...bookWhipExportRows],`Book_Whip_${bookWhipMonth.slice(0,7)}`)}>📊 Excel</button>
         </div>
-      )}
+        <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>
+          Month-by-month operational review. Editable workflow fields save on blur; prior-month values carry forward when a new month is created.
+          {bookWhipMonths.length ? ` Available: ${bookWhipMonths.map(m=>m.slice(0,7)).join(', ')}` : ''}
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:12}}>
+        {[
+          ['all','Clients in Book Whip',bookWhipBase.length],
+          ['financials','Financials Missing',bookWhipBase.filter(r=>!String(r.financials||'').trim()).length],
+          ['transcripts','Transcript Issues',bookWhipBase.filter(r=>!['yes',''].includes(normalizeStatus(r.transcripts))).length],
+          ['contact','No Recent Contact',bookWhipBase.filter(r=>!String(r.last_contact_date||'').trim()).length],
+        ].map(([key,label,value])=><button key={key} type="button" onClick={()=>setBookWhipFilter(key)} className="card"
+          style={{padding:16,textAlign:'left',cursor:'pointer',color:'var(--tx)',border:bookWhipFilter===key?'1px solid var(--blue)':'1px solid var(--br)',background:bookWhipFilter===key?'var(--blt)':'var(--s1)'}}>
+          <div style={{fontSize:22,fontWeight:800}}>{value}</div>
+          <div style={{fontSize:12,fontWeight:700,color:'var(--t2)',marginTop:5}}>{label}</div>
+          <div style={{fontSize:10,color:'var(--t3)',marginTop:4}}>Click to filter</div>
+        </button>)}
+      </div>
+      {bookWhipLoading ? <div style={{padding:40,textAlign:'center',color:'var(--t3)'}}>Loading Book Whip…</div> :
+       sortedBookWhip.length===0 ? <div className="card" style={{padding:28,textAlign:'center'}}><b>No Book Whip rows for {bookWhipMonth.slice(0,7)}.</b><div style={{marginTop:10}}><button className="btn pri" onClick={createBookWhipMonth}>Create this month</button></div></div> :
+       <>
+       <style>{`
+.bookwhip-scroll{overflow-x:scroll!important;scrollbar-gutter:stable both-edges}
+.bookwhip-scroll::-webkit-scrollbar{height:16px!important}
+.bookwhip-scroll::-webkit-scrollbar-track{background:#d9dee7!important;border-radius:8px}
+.bookwhip-scroll::-webkit-scrollbar-thumb{background:#64748b!important;border-radius:8px;border:3px solid #d9dee7}
+.bookwhip-scroll::-webkit-scrollbar-thumb:hover{background:#475569!important}
+`}</style>
+       <div ref={bookWhipTableScrollRef} className="card bookwhip-scroll" style={{overflowX:'scroll',maxHeight:'68vh',overflowY:'auto',width:'100%',maxWidth:'100%',boxSizing:'border-box',scrollbarWidth:'auto',scrollbarColor:'#64748b #d9dee7'}}>
+        <table style={{borderCollapse:'collapse',fontSize:11,minWidth:2700,width:'max-content'}}>
+          <thead style={{position:'sticky',top:0,zIndex:2,background:'var(--s1)'}}><tr>{bookWhipColumns.map(([key,label])=><th key={key} style={{textAlign:'left',padding:'8px 7px',borderBottom:'1px solid var(--br)',whiteSpace:'nowrap'}}><button type="button" onClick={()=>toggleBookWhipSort(key)} style={{background:'none',border:0,padding:0,color:'inherit',font:'inherit',fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}} title={`Sort ${label} ${bookWhipSort.key===key&&bookWhipSort.direction==='asc'?'descending':'ascending'}`}>{label}<span style={{fontSize:9,opacity:bookWhipSort.key===key?1:.35}}>{bookWhipSort.key===key?(bookWhipSort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead>
+          <tbody>{sortedBookWhip.map(r=><tr key={r.id}>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',fontWeight:700,minWidth:230,maxWidth:280,whiteSpace:'nowrap',position:'sticky',left:0,background:'var(--s1)',zIndex:1}}><button type="button" onClick={()=>r.client_id&&navigate(`/clients/${r.client_id}?from=reports&report=bookwhip`)} disabled={!r.client_id} style={{background:'none',border:0,padding:0,color:r.client_id?'var(--blue)':'var(--tx)',font: 'inherit',fontWeight:700,cursor:r.client_id?'pointer':'default',textDecoration:r.client_id?'underline':'none',textUnderlineOffset:2}}>{cleanBookWhipName(r)||'—'}</button></td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:95,whiteSpace:'nowrap'}}>{fmtBookWhipDate(r.client_since)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:165,whiteSpace:'nowrap'}}>{r.client_owner||'—'}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:115,whiteSpace:'nowrap'}}>{fmtBookWhipDate(r.source_created_on)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:180,whiteSpace:'nowrap'}}>{r.tags||'—'}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:165,whiteSpace:'nowrap'}}>{r.spouse_name||'—'}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:220,whiteSpace:'nowrap'}}><button type="button" onClick={()=>r.client_id&&navigate(`/clients/${r.client_id}?from=reports&report=bookwhip`)} disabled={!r.client_id} style={{background:'none',border:0,padding:0,color:r.client_id?'var(--blue)':'var(--tx)',font:'inherit',cursor:r.client_id?'pointer':'default',textDecoration:r.client_id?'underline':'none',textUnderlineOffset:2}}>{cleanBookWhipName(r)||'—'}</button></td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:125}}>{bookWhipEdit(r,'assigned_associate',115)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:100}}>{bookWhipEdit(r,'financials',90)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:165}}>{bookWhipEdit(r,'last_payment',155)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:110}}>{bookWhipEdit(r,'transcripts',100)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:140}}>{bookWhipEdit(r,'state_res_hold',130)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)',minWidth:115}}>{bookWhipEdit(r,'hold_date',105)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'notes',260,true)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'quote',90)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'return_quote',100)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'resolution_step',80)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'chris_flag',55)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'johnny_flag',55)}</td>
+            <td style={{padding:7,borderBottom:'1px solid var(--br)'}}>{bookWhipEdit(r,'last_contact_date',105)}</td>
+          </tr>)}</tbody>
+        </table>
+       </div>
+       </>}
+    </>}
 
       {/* ── OVERVIEW ── */}
       {tab==='overview'&&(
