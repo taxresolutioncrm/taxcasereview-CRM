@@ -53,6 +53,8 @@ for(const n of [
 ]) need(parser,n)
 
 for(const n of [
+  "const [tab, setTab] = useState('pull')",
+  "[['pull', '📡 Pull Transcripts'], ['transcripts', '📊 Transcript Analysis'], ['poa', '📝 POA / CAF Tracker']]",
   'Transcript Analysis','Pull Transcripts','POA / CAF Tracker',
   'Account Overview','CSED Calculations','Penalties and Interest','Payment History','Bankruptcy','Account Transactions','Assessment Overview',
   'Wage & Income Documents','Est. CSED',
@@ -62,9 +64,17 @@ for(const n of [
 ]) need(portal,n)
 
 for(const n of [
+  "['1','IRS Sign In','Sign in to IRS e-Services with your ID.me account.']",
+  "['2','Select Client','Choose the exact client and verify POA coverage.']",
+  "['3','Choose Years & Types','Select tax years and transcript types.']",
+  "['4','Request Transcripts','Pull from IRS and auto-file to client.']",
+  "['5','Review & Analyze','PDFs save to Documents → Transcripts and are analyzed.']",
   'IRS Transcript Delivery',
   'Sign in once, choose the client, years and transcript types, then request.',
-  'Request Transcripts',
+  'Request Transcripts from IRS',
+  'Recent Transcript Requests',
+  'Auto-File Destination',
+  'Documents → Transcripts',
   'Returned PDFs attach to the selected client file automatically.',
   'Manual PDF fallback',
   'onStatusChange={(st) =>',
