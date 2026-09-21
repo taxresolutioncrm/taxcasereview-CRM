@@ -524,54 +524,51 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(280px,.42fr)', gap:14, marginBottom:16 }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontWeight: 700, fontSize: 13 }}>Recent Transcript Requests</div>
-            <button className="btn sec" style={{ fontSize: 10.5, padding: '4px 9px' }} onClick={() => loadRequests()}>View All / Refresh</button>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+            <div style={{ fontWeight:700, fontSize:13 }}>Recent Transcript Requests</div>
+            <button className="btn sec" style={{ fontSize:10.5, padding:'4px 9px' }} onClick={() => loadRequests()}>View All / Refresh</button>
           </div>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>Transcript Requests</div>
-          <button className="btn sec" style={{ fontSize: 10.5, padding: '4px 9px' }} onClick={() => loadRequests()}>Refresh</button>
-        </div>
-        {loading ? <div style={{ color: 'var(--t3)', fontSize: 13 }}>Loading…</div> :
-          requests.length === 0 ? (
-            <div style={{ color: 'var(--t3)', fontSize: 12.5, padding: '12px 0' }}>No transcript requests yet.</div>
-          ) : (
-            <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ color: 'var(--t3)', textAlign: 'left' }}>
-                    {['Client', 'Types', 'Years', 'Status', 'Filed', 'Requested', ''].map(h => <th key={h} style={{ padding: '8px 12px', fontWeight: 600 }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {requests.map(r => (
-                    <tr key={r.id} style={{ borderTop: '1px solid var(--line)' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 700 }}>{r.client_name}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{(r.transcript_types || []).join(', ') || '—'}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{r.tax_years || '—'}</td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span style={{ background: REQ_COLORS[r.status] || '#64748b', color: '#fff', borderRadius: 6, padding: '2px 9px', fontSize: 10.5, fontWeight: 700 }}>{r.status}</span>
-                        {r.provider_status && <div style={{ color: r.provider_error ? '#f87171' : 'var(--t3)', fontSize: 10, marginTop: 3 }}>{r.provider_status}{r.provider_error ? ` · ${r.provider_error}` : ''}</div>}
-                      </td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)' }}>{importedCount(r)}</td>
-                      <td style={{ padding: '8px 12px', color: 'var(--t2)', fontSize: 11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
-                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                        {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize: 10, padding: '3px 8px', marginRight: 4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry'}</button>}
-                        <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
-                      </td>
+          {loading ? <div style={{ color:'var(--t3)', fontSize:13 }}>Loading…</div> :
+            requests.length === 0 ? (
+              <div style={{ color:'var(--t3)', fontSize:12.5, padding:'12px 0' }}>No transcript requests yet.</div>
+            ) : (
+              <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, overflow:'hidden' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ color:'var(--t3)', textAlign:'left' }}>
+                      {['Client','Types','Years','Status','Filed','Requested',''].map(h => <th key={h} style={{ padding:'8px 12px', fontWeight:600 }}>{h}</th>)}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {requests.map(r => (
+                      <tr key={r.id} style={{ borderTop:'1px solid var(--line)' }}>
+                        <td style={{ padding:'8px 12px', fontWeight:700 }}>{r.client_name}</td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)', fontSize:11 }}>{(r.transcript_types || []).join(', ') || '—'}</td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)' }}>{r.tax_years || '—'}</td>
+                        <td style={{ padding:'8px 12px' }}>
+                          <span style={{ background:REQ_COLORS[r.status] || '#64748b', color:'#fff', borderRadius:6, padding:'2px 9px', fontSize:10.5, fontWeight:700 }}>{r.status}</span>
+                          {r.provider_status && <div style={{ color:r.provider_error ? '#f87171' : 'var(--t3)', fontSize:10, marginTop:3 }}>{r.provider_status}{r.provider_error ? ` · ${r.provider_error}` : ''}</div>}
+                        </td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)' }}>{importedCount(r)}</td>
+                        <td style={{ padding:'8px 12px', color:'var(--t2)', fontSize:11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
+                        <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                          {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize:10, padding:'3px 8px', marginRight:4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry'}</button>}
+                          <button className="btn sec" style={{ fontSize:10, padding:'3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
         </div>
         <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:10, padding:14, alignSelf:'start' }}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-            <div style={{fontWeight:800,fontSize:13}}>Auto-File Destination</div>
-            <span style={{fontSize:10,fontWeight:800,color:'#fff',background:'#15803d',borderRadius:6,padding:'3px 8px'}}>Enabled</span>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+            <div style={{ fontWeight:800, fontSize:13 }}>Auto-File Destination</div>
+            <span style={{ fontSize:10, fontWeight:800, color:'#fff', background:'#15803d', borderRadius:6, padding:'3px 8px' }}>Enabled</span>
           </div>
-          <div style={{fontSize:11.5,color:'var(--t3)',marginTop:8,lineHeight:1.5}}>Returned transcripts are automatically saved to the selected client record.</div>
-          <div style={{fontSize:11.5,marginTop:10,lineHeight:1.7}}>
+          <div style={{ fontSize:11.5, color:'var(--t3)', marginTop:8, lineHeight:1.5 }}>Returned transcripts are automatically saved to the selected client record.</div>
+          <div style={{ fontSize:11.5, marginTop:10, lineHeight:1.7 }}>
             <div><b>Location:</b> Documents → Transcripts</div>
             <div><b>Access:</b> Restricted by tenant/RLS</div>
             <div><b>Analysis:</b> Automatically parsed into Transcript Analysis</div>
