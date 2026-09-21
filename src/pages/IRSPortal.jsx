@@ -253,8 +253,7 @@ export default function IRSPortal() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer">↗ IRS: Submit 2848 / 8821</a>
-          <a className="btn sec" href="https://www.irs.gov/e-services" target="_blank" rel="noreferrer">↗ IRS e-Services (TDS)</a>
+          <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer">↗ Submit 2848 / 8821</a>
         </div>
       </div>
 
