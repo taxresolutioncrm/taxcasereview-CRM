@@ -1660,40 +1660,55 @@ export default function TaxReturns() {
 
                 <div style={{ padding: 16, borderRadius: 10, border: `1px solid ${preparer.efin ? 'rgba(34,197,94,.4)' : 'var(--br)'}`, background: preparer.efin ? 'rgba(34,197,94,.07)' : 'var(--s2)' }}>
                   <div style={{ fontSize: 22, marginBottom: 8 }}>🏛️</div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tx)', marginBottom: 4 }}>Submit to IRS</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tx)', marginBottom: 4 }}>E-file Federal Return</div>
                   <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.5 }}>
-                    {preparer.efin ? `Direct MeF e-file to IRS using EFIN ${preparer.efin}. No third-party software needed.` : 'Add your EFIN above to enable direct IRS e-file submission.'}
+                    {preparer.efin
+                      ? `This office EFIN ${preparer.efin} is on file. Transmission uses the configured IRS-approved e-file transmitter/software connection.`
+                      : 'Add this office EFIN in Settings → Integrations. An approved transmitter/software connection is also required.'}
                   </div>
-                  <button className="btn ok" style={{ width: '100%', justifyContent: 'center', opacity: preparer.efin ? 1 : 0.4 }}
-                    disabled={!preparer.efin}
+                  <button className="btn ok" style={{ width: '100%', justifyContent: 'center', opacity: preparer.efin && current?.id && form.status === 'Ready to File' ? 1 : 0.4 }}
+                    disabled={!preparer.efin || !current?.id || form.status !== 'Ready to File'}
                     onClick={async () => {
-                      if (!preparer.efin) { showToast('⚠️ Enter your EFIN above first'); return }
-                      showToast('📡 Submitting to IRS…')
+                      if (!current?.id) { showToast('⚠️ Save the return before e-filing'); return }
+                      if (!preparer.efin) { showToast('⚠️ Enter this office EFIN first'); return }
+                      if (form.status !== 'Ready to File') { showToast('⚠️ Set status to Ready to File first'); return }
+                      showToast('📡 Sending to e-file transmitter…')
                       const { data, error } = await supabase.functions.invoke('submit-to-irs', {
                         body: {
-                          returnData: { ...form, grossIncome: t.grossIncome, agi: t.agi, taxableIncome: t.taxableIncome, estimatedTax: t.estimatedTax, refund: t.refund > 0 ? t.refund : 0, amountOwed: t.refund < 0 ? Math.abs(t.refund) : 0 },
-                          preparerData: preparer,
-                          testMode: false
+                          returnId: current.id,
+                          returnData: {
+                            ...form,
+                            id: current.id,
+                            grossIncome: t.grossIncome,
+                            agi: t.agi,
+                            taxableIncome: t.taxableIncome,
+                            estimatedTax: t.tax,
+                            taxAfterCredits: t.taxAfterCredits,
+                            payments: t.payments,
+                            refund: t.refundOrOwed > 0 ? t.refundOrOwed : 0,
+                            amountOwed: t.refundOrOwed < 0 ? Math.abs(t.refundOrOwed) : 0
+                          }
                         }
                       })
                       if (error || !data?.success) {
-                        showToast(`❌ ${data?.error || error?.message || 'Submission failed'}`)
+                        showToast(`❌ ${data?.error || error?.message || 'E-file transmission failed'}`)
                       } else {
-                        showToast(`✅ Accepted! Acknowledgement: ${data.ackNumber}`)
-                        fld('status', 'Filed')
-                        await supabase.from('tax_returns').update({ status: 'Filed', updated_at: new Date().toISOString() }).eq('id', current?.id)
-                        await logReturnNote(`📄 ${form.taxYear} ${form.returnType} filed electronically via IRS MeF. IRS acknowledged and accepted. Acknowledgement #: ${data.ackNumber}. Preparer: ${preparer.name || 'Staff'} (EFIN: ${preparer.efin}).`)
+                        const nextStatus = /accept/i.test(data.status || '') ? 'Accepted' : /reject/i.test(data.status || '') ? 'Rejected' : 'Filed'
+                        fld('status', nextStatus)
+                        showToast(`✅ ${data.message || 'Return transmitted'}${data.ackNumber ? ` · ACK ${data.ackNumber}` : ''}`)
+                        await logReturnNote(`📄 ${form.taxYear} ${form.returnType} transmitted through ${data.providerName || 'the configured e-file provider'}. Status: ${data.status || nextStatus}.${data.submissionId ? ` Submission ID: ${data.submissionId}.` : ''}${data.ackNumber ? ` Acknowledgement: ${data.ackNumber}.` : ''} Preparer: ${preparer.name || 'Staff'} (EFIN: ${preparer.efin}).`)
                         load()
                       }
                     }}>
-                    🏛️ Submit to IRS
+                    🏛️ E-file Return
                   </button>
+                  {form.status !== 'Ready to File' && <div style={{fontSize:10,color:'var(--warn)',marginTop:8}}>Set status to <strong>Ready to File</strong> before transmission.</div>}
                 </div>
 
                 <div style={{ padding: 16, borderRadius: 10, border: '1px solid var(--br)', background: 'var(--s2)' }}>
                   <div style={{ fontSize: 22, marginBottom: 8 }}>📄</div>
                   <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tx)', marginBottom: 4 }}>Download XML</div>
-                  <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.5 }}>Download MeF-compatible XML for your records.</div>
+                  <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.5 }}>Download the CRM's MeF review XML for records or provider handoff. This file is not itself an IRS transmission.</div>
                   <button className="btn sec" style={{ width: '100%', justifyContent: 'center' }} onClick={() => {
                     const xml = generateMeFXML(form, t, preparer)
                     downloadFile(xml, `${form.clientName?.replace(/\s+/g,'_')}_${form.taxYear}_MeF.xml`, 'text/xml')
@@ -1727,7 +1742,7 @@ export default function TaxReturns() {
               </div>
 
               <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(34,197,94,.08)', borderRadius: 8, border: '1px solid rgba(34,197,94,.25)', fontSize: 12, color: 'var(--t2)', lineHeight: 1.7 }}>
-                <strong style={{ color: '#22c55e' }}>🏛️ Direct IRS e-file:</strong> Enter your EFIN above to enable direct MeF submission — no Drake, ProSeries, or any other software needed. Each agent uses their own EFIN. Your PTIN ({preparer.ptin || 'not set'}) and CAF# ({preparer.caf || 'not set'}) are used for return preparation and IRS representation.
+                <strong style={{ color: '#22c55e' }}>🏛️ IRS e-file:</strong> Each TaxRes office uses its own EFIN. Actual transmission goes through the configured IRS-approved software/transmitter connection, with submissions isolated to the signed-in office. Your PTIN ({preparer.ptin || 'not set'}) and CAF# ({preparer.caf || 'not set'}) remain available for preparation and representation workflows.
               </div>
             </div>
           </div>
