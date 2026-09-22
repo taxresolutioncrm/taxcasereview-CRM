@@ -62,7 +62,8 @@ for(const n of [
   'Manual PDF fallback',
   'onStatusChange={(st) =>',
   'directAvailable',
-  'const formClient = resolveClient(form)',
+  'const formClient = uniqueClientForName(form.clientName)',
+  'const client = uniqueClientForName(nextForm.clientName)',
   'client_id: client.id',
   "provider: 'irs_a2a'",
   'submitCanopyStyleRequest'
