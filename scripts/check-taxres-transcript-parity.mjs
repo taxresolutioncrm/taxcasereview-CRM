@@ -69,7 +69,7 @@ for(const n of [
   'Manual PDF fallback',
   'onStatusChange={(st) =>',
   'directAvailable',
-  'const formClient = uniqueClientForName(form.clientName)',
+  'const formClient = resolveClient(form)',
   'client_id: client.id',
   "provider: 'irs_a2a'"
 ]) need(pullUi,n)

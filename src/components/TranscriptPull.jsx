@@ -12,7 +12,7 @@ const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
-const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
+const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
@@ -38,6 +38,68 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [imported, setImported] = useState([])
   const [unmatched, setUnmatched] = useState([])
   const fsSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
+
+  // Client combobox state
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientDropOpen, setClientDropOpen] = useState(false)
+  const [clientHighlight, setClientHighlight] = useState(-1)
+  const clientInputRef = useRef(null)
+  const clientDropRef = useRef(null)
+
+  // Filtered client list for dropdown (max 40)
+  const clientMatches = (() => {
+    const q = clientSearch.trim().toLowerCase()
+    if (!q) return clients.slice(0, 40)
+    return clients.filter(c => c.name && c.name.toLowerCase().includes(q)).slice(0, 40)
+  })()
+
+  function selectClient(c) {
+    ff('clientName', c.name)
+    ff('clientId', c.id)
+    setClientSearch(c.name)
+    setClientDropOpen(false)
+    setClientHighlight(-1)
+  }
+
+  function clearClientSelection() {
+    ff('clientName', '')
+    ff('clientId', null)
+    setClientSearch('')
+    setClientDropOpen(false)
+    setClientHighlight(-1)
+  }
+
+  function handleClientKey(e) {
+    if (!clientDropOpen) {
+      if (e.key === 'ArrowDown') { setClientDropOpen(true); setClientHighlight(0) }
+      return
+    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setClientHighlight(h => Math.min(h + 1, clientMatches.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setClientHighlight(h => Math.max(h - 1, 0)) }
+    else if (e.key === 'Enter') { e.preventDefault(); if (clientHighlight >= 0 && clientMatches[clientHighlight]) selectClient(clientMatches[clientHighlight]) }
+    else if (e.key === 'Escape') { setClientDropOpen(false); setClientHighlight(-1) }
+  }
+
+  function handleClientInput(e) {
+    const val = e.target.value
+    setClientSearch(val)
+    ff('clientName', val)
+    ff('clientId', null) // clear selection when user edits text
+    setClientDropOpen(true)
+    setClientHighlight(-1)
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onDown(e) {
+      if (clientDropRef.current && !clientDropRef.current.contains(e.target) &&
+          clientInputRef.current && !clientInputRef.current.contains(e.target)) {
+        setClientDropOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
 
   function flash(t) { setMsg(t); setTimeout(() => setMsg(''), 6000) }
   function ff(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -128,23 +190,23 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     }
   }
 
-  function uniqueClientForName(clientName) {
-    const key = nameKey(clientName)
+  // Resolve client by ID first (after selection), fall back to exact name for legacy rows
+  function resolveClient(form) {
+    if (form.clientId) return clients.find(c => String(c.id) === String(form.clientId)) || null
+    const key = nameKey(form.clientName)
     if (!key) return null
     const matches = clients.filter(c => nameKey(c.name) === key)
     return matches.length === 1 ? matches[0] : null
   }
 
-  function poaOnFile(clientName) {
-    const client = uniqueClientForName(clientName)
-    if (client) {
-      const byId = poas.find(p => p.status === 'On File' && p.client_id && String(p.client_id) === String(client.id))
-      if (byId) return byId
-    }
-    return poas.find(p => p.status === 'On File' && nameKey(p.client_name) === nameKey(clientName))
+  function poaOnFile(client) {
+    if (!client) return null
+    const byId = poas.find(p => p.status === 'On File' && p.client_id && String(p.client_id) === String(client.id))
+    if (byId) return byId
+    return poas.find(p => p.status === 'On File' && nameKey(p.client_name) === nameKey(client.name))
   }
-  const formClient = uniqueClientForName(form.clientName)
-  const formPoa = poaOnFile(form.clientName)
+  const formClient = resolveClient(form)
+  const formPoa = poaOnFile(formClient)
   const formProvider = getProvider(form.provider, providers)
   const directNeedsSignIn = form.provider === 'irs_a2a' && formProvider?.available && !formProvider?.sessionActive
 
@@ -156,8 +218,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   async function createRequest() {
     if (!form.clientName.trim() || form.types.length === 0) return
-    const client = uniqueClientForName(form.clientName)
-    const poa = poaOnFile(form.clientName)
+    const client = resolveClient(form)
+    const poa = poaOnFile(client)
     const provider = getProvider(form.provider, providers)
     if (!client || !poa || !provider?.available) return
     if (form.provider === 'irs_a2a' && !provider.sessionActive) {
@@ -185,6 +247,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       await submitToProvider(form.provider, row)
       setModal(false)
       setForm(BLANK)
+      setClientSearch('')
       await loadRequests()
       flash(form.provider === 'irs_a2a' ? '✅ IRS TDS pull submitted. The CRM will retrieve and file delivered transcripts automatically.' : '✅ Manual TDS pull request created. The watched folder will file downloaded transcripts automatically.')
     } catch (e) {
@@ -382,7 +445,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   // A2A mode: also requires direct?.available && direct?.sessionActive
   const isInteractive = form.provider === 'irs_interactive'
   const canRequest = Boolean(
-    formClient && formPoa && selectedYearsCovered && form.types.length > 0 &&
+    form.clientId && formClient && formPoa && selectedYearsCovered && form.types.length > 0 &&
     (isInteractive || (direct?.available && direct?.sessionActive))
   )
 
@@ -403,8 +466,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     const activeProvider = form.provider || 'irs_interactive'
     const nextForm = { ...form, provider: activeProvider }
     if (!nextForm.clientName.trim() || nextForm.types.length === 0 || !nextForm.taxYears.trim()) return
-    const client = uniqueClientForName(nextForm.clientName)
-    const poa = poaOnFile(nextForm.clientName)
+    const client = resolveClient(nextForm)
+    const poa = poaOnFile(client)
     if (!client || !poa) return
     const isInteractiveProv = activeProvider === 'irs_interactive'
     if (!isInteractiveProv && (!direct?.available || !direct?.sessionActive)) return
@@ -414,12 +477,12 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       const row = {
         id: crypto.randomUUID(),
         client_name: client.name,
-        client_id: client.id,
+        client_id: String(client.id),   // always use resolved ID, never name-matched
         transcript_types: nextForm.types,
         tax_years: nextForm.taxYears.trim(),
         // Interactive requests are tracked as 'manual' in the DB (no A2A submission)
         provider: isInteractiveProv ? 'manual' : activeProvider,
-        status: isInteractiveProv ? 'Requested' : 'Requested',
+        status: 'Requested',
         poa_record_id: poa.id,
         requested_by: employeeName || null,
         notes: nextForm.notes || null,
@@ -433,6 +496,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       }
       // For interactive: record is saved for tracking; practitioner uploads PDF manually
       setForm(BLANK)
+      setClientSearch('')
       await loadRequests()
       flash('✅ Transcript request sent to IRS. Returned PDFs will be filed to this client automatically.')
     } catch (e) {
@@ -468,10 +532,78 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12, alignItems: 'start' }}>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-              <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Search or select client" />
-              {form.clientName.trim() && (!formClient ? (
-                <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>Select one exact client record.</div>
-              ) : (
+              {/* Client combobox — substring search, ID-based selection */}
+              <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    ref={clientInputRef}
+                    value={clientSearch}
+                    onChange={handleClientInput}
+                    onFocus={() => setClientDropOpen(true)}
+                    onKeyDown={handleClientKey}
+                    style={{ ...inputStyle, paddingRight: clientSearch ? 28 : undefined }}
+                    placeholder="Search client by name…"
+                    autoComplete="off"
+                    data-testid="transcript-client-search"
+                  />
+                  {clientSearch && (
+                    <button
+                      type="button"
+                      onClick={clearClientSelection}
+                      style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 14, padding: '0 2px', lineHeight: 1 }}
+                      aria-label="Clear client"
+                    >×</button>
+                  )}
+                </div>
+
+                {/* Dropdown */}
+                {clientDropOpen && clientMatches.length > 0 && !form.clientId && (
+                  <div
+                    ref={clientDropRef}
+                    style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                      background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8,
+                      boxShadow: '0 4px 16px rgba(0,0,0,.12)', maxHeight: 240, overflowY: 'auto',
+                      marginTop: 3,
+                    }}
+                    data-testid="transcript-client-dropdown"
+                  >
+                    {clientMatches.map((c, i) => (
+                      <div
+                        key={c.id}
+                        onMouseDown={e => { e.preventDefault(); selectClient(c) }}
+                        onMouseEnter={() => setClientHighlight(i)}
+                        style={{
+                          padding: '8px 12px', cursor: 'pointer',
+                          background: i === clientHighlight ? 'var(--blt)' : 'transparent',
+                          borderBottom: i < clientMatches.length - 1 ? '1px solid var(--br)' : 'none',
+                        }}
+                        data-testid={`transcript-client-option-${c.id}`}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+                          SSN {maskedSsn(c.ssn)}{c.dob ? ` · DOB ${c.dob}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                    {clientSearch.trim() && clientMatches.length === 40 && (
+                      <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--t3)', borderTop: '1px solid var(--br)' }}>
+                        Showing first 40 matches — type more to narrow
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* No results while searching */}
+                {clientDropOpen && clientSearch.trim() && clientMatches.length === 0 && !form.clientId && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: 'var(--t3)', marginTop: 3 }}>
+                    No clients match "{clientSearch}"
+                  </div>
+                )}
+              </div>
+
+              {/* Selected client card */}
+              {formClient && form.clientId && (
                 <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 9, padding: 10, background: 'var(--s1)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                     <div>
@@ -495,7 +627,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     </div>
                   )}
                 </div>
-              ))}
+              )}
+
+              {/* Validation — only shown on submit attempt, not while typing */}
             </div>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
@@ -692,7 +826,18 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     <span style={{ minWidth: 200 }}>{u.fileName}</span>
                     {u.error ? <span style={{ color: '#f87171' }}>{u.error}</span> : (
                       <>
-                        <input list="irsportal-clients" placeholder="Assign to client…" value={u.assignTo} style={{ width: 200 }} onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))} />
+                        <>
+                          <input
+                            list="transcript-fallback-clients"
+                            placeholder="Assign to client…"
+                            value={u.assignTo}
+                            style={{ width: 200 }}
+                            onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))}
+                          />
+                          <datalist id="transcript-fallback-clients">
+                            {clients.map(c => <option key={c.id} value={c.name} />)}
+                          </datalist>
+                        </>
                         <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()} onClick={() => assignUnmatched(u)}>File It</button>
                       </>
                     )}
