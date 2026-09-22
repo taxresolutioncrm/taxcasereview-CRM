@@ -24,12 +24,13 @@ export default function TDSSessionPresence({ onStatusChange }) {
       if (data?.error) throw new Error(data.error)
       const next = {
         sessionSetupConfigured: Boolean(data?.sessionSetupConfigured),
-        directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured),
+        directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified),
         sessionActive: Boolean(data?.sessionActive),
         expiresAt: data?.expiresAt || null,
         organizationName: data?.organizationName || null,
         userEmail: data?.userEmail || null,
         authorizationError: data?.authorizationError || null,
+        apiFlowVerified: Boolean(data?.apiFlowVerified),
       }
       setStatus(next)
       onStatusChange?.(next)
