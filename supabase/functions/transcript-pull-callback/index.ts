@@ -106,6 +106,13 @@ function html(title: string, message: string, status = 200) {
 serve(async (req) => {
   if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 })
   try {
+    if (env('IRS_TDS_AUTH_FLOW_VERIFIED') !== '1') {
+      return html(
+        'IRS API connection disabled',
+        'Automated IRS API authorization is disabled until the exact IRS e-Services product auth flow is verified and approved.',
+        409,
+      )
+    }
     const url = env('SUPABASE_URL'), serviceKey = env('SUPABASE_SERVICE_ROLE_KEY'); if (!url || !serviceKey) return html('IRS TDS connection failed', 'Supabase runtime is not configured.', 500)
     const service = createClient(url, serviceKey), u = new URL(req.url), state = u.searchParams.get('state') || '', code = u.searchParams.get('code') || '', providerError = u.searchParams.get('error') || ''
     if (!state) return html('IRS TDS connection failed', 'Missing IRS authorization state.', 400)
