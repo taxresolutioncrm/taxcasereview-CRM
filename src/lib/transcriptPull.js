@@ -1,37 +1,53 @@
 import { supabase } from './supabase'
 import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
 
-const MANUAL_PROVIDER = {
-  id: 'manual',
-  label: 'Manual — IRS e-Services (TDS)',
-  chip: 'Fallback',
+// Interactive provider: always available — practitioner opens IRS TDS in a browser window
+const INTERACTIVE_PROVIDER = {
+  id: 'irs_interactive',
+  label: 'IRS TDS — Practitioner Login',
+  chip: 'Open IRS TDS',
   available: true,
-  note: 'Manual fallback: pull from IRS TDS and let the CRM auto-import, parse and file the downloaded PDF.',
+  sessionActive: true, // always considered "ready" — the session lives in the IRS browser window
+  note: 'Open IRS e-Services / TDS, sign in with your IRS / ID.me credentials, request transcripts, then upload the PDFs here.',
 }
 
+// A2A / ISP provider: optional, requires IRS ISP enrollment + configured secrets
 const DIRECT_PROVIDER = {
   id: 'irs_a2a',
   label: 'IRS TDS — ISP',
-  chip: 'Connection required',
+  chip: 'Not configured',
   available: false,
   sessionActive: false,
-  note: 'Sign in to IRS e-Services with ID.me, select the TDS organization, and pull authorized transcripts during the one-hour ISP session.'
+  note: 'Requires IRS ISP program enrollment. During the one-hour ISP session, the CRM pulls transcripts automatically without manual PDF download.',
 }
 
-export const PULL_PROVIDERS = [MANUAL_PROVIDER, DIRECT_PROVIDER]
+// Manual fallback: folder watcher
+const MANUAL_PROVIDER = {
+  id: 'manual',
+  label: 'Manual — Folder Watcher',
+  chip: 'Fallback',
+  available: true,
+  note: 'Watch a local folder where IRS TDS PDFs are saved; the CRM auto-imports, parses and files each PDF.',
+}
+
+export const PULL_PROVIDERS = [INTERACTIVE_PROVIDER, DIRECT_PROVIDER, MANUAL_PROVIDER]
 const activeDirectPolls = new Set()
 
 async function refreshProviderCapability() {
+  // Interactive provider is always available — no secrets required
+  // Only the A2A/ISP direct provider depends on configured credentials
   try {
     const { data, error } = await supabase.functions.invoke('transcript-pull', { body: { action: 'capabilities' } })
     if (error) throw error
     DIRECT_PROVIDER.available = Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured)
     DIRECT_PROVIDER.sessionActive = Boolean(data?.sessionActive)
-    DIRECT_PROVIDER.chip = !DIRECT_PROVIDER.available ? 'Connection required' : DIRECT_PROVIDER.sessionActive ? 'IRS signed in' : 'Sign in required'
+    DIRECT_PROVIDER.chip = !DIRECT_PROVIDER.available
+      ? 'Not configured'
+      : DIRECT_PROVIDER.sessionActive ? 'A2A session active' : 'Connect A2A'
   } catch {
     DIRECT_PROVIDER.available = false
     DIRECT_PROVIDER.sessionActive = false
-    DIRECT_PROVIDER.chip = 'Connection required'
+    DIRECT_PROVIDER.chip = 'Not configured'
   }
   return PULL_PROVIDERS.map(p => ({ ...p }))
 }

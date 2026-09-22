@@ -12,7 +12,7 @@ const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
-const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
+const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
@@ -378,7 +378,13 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const selectedYears = parseYearSpec(form.taxYears)
   const poaYears = formPoa ? parseYearSpec(formPoa.tax_years || '') : new Set()
   const selectedYearsCovered = Boolean(formPoa && selectedYears.size > 0 && poaYears.size > 0 && [...selectedYears].every(y => poaYears.has(y)))
-  const canRequest = Boolean(formClient && formPoa && selectedYearsCovered && direct?.available && direct?.sessionActive && form.types.length > 0)
+  // Interactive mode: always enabled when client, POA, years and types are valid
+  // A2A mode: also requires direct?.available && direct?.sessionActive
+  const isInteractive = form.provider === 'irs_interactive'
+  const canRequest = Boolean(
+    formClient && formPoa && selectedYearsCovered && form.types.length > 0 &&
+    (isInteractive || (direct?.available && direct?.sessionActive))
+  )
 
   function toggleTaxYear(year) {
     const next = new Set(selectedYears)
@@ -393,12 +399,15 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
 
   async function submitCanopyStyleRequest() {
-    ff('provider', 'irs_a2a')
-    const nextForm = { ...form, provider: 'irs_a2a' }
+    // Determine the actual provider being used
+    const activeProvider = form.provider || 'irs_interactive'
+    const nextForm = { ...form, provider: activeProvider }
     if (!nextForm.clientName.trim() || nextForm.types.length === 0 || !nextForm.taxYears.trim()) return
     const client = uniqueClientForName(nextForm.clientName)
     const poa = poaOnFile(nextForm.clientName)
-    if (!client || !poa || !direct?.available || !direct?.sessionActive) return
+    if (!client || !poa) return
+    const isInteractiveProv = activeProvider === 'irs_interactive'
+    if (!isInteractiveProv && (!direct?.available || !direct?.sessionActive)) return
     setSaving(true)
     let saved = false
     try {
@@ -408,8 +417,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         client_id: client.id,
         transcript_types: nextForm.types,
         tax_years: nextForm.taxYears.trim(),
-        provider: 'irs_a2a',
-        status: 'Requested',
+        // Interactive requests are tracked as 'manual' in the DB (no A2A submission)
+        provider: isInteractiveProv ? 'manual' : activeProvider,
+        status: isInteractiveProv ? 'Requested' : 'Requested',
         poa_record_id: poa.id,
         requested_by: employeeName || null,
         notes: nextForm.notes || null,
@@ -417,7 +427,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       const { error } = await supabase.from('transcript_pull_requests').insert([row])
       if (error) throw new Error(error.message)
       saved = true
-      await submitToProvider('irs_a2a', row)
+      if (!isInteractiveProv) {
+        // provider: 'irs_a2a' — submit to IRS TDS A2A/ISP API
+        await submitToProvider(activeProvider, row)
+      }
+      // For interactive: record is saved for tracking; practitioner uploads PDF manually
       setForm(BLANK)
       await loadRequests()
       flash('✅ Transcript request sent to IRS. Returned PDFs will be filed to this client automatically.')
@@ -441,9 +455,13 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         <div style={{ padding: 18 }}>
           <div id="irs-session-status" style={{ scrollMarginTop: 20 }}>
             <TDSSessionPresence onStatusChange={(st) => {
-              setProviders(current => current.map(p => p.id === 'irs_a2a'
-                ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
-                : p))
+              // Update A2A provider status if A2A check was performed
+              if (st.directAvailable !== undefined || st.sessionActive !== undefined) {
+                setProviders(current => current.map(p => p.id === 'irs_a2a'
+                  ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Not configured' : st.sessionActive ? 'A2A session active' : 'Connect A2A' }
+                  : p))
+              }
+              // Interactive provider is always available
             }} />
           </div>
 
@@ -546,27 +564,39 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             <textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 58, resize: 'vertical' }} placeholder="Internal note for this request" />
           </div>
 
-          {direct?.available && !direct?.sessionActive && (
+          {form.provider === 'irs_a2a' && direct?.available && !direct?.sessionActive && (
             <div style={{ marginTop: 12, fontSize: 12, color: 'var(--t2)', background: 'rgba(37,99,235,.06)', border: '1px solid rgba(37,99,235,.18)', borderRadius: 8, padding: '9px 12px' }}>
-              Connect your IRS / ID.me session above to enable direct transcript requests.
+              A2A provider is configured but no active session. Use the ISP connect flow to start a session.
             </div>
           )}
 
           {msg && <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--t2)', background: 'var(--s1)', border: '1px solid var(--br)', borderRadius: 8, padding: '8px 12px' }}>{msg}</div>}
-          <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', paddingTop: 16, borderTop: '1px solid var(--br)' }}>
-            <div style={{ fontSize: 12, color: 'var(--t3)', lineHeight: 1.5 }}>
-              {formClient
-                ? <><strong>📁 Destination:</strong> Documents → Transcripts → {formClient.name}</>
-                : 'Returned transcripts are saved to Documents → Transcripts and linked to the client.'}
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--br)' }}>
+            {formClient && (
+              <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.55 }}>
+                <strong>📁 Destination:</strong> Documents → Transcripts → {formClient.name}
+                {form.provider === 'irs_interactive' && (
+                  <span style={{ marginLeft: 8, color: '#b45309', fontStyle: 'italic' }}>
+                    — Upload the PDF after downloading from IRS TDS
+                  </span>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--t3)' }}>
+                {form.provider === 'irs_interactive'
+                  ? 'Saves a tracked request. Upload the transcript PDF using manual upload below after signing in to IRS TDS above.'
+                  : 'Transcripts are requested directly from IRS TDS and filed automatically.'}
+              </div>
+              <button
+                className="btn pri"
+                disabled={saving || !canRequest}
+                onClick={submitCanopyStyleRequest}
+                style={{ fontWeight: 800, fontSize: 14, padding: '10px 24px', flexShrink: 0, opacity: canRequest ? 1 : 0.5 }}
+              >
+                {saving ? '⏳ Saving request…' : form.provider === 'irs_interactive' ? '📋 Save Transcript Request' : '📡 Request Transcripts via A2A'}
+              </button>
             </div>
-            <button
-              className="btn pri"
-              disabled={saving || !canRequest}
-              onClick={submitCanopyStyleRequest}
-              style={{ fontWeight: 800, fontSize: 14, padding: '10px 24px', flexShrink: 0, opacity: canRequest ? 1 : 0.5 }}
-            >
-              {saving ? '⏳ Requesting from IRS…' : '📡 Request Transcripts'}
-            </button>
           </div>
         </div>
       </div>
