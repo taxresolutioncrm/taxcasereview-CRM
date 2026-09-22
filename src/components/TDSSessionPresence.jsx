@@ -136,6 +136,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontWeight: 800, fontSize: 13 }}>IRS / ID.me Connection</div>
+          {/* Authenticate with IRS e-Services / ID.me to open the one-hour transcript session. */}
           <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
             {status.sessionActive
               ? `Connected for this practitioner session${status.organizationName ? ` · ${status.organizationName}` : ''}`
