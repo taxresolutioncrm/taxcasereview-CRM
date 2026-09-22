@@ -422,18 +422,28 @@ export default function Sidebar() {
   useEffect(() => {
     async function loadEmailTaskCounts() {
       if (!user?.email) return
-      const { data, error } = await supabase.rpc('get_sidebar_badge_counts')
-      if (error) {
-        // A navigation-aborted fetch is not an application error. Keep the last
-        // successful badge values and let the next realtime/poll/visibility pass retry.
-        console.warn('[badge] email/task count refresh skipped:', error.message)
-        return
+      // Exact server-side counts avoid PostgREST row ceilings and exclude
+      // soft-deleted messages. IS NOT TRUE preserves legacy NULL-as-unread
+      // behavior without downloading the whole mailbox into the browser.
+      const baseUnread = () => supabase.from('emails')
+        .select('id', { count: 'exact', head: true })
+        .eq('mailbox_owner', user.email)
+        .is('deleted_at', null)
+        .not('is_read', 'is', true)
+      const [inboxRes, inboxLegacyRes, actionRes, waitingRes, tasksRes] = await Promise.all([
+        baseUnread().eq('triage', 'Inbox'),
+        baseUnread().is('triage', null),
+        baseUnread().eq('triage', 'Action Needed'),
+        baseUnread().eq('triage', 'Waiting'),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', false).not('deleted','is',true),
+      ])
+      for (const [label, result] of [['Inbox', inboxRes], ['Legacy inbox', inboxLegacyRes], ['Action Needed', actionRes], ['Waiting', waitingRes]]) {
+        if (result.error) console.error(`[badge] ${label} email count failed:`, result.error.message)
       }
-      const b = data || {}
-      setUnreadInbox(Number(b.email) || 0)
-      setOpenTasks(Number(b.tasks) || 0)
-      setEmailActionNeeded(0)
-      setEmailWaiting(0)
+      setUnreadInbox((inboxRes.count || 0) + (inboxLegacyRes.count || 0) + (actionRes.count || 0) + (waitingRes.count || 0))
+      setEmailActionNeeded(actionRes.count || 0)
+      setEmailWaiting(waitingRes.count || 0)
+      setOpenTasks(tasksRes.count || 0)
     }
     if (!user) return
     loadEmailTaskCounts()
