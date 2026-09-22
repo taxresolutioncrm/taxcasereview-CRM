@@ -128,7 +128,7 @@ async function loadPlatformOfficeRowsFresh() {
     supabase.rpc('admin_romylabs_office_registry'),
     supabase.rpc('admin_romylabs_billing_totals'),
     supabase.from('romylabs_products')
-      .select('product_id,name,accent_color,app_url,lifecycle,active')
+      .select('product_id,name,accent_color,app_url,lifecycle,active,sort_order')
       .eq('active', true),
   ])
   if (taxresError) throw taxresError
@@ -139,6 +139,9 @@ async function loadPlatformOfficeRowsFresh() {
     ...r,
     product: r.product || 'taxres_crm',
     brand_color: r.brand_color || '#2563EB',
+    is_demo:
+      String(r.tenant_code || '').toUpperCase() === 'DEMO' ||
+      /\bdemo\b/i.test(String(r.firm_name || '')),
   }))
   const billingByOffice = new Map(
     (Array.isArray(billingData) ? billingData : []).map(b => [
@@ -162,6 +165,7 @@ async function loadPlatformOfficeRowsFresh() {
         label:p.name || p.product_id,
         color:p.accent_color || '#6366f1',
         appUrl:p.app_url || null,
+        sortOrder:Number.isFinite(Number(p.sort_order)) ? Number(p.sort_order) : 999,
       }])
   )
 
@@ -279,7 +283,12 @@ async function loadPlatformOfficeRowsFresh() {
         product:office.product_key,
         firm_name:office.firm_name || `${cfg.label} Office`,
         brand_color:cfg.color,
-        employee_count:office.seats == null ? null : Number(office.seats),
+        employee_count:null,
+        registry_seat_hint:office.seats == null ? null : Number(office.seats),
+        is_demo:
+          office.metadata?.demo === true ||
+          office.metadata?.required_demo_office === true ||
+          /\bdemo\b/i.test(String(office.firm_name || '')),
         client_count:null,
         lead_count:null,
         storage_bytes:null,
@@ -325,6 +334,10 @@ async function loadPlatformOfficeRowsFresh() {
         product:result.productKey,
         firm_name:office.name || `${cfg.label} Office`,
         brand_color:cfg.color,
+        is_demo:
+          existing >= 0
+            ? Boolean(rows[existing].is_demo)
+            : /\bdemo\b/i.test(String(office.name || '')),
         // If a product has exactly one real office, aggregate product metrics are
         // authoritative for that office. For multi-office products, missing
         // per-office values stay unknown instead of being fabricated as zero.
@@ -372,7 +385,7 @@ async function loadPlatformOfficeRowsFresh() {
           p_external_office_id:String(office.id),
           p_firm_name:normalized.firm_name,
           p_status:normalized.status,
-          p_seats:normalized.employee_count || null,
+          p_seats:null,
           p_monthly_amount:normalized.effective_monthly || null,
           p_metadata:{
             source:'hub-proxy',
@@ -434,6 +447,78 @@ async function loadPlatformOfficeRowsFresh() {
       per_seat_rate:billing?.per_seat_rate ?? row.per_seat_rate ?? null,
     }
   }
+
+  // Portfolio hierarchy is presentation metadata only. It reuses already-loaded
+  // product/office data, so it adds no requests and no blocking I/O.
+  const portfolioProducts = (productRows || [])
+    .filter(p =>
+      p.product_id !== 'romylabs' &&
+      String(p.lifecycle || '').toLowerCase() !== 'internal'
+    )
+    .sort((a,b) =>
+      Number(a.sort_order ?? 999) - Number(b.sort_order ?? 999) ||
+      String(a.name || '').localeCompare(String(b.name || ''))
+    )
+  const productSortByKey = new Map(
+    portfolioProducts.map((product,index) => [
+      product.product_id,
+      Number.isFinite(Number(product.sort_order)) ? Number(product.sort_order) : 1000 + index,
+    ])
+  )
+
+  for (let i=0; i<rows.length; i++) {
+    const row = rows[i]
+    rows[i] = {
+      ...row,
+      row_kind:row.is_demo ? 'demo' : 'customer',
+      counts_as_office:true,
+      product_sort:productSortByKey.get(row.product || 'taxres_crm') ?? 9999,
+      row_sort:row.is_demo ? 1 : 2,
+    }
+  }
+
+  for (const product of portfolioProducts) {
+    const cfg = product.product_id === 'taxres_crm'
+      ? { label:product.name || 'TaxRes CRM', color:'#2563EB', appUrl:product.app_url || 'https://taxrescrm.app' }
+      : externalProductConfigs[product.product_id] || EXTERNAL_OFFICE_PRODUCTS[product.product_id] || {
+          label:product.name || product.product_id,
+          color:product.accent_color || '#6366f1',
+          appUrl:product.app_url || null,
+        }
+    rows.push({
+      id:`product-main:${product.product_id}`,
+      source_id:null,
+      product:product.product_id,
+      firm_name:product.name || cfg.label,
+      brand_color:cfg.color,
+      app_url:product.app_url || cfg.appUrl || null,
+      is_product_main:true,
+      is_demo:false,
+      row_kind:'main',
+      counts_as_office:false,
+      product_sort:productSortByKey.get(product.product_id) ?? 9999,
+      row_sort:0,
+      employee_count:null,
+      billing_seats:null,
+      registry_seat_hint:null,
+      client_count:null,
+      lead_count:null,
+      cases_count:null,
+      storage_bytes:null,
+      total_collected:null,
+      transaction_count:null,
+      status:'active',
+      plan_tier:'Main CRM',
+      effective_monthly:null,
+      last_activity:null,
+    })
+  }
+
+  rows.sort((a,b) =>
+    Number(a.product_sort ?? 9999) - Number(b.product_sort ?? 9999) ||
+    Number(a.row_sort ?? 9) - Number(b.row_sort ?? 9) ||
+    String(a.firm_name || '').localeCompare(String(b.firm_name || ''), undefined, { numeric:true, sensitivity:'base' })
+  )
 
   return { rows, warnings:[...new Set(warnings)], externalMetrics }
 }
@@ -786,7 +871,7 @@ function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
-  const [sortConfig, setSortConfig] = useState({ key:'firm_name', direction:'asc' })
+  const [sortConfig, setSortConfig] = useState({ key:'portfolio_order', direction:'asc' })
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -812,14 +897,15 @@ function Overview() {
     return()=>{cancelled=true}
   }, [user])
 
-  const totalMRR     = (stats||[]).reduce((s,r) => s+Number(r.effective_monthly||0), 0)
-  const activeOff    = (stats||[]).filter(r => r.status==='active').length
-  const totalSeats   = (stats||[]).reduce((s,r) => s+Number(r.billing_seats ?? r.employee_count ?? 0), 0) + externalMetrics.active_staff
-  const totalClients = (stats||[]).reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
-  const totalLeads   = (stats||[]).reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
-  const totalStorage = (stats||[]).reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
-  const totalCollected = (stats||[]).reduce((s,r) => s+Number(r.total_collected||0), 0)
-  const totalTx        = (stats||[]).reduce((s,r) => s+Number(r.transaction_count||0), 0)
+  const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)
+  const totalMRR     = operatingStats.reduce((s,r) => s+Number(r.effective_monthly||0), 0)
+  const activeOff    = operatingStats.filter(r => r.status==='active').length
+  const totalSeats   = operatingStats.reduce((s,r) => s+Number(r.billing_seats ?? 0), 0)
+  const totalClients = operatingStats.reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
+  const totalLeads   = operatingStats.reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
+  const totalStorage = operatingStats.reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
+  const totalCollected = operatingStats.reduce((s,r) => s+Number(r.total_collected||0), 0)
+  const totalTx        = operatingStats.reduce((s,r) => s+Number(r.transaction_count||0), 0)
 
   const SORT_COLUMNS = [
     { label:'Firm', key:'firm_name', type:'text' },
@@ -842,6 +928,13 @@ function Overview() {
   }
 
   const sortedStats = stats ? [...stats].sort((a,b) => {
+    const familyOrder =
+      Number(a.product_sort ?? 9999) - Number(b.product_sort ?? 9999) ||
+      Number(a.row_sort ?? 9) - Number(b.row_sort ?? 9)
+    if (familyOrder !== 0) return familyOrder
+    if (sortConfig.key === 'portfolio_order') {
+      return String(a.firm_name||'').localeCompare(String(b.firm_name||''), undefined, { numeric:true, sensitivity:'base' })
+    }
     const av = sortValue(a, sortConfig.key)
     const bv = sortValue(b, sortConfig.key)
     if (av == null && bv == null) return String(a.firm_name||'').localeCompare(String(b.firm_name||''))
@@ -862,12 +955,20 @@ function Overview() {
     }))
   }
 
+  const openOverviewRow = row => {
+    if (row.is_product_main) {
+      if (row.app_url) window.open(row.app_url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    navigate(`/crm-admin/offices/${row.id}`)
+  }
+
   const h = new Date().getHours()
   const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
 
   const KPI = [
     { label:'Monthly Recurring', val: `$${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981' },
-    { label:'Active Offices',    val: activeOff, sub:`${(stats||[]).length} total`, color:'#6366f1' },
+    { label:'Active Offices',    val: activeOff, sub:`${operatingStats.length} total`, color:'#6366f1' },
     { label:'Total Seats',       val: totalSeats, sub:'across all firms', color:'#f59e0b' },
     { label:'Total Clients',     val: totalClients.toLocaleString(), sub:`${totalLeads} leads`, color:'#0ea5e9' },
     { label:'Storage Used',      val: fmtBytes(totalStorage), sub:'documents', color:'#8b5cf6' },
@@ -883,7 +984,7 @@ function Overview() {
         <div style={{ fontSize:26, fontWeight:800, color:'#fff', marginBottom:4 }}>
           {h<12?'Good morning':h<17?'Good afternoon':'Good evening'}, Romy 👋
         </div>
-        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — {(stats||[]).length} offices</div>
+        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — {operatingStats.length} offices</div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:14, marginBottom:32 }}>
@@ -932,27 +1033,30 @@ function Overview() {
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
             sortedStats.map(r => (
-              <tr key={r.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/crm-admin/offices/${r.id}`)}>
+              <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => openOverviewRow(r)}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
-                  {r.firm_name}
+                  <span style={{ marginLeft:r.is_product_main?0:14 }}>
+                    {r.is_product_main ? r.firm_name : `↳ ${r.firm_name}`}
+                  </span>
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{
-                  (r.billing_seats == null && r.employee_count == null)
+                <td style={{ ...S.td, color:'#94a3b8' }}>{(() => {
+                  const seats = r.billing_seats
+                  return (seats == null && r.employee_count == null)
                     ? '—'
-                    : `${r.billing_seats == null ? '—' : Number(r.billing_seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()}`
-                }</td>
+                    : `${seats == null ? '—' : Number(seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()}`
+                })()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.transaction_count == null ? '—' : Number(r.transaction_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected == null ? '—' : `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}`}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:700 }}>
-                  {r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—'}
+                  {r.is_product_main ? '—' : (r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—')}
                 </td>
-                <td style={{ ...S.td, color:'#475569' }}>{fmtAgo(r.last_activity)}</td>
+                <td style={{ ...S.td, color:'#475569' }}>{r.is_product_main ? '—' : fmtAgo(r.last_activity)}</td>
                 <td style={{
                   ...S.td,
                   position:'sticky', right:0, zIndex:2,
@@ -960,7 +1064,7 @@ function Overview() {
                   boxShadow:'-8px 0 12px rgba(8,7,20,.35)',
                   whiteSpace:'nowrap',
                 }}>
-                  <button onClick={e=>{e.stopPropagation();openOffice(r)}}
+                  <button onClick={e=>{e.stopPropagation();openOverviewRow(r)}}
                     style={{ ...S.btn('ghost'), padding:'5px 12px', fontSize:11 }}>View →</button>
                 </td>
               </tr>
@@ -1712,6 +1816,10 @@ function OfficesList() {
   }, [])
 
   function openOffice(row) {
+    if (row.is_product_main) {
+      if (row.app_url) window.open(row.app_url, '_blank', 'noopener,noreferrer')
+      return
+    }
     navigate(`/crm-admin/offices/${row.id}`)
   }
   return (
@@ -1734,18 +1842,20 @@ function OfficesList() {
                 {(r.firm_name||'?')[0]}
               </div>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{r.firm_name}</div>
+                <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{r.is_product_main ? r.firm_name : `↳ ${r.firm_name}`}</div>
                 <div style={{ fontSize:12, color:'#475569', marginTop:2 }}>
-                  {r.employee_count} seats · {r.client_count} clients · {fmtBytes(r.storage_bytes)}
+                  {r.is_product_main
+                    ? 'Main CRM'
+                    : `Seats / Staff: ${r.billing_seats == null ? '—' : Number(r.billing_seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()} · ${r.client_count == null ? '—' : Number(r.client_count).toLocaleString()} clients · ${r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}`}
                 </div>
               </div>
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                 <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
                 <span style={{ ...S.badge(TIER_COLOR[r.plan_tier]||'#64748b'), opacity:r.plan_tier?1:0.3 }}>{r.plan_tier||'no plan'}</span>
                 <span style={{ color:'#10b981', fontWeight:700, fontSize:13 }}>
-                  {r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '$0'}
+                  {r.is_product_main ? '—' : (r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—')}
                 </span>
-                <div style={{ fontSize:12, color:'#475569' }}>{fmtAgo(r.last_activity)}</div>
+                <div style={{ fontSize:12, color:'#475569' }}>{r.is_product_main ? '—' : fmtAgo(r.last_activity)}</div>
               </div>
               <button onClick={e=>{e.stopPropagation();openOffice(r)}}
                 style={{ ...S.btn('ghost'), padding:'6px 14px', fontSize:12, flexShrink:0 }}>Open →</button>
