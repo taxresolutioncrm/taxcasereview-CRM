@@ -1,16 +1,6 @@
 import { supabase } from './supabase'
 import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
 
-// Interactive provider: always available — practitioner opens IRS TDS in a browser window
-const INTERACTIVE_PROVIDER = {
-  id: 'irs_interactive',
-  label: 'IRS TDS — Practitioner Login',
-  chip: 'Open IRS TDS',
-  available: true,
-  sessionActive: true, // always considered "ready" — the session lives in the IRS browser window
-  note: 'Open IRS e-Services / TDS, sign in with your IRS / ID.me credentials, request transcripts, then upload the PDFs here.',
-}
-
 // Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
 // Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
 const DIRECT_PROVIDER = {
@@ -31,12 +21,11 @@ const MANUAL_PROVIDER = {
   note: 'Watch a local folder where IRS TDS PDFs are saved; the CRM auto-imports, parses and files each PDF.',
 }
 
-export const PULL_PROVIDERS = [INTERACTIVE_PROVIDER, DIRECT_PROVIDER, MANUAL_PROVIDER]
+export const PULL_PROVIDERS = [DIRECT_PROVIDER, MANUAL_PROVIDER]
 const activeDirectPolls = new Set()
 
 async function refreshProviderCapability() {
-  // Interactive provider is always available — no secrets required
-  // Only the A2A/ISP direct provider depends on configured credentials
+  // Direct IRS requests are available only when the approved API contract is configured and verified.
   try {
     const { data, error } = await supabase.functions.invoke('transcript-pull', { body: { action: 'capabilities' } })
     if (error) throw error
