@@ -176,10 +176,15 @@ export default function FinancialProfile({ clientName, client, isLead = false })
 
   async function load() {
     setLoading(true)
-    let query = supabase.from('client_financial_profiles').select('*')
-    if (client?.id) query = query.eq('client_id', String(client.id))
-    else query = query.eq('client_name', clientName)
-    const { data } = await query.maybeSingle()
+    let data = null
+    if (client?.id) {
+      const byId = await supabase.from('client_financial_profiles').select('*').eq('client_id', String(client.id)).maybeSingle()
+      data = byId.data
+    }
+    if (!data) {
+      const byName = await supabase.from('client_financial_profiles').select('*').eq('client_name', clientName).maybeSingle()
+      data = byName.data
+    }
     if (data) {
       const merged = { ...BLANK_PROFILE, ...data,
         real_estate: data.real_estate?.length ? data.real_estate : BLANK_PROFILE.real_estate,
@@ -232,13 +237,13 @@ export default function FinancialProfile({ clientName, client, isLead = false })
   async function persist(profileToSave) {
     const payload = { ...profileToSave, client_name: clientName, client_id: client?.id ? String(client.id) : (profileToSave.client_id || null), updated_at: new Date().toISOString() }
     delete payload.id
+    if (profileToSave.id) {
+      const { error } = await supabase.from('client_financial_profiles').update(payload).eq('id', profileToSave.id)
+      return error
+    }
     if (payload.client_id) {
       const { error } = await supabase.from('client_financial_profiles')
         .upsert(payload, { onConflict: 'tenant_id,client_id' })
-      return error
-    }
-    if (profileToSave.id) {
-      const { error } = await supabase.from('client_financial_profiles').update(payload).eq('id', profileToSave.id)
       return error
     }
     const { error } = await supabase.from('client_financial_profiles').insert(payload)
