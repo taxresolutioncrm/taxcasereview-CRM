@@ -244,49 +244,39 @@ export default function IRSPortal() {
   const inputStyle = { width: '100%', boxSizing: 'border-box' }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>🏛️ IRS Portal</h1>
-          <div style={{ color: 'var(--t3)', fontSize: 12, marginTop: 4 }}>
-            IRS transcript requests, transcript analysis, and POA / CAF tracking in one place.
+    <div style={{ padding: 24, maxWidth: 1100 }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: '-.01em' }}>IRS Transcript Delivery</h1>
+            <div style={{ color: 'var(--t2)', fontSize: 13, marginTop: 5, lineHeight: 1.5 }}>
+              Request transcripts directly from IRS TDS, analyze uploaded PDFs, and track POA / CAF filings.
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            className="btn"
-            onClick={() => {
-              setTab('pull')
-              setTimeout(() => document.getElementById('irs-session-status')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
-            }}
-          >
-            Connect IRS / ID.me
-          </button>
-          <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer">↗ Submit 2848 / 8821</a>
+          <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer" style={{ flexShrink: 0 }}>
+            ↗ IRS Online POA Submission
+          </a>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, borderBottom: '2px solid var(--br)', paddingBottom: 0 }}>
         {[
-          ['pull', 'Pull Transcripts'],
-          ['transcripts', 'Transcript Analysis'],
-          ['poa', 'POA / CAF Tracker'],
-          ['session', 'Session Status'],
-          ['history', 'Request History'],
-          ['manual', 'Manual Upload (Fallback)'],
+          ['pull', '📡 Pull Transcripts'],
+          ['transcripts', '📊 Transcript Analysis'],
+          ['poa', '📋 POA / CAF Tracker'],
         ].map(([k, label]) => (
           <button
             key={k}
-            className={tab === k || (tab === 'pull' && ['session','history','manual'].includes(k)) ? 'btn' : 'btn sec'}
-            style={{ minHeight: 34, padding: '7px 12px', fontWeight: 700 }}
-            onClick={() => {
-              if (k === 'pull' || k === 'transcripts' || k === 'poa') {
-                setTab(k)
-                return
-              }
-              setTab('pull')
-              const id = k === 'session' ? 'irs-session-status' : k === 'history' ? 'irs-request-history' : 'irs-manual-fallback'
-              setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+            onClick={() => setTab(k)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '10px 16px',
+              fontWeight: tab === k ? 800 : 500,
+              fontSize: 13.5,
+              color: tab === k ? 'var(--blue)' : 'var(--t2)',
+              borderBottom: tab === k ? '2px solid var(--blue)' : '2px solid transparent',
+              marginBottom: -2,
+              transition: 'color .15s',
+              fontFamily: 'inherit',
             }}
           >
             {label}
@@ -312,9 +302,9 @@ export default function IRSPortal() {
               </label>
               {parseStatus && <span style={{ fontSize: 12.5, color: 'var(--t2)' }}>{parseStatus}</span>}
             </div>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 8 }}>
-              Direct ISP-authorized pulls are available from Pull Transcripts. Manual IRS e-Services/TDS PDFs remain supported here as a fallback. Each file is parsed into
-              balances, penalties, interest, assessment dates, an estimated CSED, transaction history and compliance flags.
+            <div style={{ color: 'var(--t3)', fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
+              Upload IRS transcript PDFs here for automatic analysis — balances, penalties, interest, estimated CSED, and transaction history.
+              For direct IRS delivery without downloading PDFs, use the <strong>Pull Transcripts</strong> tab.
             </div>
           </div>
 
