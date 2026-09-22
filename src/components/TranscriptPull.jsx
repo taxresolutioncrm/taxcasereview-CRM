@@ -12,7 +12,7 @@ const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
-const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
+const BLANK = { clientName: '', types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
@@ -38,68 +38,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [imported, setImported] = useState([])
   const [unmatched, setUnmatched] = useState([])
   const fsSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
-
-  // Client combobox state
-  const [clientSearch, setClientSearch] = useState('')
-  const [clientDropOpen, setClientDropOpen] = useState(false)
-  const [clientHighlight, setClientHighlight] = useState(-1)
-  const clientInputRef = useRef(null)
-  const clientDropRef = useRef(null)
-
-  // Filtered client list for dropdown (max 40)
-  const clientMatches = (() => {
-    const q = clientSearch.trim().toLowerCase()
-    if (!q) return clients.slice(0, 40)
-    return clients.filter(c => c.name && c.name.toLowerCase().includes(q)).slice(0, 40)
-  })()
-
-  function selectClient(c) {
-    ff('clientName', c.name)
-    ff('clientId', c.id)
-    setClientSearch(c.name)
-    setClientDropOpen(false)
-    setClientHighlight(-1)
-  }
-
-  function clearClientSelection() {
-    ff('clientName', '')
-    ff('clientId', null)
-    setClientSearch('')
-    setClientDropOpen(false)
-    setClientHighlight(-1)
-  }
-
-  function handleClientKey(e) {
-    if (!clientDropOpen) {
-      if (e.key === 'ArrowDown') { setClientDropOpen(true); setClientHighlight(0) }
-      return
-    }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setClientHighlight(h => Math.min(h + 1, clientMatches.length - 1)) }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setClientHighlight(h => Math.max(h - 1, 0)) }
-    else if (e.key === 'Enter') { e.preventDefault(); if (clientHighlight >= 0 && clientMatches[clientHighlight]) selectClient(clientMatches[clientHighlight]) }
-    else if (e.key === 'Escape') { setClientDropOpen(false); setClientHighlight(-1) }
-  }
-
-  function handleClientInput(e) {
-    const val = e.target.value
-    setClientSearch(val)
-    ff('clientName', val)
-    ff('clientId', null) // clear selection when user edits text
-    setClientDropOpen(true)
-    setClientHighlight(-1)
-  }
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function onDown(e) {
-      if (clientDropRef.current && !clientDropRef.current.contains(e.target) &&
-          clientInputRef.current && !clientInputRef.current.contains(e.target)) {
-        setClientDropOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [])
 
   function flash(t) { setMsg(t); setTimeout(() => setMsg(''), 6000) }
   function ff(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -190,23 +128,23 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     }
   }
 
-  // Resolve client by ID first (after selection), fall back to exact name for legacy rows
-  function resolveClient(form) {
-    if (form.clientId) return clients.find(c => String(c.id) === String(form.clientId)) || null
-    const key = nameKey(form.clientName)
+  function uniqueClientForName(clientName) {
+    const key = nameKey(clientName)
     if (!key) return null
     const matches = clients.filter(c => nameKey(c.name) === key)
     return matches.length === 1 ? matches[0] : null
   }
 
-  function poaOnFile(client) {
-    if (!client) return null
-    const byId = poas.find(p => p.status === 'On File' && p.client_id && String(p.client_id) === String(client.id))
-    if (byId) return byId
-    return poas.find(p => p.status === 'On File' && nameKey(p.client_name) === nameKey(client.name))
+  function poaOnFile(clientName) {
+    const client = uniqueClientForName(clientName)
+    if (client) {
+      const byId = poas.find(p => p.status === 'On File' && p.client_id && String(p.client_id) === String(client.id))
+      if (byId) return byId
+    }
+    return poas.find(p => p.status === 'On File' && nameKey(p.client_name) === nameKey(clientName))
   }
-  const formClient = resolveClient(form)
-  const formPoa = poaOnFile(formClient)
+  const formClient = uniqueClientForName(form.clientName)
+  const formPoa = poaOnFile(form.clientName)
   const formProvider = getProvider(form.provider, providers)
   const directNeedsSignIn = form.provider === 'irs_a2a' && formProvider?.available && !formProvider?.sessionActive
 
@@ -218,8 +156,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   async function createRequest() {
     if (!form.clientName.trim() || form.types.length === 0) return
-    const client = resolveClient(form)
-    const poa = poaOnFile(client)
+    const client = uniqueClientForName(form.clientName)
+    const poa = poaOnFile(form.clientName)
     const provider = getProvider(form.provider, providers)
     if (!client || !poa || !provider?.available) return
     if (form.provider === 'irs_a2a' && !provider.sessionActive) {
@@ -247,7 +185,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       await submitToProvider(form.provider, row)
       setModal(false)
       setForm(BLANK)
-      setClientSearch('')
       await loadRequests()
       flash(form.provider === 'irs_a2a' ? '✅ IRS TDS pull submitted. The CRM will retrieve and file delivered transcripts automatically.' : '✅ Manual TDS pull request created. The watched folder will file downloaded transcripts automatically.')
     } catch (e) {
@@ -441,13 +378,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const selectedYears = parseYearSpec(form.taxYears)
   const poaYears = formPoa ? parseYearSpec(formPoa.tax_years || '') : new Set()
   const selectedYearsCovered = Boolean(formPoa && selectedYears.size > 0 && poaYears.size > 0 && [...selectedYears].every(y => poaYears.has(y)))
-  // Interactive mode: always enabled when client, POA, years and types are valid
-  // A2A mode: also requires direct?.available && direct?.sessionActive
-  const isInteractive = form.provider === 'irs_interactive'
-  const canRequest = Boolean(
-    form.clientId && formClient && formPoa && selectedYearsCovered && form.types.length > 0 &&
-    (isInteractive || (direct?.available && direct?.sessionActive))
-  )
+  const canRequest = Boolean(formClient && formPoa && selectedYearsCovered && direct?.available && direct?.sessionActive && form.types.length > 0)
 
   function toggleTaxYear(year) {
     const next = new Set(selectedYears)
@@ -462,26 +393,22 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
 
   async function submitCanopyStyleRequest() {
-    // Determine the actual provider being used
-    const activeProvider = form.provider || 'irs_interactive'
-    const nextForm = { ...form, provider: activeProvider }
+    ff('provider', 'irs_a2a')
+    const nextForm = { ...form, provider: 'irs_a2a' }
     if (!nextForm.clientName.trim() || nextForm.types.length === 0 || !nextForm.taxYears.trim()) return
-    const client = resolveClient(nextForm)
-    const poa = poaOnFile(client)
-    if (!client || !poa) return
-    const isInteractiveProv = activeProvider === 'irs_interactive'
-    if (!isInteractiveProv && (!direct?.available || !direct?.sessionActive)) return
+    const client = uniqueClientForName(nextForm.clientName)
+    const poa = poaOnFile(nextForm.clientName)
+    if (!client || !poa || !direct?.available || !direct?.sessionActive) return
     setSaving(true)
     let saved = false
     try {
       const row = {
         id: crypto.randomUUID(),
         client_name: client.name,
-        client_id: String(client.id),   // always use resolved ID, never name-matched
+        client_id: client.id,
         transcript_types: nextForm.types,
         tax_years: nextForm.taxYears.trim(),
-        // Interactive requests are tracked as 'manual' in the DB (no A2A submission)
-        provider: isInteractiveProv ? 'manual' : activeProvider,
+        provider: 'irs_a2a',
         status: 'Requested',
         poa_record_id: poa.id,
         requested_by: employeeName || null,
@@ -490,13 +417,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       const { error } = await supabase.from('transcript_pull_requests').insert([row])
       if (error) throw new Error(error.message)
       saved = true
-      if (!isInteractiveProv) {
-        // provider: 'irs_a2a' — submit to IRS TDS A2A/ISP API
-        await submitToProvider(activeProvider, row)
-      }
-      // For interactive: record is saved for tracking; practitioner uploads PDF manually
+      await submitToProvider('irs_a2a', row)
       setForm(BLANK)
-      setClientSearch('')
       await loadRequests()
       flash('✅ Transcript request sent to IRS. Returned PDFs will be filed to this client automatically.')
     } catch (e) {
@@ -511,99 +433,55 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     }
   }
 
+  const workflowSteps = [
+    ['1','Connect IRS','Authenticate securely with IRS / ID.me without leaving the CRM workflow.'],
+    ['2','Select Client','Choose the exact client and verify POA coverage.'],
+    ['3','Choose Years & Types','Select tax years and transcript types.'],
+    ['4','Request Transcripts','Pull from IRS and auto-file to client.'],
+    ['5','Review & Analyze','PDFs save to Documents → Transcripts and are analyzed.'],
+  ]
+
   return (
     <div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:10, marginBottom:16 }}>
+        {workflowSteps.map(([n,title,desc]) => (
+          <div key={n} style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:12, padding:'13px 14px 12px', minHeight:88 }}>
+            <div style={{ width:28,height:28,borderRadius:'50%',background:'var(--blue)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11.5,fontWeight:800,marginBottom:8 }}>{n}</div>
+            <div style={{fontSize:12.5,fontWeight:800,marginBottom:4}}>{title}</div>
+            <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.45}}>{desc}</div>
+          </div>
+        ))}
+      </div>
 
-      {/* IRS Transcript Delivery — Sign in once, choose the client, years and transcript types, then request. Returned PDFs attach to the selected client file automatically. */}
       <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: 18 }}>
+        <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>IRS Transcript Delivery</div>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 5, lineHeight: 1.45 }}>
+              Sign in once, choose the client, years and transcript types, then request. Returned IRS PDFs are filed to that client automatically and analyzed in the CRM.
+            </div>
+          </div>
+          <span style={{ background: direct?.sessionActive ? '#15803d' : '#64748b', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
+            {direct?.sessionActive ? 'IRS session active' : 'IRS sign-in required'}
+          </span>
+        </div>
+
+        <div style={{ padding: 16 }}>
           <div id="irs-session-status" style={{ scrollMarginTop: 20 }}>
             <TDSSessionPresence onStatusChange={(st) => {
-              // Update A2A provider status if A2A check was performed
-              if (st.directAvailable !== undefined || st.sessionActive !== undefined) {
-                setProviders(current => current.map(p => p.id === 'irs_a2a'
-                  ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Not configured' : st.sessionActive ? 'A2A session active' : 'Connect A2A' }
-                  : p))
-              }
-              // Interactive provider is always available
+              setProviders(current => current.map(p => p.id === 'irs_a2a'
+                ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
+                : p))
             }} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12, alignItems: 'start' }}>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-              {/* Client combobox — substring search, ID-based selection */}
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    ref={clientInputRef}
-                    value={clientSearch}
-                    onChange={handleClientInput}
-                    onFocus={() => setClientDropOpen(true)}
-                    onKeyDown={handleClientKey}
-                    style={{ ...inputStyle, paddingRight: clientSearch ? 28 : undefined }}
-                    placeholder="Search client by name…"
-                    autoComplete="off"
-                    data-testid="transcript-client-search"
-                  />
-                  {clientSearch && (
-                    <button
-                      type="button"
-                      onClick={clearClientSelection}
-                      style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 14, padding: '0 2px', lineHeight: 1 }}
-                      aria-label="Clear client"
-                    >×</button>
-                  )}
-                </div>
-
-                {/* Dropdown */}
-                {clientDropOpen && clientMatches.length > 0 && !form.clientId && (
-                  <div
-                    ref={clientDropRef}
-                    style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-                      background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8,
-                      boxShadow: '0 4px 16px rgba(0,0,0,.12)', maxHeight: 240, overflowY: 'auto',
-                      marginTop: 3,
-                    }}
-                    data-testid="transcript-client-dropdown"
-                  >
-                    {clientMatches.map((c, i) => (
-                      <div
-                        key={c.id}
-                        onMouseDown={e => { e.preventDefault(); selectClient(c) }}
-                        onMouseEnter={() => setClientHighlight(i)}
-                        style={{
-                          padding: '8px 12px', cursor: 'pointer',
-                          background: i === clientHighlight ? 'var(--blt)' : 'transparent',
-                          borderBottom: i < clientMatches.length - 1 ? '1px solid var(--br)' : 'none',
-                        }}
-                        data-testid={`transcript-client-option-${c.id}`}
-                      >
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
-                          SSN {maskedSsn(c.ssn)}{c.dob ? ` · DOB ${c.dob}` : ''}
-                        </div>
-                      </div>
-                    ))}
-                    {clientSearch.trim() && clientMatches.length === 40 && (
-                      <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--t3)', borderTop: '1px solid var(--br)' }}>
-                        Showing first 40 matches — type more to narrow
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* No results while searching */}
-                {clientDropOpen && clientSearch.trim() && clientMatches.length === 0 && !form.clientId && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: 'var(--t3)', marginTop: 3 }}>
-                    No clients match "{clientSearch}"
-                  </div>
-                )}
-              </div>
-
-              {/* Selected client card */}
-              {formClient && form.clientId && (
+              <input list="irsportal-clients" value={form.clientName} onChange={e => ff('clientName', e.target.value)} style={inputStyle} placeholder="Search or select client" />
+              {form.clientName.trim() && (!formClient ? (
+                <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>Select one exact client record.</div>
+              ) : (
                 <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 9, padding: 10, background: 'var(--s1)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                     <div>
@@ -627,9 +505,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     </div>
                   )}
                 </div>
-              )}
-
-              {/* Validation — only shown on submit attempt, not while typing */}
+              ))}
             </div>
             <div>
               <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
@@ -662,35 +538,25 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 ))}
                 {selectedYears.size === 0 && <span style={{ color: 'var(--t3)', fontSize: 11.5, paddingTop: 7 }}>Choose one or more years from the dropdown.</span>}
               </div>
-              <div style={{ color: 'var(--t3)', fontSize: 10.5, marginTop: 6 }}>
-                Years are available back to 1996 in this selector; IRS transcript availability still depends on transcript type and IRS retention.
-              </div>
             </div>
           </div>
 
-          <div style={{ marginTop: 16 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.06em', textTransform: 'uppercase' }}>Transcript Types</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, color: 'var(--t3)' }}>Transcript Types</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7 }}>
               {TRANSCRIPT_TYPES.map(t => {
                 const checked = form.types.includes(t)
                 return (
                   <label key={t} style={{
-                    border: `1.5px solid ${checked ? 'var(--blue)' : 'var(--br)'}`,
-                    borderRadius: 9, padding: '8px 13px', cursor: 'pointer', userSelect: 'none',
-                    background: checked ? 'rgba(37,99,235,.10)' : 'var(--s1)',
-                    fontSize: 12.5, fontWeight: checked ? 700 : 400,
-                    color: checked ? 'var(--blue)' : 'var(--tx)',
-                    transition: 'all .12s',
-                    display: 'flex', alignItems: 'center', gap: 6,
+                    border: '1px solid var(--line)', borderRadius: 9, padding: '8px 10px', cursor: 'pointer',
+                    background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 700 : 500
                   }}>
-                    <span style={{ fontSize: 14, lineHeight: 1 }}>{checked ? '☑' : '☐'}</span>
-                    <input type="checkbox" checked={checked} onChange={e => ff('types', e.target.checked ? [...form.types, t] : form.types.filter(x => x !== t))} style={{ display: 'none' }} />
+                    <input type="checkbox" checked={checked} onChange={e => ff('types', e.target.checked ? [...form.types, t] : form.types.filter(x => x !== t))} style={{ marginRight: 6 }} />
                     {t}
                   </label>
                 )
               })}
             </div>
-            {form.types.length === 0 && <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 6 }}>Select at least one transcript type.</div>}
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -698,46 +564,29 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             <textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 58, resize: 'vertical' }} placeholder="Internal note for this request" />
           </div>
 
-          {form.provider === 'irs_a2a' && direct?.available && !direct?.sessionActive && (
-            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--t2)', background: 'rgba(37,99,235,.06)', border: '1px solid rgba(37,99,235,.18)', borderRadius: 8, padding: '9px 12px' }}>
-              A2A provider is configured but no active session. Use the ISP connect flow to start a session.
+          {!direct?.available && (
+            <div style={{ marginTop: 12, color: '#f59e0b', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '8px 10px' }}>
+              IRS direct connection is not configured yet. The request controls remain here so the workflow does not change when the connection is enabled.
             </div>
           )}
+          {direct?.available && !direct?.sessionActive && (
+            <div style={{ marginTop: 12, color: 'var(--t3)', fontSize: 11.5 }}>Sign in to IRS above to enable transcript requests for the one-hour session.</div>
+          )}
 
-          {msg && <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--t2)', background: 'var(--s1)', border: '1px solid var(--br)', borderRadius: 8, padding: '8px 12px' }}>{msg}</div>}
-          <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--br)' }}>
-            {formClient && (
-              <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.55 }}>
-                <strong>📁 Destination:</strong> Documents → Transcripts → {formClient.name}
-                {form.provider === 'irs_interactive' && (
-                  <span style={{ marginLeft: 8, color: '#b45309', fontStyle: 'italic' }}>
-                    — Upload the PDF after downloading from IRS TDS
-                  </span>
-                )}
-              </div>
-            )}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 11.5, color: 'var(--t3)' }}>
-                {form.provider === 'irs_interactive'
-                  ? 'Saves a tracked request. Upload the transcript PDF using manual upload below after signing in to IRS TDS above.'
-                  : 'Transcripts are requested directly from IRS TDS and filed automatically.'}
-              </div>
-              <button
-                className="btn pri"
-                disabled={saving || !canRequest}
-                onClick={submitCanopyStyleRequest}
-                style={{ fontWeight: 800, fontSize: 14, padding: '10px 24px', flexShrink: 0, opacity: canRequest ? 1 : 0.5 }}
-              >
-                {saving ? '⏳ Saving request…' : form.provider === 'irs_interactive' ? '📋 Save Transcript Request' : '📡 Request Transcripts via A2A'}
-              </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5 }}>
+              {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
+              {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
             </div>
+            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 230, minHeight: 42, fontWeight: 800 }}>
+              {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
+            </button>
           </div>
         </div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.6fr) minmax(300px,.55fr)', gap:14, marginBottom:16 }}>
-        <div id="irs-request-history" style={{ scrollMarginTop: 20, marginTop: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>Request History</div>
+        <div id="irs-request-history" style={{ scrollMarginTop: 20 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
             <div style={{ fontWeight:700, fontSize:13 }}>Recent Transcript Requests</div>
             <button className="btn sec" style={{ fontSize:10.5, padding:'4px 9px' }} onClick={() => loadRequests()}>View All / Refresh</button>
@@ -790,15 +639,10 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         </div>
       </div>
 
-      <div id="irs-manual-fallback" style={{ borderTop: '1px solid var(--br)', paddingTop: 14, marginTop: 4, scrollMarginTop: 20 }}>
-        <button
-          className="btn sec"
-          style={{ fontSize: 11.5, color: 'var(--t3)', border: '1px solid var(--br)' }}
-          onClick={() => setFallbackOpen(v => !v)}
-        >
-          {fallbackOpen ? '▲ Hide folder watcher' : '▼ Manual PDF fallback (folder watcher)'}
+      <div id="irs-manual-fallback" style={{ borderTop: '1px solid var(--line)', paddingTop: 12, scrollMarginTop: 20 }}>
+        <button className="btn sec" style={{ fontSize: 11 }} onClick={() => setFallbackOpen(v => !v)}>
+          {fallbackOpen ? 'Hide manual fallback' : 'Manual PDF fallback'}
         </button>
-        <span style={{ marginLeft: 10, fontSize: 11, color: 'var(--t3)' }}>Use only when IRS direct delivery is unavailable</span>
         {fallbackOpen && (
           <div style={{ marginTop: 10, background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Manual IRS TDS fallback</div>
@@ -826,18 +670,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     <span style={{ minWidth: 200 }}>{u.fileName}</span>
                     {u.error ? <span style={{ color: '#f87171' }}>{u.error}</span> : (
                       <>
-                        <>
-                          <input
-                            list="transcript-fallback-clients"
-                            placeholder="Assign to client…"
-                            value={u.assignTo}
-                            style={{ width: 200 }}
-                            onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))}
-                          />
-                          <datalist id="transcript-fallback-clients">
-                            {clients.map(c => <option key={c.id} value={c.name} />)}
-                          </datalist>
-                        </>
+                        <input list="irsportal-clients" placeholder="Assign to client…" value={u.assignTo} style={{ width: 200 }} onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))} />
                         <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()} onClick={() => assignUnmatched(u)}>File It</button>
                       </>
                     )}
