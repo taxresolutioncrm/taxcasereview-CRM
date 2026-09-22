@@ -1,24 +1,15 @@
 import { supabase } from './supabase'
 import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
 
-// Interactive provider: always available — practitioner opens IRS TDS in a browser window
-const INTERACTIVE_PROVIDER = {
-  id: 'irs_interactive',
-  label: 'IRS TDS — Practitioner Login',
-  chip: 'Open IRS TDS',
-  available: true,
-  sessionActive: true, // always considered "ready" — the session lives in the IRS browser window
-  note: 'Open IRS e-Services / TDS, sign in with your IRS / ID.me credentials, request transcripts, then upload the PDFs here.',
-}
-
-// A2A / ISP provider: optional, requires IRS ISP enrollment + configured secrets
+// Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
+// Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
 const DIRECT_PROVIDER = {
   id: 'irs_a2a',
-  label: 'IRS TDS — ISP',
+  label: 'IRS TDS — Automated API',
   chip: 'Not configured',
   available: false,
   sessionActive: false,
-  note: 'Requires IRS ISP program enrollment. During the one-hour ISP session, the CRM pulls transcripts automatically without manual PDF download.',
+  note: 'Requires an approved IRS e-Services API Client ID and a verified product auth/request contract. Web TDS remains a separate practitioner login path.',
 }
 
 // Manual fallback: folder watcher
@@ -30,20 +21,19 @@ const MANUAL_PROVIDER = {
   note: 'Watch a local folder where IRS TDS PDFs are saved; the CRM auto-imports, parses and files each PDF.',
 }
 
-export const PULL_PROVIDERS = [INTERACTIVE_PROVIDER, DIRECT_PROVIDER, MANUAL_PROVIDER]
+export const PULL_PROVIDERS = [DIRECT_PROVIDER, MANUAL_PROVIDER]
 const activeDirectPolls = new Set()
 
 async function refreshProviderCapability() {
-  // Interactive provider is always available — no secrets required
-  // Only the A2A/ISP direct provider depends on configured credentials
+  // Direct IRS requests are available only when the approved API contract is configured and verified.
   try {
     const { data, error } = await supabase.functions.invoke('transcript-pull', { body: { action: 'capabilities' } })
     if (error) throw error
-    DIRECT_PROVIDER.available = Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured)
+    DIRECT_PROVIDER.available = Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified)
     DIRECT_PROVIDER.sessionActive = Boolean(data?.sessionActive)
     DIRECT_PROVIDER.chip = !DIRECT_PROVIDER.available
-      ? 'Not configured'
-      : DIRECT_PROVIDER.sessionActive ? 'A2A session active' : 'Connect A2A'
+      ? 'API activation pending'
+      : DIRECT_PROVIDER.sessionActive ? 'IRS API session active' : 'API connection required'
   } catch {
     DIRECT_PROVIDER.available = false
     DIRECT_PROVIDER.sessionActive = false

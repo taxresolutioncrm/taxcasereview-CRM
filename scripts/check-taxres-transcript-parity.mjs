@@ -19,31 +19,24 @@ const completionSql='supabase/migrations/20260920025000_taxres_family_transcript
 const config='supabase/config.toml'
 
 for(const n of [
-  'IRS_TDS_CLIENT_ID','IRS_TDS_JWT_KID','IRS_TDS_JWT_PRIVATE_KEY_PEM','IRS_TDS_REDIRECT_URI',
-  "u.searchParams.set('redirect_uri', env('IRS_TDS_REDIRECT_URI'))",
-  'IRS_TDS_SCOPE','IRS_TDS_AUTHORIZE_EXTRA_PARAMS_JSON',"client_id: env('IRS_TDS_CLIENT_ID')",
-  'requireActiveSession','sessionWindowActive',
-  'POA/TIA with status On File','Client SSN/EIN','Practitioner or office CAF number',"select('tenant_id,perm_irs,email,caf,caf_number')","rpc('current_tenant_id')",".eq('tenant_id', tenantId)",".from('settings')",".select('caf_number')",
-  'IRS_TDS_RESULTS_PATH','IRS_TDS_RESULT_PDF_BASE64_PATH','IRS_TDS_RESULT_DOWNLOAD_URL_PATH',
-  'persistTranscriptPdf','provider_result_keys','provider_file_paths','createSignedUrl',
-  'IRS_TDS_TERMINAL_STATUSES','IRS_TDS_TERMINAL_ERROR_STATUSES'
-]) need(pull,n)
-
-for(const n of [
-  "redirect_uri: env('IRS_TDS_REDIRECT_URI')",
-  "grant_type: 'authorization_code'","client_id: env('IRS_TDS_CLIENT_ID')",'client_assertion','state_expires_at',
-  '60 * 60 * 1000','IRS_TDS_CRM_ORIGIN',"https://taxrescrm.app",'Content-Security-Policy'
-]) need(callback,n)
-
-for(const n of [
-  'IRS TDS — ISP','one-hour ISP session','clientId: req.client_id || null',
-  'client_id: clientId','provider_filed_keys','requestCoverageSatisfied','parseIrsTranscript',
-  "provider_status: covered ? 'Filed' : 'Partial'","['Filed','Partial','Error'].includes(req.provider_status)"
+  "id: 'irs_a2a'",
+  "label: 'IRS TDS — Automated API'",
+  'apiFlowVerified',
+  'clientId: req.client_id || null',
+  'client_id: clientId',
+  'provider_filed_keys',
+  'requestCoverageSatisfied',
+  'parseIrsTranscript',
+  "provider_status: covered ? 'Filed' : 'Partial'",
+  "['Filed','Partial','Error'].includes(req.provider_status)"
 ]) need(lib,n)
 
 for(const n of [
+  "body: { action: 'begin-session' }",
   'new URL(data.redirectUri).origin',
-  'Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.',
+  'Connect IRS / ID.me',
+  'sessionSetupConfigured',
+  'apiFlowVerified',
   'sessionActive'
 ]) need(session,n)
 
@@ -71,7 +64,8 @@ for(const n of [
   'directAvailable',
   'const formClient = resolveClient(form)',
   'client_id: client.id',
-  "provider: 'irs_a2a'"
+  "provider: 'irs_a2a'",
+  'submitCanopyStyleRequest'
 ]) need(pullUi,n)
 
 if(fs.existsSync(pullUi)){
@@ -120,6 +114,22 @@ if(fs.existsSync(session)){
 if(fs.existsSync(callback)){
   const s=read(callback)
   if(s.includes("const CRM_ORIGIN = 'https://nashville.taxrescrm.app'")) failures.push('transcript-pull-callback: Nashville CRM origin is hardcoded')
+}
+
+if(fs.existsSync(lib)){
+  const s=read(lib)
+  for(const old of ["id: 'irs_interactive'","label: 'IRS TDS — Practitioner Login'","chip: 'Open IRS TDS'"]){
+    if(s.includes(old)) failures.push('transcriptPull: legacy Web TDS provider must not return: '+old)
+  }
+}
+if(fs.existsSync(session)){
+  const s=read(session)
+  if(s.includes('Open IRS TDS')) failures.push('TDSSessionPresence: legacy Web TDS launch must not be primary')
+}
+if(fs.existsSync(pullUi)){
+  const s=read(pullUi)
+  if(s.includes("provider: 'irs_interactive'")) failures.push('TranscriptPull: legacy interactive provider must not be selectable')
+  if(s.includes('Save Transcript Request')) failures.push('TranscriptPull: legacy manual request CTA must not be primary')
 }
 
 if(failures.length){

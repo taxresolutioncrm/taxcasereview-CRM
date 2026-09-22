@@ -1,190 +1,180 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-// ─── IRS TDS Session Presence ────────────────────────────────────────────────
-//
-// TWO SEPARATE CAPABILITIES — do not conflate:
-//
-//  A) INTERACTIVE PRACTITIONER LOGIN (this component's default)
-//     Practitioner clicks "Open IRS TDS" → browser window opens the official
-//     IRS e-Services / TDS URL → practitioner signs in with their own IRS/ID.me
-//     credentials → selects organization → works in TDS normally → downloads
-//     transcript PDFs → uploads them back to the CRM via manual upload or the
-//     folder-watcher fallback.
-//     NO IRS API credentials required. Available immediately.
-//
-//  B) DIRECT IRS API / A2A (optional, future, requires IRS ISP enrollment)
-//     CRM acts as an OAuth2 client to IRS TDS API (ISP program). Requires
-//     IRS_TDS_CLIENT_ID + JWT keypair issued by IRS during ISP enrollment.
-//     When configured, transcripts are fetched automatically without the
-//     practitioner manually downloading PDFs. The A2A capability check below
-//     shows status when those secrets are present.
-//
-// Authenticate with IRS e-Services / ID.me to open the one-hour transcript session.
-
-const IRS_TDS_URL = 'https://www.irs.gov/tax-professionals/transcript-delivery-system-tds'
-const IRS_ESERVICES_URL = 'https://www.irs.gov/tax-professionals/e-services-tools-and-applications'
-
 export default function TDSSessionPresence({ onStatusChange }) {
-  const [tdsOpen, setTdsOpen] = useState(false)
-  const [a2aStatus, setA2aStatus] = useState(null) // null = not yet checked
-  const [a2aChecked, setA2aChecked] = useState(false)
-  const [a2aLoading, setA2aLoading] = useState(false)
-  const [showA2a, setShowA2a] = useState(false)
+  const [status, setStatus] = useState({
+    sessionSetupConfigured: false,
+    sessionActive: false,
+    expiresAt: null,
+    organizationName: null,
+    userEmail: null,
+    authorizationError: null,
+  })
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  // Optional: check if A2A is configured (for ISP-enrolled deployments)
-  // A2A callback uses: new URL(data.redirectUri).origin for postMessage origin check
-  async function checkA2aStatus() {
-    setA2aLoading(true)
+  async function loadStatus(showSpinner = false) {
+    if (showSpinner) setLoading(true)
     try {
-      const { data, error } = await supabase.functions.invoke('transcript-pull', {
+      const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
         body: { action: 'capabilities' },
       })
-      if (error || data?.error) {
-        setA2aStatus({ configured: false, active: false, error: data?.error || error?.message })
-      } else {
-        const configured = Boolean(data?.authorizationConfigured)
-        const active = Boolean(data?.sessionActive)
-        const next = {
-          configured,
-          active,
-          sessionSetupConfigured: Boolean(data?.sessionSetupConfigured),
-          directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured),
-          sessionActive: active,
-          expiresAt: data?.expiresAt || null,
-          organizationName: data?.organizationName || null,
-          userEmail: data?.userEmail || null,
-          authorizationError: data?.authorizationError || null,
-          error: null,
-        }
-        setA2aStatus(next)
-        onStatusChange?.(next)
+      if (fnError) throw fnError
+      if (data?.error) throw new Error(data.error)
+      const next = {
+        sessionSetupConfigured: Boolean(data?.sessionSetupConfigured),
+        directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified),
+        sessionActive: Boolean(data?.sessionActive),
+        expiresAt: data?.expiresAt || null,
+        organizationName: data?.organizationName || null,
+        userEmail: data?.userEmail || null,
+        authorizationError: data?.authorizationError || null,
+        apiFlowVerified: Boolean(data?.apiFlowVerified),
       }
+      setStatus(next)
+      onStatusChange?.(next)
+      setError('')
     } catch (e) {
-      setA2aStatus({ configured: false, active: false, error: e?.message })
+      setStatus({
+        sessionSetupConfigured: false,
+        sessionActive: false,
+        expiresAt: null,
+        organizationName: null,
+        userEmail: null,
+        authorizationError: null,
+      })
+      setError(e?.message || 'Could not check your IRS TDS session.')
     } finally {
-      setA2aLoading(false)
-      setA2aChecked(true)
+      if (showSpinner) setLoading(false)
     }
   }
 
-  function openTds() {
-    const w = window.open(IRS_TDS_URL, 'irs-tds', 'width=1100,height=800,resizable=yes,scrollbars=yes')
-    if (!w) {
-      // Popup blocked — open in new tab instead
-      window.open(IRS_TDS_URL, '_blank', 'noopener,noreferrer')
+  useEffect(() => {
+    loadStatus(true)
+    const refresh = setInterval(() => loadStatus(false), 15000)
+    return () => clearInterval(refresh)
+  }, [])
+
+  async function signInToIrs() {
+    setBusy(true)
+    setError('')
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
+        body: { action: 'begin-session' },
+      })
+      if (fnError) throw fnError
+      if (data?.error) throw new Error(data.error)
+      if (!data?.authorizationUrl) throw new Error('IRS authorization URL was not returned.')
+
+      const popup = window.open(data.authorizationUrl, 'irs-tds-auth', 'popup,width=780,height=760,resizable=yes,scrollbars=yes')
+      if (!popup) throw new Error('Your browser blocked the IRS sign-in window. Allow popups for this CRM and try again.')
+
+      const callbackOrigin = data?.redirectUri ? new URL(data.redirectUri).origin : ''
+      if (!callbackOrigin) throw new Error('IRS callback origin was not returned.')
+
+      let settled = false
+      const cleanup = () => {
+        if (settled) return
+        settled = true
+        window.removeEventListener('message', onMessage)
+        clearInterval(closeWatch)
+        clearTimeout(deadlineTimer)
+      }
+      const onMessage = async (event) => {
+        const msg = event?.data
+        if (event.origin !== callbackOrigin || msg?.type !== 'taxres-irs-tds-oauth') return
+        cleanup()
+        setBusy(false)
+        if (!msg.ok) {
+          setError(msg.message || 'IRS authorization failed.')
+          await loadStatus(false)
+          return
+        }
+        await loadStatus(false)
+      }
+      window.addEventListener('message', onMessage)
+
+      const closeWatch = setInterval(() => {
+        if (!popup.closed) return
+        cleanup()
+        setBusy(false)
+      }, 1000)
+      const deadlineTimer = setTimeout(() => {
+        cleanup()
+        setBusy(false)
+        setError('IRS sign-in did not finish within 10 minutes. Start a new IRS session and try again.')
+      }, 10 * 60 * 1000)
+    } catch (e) {
+      setBusy(false)
+      setError(e?.message || 'Could not start IRS sign-in.')
     }
-    setTdsOpen(true)
-    // Emit a status so TranscriptPull knows TDS window was launched
-    onStatusChange?.({ sessionActive: false, directAvailable: false, tdsWindowOpened: true })
   }
 
-  const expires = a2aStatus?.expiresAt ? new Date(a2aStatus.expiresAt) : null
+  async function endSession() {
+    setBusy(true)
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
+        body: { action: 'end-session' },
+      })
+      if (fnError) throw fnError
+      if (data?.error) throw new Error(data.error)
+      await loadStatus(false)
+      setError('')
+    } catch (e) {
+      setError(e?.message || 'Could not end the IRS TDS session.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const expires = status.expiresAt ? new Date(status.expiresAt) : null
   const minutesLeft = expires ? Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 60000)) : null
-  const sessionUrgent = minutesLeft !== null && minutesLeft <= 10
+  const expiresLabel = expires ? expires.toLocaleString() : '—'
 
   return (
-    <div id="irs-session-status" style={{ scrollMarginTop: 20, marginBottom: 16 }}>
-
-      {/* ── PRIMARY: Interactive TDS Launch ─────────────────────────── */}
-      <div style={{
-        borderRadius: 12,
-        border: '1px solid var(--br)',
-        background: 'var(--s1)',
-        padding: '16px 18px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 4 }}>IRS e-Services / TDS</div>
-            <div style={{ fontSize: 12.5, color: 'var(--t2)', lineHeight: 1.55 }}>
-              Open IRS Transcript Delivery System in a secure window. Sign in with your IRS / ID.me credentials,
-              choose your organization, then request transcripts. Return here to upload the PDFs.
+    <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '11px 13px', marginBottom: 14, background: 'var(--s1)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>IRS / ID.me Connection</div>
+          <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
+            {status.sessionActive
+              ? `Connected for this practitioner session${status.organizationName ? ` · ${status.organizationName}` : ''}`
+              : 'Connect securely to IRS e-Services / ID.me. Authentication opens in a secure IRS window and returns you to this CRM session.'}
+          </div>
+          {status.sessionActive && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 10px', marginTop: 9, fontSize: 11.5 }}>
+              <span style={{ color: 'var(--t3)' }}>User</span><span style={{ fontWeight: 700 }}>{status.userEmail || 'Authenticated IRS practitioner'}</span>
+              <span style={{ color: 'var(--t3)' }}>Session expires</span><span style={{ fontWeight: 700 }}>{expiresLabel}</span>
+              <span style={{ color: 'var(--t3)' }}>Time remaining</span><span style={{ fontWeight: 700 }}>{minutesLeft !== null ? `${minutesLeft} minutes` : '—'}</span>
             </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-            <button
-              className="btn pri"
-              onClick={openTds}
-              style={{ fontWeight: 700, fontSize: 13.5, padding: '9px 20px', whiteSpace: 'nowrap' }}
-            >
-              🔐 Open IRS TDS
-            </button>
-            <a
-              href={IRS_ESERVICES_URL}
-              target="_blank"
-              rel="noreferrer"
-              style={{ fontSize: 11, color: 'var(--t3)', textDecoration: 'underline' }}
-            >
-              IRS e-Services portal ↗
-            </a>
-          </div>
+          )}
         </div>
-
-        {tdsOpen && (
-          <div style={{ marginTop: 12, fontSize: 12, color: 'var(--t2)', background: 'rgba(37,99,235,.06)', border: '1px solid rgba(37,99,235,.18)', borderRadius: 8, padding: '9px 12px', lineHeight: 1.55 }}>
-            <strong>IRS TDS window opened.</strong> Complete your sign-in and transcript request there.
-            When done, upload the transcript PDF below using <strong>Manual PDF upload</strong> or the folder watcher.
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {loading ? (
+            <span style={{ fontSize: 11.5, color: 'var(--t3)' }}>Checking…</span>
+          ) : status.sessionActive ? (
+            <>
+              <span style={{ background: '#15803d', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
+                Connected{minutesLeft !== null ? ` · ${minutesLeft}m` : ''}
+              </span>
+              <button className="btn sec" disabled={busy} onClick={() => loadStatus(true)}>Refresh Session</button>
+              <button className="btn sec" disabled={busy} onClick={endSession}>{busy ? 'Ending…' : 'Sign Out'}</button>
+            </>
+          ) : (
+            <button className="btn" disabled={busy || !status.sessionSetupConfigured} onClick={signInToIrs}>
+              {busy ? 'Waiting for IRS…' : 'Connect IRS / ID.me'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* ── SECONDARY: A2A / ISP Status (collapsed by default) ──────── */}
-      <div style={{ marginTop: 8 }}>
-        <button
-          onClick={() => { setShowA2a(v => !v); if (!a2aChecked && !showA2a) checkA2aStatus() }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11.5, color: 'var(--t3)', padding: '4px 0', fontFamily: 'inherit', textDecoration: 'underline' }}
-        >
-          {showA2a ? '▲ Hide' : '▼ Show'} direct API connection status (ISP / A2A)
-        </button>
-
-        {showA2a && (
-          <div style={{ marginTop: 8, borderRadius: 10, border: '1px solid var(--br)', background: 'var(--s2)', padding: '12px 14px' }}>
-            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Direct IRS API (ISP Program)</div>
-            <div style={{ fontSize: 12, color: 'var(--t3)', lineHeight: 1.55, marginBottom: 10 }}>
-              The A2A / ISP integration allows the CRM to pull transcripts automatically without the practitioner
-              manually downloading PDFs. It requires separate IRS enrollment as an Independent Software Provider (ISP)
-              and the following secrets configured in Supabase:
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
-              {['IRS_TDS_CLIENT_ID','IRS_TDS_JWT_KID','IRS_TDS_JWT_PRIVATE_KEY_PEM','IRS_TDS_REDIRECT_URI','IRS_TDS_CRM_ORIGIN'].map(k => (
-                <code key={k} style={{ background: 'var(--s1)', borderRadius: 4, padding: '2px 6px', fontSize: 10.5, fontWeight: 700, color: a2aStatus?.configured ? '#15803d' : '#b45309', border: '1px solid var(--br)' }}>{k}</code>
-              ))}
-            </div>
-
-            {a2aLoading && <div style={{ fontSize: 12, color: 'var(--t3)' }}>Checking…</div>}
-
-            {!a2aLoading && a2aStatus && (
-              <>
-                {a2aStatus.active ? (
-                  <div style={{ borderRadius: 8, border: `1px solid ${sessionUrgent ? 'rgba(239,68,68,.35)' : 'rgba(34,197,94,.3)'}`, background: sessionUrgent ? 'rgba(239,68,68,.05)' : 'rgba(34,197,94,.05)', padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <span style={{ background: sessionUrgent ? '#ef4444' : '#15803d', color: '#fff', borderRadius: 6, padding: '3px 8px', fontSize: 10.5, fontWeight: 800 }}>
-                        {sessionUrgent ? `⚠ Expiring in ${minutesLeft}m` : `✓ A2A Session Active${minutesLeft !== null ? ` · ${minutesLeft}m` : ''}`}
-                      </span>
-                      {a2aStatus.organizationName && <span style={{ fontSize: 11.5, color: 'var(--t2)', fontWeight: 600 }}>{a2aStatus.organizationName}</span>}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 14px', fontSize: 12 }}>
-                      <span style={{ color: 'var(--t3)' }}>Practitioner</span><span style={{ fontWeight: 700 }}>{a2aStatus.userEmail || 'Authenticated'}</span>
-                      <span style={{ color: 'var(--t3)' }}>Expires</span><span style={{ fontWeight: 700, color: sessionUrgent ? '#ef4444' : 'inherit' }}>{expires ? expires.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
-                    </div>
-                  </div>
-                ) : a2aStatus.configured ? (
-                  <div style={{ fontSize: 12, color: 'var(--t2)', background: 'rgba(37,99,235,.06)', border: '1px solid rgba(37,99,235,.18)', borderRadius: 8, padding: '9px 12px' }}>
-                    ISP credentials are configured. Use the A2A connect flow above to start an API session.
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: '#b45309', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '9px 12px' }}>
-                    {a2aStatus.authorizationError || 'ISP credentials are not configured. Set the secrets above in Supabase → Edge Functions → Secrets to enable A2A.'}
-                  </div>
-                )}
-                <button onClick={checkA2aStatus} disabled={a2aLoading} style={{ marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--t3)', fontFamily: 'inherit', textDecoration: 'underline' }}>
-                  Refresh status
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      {!loading && !status.sessionActive && !status.sessionSetupConfigured && !error && (
+        <div style={{ marginTop: 8, color: '#f59e0b', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '7px 9px' }}>
+          {status.authorizationError || 'IRS connection setup is incomplete. Configure the IRS TDS connection in Settings → Integrations, then return here to connect your IRS / ID.me session.'}
+        </div>
+      )}
+      {error && <div style={{ marginTop: 8, color: '#f87171', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.22)', borderRadius: 8, padding: '7px 9px' }}>{error}</div>}
     </div>
   )
 }
