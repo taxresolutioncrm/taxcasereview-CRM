@@ -63,6 +63,7 @@ for(const n of [
   'onStatusChange={(st) =>',
   'directAvailable',
   'const formClient = resolveClient(form)',
+  'const client = resolveClient(nextForm)',
   'client_id: client.id',
   "provider: 'irs_a2a'",
   'submitCanopyStyleRequest'
@@ -130,6 +131,9 @@ if(fs.existsSync(pullUi)){
   const s=read(pullUi)
   if(s.includes("provider: 'irs_interactive'")) failures.push('TranscriptPull: legacy interactive provider must not be selectable')
   if(s.includes('Save Transcript Request')) failures.push('TranscriptPull: legacy manual request CTA must not be primary')
+  if(!s.includes('data-testid="transcript-client-search"')) failures.push('TranscriptPull: ID-based client combobox input missing')
+  if(!s.includes('data-testid="transcript-client-dropdown"')) failures.push('TranscriptPull: ID-based client dropdown missing')
+  if(s.includes('list="irsportal-clients"')) failures.push('TranscriptPull: broken irsportal-clients datalist reference returned')
 }
 
 if(failures.length){
