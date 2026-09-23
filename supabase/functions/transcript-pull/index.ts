@@ -314,8 +314,22 @@ serve(async (req) => {
     const { data: pull, error: pullErr } = await userDb.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle(); if (pullErr || !pull) return json({ error: 'Transcript pull request not found or not authorized' }, 404); if (String(pull.tenant_id) !== String(employee.tenant_id)) return json({ error: 'Transcript pull request tenant mismatch' }, 403)
     const activeSession = await requireActiveSession(service, employee.tenant_id, userData.user.id), ctx = await resolveContext(service, pull, employee)
     if (action === 'submit') {
-      try { const externalId = await submitWire(ctx, activeSession.token); const { error } = await userDb.from('transcript_pull_requests').update({ provider_request_id: externalId, provider_status: 'Submitted', provider_error: null, provider_submitted_at: new Date().toISOString(), provider_last_checked_at: new Date().toISOString(), status: 'In Progress' }).eq('id', requestId); if (error) throw new Error(error.message); return json({ ok: true, providerRequestId: externalId, status: 'Submitted' }) }
-      catch (e) { const message = e instanceof Error ? e.message : 'IRS TDS submission failed.'; await userDb.from('transcript_pull_requests').update({ provider_status: 'Error', provider_error: message, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId); return json({ error: message }, 502) }
+      try {
+        let externalId: string
+        if (stubMode()) {
+          // Stub mode: skip real IRS API call; assign a synthetic transaction ID.
+          externalId = `stub-txn-${randomToken(12)}`
+        } else {
+          externalId = await submitWire(ctx, activeSession.token)
+        }
+        const { error } = await userDb.from('transcript_pull_requests').update({ provider_request_id: externalId, provider_status: 'Submitted', provider_error: null, provider_submitted_at: new Date().toISOString(), provider_last_checked_at: new Date().toISOString(), status: 'In Progress' }).eq('id', requestId)
+        if (error) throw new Error(error.message)
+        return json({ ok: true, providerRequestId: externalId, status: 'Submitted', stub: stubMode() })
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'IRS TDS submission failed.'
+        await userDb.from('transcript_pull_requests').update({ provider_status: 'Error', provider_error: message, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
+        return json({ error: message }, 502)
+      }
     }
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
