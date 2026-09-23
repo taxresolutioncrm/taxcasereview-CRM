@@ -11,8 +11,6 @@ export default function TDSSessionPresence({ onStatusChange }) {
     missingAuthorizationConfig: [],
     missingContractConfig: [],
     authorizationError: null,
-    testModeAvailable: false,
-    testSessionActive: false,
   })
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState('')
@@ -27,10 +25,14 @@ export default function TDSSessionPresence({ onStatusChange }) {
       const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
         body: { action: 'capabilities' },
       })
-      if (fnError) throw fnError
+      if (fnError) {
+        let body = null
+        try { body = await fnError.context?.json?.() } catch (_) {}
+        throw Object.assign(new Error(body?.error || fnError.message), { code: body?.code })
+      }
       if (data?.error) throw new Error(data.error)
       const next = {
-        directAvailable: Boolean(data?.testSessionActive || (data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified)),
+        directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified),
         apiSessionActive: Boolean(data?.sessionActive),
         apiFlowVerified: Boolean(data?.apiFlowVerified),
         authorizationConfigured: Boolean(data?.authorizationConfigured),
@@ -38,8 +40,6 @@ export default function TDSSessionPresence({ onStatusChange }) {
         missingAuthorizationConfig: Array.isArray(data?.missingAuthorizationConfig) ? data.missingAuthorizationConfig : [],
         missingContractConfig: Array.isArray(data?.missingContractConfig) ? data.missingContractConfig : [],
         authorizationError: data?.authorizationError || null,
-        testModeAvailable: Boolean(data?.testModeAvailable),
-        testSessionActive: Boolean(data?.testSessionActive),
       }
       setStatus(next)
       onStatusChange?.({
@@ -59,8 +59,6 @@ export default function TDSSessionPresence({ onStatusChange }) {
         missingAuthorizationConfig: [],
         missingContractConfig: [],
         authorizationError: null,
-        testModeAvailable: false,
-        testSessionActive: false,
       }
       setStatus(next)
       onStatusChange?.({ directAvailable: false, sessionActive: false, apiFlowVerified: false, interactiveAvailable: true })
@@ -117,9 +115,13 @@ export default function TDSSessionPresence({ onStatusChange }) {
     setApiError('')
     try {
       const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
-        body: { action: (!status.apiFlowVerified && status.testModeAvailable) ? 'begin-test-session' : 'begin-session' },
+        body: { action: 'begin-session' },
       })
-      if (fnError) throw fnError
+      if (fnError) {
+        let body = null
+        try { body = await fnError.context?.json?.() } catch (_) {}
+        throw Object.assign(new Error(body?.error || fnError.message), { code: body?.code })
+      }
       if (data?.error) throw Object.assign(new Error(data.error), { code: data.code })
 
       const { authorizationUrl, redirectUri } = data
@@ -127,7 +129,6 @@ export default function TDSSessionPresence({ onStatusChange }) {
 
       // Derive and store the expected callback origin so handleMessage can validate event.origin.
       // redirectUri is the Supabase edge function URL (e.g. https://<ref>.supabase.co/functions/v1/…)
-      // Works identically in stub mode — the stub callback URL is on the same Supabase origin.
       if (redirectUri) {
         try { expectedCallbackOriginRef.current = new URL(redirectUri).origin } catch (_) {}
       }
@@ -198,8 +199,8 @@ export default function TDSSessionPresence({ onStatusChange }) {
           <div style={{ fontWeight: 800, fontSize: 13 }}>IRS / ID.me Sign-In</div>
           <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
             {status.apiSessionActive
-              ? (status.testSessionActive ? 'CRM live-test session is active. You can test the complete transcript workflow now.' : 'IRS session is active. Transcript requests will be submitted directly through the CRM.')
-              : (!status.apiFlowVerified && status.testModeAvailable ? 'IRS API enrollment is still pending. Admin live-test mode is available so you can test the CRM workflow now.' : 'Sign in with your IRS / ID.me account to authorize automated transcript delivery through the CRM.')}
+              ? 'IRS session is active. Transcript requests will be submitted directly through the CRM.'
+              : 'Sign in with your IRS / ID.me account to authorize automated transcript delivery through the CRM.'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -209,7 +210,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
             </button>
           ) : (
             <button className="btn" onClick={beginIrsSession} disabled={signingIn}>
-              {signingIn ? 'Connecting…' : (!status.apiFlowVerified && status.testModeAvailable ? 'Run CRM Live Test' : 'Sign in to IRS')}
+              {signingIn ? 'Signing in…' : 'Sign in to IRS'}
             </button>
           )}
         </div>
@@ -220,21 +221,21 @@ export default function TDSSessionPresence({ onStatusChange }) {
         {loading
           ? 'Checking IRS API activation…'
           : status.apiSessionActive
-            ? (status.testSessionActive ? 'CRM live-test session is active. Request Transcripts will run the full filing/analysis flow without calling the IRS.' : 'IRS session is authorized. Request Transcripts will submit directly through the CRM.')
+            ? 'IRS session is authorized. Request Transcripts will submit directly through the CRM.'
             : status.directAvailable
               ? 'IRS API is configured. Sign in above to start an authorized session.'
-              : (!status.apiFlowVerified && status.testModeAvailable ? 'IRS API activation is pending. Admin live-test mode is available above.' : 'Not activated. IRS e-Services API credentials are required for automated CRM transcript delivery.')}
+              : 'Not activated. IRS e-Services API credentials are required for automated CRM transcript delivery.'}
       </div>
 
       {!loading && status.apiSessionActive && (
         <div style={{ marginTop: 7, color: '#22c55e', fontSize: 11, background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.22)', borderRadius: 8, padding: '7px 9px' }}>
-          {status.testSessionActive ? '✓ CRM live-test session active — test transcripts will run through auto-file and Transcript Analysis.' : '✓ IRS session active — transcript requests will be delivered directly to the CRM.'}
+          ✓ IRS session active — transcript requests will be delivered directly to the CRM.
         </div>
       )}
 
       {!loading && !status.apiSessionActive && !status.directAvailable && (
         <div style={{ marginTop: 7, color: '#f59e0b', fontSize: 11, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '7px 9px' }}>
-          {status.testModeAvailable ? 'IRS e-Services API enrollment is still pending. Use Run CRM Live Test above to test the complete CRM workflow now.' : 'Automated CRM delivery requires IRS e-Services API enrollment. The authorization flow is implemented; see the credential checklist for what is needed from the IRS.'}
+          Automated CRM delivery requires IRS e-Services API enrollment. The authorization flow is implemented; see the credential checklist for what is needed from the IRS.
         </div>
       )}
 

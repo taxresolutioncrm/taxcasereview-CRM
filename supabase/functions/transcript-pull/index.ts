@@ -26,15 +26,10 @@ const CONTRACT_CONFIG_KEYS = [
   'IRS_TDS_STATUS_URL_TEMPLATE',
 ]
 
-// IRS_TDS_STUB_MODE=1 — sandbox-only end-to-end test mode.
-// Bypasses real IRS API calls so the complete CRM flow can be verified without
-// live IRS credentials. NEVER set this in production.
-const stubMode = () => env('IRS_TDS_STUB_MODE') === '1'
-
 const missingEnv = (keys: string[]) => keys.filter(k => !env(k))
-const authorizationConfigured = () => stubMode() || missingEnv(AUTH_CONFIG_KEYS).length === 0
-const transcriptContractConfigured = () => stubMode() || missingEnv(CONTRACT_CONFIG_KEYS).length === 0
-const apiFlowVerified = () => stubMode() || env('IRS_TDS_AUTH_FLOW_VERIFIED') === '1'
+const authorizationConfigured = () => missingEnv(AUTH_CONFIG_KEYS).length === 0
+const transcriptContractConfigured = () => missingEnv(CONTRACT_CONFIG_KEYS).length === 0
+const apiFlowVerified = () => env('IRS_TDS_AUTH_FLOW_VERIFIED') === '1'
 
 function getPath(obj: any, path: string) { if (!path) return undefined; return path.split('.').reduce((v, k) => v == null ? undefined : v[k], obj) }
 function renderValue(value: any, ctx: Record<string, any>): any {
@@ -131,7 +126,7 @@ async function resolveEmployee(userDb: any, user: any) {
   const { data: tenantId, error: tenantErr } = await userDb.rpc('current_tenant_id')
   if (tenantErr || !tenantId) throw new Error('No active TaxRes office context is available for this IRS session.')
   const { data, error } = await userDb.from('employees')
-    .select('tenant_id,perm_irs,email,caf,caf_number,role,access')
+    .select('tenant_id,perm_irs,email,caf,caf_number')
     .eq('tenant_id', tenantId)
     .ilike('email', email)
     .limit(2)
@@ -242,35 +237,6 @@ async function persistTranscriptPdf(service: any, pull: any, pdfBytes: Uint8Arra
   return { resultKeys: [...resultKeys, resultKey], filePaths: [...filePaths, filePath], added: true, resultKey, filePath }
 }
 
-// CRM Live Test only: one-page synthetic transcript PDF (real line breaks + valid xref) so the
-// frontend pdf.js extraction, parser, auto-file and coverage logic run exactly as for IRS PDFs.
-// Exported so scripts/check-tds-edge-runtime.mjs can verify it parses before every build.
-export function buildLiveTestTranscriptPdf(tin: string, year: string, type: string): Uint8Array {
-  const stubTitle = String(type || 'Account Transcript').toUpperCase()
-  const stubPdfText =
-    `${stubTitle}\r\nSSN/EIN: ${tin}\r\nTAX PERIOD: ${year}\r\n` +
-    `RETURN TYPE: ${type}\r\nACCOUNT BALANCE: 0.00\r\nACCRUED PENALTY: 0.00\r\n` +
-    `ACCRUED INTEREST: 0.00\r\nCRM LIVE TEST - SYNTHETIC TRANSCRIPT\r\n`
-  const lines = stubPdfText.split(/\r?\n/).filter(Boolean)
-  const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
-  const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) => i === 0 ? [`(${esc(line)}) Tj`] : ['0 -16 Td', `(${esc(line)}) Tj`]), 'ET'].join('\n')
-  const objects = [
-    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
-    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
-    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
-    `4 0 obj<</Length ${new TextEncoder().encode(stream).length}>>stream\n${stream}\nendstream\nendobj\n`,
-    '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
-  ]
-  let pdfContent = '%PDF-1.4\n'
-  const offsets = [0]
-  for (const obj of objects) { offsets.push(new TextEncoder().encode(pdfContent).length); pdfContent += obj }
-  const xrefOffset = new TextEncoder().encode(pdfContent).length
-  pdfContent += 'xref\n0 6\n0000000000 65535 f \n'
-  for (let i = 1; i <= 5; i++) pdfContent += String(offsets[i]).padStart(10, '0') + ' 00000 n \n'
-  pdfContent += `trailer<</Size 6/Root 1 0 R>>\nstartxref\n${xrefOffset}\n%%EOF\n`
-  return new TextEncoder().encode(pdfContent)
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS }); if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   try {
@@ -279,16 +245,12 @@ serve(async (req) => {
     const userDb = createClient(url, anon, { global: { headers: { Authorization: auth } } }), service = createClient(url, serviceKey)
     const { data: userData, error: userErr } = await userDb.auth.getUser(); if (userErr || !userData?.user) return json({ error: 'Authentication required' }, 401)
     const employee = await resolveEmployee(userDb, userData.user), body = await req.json().catch(() => ({})), action = String(body?.action || 'capabilities'), session = await getSession(service, employee.tenant_id, userData.user.id)
-    // CRM permission level lives in employees.access (role is the job title) — same precedence as the DB helpers: coalesce(access, role).
-    const testRole = String(employee?.access || employee?.role || '').trim().toLowerCase()
-    const testAccess = (testRole === 'admin' || testRole === 'super admin') && Number(employee?.perm_irs || 0) >= 2
-    const testSessionActive = Boolean(sessionWindowActive(session) && session?.organization_name === 'CRM Live Test')
     if (action === 'capabilities') {
       const authError = await authorizationConfigError()
       const authReady = !authError
       const contractReady = transcriptContractConfigured()
       const flowVerified = apiFlowVerified()
-      const sessionActive = testSessionActive || (authReady && flowVerified && sessionWindowActive(session))
+      const sessionActive = authReady && flowVerified && sessionWindowActive(session)
       return json({
         // Web TDS is a separate IRS-hosted login path and is always exposed by the UI.
         directConfigured: authReady && contractReady && flowVerified && sessionActive,
@@ -303,20 +265,7 @@ serve(async (req) => {
         expiresAt: sessionActive ? session.session_expires_at : null,
         accessExpiresAt: sessionActive ? session.access_expires_at : null,
         organizationName: sessionActive ? session.organization_name : null,
-        testModeAvailable: testAccess,
-        testSessionActive,
       })
-    }
-    if (action === 'begin-test-session') {
-      if (!testAccess) return json({ error: 'Admin IRS permission is required for CRM live-test mode.', code: 'IRS_TEST_FORBIDDEN' }, 403)
-      const state = `test-${randomToken(32)}`
-      const { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, organization_name: 'CRM Live Test', updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' })
-      if (error) throw new Error(error.message)
-      const redirectUri = `${env('SUPABASE_URL')}/functions/v1/transcript-pull-callback`
-      const callbackUrl = new URL(redirectUri)
-      callbackUrl.searchParams.set('code', `stub-code-${randomToken(8)}`)
-      callbackUrl.searchParams.set('state', state)
-      return json({ ok: true, authorizationUrl: callbackUrl.toString(), redirectUri, testMode: true })
     }
     if (action === 'begin-session') {
       if (!apiFlowVerified()) {
@@ -328,17 +277,6 @@ serve(async (req) => {
       const authError = await authorizationConfigError()
       if (authError) return json({ error: authError, code: 'IRS_API_NOT_CONFIGURED' }, 409)
       const state = randomToken(32), { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' }); if (error) throw new Error(error.message)
-
-      if (stubMode()) {
-        // Stub mode: point the authorization URL directly at the callback with a synthetic code.
-        // The callback will recognize IRS_TDS_STUB_MODE=1 and skip real token exchange.
-        const redirectUri = env('IRS_TDS_REDIRECT_URI') || `${env('SUPABASE_URL')}/functions/v1/transcript-pull-callback`
-        const callbackUrl = new URL(redirectUri)
-        callbackUrl.searchParams.set('code', `stub-code-${randomToken(8)}`)
-        callbackUrl.searchParams.set('state', state)
-        return json({ ok: true, authorizationUrl: callbackUrl.toString(), redirectUri, stub: true })
-      }
-
       const u = new URL(AUTHORIZE_URL())
       u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID'))
       u.searchParams.set('response_type', 'code')
@@ -354,70 +292,17 @@ serve(async (req) => {
       return json({ ok: true, authorizationUrl: u.toString(), redirectUri: env('IRS_TDS_REDIRECT_URI') })
     }
     if (action === 'end-session') { await service.from('irs_tds_sessions').update({ access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, state: null, state_expires_at: null, updated_at: new Date().toISOString() }).eq('tenant_id', employee.tenant_id).eq('user_id', userData.user.id); return json({ ok: true }) }
+    if (!apiFlowVerified()) return json({ error: 'Automated IRS API delivery is disabled until the IRS product auth/request contract is verified.', code: 'IRS_API_FLOW_NOT_VERIFIED' }, 409)
+    if (!transcriptContractConfigured()) return json({ error: 'IRS TDS transcript request contract is not configured yet.', code: 'TDS_CONTRACT_NOT_CONFIGURED' }, 409)
     const requestId = String(body?.requestId || '').trim(); if (!requestId) return json({ error: 'requestId is required' }, 400)
     const { data: pull, error: pullErr } = await userDb.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle(); if (pullErr || !pull) return json({ error: 'Transcript pull request not found or not authorized' }, 404); if (String(pull.tenant_id) !== String(employee.tenant_id)) return json({ error: 'Transcript pull request tenant mismatch' }, 403)
-    const activeSession = await requireActiveSession(service, employee.tenant_id, userData.user.id)
-    const isTestSession = String(activeSession.token || '').startsWith('stub-access-')
-    if (!apiFlowVerified() && !isTestSession) return json({ error: 'Automated IRS API delivery is disabled until the IRS product auth/request contract is verified.', code: 'IRS_API_FLOW_NOT_VERIFIED' }, 409)
-    if (!transcriptContractConfigured() && !isTestSession) return json({ error: 'IRS TDS transcript request contract is not configured yet.', code: 'TDS_CONTRACT_NOT_CONFIGURED' }, 409)
-    const ctx = await resolveContext(service, pull, employee)
+    const activeSession = await requireActiveSession(service, employee.tenant_id, userData.user.id), ctx = await resolveContext(service, pull, employee)
     if (action === 'submit') {
-      try {
-        let externalId: string
-        if (stubMode() || isTestSession) {
-          // Test/stub mode: skip real IRS API call; assign a synthetic transaction ID.
-          externalId = `stub-txn-${randomToken(12)}`
-        } else {
-          externalId = await submitWire(ctx, activeSession.token)
-        }
-        const { error } = await userDb.from('transcript_pull_requests').update({ provider_request_id: externalId, provider_status: 'Submitted', provider_error: null, provider_submitted_at: new Date().toISOString(), provider_last_checked_at: new Date().toISOString(), status: 'In Progress' }).eq('id', requestId)
-        if (error) throw new Error(error.message)
-        return json({ ok: true, providerRequestId: externalId, status: 'Submitted', stub: stubMode() || isTestSession })
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'IRS TDS submission failed.'
-        await userDb.from('transcript_pull_requests').update({ provider_status: 'Error', provider_error: message, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
-        return json({ error: message }, 502)
-      }
+      try { const externalId = await submitWire(ctx, activeSession.token); const { error } = await userDb.from('transcript_pull_requests').update({ provider_request_id: externalId, provider_status: 'Submitted', provider_error: null, provider_submitted_at: new Date().toISOString(), provider_last_checked_at: new Date().toISOString(), status: 'In Progress' }).eq('id', requestId); if (error) throw new Error(error.message); return json({ ok: true, providerRequestId: externalId, status: 'Submitted' }) }
+      catch (e) { const message = e instanceof Error ? e.message : 'IRS TDS submission failed.'; await userDb.from('transcript_pull_requests').update({ provider_status: 'Error', provider_error: message, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId); return json({ error: message }, 502) }
     }
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
-      if ((stubMode() || isTestSession) && pull.provider_request_id?.startsWith('stub-txn-')) {
-        // Deliver one synthetic transcript per requested year/type combination so the
-        // real frontend polling, auto-file and coverage-completion logic is exercised.
-        const years = ctx.taxYears.length ? ctx.taxYears : [String(new Date().getFullYear())]
-        const types = ctx.transcriptTypes.length ? ctx.transcriptTypes : ['Account Transcript']
-        const combinations = years.flatMap((year: string) => types.map((type: string) => ({ year, type })))
-        const filedCount = (pull.provider_filed_keys || []).length
-        const combo = combinations[filedCount]
-        if (combo) {
-          const pdfBytes = buildLiveTestTranscriptPdf(ctx.tin, combo.year, combo.type)
-          const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
-          if (stored.filePath) {
-            const { error: updateErr } = await userDb.from('transcript_pull_requests').update({
-              provider_status: 'Delivered',
-              provider_error: null,
-              provider_last_checked_at: new Date().toISOString(),
-              provider_file_path: stored.filePath,
-              provider_result_keys: stored.resultKeys,
-              provider_file_paths: stored.filePaths
-            }).eq('id', requestId)
-            if (updateErr) throw new Error(updateErr.message)
-            const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(stored.filePath, 900)
-            if (signErr || !signed?.signedUrl) throw new Error('Could not create secure test transcript link.')
-            return json({
-              ok: true,
-              status: 'Delivered',
-              resultKey: stored.resultKey,
-              filePath: stored.filePath,
-              signedUrl: signed.signedUrl,
-              deliveredCount: stored.resultKeys.length,
-              remainingCount: Math.max(0, combinations.length - filedCount - 1),
-              stub: true,
-              testMode: isTestSession
-            })
-          }
-        }
-      }
       const resultKeys: string[] = pull.provider_result_keys || [], filePaths: string[] = pull.provider_file_paths || [], filedKeys: string[] = pull.provider_filed_keys || [], pendingIndex = resultKeys.findIndex((k: string) => !filedKeys.includes(k))
       if (pendingIndex >= 0 && filePaths[pendingIndex]) { const filePath = filePaths[pendingIndex], { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(filePath, 900); if (signErr || !signed?.signedUrl) throw new Error('Could not create secure transcript link.'); return json({ ok: true, status: 'Delivered', resultKey: resultKeys[pendingIndex], filePath, signedUrl: signed.signedUrl }) }
       if (!pull.provider_request_id) return json({ error: 'This request has not been submitted to IRS TDS yet.' }, 409)

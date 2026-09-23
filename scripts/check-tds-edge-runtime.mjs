@@ -4,9 +4,10 @@
 //     of as "worker boot error" in Supabase.
 //  2. Evaluates each module top-level with stubbed Deno/serve/supabase imports and
 //     exercises the captured handler: OPTIONS preflight must return CORS headers.
-//  3. Builds the CRM Live Test synthetic transcript PDF for every transcript type the UI
-//     offers and runs it through the real pdf.js extraction + irsTranscriptParser, asserting
-//     type and tax year are detected (the multi-year / multi-type completion depends on it).
+//  3. Asserts the callback refuses to run while the real IRS flow is not verified.
+//  4. Build-time fixture only (never shipped): a transcript-shaped PDF per transcript type is
+//     run through the real pdf.js extraction + irsTranscriptParser so the delivery → auto-file
+//     → Transcript Analysis pipeline is proven to read PDFs before every build.
 import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
@@ -59,7 +60,6 @@ if (pull) {
   for (const h of ['authorization', 'apikey', 'content-type', 'x-client-info']) if (!allow.includes(h)) fail(`transcript-pull: OPTIONS does not allow header ${h}`)
   const g = await pull.handler(new Request('https://project.supabase.co/functions/v1/transcript-pull', { method: 'GET' }))
   if (g.status !== 405) fail(`transcript-pull: GET should be 405, got ${g.status}`)
-  if (typeof pull.exports.buildLiveTestTranscriptPdf !== 'function') fail('transcript-pull: buildLiveTestTranscriptPdf export missing')
 }
 if (callback) {
   const p = await callback.handler(new Request('https://project.supabase.co/functions/v1/transcript-pull-callback', { method: 'POST' }))
@@ -67,10 +67,28 @@ if (callback) {
   const g = await callback.handler(new Request('https://project.supabase.co/functions/v1/transcript-pull-callback?state=x&code=y'))
   const html = await g.text()
   if (!(g.headers.get('content-type') || '').includes('text/html') || !html.includes('taxres-irs-tds-oauth')) fail('transcript-pull-callback: GET did not return the postMessage HTML page')
+  if (g.status !== 409) fail(`transcript-pull-callback: must refuse (409) while IRS_TDS_AUTH_FLOW_VERIFIED is unset, got ${g.status}`)
 }
 
-if (pull?.exports.buildLiveTestTranscriptPdf) {
-  // Real browser-side extraction + parser, bundled for Node (pdf.js legacy build).
+function fixturePdf(lines) {
+  const esc = v => v.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+  const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((l, i) => i === 0 ? [`(${esc(l)}) Tj`] : ['0 -16 Td', `(${esc(l)}) Tj`]), 'ET'].join('\n')
+  const objects = [
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
+    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
+    `4 0 obj<</Length ${Buffer.byteLength(stream)}>>stream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
+  ]
+  let pdf = '%PDF-1.4\n'; const offsets = []
+  for (const o of objects) { offsets.push(Buffer.byteLength(pdf)); pdf += o }
+  const xref = Buffer.byteLength(pdf)
+  pdf += 'xref\n0 6\n0000000000 65535 f \n' + offsets.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')
+  pdf += `trailer<</Size 6/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`
+  return new Uint8Array(Buffer.from(pdf, 'latin1'))
+}
+
+{
   const legacy = path.join(root, 'node_modules/pdfjs-dist/legacy/build/pdf.mjs')
   const worker = pathToFileURL(path.join(root, 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs')).href
   const out = await build({
@@ -86,33 +104,20 @@ if (pull?.exports.buildLiveTestTranscriptPdf) {
   fs.writeFileSync(tmp, out.outputFiles[0].text)
   const { extractPdfText, parseIrsTranscript } = await import(pathToFileURL(tmp).href)
   const TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
-  // Structural PDF validity — pdf.js silently recovers from broken structure, so assert it directly.
-  const sample = Buffer.from(pull.exports.buildLiveTestTranscriptPdf('123456789', '2023', 'Account Transcript')).toString('latin1')
-  if (!sample.startsWith('%PDF-1.4\n')) fail('live-test PDF: header is not "%PDF-1.4" followed by a real newline')
-  if (/\\[nr]/.test(sample)) fail('live-test PDF: contains literal "\\n"/"\\r" escape text (double-escaped source)')
-  const sx = sample.match(/startxref\n(\d+)\n%%EOF\n$/)
-  if (!sx || !sample.startsWith('xref\n0 6\n', Number(sx[1]))) fail('live-test PDF: startxref does not point at the xref table')
-  else {
-    const entries = sample.slice(Number(sx[1])).split('\n').slice(2, 8)
-    entries.slice(1).forEach((e, i) => {
-      const off = Number(e.slice(0, 10))
-      if (!/^\d{10} 00000 n $/.test(e) || !sample.startsWith(`${i + 1} 0 obj`, off)) fail(`live-test PDF: xref entry ${i + 1} is wrong ("${e}")`)
-    })
-  }
   const origWarn = console.warn
-  console.warn = (...a) => { if (!String(a[0]).startsWith('Warning:')) origWarn(...a) }   // pdf.js font/recovery notices
+  console.warn = (...a) => { if (!String(a[0]).startsWith('Warning:')) origWarn(...a) }
   for (const type of TYPES) {
     for (const year of ['2021', '2024']) {
-      const bytes = pull.exports.buildLiveTestTranscriptPdf('123456789', year, type)
+      const bytes = fixturePdf([type.toUpperCase(), `TAX PERIOD: Dec. 31, ${year}`, 'ACCOUNT BALANCE: 0.00', 'ACCRUED PENALTY: 0.00', 'ACCRUED INTEREST: 0.00'])
       try {
         const text = await extractPdfText(new File([bytes], 't.pdf', { type: 'application/pdf' }))
-        if (!text || text.trim().length < 40) { fail(`live-test PDF (${type} ${year}): no text layer extracted`); continue }
+        if (!text || text.trim().length < 40) { fail(`transcript PDF fixture (${type} ${year}): no text layer extracted`); continue }
         const a = parseIrsTranscript(text)
-        if (a.transcript_type !== type) fail(`live-test PDF (${type} ${year}): parsed type "${a.transcript_type}"`)
-        if (a.tax_year !== year) fail(`live-test PDF (${type} ${year}): parsed year "${a.tax_year}"`)
-        if (a.account_balance !== 0) fail(`live-test PDF (${type} ${year}): parsed balance ${a.account_balance}`)
+        if (a.transcript_type !== type) fail(`transcript PDF fixture (${type} ${year}): parsed type "${a.transcript_type}"`)
+        if (a.tax_year !== year) fail(`transcript PDF fixture (${type} ${year}): parsed year "${a.tax_year}"`)
+        if (a.account_balance !== 0) fail(`transcript PDF fixture (${type} ${year}): parsed balance ${a.account_balance}`)
       } catch (e) {
-        fail(`live-test PDF (${type} ${year}): pdf.js could not open it — ${e.message}`)
+        fail(`transcript PDF fixture (${type} ${year}): pdf.js could not open it — ${e.message}`)
       }
     }
   }
@@ -124,4 +129,4 @@ if (failures.length) {
   failures.forEach(f => console.error(' - ' + f))
   process.exit(1)
 }
-console.log('✅ TDS edge functions compile, boot, answer CORS preflight, and the live-test PDF parses for all 5 transcript types')
+console.log('✅ TDS edge functions compile, boot, answer CORS preflight, stay gated until IRS flow is verified; transcript PDF pipeline parses all 5 types')
