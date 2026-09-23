@@ -100,7 +100,7 @@ if (pull?.exports.buildLiveTestTranscriptPdf) {
     })
   }
   const origWarn = console.warn
-  console.warn = (...a) => { if (!String(a[0]).startsWith('Warning:')) origWarn(...a) }
+  console.warn = (...a) => { if (!String(a[0]).startsWith('Warning:')) origWarn(...a) }   // pdf.js font/recovery notices
   for (const type of TYPES) {
     for (const year of ['2021', '2024']) {
       const bytes = pull.exports.buildLiveTestTranscriptPdf('123456789', year, type)
