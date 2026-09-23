@@ -32,7 +32,7 @@ for(const n of [
 ]) need(lib,n)
 
 for(const n of [
-  "const IRS_TDS_URL = 'https://www.irs.gov/tax-professionals/transcript-delivery-system-tds'",
+  "const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
   'Sign in to IRS TDS',
   'interactiveAvailable: true',
   'directAvailable',
@@ -119,9 +119,15 @@ if(fs.existsSync(callback)){
 
 if(fs.existsSync(lib)){
   const s=read(lib)
-  for(const old of ["id: 'irs_interactive'","label: 'IRS TDS — Practitioner Login'","chip: 'Open IRS TDS'"]){
-    if(s.includes(old)) failures.push('transcriptPull: legacy Web TDS provider must not return: '+old)
+  // irs_interactive is the always-available practitioner Web TDS path; it must be present and correct
+  if(!s.includes("id: 'irs_interactive'")) failures.push('transcriptPull: irs_interactive practitioner provider must be defined')
+  if(!s.includes("available: true") || !s.includes("id: 'irs_interactive'")) failures.push('transcriptPull: irs_interactive must always be available')
+  // Prohibit old broken patterns that coupled practitioner login to the automated API
+  for(const old of ["label: 'IRS TDS — Practitioner Login'","chip: 'Open IRS TDS'"]){
+    if(s.includes(old)) failures.push('transcriptPull: legacy Web TDS label must not return: '+old)
   }
+  // submitToProvider must handle irs_interactive without calling the IRS API
+  if(!s.includes("providerId === 'manual' || providerId === 'irs_interactive'")) failures.push('transcriptPull: irs_interactive must short-circuit in submitToProvider without calling the API')
 }
 if(fs.existsSync(session)){
   const s=read(session)
