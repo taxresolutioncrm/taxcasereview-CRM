@@ -34,7 +34,6 @@ for(const n of [
 // TDSSessionPresence must wire the real begin-session OAuth flow, not open the public TDS website.
 for(const n of [
   "'begin-session'",
-  "'begin-test-session'",
   'taxres-irs-tds-oauth',
   'addEventListener',
   'interactiveAvailable: true',
@@ -116,9 +115,8 @@ if(fs.existsSync(pull)){
   if(!s.includes("action === 'begin-session'")) failures.push('transcript-pull: begin-session action is missing')
   if(!s.includes('IRS_TDS_ISP_AUTHORIZE_URL') && !s.includes('AUTHORIZE_URL')) failures.push('transcript-pull: begin-session must build OAuth authorization URL')
   if(!s.includes('authorizationUrl')) failures.push('transcript-pull: begin-session must return authorizationUrl')
-  // Stub mode must exist for sandbox E2E testing
-  if(!s.includes("IRS_TDS_STUB_MODE")) failures.push('transcript-pull: IRS_TDS_STUB_MODE sandbox stub mode is missing')
-  if(!s.includes("stubMode()")) failures.push('transcript-pull: stubMode() helper is missing')
+  // No synthetic IRS session/transcript path may ship in the production function
+  for(const bad of ['IRS_TDS_STUB_MODE','begin-test-session','stub-txn-','stub-code-','SYNTHETIC TRANSCRIPT']) if(s.includes(bad)) failures.push('transcript-pull: synthetic path present: '+bad)
   // Tenant isolation: session must be scoped to tenant_id + user_id
   if(!s.includes('tenant_id,user_id')) failures.push('transcript-pull: irs_tds_sessions upsert missing tenant_id,user_id conflict key')
 }
@@ -131,9 +129,8 @@ if(fs.existsSync(callback)){
   // Callback must send postMessage back to CRM origin
   if(!s.includes('taxres-irs-tds-oauth')) failures.push('transcript-pull-callback: postMessage type taxres-irs-tds-oauth is missing')
   if(!s.includes('window.opener.postMessage')) failures.push('transcript-pull-callback: postMessage to opener missing')
-  // Stub mode must exist in callback too
-  if(!s.includes('IRS_TDS_STUB_MODE')) failures.push('transcript-pull-callback: IRS_TDS_STUB_MODE stub mode is missing')
-  if(!s.includes('stub-access-') && !s.includes('isStub')) failures.push('transcript-pull-callback: stub token path missing')
+  // Callback must always perform the real token exchange — no synthetic session path
+  for(const bad of ['IRS_TDS_STUB_MODE','stub-access-','isStub',"startsWith('test-')"]) if(s.includes(bad)) failures.push('transcript-pull-callback: synthetic path present: '+bad)
   // Nashville origin must not be hardcoded
   if(s.includes("const CRM_ORIGIN = 'https://nashville.taxrescrm.app'")) failures.push('transcript-pull-callback: Nashville CRM origin is hardcoded')
   // AES-GCM encryption of tokens at rest
@@ -158,6 +155,7 @@ if(fs.existsSync(session)){
   // It must call begin-session and open the returned OAuth authorization URL.
   if(s.includes("'https://la.www4.irs.gov/esrv/tds/'")) failures.push('TDSSessionPresence: must not open public IRS TDS website as primary flow — use begin-session OAuth')
   if(s.includes("window.open(IRS_TDS_URL")) failures.push('TDSSessionPresence: must not directly open the practitioner TDS website — use begin-session OAuth URL')
+  for(const bad of ['begin-test-session','Run CRM Live Test','testSessionActive']) if(s.includes(bad)) failures.push('TDSSessionPresence: synthetic live-test path present: '+bad)
   // Must have a postMessage listener wired to receive the taxres-irs-tds-oauth callback
   if(!s.includes("window.addEventListener('message'") && !s.includes('window.addEventListener("message"')) failures.push('TDSSessionPresence: missing postMessage listener for taxres-irs-tds-oauth callback')
   // Nashville tenant must not be hardcoded
