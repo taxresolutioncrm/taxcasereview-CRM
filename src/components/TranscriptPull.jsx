@@ -624,24 +624,25 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               {form.clientName.trim() && (!formClient ? (
                 <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>Select one exact client record.</div>
               ) : (
-                <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 9, padding: 10, background: 'var(--s1)' }}>
+                <div style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 9, padding: '9px 11px', background: 'var(--s1)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                     <div>
                       <div style={{ fontWeight: 800, fontSize: 12.5 }}>{formClient.name}</div>
-                      <div style={{ color: 'var(--t3)', fontSize: 11, marginTop: 4 }}>
+                      <div style={{ color: 'var(--t3)', fontSize: 11, marginTop: 3 }}>
                         SSN {maskedSsn(formClient.ssn)} · DOB {formClient.dob || 'Not on file'}
                       </div>
                     </div>
-                    <span style={{ background: formPoa ? '#15803d' : '#b91c1c', color: '#fff', borderRadius: 6, padding: '4px 8px', fontSize: 10.5, fontWeight: 800, alignSelf: 'flex-start' }}>
+                    <span style={{ background: formPoa ? '#15803d' : '#b91c1c', color: '#fff', borderRadius: 6, padding: '3px 8px', fontSize: 10.5, fontWeight: 800, alignSelf: 'flex-start' }}>
                       {formPoa ? 'POA On File' : 'POA Required'}
                     </span>
                   </div>
                   {formPoa ? (
-                    <div style={{ fontSize: 11.5, color: selectedYears.size === 0 ? 'var(--t3)' : selectedYearsCovered ? '#15803d' : '#f87171', marginTop: 7 }}>
-                      Form {formPoa.form_type}{formPoa.tax_years ? ` · POA years: ${formPoa.tax_years}` : ''}{selectedYears.size ? selectedYearsCovered ? ' · Selected years valid' : ' · Selected years are not fully covered by this POA' : ' · Select tax years to validate coverage'}
+                    <div style={{ fontSize: 11, color: selectedYears.size === 0 ? 'var(--t3)' : selectedYearsCovered ? '#22c55e' : '#f87171', marginTop: 6 }}>
+                      Form {formPoa.form_type}{formPoa.tax_years ? ` · POA years: ${formPoa.tax_years}` : ''}
+                      {selectedYears.size ? (selectedYearsCovered ? ' · Years valid ✓' : ' · Years not fully covered') : ' · Select years to validate'}
                     </div>
                   ) : (
-                    <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 7 }}>
+                    <div style={{ fontSize: 11, color: '#f87171', marginTop: 6 }}>
                       POA must be On File before requesting transcripts.{' '}
                       <span style={{ textDecoration: 'underline', cursor: 'pointer' }} onClick={() => onGoToPoa && onGoToPoa()}>Open POA / CAF Tracker</span>
                     </div>
