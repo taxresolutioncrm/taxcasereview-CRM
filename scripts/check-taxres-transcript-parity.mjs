@@ -31,13 +31,17 @@ for(const n of [
   "['Filed','Partial','Error'].includes(req.provider_status)"
 ]) need(lib,n)
 
+// TDSSessionPresence must wire the real begin-session OAuth flow, not open the public TDS website.
 for(const n of [
-  "const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
-  'Sign in to IRS TDS',
+  "action: 'begin-session'",
+  'taxres-irs-tds-oauth',
+  'addEventListener',
   'interactiveAvailable: true',
   'directAvailable',
   'apiFlowVerified',
-  'apiSessionActive'
+  'apiSessionActive',
+  'authorizationUrl',
+  'Sign in to IRS',
 ]) need(session,n)
 
 for(const n of [
@@ -107,16 +111,34 @@ if(fs.existsSync(pull)){
   if(/irs[_ -]?(password|2fa|two.?factor)[_ -]?(secret|code)?/i.test(s)){
     failures.push('transcript-pull: IRS password/2FA handling is forbidden')
   }
-}
-if(fs.existsSync(session)){
-  const s=read(session)
-  if(s.includes('ydrvncdedgjtcprczwpu')) failures.push('TDSSessionPresence: Nashville Supabase project is hardcoded')
-}
-if(fs.existsSync(callback)){
-  const s=read(callback)
-  if(s.includes("const CRM_ORIGIN = 'https://nashville.taxrescrm.app'")) failures.push('transcript-pull-callback: Nashville CRM origin is hardcoded')
+  // begin-session must generate a real OAuth authorization URL, not open the public TDS page
+  if(!s.includes("action === 'begin-session'")) failures.push('transcript-pull: begin-session action is missing')
+  if(!s.includes('IRS_TDS_ISP_AUTHORIZE_URL') && !s.includes('AUTHORIZE_URL')) failures.push('transcript-pull: begin-session must build OAuth authorization URL')
+  if(!s.includes('authorizationUrl')) failures.push('transcript-pull: begin-session must return authorizationUrl')
+  // Stub mode must exist for sandbox E2E testing
+  if(!s.includes("IRS_TDS_STUB_MODE")) failures.push('transcript-pull: IRS_TDS_STUB_MODE sandbox stub mode is missing')
+  if(!s.includes("stubMode()")) failures.push('transcript-pull: stubMode() helper is missing')
+  // Tenant isolation: session must be scoped to tenant_id + user_id
+  if(!s.includes('tenant_id,user_id')) failures.push('transcript-pull: irs_tds_sessions upsert missing tenant_id,user_id conflict key')
 }
 
+if(fs.existsSync(callback)){
+  const s=read(callback)
+  // Callback must validate and atomically claim state
+  if(!s.includes('.eq(\'state\', state)')) failures.push('transcript-pull-callback: state validation missing')
+  if(!s.includes('claimed')) failures.push('transcript-pull-callback: atomic state claim missing (race condition risk)')
+  // Callback must send postMessage back to CRM origin
+  if(!s.includes('taxres-irs-tds-oauth')) failures.push('transcript-pull-callback: postMessage type taxres-irs-tds-oauth is missing')
+  if(!s.includes('window.opener.postMessage')) failures.push('transcript-pull-callback: postMessage to opener missing')
+  // Stub mode must exist in callback too
+  if(!s.includes('IRS_TDS_STUB_MODE')) failures.push('transcript-pull-callback: IRS_TDS_STUB_MODE stub mode is missing')
+  if(!s.includes('stub-access-') && !s.includes('isStub')) failures.push('transcript-pull-callback: stub token path missing')
+  // Nashville origin must not be hardcoded
+  if(s.includes("const CRM_ORIGIN = 'https://nashville.taxrescrm.app'")) failures.push('transcript-pull-callback: Nashville CRM origin is hardcoded')
+  // AES-GCM encryption of tokens at rest
+  if(!s.includes('AES-GCM')) failures.push('transcript-pull-callback: tokens must be encrypted at rest with AES-GCM')
+  if(!s.includes('encryptText')) failures.push('transcript-pull-callback: encryptText must be used for access and refresh tokens')
+}
 if(fs.existsSync(lib)){
   const s=read(lib)
   // irs_interactive is the always-available practitioner Web TDS path; it must be present and correct
@@ -131,21 +153,28 @@ if(fs.existsSync(lib)){
 }
 if(fs.existsSync(session)){
   const s=read(session)
-  if(s.includes("body: { action: 'begin-session' }")) failures.push('TDSSessionPresence: practitioner TDS sign-in must not call the IRS software API session endpoint')
-  if(s.includes('new URL(data.redirectUri).origin')) failures.push('TDSSessionPresence: practitioner TDS sign-in must not pretend to receive an API callback')
+  // TDSSessionPresence must NOT open the public IRS TDS practitioner website as the primary sign-in path.
+  // It must call begin-session and open the returned OAuth authorization URL.
+  if(s.includes("'https://la.www4.irs.gov/esrv/tds/'")) failures.push('TDSSessionPresence: must not open public IRS TDS website as primary flow — use begin-session OAuth')
+  if(s.includes("window.open(IRS_TDS_URL")) failures.push('TDSSessionPresence: must not directly open the practitioner TDS website — use begin-session OAuth URL')
+  // Must have a postMessage listener wired to receive the taxres-irs-tds-oauth callback
+  if(!s.includes("window.addEventListener('message'") && !s.includes('window.addEventListener("message"')) failures.push('TDSSessionPresence: missing postMessage listener for taxres-irs-tds-oauth callback')
+  // Nashville tenant must not be hardcoded
+  if(s.includes('ydrvncdedgjtcprczwpu')) failures.push('TDSSessionPresence: Nashville Supabase project is hardcoded')
 }
 if(fs.existsSync(pullUi)){
   const s=read(pullUi)
   // irs_interactive is the UI intent for practitioner Web TDS requests (BLANK default + openNewRequest);
   // createRequest() must translate it to 'manual' before DB insert so the DB column stays clean.
   // submitCanopyStyleRequest always stores 'irs_a2a' — that path is unchanged.
-  if(s.includes("provider: 'irs_interactive'") && !s.includes("dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider")) {
-    failures.push("TranscriptPull: createRequest() must translate irs_interactive to 'manual' before DB insert (use dbProvider)")
-  }
   if(s.includes('Save Transcript Request')) failures.push('TranscriptPull: legacy manual request CTA must not be primary')
   if(!s.includes('data-testid="transcript-client-search"')) failures.push('TranscriptPull: ID-based client combobox input missing')
   if(!s.includes('data-testid="transcript-client-dropdown"')) failures.push('TranscriptPull: ID-based client dropdown missing')
   if(s.includes('list="irsportal-clients"')) failures.push('TranscriptPull: broken irsportal-clients datalist reference returned')
+  // Ensure createRequest() does not write 'irs_interactive' to the DB — must use 'manual' for DB storage
+  if(s.includes("provider: 'irs_interactive'") && !s.includes("dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider")) {
+    failures.push("TranscriptPull: createRequest() must translate irs_interactive to 'manual' before DB insert (use dbProvider)")
+  }
 }
 
 if(failures.length){
