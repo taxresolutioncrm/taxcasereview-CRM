@@ -30,6 +30,8 @@ export default function TDSSessionPresence({ onStatusChange }) {
         organizationName: data?.organizationName || null,
         userEmail: data?.userEmail || null,
         authorizationError: data?.authorizationError || null,
+        missingAuthorizationConfig: Array.isArray(data?.missingAuthorizationConfig) ? data.missingAuthorizationConfig : [],
+        missingContractConfig: Array.isArray(data?.missingContractConfig) ? data.missingContractConfig : [],
         apiFlowVerified: Boolean(data?.apiFlowVerified),
       }
       setStatus(next)
@@ -43,6 +45,8 @@ export default function TDSSessionPresence({ onStatusChange }) {
         organizationName: null,
         userEmail: null,
         authorizationError: null,
+        missingAuthorizationConfig: [],
+        missingContractConfig: [],
       })
       setError(e?.message || 'Could not check your IRS TDS session.')
     } finally {
