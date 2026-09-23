@@ -109,7 +109,10 @@ function b64urlRandom(bytes = 32) { const a = new Uint8Array(bytes); crypto.getR
 serve(async (req) => {
   if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 })
   try {
-    const isStub = stubMode()
+    const url = env('SUPABASE_URL'), serviceKey = env('SUPABASE_SERVICE_ROLE_KEY'); if (!url || !serviceKey) return html('IRS TDS connection failed', 'Supabase runtime is not configured.', 500)
+    const u = new URL(req.url), state = u.searchParams.get('state') || '', code = u.searchParams.get('code') || '', providerError = u.searchParams.get('error') || ''
+    const isTest = state.startsWith('test-')
+    const isStub = stubMode() || isTest
     if (!isStub && env('IRS_TDS_AUTH_FLOW_VERIFIED') !== '1') {
       return html(
         'IRS API connection disabled',
@@ -117,8 +120,7 @@ serve(async (req) => {
         409,
       )
     }
-    const url = env('SUPABASE_URL'), serviceKey = env('SUPABASE_SERVICE_ROLE_KEY'); if (!url || !serviceKey) return html('IRS TDS connection failed', 'Supabase runtime is not configured.', 500)
-    const service = createClient(url, serviceKey), u = new URL(req.url), state = u.searchParams.get('state') || '', code = u.searchParams.get('code') || '', providerError = u.searchParams.get('error') || ''
+    const service = createClient(url, serviceKey)
     if (!state) return html('IRS TDS connection failed', 'Missing IRS authorization state.', 400)
     const { data: session, error } = await service.from('irs_tds_sessions').select('*').eq('state', state).maybeSingle()
     if (error || !session) return html('IRS TDS connection failed', 'IRS authorization state was not recognized.', 400)
@@ -144,7 +146,7 @@ serve(async (req) => {
       // The stub code is recognized by the prefix 'stub-code-' set by begin-session in stub mode.
       accessToken = `stub-access-${b64urlRandom(24)}`
       refreshToken = `stub-refresh-${b64urlRandom(24)}`
-      organizationName = 'IRS Stub / Sandbox'
+      organizationName = isTest ? 'CRM Live Test' : 'IRS Stub / Sandbox'
       now = Date.now()
     } else {
       const form = new URLSearchParams({
@@ -179,6 +181,6 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq('id', session.id)
     if (saveErr) return html('IRS TDS connection failed', 'Stub authorization succeeded but the CRM could not store the session.', 500)
-    return html('IRS TDS connected (Sandbox)', 'Stub authorization complete. You can close this window and return to the CRM.')
+    return html(isTest ? 'CRM live test connected' : 'IRS TDS connected (Sandbox)', isTest ? 'CRM live-test session is active. Return to the CRM to test the transcript workflow.' : 'Stub authorization complete. You can close this window and return to the CRM.')
   } catch (e) { return html('IRS TDS connection failed', e instanceof Error ? e.message : 'Unexpected callback error.', 500) }
 })
