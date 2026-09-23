@@ -12,13 +12,13 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const env = (name: string) => (Deno.env.get(name) || '').trim()
 const AUTHORIZE_URL = () => env('IRS_TDS_ISP_AUTHORIZE_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/authorize'
 const TOKEN_URL = () => env('IRS_TDS_ISP_TOKEN_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/token'
-const REDIRECT_URI = () => env('IRS_TDS_REDIRECT_URI') || `${env('SUPABASE_URL')}/functions/v1/transcript-pull-callback`
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
 
 const AUTH_CONFIG_KEYS = [
   'IRS_TDS_CLIENT_ID',
   'IRS_TDS_JWT_KID',
   'IRS_TDS_JWT_PRIVATE_KEY_PEM',
+  'IRS_TDS_REDIRECT_URI',
 ]
 const CONTRACT_CONFIG_KEYS = [
   'IRS_TDS_REQUEST_URL',
@@ -107,7 +107,7 @@ async function authorizationConfigError() {
   try {
     new URL(AUTHORIZE_URL())
     new URL(TOKEN_URL())
-    new URL(REDIRECT_URI())
+    new URL(env('IRS_TDS_REDIRECT_URI'))
     await importPrivateKey()
     return null
   } catch (e) {
@@ -280,7 +280,7 @@ serve(async (req) => {
       const u = new URL(AUTHORIZE_URL())
       u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID'))
       u.searchParams.set('response_type', 'code')
-      u.searchParams.set('redirect_uri', REDIRECT_URI())
+      u.searchParams.set('redirect_uri', env('IRS_TDS_REDIRECT_URI'))
       u.searchParams.set('state', state)
       const scope = env('IRS_TDS_SCOPE')
       if (scope) u.searchParams.set('scope', scope)
@@ -289,7 +289,7 @@ serve(async (req) => {
         const extra = JSON.parse(extraAuthorize)
         for (const [key, value] of Object.entries(extra)) if (value != null && String(value) !== '') u.searchParams.set(key, String(value))
       }
-      return json({ ok: true, authorizationUrl: u.toString(), redirectUri: REDIRECT_URI() })
+      return json({ ok: true, authorizationUrl: u.toString(), redirectUri: env('IRS_TDS_REDIRECT_URI') })
     }
     if (action === 'end-session') { await service.from('irs_tds_sessions').update({ access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, state: null, state_expires_at: null, updated_at: new Date().toISOString() }).eq('tenant_id', employee.tenant_id).eq('user_id', userData.user.id); return json({ ok: true }) }
     if (!apiFlowVerified()) return json({ error: 'Automated IRS API delivery is disabled until the IRS product auth/request contract is verified.', code: 'IRS_API_FLOW_NOT_VERIFIED' }, 409)
