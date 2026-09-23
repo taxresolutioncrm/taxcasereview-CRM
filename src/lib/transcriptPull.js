@@ -38,11 +38,13 @@ async function refreshProviderCapability() {
   try {
     const { data, error } = await supabase.functions.invoke('transcript-pull', { body: { action: 'capabilities' } })
     if (error) throw error
-    DIRECT_PROVIDER.available = Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified)
+    DIRECT_PROVIDER.available = Boolean(data?.testSessionActive || (data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified))
     DIRECT_PROVIDER.sessionActive = Boolean(data?.sessionActive)
-    DIRECT_PROVIDER.chip = !DIRECT_PROVIDER.available
-      ? 'API activation pending'
-      : DIRECT_PROVIDER.sessionActive ? 'IRS API session active' : 'API connection required'
+    DIRECT_PROVIDER.chip = data?.testSessionActive
+      ? 'CRM live-test session active'
+      : !DIRECT_PROVIDER.available
+        ? 'API activation pending'
+        : DIRECT_PROVIDER.sessionActive ? 'IRS API session active' : 'API connection required'
   } catch {
     DIRECT_PROVIDER.available = false
     DIRECT_PROVIDER.sessionActive = false
