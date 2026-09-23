@@ -582,7 +582,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     style={{
                       position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
                       background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8,
-                      boxShadow: '0 4px 16px rgba(0,0,0,.12)', maxHeight: 240, overflowY: 'auto',
+                      boxShadow: '0 4px 16px rgba(0,0,0,.18)', maxHeight: 240, overflowY: 'auto',
                       marginTop: 3,
                     }}
                     data-testid="transcript-client-dropdown"
@@ -613,7 +613,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                   </div>
                 )}
 
-                {/* No results while searching */}
+                {/* No results */}
                 {clientDropOpen && clientSearch.trim() && clientMatches.length === 0 && !form.clientId && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: 'var(--t3)', marginTop: 3 }}>
                     No clients match "{clientSearch}"
@@ -649,8 +649,10 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 </div>
               ))}
             </div>
+
+            {/* Tax years */}
             <div>
-              <label style={{ fontSize: 11, color: 'var(--t3)' }}>Tax Years</label>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--t3)', marginBottom: 5 }}>Tax Years</label>
               <select
                 value=""
                 onChange={e => {
