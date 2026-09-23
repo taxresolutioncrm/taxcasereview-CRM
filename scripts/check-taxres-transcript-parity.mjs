@@ -32,12 +32,12 @@ for(const n of [
 ]) need(lib,n)
 
 for(const n of [
-  "body: { action: 'begin-session' }",
-  'new URL(data.redirectUri).origin',
-  'Connect IRS / ID.me',
-  'sessionSetupConfigured',
+  "const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
+  'Sign in to IRS TDS',
+  'interactiveAvailable: true',
+  'directAvailable',
   'apiFlowVerified',
-  'sessionActive'
+  'apiSessionActive'
 ]) need(session,n)
 
 for(const n of [
@@ -56,7 +56,7 @@ for(const n of [
 
 for(const n of [
   'IRS Transcript Delivery',
-  'Sign in once, choose the client, years and transcript types, then request.',
+  'Use the IRS-hosted TDS sign-in for practitioner access.',
   'Request Transcripts',
   'Returned PDFs attach to the selected client file automatically.',
   'Manual PDF fallback',
@@ -119,17 +119,29 @@ if(fs.existsSync(callback)){
 
 if(fs.existsSync(lib)){
   const s=read(lib)
-  for(const old of ["id: 'irs_interactive'","label: 'IRS TDS — Practitioner Login'","chip: 'Open IRS TDS'"]){
-    if(s.includes(old)) failures.push('transcriptPull: legacy Web TDS provider must not return: '+old)
+  // irs_interactive is the always-available practitioner Web TDS path; it must be present and correct
+  if(!s.includes("id: 'irs_interactive'")) failures.push('transcriptPull: irs_interactive practitioner provider must be defined')
+  if(!s.includes("available: true") || !s.includes("id: 'irs_interactive'")) failures.push('transcriptPull: irs_interactive must always be available')
+  // Prohibit old broken patterns that coupled practitioner login to the automated API
+  for(const old of ["label: 'IRS TDS — Practitioner Login'","chip: 'Open IRS TDS'"]){
+    if(s.includes(old)) failures.push('transcriptPull: legacy Web TDS label must not return: '+old)
   }
+  // submitToProvider must handle irs_interactive without calling the IRS API
+  if(!s.includes("providerId === 'manual' || providerId === 'irs_interactive'")) failures.push('transcriptPull: irs_interactive must short-circuit in submitToProvider without calling the API')
 }
 if(fs.existsSync(session)){
   const s=read(session)
-  if(s.includes('Open IRS TDS')) failures.push('TDSSessionPresence: legacy Web TDS launch must not be primary')
+  if(s.includes("body: { action: 'begin-session' }")) failures.push('TDSSessionPresence: practitioner TDS sign-in must not call the IRS software API session endpoint')
+  if(s.includes('new URL(data.redirectUri).origin')) failures.push('TDSSessionPresence: practitioner TDS sign-in must not pretend to receive an API callback')
 }
 if(fs.existsSync(pullUi)){
   const s=read(pullUi)
-  if(s.includes("provider: 'irs_interactive'")) failures.push('TranscriptPull: legacy interactive provider must not be selectable')
+  // irs_interactive is the UI intent for practitioner Web TDS requests (BLANK default + openNewRequest);
+  // createRequest() must translate it to 'manual' before DB insert so the DB column stays clean.
+  // submitCanopyStyleRequest always stores 'irs_a2a' — that path is unchanged.
+  if(s.includes("provider: 'irs_interactive'") && !s.includes("dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider")) {
+    failures.push("TranscriptPull: createRequest() must translate irs_interactive to 'manual' before DB insert (use dbProvider)")
+  }
   if(s.includes('Save Transcript Request')) failures.push('TranscriptPull: legacy manual request CTA must not be primary')
   if(!s.includes('data-testid="transcript-client-search"')) failures.push('TranscriptPull: ID-based client combobox input missing')
   if(!s.includes('data-testid="transcript-client-dropdown"')) failures.push('TranscriptPull: ID-based client dropdown missing')

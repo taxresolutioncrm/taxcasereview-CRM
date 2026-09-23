@@ -260,7 +260,7 @@ export default function IRSPortal() {
               setTimeout(() => document.getElementById('irs-session-status')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
             }}
           >
-            Connect IRS / ID.me
+            Sign in to IRS TDS
           </button>
           <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer">↗ Submit 2848 / 8821</a>
         </div>

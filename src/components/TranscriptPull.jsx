@@ -12,7 +12,7 @@ const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
-const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
+const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
@@ -211,8 +211,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const directNeedsSignIn = form.provider === 'irs_a2a' && formProvider?.available && !formProvider?.sessionActive
 
   function openNewRequest() {
-    const direct = providers.find(p => p.id === 'irs_a2a' && p.available)
-    setForm({ ...BLANK, provider: direct ? 'irs_a2a' : 'manual' })
+    setForm({ ...BLANK, provider: 'irs_interactive' })
     setClientSearch('')
     setModal(true)
   }
@@ -230,13 +229,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     setSaving(true)
     let saved = false
     try {
+      const dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider
       const row = {
         id: crypto.randomUUID(),
         client_name: client.name,
         client_id: client.id,
         transcript_types: form.types,
         tax_years: form.taxYears.trim() || null,
-        provider: form.provider,
+        provider: dbProvider,
         status: 'Requested',
         poa_record_id: poa.id,
         requested_by: employeeName || null,
@@ -250,7 +250,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       setForm(BLANK)
       setClientSearch('')
       await loadRequests()
-      flash(form.provider === 'irs_a2a' ? '✅ IRS TDS pull submitted. The CRM will retrieve and file delivered transcripts automatically.' : '✅ Manual TDS pull request created. The watched folder will file downloaded transcripts automatically.')
+      flash(form.provider === 'irs_a2a' ? '✅ IRS TDS pull submitted. The CRM will retrieve and file delivered transcripts automatically.' : form.provider === 'irs_interactive' ? '✅ Practitioner TDS request logged. Sign in to IRS TDS above, pull the transcripts, then upload them here.' : '✅ Manual TDS pull request created. The watched folder will file downloaded transcripts automatically.')
     } catch (e) {
       if (saved) {
         setModal(false)
@@ -500,11 +500,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
 
   const workflowSteps = [
-    ['1','Connect IRS','Authenticate securely with IRS / ID.me without leaving the CRM workflow.'],
+    ['1','Sign in to IRS TDS','Open the official IRS Transcript Delivery System and authenticate with IRS / ID.me.'],
     ['2','Select Client','Choose the exact client and verify POA coverage.'],
     ['3','Choose Years & Types','Select tax years and transcript types.'],
-    ['4','Request Transcripts','Pull from IRS and auto-file to client.'],
-    ['5','Review & Analyze','PDFs save to Documents → Transcripts and are analyzed.'],
+    ['4','Request Transcripts','Automated CRM delivery runs only when the separate IRS software API is activated.'],
+    ['5','Review & Analyze','Delivered or uploaded PDFs save to Documents → Transcripts and are analyzed.'],
   ]
 
   return (
@@ -524,11 +524,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           <div>
             <div style={{ fontWeight: 800, fontSize: 17 }}>IRS Transcript Delivery</div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 5, lineHeight: 1.45 }}>
-              Sign in once, choose the client, years and transcript types, then request. Returned IRS PDFs are filed to that client automatically and analyzed in the CRM.
+              Use the IRS-hosted TDS sign-in for practitioner access. Automated CRM transcript delivery is a separate IRS software API capability and only runs when that integration is activated.
             </div>
           </div>
-          <span style={{ background: direct?.sessionActive ? '#15803d' : '#64748b', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
-            {direct?.sessionActive ? 'IRS session active' : 'IRS sign-in required'}
+          <span style={{ background: direct?.available && direct?.sessionActive ? '#15803d' : '#64748b', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
+            {direct?.available && direct?.sessionActive ? 'Automated IRS API active' : 'Automated IRS API not active'}
           </span>
         </div>
 
@@ -536,7 +536,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           <div id="irs-session-status" style={{ scrollMarginTop: 20 }}>
             <TDSSessionPresence onStatusChange={(st) => {
               setProviders(current => current.map(p => p.id === 'irs_a2a'
-                ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'Connection required' : st.sessionActive ? 'IRS signed in' : 'Sign in required' }
+                ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'API activation required' : st.sessionActive ? 'IRS API session active' : 'API authorization required' }
                 : p))
             }} />
           </div>
@@ -713,9 +713,16 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
               {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
             </div>
-            <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 230, minHeight: 42, fontWeight: 800 }}>
-              {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
+              <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 230, minHeight: 42, fontWeight: 800 }}>
+                {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
+              </button>
+              {!direct?.available && (
+                <span style={{ color: '#f59e0b', fontSize: 10.5, maxWidth: 340, textAlign: 'right' }}>
+                  Automated request is unavailable until the separate IRS software API integration is activated. Practitioner TDS sign-in above remains available.
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
