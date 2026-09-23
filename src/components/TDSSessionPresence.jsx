@@ -160,6 +160,8 @@ export default function TDSSessionPresence({ onStatusChange }) {
     } catch (e) {
       setSigningIn(false)
       if (e?.code === 'IRS_API_FLOW_NOT_VERIFIED') {
+        // The IRS OAuth flow is real but credentials are not yet configured/verified.
+        // Surface the specific blocker rather than a generic error.
         setApiError(
           'IRS API credentials are not yet configured in this environment. ' +
           'The authorization flow is implemented and ready; it requires the IRS e-Services ' +
