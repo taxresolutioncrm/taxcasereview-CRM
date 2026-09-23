@@ -26,10 +26,15 @@ const CONTRACT_CONFIG_KEYS = [
   'IRS_TDS_STATUS_URL_TEMPLATE',
 ]
 
+// IRS_TDS_STUB_MODE=1 — sandbox-only end-to-end test mode.
+// Bypasses real IRS API calls so the complete CRM flow can be verified without
+// live IRS credentials. NEVER set this in production.
+const stubMode = () => env('IRS_TDS_STUB_MODE') === '1'
+
 const missingEnv = (keys: string[]) => keys.filter(k => !env(k))
-const authorizationConfigured = () => missingEnv(AUTH_CONFIG_KEYS).length === 0
-const transcriptContractConfigured = () => missingEnv(CONTRACT_CONFIG_KEYS).length === 0
-const apiFlowVerified = () => env('IRS_TDS_AUTH_FLOW_VERIFIED') === '1'
+const authorizationConfigured = () => stubMode() || missingEnv(AUTH_CONFIG_KEYS).length === 0
+const transcriptContractConfigured = () => stubMode() || missingEnv(CONTRACT_CONFIG_KEYS).length === 0
+const apiFlowVerified = () => stubMode() || env('IRS_TDS_AUTH_FLOW_VERIFIED') === '1'
 
 function getPath(obj: any, path: string) { if (!path) return undefined; return path.split('.').reduce((v, k) => v == null ? undefined : v[k], obj) }
 function renderValue(value: any, ctx: Record<string, any>): any {
