@@ -282,6 +282,17 @@ serve(async (req) => {
       const authError = await authorizationConfigError()
       if (authError) return json({ error: authError, code: 'IRS_API_NOT_CONFIGURED' }, 409)
       const state = randomToken(32), { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' }); if (error) throw new Error(error.message)
+
+      if (stubMode()) {
+        // Stub mode: point the authorization URL directly at the callback with a synthetic code.
+        // The callback will recognize IRS_TDS_STUB_MODE=1 and skip real token exchange.
+        const redirectUri = env('IRS_TDS_REDIRECT_URI') || `${env('SUPABASE_URL')}/functions/v1/transcript-pull-callback`
+        const callbackUrl = new URL(redirectUri)
+        callbackUrl.searchParams.set('code', `stub-code-${randomToken(8)}`)
+        callbackUrl.searchParams.set('state', state)
+        return json({ ok: true, authorizationUrl: callbackUrl.toString(), redirectUri, stub: true })
+      }
+
       const u = new URL(AUTHORIZE_URL())
       u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID'))
       u.searchParams.set('response_type', 'code')
