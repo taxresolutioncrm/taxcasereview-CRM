@@ -3,7 +3,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const env = (name: string) => (Deno.env.get(name) || '').trim()
 const TOKEN_URL = () => env('IRS_TDS_ISP_TOKEN_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/token'
-const REDIRECT_URI = () => env('IRS_TDS_REDIRECT_URI') || `${env('SUPABASE_URL')}/functions/v1/transcript-pull-callback`
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
 const CRM_ORIGIN = () => env('IRS_TDS_CRM_ORIGIN') || 'https://taxrescrm.app'
 
@@ -136,7 +135,7 @@ serve(async (req) => {
     const form = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
-      redirect_uri: REDIRECT_URI(),
+      redirect_uri: env('IRS_TDS_REDIRECT_URI'),
       client_id: env('IRS_TDS_CLIENT_ID'),
       client_assertion_type: ASSERTION_TYPE,
       client_assertion: await createClientAssertion(),
