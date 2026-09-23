@@ -103,24 +103,18 @@ function html(title: string, message: string, status = 200) {
   )
 }
 
-const stubMode = () => env('IRS_TDS_STUB_MODE') === '1'
-function b64urlRandom(bytes = 32) { const a = new Uint8Array(bytes); crypto.getRandomValues(a); return b64url(a) }
-
 serve(async (req) => {
   if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 })
   try {
-    const url = env('SUPABASE_URL'), serviceKey = env('SUPABASE_SERVICE_ROLE_KEY'); if (!url || !serviceKey) return html('IRS TDS connection failed', 'Supabase runtime is not configured.', 500)
-    const u = new URL(req.url), state = u.searchParams.get('state') || '', code = u.searchParams.get('code') || '', providerError = u.searchParams.get('error') || ''
-    const isTest = state.startsWith('test-')
-    const isStub = stubMode() || isTest
-    if (!isStub && env('IRS_TDS_AUTH_FLOW_VERIFIED') !== '1') {
+    if (env('IRS_TDS_AUTH_FLOW_VERIFIED') !== '1') {
       return html(
         'IRS API connection disabled',
         'Automated IRS API authorization is disabled until the exact IRS e-Services product auth flow is verified and approved.',
         409,
       )
     }
-    const service = createClient(url, serviceKey)
+    const url = env('SUPABASE_URL'), serviceKey = env('SUPABASE_SERVICE_ROLE_KEY'); if (!url || !serviceKey) return html('IRS TDS connection failed', 'Supabase runtime is not configured.', 500)
+    const service = createClient(url, serviceKey), u = new URL(req.url), state = u.searchParams.get('state') || '', code = u.searchParams.get('code') || '', providerError = u.searchParams.get('error') || ''
     if (!state) return html('IRS TDS connection failed', 'Missing IRS authorization state.', 400)
     const { data: session, error } = await service.from('irs_tds_sessions').select('*').eq('state', state).maybeSingle()
     if (error || !session) return html('IRS TDS connection failed', 'IRS authorization state was not recognized.', 400)
@@ -138,49 +132,22 @@ serve(async (req) => {
 
     if (providerError) return html('IRS TDS connection denied', providerError, 400)
     if (!code) return html('IRS TDS connection failed', 'IRS authorization did not return a code.', 400)
-
-    let accessToken: string, refreshToken: string, organizationName: string | null, now: number
-
-    if (isStub) {
-      // Stub mode: skip real token exchange; write synthetic but valid-structured tokens.
-      // The stub code is recognized by the prefix 'stub-code-' set by begin-session in stub mode.
-      accessToken = `stub-access-${b64urlRandom(24)}`
-      refreshToken = `stub-refresh-${b64urlRandom(24)}`
-      organizationName = isTest ? 'CRM Live Test' : 'IRS Stub / Sandbox'
-      now = Date.now()
-    } else {
-      const form = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: env('IRS_TDS_REDIRECT_URI'),
-        client_id: env('IRS_TDS_CLIENT_ID'),
-        client_assertion_type: ASSERTION_TYPE,
-        client_assertion: await createClientAssertion(),
-      })
-      const tokenResp = await fetch(TOKEN_URL(), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form }), text = await tokenResp.text()
-      let tokenData: any = {}; try { tokenData = text ? JSON.parse(text) : {} } catch { return html('IRS TDS connection failed', `IRS token exchange returned an unexpected response (${tokenResp.status}).`, 502) }
-      if (!tokenResp.ok) return html('IRS TDS connection failed', `IRS token exchange failed (${tokenResp.status}).`, 502)
-      accessToken = String(tokenData?.access_token || '').trim()
-      refreshToken = String(tokenData?.refresh_token || '').trim()
-      if (!accessToken || !refreshToken) return html('IRS TDS connection failed', 'IRS token response did not include both access and refresh tokens.', 502)
-      const seconds = Math.max(60, Math.min(Number(tokenData?.expires_in || 900) || 900, 900))
-      organizationName = resolveOrganizationName(tokenData, accessToken)
-      now = Date.now()
-      const { error: saveErr } = await service.from('irs_tds_sessions').update({ access_token_ciphertext: await encryptText(accessToken), refresh_token_ciphertext: await encryptText(refreshToken), access_expires_at: new Date(now + seconds * 1000).toISOString(), session_expires_at: new Date(now + 60 * 60 * 1000).toISOString(), organization_name: organizationName, updated_at: new Date().toISOString() }).eq('id', session.id)
-      if (saveErr) return html('IRS TDS connection failed', 'Authorization succeeded but the CRM could not store the short-lived session.', 500)
-      return html('IRS TDS connected', 'You can close this window and return to the CRM.')
-    }
-
-    // Stub path: write synthetic session tokens.
-    const { error: saveErr } = await service.from('irs_tds_sessions').update({
-      access_token_ciphertext: await encryptText(accessToken),
-      refresh_token_ciphertext: await encryptText(refreshToken),
-      access_expires_at: new Date(now + 900 * 1000).toISOString(),
-      session_expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
-      organization_name: organizationName,
-      updated_at: new Date().toISOString(),
-    }).eq('id', session.id)
-    if (saveErr) return html('IRS TDS connection failed', 'Stub authorization succeeded but the CRM could not store the session.', 500)
-    return html(isTest ? 'CRM live test connected' : 'IRS TDS connected (Sandbox)', isTest ? 'CRM live-test session is active. Return to the CRM to test the transcript workflow.' : 'Stub authorization complete. You can close this window and return to the CRM.')
+    const form = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: env('IRS_TDS_REDIRECT_URI'),
+      client_id: env('IRS_TDS_CLIENT_ID'),
+      client_assertion_type: ASSERTION_TYPE,
+      client_assertion: await createClientAssertion(),
+    })
+    const tokenResp = await fetch(TOKEN_URL(), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form }), text = await tokenResp.text()
+    let tokenData: any = {}; try { tokenData = text ? JSON.parse(text) : {} } catch { return html('IRS TDS connection failed', `IRS token exchange returned an unexpected response (${tokenResp.status}).`, 502) }
+    if (!tokenResp.ok) return html('IRS TDS connection failed', `IRS token exchange failed (${tokenResp.status}).`, 502)
+    const accessToken = String(tokenData?.access_token || '').trim(), refreshToken = String(tokenData?.refresh_token || '').trim(); if (!accessToken || !refreshToken) return html('IRS TDS connection failed', 'IRS token response did not include both access and refresh tokens.', 502)
+    const seconds = Math.max(60, Math.min(Number(tokenData?.expires_in || 900) || 900, 900)), now = Date.now()
+    const organizationName = resolveOrganizationName(tokenData, accessToken)
+    const { error: saveErr } = await service.from('irs_tds_sessions').update({ access_token_ciphertext: await encryptText(accessToken), refresh_token_ciphertext: await encryptText(refreshToken), access_expires_at: new Date(now + seconds * 1000).toISOString(), session_expires_at: new Date(now + 60 * 60 * 1000).toISOString(), organization_name: organizationName, updated_at: new Date().toISOString() }).eq('id', session.id)
+    if (saveErr) return html('IRS TDS connection failed', 'Authorization succeeded but the CRM could not store the short-lived session.', 500)
+    return html('IRS TDS connected', 'You can close this window and return to the CRM.')
   } catch (e) { return html('IRS TDS connection failed', e instanceof Error ? e.message : 'Unexpected callback error.', 500) }
 })
