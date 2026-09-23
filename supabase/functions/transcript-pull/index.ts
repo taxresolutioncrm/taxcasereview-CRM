@@ -351,37 +351,63 @@ serve(async (req) => {
     }
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
-      if ((stubMode() || isTestSession) && pull.provider_request_id?.startsWith('stub-txn-') && pull.provider_status !== 'Delivered') {
-        // Stub mode: synthesize a minimal, parseable PDF and mark the request as Delivered.
-        // The PDF is a valid 1-page stub so the transcript parser can exercise its code path.
-        const stubPdfText =
-          `ACCOUNT TRANSCRIPT\r\nSSN/EIN: ${ctx.tin}\r\nTAX PERIOD: ${ctx.taxYears[0] || '2023'}\r\n` +
-          `RETURN TYPE: ${ctx.transcriptTypes[0] || 'Account Transcript'}\r\nACCOUNT BALANCE: 0.00\r\nACCRUED PENALTY: 0.00\r\nACCRUED INTEREST: 0.00\r\nCRM LIVE TEST - SYNTHETIC TRANSCRIPT\r\n`
-        const lines = stubPdfText.split(/\\r?\\n/).filter(Boolean)
-        const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\\(/g, '\\(').replace(/\\)/g, '\\)')
-        const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) => i === 0 ? [`(${esc(line)}) Tj`] : ['0 -16 Td', `(${esc(line)}) Tj`]), 'ET'].join('\\n')
-        const objects = [
-          '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\\n',
-          '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\\n',
-          '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\\n',
-          `4 0 obj<</Length ${new TextEncoder().encode(stream).length}>>stream\\n${stream}\\nendstream\\nendobj\\n`,
-          '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\\n',
-        ]
-        let pdfContent = '%PDF-1.4\\n'
-        const offsets = [0]
-        for (const obj of objects) { offsets.push(new TextEncoder().encode(pdfContent).length); pdfContent += obj }
-        const xrefOffset = new TextEncoder().encode(pdfContent).length
-        pdfContent += 'xref\\n0 6\\n0000000000 65535 f \\n'
-        for (let i = 1; i <= 5; i++) pdfContent += String(offsets[i]).padStart(10, '0') + ' 00000 n \\n'
-        pdfContent += `trailer<</Size 6/Root 1 0 R>>\\nstartxref\\n${xrefOffset}\\n%%EOF\\n`
-        const pdfBytes = new TextEncoder().encode(pdfContent)
-        const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
-        if (stored.added && stored.filePath) {
-          const { error: updateErr } = await userDb.from('transcript_pull_requests').update({ provider_status: 'Delivered', provider_error: null, provider_last_checked_at: new Date().toISOString(), provider_file_path: stored.filePath, provider_result_keys: stored.resultKeys, provider_file_paths: stored.filePaths }).eq('id', requestId)
-          if (updateErr) throw new Error(updateErr.message)
-          const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(stored.filePath, 900)
-          if (signErr || !signed?.signedUrl) throw new Error('Could not create secure stub transcript link.')
-          return json({ ok: true, status: 'Delivered', resultKey: stored.resultKey, filePath: stored.filePath, signedUrl: signed.signedUrl, deliveredCount: stored.resultKeys.length, stub: true })
+      if ((stubMode() || isTestSession) && pull.provider_request_id?.startsWith('stub-txn-')) {
+        // Deliver one synthetic transcript per requested year/type combination so the
+        // real frontend polling, auto-file and coverage-completion logic is exercised.
+        const years = ctx.taxYears.length ? ctx.taxYears : [String(new Date().getFullYear())]
+        const types = ctx.transcriptTypes.length ? ctx.transcriptTypes : ['Account Transcript']
+        const combinations = years.flatMap((year: string) => types.map((type: string) => ({ year, type })))
+        const filedCount = (pull.provider_filed_keys || []).length
+        const combo = combinations[filedCount]
+        if (combo) {
+          const stubTitle = String(combo.type || 'Account Transcript').toUpperCase()
+          const stubPdfText =
+            `${stubTitle}\r\nSSN/EIN: ${ctx.tin}\r\nTAX PERIOD: ${combo.year}\r\n` +
+            `RETURN TYPE: ${combo.type}\r\nACCOUNT BALANCE: 0.00\r\nACCRUED PENALTY: 0.00\r\n` +
+            `ACCRUED INTEREST: 0.00\r\nCRM LIVE TEST - SYNTHETIC TRANSCRIPT\r\n`
+          const lines = stubPdfText.split(/\\r?\\n/).filter(Boolean)
+          const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\\(/g, '\\(').replace(/\\)/g, '\\)')
+          const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) => i === 0 ? [`(${esc(line)}) Tj`] : ['0 -16 Td', `(${esc(line)}) Tj`]), 'ET'].join('\\n')
+          const objects = [
+            '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\\n',
+            '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\\n',
+            '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\\n',
+            `4 0 obj<</Length ${new TextEncoder().encode(stream).length}>>stream\\n${stream}\\nendstream\\nendobj\\n`,
+            '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\\n',
+          ]
+          let pdfContent = '%PDF-1.4\\n'
+          const offsets = [0]
+          for (const obj of objects) { offsets.push(new TextEncoder().encode(pdfContent).length); pdfContent += obj }
+          const xrefOffset = new TextEncoder().encode(pdfContent).length
+          pdfContent += 'xref\\n0 6\\n0000000000 65535 f \\n'
+          for (let i = 1; i <= 5; i++) pdfContent += String(offsets[i]).padStart(10, '0') + ' 00000 n \\n'
+          pdfContent += `trailer<</Size 6/Root 1 0 R>>\\nstartxref\\n${xrefOffset}\\n%%EOF\\n`
+          const pdfBytes = new TextEncoder().encode(pdfContent)
+          const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
+          if (stored.filePath) {
+            const { error: updateErr } = await userDb.from('transcript_pull_requests').update({
+              provider_status: 'Delivered',
+              provider_error: null,
+              provider_last_checked_at: new Date().toISOString(),
+              provider_file_path: stored.filePath,
+              provider_result_keys: stored.resultKeys,
+              provider_file_paths: stored.filePaths
+            }).eq('id', requestId)
+            if (updateErr) throw new Error(updateErr.message)
+            const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(stored.filePath, 900)
+            if (signErr || !signed?.signedUrl) throw new Error('Could not create secure test transcript link.')
+            return json({
+              ok: true,
+              status: 'Delivered',
+              resultKey: stored.resultKey,
+              filePath: stored.filePath,
+              signedUrl: signed.signedUrl,
+              deliveredCount: stored.resultKeys.length,
+              remainingCount: Math.max(0, combinations.length - filedCount - 1),
+              stub: true,
+              testMode: isTestSession
+            })
+          }
         }
       }
       const resultKeys: string[] = pull.provider_result_keys || [], filePaths: string[] = pull.provider_file_paths || [], filedKeys: string[] = pull.provider_filed_keys || [], pendingIndex = resultKeys.findIndex((k: string) => !filedKeys.includes(k))
