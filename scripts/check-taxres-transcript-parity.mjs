@@ -136,7 +136,12 @@ if(fs.existsSync(session)){
 }
 if(fs.existsSync(pullUi)){
   const s=read(pullUi)
-  if(s.includes("provider: 'irs_interactive'")) failures.push('TranscriptPull: legacy interactive provider must not be selectable')
+  // irs_interactive is the UI intent for practitioner Web TDS requests (BLANK default + openNewRequest);
+  // createRequest() must translate it to 'manual' before DB insert so the DB column stays clean.
+  // submitCanopyStyleRequest always stores 'irs_a2a' — that path is unchanged.
+  if(s.includes("provider: 'irs_interactive'") && !s.includes("dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider")) {
+    failures.push("TranscriptPull: createRequest() must translate irs_interactive to 'manual' before DB insert (use dbProvider)")
+  }
   if(s.includes('Save Transcript Request')) failures.push('TranscriptPull: legacy manual request CTA must not be primary')
   if(!s.includes('data-testid="transcript-client-search"')) failures.push('TranscriptPull: ID-based client combobox input missing')
   if(!s.includes('data-testid="transcript-client-dropdown"')) failures.push('TranscriptPull: ID-based client dropdown missing')
