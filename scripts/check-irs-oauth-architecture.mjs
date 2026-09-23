@@ -10,7 +10,7 @@
  * workflow as primary, hardcoded Nashville tenant data) are present.
  *
  * Acceptance test (live credentials required for full E2E):
- *   IRS_TDS_STUB_MODE=1 enables sandbox E2E without real IRS enrollment.
+ *   No synthetic/stub IRS session or transcript path may exist in production code.
  */
 
 import fs from 'node:fs'
@@ -42,7 +42,8 @@ const config   = 'supabase/config.toml'
 
 console.log('Checking Step 1: Sign In to IRS…')
 need(session, "'begin-session'", 'begin-session route in TDSSessionPresence')
-need(session, "'begin-test-session'", 'admin live-test route in TDSSessionPresence')
+forbid(session, 'begin-test-session', 'synthetic CRM live-test route in TDSSessionPresence')
+forbid(session, 'Run CRM Live Test', 'synthetic CRM live-test button')
 need(session, 'authorizationUrl', 'authorizationUrl used from begin-session response')
 need(session, 'window.open(', 'popup opened with authorizationUrl')
 forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public IRS TDS URL hardcoded as primary flow')
@@ -123,15 +124,16 @@ need(parser, 'accrued_penalty', 'penalty accrual calculation present')
 need(parser, 'csed_estimate', 'CSED estimate calculation present')
 need(lib, 'requestCoverageSatisfied', 'coverage check for transcript analysis present')
 
-console.log('Checking Stub Mode (sandbox E2E)…')
-need(pull, 'IRS_TDS_STUB_MODE', 'IRS_TDS_STUB_MODE env var checked in transcript-pull')
-need(pull, 'stubMode()', 'stubMode() helper used in transcript-pull')
-need(pull, 'stub: true', 'stub flag returned in responses when stub mode active')
-need(pull, 'stub-txn-', 'synthetic transaction ID generated in stub mode')
-need(callback, 'IRS_TDS_STUB_MODE', 'IRS_TDS_STUB_MODE env var checked in callback')
-need(callback, 'isStub', 'isStub flag used in callback to bypass real token exchange')
-need(callback, 'stub-access-', 'synthetic access token generated in stub mode')
-need(pull, 'stub-code-', 'stub code generated in begin-session for direct callback redirect')
+console.log('Checking no synthetic IRS session/transcript path…')
+forbid(pull, 'IRS_TDS_STUB_MODE', 'synthetic stub mode in transcript-pull')
+forbid(pull, 'begin-test-session', 'synthetic live-test session action in transcript-pull')
+forbid(pull, 'stub-txn-', 'synthetic transaction ID in transcript-pull')
+forbid(pull, 'stub-code-', 'synthetic authorization code in transcript-pull')
+forbid(pull, 'SYNTHETIC TRANSCRIPT', 'synthetic transcript PDF in transcript-pull')
+forbid(callback, 'IRS_TDS_STUB_MODE', 'synthetic stub mode in callback')
+forbid(callback, 'test-', 'synthetic live-test state in callback')
+forbid(callback, 'isStub', 'callback bypass of real token exchange')
+forbid(callback, 'stub-access-', 'synthetic access token in callback')
 
 console.log('Checking Tenant Isolation…')
 need(pull, 'tenant_id', 'tenant_id enforced in transcript-pull')
@@ -174,12 +176,7 @@ if (failures.length) {
 console.log('\n✅ IRS OAuth architecture check passed.')
 console.log('\nCurrent status:')
 console.log('  CODE COMPLETE: All OAuth flow code paths are present (begin-session, callback, session persistence,')
-console.log('    submit, status polling, auto-filing, transcript analysis, stub mode, tenant isolation).')
-console.log('')
-console.log('  SANDBOX E2E: Set IRS_TDS_STUB_MODE=1 in Supabase secrets to run the complete flow')
-console.log('    without live IRS credentials. The stub bypasses real IRS API calls while exercising')
-console.log('    every code path: OAuth popup → postMessage → session active → submit → status → PDF delivery')
-console.log('    → auto-filing → transcript analysis.')
+console.log('    submit, status polling, auto-filing, transcript analysis, tenant isolation). No synthetic path.')
 console.log('')
 console.log('  LIVE IRS BLOCKED: The real IRS e-Services API requires the following from the IRS:')
 console.log('    IRS_TDS_CLIENT_ID          — OAuth Client ID from an approved IRS e-Services API application')
