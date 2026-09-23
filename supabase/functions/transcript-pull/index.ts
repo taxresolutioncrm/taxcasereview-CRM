@@ -131,7 +131,7 @@ async function resolveEmployee(userDb: any, user: any) {
   const { data: tenantId, error: tenantErr } = await userDb.rpc('current_tenant_id')
   if (tenantErr || !tenantId) throw new Error('No active TaxRes office context is available for this IRS session.')
   const { data, error } = await userDb.from('employees')
-    .select('tenant_id,perm_irs,email,caf,caf_number,role')
+    .select('tenant_id,perm_irs,email,caf,caf_number,role,access')
     .eq('tenant_id', tenantId)
     .ilike('email', email)
     .limit(2)
@@ -242,6 +242,35 @@ async function persistTranscriptPdf(service: any, pull: any, pdfBytes: Uint8Arra
   return { resultKeys: [...resultKeys, resultKey], filePaths: [...filePaths, filePath], added: true, resultKey, filePath }
 }
 
+// CRM Live Test only: one-page synthetic transcript PDF (real line breaks + valid xref) so the
+// frontend pdf.js extraction, parser, auto-file and coverage logic run exactly as for IRS PDFs.
+// Exported so scripts/check-tds-edge-runtime.mjs can verify it parses before every build.
+export function buildLiveTestTranscriptPdf(tin: string, year: string, type: string): Uint8Array {
+  const stubTitle = String(type || 'Account Transcript').toUpperCase()
+  const stubPdfText =
+    `${stubTitle}\r\nSSN/EIN: ${tin}\r\nTAX PERIOD: ${year}\r\n` +
+    `RETURN TYPE: ${type}\r\nACCOUNT BALANCE: 0.00\r\nACCRUED PENALTY: 0.00\r\n` +
+    `ACCRUED INTEREST: 0.00\r\nCRM LIVE TEST - SYNTHETIC TRANSCRIPT\r\n`
+  const lines = stubPdfText.split(/\r?\n/).filter(Boolean)
+  const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+  const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) => i === 0 ? [`(${esc(line)}) Tj`] : ['0 -16 Td', `(${esc(line)}) Tj`]), 'ET'].join('\n')
+  const objects = [
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
+    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
+    `4 0 obj<</Length ${new TextEncoder().encode(stream).length}>>stream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
+  ]
+  let pdfContent = '%PDF-1.4\n'
+  const offsets = [0]
+  for (const obj of objects) { offsets.push(new TextEncoder().encode(pdfContent).length); pdfContent += obj }
+  const xrefOffset = new TextEncoder().encode(pdfContent).length
+  pdfContent += 'xref\n0 6\n0000000000 65535 f \n'
+  for (let i = 1; i <= 5; i++) pdfContent += String(offsets[i]).padStart(10, '0') + ' 00000 n \n'
+  pdfContent += `trailer<</Size 6/Root 1 0 R>>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  return new TextEncoder().encode(pdfContent)
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS }); if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   try {
@@ -250,7 +279,8 @@ serve(async (req) => {
     const userDb = createClient(url, anon, { global: { headers: { Authorization: auth } } }), service = createClient(url, serviceKey)
     const { data: userData, error: userErr } = await userDb.auth.getUser(); if (userErr || !userData?.user) return json({ error: 'Authentication required' }, 401)
     const employee = await resolveEmployee(userDb, userData.user), body = await req.json().catch(() => ({})), action = String(body?.action || 'capabilities'), session = await getSession(service, employee.tenant_id, userData.user.id)
-    const testRole = String(employee?.role || '').toLowerCase()
+    // CRM permission level lives in employees.access (role is the job title) — same precedence as the DB helpers: coalesce(access, role).
+    const testRole = String(employee?.access || employee?.role || '').trim().toLowerCase()
     const testAccess = (testRole === 'admin' || testRole === 'super admin') && Number(employee?.perm_irs || 0) >= 2
     const testSessionActive = Boolean(sessionWindowActive(session) && session?.organization_name === 'CRM Live Test')
     if (action === 'capabilities') {
@@ -360,29 +390,7 @@ serve(async (req) => {
         const filedCount = (pull.provider_filed_keys || []).length
         const combo = combinations[filedCount]
         if (combo) {
-          const stubTitle = String(combo.type || 'Account Transcript').toUpperCase()
-          const stubPdfText =
-            `${stubTitle}\r\nSSN/EIN: ${ctx.tin}\r\nTAX PERIOD: ${combo.year}\r\n` +
-            `RETURN TYPE: ${combo.type}\r\nACCOUNT BALANCE: 0.00\r\nACCRUED PENALTY: 0.00\r\n` +
-            `ACCRUED INTEREST: 0.00\r\nCRM LIVE TEST - SYNTHETIC TRANSCRIPT\r\n`
-          const lines = stubPdfText.split(/\\r?\\n/).filter(Boolean)
-          const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
-          const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) => i === 0 ? [`(${esc(line)}) Tj`] : ['0 -16 Td', `(${esc(line)}) Tj`]), 'ET'].join('\\n')
-          const objects = [
-            '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\\n',
-            '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\\n',
-            '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\\n',
-            `4 0 obj<</Length ${new TextEncoder().encode(stream).length}>>stream\\n${stream}\\nendstream\\nendobj\\n`,
-            '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\\n',
-          ]
-          let pdfContent = '%PDF-1.4\\n'
-          const offsets = [0]
-          for (const obj of objects) { offsets.push(new TextEncoder().encode(pdfContent).length); pdfContent += obj }
-          const xrefOffset = new TextEncoder().encode(pdfContent).length
-          pdfContent += 'xref\\n0 6\\n0000000000 65535 f \\n'
-          for (let i = 1; i <= 5; i++) pdfContent += String(offsets[i]).padStart(10, '0') + ' 00000 n \\n'
-          pdfContent += `trailer<</Size 6/Root 1 0 R>>\\nstartxref\\n${xrefOffset}\\n%%EOF\\n`
-          const pdfBytes = new TextEncoder().encode(pdfContent)
+          const pdfBytes = buildLiveTestTranscriptPdf(ctx.tin, combo.year, combo.type)
           const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
           if (stored.filePath) {
             const { error: updateErr } = await userDb.from('transcript_pull_requests').update({
