@@ -250,7 +250,8 @@ serve(async (req) => {
     const userDb = createClient(url, anon, { global: { headers: { Authorization: auth } } }), service = createClient(url, serviceKey)
     const { data: userData, error: userErr } = await userDb.auth.getUser(); if (userErr || !userData?.user) return json({ error: 'Authentication required' }, 401)
     const employee = await resolveEmployee(userDb, userData.user), body = await req.json().catch(() => ({})), action = String(body?.action || 'capabilities'), session = await getSession(service, employee.tenant_id, userData.user.id)
-    const testAccess = String(employee?.role || '').toLowerCase() === 'admin' && Number(employee?.perm_irs || 0) >= 2
+    const testRole = String(employee?.role || '').toLowerCase()
+    const testAccess = (testRole === 'admin' || testRole === 'super admin') && Number(employee?.perm_irs || 0) >= 2
     const testSessionActive = Boolean(sessionWindowActive(session) && session?.organization_name === 'CRM Live Test')
     if (action === 'capabilities') {
       const authError = await authorizationConfigError()
