@@ -351,25 +351,29 @@ serve(async (req) => {
     }
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
-      if (stubMode() && pull.provider_request_id?.startsWith('stub-txn-') && pull.provider_status !== 'Delivered') {
+      if ((stubMode() || isTestSession) && pull.provider_request_id?.startsWith('stub-txn-') && pull.provider_status !== 'Delivered') {
         // Stub mode: synthesize a minimal, parseable PDF and mark the request as Delivered.
         // The PDF is a valid 1-page stub so the transcript parser can exercise its code path.
         const stubPdfText =
           `ACCOUNT TRANSCRIPT\r\nSSN/EIN: ${ctx.tin}\r\nTAX PERIOD: ${ctx.taxYears[0] || '2023'}\r\n` +
-          `RETURN TYPE: ${ctx.transcriptTypes[0] || '1040'}\r\nSTUB MODE - SANDBOX ONLY\r\n`
-        const enc = new TextEncoder()
-        const bodyBytes = enc.encode(stubPdfText)
-        // Minimal valid PDF 1.4 structure — enough for the parser to detect it and extract text.
-        const pdfContent = [
-          '%PDF-1.4\n',
-          '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
-          '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
-          '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
-          `4 0 obj<</Length ${bodyBytes.length + 50}>>stream\nBT /F1 10 Tf 72 720 Td (${stubPdfText.substring(0, 40)}) Tj ET\nendstream\nendobj\n`,
-          '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
-          'xref\n0 6\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\n0000000266 00000 n\n0000000400 00000 n\n',
-          'trailer<</Size 6/Root 1 0 R>>\nstartxref\n460\n%%EOF\n',
-        ].join('')
+          `RETURN TYPE: ${ctx.transcriptTypes[0] || 'Account Transcript'}\r\nACCOUNT BALANCE: 0.00\r\nACCRUED PENALTY: 0.00\r\nACCRUED INTEREST: 0.00\r\nCRM LIVE TEST - SYNTHETIC TRANSCRIPT\r\n`
+        const lines = stubPdfText.split(/\\r?\\n/).filter(Boolean)
+        const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\\(/g, '\\(').replace(/\\)/g, '\\)')
+        const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) => i === 0 ? [`(${esc(line)}) Tj`] : ['0 -16 Td', `(${esc(line)}) Tj`]), 'ET'].join('\\n')
+        const objects = [
+          '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\\n',
+          '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\\n',
+          '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\\n',
+          `4 0 obj<</Length ${new TextEncoder().encode(stream).length}>>stream\\n${stream}\\nendstream\\nendobj\\n`,
+          '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\\n',
+        ]
+        let pdfContent = '%PDF-1.4\\n'
+        const offsets = [0]
+        for (const obj of objects) { offsets.push(new TextEncoder().encode(pdfContent).length); pdfContent += obj }
+        const xrefOffset = new TextEncoder().encode(pdfContent).length
+        pdfContent += 'xref\\n0 6\\n0000000000 65535 f \\n'
+        for (let i = 1; i <= 5; i++) pdfContent += String(offsets[i]).padStart(10, '0') + ' 00000 n \\n'
+        pdfContent += `trailer<</Size 6/Root 1 0 R>>\\nstartxref\\n${xrefOffset}\\n%%EOF\\n`
         const pdfBytes = new TextEncoder().encode(pdfContent)
         const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
         if (stored.added && stored.filePath) {
