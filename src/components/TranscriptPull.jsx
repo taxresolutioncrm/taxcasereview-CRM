@@ -499,52 +499,59 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     }
   }
 
-  const workflowSteps = [
-    ['1','Sign in to IRS TDS','Open the official IRS Transcript Delivery System and authenticate with IRS / ID.me.'],
-    ['2','Select Client','Choose the exact client and verify POA coverage.'],
-    ['3','Choose Years & Types','Select tax years and transcript types.'],
-    ['4','Request Transcripts','Automated CRM delivery runs only when the separate IRS software API is activated.'],
-    ['5','Review & Analyze','Delivered or uploaded PDFs save to Documents → Transcripts and are analyzed.'],
-  ]
+  // Derive the single most-actionable reason the CTA is unavailable (used below CTA only)
+  const ctaBlockReason = (() => {
+    if (!direct?.available) return 'IRS API integration not yet activated — IRS e-Services enrollment required.'
+    if (!direct?.sessionActive) return 'Sign in to IRS above to start an authorized session.'
+    if (!formClient) return 'Select a client.'
+    if (!formPoa) return 'POA must be On File before requesting transcripts.'
+    if (selectedYears.size === 0) return 'Select at least one tax year.'
+    if (!selectedYearsCovered) return 'Selected years are not fully covered by this POA.'
+    if (form.types.length === 0) return 'Select at least one transcript type.'
+    return null
+  })()
 
   return (
     <div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:10, marginBottom:16 }}>
-        {workflowSteps.map(([n,title,desc]) => (
-          <div key={n} style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:12, padding:'13px 14px 12px', minHeight:88 }}>
-            <div style={{ width:28,height:28,borderRadius:'50%',background:'var(--blue)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11.5,fontWeight:800,marginBottom:8 }}>{n}</div>
-            <div style={{fontSize:12.5,fontWeight:800,marginBottom:4}}>{title}</div>
-            <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.45}}>{desc}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      {/* ── Connection-state card ───────────────────────────────────────────── */}
+      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+        <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 17 }}>IRS Transcript Delivery</div>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 5, lineHeight: 1.45 }}>
-              Use the IRS-hosted TDS sign-in for practitioner access. Automated CRM transcript delivery is a separate IRS software API capability and only runs when that integration is activated.
+            <div style={{ fontWeight: 800, fontSize: 15 }}>IRS Transcript Delivery</div>
+            <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3 }}>
+              Use the IRS-hosted TDS sign-in for practitioner access.
+              {' '}<span style={{ opacity: 0.75 }}>Returned PDFs attach to the selected client file automatically.</span>
             </div>
           </div>
-          <span style={{ background: direct?.available && direct?.sessionActive ? '#15803d' : '#64748b', color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700 }}>
-            {direct?.available && direct?.sessionActive ? 'Automated IRS API active' : 'Automated IRS API not active'}
+          <span style={{
+            background: direct?.available && direct?.sessionActive ? '#15803d' : direct?.available ? '#1d4ed8' : '#374151',
+            color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700, flexShrink: 0,
+          }}>
+            {direct?.available && direct?.sessionActive ? '● IRS session active' : direct?.available ? '○ Sign-in required' : '○ API not activated'}
           </span>
         </div>
 
-        <div style={{ padding: 16 }}>
-          <div id="irs-session-status" style={{ scrollMarginTop: 20 }}>
-            <TDSSessionPresence onStatusChange={(st) => {
-              setProviders(current => current.map(p => p.id === 'irs_a2a'
-                ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'API activation required' : st.sessionActive ? 'IRS API session active' : 'API authorization required' }
-                : p))
-            }} />
-          </div>
+        <div style={{ padding: '14px 16px' }} id="irs-session-status">
+          <TDSSessionPresence onStatusChange={(st) => {
+            setProviders(current => current.map(p => p.id === 'irs_a2a'
+              ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'API activation required' : st.sessionActive ? 'IRS API session active' : 'API authorization required' }
+              : p))
+          }} />
+        </div>
+      </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12, alignItems: 'start' }}>
+      {/* ── Request form ─────────────────────────────────────────────────────── */}
+      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+        <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>Request Transcripts</div>
+        </div>
+        <div style={{ padding: '14px 16px' }}>
+
+          {/* Client + Tax Years row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, alignItems: 'start' }}>
+            {/* Client search */}
             <div>
-              <label style={{ fontSize: 11, color: 'var(--t3)' }}>Client</label>
-              {/* Client combobox — substring search, ID-based selection */}
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--t3)', marginBottom: 5 }}>Client</label>
               <div style={{ position: 'relative' }}>
                 <div style={{ position: 'relative' }}>
                   <input
