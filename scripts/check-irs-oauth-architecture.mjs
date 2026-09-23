@@ -41,7 +41,8 @@ const parser   = 'src/lib/irsTranscriptParser.js'
 const config   = 'supabase/config.toml'
 
 console.log('Checking Step 1: Sign In to IRS…')
-need(session, "action: 'begin-session'", 'begin-session call in TDSSessionPresence')
+need(session, "'begin-session'", 'begin-session route in TDSSessionPresence')
+need(session, "'begin-test-session'", 'admin live-test route in TDSSessionPresence')
 need(session, 'authorizationUrl', 'authorizationUrl used from begin-session response')
 need(session, 'window.open(', 'popup opened with authorizationUrl')
 forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public IRS TDS URL hardcoded as primary flow')
