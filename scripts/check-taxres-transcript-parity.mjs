@@ -32,12 +32,12 @@ for(const n of [
 ]) need(lib,n)
 
 for(const n of [
-  "body: { action: 'begin-session' }",
-  'new URL(data.redirectUri).origin',
-  'Connect IRS / ID.me',
-  'sessionSetupConfigured',
+  "const IRS_TDS_URL = 'https://www.irs.gov/tax-professionals/transcript-delivery-system-tds'",
+  'Sign in to IRS TDS',
+  'interactiveAvailable: true',
+  'directAvailable',
   'apiFlowVerified',
-  'sessionActive'
+  'apiSessionActive'
 ]) need(session,n)
 
 for(const n of [
@@ -56,7 +56,7 @@ for(const n of [
 
 for(const n of [
   'IRS Transcript Delivery',
-  'Sign in once, choose the client, years and transcript types, then request.',
+  'Use the IRS-hosted TDS sign-in for practitioner access.',
   'Request Transcripts',
   'Returned PDFs attach to the selected client file automatically.',
   'Manual PDF fallback',
@@ -125,7 +125,8 @@ if(fs.existsSync(lib)){
 }
 if(fs.existsSync(session)){
   const s=read(session)
-  if(s.includes('Open IRS TDS')) failures.push('TDSSessionPresence: legacy Web TDS launch must not be primary')
+  if(s.includes("body: { action: 'begin-session' }")) failures.push('TDSSessionPresence: practitioner TDS sign-in must not call the IRS software API session endpoint')
+  if(s.includes('new URL(data.redirectUri).origin')) failures.push('TDSSessionPresence: practitioner TDS sign-in must not pretend to receive an API callback')
 }
 if(fs.existsSync(pullUi)){
   const s=read(pullUi)
