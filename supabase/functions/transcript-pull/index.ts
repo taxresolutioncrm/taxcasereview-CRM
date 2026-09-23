@@ -366,7 +366,7 @@ serve(async (req) => {
             `RETURN TYPE: ${combo.type}\r\nACCOUNT BALANCE: 0.00\r\nACCRUED PENALTY: 0.00\r\n` +
             `ACCRUED INTEREST: 0.00\r\nCRM LIVE TEST - SYNTHETIC TRANSCRIPT\r\n`
           const lines = stubPdfText.split(/\\r?\\n/).filter(Boolean)
-          const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\\(/g, '\\(').replace(/\\)/g, '\\)')
+          const esc = (v: string) => v.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
           const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) => i === 0 ? [`(${esc(line)}) Tj`] : ['0 -16 Td', `(${esc(line)}) Tj`]), 'ET'].join('\\n')
           const objects = [
             '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\\n',
