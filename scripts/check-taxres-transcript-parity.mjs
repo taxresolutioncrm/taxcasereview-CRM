@@ -33,7 +33,8 @@ for(const n of [
 
 // TDSSessionPresence must wire the real begin-session OAuth flow, not open the public TDS website.
 for(const n of [
-  "action: 'begin-session'",
+  "'begin-session'",
+  "'begin-test-session'",
   'taxres-irs-tds-oauth',
   'addEventListener',
   'interactiveAvailable: true',
