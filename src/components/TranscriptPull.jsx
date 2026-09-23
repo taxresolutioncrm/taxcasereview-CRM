@@ -663,76 +663,80 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                   next.add(year)
                   ff('taxYears', [...next].sort((a, b) => Number(b) - Number(a)).join(','))
                 }}
-                style={{ ...inputStyle, marginTop: 7, minHeight: 38 }}
+                style={{ ...inputStyle, minHeight: 38 }}
               >
                 <option value="">Add a tax year…</option>
                 {TAX_YEARS.filter(year => !selectedYears.has(year)).map(year => <option key={year} value={year}>{year}</option>)}
               </select>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, minHeight: 30 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, minHeight: 28 }}>
                 {[...selectedYears].sort((a, b) => Number(b) - Number(a)).map(year => (
                   <button
                     key={year}
                     type="button"
-                    className="btn sec"
                     onClick={() => toggleTaxYear(year)}
-                    style={{ padding: '5px 9px', fontSize: 11, borderRadius: 8 }}
                     title={`Remove ${year}`}
-                  >
-                    {year} ×
-                  </button>
+                    style={{
+                      padding: '4px 10px', fontSize: 11.5, fontWeight: 700, borderRadius: 7,
+                      border: '1px solid var(--blue)', background: 'rgba(37,99,235,.14)',
+                      color: 'var(--blue)', cursor: 'pointer', lineHeight: 1.4,
+                    }}
+                  >{year} ×</button>
                 ))}
-                {selectedYears.size === 0 && <span style={{ color: 'var(--t3)', fontSize: 11.5, paddingTop: 7 }}>Choose one or more years from the dropdown.</span>}
+                {selectedYears.size === 0 && <span style={{ color: 'var(--t3)', fontSize: 11.5, lineHeight: '28px' }}>Choose one or more years above.</span>}
               </div>
             </div>
           </div>
 
+          {/* Transcript types */}
           <div style={{ marginTop: 14 }}>
-            <label style={{ fontSize: 11, color: 'var(--t3)' }}>Transcript Types</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--t3)', marginBottom: 6 }}>Transcript Types</label>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
               {TRANSCRIPT_TYPES.map(t => {
                 const checked = form.types.includes(t)
                 return (
-                  <label key={t} style={{
-                    border: '1px solid var(--line)', borderRadius: 9, padding: '8px 10px', cursor: 'pointer',
-                    background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)', fontSize: 11.5, fontWeight: checked ? 700 : 500
-                  }}>
-                    <input type="checkbox" checked={checked} onChange={e => ff('types', e.target.checked ? [...form.types, t] : form.types.filter(x => x !== t))} style={{ marginRight: 6 }} />
-                    {t}
-                  </label>
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => ff('types', checked ? form.types.filter(x => x !== t) : [...form.types, t])}
+                    style={{
+                      padding: '6px 12px', fontSize: 11.5, borderRadius: 8, cursor: 'pointer',
+                      border: checked ? '1px solid rgba(37,99,235,.6)' : '1px solid var(--line)',
+                      background: checked ? 'rgba(37,99,235,.16)' : 'var(--s1)',
+                      color: checked ? 'var(--blue)' : 'var(--t2)',
+                      fontWeight: checked ? 700 : 500,
+                      transition: 'background .12s, border-color .12s',
+                    }}
+                  >{t}</button>
                 )
               })}
             </div>
           </div>
 
-          <div style={{ marginTop: 14 }}>
-            <label style={{ fontSize: 11, color: 'var(--t3)' }}>Notes <span style={{ color: 'var(--t3)' }}>(optional)</span></label>
-            <textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 58, resize: 'vertical' }} placeholder="Internal note for this request" />
+          {/* Notes */}
+          <div style={{ marginTop: 12 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--t3)', marginBottom: 5 }}>Notes <span style={{ fontWeight: 400 }}>(optional)</span></label>
+            <textarea value={form.notes} onChange={e => ff('notes', e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 54, resize: 'vertical' }} placeholder="Internal note for this request" />
           </div>
 
-          {!direct?.available && (
-            <div style={{ marginTop: 12, color: '#f59e0b', fontSize: 11.5, lineHeight: 1.45, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '8px 10px' }}>
-              IRS direct connection is not configured yet. The request controls remain here so the workflow does not change when the connection is enabled.
-            </div>
-          )}
-          {direct?.available && !direct?.sessionActive && (
-            <div style={{ marginTop: 12, color: 'var(--t3)', fontSize: 11.5 }}>Sign in to IRS above to enable transcript requests for the one-hour session.</div>
-          )}
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
-            <div style={{ color: 'var(--t3)', fontSize: 11.5 }}>
-              {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
-              {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
-              <button className="btn" disabled={saving || !canRequest} onClick={submitCanopyStyleRequest} style={{ minWidth: 230, minHeight: 42, fontWeight: 800 }}>
-                {saving ? 'Requesting…' : 'Request Transcripts from IRS'}
+          {/* CTA row */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, marginTop: 14 }}>
+            <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ color: 'var(--t3)', fontSize: 11.5 }}>
+                {formClient ? `Files will attach to: ${formClient.name}` : 'Returned PDFs attach to the selected client file automatically.'}
+                {msg && <span style={{ marginLeft: 10, color: 'var(--t2)' }}>{msg}</span>}
+              </div>
+              <button
+                className="btn"
+                disabled={saving || !canRequest}
+                onClick={submitCanopyStyleRequest}
+                style={{ minWidth: 220, minHeight: 40, fontWeight: 800, flexShrink: 0 }}
+              >
+                {saving ? 'Requesting…' : 'Request Transcripts'}
               </button>
-              {!direct?.available && (
-                <span style={{ color: '#f59e0b', fontSize: 10.5, maxWidth: 340, textAlign: 'right' }}>
-                  Automated request is unavailable until the separate IRS software API integration is activated. Practitioner TDS sign-in above remains available.
-                </span>
-              )}
             </div>
+            {!canRequest && ctaBlockReason && (
+              <div style={{ fontSize: 11, color: 'var(--t3)', textAlign: 'right' }}>{ctaBlockReason}</div>
+            )}
           </div>
         </div>
       </div>
