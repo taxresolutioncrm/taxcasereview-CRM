@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-const IRS_TDS_URL = 'https://www.irs.gov/tax-professionals/transcript-delivery-system-tds'
+const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'
 
 export default function TDSSessionPresence({ onStatusChange }) {
   const [status, setStatus] = useState({
@@ -98,7 +98,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
 
       {!loading && !status.directAvailable && (
         <div style={{ marginTop: 7, color: '#f59e0b', fontSize: 11, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.22)', borderRadius: 8, padding: '7px 9px' }}>
-          {status.authorizationError || 'IRS software API activation is incomplete.'}
+          {'Automated CRM delivery is not activated. Practitioner IRS / ID.me TDS access remains available.'}
         </div>
       )}
       {apiError && <div style={{ marginTop: 7, color: '#f87171', fontSize: 11 }}>{apiError}</div>}
