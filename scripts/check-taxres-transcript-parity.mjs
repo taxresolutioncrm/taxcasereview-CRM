@@ -16,7 +16,6 @@ const parser='src/lib/irsTranscriptParser.js'
 const portal='src/pages/IRSPortal.jsx'
 const pullUi='src/components/TranscriptPull.jsx'
 const completionSql='supabase/migrations/20260920025000_taxres_family_transcript_isp_completion.sql'
-const documentsStorageSql='supabase/migrations/20260924134500_add_documents_storage_path_for_tds.sql'
 const config='supabase/config.toml'
 
 for(const n of [
@@ -56,8 +55,7 @@ for(const n of [
   'Wage & Income Documents','Est. CSED',
   "client_id: clientRow.id",
   "storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })",
-  "<TranscriptPull clientNames={clientNames} clients={clients}",
-  "onClick={() => openIrsTds(IRS_TDS_URL)}"
+  "<TranscriptPull clientNames={clientNames} clients={clients}"
 ]) need(portal,n)
 
 for(const n of [
@@ -66,46 +64,14 @@ for(const n of [
   'Request Transcripts',
   'Returned PDFs attach to the selected client file automatically.',
   'Manual PDF fallback',
+  'onStatusChange={(st) =>',
+  'directAvailable',
   'const formClient = resolveClient(form)',
   'const client = resolveClient(nextForm)',
   'client_id: client.id',
-  'submitCanopyStyleRequest',
-  // Browser-assisted IRS TDS: pending request first, normal IRS page, returned PDFs filed to that request
-  'provider: BROWSER_PROVIDER_ID',
-  'openIrsTds(IRS_TDS_URL)',
-  'Browser blocked the IRS TDS tab. Allow pop-ups for this CRM and try again — no transcript request was saved.',
-  'Sign in to IRS',
-  'addReturnedFiles',
-  'fileBrowserTranscripts',
-  'matchBrowserRequest',
+  "provider: 'irs_a2a'",
+  'submitCanopyStyleRequest'
 ]) need(pullUi,n)
-
-for(const n of [
-  "export const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
-  "'noopener,noreferrer'",
-  'browserMatchProblem',
-  'file_sha256',
-  'browserFilingQueue',
-  'requestCoverageSatisfied(req, rows || [])',
-  'export async function startBrowserTdsRequest',
-  'no readable taxpayer SSN/EIN on this PDF',
-  'client has no SSN/EIN on file to match against',
-]) need(lib,n)
-
-if(fs.existsSync(pullUi) && fs.existsSync(lib)){
-  const ui=read(pullUi), l=read(lib)
-  // The IRS tab may only be sent to IRS after the pending request is saved
-  const submit=ui.slice(ui.indexOf('async function submitCanopyStyleRequest'), ui.indexOf('// Derive the single most-actionable reason'))
-  if(submit.includes('openIrsTds(') || !submit.includes('openPendingIrsTab()') || !submit.includes('startBrowserTdsRequest(row, irsTab)')) failures.push('TranscriptPull: Request Transcripts must save the pending request before navigating to IRS TDS')
-  if(ui.includes('routeAnalysis(')) failures.push('TranscriptPull: watched folder must not auto-file by name without a positive TIN match')
-  if(ui.includes('<TDSSessionPresence')) failures.push('TranscriptPull: IRS API OAuth sign-in must not gate the browser TDS workflow')
-  if(/canRequest = Boolean\([^)]*(sessionActive|direct\?\.available)/.test(ui)) failures.push('TranscriptPull: Request Transcripts must not require an IRS API session')
-  // The CRM must never read or relay IRS/ID.me browser credentials
-  for(const bad of ['document.cookie','localStorage','sessionStorage','access_token','Authorization:']) {
-    if(ui.includes(bad)) failures.push('TranscriptPull: must not touch browser credentials: '+bad)
-    if(l.slice(l.indexOf('// ── Browser-assisted IRS TDS')).includes(bad)) failures.push('transcriptPull browser section: must not touch browser credentials: '+bad)
-  }
-}
 
 if(fs.existsSync(pullUi)){
   const ui=read(pullUi)
@@ -133,8 +99,6 @@ for(const n of [
   'tenant_id = current_tenant_id()',
   'transcript_analyses_tenant_client_idx'
 ]) need(completionSql,n)
-
-need(documentsStorageSql,'add column if not exists storage_path text','documents.storage_path required for TDS PDF filing')
 
 need(config,'[functions.transcript-pull]')
 need(config,'[functions.transcript-pull-callback]')
@@ -167,8 +131,8 @@ if(fs.existsSync(callback)){
   if(!s.includes('window.opener.postMessage')) failures.push('transcript-pull-callback: postMessage to opener missing')
   // Callback must always perform the real token exchange — no synthetic session path
   for(const bad of ['IRS_TDS_STUB_MODE','stub-access-','isStub',"startsWith('test-')"]) if(s.includes(bad)) failures.push('transcript-pull-callback: synthetic path present: '+bad)
-  // TCR origin must not be hardcoded
-  if(s.includes("const CRM_ORIGIN = 'https://taxrescrm.app'")) failures.push('transcript-pull-callback: TCR CRM origin is hardcoded')
+  // Nashville origin must not be hardcoded
+  if(s.includes("const CRM_ORIGIN = 'https://nashville.taxrescrm.app'")) failures.push('transcript-pull-callback: Nashville CRM origin is hardcoded')
   // AES-GCM encryption of tokens at rest
   if(!s.includes('AES-GCM')) failures.push('transcript-pull-callback: tokens must be encrypted at rest with AES-GCM')
   if(!s.includes('encryptText')) failures.push('transcript-pull-callback: encryptText must be used for access and refresh tokens')
@@ -194,8 +158,8 @@ if(fs.existsSync(session)){
   for(const bad of ['begin-test-session','Run CRM Live Test','testSessionActive']) if(s.includes(bad)) failures.push('TDSSessionPresence: synthetic live-test path present: '+bad)
   // Must have a postMessage listener wired to receive the taxres-irs-tds-oauth callback
   if(!s.includes("window.addEventListener('message'") && !s.includes('window.addEventListener("message"')) failures.push('TDSSessionPresence: missing postMessage listener for taxres-irs-tds-oauth callback')
-  // TCR tenant must not be hardcoded
-  if(s.includes('mpxgxfqdbquzkrvvejkh')) failures.push('TDSSessionPresence: TCR Supabase project is hardcoded')
+  // Nashville tenant must not be hardcoded
+  if(s.includes('ydrvncdedgjtcprczwpu')) failures.push('TDSSessionPresence: Nashville Supabase project is hardcoded')
 }
 if(fs.existsSync(pullUi)){
   const s=read(pullUi)
