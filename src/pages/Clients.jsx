@@ -3792,7 +3792,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
           <div style={{fontWeight:700,fontSize:12,marginBottom:8}}>👥 Spouse / Partner</div>
           <div className="fg2">
             <div className="field"><label>Spouse Full Name</label><input value={form.spouseName||''} onChange={e=>fld('spouseName',e.target.value)}/></div>
-            <div className="field"><label>Spouse SSN</label><input value={form.spouseSsn||''} onChange={e=>fld('spouseSsn',e.target.value)} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
+            <div className="field"><label>Spouse SSN</label><input value={form.spouseSsn||''} onChange={e=>fld('spouseSsn',fmtSsnInput(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
           </div>
           <div className="fg2">
             <div className="field"><label>Spouse Date of Birth</label><input type="date" value={form.spouseDob||''} onChange={e=>fld('spouseDob',e.target.value)}/></div>
@@ -3847,7 +3847,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
               </div>
               <div className="fg2">
                 <div className="field"><label>Date of Birth</label><input type="date" value={d.dob||''} onChange={e=>updDep(i,'dob',e.target.value)}/></div>
-                <div className="field"><label>SSN</label><input value={d.ssn||''} onChange={e=>updDep(i,'ssn',e.target.value)} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
+                <div className="field"><label>SSN</label><input value={d.ssn||''} onChange={e=>updDep(i,'ssn',fmtSsnInput(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
               </div>
             </div>
           ))}
