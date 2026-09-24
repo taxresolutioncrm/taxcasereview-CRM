@@ -25,7 +25,7 @@ function address(v = '') { const m = v.match(/<([^>]+)>/); return (m ? m[1] : v)
 function displayName(v = '') { const m = v.match(/^"?([^"<]*)"?\s*<[^>]+>$/); return m?.[1]?.trim() || address(v) }
 function part(payload: any, mime: string): string | null { if (!payload) return null; if (payload.mimeType === mime && payload.body?.data) return payload.body.data; for (const p of payload.parts || []) { const x = part(p, mime); if (x) return x } return null }
 function plain(html = '') { return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim() }
-function files(payload: any, out: any[] = []) { if (!payload) return out; if (payload.filename && payload.body?.attachmentId) out.push({ filename: payload.filename, mimeType: payload.mimeType || 'application/octet-stream', size: payload.body.size || 0, attachmentId: payload.body.attachmentId }); for (const p of payload.parts || []) files(p, out); return out }
+function files(payload: any, out: any[] = []) { if (!payload) return out; if (payload.filename && payload.body?.attachmentId) { const contentId = h(payload.headers || [], 'Content-ID').replace(/^<|>$/g, ''); out.push({ filename: payload.filename, mimeType: payload.mimeType || 'application/octet-stream', size: payload.body.size || 0, attachmentId: payload.body.attachmentId, contentId }); } for (const p of payload.parts || []) files(p, out); return out }
 
 async function token(db: any, acct: any, creds: any) {
   const expiry = acct.gmail_token_expiry ? new Date(acct.gmail_token_expiry).getTime() : 0
