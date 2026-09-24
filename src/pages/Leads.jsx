@@ -1089,6 +1089,15 @@ export default function Leads() {
       showToast('Business name is required'); return
     }
     if (!form.name.trim()) { showToast('Name is required'); return }
+    // Never let the generic lead editor manufacture a "converted" status.
+    // Conversion must go through convertToClient(), which creates the client.
+    if (modal === 'edit' && form.status === 'Converted to Client') {
+      const original = leads.find(l=>l.id===form.id)
+      if (original?.status !== 'Converted to Client') {
+        showToast('Use Convert to Client so the client record is created.')
+        return
+      }
+    }
     setSaving(true)
     const actor = resolveActorName(user, employees)
     const beforeEdit = modal === 'edit' ? leads.find(l=>l.id===form.id) : null
@@ -1184,6 +1193,14 @@ export default function Leads() {
 
   async function updateStatus(l, status) {
     if (status === l.status) return
+    // "Converted to Client" is not an ordinary lead status. It must create the
+    // client row and complete the conversion workflow atomically through the
+    // dedicated conversion path. Allowing a plain status update here creates
+    // orphaned "converted" leads with no client record.
+    if (status === 'Converted to Client') {
+      await convertToClient(l)
+      return
+    }
     const prevStatus = l.status || 'New Lead'
     const willArchive = AUTO_ARCHIVE_STATUSES.includes(status) && !l.archived
     const willRestore = !AUTO_ARCHIVE_STATUSES.includes(status) && AUTO_ARCHIVE_STATUSES.includes(prevStatus) && l.archived
@@ -2037,7 +2054,8 @@ export default function Leads() {
               </div>
               <div className="field"><label>Lead Status</label>
                 <select value={form.status} onChange={e=>fld('status',e.target.value)}>
-                  {STATUSES.map(s=><option key={s}>{s}</option>)}
+                  {STATUSES.filter(s=>s!=='Converted to Client').map(s=><option key={s}>{s}</option>)}
+                  {form.status==='Converted to Client' && <option>Converted to Client</option>}
                 </select>
               </div>
             </div>
