@@ -67,7 +67,8 @@ export default function Books() {
   }
 
   async function toggleReconciled(entry) {
-    await supabase.from('bookkeeping').update({ reconciled: !entry.reconciled }).eq('id', entry.id)
+    const { error } = await supabase.from('bookkeeping').update({ reconciled: !entry.reconciled }).eq('id', entry.id)
+    if (error) { showToast('Error: ' + error.message, 'err'); return }
     loadAll()
   }
 
