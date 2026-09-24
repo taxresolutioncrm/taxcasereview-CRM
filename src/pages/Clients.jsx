@@ -1349,7 +1349,7 @@ export default function Clients() {
     const {
       dobM, dobD, dobY, id, created_at, pipelineStage,
       // Fields returned by select('*') that must never be in an update payload:
-      tenant_id, deleted_at, archived, dnd,
+      tenant_id, deleted_at, archived, dnd, biz_same_as_personal,
       autopay_last_charged_at, autopay_last_result,
       stripe_checkout_sent_at, payment_plan_changes,
       qb_id, qb_synced_at, xero_id, xero_synced_at,
