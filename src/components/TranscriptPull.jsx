@@ -1,3 +1,4 @@
+// Production rebuild trigger: browser-assisted IRS TDS release 2026-09-24
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
