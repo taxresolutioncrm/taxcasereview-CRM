@@ -992,16 +992,25 @@ export default function Leads() {
     if (d.length <= 2) return d
     return `${d.slice(0,2)}-${d.slice(2)}`
   }
+  function setLeadPersonalAddressField(key, value) {
+    fld(key, value)
+    if (!form.biz_same_as_personal) return
+    const bizKey = { street:'biz_street', city:'biz_city', state:'biz_state', zip:'biz_zip' }[key]
+    if (bizKey) fld(bizKey, value)
+  }
   async function handleZip(v) {
     const d = v.replace(/\D/g,'').slice(0,5)
-    fld('zip', d)
+    setLeadPersonalAddressField('zip', d)
     if (d.length === 5) {
       try {
         const r = await fetch(`https://api.zippopotam.us/us/${d}`)
         if (r.ok) {
           const data = await r.json()
           const place = data.places?.[0]
-          if (place) setForm(f=>({...f, zip:d, city: place['place name'], state: place['state abbreviation']}))
+          if (place) {
+            setLeadPersonalAddressField('city', place['place name'])
+            setLeadPersonalAddressField('state', place['state abbreviation'])
+          }
         }
       } catch(e) {}
     }
@@ -1867,11 +1876,11 @@ export default function Leads() {
             <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',margin:'6px 0 4px'}}>
               {form.clientType === 'Business' ? 'Address' : 'Personal Address'}
             </div>
-            <div className="field"><label>Street Address</label><input value={form.street} onChange={e=>fld('street',e.target.value)}/></div>
+            <div className="field"><label>Street Address</label><input value={form.street} onChange={e=>setLeadPersonalAddressField('street',e.target.value)}/></div>
             <div className="fg3">
-              <div className="field"><label>City</label><input value={form.city} onChange={e=>fld('city',e.target.value)}/></div>
+              <div className="field"><label>City</label><input value={form.city} onChange={e=>setLeadPersonalAddressField('city',e.target.value)}/></div>
               <div className="field"><label>State</label>
-                <select value={form.state} onChange={e=>fld('state',e.target.value)}>
+                <select value={form.state} onChange={e=>setLeadPersonalAddressField('state',e.target.value)}>
                   <option value="">Select...</option>{STATES.map(s=><option key={s}>{s}</option>)}
                 </select>
               </div>
