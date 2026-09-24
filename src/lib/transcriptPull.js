@@ -12,15 +12,6 @@ const DIRECT_PROVIDER = {
   note: 'Requires an approved IRS e-Services API Client ID and a verified product auth/request contract. Web TDS remains a separate practitioner login path.',
 }
 
-// Interactive practitioner path: always available; practitioner logs in to IRS TDS directly
-const INTERACTIVE_PROVIDER = {
-  id: 'irs_interactive',
-  label: 'Practitioner IRS / ID.me TDS',
-  chip: 'Available',
-  available: true,
-  note: 'Practitioner signs in to the IRS Transcript Delivery System using their IRS / ID.me credentials. This path is always available and independent of the automated API integration.',
-}
-
 // Manual fallback: folder watcher
 const MANUAL_PROVIDER = {
   id: 'manual',
@@ -30,7 +21,7 @@ const MANUAL_PROVIDER = {
   note: 'Watch a local folder where IRS TDS PDFs are saved; the CRM auto-imports, parses and files each PDF.',
 }
 
-export const PULL_PROVIDERS = [DIRECT_PROVIDER, INTERACTIVE_PROVIDER, MANUAL_PROVIDER]
+export const PULL_PROVIDERS = [DIRECT_PROVIDER, MANUAL_PROVIDER]
 const activeDirectPolls = new Set()
 
 async function refreshProviderCapability() {
@@ -58,7 +49,7 @@ export function getProvider(id, providers = PULL_PROVIDERS) {
 }
 
 export async function submitToProvider(providerId, requestRow) {
-  if (providerId === 'manual' || providerId === 'irs_interactive') return { status: 'Requested' }
+  if (providerId === 'manual') return { status: 'Requested' }
   if (providerId !== 'irs_a2a') throw new Error('Unsupported transcript provider.')
   if (!requestRow?.id) throw new Error('Direct IRS TDS requires a saved pull request.')
   const { data, error } = await supabase.functions.invoke('transcript-pull', {
