@@ -57,13 +57,12 @@ export default function Estimates() {
   async function save() {
     if (!form.clientName || !form.amount) { showToast('Client and amount required'); return }
     setSaving(true)
-    const estNum = editId ? undefined : 'EST-' + Date.now().toString().slice(-6)
     if (editId) {
       const {error} = await supabase.from('estimates').update({...form, updated_at:new Date().toISOString()}).eq('id',editId)
       if (error) { showToast('Error: '+error.message); setSaving(false); return }
       showToast('✅ Estimate updated!')
     } else {
-      const {error} = await supabase.from('estimates').insert([{...form, estNum, created_at:new Date().toISOString()}])
+      const {error} = await supabase.from('estimates').insert([{...form, created_at:new Date().toISOString()}])
       if (error) { showToast('Error: '+error.message); setSaving(false); return }
       showToast('✅ Estimate created!')
     }
@@ -95,15 +94,14 @@ export default function Estimates() {
 
   async function convertToInvoice(est) {
     if (!confirm('Convert this estimate to an invoice?')) return
-    const invNum = 'INV-' + Date.now().toString().slice(-6)
-    const {error} = await supabase.from('invoices').insert([{
+    const { data: createdInvoice, error } = await supabase.from('invoices').insert([{
       clientName: est.clientName, client_id: est.client_id || null, lineItems: est.service + (est.description?'\n'+est.description:''),
-      total: est.amount, paid:'0', status:'Unpaid', invNum,
+      total: est.amount, paid:'0', status:'Unpaid',
       created_at: new Date().toISOString()
-    }])
+    }]).select('id,invNum').single()
     if (error) { showToast('Error: '+error.message); return }
     await supabase.from('estimates').update({status:'Accepted', updated_at:new Date().toISOString()}).eq('id',est.id)
-    showToast('✅ Converted to Invoice '+invNum+'!')
+    showToast('✅ Converted to Invoice '+(createdInvoice?.invNum || '')+'!')
     load()
   }
 
