@@ -46,6 +46,8 @@ forbid(session, 'begin-test-session', 'synthetic CRM live-test route in TDSSessi
 forbid(session, 'Run CRM Live Test', 'synthetic CRM live-test button')
 need(session, 'authorizationUrl', 'authorizationUrl used from begin-session response')
 need(session, 'window.open(', 'popup opened with authorizationUrl')
+forbid(session, "window.open(authorizationUrl, '_blank'", 'separate-tab fallback for IRS authorization')
+need(session, 'IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.', 'blocked-popup recovery stays inside CRM')
 forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public IRS TDS URL hardcoded as primary flow')
 forbid(session, 'openPractitionerTds', 'old openPractitionerTds function that opens public TDS')
 need(pull, "action === 'begin-session'", 'begin-session action handler')
@@ -152,6 +154,8 @@ forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public TDS URL used as p
 forbid(pullUi, 'Save Transcript Request', 'legacy manual save CTA must not be primary')
 forbid(pullUi, 'Watched TDS Download Folder', 'legacy download folder reference must be gone')
 forbid(pullUi, 'providers.map(p =>', 'legacy provider map must be gone')
+forbid(pullUi, "provider: 'irs_interactive'", 'obsolete interactive provider in primary request path')
+forbid(lib, "id: 'irs_interactive'", 'obsolete interactive provider definition')
 forbid(session, 'ydrvncdedgjtcprczwpu', 'Nashville Supabase project hardcoded in session component')
 forbid(callback, "const CRM_ORIGIN = 'https://nashville.taxrescrm.app'", 'Nashville CRM origin hardcoded in callback')
 
