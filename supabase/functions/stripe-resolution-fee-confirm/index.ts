@@ -62,8 +62,27 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    await supabase.from('payments').insert([{
-      clientName: leadName, amount,
+    const leadId = intent.metadata?.lead_id
+    const tenantId = intent.metadata?.tenant_id
+    if (!leadId || !tenantId) {
+      return new Response(JSON.stringify({ error: 'PaymentIntent is missing lead/tenant metadata' }), {
+        status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const { data: lead, error: leadErr } = await supabase.from('leads')
+      .select('id,name,tenant_id')
+      .eq('id', leadId)
+      .maybeSingle()
+    if (leadErr) throw leadErr
+    if (!lead || lead.tenant_id !== tenantId) {
+      return new Response(JSON.stringify({ error: 'PaymentIntent tenant does not match lead' }), {
+        status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const { error: paymentErr } = await supabase.from('payments').insert([{
+      clientName: lead.name || leadName || '', amount,
       method,
       status: intent.status === 'succeeded' ? 'Cleared' : 'Pending',
       date: new Date().toISOString().slice(0, 10),
@@ -72,8 +91,9 @@ serve(async (req) => {
       source: 'resolution_fee',
       enrolled_by: intent.metadata?.enrolled_by || null,
       created_at: new Date().toISOString(),
-      tenant_id: intent.metadata?.tenant_id || '61a89aef-0e7e-4ea2-b222-44ab2024655a',
+      tenant_id: tenantId,
     }])
+    if (paymentErr) throw paymentErr
 
     return new Response(JSON.stringify({ success: true, status: intent.status }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
