@@ -401,7 +401,7 @@ export default function TaxReturns() {
     const { data: clientRow } = await supabase.from('clients')
       .select('id').eq('tenant_id', tid).ilike('name', form.clientName.trim()).maybeSingle()
     const client_id = clientRow?.id || null
-    await supabase.from('client_notes').insert({
+    const { error: noteErr } = await supabase.from('client_notes').insert({
       clientname: form.clientName,
       client_id,
       tenant_id: tid,
@@ -412,6 +412,7 @@ export default function TaxReturns() {
       visible_to_client: false,
       created_at: new Date().toISOString()
     })
+    if (noteErr) throw noteErr
   }
 
   function openEdit(ret) {
@@ -481,7 +482,8 @@ export default function TaxReturns() {
   }
 
   async function updateStatus(id, status) {
-    await supabase.from('tax_returns').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('tax_returns').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) { showToast('Error: ' + error.message); return }
     load()
   }
 
@@ -1839,10 +1841,19 @@ export default function TaxReturns() {
                   <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tx)', marginBottom: 4 }}>Mark as Filed</div>
                   <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.5 }}>Manually mark this return as filed after submission.</div>
                   <button className="btn ok" style={{ width: '100%', justifyContent: 'center' }} onClick={async () => {
+                    const prevStatus = form.status
+                    const { error } = await supabase.from('tax_returns').update({ status: 'Filed', updated_at: new Date().toISOString() }).eq('id', current?.id)
+                    if (error) { showToast('Error: ' + error.message); return }
                     fld('status', 'Filed')
-                    await supabase.from('tax_returns').update({ status: 'Filed', updated_at: new Date().toISOString() }).eq('id', current?.id)
+                    try {
+                      await logReturnNote(`📄 ${form.taxYear} ${form.returnType} marked as filed. Preparer: ${preparer.name || 'Staff'}.`)
+                    } catch (noteErr) {
+                      await supabase.from('tax_returns').update({ status: prevStatus, updated_at: new Date().toISOString() }).eq('id', current?.id)
+                      fld('status', prevStatus)
+                      showToast('Could not finalize Filed status: ' + (noteErr?.message || noteErr))
+                      return
+                    }
                     showToast('✅ Return marked as Filed!')
-                    await logReturnNote(`📄 ${form.taxYear} ${form.returnType} marked as filed. Preparer: ${preparer.name || 'Staff'}.`)
                     await triggerWorkflow('tax_return_filed', 'client', ret?.clientName || '', user?.user_metadata?.name || 'Staff').catch(()=>{})
                     load()
                   }} disabled={!current?.id}>Mark as Filed</button>
