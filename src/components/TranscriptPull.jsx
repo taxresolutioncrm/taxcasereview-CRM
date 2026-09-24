@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import {
-  PULL_PROVIDERS, loadPullProviders, getProvider, submitToProvider,
   parseYearSpec, nameKey, requestCoverageSatisfied,
   parseTranscriptFile, storeTranscriptAnalysis,
   BROWSER_PROVIDER_ID, IRS_TDS_URL, IRS_SOR_URL, openIrsTds, isOpenBrowserRequest,
@@ -19,15 +18,12 @@ const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'W
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
-  const [providers, setProviders] = useState(PULL_PROVIDERS.map(p => ({ ...p })))
   const [requests, setRequests] = useState([])
   const [legacyCount, setLegacyCount] = useState(0)
   const [migrating, setMigrating] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false)
   const [form, setForm] = useState(BLANK)
   const [saving, setSaving] = useState(false)
-  const [retryingId, setRetryingId] = useState(null)
   const [delId, setDelId] = useState(null)
   const [msg, setMsg] = useState('')
   const [fallbackOpen, setFallbackOpen] = useState(false)
@@ -109,18 +105,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   function flash(t) { setMsg(t); setTimeout(() => setMsg(''), 6000) }
   function ff(k, v) { setForm(f => ({ ...f, [k]: v })) }
-
-  async function refreshProviders() {
-    const next = await loadPullProviders()
-    setProviders(next)
-    return next
-  }
-
-  useEffect(() => {
-    let alive = true
-    loadPullProviders().then(next => { if (alive) setProviders(next) }).catch(() => {})
-    return () => { alive = false }
-  }, [])
 
   async function loadRequests() {
     setLoading(true)
@@ -213,83 +197,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
   const formClient = resolveClient(form)
   const formPoa = poaOnFile(formClient)
-  const formProvider = getProvider(form.provider, providers)
-  const directNeedsSignIn = form.provider === 'irs_a2a' && formProvider?.available && !formProvider?.sessionActive
-
-  function openNewRequest() {
-    setForm({ ...BLANK, provider: 'irs_interactive' })
-    setClientSearch('')
-    setModal(true)
-  }
-
-  async function createRequest() {
-    if (!form.clientName.trim() || form.types.length === 0) return
-    const client = resolveClient(form)
-    const poa = poaOnFile(client)
-    const provider = getProvider(form.provider, providers)
-    if (!client || !poa || !provider?.available) return
-    if (form.provider === 'irs_a2a' && !provider.sessionActive) {
-      flash('⚠ Sign in to the IRS first, then request transcripts.')
-      return
-    }
-    setSaving(true)
-    let saved = false
-    try {
-      const dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider
-      const row = {
-        id: crypto.randomUUID(),
-        client_name: client.name,
-        client_id: client.id,
-        transcript_types: form.types,
-        tax_years: form.taxYears.trim() || null,
-        provider: dbProvider,
-        status: 'Requested',
-        poa_record_id: poa.id,
-        requested_by: employeeName || null,
-        notes: form.notes || null,
-      }
-      const { error } = await supabase.from('transcript_pull_requests').insert([row])
-      if (error) throw new Error(error.message)
-      saved = true
-      await submitToProvider(form.provider, row)
-      setModal(false)
-      setForm(BLANK)
-      setClientSearch('')
-      await loadRequests()
-      flash(form.provider === 'irs_a2a' ? '✅ IRS TDS pull submitted. The CRM will retrieve and file delivered transcripts automatically.' : form.provider === 'irs_interactive' ? '✅ Practitioner TDS request logged. Sign in to IRS TDS above, pull the transcripts, then upload them here.' : '✅ Manual TDS pull request created. The watched folder will file downloaded transcripts automatically.')
-    } catch (e) {
-      if (saved) {
-        setModal(false)
-        setForm(BLANK)
-        setClientSearch('')
-        await loadRequests()
-        flash('⚠ Pull request was saved, but IRS TDS submission failed: ' + (e?.message || 'Unknown error') + '. Use Retry on the saved request after the connection issue is corrected.')
-      } else {
-        flash('❌ ' + (e?.message || 'Could not create pull request.'))
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function retryDirect(req) {
-    setRetryingId(req.id)
-    try {
-      const next = await refreshProviders()
-      const direct = getProvider('irs_a2a', next)
-      if (!direct?.available) throw new Error('IRS TDS ISP connection is not configured.')
-      if (!direct.sessionActive) throw new Error('Sign in to the IRS first, then retry this request.')
-      await submitToProvider('irs_a2a', req)
-      await loadRequests()
-      flash('✅ IRS TDS pull resubmitted.')
-    } catch (e) {
-      await loadRequests()
-      flash('❌ IRS TDS retry failed: ' + (e?.message || 'Unknown error'))
-    } finally {
-      setRetryingId(null)
-    }
-  }
-
   async function setStatus(id, status) {
     try {
       const patch = {
@@ -503,7 +410,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     if (!nextForm.clientName.trim() || nextForm.types.length === 0 || !nextForm.taxYears.trim()) return
     const client = resolveClient(nextForm)
     const poa = poaOnFile(client)
-    if (!client || !poa) return
+    if (!client || !poa || !selectedYearsCovered) return
     // Open an empty tab inside the click so the browser does not block it; it goes to IRS TDS only after the request is saved.
     const irsTab = openPendingIrsTab()
     if (!irsTab) {
@@ -848,7 +755,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                               <input type="file" accept="application/pdf" multiple style={{ display:'none' }} disabled={returnBusyId === r.id} data-testid={`transcript-return-input-${r.id}`} onChange={e => { const f = e.target.files; addReturnedFiles(r, f); e.target.value = '' }} />
                             </label>
                           )}
-                          {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize:10, padding:'3px 8px', marginRight:4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry'}</button>}
                           <button className="btn sec" style={{ fontSize:10, padding:'3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
                         </td>
                       </tr>
