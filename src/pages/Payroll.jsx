@@ -760,7 +760,7 @@ export default function Payroll() {
                       <div style={{ display:'flex', gap:5 }}>
                         {e.inTime && e.outTime && !e.hours && (
                           <button className="btn sec" style={{ fontSize:10, padding:'3px 8px', color:'var(--warn)' }}
-                            onClick={async()=>{ const h=calcHoursLocal(e.inTime,e.outTime); if(h){await supabase.from('timeentries').update({hours:parseFloat(h)}).eq('id',e.id);showToast('✅ Recalculated: '+h+'h');load()} }}>
+                            onClick={async()=>{ const h=calcHoursLocal(e.inTime,e.outTime); if(h){const {error}=await supabase.from('timeentries').update({hours:parseFloat(h)}).eq('id',e.id);if(error){showToast('❌ '+error.message);return}showToast('✅ Recalculated: '+h+'h');load()} }}>
                             ↻
                           </button>
                         )}
