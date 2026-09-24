@@ -55,7 +55,8 @@ for(const n of [
   'Wage & Income Documents','Est. CSED',
   "client_id: clientRow.id",
   "storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })",
-  "<TranscriptPull clientNames={clientNames} clients={clients}"
+  "<TranscriptPull clientNames={clientNames} clients={clients}",
+  "onClick={() => openIrsTds(IRS_TDS_URL)}"
 ]) need(portal,n)
 
 for(const n of [
