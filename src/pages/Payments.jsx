@@ -12,6 +12,10 @@ import { FIRM } from '../lib/firmBranding'
 
 const BLANK = { clientName:'', client_id:'', invNum:'', amount:'', method:'Credit Card', checkNum:'', date:'', status:'Cleared', notes:'', reference:'' }
 const METHODS = ['Credit Card','ACH / Bank Transfer','Check','Cash','Zelle','Venmo','PayPal','Money Order','Wire Transfer','Other']
+const SETTLED_PAYMENT_STATUSES = new Set(['cleared','paid','posted','completed','succeeded','success'])
+function isSettledPaymentStatus(status) {
+  return SETTLED_PAYMENT_STATUSES.has(String(status || '').trim().toLowerCase())
+}
 
 export default function Payments() {
   const { user } = useApp()
@@ -128,7 +132,10 @@ export default function Payments() {
 
   async function save() {
     if (!form.clientName || !form.amount) { showToast('Client and amount required'); return }
+    const amountNum = Number(form.amount)
+    if (!Number.isFinite(amountNum) || amountNum <= 0) { showToast('Enter a valid payment amount'); return }
     setSaving(true)
+    const previous = editId ? items.find(i => i.id === editId) : null
     const payload = { ...form, date: form.date||new Date().toISOString().slice(0,10) }
     let error
     if (editId) {
@@ -136,15 +143,50 @@ export default function Payments() {
     } else {
       ;({error} = await supabase.from('payments').insert([{...payload, created_at:new Date().toISOString()}]))
     }
-    setSaving(false)
-    if (error) { showToast('Error: '+error.message); return }
-
-    // Auto-update invoice balance if invNum matched (shared helper — same
-    // path Accounts Receivable uses, so the two screens stay in lockstep).
-    if (form.invNum && !editId) {
-      await applyPaymentToInvoice(form.invNum, form.amount)
+    if (error) {
+      setSaving(false)
+      showToast('Error: '+error.message)
+      return
     }
 
+    // Keep invoice.paid synchronized with the payment row, including edits,
+    // invoice changes, status changes, and amount changes.
+    try {
+      const prevApplied = previous && previous.invNum && isSettledPaymentStatus(previous.status)
+      const nextApplied = form.invNum && isSettledPaymentStatus(form.status)
+      if (prevApplied && nextApplied && previous.invNum === form.invNum) {
+        const delta = amountNum - Number(previous.amount || 0)
+        if (Math.abs(delta) > 0.0001) {
+          if (delta > 0) await applyPaymentToInvoice(form.invNum, delta)
+          else await reversePaymentFromInvoice(form.invNum, Math.abs(delta))
+        }
+      } else {
+        if (prevApplied) await reversePaymentFromInvoice(previous.invNum, previous.amount)
+        try {
+          if (nextApplied) await applyPaymentToInvoice(form.invNum, amountNum)
+        } catch (invoiceErr) {
+          if (prevApplied) await applyPaymentToInvoice(previous.invNum, previous.amount).catch(()=>{})
+          throw invoiceErr
+        }
+      }
+    } catch (invoiceErr) {
+      // Revert the payment row if invoice reconciliation failed, so the two
+      // ledgers never silently drift apart.
+      if (editId && previous) {
+        const { id, tenant_id, created_at, ...restore } = previous
+        await supabase.from('payments').update(restore).eq('id',editId)
+      } else {
+        const { data: newest } = await supabase.from('payments')
+          .select('id').eq('clientName',form.clientName).eq('amount',String(form.amount))
+          .order('created_at',{ascending:false}).limit(1)
+        if (newest?.[0]?.id) await supabase.from('payments').delete().eq('id',newest[0].id)
+      }
+      setSaving(false)
+      showToast('Invoice sync failed: ' + (invoiceErr?.message || invoiceErr))
+      return
+    }
+
+    setSaving(false)
     showToast('✅ Payment recorded!')
     const actor = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
     await triggerWorkflow('payment_received', 'client', form.clientName, actor).catch(()=>{})
@@ -166,8 +208,15 @@ export default function Payments() {
     if (error) { showToast('Error: ' + error.message); setConfirmDel(null); return }
     // Deleting a recorded payment must give the money back to the invoice,
     // or the invoice keeps showing collected funds that no longer exist.
-    if (row?.invNum && (row.status === 'Cleared' || row.payment_status === 'Paid')) {
-      await reversePaymentFromInvoice(row.invNum, row.amount)
+    if (row?.invNum && (isSettledPaymentStatus(row.status) || isSettledPaymentStatus(row.payment_status))) {
+      try {
+        await reversePaymentFromInvoice(row.invNum, row.amount)
+      } catch (invoiceErr) {
+        showToast('Payment deleted, but invoice sync failed: ' + (invoiceErr?.message || invoiceErr))
+        setConfirmDel(null)
+        load()
+        return
+      }
     }
     setItems(prev => prev.filter(i => i.id !== confirmDel)); setConfirmDel(null); showToast('Deleted')
   }
