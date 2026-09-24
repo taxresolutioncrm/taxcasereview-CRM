@@ -320,25 +320,13 @@ export default function Employees() {
     if (!form.name || !form.email) { if (!silent) showToast('Name and email required', 'err'); return false }
     setSaving(true)
     setSaveError('')
-    let payload = toDbPayload(form)
+    const payload = toDbPayload(form)
     let error, data
-    // Retry loop: if PostgREST rejects an unknown column, strip it and retry (same pattern as Clients.jsx)
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (editing) {
-        ;({ error } = await supabase.from('employees').update(payload).eq('id', editing))
-      } else {
-        ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
-        if (!error && data?.id) setEditing(data.id)
-      }
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        continue
-      }
-      break
+    if (editing) {
+      ;({ error } = await supabase.from('employees').update(payload).eq('id', editing))
+    } else {
+      ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
+      if (!error && data?.id) setEditing(data.id)
     }
     setSaving(false)
     if (error) { setSaveError(error.message); if (!silent) showToast('Save error: ' + error.message, 'err'); return false }
@@ -378,10 +366,14 @@ export default function Employees() {
         const { data: inserted, error: insErr } = await supabase.from('documents').insert([{
           name: file.name, employee: form.name, docType: nextDocLabel,
           file_url: urlData?.signedUrl || '', file_name: file.name, file_size: file.size,
+          storage_path: path,
           created_at: new Date().toISOString()
         }]).select().single()
         if (!insErr && inserted) setEmpDocs(prev => [inserted, ...prev])
-        else if (insErr) showToast('Save failed: ' + insErr.message, 'err')
+        else if (insErr) {
+          await supabase.storage.from('documents').remove([path]).catch(()=>{})
+          showToast('Save failed: ' + insErr.message, 'err')
+        }
       } else {
         showToast('Upload failed: ' + upErr.message, 'err')
       }
