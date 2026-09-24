@@ -141,10 +141,9 @@ export default function TDSSessionPresence({ onStatusChange }) {
         'popup,width=1100,height=820,resizable=yes,scrollbars=yes',
       )
       if (!popup) {
-        // Popup blocked — fall back to new tab; postMessage will still fire if same origin.
-        window.open(authorizationUrl, '_blank', 'noopener')
         setSigningIn(false)
-        return
+        expectedCallbackOriginRef.current = null
+        throw new Error('IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.')
       }
       popupRef.current = popup
 
