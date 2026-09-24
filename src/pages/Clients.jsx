@@ -1479,7 +1479,7 @@ export default function Clients() {
     setSmsSending(false)
     if (error) { showToast('Error: '+error.message); return }
 
-    if (status === 'Sent') { showToast('✅ Text sent!'); const actorS = resolveActorName(user, employees); await triggerWorkflow('client_email_sent', 'client', c?.name || '', actorS).catch(()=>{}) }
+    if (status === 'Sent') { showToast('✅ Text sent!'); const actorS = resolveActorName(user, employees); await triggerWorkflow('client_sms_sent', 'client', c?.name || '', actorS).catch(()=>{}) }
     else if (status === 'Failed') showToast('SignalWire error: ' + (errMsg||'send failed'))
     else showToast('Logged — add SignalWire credentials in Settings to actually send')
 
