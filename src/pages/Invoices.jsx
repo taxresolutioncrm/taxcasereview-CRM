@@ -96,14 +96,8 @@ export default function Invoices() {
       if (error) { showToast('Error: '+error.message); setSaving(false); return }
       showToast('✅ Invoice updated!')
     } else {
-      // Sequential, e.g. INV-000001, INV-000002 — easier to track for
-      // bookkeeping than a timestamp fragment that jumps around.
-      const maxNum = items.reduce((max,i) => {
-        const n = parseInt((i.invNum||'').replace(/\D/g,''), 10)
-        return Number.isFinite(n) && n > max ? n : max
-      }, 0)
-      const invNum = 'INV-' + String(maxNum+1).padStart(6,'0')
-      const {error} = await supabase.from('invoices').insert([{...form, invNum, status:statusCalc, created_at:new Date().toISOString()}])
+      // Invoice number is assigned atomically by the database per tenant.
+      const {error} = await supabase.from('invoices').insert([{...form, status:statusCalc, created_at:new Date().toISOString()}])
       if (error) { showToast('Error: '+error.message); setSaving(false); return }
       showToast('✅ Invoice created!')
     }
