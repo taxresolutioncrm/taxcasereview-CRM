@@ -57,14 +57,24 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { data: lead } = await supabase.from('leads').select('stripe_customer_id').eq('id', leadId).maybeSingle()
-    let customerId = lead?.stripe_customer_id || null
+    const { data: lead, error: leadErr } = await supabase.from('leads')
+      .select('id,name,email,stripe_customer_id,tenant_id')
+      .eq('id', leadId)
+      .maybeSingle()
+    if (leadErr) throw leadErr
+    if (!lead?.tenant_id) {
+      return new Response(JSON.stringify({ error: 'Lead not found or tenant missing' }), {
+        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+    let customerId = lead.stripe_customer_id || null
 
     if (!customerId) {
       const customer = await stripeRequest('customers', {
-        name: leadName || '',
-        ...(email ? { email } : {}),
+        name: lead.name || leadName || '',
+        ...((lead.email || email) ? { email: lead.email || email } : {}),
         'metadata[lead_id]': String(leadId),
+        'metadata[tenant_id]': String(lead.tenant_id),
       })
       customerId = customer.id
       await supabase.from('leads').update({ stripe_customer_id: customerId }).eq('id', leadId)
@@ -78,6 +88,7 @@ serve(async (req) => {
       'payment_method_types[1]': 'us_bank_account',
       description: description || `Resolution fee — ${leadName || ''}`,
       'metadata[lead_id]': String(leadId),
+      'metadata[tenant_id]': String(lead.tenant_id),
       ...(enrolledBy ? { 'metadata[enrolled_by]': String(enrolledBy) } : {}),
     })
 
