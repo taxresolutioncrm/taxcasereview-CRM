@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { parseTranscriptFile, storeTranscriptAnalysis } from '../lib/transcriptPull'
+import { parseTranscriptFile, storeTranscriptAnalysis, openIrsTds, IRS_TDS_URL } from '../lib/transcriptPull'
 import TranscriptPull from '../components/TranscriptPull'
 
 // ── IRS Portal ──
@@ -255,10 +255,7 @@ export default function IRSPortal() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             className="btn"
-            onClick={() => {
-              setTab('pull')
-              setTimeout(() => document.getElementById('irs-session-status')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
-            }}
+            onClick={() => openIrsTds(IRS_TDS_URL)}
           >
             Sign in to IRS TDS
           </button>
