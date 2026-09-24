@@ -313,7 +313,7 @@ export default function IRSPortal() {
               {parseStatus && <span style={{ fontSize: 12.5, color: 'var(--t2)' }}>{parseStatus}</span>}
             </div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 8 }}>
-              Direct ISP-authorized pulls are available from Pull Transcripts. Manual IRS e-Services/TDS PDFs remain supported here as a fallback. Each file is parsed into
+              Transcripts requested through IRS TDS from Pull Transcripts are filed automatically. IRS e-Services/TDS PDFs can also be uploaded here. Each file is parsed into
               balances, penalties, interest, assessment dates, an estimated CSED, transaction history and compliance flags.
             </div>
           </div>
