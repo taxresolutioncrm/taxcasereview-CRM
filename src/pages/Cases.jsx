@@ -150,12 +150,8 @@ export default function Cases() {
   async function save() {
     if (!form.clientName.trim()) { showToast('Client name is required'); return }
     setSaving(true)
-    const maxNum = cases.reduce((max, c) => {
-      const n = parseInt((c.caseNum || '').replace(/\D/g, ''), 10)
-      return Number.isFinite(n) && n > max ? n : max
-    }, 0)
-    const caseNum = 'C-' + String(maxNum + 1).padStart(6, '0')
-    const payload = { ...form, caseNum, created_at: new Date().toISOString() }
+    // Case number is assigned atomically by the database per tenant.
+    const payload = { ...form, created_at: new Date().toISOString() }
     const { data, error } = await supabase.from('cases').insert([payload]).select()
     setSaving(false)
     if (error) { showToast('❌ Save error: ' + error.message); return }
