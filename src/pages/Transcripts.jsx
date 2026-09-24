@@ -96,7 +96,8 @@ export default function Transcripts() {
   async function updateStatus(id, status) {
     const update = {status, updated_at:new Date().toISOString()}
     if (status.includes('Received')) update.receivedDate = new Date().toISOString().slice(0,10)
-    await supabase.from('transcripts').update(update).eq('id',id)
+    const { error } = await supabase.from('transcripts').update(update).eq('id',id)
+    if (error) { showToast('Error: ' + error.message); return }
     load()
   }
 
