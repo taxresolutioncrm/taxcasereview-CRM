@@ -1046,7 +1046,7 @@ export default function Email() {
                     </div>
                   </div>
                   {selected.body_html ? (
-                    <SafeHtmlEmail html={selected.body_html} />
+                    <SafeHtmlEmail html={selected.body_html} email={selected} mailboxOwner={selected.mailbox_owner || user?.email} />
                   ) : (
                     <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 20, fontSize: 14, lineHeight: 1.8, color: 'var(--tx)', whiteSpace: 'pre-wrap' }}>
                       {selected.body}
@@ -1238,13 +1238,75 @@ export default function Email() {
 // read the iframe's rendered height to auto-size it. allow-same-origin
 // alone is inert without allow-scripts; there's no script context to
 // exploit it with. Safe even for HTML from senders we don't control.
-function SafeHtmlEmail({ html }) {
+function normalizeCid(value = '') {
+  return String(value).trim().replace(/^cid:/i, '').replace(/^<|>$/g, '').toLowerCase()
+}
+
+function attachmentMatchesCid(att, cid) {
+  const wanted = normalizeCid(cid)
+  if (!wanted) return false
+  const contentId = normalizeCid(att?.contentId || att?.content_id || '')
+  if (contentId && contentId === wanted) return true
+  const filename = String(att?.filename || '').trim().toLowerCase()
+  if (!filename) return false
+  const cidFilename = wanted.split('@')[0]
+  return filename === wanted || filename === cidFilename
+}
+
+function SafeHtmlEmail({ html, email, mailboxOwner }) {
   const ref = useRef(null)
   const [height, setHeight] = useState(200)
+  const [renderedHtml, setRenderedHtml] = useState(() => '<base target="_blank">' + (html || ''))
 
-  // Force every link to open in a real new tab instead of trying to
-  // navigate the sandboxed iframe itself (which the sandbox blocks).
-  const docWithBaseTarget = `<base target="_blank">${html || ''}`
+  useEffect(() => {
+    let cancelled = false
+    const objectUrls = []
+    const source = html || ''
+
+    async function hydrateInlineImages() {
+      if (!source || !email?.gmail_message_id) {
+        if (!cancelled) setRenderedHtml('<base target="_blank">' + source)
+        return
+      }
+
+      const matches = [...source.matchAll(/\bsrc\s*=\s*["']cid:([^"']+)["']/gi)]
+      const cids = [...new Set(matches.map(m => m[1]))]
+      if (!cids.length) {
+        if (!cancelled) setRenderedHtml('<base target="_blank">' + source)
+        return
+      }
+
+      let next = source
+      const attachments = Array.isArray(email?.attachments) ? email.attachments : []
+      await Promise.all(cids.map(async cid => {
+        const att = attachments.find(a => attachmentMatchesCid(a, cid))
+        if (!att?.attachmentId) return
+        try {
+          const blob = await fetchGmailAttachmentBlob(supabase, {
+            gmailMessageId: email.gmail_message_id,
+            attachmentId: att.attachmentId,
+            mimeType: att.mimeType,
+            employeeEmail: mailboxOwner,
+          })
+          if (cancelled) return
+          const url = URL.createObjectURL(blob)
+          objectUrls.push(url)
+          next = next.split('cid:' + cid).join(url)
+          next = next.split('CID:' + cid).join(url)
+        } catch (err) {
+          console.warn('Could not render inline email image', att.filename || cid, err)
+        }
+      }))
+
+      if (!cancelled) setRenderedHtml('<base target="_blank">' + next)
+    }
+
+    hydrateInlineImages()
+    return () => {
+      cancelled = true
+      objectUrls.forEach(url => URL.revokeObjectURL(url))
+    }
+  }, [html, email?.id, email?.gmail_message_id, mailboxOwner])
 
   function resize() {
     const doc = ref.current?.contentDocument
@@ -1255,11 +1317,7 @@ function SafeHtmlEmail({ html }) {
     <div style={{ background: '#fff', border: '1px solid var(--br)', borderRadius: 10, overflow: 'hidden' }}>
       <iframe
         ref={ref}
-        srcDoc={docWithBaseTarget}
-        // allow-same-origin: needed to read scrollHeight for auto-resize
-        // allow-popups + allow-popups-to-escape-sandbox: required for link
-        // clicks to actually open — without these, clicking any link inside
-        // a sandboxed iframe is silently swallowed by the browser.
+        srcDoc={renderedHtml}
         sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
         onLoad={resize}
         title="Email content"
