@@ -1555,14 +1555,15 @@ export default function Leads() {
 
   async function convertToClient(l, skipConfirm) {
     if (converting) return
-    const clientName = (l.name || '').trim()
-    if (!clientName) { showToast('Lead name is required before conversion.'); return }
-    if (!skipConfirm && !confirm(`Convert "${clientName}" to a full client?`)) return
+    const clientName = l.name || ''
+    const normalizedName = clientName.trim()
+    if (!normalizedName) { showToast('Lead name is required before conversion.'); return }
+    if (!skipConfirm && !confirm(`Convert "${normalizedName}" to a full client?`)) return
     setConverting(true)
     // A second conversion of the same lead (double-click, or the resolution-fee
     // path firing alongside the button) used to insert a duplicate client.
     // Clients are keyed by name everywhere, so a duplicate splits the file.
-    const candidateNames = Array.from(new Set([l.name, clientName].filter(Boolean)))
+    const candidateNames = Array.from(new Set([clientName, normalizedName].filter(Boolean)))
     const { data: dupe } = await supabase.from('clients').select('id,name').in('name', candidateNames).limit(1)
     if (dupe?.length) {
       setConverting(false)
@@ -1574,7 +1575,7 @@ export default function Leads() {
     const taxYearsStr = l.taxYearsCustom || (()=>{try{return JSON.parse(l.taxYears||'[]').join(', ')}catch{return l.taxYears||''}})()
     const { data: newClient, error } = await supabase.from('clients').insert([{
       name: clientName, clientType: l.clientType || 'Individual',
-      business_name: (l.business_name || '').trim() || null,
+      business_name: l.business_name || null,
       first: l.first, mi: l.mi, last: l.last,
       phone: l.phone, phone2: l.phone2, email: l.email,
       smsConsent: l.smsConsent || false, smsConsentDate: l.smsConsentDate || null,
