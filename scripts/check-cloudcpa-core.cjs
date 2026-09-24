@@ -21,6 +21,7 @@ need(clients, 'function toggleBusinessAddressSame', 'Client modal business-addre
 need(clients, 'function setPersonalAddressField', 'Client modal personal/business address sync missing')
 need(clients, "pipelineStage: pipelineStage || DEFAULT_PIPELINE_STAGE", 'Client pipeline stage not persisted')
 need(clients, 'tenant_id, deleted_at, archived, dnd, biz_same_as_personal,', 'UI-only client address flag not excluded from payload')
+need(clients, "triggerWorkflow('client_sms_sent'", 'Client SMS action is wired to the wrong workflow event')
 forbid(clients, 'const skipped = []\n    for (let attempt = 0; attempt < 12; attempt++) {\n      ;({error} = await supabase.from(\'clients\')', 'Client save still silently strips fields')
 
 // Lead form/conversion.
