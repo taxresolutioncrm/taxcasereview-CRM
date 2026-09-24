@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext'
 import { useFirm } from '../lib/useFirm'
 import { generateInvoicePdfBase64 } from '../lib/invoicePdf'
 import ClientLink from '../components/ClientLink'
+import { applyPaymentToInvoice } from '../lib/invoiceSync'
 
 const BLANK = { clientName:'', client_id:'', caseNum:'', lineItems:'', total:'', paid:'0', dueDate:'', taxRate:'0', status:'Unpaid', notes:'' }
 const SERVICE_TEMPLATES = [
@@ -196,15 +197,30 @@ Please contact our office with any questions.`
     if (!amount) return
     const paymentAmount = parseFloat(amount)
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) { showToast('Enter a valid payment amount'); return }
-    const newPaid = previouslyPaid + paymentAmount
-    const status = newPaid >= invoiceTotal - 0.005 ? 'Paid' : 'Partial'
-    const { error } = await supabase.from('invoices').update({ paid: String(newPaid), status, updated_at: new Date().toISOString() }).eq('id', inv.id)
-    if (!error) {
-      // Also create a payment record for this transaction only; invoice.paid is cumulative.
-      await supabase.from('payments').insert([{ clientName: inv.clientName, client_id: inv.client_id || null, amount: paymentAmount, method: 'Manual', invoiceId: inv.id, notes: `Payment for Invoice #${inv.invNum||''}`, created_at: new Date().toISOString() }])
-      showToast(`✅ Payment of $${paymentAmount.toLocaleString()} recorded`)
-      load()
+
+    const { data: paymentRow, error: paymentErr } = await supabase.from('payments').insert([{
+      clientName: inv.clientName,
+      client_id: inv.client_id || null,
+      amount: String(paymentAmount),
+      method: 'Manual',
+      invNum: inv.invNum || null,
+      invoiceId: inv.id,
+      status: 'Cleared',
+      notes: `Payment for Invoice #${inv.invNum||''}`,
+      created_at: new Date().toISOString()
+    }]).select('id').single()
+    if (paymentErr) { showToast('Payment save failed: ' + paymentErr.message); return }
+
+    try {
+      await applyPaymentToInvoice(inv.invNum, paymentAmount)
+    } catch (invoiceErr) {
+      if (paymentRow?.id) await supabase.from('payments').delete().eq('id',paymentRow.id)
+      showToast('Invoice sync failed: ' + (invoiceErr?.message || invoiceErr))
+      return
     }
+
+    showToast(`✅ Payment of ${paymentAmount.toLocaleString()} recorded`)
+    load()
   }
 
   async function markPaid(inv) {
@@ -212,7 +228,12 @@ Please contact our office with any questions.`
     const taxRate = parseFloat(inv.taxRate||0)
     const total = subtotal + (subtotal * taxRate / 100)
     const {error} = await supabase.from('invoices').update({paid:String(total), status:'Paid', updated_at:new Date().toISOString()}).eq('id',inv.id)
-    if (!error) { showToast('✅ Marked as Paid!'); const actorIP = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'; await triggerWorkflow('invoice_paid', 'client', inv?.clientName || '', actorIP).catch(()=>{}); await logActivity(supabase,{employeeName:actorIP,action:'invoice_paid',category:'invoice',description:`Marked invoice paid — ${inv.clientName}`,entityName:inv.clientName,meta:{invNum:inv.invNum}}).catch(()=>{}); load() }
+    if (error) { showToast('Error: ' + error.message); return }
+    showToast('✅ Marked as Paid!')
+    const actorIP = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
+    await triggerWorkflow('invoice_paid', 'client', inv?.clientName || '', actorIP).catch(()=>{})
+    await logActivity(supabase,{employeeName:actorIP,action:'invoice_paid',category:'invoice',description:`Marked invoice paid — ${inv.clientName}`,entityName:inv.clientName,meta:{invNum:inv.invNum}}).catch(()=>{})
+    load()
   }
 
   async function deleteItem(id) { setConfirmDel(id) }
