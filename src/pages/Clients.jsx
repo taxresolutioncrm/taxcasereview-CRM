@@ -41,7 +41,7 @@ const firmEmail = () => (FIRM.email || '').trim() || 'info@' + firmName().toLowe
 const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const DAYS   = Array.from({length:31},(_,i)=>String(i+1).padStart(2,'0'))
-const YDOB   = Array.from({length:80},(_,i)=>2005-i)
+const YDOB   = Array.from({length:100},(_,i)=>new Date().getFullYear()-18-i)
 
 const IRS_STATUS_OPTIONS = ['ACS','Notice Status','Queue for ACS','Currently Not Collectible','Installment Agreement','Garnishment','Levy Issued','Levied','Lien Filed','Appeals','Litigation','Released','Other']
 
