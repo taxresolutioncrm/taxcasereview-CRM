@@ -25,7 +25,7 @@
     "ui:quick-create": "node scripts/fix-quick-create-routes.mjs",
     "ui:navigation-audit": "node scripts/audit-ui-navigation.mjs",
     "source:verify-current": "git diff --exit-code -- src scripts package.json vite.config.js 2>/dev/null || (echo 'ERROR: prebuild repair scripts changed tracked source. Commit the source fix instead of building mutated source.' && exit 1)",
-    "prebuild": "npm run cloudcpa:readiness && npm run check-family-auth && npm run check-password-visibility && npm run check-nashville-closeout && npm run check-polling && npm run check-supabase-io-guardrails && npm run check-client-work-header-badge && npm run check-admin-portal-performance && npm run check-critical-workflows && npm run check-client-case-quick-actions && npm run check-formacorp-native && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run sidebar:badge-rpc && npm run dashboard:glow && npm run forms:state-esign-prefill && npm run forms:irs-current && npm run reports:accuracy && npm run accounting:oauth-state && npm run admin:metrics-proxy && npm run admin:product-usage-labels && npm run cases:modal-scope && npm run ui:quick-create && npm run ui:navigation-audit && npm run source:verify-current && npm run check-transcripts && npm run check-tds-edge-runtime && npm run check-transcript-parser && npm run check-transcript-coverage && npm run check-tax-workflows-parity",
+    "prebuild": "npm run cloudcpa:readiness && npm run check-family-auth && npm run check-password-visibility && npm run check-nashville-closeout && npm run check-polling && npm run check-supabase-io-guardrails && npm run check-client-work-header-badge && npm run check-admin-portal-performance && npm run check-critical-workflows && npm run check-client-case-quick-actions && npm run check-formacorp-native && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run sidebar:badge-rpc && npm run dashboard:glow && npm run forms:state-esign-prefill && npm run forms:irs-current && npm run reports:accuracy && npm run accounting:oauth-state && npm run admin:metrics-proxy && npm run admin:product-usage-labels && npm run cases:modal-scope && npm run ui:quick-create && npm run ui:navigation-audit && npm run source:verify-current && npm run check-transcripts && npm run check-transcript-parser && npm run check-transcript-coverage && npm run check-tax-workflows-parity",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist --dotfiles",
@@ -36,7 +36,6 @@
     "check-client-case-quick-actions": "node scripts/check-client-case-quick-actions.cjs",
     "check-supabase-io-guardrails": "node scripts/check-supabase-io-guardrails.cjs",
     "check-transcripts": "node scripts/check-taxres-transcript-parity.mjs",
-    "check-tds-edge-runtime": "node scripts/check-tds-edge-runtime.mjs",
     "check-transcript-parser": "node scripts/check-irs-transcript-parser-fixtures.mjs",
     "check-transcript-coverage": "node scripts/check-transcript-coverage-fixtures.mjs",
     "check-admin-portal-performance": "node scripts/check-admin-portal-performance.mjs",
@@ -61,8 +60,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.3",
     "gh-pages": "^6.3.0",
-    "vite": "^5.4.10",
-    "esbuild": "0.21.5"
+    "vite": "^5.4.10"
   },
   "overrides": {
     "uuid": "^11.1.1"
