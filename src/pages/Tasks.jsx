@@ -190,7 +190,8 @@ export default function Tasks() {
     // If there are extra sub-tasks but no section name was given, use the
     // main task's own title as the section heading so they still group.
     const effectiveSection = extraTitles.length && !sectionTitle ? data.title.trim() : sectionTitle
-    const base = { clientName:data.clientName, caseNum:data.caseNum, assignedTo:data.assignedTo, dueDate:data.dueDate, priority:data.priority, done:false, deleted:false, created_at:new Date().toISOString() }
+    const linkedClient = clients.find(x => x.name === data.clientName)
+    const base = { clientName:data.clientName, client_id:linkedClient?.id || null, caseNum:data.caseNum, assignedTo:data.assignedTo, dueDate:data.dueDate, priority:data.priority, done:false, deleted:false, created_at:new Date().toISOString() }
     const rows = [
       { ...base, title:data.title, notes:data.notes, section_title:effectiveSection },
       ...extraTitles.map(t => ({ ...base, title:t, notes:'', section_title:effectiveSection })),
@@ -204,18 +205,25 @@ export default function Tasks() {
   }
 
   async function toggleDone(t) {
-    await supabase.from('tasks').update({done:!t.done}).eq('id',t.id)
+    const { error } = await supabase.from('tasks').update({done:!t.done}).eq('id',t.id)
+    if (error) { showToast('❌ ' + error.message); return }
     load()
   }
 
   async function updateTaskStatus(t, value) {
-    if (!value) { await supabase.from('tasks').update({status_category:null, status_label:null}).eq('id',t.id); load(); return }
+    if (!value) {
+      const { error } = await supabase.from('tasks').update({status_category:null, status_label:null}).eq('id',t.id)
+      if (error) { showToast('❌ ' + error.message); return }
+      load()
+      return
+    }
     const [category, label] = value.split('|||')
     // "Completed" category also flips the done flag so existing done-based
     // logic elsewhere (dashboards, counts) stays correct.
     const completed = statusCategories.find(c=>c.name===category)?.name?.toLowerCase() === 'completed'
     const prevLabel = t.status_label || (t.done ? 'Completed' : 'Ready to Start')
-    await supabase.from('tasks').update({status_category:category, status_label:label, done:completed}).eq('id',t.id)
+    const { error: statusErr } = await supabase.from('tasks').update({status_category:category, status_label:label, done:completed}).eq('id',t.id)
+    if (statusErr) { showToast('❌ ' + statusErr.message); return }
 
     // Log a note on whichever entity this task is linked to.
     if (t.clientName) {
