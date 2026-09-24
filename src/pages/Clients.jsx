@@ -1372,25 +1372,11 @@ export default function Clients() {
   async function save() {
     if (!form.name.trim()){showToast('Name is required');return}
     setSaving(true)
-    let payload = {...buildPayload(form),created_at:new Date().toISOString()}
-    let error
-    const skipped = []
-    for (let attempt = 0; attempt < 12; attempt++) {
-      ;({error} = await supabase.from('clients').insert([payload]))
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        skipped.push(match[1])
-        continue
-      }
-      break
-    }
+    const payload = {...buildPayload(form),created_at:new Date().toISOString()}
+    const { error } = await supabase.from('clients').insert([payload])
     setSaving(false)
     if (error){showToast('Error: '+error.message);return}
-    showToast(skipped.length ? `✅ Client added — but skipped fields not in the database yet: ${skipped.join(', ')}` : '✅ Client added!')
+    showToast('✅ Client added!')
     const actorC = resolveActorName(user, employees)
     await triggerWorkflow('client_created', 'client', form.name, actorC).catch(()=>{})
     await logActivity(supabase,{employeeName:actorC,action:'client_created',category:'client',description:`Added client: ${form.name}`,entityName:form.name}).catch(()=>{})
@@ -1405,25 +1391,11 @@ export default function Clients() {
   async function saveEdit() {
     setSaving(true)
     const before = clients.find(cl=>cl.id===form.id) || detail
-    let payload = buildPayload(form)
-    let error
-    const skipped = []
-    for (let attempt = 0; attempt < 12; attempt++) {
-      ;({error} = await supabase.from('clients').update(payload).eq('id',form.id))
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        skipped.push(match[1])
-        continue
-      }
-      break
-    }
+    const payload = buildPayload(form)
+    const { error } = await supabase.from('clients').update(payload).eq('id',form.id)
     setSaving(false)
     if (error){showToast('Error: '+error.message);return}
-    showToast(skipped.length ? `✅ Saved — but skipped fields not in the database yet: ${skipped.join(', ')}` : '✅ Saved!')
+    showToast('✅ Saved!')
     setEditModal(false)
     const {data}=await supabase.from('clients').select('*').eq('id',form.id).single()
     if (data){setDetail(data);loadRelated(data.name)}
