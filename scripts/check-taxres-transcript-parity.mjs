@@ -72,6 +72,7 @@ for(const n of [
   // Browser-assisted IRS TDS: pending request first, normal IRS page, returned PDFs filed to that request
   'provider: BROWSER_PROVIDER_ID',
   'openIrsTds(IRS_TDS_URL)',
+  'Browser blocked the IRS TDS tab. Allow pop-ups for this CRM and try again — no transcript request was saved.',
   'Sign in to IRS',
   'addReturnedFiles',
   'fileBrowserTranscripts',
