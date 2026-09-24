@@ -507,7 +507,3 @@ export async function forgetWatchedFolder() {
   try { const db = await handleDb(); const tx = db.transaction(HANDLE_STORE, 'readwrite'); tx.objectStore(HANDLE_STORE).delete('tds') } catch { /* noop */ }
 }
 
-if (typeof window !== 'undefined') {
-  setTimeout(() => refreshProviderCapability(), 0)
-  setTimeout(() => resumeDirectPulls(), 2000)
-}
