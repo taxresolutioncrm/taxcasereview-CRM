@@ -84,6 +84,25 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    let recordTenantId: string | null = null
+    let recordName = session.customer_details?.name || ''
+    if (recordId && (recordType === 'lead' || recordType === 'client')) {
+      const { data: record, error: recordErr } = await supabase
+        .from(table)
+        .select('id,name,tenant_id')
+        .eq('id', recordId)
+        .maybeSingle()
+      if (recordErr) throw recordErr
+      if (!record?.tenant_id) {
+        console.error('stripe-checkout-webhook: record tenant not found', { recordType, recordId })
+        return new Response(JSON.stringify({ error: 'Record tenant not found' }), {
+          status: 422, headers: { 'Content-Type': 'application/json' }
+        })
+      }
+      recordTenantId = record.tenant_id
+      recordName = record.name || recordName
+    }
+
     if (purpose === 'booking_payment') {
       const m = session.metadata || {}
       const tenantId = (m.tenant_id || '').toString().trim()
@@ -159,7 +178,7 @@ serve(async (req) => {
       'Resolution Fee Paid', 'Converted to Client',
     ]
     if (recordType === 'lead' && purpose === 'investigation_fee' && recordId) {
-      const { data: lead } = await supabase.from('leads').select('id,name,status,assignedTo').eq('id', recordId).maybeSingle()
+      const { data: lead } = await supabase.from('leads').select('id,name,status,assignedTo,tenant_id').eq('id', recordId).maybeSingle()
       if (lead) {
         const curIdx       = STATUS_ORDER.indexOf(lead.status)
         const feePaidIdx   = STATUS_ORDER.indexOf('Tax Inv Fee Paid')
@@ -183,7 +202,7 @@ serve(async (req) => {
               clientName: lead.name,
               priority: 'High',
               dueDate: dueDateStr,
-              tenant_id: '61a89aef-0e7e-4ea2-b222-44ab2024655a',
+              tenant_id: lead.tenant_id,
               done: false,
               assignedTo: assignee,
               notes: 'Call IRS with POA to pull transcripts, balances, lien info, assessment dates, and filing history. Enter results into the Compliance tab on this lead.',
@@ -194,7 +213,7 @@ serve(async (req) => {
               clientName: lead.name,
               priority: 'High',
               dueDate: dueDateStr,
-              tenant_id: '61a89aef-0e7e-4ea2-b222-44ab2024655a',
+              tenant_id: lead.tenant_id,
               done: false,
               assignedTo: assignee,
               notes: 'Review the Financial Profile (I&E, Assets & Equity tabs) populated from the client\'s intake submission. Cross-reference with IRS results to determine the best resolution path (OIC, IA, CNC, etc.).',
@@ -203,7 +222,7 @@ serve(async (req) => {
           ])
 
           await supabase.from('lead_notes').insert([{
-            lead_id: recordId, lead_name: lead.name, tenant_id: '61a89aef-0e7e-4ea2-b222-44ab2024655a',
+            lead_id: recordId, lead_name: lead.name, tenant_id: lead.tenant_id,
             text: `💳 Investigation fee paid — agreement already signed, auto-advanced to Tax Investigation Active. 2 tasks created for ${assignee}.`,
             type: 'System', author: 'System (Stripe)', created_at: new Date().toISOString(),
           }])
@@ -218,7 +237,7 @@ serve(async (req) => {
         amount,
         method: 'Stripe Checkout',
         status: 'Cleared',
-        tenant_id: '61a89aef-0e7e-4ea2-b222-44ab2024655a',
+        tenant_id: lead.tenant_id,
         date: new Date().toISOString().slice(0, 10),
         notes: 'Paid via Stripe Checkout link',
         stripe_payment_intent_id: session.payment_intent || null,
