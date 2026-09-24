@@ -301,42 +301,17 @@ export default function Settings() {
       const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').eq('tenant_id', tid).maybeSingle()
       if (fetchErr) throw fetchErr
 
-      // Self-healing save: if Postgres reports an unknown column, strip it and retry.
-      // This guarantees the core Firm Info fields always save even if a newer
-      // integration column hasn't been migrated into the DB yet.
-      const skipped = []
       let saveErr
-      for (let attempt = 0; attempt < 12; attempt++) {
-        if (existing?.id) {
-          ({ error: saveErr } = await supabase.from('settings').update(payload).eq('tenant_id', tid).eq('id', existing.id))
-        } else {
-          ({ error: saveErr } = await supabase.from('settings').insert([{ ...payload, tenant_id: tid }]))
-        }
-        if (!saveErr) break
-        // Postgres "column does not exist" error: 42703, message names the column
-        const match = saveErr.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-          || saveErr.message?.match(/Could not find the '(\w+)' column/i)
-        if (match) {
-          const badCol = match[1]
-          if (badCol in payload) {
-            const { [badCol]: _, ...rest } = payload
-            payload = rest
-            skipped.push(badCol)
-            continue
-          }
-        }
-        // Not a recoverable "unknown column" error — stop retrying
-        break
+      if (existing?.id) {
+        ({ error: saveErr } = await supabase.from('settings').update(payload).eq('tenant_id', tid).eq('id', existing.id))
+      } else {
+        ({ error: saveErr } = await supabase.from('settings').insert([{ ...payload, tenant_id: tid }]))
       }
       if (saveErr) throw saveErr
 
       if (firm.primary_color) applyBrandColor(firm.primary_color)
       window.dispatchEvent(new Event('firm-updated'))
-      if (skipped.length) {
-        showToast(`✅ Saved — but these fields aren't set up in the database yet and were skipped: ${skipped.join(', ')}. Ask to add these columns.`)
-      } else {
-        showToast('✅ Settings saved!')
-      }
+      showToast('✅ Settings saved!')
     } catch (e) { showToast('Error: ' + e.message, 'err') } finally { setSaving(false) }
   }
 
