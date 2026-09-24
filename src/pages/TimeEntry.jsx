@@ -150,13 +150,15 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
   }
 
   async function markBilled(id, billed) {
-    await supabase.from('billing_time_entries').update({ billed, updated_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('billing_time_entries').update({ billed, updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) { showToast('❌ ' + error.message); return }
     load()
   }
 
   async function del(id) {
     if (!confirm('Delete this time entry?')) return
-    await supabase.from('billing_time_entries').delete().eq('id', id)
+    const { error } = await supabase.from('billing_time_entries').delete().eq('id', id)
+    if (error) { showToast('❌ ' + error.message); return }
     load()
   }
 
