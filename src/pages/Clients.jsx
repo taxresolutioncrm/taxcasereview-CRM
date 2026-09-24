@@ -1359,8 +1359,10 @@ export default function Clients() {
       ...rest
     } = f
     const dob = dobM && dobD && dobY ? `${dobM}/${dobD}/${dobY}` : f.dob || ''
-    // pipelineStage excluded from main payload — updated separately
-    const safe = { ...rest, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
+    // Persist the canonical mixed-case pipelineStage column. The edit form exposes
+    // this field, so excluding it made the dropdown appear to save while silently
+    // leaving the previous stage in the database.
+    const safe = { ...rest, pipelineStage: pipelineStage || DEFAULT_PIPELINE_STAGE, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
     // Empty-string values blow up non-text columns (date, numeric) with
     // "invalid input syntax" — Postgres wants null for "no value", not ''.
     Object.keys(safe).forEach(k => { if (safe[k] === '') safe[k] = null })
