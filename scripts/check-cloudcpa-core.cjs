@@ -4,6 +4,22 @@ const leads = fs.readFileSync('src/pages/Leads.jsx', 'utf8')
 const clients = fs.readFileSync('src/pages/Clients.jsx', 'utf8')
 const failures = []
 
+const calendar = fs.readFileSync('src/pages/Calendar.jsx', 'utf8')
+const employees = fs.readFileSync('src/pages/Employees.jsx', 'utf8')
+const settings = fs.readFileSync('src/pages/Settings.jsx', 'utf8')
+const payments = fs.readFileSync('src/pages/Payments.jsx', 'utf8')
+const invoices = fs.readFileSync('src/pages/Invoices.jsx', 'utf8')
+const estimates = fs.readFileSync('src/pages/Estimates.jsx', 'utf8')
+const documents = fs.readFileSync('src/pages/Documents.jsx', 'utf8')
+const cases = fs.readFileSync('src/pages/Cases.jsx', 'utf8')
+const invoiceSync = fs.readFileSync('src/lib/invoiceSync.js', 'utf8')
+const idMigration = fs.readFileSync('supabase/migrations/20260924212500_collision_proof_text_ids.sql', 'utf8')
+const numberMigration = fs.readFileSync('supabase/migrations/20260924214000_atomic_case_invoice_numbers.sql', 'utf8')
+const schemaMigration = fs.readFileSync('supabase/migrations/20260924215000_operational_schema_alignment.sql', 'utf8')
+const settingsMigration = fs.readFileSync('supabase/migrations/20260924221500_settings_integration_alignment.sql', 'utf8')
+const conversionMigration = fs.readFileSync('supabase/migrations/20260924211000_lead_conversion_integrity.sql', 'utf8')
+const invoiceAdjustMigration = fs.readFileSync('supabase/migrations/20260924220000_atomic_invoice_payment_adjustments.sql', 'utf8')
+
 function need(src, text, msg) {
   if (!src.includes(text)) failures.push(msg)
 }
@@ -44,3 +60,27 @@ if (failures.length) {
   process.exit(1)
 }
 console.log('CloudCPA core CRM invariant check PASS')
+
+
+// Cross-CRM persistence and schema invariants.
+forbid(calendar, 'for (let attempt = 0; attempt < 12; attempt++)', 'Calendar save still silently strips rejected columns')
+forbid(employees, 'for (let attempt = 0; attempt < 12; attempt++)', 'Employee save still silently strips rejected columns')
+forbid(settings, 'for (let attempt = 0; attempt < 12; attempt++)', 'Settings save still silently strips rejected columns')
+need(calendar, "const payload = {\n      title: form.title", 'Calendar must use an explicit schema-safe payload')
+need(payments, 'function isSettledPaymentStatus', 'Payment-to-invoice sync must distinguish settled from pending payments')
+need(payments, 'let insertedPaymentId = null', 'Payment rollback must target the exact inserted row')
+need(invoiceSync, "supabase.rpc('invoice_adjust_paid'", 'Invoice balance writes must use the atomic database RPC')
+need(invoices, "import { applyPaymentToInvoice } from '../lib/invoiceSync'", 'Invoice manual payments must share atomic invoice sync')
+need(estimates, ".select('id,invNum').single()", 'Estimate conversion must read the database-assigned invoice number')
+need(documents, "Document upload rollback failed", 'Document metadata failures must roll back the uploaded storage object')
+need(employees, "storage_path: path", 'Employee document metadata must keep the private storage path')
+need(cases, 'Case number is assigned atomically by the database per tenant.', 'Cases must not generate case numbers in the browser')
+need(invoices, 'Invoice number is assigned atomically by the database per tenant.', 'Invoices must not generate invoice numbers in the browser')
+need(idMigration, "gen_random_uuid()", 'Operational text IDs must use collision-proof UUID-backed defaults')
+need(numberMigration, 'pg_advisory_xact_lock', 'Case/invoice numbering must be serialized in PostgreSQL')
+need(schemaMigration, 'add column if not exists "checkNum" text', 'Payments schema must support the fields exposed by the UI')
+need(schemaMigration, 'add column if not exists updated_at timestamptz', 'Operational tables must support updated_at writes')
+need(schemaMigration, 'assign_estimate_number', 'Estimate numbering must be tenant-scoped and atomic')
+need(settingsMigration, 'otter_api_key', 'Settings schema must persist the Otter credential exposed in the UI')
+need(conversionMigration, 'trg_lead_conversion_integrity', 'Database must reject orphaned Converted-to-Client statuses')
+need(invoiceAdjustMigration, 'for update', 'Invoice payment adjustment RPC must row-lock the invoice')
