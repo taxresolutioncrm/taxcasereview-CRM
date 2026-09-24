@@ -16,6 +16,7 @@ const parser='src/lib/irsTranscriptParser.js'
 const portal='src/pages/IRSPortal.jsx'
 const pullUi='src/components/TranscriptPull.jsx'
 const completionSql='supabase/migrations/20260920025000_taxres_family_transcript_isp_completion.sql'
+const documentsStorageSql='supabase/migrations/20260924134500_add_documents_storage_path_for_tds.sql'
 const config='supabase/config.toml'
 
 for(const n of [
@@ -132,6 +133,8 @@ for(const n of [
   'tenant_id = current_tenant_id()',
   'transcript_analyses_tenant_client_idx'
 ]) need(completionSql,n)
+
+need(documentsStorageSql,'add column if not exists storage_path text','documents.storage_path required for TDS PDF filing')
 
 need(config,'[functions.transcript-pull]')
 need(config,'[functions.transcript-pull-callback]')
