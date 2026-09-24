@@ -345,11 +345,13 @@ function stripHtml(html) {
 function findAttachments(payload, out = []) {
   if (!payload) return out
   if (payload.filename && payload.body?.attachmentId) {
+    const contentId = payload.headers?.find(h => String(h.name || '').toLowerCase() === 'content-id')?.value || ''
     out.push({
       filename: payload.filename,
       mimeType: payload.mimeType || 'application/octet-stream',
       size: payload.body.size || 0,
       attachmentId: payload.body.attachmentId,
+      contentId: contentId.replace(/^<|>$/g, ''),
     })
   }
   for (const part of payload.parts || []) findAttachments(part, out)
