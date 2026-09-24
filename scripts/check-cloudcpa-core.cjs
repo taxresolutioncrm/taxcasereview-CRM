@@ -31,6 +31,7 @@ need(leads, 'function setLeadPersonalAddressField', 'Lead same-as-personal sync 
 need(leads, "if (Array.isArray(l.services)) return l.services", 'Lead services are not normalized for client array column')
 need(leads, "navigate('/clients/' + newClient.id)", 'Conversion does not navigate to new client')
 need(leads, "{['All',...STATUSES].map(s => (", 'Converted leads are not inspectable from status filters')
+need(leads, "l.status!=='Converted to Client').length", 'Total Leads stat must match the default working lead list')
 forbid(leads, 'const skipped = []\n    for (let attempt = 0; attempt < 12; attempt++) {', 'Lead save still silently strips fields')
 
 if (failures.length) {
