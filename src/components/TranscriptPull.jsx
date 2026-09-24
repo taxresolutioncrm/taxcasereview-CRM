@@ -14,7 +14,7 @@ const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
-const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
+const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
