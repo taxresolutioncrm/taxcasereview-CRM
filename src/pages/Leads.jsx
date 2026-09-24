@@ -3039,7 +3039,7 @@ export default function Leads() {
         return (
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:14}}>
             {[
-              {label:'Total Leads', val:leads.filter(l=>!l.archived).length, color:'var(--tx)'},
+              {label:'Total Leads', val:leads.filter(l=>!l.archived&&l.status!=='Converted to Client').length, color:'var(--tx)'},
               {label:'New',         val:newL,   color:'var(--blue)'},
               {label:'In Progress', val:active, color:'var(--warn)'},
               {label:'Converted',   val:conv,   color:'var(--green)'},
