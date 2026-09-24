@@ -229,7 +229,16 @@ export default function Documents() {
       created_at: new Date().toISOString()
     }])
     setSaving(false)
-    if (error) { showToast('Error: '+error.message); return }
+    if (error) {
+      // If storage succeeded but the metadata insert failed, remove the
+      // just-uploaded object so the private bucket does not accumulate orphans.
+      if (storagePath) {
+        const { error: cleanupErr } = await supabase.storage.from('documents').remove([storagePath])
+        if (cleanupErr) console.error('Document upload rollback failed:', cleanupErr)
+      }
+      showToast('Error: '+error.message)
+      return
+    }
     showToast('✅ Document saved!')
     const actor = getActor(user)
     await triggerWorkflow('document_uploaded', 'client', entityName, actor.name).catch(()=>{})
