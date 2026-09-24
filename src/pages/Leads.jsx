@@ -1138,7 +1138,15 @@ export default function Leads() {
     if (oldName && oldName !== form.name) {
       await supabase.from('client_compliance_records').update({ client_name: form.name }).eq('client_name', oldName)
     }
-    { showToast(modal==='edit' ? '✅ Lead updated!' : '✅ Lead added!'); if (modal !== 'edit') { await triggerWorkflow('lead_created', 'lead', form.name, actor); const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_created',category:'lead',description:`Added lead: ${form.name}`,entityName:form.name,meta:{status:form.status||'New Lead'}}) } else { const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_updated',category:'lead',description:`Updated lead: ${form.name}`,entityName:form.name}) } }
+    showToast(modal==='edit' ? '✅ Lead updated!' : '✅ Lead added!')
+    if (modal !== 'edit') {
+      await triggerWorkflow('lead_created', 'lead', form.name, actor)
+      const _a=getActor(user)
+      await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_created',category:'lead',description:`Added lead: ${form.name}`,entityName:form.name,meta:{status:form.status||'New Lead'}})
+    } else {
+      const _a=getActor(user)
+      await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_updated',category:'lead',description:`Updated lead: ${form.name}`,entityName:form.name})
+    }
     setModal(false); setForm(BLANK)
     if (modal === 'edit' && detail) {
       const { data } = await supabase.from('leads').select('*').eq('id', form.id).single()
