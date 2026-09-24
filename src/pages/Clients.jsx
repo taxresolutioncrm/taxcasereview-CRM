@@ -3620,6 +3620,50 @@ export default function Clients() {
 
 // ── Form Modal ────────────────────────────────────────────────────────────────
 function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
+  // Keep all input-format/state helpers inside the modal's lexical scope.
+  // This component lives outside Clients(), so calling helpers declared inside
+  // Clients() throws at input time and makes controlled fields appear read-only.
+  function fmtPhoneInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,10)
+    if (d.length<=3) return d
+    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`
+    return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+  }
+  function fmtSsnInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,9)
+    if (d.length<=3) return d
+    if (d.length<=5) return `${d.slice(0,3)}-${d.slice(3)}`
+    return `${d.slice(0,3)}-${d.slice(3,5)}-${d.slice(5)}`
+  }
+  function fmtEinInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,9)
+    if (d.length<=2) return d
+    return `${d.slice(0,2)}-${d.slice(2)}`
+  }
+  async function handleZipInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,5)
+    fld('zip',d)
+    if (d.length!==5) return
+    try {
+      const r=await fetch(`https://api.zippopotam.us/us/${d}`)
+      if (!r.ok) return
+      const data=await r.json()
+      const place=data.places?.[0]
+      if (place) {
+        fld('city',place['place name']||'')
+        fld('state',place['state abbreviation']||'')
+      }
+    } catch (_) {}
+  }
+  function toggleBusinessAddressSame(checked) {
+    fld('biz_same_as_personal',checked)
+    if (checked) {
+      fld('biz_street',form.street||'')
+      fld('biz_city',form.city||'')
+      fld('biz_state',form.state||'')
+      fld('biz_zip',form.zip||'')
+    }
+  }
   function addDep(){fld('dependents',[...(form.dependents||[]),{...BLANK_DEP}])}
   function updDep(i,k,v){const d=[...(form.dependents||[])];d[i]={...d[i],[k]:v};fld('dependents',d)}
   function remDep(i){const d=[...(form.dependents||[])];d.splice(i,1);fld('dependents',d)}
@@ -3650,8 +3694,8 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
           </div>
         )}
         <div className="fg3">
-          <div className="field"><label>Phone 1</label><input value={form.phone||''} onChange={e=>fld('phone',fmtPhone(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
-          <div className="field"><label>Phone 2</label><input value={form.phone2||''} onChange={e=>fld('phone2',fmtPhone(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
+          <div className="field"><label>Phone 1</label><input value={form.phone||''} onChange={e=>fld('phone',fmtPhoneInput(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
+          <div className="field"><label>Phone 2</label><input value={form.phone2||''} onChange={e=>fld('phone2',fmtPhoneInput(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
           <div className="field"><label>Email</label><input value={form.email||''} onChange={e=>fld('email',e.target.value)}/></div>
         </div>
         <div className="field" style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0' }}>
@@ -3681,7 +3725,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
               <option value="">Select…</option>{STATES.map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
-          <div className="field"><label>ZIP</label><input value={form.zip||''} onChange={e=>handleZip(e.target.value)} maxLength={5} placeholder="33408"/></div>
+          <div className="field"><label>ZIP</label><input value={form.zip||''} onChange={e=>handleZipInput(e.target.value)} maxLength={5} placeholder="33408"/></div>
         </div>
         <div className="field"><label>County</label><input value={form.county||''} onChange={e=>fld('county',e.target.value)} placeholder="e.g. Palm Beach"/></div>
         {form.clientType !== 'Individual' && (
@@ -3690,8 +3734,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
               <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em'}}>Business Address</div>
               <label style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--t3)',cursor:'pointer'}}>
                 <input type="checkbox" checked={!!form.biz_same_as_personal}
-                  onChange={e=>setForm(f=>({...f, biz_same_as_personal:e.target.checked,
-                    ...(e.target.checked ? { biz_street:f.street, biz_city:f.city, biz_state:f.state, biz_zip:f.zip } : {})}))}/>
+                  onChange={e=>toggleBusinessAddressSame(e.target.checked)}/>
                 Same as personal
               </label>
             </div>
@@ -3718,8 +3761,8 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
         <div style={{background:'var(--s3)',borderRadius:8,padding:12,marginBottom:10}}>
           <div style={{fontWeight:700,fontSize:12,marginBottom:8}}>🔒 Taxpayer Info</div>
           <div className="fg2">
-            <div className="field"><label>SSN</label><input value={form.ssn||''} onChange={e=>fld('ssn',fmtSsn(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
-            <div className="field"><label>EIN (if business)</label><input value={form.ein||''} onChange={e=>fld('ein',fmtEin(e.target.value))} placeholder="XX-XXXXXXX" maxLength={10}/></div>
+            <div className="field"><label>SSN</label><input value={form.ssn||''} onChange={e=>fld('ssn',fmtSsnInput(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
+            <div className="field"><label>EIN (if business)</label><input value={form.ein||''} onChange={e=>fld('ein',fmtEinInput(e.target.value))} placeholder="XX-XXXXXXX" maxLength={10}/></div>
           </div>
           <div className="field"><label>Date of Birth</label>
             <div style={{display:'flex',gap:6}}>
