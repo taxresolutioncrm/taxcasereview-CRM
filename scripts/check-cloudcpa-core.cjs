@@ -27,13 +27,16 @@ forbid(clients, 'const skipped = []\n    for (let attempt = 0; attempt < 12; att
 // Lead form/conversion.
 need(leads, "if (status === 'Converted to Client') {\n      await convertToClient(l)", 'Converted status must route through conversion')
 need(leads, "STATUSES.filter(s=>s!=='Converted to Client')", 'Generic lead editor still offers fake conversion')
-need(leads, "const { biz_same_as_personal, ...persistableForm } = form", 'Lead UI-only address flag not excluded')
+need(leads, "id, created_at, tenant_id, archived, deleted_at, biz_same_as_personal,", 'Lead UI/internal fields not excluded from payload')
 need(leads, 'function setLeadPersonalAddressField', 'Lead same-as-personal sync helper missing')
 need(leads, "if (Array.isArray(l.services)) return l.services", 'Lead services are not normalized for client array column')
 need(leads, "navigate('/clients/' + newClient.id)", 'Conversion does not navigate to new client')
 need(leads, "{['All',...STATUSES].map(s => (", 'Converted leads are not inspectable from status filters')
 need(leads, "l.status!=='Converted to Client').length", 'Total Leads stat must match the default working lead list')
 forbid(leads, 'const skipped = []\n    for (let attempt = 0; attempt < 12; attempt++) {', 'Lead save still silently strips fields')
+need(leads, 'function buildLeadPayload', 'Lead save payload hardening helper missing')
+need(leads, "taxYears: JSON.stringify(toArray(source.taxYears))", 'Lead tax years are not normalized before persistence')
+need(leads, "services: JSON.stringify(toArray(source.services))", 'Lead services are not normalized before persistence')
 
 if (failures.length) {
   console.error('CloudCPA core CRM invariant check FAILED:')
