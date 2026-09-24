@@ -253,26 +253,29 @@ export default function Calendar() {
   async function saveEvent() {
     if (!form.title || !form.date) { showToast('Title and date required'); return }
     setSaving(true)
-    let payload = { ...form, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : form.assignedTo, updated_at: new Date().toISOString() }
+    // Persist only the editable calendar columns. Editing an existing event
+    // may load booking/source/product metadata into form; those fields are
+    // intentionally immutable here and must never be silently stripped.
+    const payload = {
+      title: form.title,
+      clientName: form.clientName || null,
+      client_id: form.client_id || null,
+      assignedTo: isRomyLabsAdmin ? adminCalendarOwner : (form.assignedTo || null),
+      date: form.date,
+      time: form.time || null,
+      endTime: form.endTime || null,
+      eventType: form.eventType || 'Consultation Call',
+      color: form.color || 'bb',
+      notes: form.notes || null,
+      recurring: form.recurring || 'none',
+      status: form.status || 'scheduled',
+      updated_at: new Date().toISOString(),
+    }
     let error
-    // Retry loop: strip unknown columns if PostgREST rejects them (same pattern as Clients.jsx)
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (form.id) {
-        ;({ error } = await supabase.from('calevents').update(payload).eq('id', form.id))
-      } else {
-        const p = { ...payload, created_at: new Date().toISOString() }
-        delete p.id
-        ;({ error } = await supabase.from('calevents').insert([p]))
-      }
-      if (!error) break
-      const match = error.message?.match(/column ['""]?(\w+)['""]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        continue
-      }
-      break
+    if (form.id) {
+      ;({ error } = await supabase.from('calevents').update(payload).eq('id', form.id))
+    } else {
+      ;({ error } = await supabase.from('calevents').insert([{ ...payload, created_at: new Date().toISOString() }]))
     }
     setSaving(false)
     if (error) { showToast('Error: ' + error.message); return }
