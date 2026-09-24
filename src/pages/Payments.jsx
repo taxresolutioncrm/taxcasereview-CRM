@@ -138,10 +138,15 @@ export default function Payments() {
     const previous = editId ? items.find(i => i.id === editId) : null
     const payload = { ...form, date: form.date||new Date().toISOString().slice(0,10) }
     let error
+    let insertedPaymentId = null
     if (editId) {
       ;({error} = await supabase.from('payments').update({...payload, updated_at:new Date().toISOString()}).eq('id',editId))
     } else {
-      ;({error} = await supabase.from('payments').insert([{...payload, created_at:new Date().toISOString()}]))
+      const { data: inserted, error: insertErr } = await supabase.from('payments')
+        .insert([{...payload, created_at:new Date().toISOString()}])
+        .select('id').single()
+      error = insertErr
+      insertedPaymentId = inserted?.id || null
     }
     if (error) {
       setSaving(false)
@@ -175,11 +180,8 @@ export default function Payments() {
       if (editId && previous) {
         const { id, tenant_id, created_at, ...restore } = previous
         await supabase.from('payments').update(restore).eq('id',editId)
-      } else {
-        const { data: newest } = await supabase.from('payments')
-          .select('id').eq('clientName',form.clientName).eq('amount',String(form.amount))
-          .order('created_at',{ascending:false}).limit(1)
-        if (newest?.[0]?.id) await supabase.from('payments').delete().eq('id',newest[0].id)
+      } else if (insertedPaymentId) {
+        await supabase.from('payments').delete().eq('id',insertedPaymentId)
       }
       setSaving(false)
       showToast('Invoice sync failed: ' + (invoiceErr?.message || invoiceErr))
