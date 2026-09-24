@@ -1555,12 +1555,15 @@ export default function Leads() {
 
   async function convertToClient(l, skipConfirm) {
     if (converting) return
-    if (!skipConfirm && !confirm(`Convert "${l.name}" to a full client?`)) return
+    const clientName = (l.name || '').trim()
+    if (!clientName) { showToast('Lead name is required before conversion.'); return }
+    if (!skipConfirm && !confirm(`Convert "${clientName}" to a full client?`)) return
     setConverting(true)
     // A second conversion of the same lead (double-click, or the resolution-fee
     // path firing alongside the button) used to insert a duplicate client.
     // Clients are keyed by name everywhere, so a duplicate splits the file.
-    const { data: dupe } = await supabase.from('clients').select('id').eq('name', l.name).limit(1)
+    const candidateNames = Array.from(new Set([l.name, clientName].filter(Boolean)))
+    const { data: dupe } = await supabase.from('clients').select('id,name').in('name', candidateNames).limit(1)
     if (dupe?.length) {
       setConverting(false)
       showToast(`${l.name} is already a client — opening their file`)
@@ -1570,8 +1573,8 @@ export default function Leads() {
     }
     const taxYearsStr = l.taxYearsCustom || (()=>{try{return JSON.parse(l.taxYears||'[]').join(', ')}catch{return l.taxYears||''}})()
     const { data: newClient, error } = await supabase.from('clients').insert([{
-      name: l.name, clientType: l.clientType || 'Individual',
-      business_name: l.business_name || null,
+      name: clientName, clientType: l.clientType || 'Individual',
+      business_name: (l.business_name || '').trim() || null,
       first: l.first, mi: l.mi, last: l.last,
       phone: l.phone, phone2: l.phone2, email: l.email,
       smsConsent: l.smsConsent || false, smsConsentDate: l.smsConsentDate || null,
@@ -1596,7 +1599,10 @@ export default function Leads() {
     
       filingRequirements: l.filingRequirements,
       taxYears: taxYearsStr,
-      services: l.services || null,
+      services: (() => {
+        if (Array.isArray(l.services)) return l.services
+        try { return JSON.parse(l.services || '[]') } catch { return [] }
+      })(),
       salesRep: l.salesRep || null,
       contractFee: l.contractFee || null,
       trade1Amount: l.trade1Amount || null, trade1Date: l.trade1Date || null,
@@ -3052,7 +3058,7 @@ export default function Leads() {
         />
       </div>
       <div className="pipeline-chips" style={{marginBottom:10,display:'flex',flexWrap:'wrap',gap:4,alignItems:'center'}}>
-        {['All',...STATUSES.slice(0,8)].map(s => (
+        {['All',...STATUSES].map(s => (
           <span key={s} className={`chip${filter===s?' on':''}`} onClick={()=>setFilter(s)}>{s}</span>
         ))}
         <span className={`chip${showArchived?' on':''}`} style={{marginLeft:8}} onClick={()=>setShowArchived(a=>!a)}>🗄 Archived</span>
