@@ -506,6 +506,10 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     if (!client || !poa) return
     // Open an empty tab inside the click so the browser does not block it; it goes to IRS TDS only after the request is saved.
     const irsTab = openPendingIrsTab()
+    if (!irsTab) {
+      flash('❌ Browser blocked the IRS TDS tab. Allow pop-ups for this CRM and try again — no transcript request was saved.')
+      return
+    }
     setSaving(true)
     try {
       const row = {
