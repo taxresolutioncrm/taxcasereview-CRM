@@ -1101,7 +1101,8 @@ export default function Leads() {
     setSaving(true)
     const actor = resolveActorName(user, employees)
     const beforeEdit = modal === 'edit' ? leads.find(l=>l.id===form.id) : null
-    let payload = { ...form, taxYears: JSON.stringify(form.taxYears), filingRequirements: JSON.stringify(form.filingRequirements||[]), services: JSON.stringify(form.services||[]) }
+    const { biz_same_as_personal, ...persistableForm } = form
+    let payload = { ...persistableForm, taxYears: JSON.stringify(form.taxYears), filingRequirements: JSON.stringify(form.filingRequirements||[]), services: JSON.stringify(form.services||[]) }
     // Empty-string values blow up non-text columns (date, numeric) with
     // "invalid input syntax" — Postgres wants null for "no value", not ''.
     Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
