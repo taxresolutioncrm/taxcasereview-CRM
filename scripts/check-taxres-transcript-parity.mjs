@@ -139,15 +139,10 @@ if(fs.existsSync(callback)){
 }
 if(fs.existsSync(lib)){
   const s=read(lib)
-  // irs_interactive is the always-available practitioner Web TDS path; it must be present and correct
-  if(!s.includes("id: 'irs_interactive'")) failures.push('transcriptPull: irs_interactive practitioner provider must be defined')
-  if(!s.includes("available: true") || !s.includes("id: 'irs_interactive'")) failures.push('transcriptPull: irs_interactive must always be available')
-  // Prohibit old broken patterns that coupled practitioner login to the automated API
-  for(const old of ["label: 'IRS TDS — Practitioner Login'","chip: 'Open IRS TDS'"]){
-    if(s.includes(old)) failures.push('transcriptPull: legacy Web TDS label must not return: '+old)
-  }
-  // submitToProvider must handle irs_interactive without calling the IRS API
-  if(!s.includes("providerId === 'manual' || providerId === 'irs_interactive'")) failures.push('transcriptPull: irs_interactive must short-circuit in submitToProvider without calling the API')
+  // Primary flow is direct CRM-controlled authorization. Manual remains fallback only.
+  if(s.includes("id: 'irs_interactive'")) failures.push('transcriptPull: obsolete irs_interactive provider returned')
+  if(!s.includes("id: 'irs_a2a'")) failures.push('transcriptPull: direct IRS provider missing')
+  if(!s.includes("providerId === 'manual'")) failures.push('transcriptPull: manual fallback short-circuit missing')
 }
 if(fs.existsSync(session)){
   const s=read(session)
@@ -155,6 +150,8 @@ if(fs.existsSync(session)){
   // It must call begin-session and open the returned OAuth authorization URL.
   if(s.includes("'https://la.www4.irs.gov/esrv/tds/'")) failures.push('TDSSessionPresence: must not open public IRS TDS website as primary flow — use begin-session OAuth')
   if(s.includes("window.open(IRS_TDS_URL")) failures.push('TDSSessionPresence: must not directly open the practitioner TDS website — use begin-session OAuth URL')
+  if(s.includes("window.open(authorizationUrl, '_blank'")) failures.push('TDSSessionPresence: separate-tab fallback is forbidden; keep authorization in the CRM-controlled popup')
+  if(!s.includes('IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.')) failures.push('TDSSessionPresence: blocked-popup inline recovery message missing')
   for(const bad of ['begin-test-session','Run CRM Live Test','testSessionActive']) if(s.includes(bad)) failures.push('TDSSessionPresence: synthetic live-test path present: '+bad)
   // Must have a postMessage listener wired to receive the taxres-irs-tds-oauth callback
   if(!s.includes("window.addEventListener('message'") && !s.includes('window.addEventListener("message"')) failures.push('TDSSessionPresence: missing postMessage listener for taxres-irs-tds-oauth callback')
@@ -163,17 +160,13 @@ if(fs.existsSync(session)){
 }
 if(fs.existsSync(pullUi)){
   const s=read(pullUi)
-  // irs_interactive is the UI intent for practitioner Web TDS requests (BLANK default + openNewRequest);
-  // createRequest() must translate it to 'manual' before DB insert so the DB column stays clean.
-  // submitCanopyStyleRequest always stores 'irs_a2a' — that path is unchanged.
+  // Primary request path must remain direct CRM-controlled authorization.
   if(s.includes('Save Transcript Request')) failures.push('TranscriptPull: legacy manual request CTA must not be primary')
   if(!s.includes('data-testid="transcript-client-search"')) failures.push('TranscriptPull: ID-based client combobox input missing')
   if(!s.includes('data-testid="transcript-client-dropdown"')) failures.push('TranscriptPull: ID-based client dropdown missing')
   if(s.includes('list="irsportal-clients"')) failures.push('TranscriptPull: broken irsportal-clients datalist reference returned')
-  // Ensure createRequest() does not write 'irs_interactive' to the DB — must use 'manual' for DB storage
-  if(s.includes("provider: 'irs_interactive'") && !s.includes("dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider")) {
-    failures.push("TranscriptPull: createRequest() must translate irs_interactive to 'manual' before DB insert (use dbProvider)")
-  }
+  if(s.includes("provider: 'irs_interactive'")) failures.push('TranscriptPull: obsolete interactive provider remains in primary request code')
+  if(!s.includes("provider: 'irs_a2a'")) failures.push('TranscriptPull: direct provider missing from primary request')
 }
 
 if(failures.length){
