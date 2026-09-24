@@ -3644,7 +3644,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
   }
   async function handleZipInput(v) {
     const d=String(v||'').replace(/\D/g,'').slice(0,5)
-    fld('zip',d)
+    setPersonalAddressField('zip',d)
     if (d.length!==5) return
     try {
       const r=await fetch(`https://api.zippopotam.us/us/${d}`)
@@ -3652,8 +3652,8 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
       const data=await r.json()
       const place=data.places?.[0]
       if (place) {
-        fld('city',place['place name']||'')
-        fld('state',place['state abbreviation']||'')
+        setPersonalAddressField('city',place['place name']||'')
+        setPersonalAddressField('state',place['state abbreviation']||'')
       }
     } catch (_) {}
   }
@@ -3665,6 +3665,12 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
       fld('biz_state',form.state||'')
       fld('biz_zip',form.zip||'')
     }
+  }
+  function setPersonalAddressField(key,value) {
+    fld(key,value)
+    if (!form.biz_same_as_personal) return
+    const bizKey={street:'biz_street',city:'biz_city',state:'biz_state',zip:'biz_zip'}[key]
+    if (bizKey) fld(bizKey,value)
   }
   function addDep(){fld('dependents',[...(form.dependents||[]),{...BLANK_DEP}])}
   function updDep(i,k,v){const d=[...(form.dependents||[])];d[i]={...d[i],[k]:v};fld('dependents',d)}
@@ -3719,11 +3725,11 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
         <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',margin:'6px 0 4px'}}>
           {form.clientType === 'Business' ? 'Address' : 'Personal Address'}
         </div>
-        <div className="field"><label>Street Address</label><input value={form.street||''} onChange={e=>fld('street',e.target.value)}/></div>
+        <div className="field"><label>Street Address</label><input value={form.street||''} onChange={e=>setPersonalAddressField('street',e.target.value)}/></div>
         <div className="fg3">
-          <div className="field"><label>City</label><input value={form.city||''} onChange={e=>fld('city',e.target.value)}/></div>
+          <div className="field"><label>City</label><input value={form.city||''} onChange={e=>setPersonalAddressField('city',e.target.value)}/></div>
           <div className="field"><label>State</label>
-            <select value={form.state||''} onChange={e=>fld('state',e.target.value)}>
+            <select value={form.state||''} onChange={e=>setPersonalAddressField('state',e.target.value)}>
               <option value="">Select…</option>{STATES.map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
