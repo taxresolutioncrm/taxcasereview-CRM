@@ -357,7 +357,7 @@ export function navigatePendingIrsTab(tab, url = IRS_TDS_URL) {
   try {
     const safe = String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
     tab.document.open()
-    tab.document.write(\`<!doctype html><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=\${safe}"><title>Opening IRS TDS…</title>\`)
+    tab.document.write(`<!doctype html><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=${safe}"><title>Opening IRS TDS…</title>`)
     tab.document.close()
   } catch {
     tab.location.replace(url)
@@ -407,11 +407,11 @@ export function browserMatchProblem(req, clientTinLast4, parsed) {
   // Automatic filing needs a positive taxpayer match — never year/type alone.
   if (!clientTinLast4) return 'client has no SSN/EIN on file to match against — file this PDF manually'
   if (!parsed?.tinLast4) return 'no readable taxpayer SSN/EIN on this PDF — file it manually'
-  if (parsed.tinLast4 !== clientTinLast4) return \`TIN ending \${parsed.tinLast4} is not this client\`
+  if (parsed.tinLast4 !== clientTinLast4) return `TIN ending ${parsed.tinLast4} is not this client`
   const years = parseYearSpec(req?.tax_years)
-  if (years.size && a.tax_year && !years.has(String(a.tax_year))) return \`tax year \${a.tax_year} was not requested\`
+  if (years.size && a.tax_year && !years.has(String(a.tax_year))) return `tax year ${a.tax_year} was not requested`
   const types = (req?.transcript_types || []).filter(Boolean)
-  if (types.length && a.transcript_type && a.transcript_type !== 'Other' && !types.some(t => sameTranscriptType(a.transcript_type, t))) return \`\${a.transcript_type} was not requested\`
+  if (types.length && a.transcript_type && a.transcript_type !== 'Other' && !types.some(t => sameTranscriptType(a.transcript_type, t))) return `${a.transcript_type} was not requested`
   return null
 }
 
