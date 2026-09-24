@@ -1090,6 +1090,31 @@ export default function Leads() {
     return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
   })
 
+  function buildLeadPayload(source) {
+    const {
+      id, created_at, tenant_id, archived, deleted_at, biz_same_as_personal,
+      stripe_payment_id, stripe_customer_id, default_payment_method_id,
+      payment_method_type, payment_method_brand, payment_method_last4,
+      stripe_checkout_url, stripe_checkout_sent_at,
+      inv_fee_paid, inv_fee_amount, investigation_fee_paid, investigation_fee_amount,
+      irsbalance, issuetype, irsorstate, taxyears, taxyearscustom,
+      assignedto, taxfee, taxfeeoverride,
+      ...rest
+    } = source
+    const toArray = value => {
+      if (Array.isArray(value)) return value
+      try { return JSON.parse(value || '[]') } catch { return [] }
+    }
+    const payload = {
+      ...rest,
+      taxYears: JSON.stringify(toArray(source.taxYears)),
+      filingRequirements: JSON.stringify(toArray(source.filingRequirements)),
+      services: JSON.stringify(toArray(source.services)),
+    }
+    Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
+    return payload
+  }
+
   async function save() {
     if (form.clientType !== 'Business' && !composeName(form.first,form.mi,form.last)) {
       showToast('First and last name are required'); return
@@ -1110,16 +1135,10 @@ export default function Leads() {
     setSaving(true)
     const actor = resolveActorName(user, employees)
     const beforeEdit = modal === 'edit' ? leads.find(l=>l.id===form.id) : null
-    const { biz_same_as_personal, ...persistableForm } = form
-    let payload = { ...persistableForm, taxYears: JSON.stringify(form.taxYears), filingRequirements: JSON.stringify(form.filingRequirements||[]), services: JSON.stringify(form.services||[]) }
-    // Empty-string values blow up non-text columns (date, numeric) with
-    // "invalid input syntax" — Postgres wants null for "no value", not ''.
-    Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
+    let payload = buildLeadPayload(form)
     let error
     let oldName = null
     if (modal === 'edit') {
-      const { id, created_at, ...rest } = payload
-      payload = rest
       oldName = detail?.name
     } else {
       payload.created_at = new Date().toISOString()
