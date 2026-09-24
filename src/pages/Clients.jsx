@@ -41,7 +41,7 @@ const firmEmail = () => (FIRM.email || '').trim() || 'info@' + firmName().toLowe
 const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const DAYS   = Array.from({length:31},(_,i)=>String(i+1).padStart(2,'0'))
-const YDOB   = Array.from({length:80},(_,i)=>2005-i)
+const YDOB   = Array.from({length:100},(_,i)=>new Date().getFullYear()-18-i)
 
 const IRS_STATUS_OPTIONS = ['ACS','Notice Status','Queue for ACS','Currently Not Collectible','Installment Agreement','Garnishment','Levy Issued','Levied','Lien Filed','Appeals','Litigation','Released','Other']
 
@@ -1349,7 +1349,7 @@ export default function Clients() {
     const {
       dobM, dobD, dobY, id, created_at, pipelineStage,
       // Fields returned by select('*') that must never be in an update payload:
-      tenant_id, deleted_at, archived, dnd,
+      tenant_id, deleted_at, archived, dnd, biz_same_as_personal,
       autopay_last_charged_at, autopay_last_result,
       stripe_checkout_sent_at, payment_plan_changes,
       qb_id, qb_synced_at, xero_id, xero_synced_at,
@@ -1359,8 +1359,10 @@ export default function Clients() {
       ...rest
     } = f
     const dob = dobM && dobD && dobY ? `${dobM}/${dobD}/${dobY}` : f.dob || ''
-    // pipelineStage excluded from main payload — updated separately
-    const safe = { ...rest, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
+    // Persist the canonical mixed-case pipelineStage column. The edit form exposes
+    // this field, so excluding it made the dropdown appear to save while silently
+    // leaving the previous stage in the database.
+    const safe = { ...rest, pipelineStage: pipelineStage || DEFAULT_PIPELINE_STAGE, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
     // Empty-string values blow up non-text columns (date, numeric) with
     // "invalid input syntax" — Postgres wants null for "no value", not ''.
     Object.keys(safe).forEach(k => { if (safe[k] === '') safe[k] = null })
@@ -1370,25 +1372,11 @@ export default function Clients() {
   async function save() {
     if (!form.name.trim()){showToast('Name is required');return}
     setSaving(true)
-    let payload = {...buildPayload(form),created_at:new Date().toISOString()}
-    let error
-    const skipped = []
-    for (let attempt = 0; attempt < 12; attempt++) {
-      ;({error} = await supabase.from('clients').insert([payload]))
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        skipped.push(match[1])
-        continue
-      }
-      break
-    }
+    const payload = {...buildPayload(form),created_at:new Date().toISOString()}
+    const { error } = await supabase.from('clients').insert([payload])
     setSaving(false)
     if (error){showToast('Error: '+error.message);return}
-    showToast(skipped.length ? `✅ Client added — but skipped fields not in the database yet: ${skipped.join(', ')}` : '✅ Client added!')
+    showToast('✅ Client added!')
     const actorC = resolveActorName(user, employees)
     await triggerWorkflow('client_created', 'client', form.name, actorC).catch(()=>{})
     await logActivity(supabase,{employeeName:actorC,action:'client_created',category:'client',description:`Added client: ${form.name}`,entityName:form.name}).catch(()=>{})
@@ -1403,25 +1391,11 @@ export default function Clients() {
   async function saveEdit() {
     setSaving(true)
     const before = clients.find(cl=>cl.id===form.id) || detail
-    let payload = buildPayload(form)
-    let error
-    const skipped = []
-    for (let attempt = 0; attempt < 12; attempt++) {
-      ;({error} = await supabase.from('clients').update(payload).eq('id',form.id))
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        skipped.push(match[1])
-        continue
-      }
-      break
-    }
+    const payload = buildPayload(form)
+    const { error } = await supabase.from('clients').update(payload).eq('id',form.id)
     setSaving(false)
     if (error){showToast('Error: '+error.message);return}
-    showToast(skipped.length ? `✅ Saved — but skipped fields not in the database yet: ${skipped.join(', ')}` : '✅ Saved!')
+    showToast('✅ Saved!')
     setEditModal(false)
     const {data}=await supabase.from('clients').select('*').eq('id',form.id).single()
     if (data){setDetail(data);loadRelated(data.name)}
@@ -1505,7 +1479,7 @@ export default function Clients() {
     setSmsSending(false)
     if (error) { showToast('Error: '+error.message); return }
 
-    if (status === 'Sent') { showToast('✅ Text sent!'); const actorS = resolveActorName(user, employees); await triggerWorkflow('client_email_sent', 'client', c?.name || '', actorS).catch(()=>{}) }
+    if (status === 'Sent') { showToast('✅ Text sent!'); const actorS = resolveActorName(user, employees); await triggerWorkflow('client_sms_sent', 'client', c?.name || '', actorS).catch(()=>{}) }
     else if (status === 'Failed') showToast('SignalWire error: ' + (errMsg||'send failed'))
     else showToast('Logged — add SignalWire credentials in Settings to actually send')
 
@@ -3620,6 +3594,56 @@ export default function Clients() {
 
 // ── Form Modal ────────────────────────────────────────────────────────────────
 function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
+  // Keep all input-format/state helpers inside the modal's lexical scope.
+  // This component lives outside Clients(), so calling helpers declared inside
+  // Clients() throws at input time and makes controlled fields appear read-only.
+  function fmtPhoneInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,10)
+    if (d.length<=3) return d
+    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`
+    return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+  }
+  function fmtSsnInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,9)
+    if (d.length<=3) return d
+    if (d.length<=5) return `${d.slice(0,3)}-${d.slice(3)}`
+    return `${d.slice(0,3)}-${d.slice(3,5)}-${d.slice(5)}`
+  }
+  function fmtEinInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,9)
+    if (d.length<=2) return d
+    return `${d.slice(0,2)}-${d.slice(2)}`
+  }
+  async function handleZipInput(v) {
+    const d=String(v||'').replace(/\D/g,'').slice(0,5)
+    setPersonalAddressField('zip',d)
+    if (d.length!==5) return
+    try {
+      const r=await fetch(`https://api.zippopotam.us/us/${d}`)
+      if (!r.ok) return
+      const data=await r.json()
+      const place=data.places?.[0]
+      if (place) {
+        setPersonalAddressField('city',place['place name']||'')
+        setPersonalAddressField('state',place['state abbreviation']||'')
+      }
+    } catch (_) {}
+  }
+  function toggleBusinessAddressSame(checked) {
+    fld('biz_same_as_personal',checked)
+    if (checked) {
+      fld('biz_street',form.street||'')
+      fld('biz_city',form.city||'')
+      fld('biz_state',form.state||'')
+      fld('biz_zip',form.zip||'')
+    }
+  }
+  function setPersonalAddressField(key,value) {
+    fld(key,value)
+    if (!form.biz_same_as_personal) return
+    const bizKey={street:'biz_street',city:'biz_city',state:'biz_state',zip:'biz_zip'}[key]
+    if (bizKey) fld(bizKey,value)
+  }
   function addDep(){fld('dependents',[...(form.dependents||[]),{...BLANK_DEP}])}
   function updDep(i,k,v){const d=[...(form.dependents||[])];d[i]={...d[i],[k]:v};fld('dependents',d)}
   function remDep(i){const d=[...(form.dependents||[])];d.splice(i,1);fld('dependents',d)}
@@ -3650,8 +3674,8 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
           </div>
         )}
         <div className="fg3">
-          <div className="field"><label>Phone 1</label><input value={form.phone||''} onChange={e=>fld('phone',fmtPhone(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
-          <div className="field"><label>Phone 2</label><input value={form.phone2||''} onChange={e=>fld('phone2',fmtPhone(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
+          <div className="field"><label>Phone 1</label><input value={form.phone||''} onChange={e=>fld('phone',fmtPhoneInput(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
+          <div className="field"><label>Phone 2</label><input value={form.phone2||''} onChange={e=>fld('phone2',fmtPhoneInput(e.target.value))} placeholder="(305) 555-0000" maxLength={14}/></div>
           <div className="field"><label>Email</label><input value={form.email||''} onChange={e=>fld('email',e.target.value)}/></div>
         </div>
         <div className="field" style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0' }}>
@@ -3673,15 +3697,15 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
         <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',margin:'6px 0 4px'}}>
           {form.clientType === 'Business' ? 'Address' : 'Personal Address'}
         </div>
-        <div className="field"><label>Street Address</label><input value={form.street||''} onChange={e=>fld('street',e.target.value)}/></div>
+        <div className="field"><label>Street Address</label><input value={form.street||''} onChange={e=>setPersonalAddressField('street',e.target.value)}/></div>
         <div className="fg3">
-          <div className="field"><label>City</label><input value={form.city||''} onChange={e=>fld('city',e.target.value)}/></div>
+          <div className="field"><label>City</label><input value={form.city||''} onChange={e=>setPersonalAddressField('city',e.target.value)}/></div>
           <div className="field"><label>State</label>
-            <select value={form.state||''} onChange={e=>fld('state',e.target.value)}>
+            <select value={form.state||''} onChange={e=>setPersonalAddressField('state',e.target.value)}>
               <option value="">Select…</option>{STATES.map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
-          <div className="field"><label>ZIP</label><input value={form.zip||''} onChange={e=>handleZip(e.target.value)} maxLength={5} placeholder="33408"/></div>
+          <div className="field"><label>ZIP</label><input value={form.zip||''} onChange={e=>handleZipInput(e.target.value)} maxLength={5} placeholder="33408"/></div>
         </div>
         <div className="field"><label>County</label><input value={form.county||''} onChange={e=>fld('county',e.target.value)} placeholder="e.g. Palm Beach"/></div>
         {form.clientType !== 'Individual' && (
@@ -3690,8 +3714,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
               <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em'}}>Business Address</div>
               <label style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--t3)',cursor:'pointer'}}>
                 <input type="checkbox" checked={!!form.biz_same_as_personal}
-                  onChange={e=>setForm(f=>({...f, biz_same_as_personal:e.target.checked,
-                    ...(e.target.checked ? { biz_street:f.street, biz_city:f.city, biz_state:f.state, biz_zip:f.zip } : {})}))}/>
+                  onChange={e=>toggleBusinessAddressSame(e.target.checked)}/>
                 Same as personal
               </label>
             </div>
@@ -3718,8 +3741,8 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
         <div style={{background:'var(--s3)',borderRadius:8,padding:12,marginBottom:10}}>
           <div style={{fontWeight:700,fontSize:12,marginBottom:8}}>🔒 Taxpayer Info</div>
           <div className="fg2">
-            <div className="field"><label>SSN</label><input value={form.ssn||''} onChange={e=>fld('ssn',fmtSsn(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
-            <div className="field"><label>EIN (if business)</label><input value={form.ein||''} onChange={e=>fld('ein',fmtEin(e.target.value))} placeholder="XX-XXXXXXX" maxLength={10}/></div>
+            <div className="field"><label>SSN</label><input value={form.ssn||''} onChange={e=>fld('ssn',fmtSsnInput(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
+            <div className="field"><label>EIN (if business)</label><input value={form.ein||''} onChange={e=>fld('ein',fmtEinInput(e.target.value))} placeholder="XX-XXXXXXX" maxLength={10}/></div>
           </div>
           <div className="field"><label>Date of Birth</label>
             <div style={{display:'flex',gap:6}}>
@@ -3741,7 +3764,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
           <div style={{fontWeight:700,fontSize:12,marginBottom:8}}>👥 Spouse / Partner</div>
           <div className="fg2">
             <div className="field"><label>Spouse Full Name</label><input value={form.spouseName||''} onChange={e=>fld('spouseName',e.target.value)}/></div>
-            <div className="field"><label>Spouse SSN</label><input value={form.spouseSsn||''} onChange={e=>fld('spouseSsn',e.target.value)} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
+            <div className="field"><label>Spouse SSN</label><input value={form.spouseSsn||''} onChange={e=>fld('spouseSsn',fmtSsnInput(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
           </div>
           <div className="fg2">
             <div className="field"><label>Spouse Date of Birth</label><input type="date" value={form.spouseDob||''} onChange={e=>fld('spouseDob',e.target.value)}/></div>
@@ -3796,7 +3819,7 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
               </div>
               <div className="fg2">
                 <div className="field"><label>Date of Birth</label><input type="date" value={d.dob||''} onChange={e=>updDep(i,'dob',e.target.value)}/></div>
-                <div className="field"><label>SSN</label><input value={d.ssn||''} onChange={e=>updDep(i,'ssn',e.target.value)} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
+                <div className="field"><label>SSN</label><input value={d.ssn||''} onChange={e=>updDep(i,'ssn',fmtSsnInput(e.target.value))} placeholder="XXX-XX-XXXX" maxLength={11}/></div>
               </div>
             </div>
           ))}
