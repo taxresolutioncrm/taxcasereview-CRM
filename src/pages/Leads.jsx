@@ -1124,35 +1124,21 @@ export default function Leads() {
     } else {
       payload.created_at = new Date().toISOString()
     }
-    // Self-healing save: if Postgres/PostgREST reports an unknown column,
-    // strip it and retry so one missing field doesn't block the whole save.
-    const skipped = []
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (modal === 'edit') {
-        ;({ error } = await supabase.from('leads').update(payload).eq('id', form.id))
-      } else {
-        ;({ error } = await supabase.from('leads').insert([payload]))
-      }
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        skipped.push(match[1])
-        continue
-      }
-      break
+    // Fail loudly on schema/save errors. Silently stripping unknown fields
+    // caused records to look saved while important data never persisted.
+    if (modal === 'edit') {
+      ;({ error } = await supabase.from('leads').update(payload).eq('id', form.id))
+    } else {
+      ;({ error } = await supabase.from('leads').insert([payload]))
     }
     setSaving(false)
     if (error) { showToast('Error: '+error.message); return }
-    if (skipped.length) showToast(`✅ Saved — but these fields aren't set up in the database yet and were skipped: ${skipped.join(', ')}`)
     // If the name changed, repoint any compliance records gathered under the old name
     // so they don't get orphaned (compliance is stored keyed by client_name text).
     if (oldName && oldName !== form.name) {
       await supabase.from('client_compliance_records').update({ client_name: form.name }).eq('client_name', oldName)
     }
-    if (!skipped.length) { showToast(modal==='edit' ? '✅ Lead updated!' : '✅ Lead added!'); if (modal !== 'edit') { await triggerWorkflow('lead_created', 'lead', form.name, actor); const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_created',category:'lead',description:`Added lead: ${form.name}`,entityName:form.name,meta:{status:form.status||'New Lead'}}) } else { const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_updated',category:'lead',description:`Updated lead: ${form.name}`,entityName:form.name}) } }
+    { showToast(modal==='edit' ? '✅ Lead updated!' : '✅ Lead added!'); if (modal !== 'edit') { await triggerWorkflow('lead_created', 'lead', form.name, actor); const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_created',category:'lead',description:`Added lead: ${form.name}`,entityName:form.name,meta:{status:form.status||'New Lead'}}) } else { const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_updated',category:'lead',description:`Updated lead: ${form.name}`,entityName:form.name}) } }
     setModal(false); setForm(BLANK)
     if (modal === 'edit' && detail) {
       const { data } = await supabase.from('leads').select('*').eq('id', form.id).single()
