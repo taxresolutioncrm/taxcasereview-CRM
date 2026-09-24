@@ -4,7 +4,7 @@
 
 -- 1) Repair existing orphaned conversions for every tenant.
 insert into public.clients (
-  name, "clientType", business_name, first, mi, last, phone, phone2, email,
+  id, name, "clientType", business_name, first, mi, last, phone, phone2, email,
   "smsConsent", "smsConsentDate", ssn, ein, dob,
   "spouseName", "spouseSsn", "spouseDob", "filingStatus",
   stripe_customer_id, default_payment_method_id, payment_method_type,
@@ -22,6 +22,7 @@ insert into public.clients (
   notes, status, "clientSince", created_at, tenant_id
 )
 select
+  'c'||replace(gen_random_uuid()::text,'-',''),
   l.name, coalesce(l."clientType",'Individual'), l.business_name,
   l.first, l.mi, l.last, l.phone, l.phone2, l.email,
   coalesce(l."smsConsent",false), l."smsConsentDate", l.ssn, l.ein, l.dob,
