@@ -64,14 +64,45 @@ for(const n of [
   'Request Transcripts',
   'Returned PDFs attach to the selected client file automatically.',
   'Manual PDF fallback',
-  'onStatusChange={(st) =>',
-  'directAvailable',
   'const formClient = resolveClient(form)',
   'const client = resolveClient(nextForm)',
   'client_id: client.id',
-  "provider: 'irs_a2a'",
-  'submitCanopyStyleRequest'
+  'submitCanopyStyleRequest',
+  // Browser-assisted IRS TDS: pending request first, normal IRS page, returned PDFs filed to that request
+  'provider: BROWSER_PROVIDER_ID',
+  'openIrsTds(IRS_TDS_URL)',
+  'Sign in to IRS',
+  'addReturnedFiles',
+  'fileBrowserTranscripts',
+  'matchBrowserRequest',
 ]) need(pullUi,n)
+
+for(const n of [
+  "export const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
+  "'noopener,noreferrer'",
+  'browserMatchProblem',
+  'file_sha256',
+  'browserFilingQueue',
+  'requestCoverageSatisfied(req, rows || [])',
+  'export async function startBrowserTdsRequest',
+  'no readable taxpayer SSN/EIN on this PDF',
+  'client has no SSN/EIN on file to match against',
+]) need(lib,n)
+
+if(fs.existsSync(pullUi) && fs.existsSync(lib)){
+  const ui=read(pullUi), l=read(lib)
+  // The IRS tab may only be sent to IRS after the pending request is saved
+  const submit=ui.slice(ui.indexOf('async function submitCanopyStyleRequest'), ui.indexOf('// Derive the single most-actionable reason'))
+  if(submit.includes('openIrsTds(') || !submit.includes('openPendingIrsTab()') || !submit.includes('startBrowserTdsRequest(row, irsTab)')) failures.push('TranscriptPull: Request Transcripts must save the pending request before navigating to IRS TDS')
+  if(ui.includes('routeAnalysis(')) failures.push('TranscriptPull: watched folder must not auto-file by name without a positive TIN match')
+  if(ui.includes('<TDSSessionPresence')) failures.push('TranscriptPull: IRS API OAuth sign-in must not gate the browser TDS workflow')
+  if(/canRequest = Boolean\([^)]*(sessionActive|direct\?\.available)/.test(ui)) failures.push('TranscriptPull: Request Transcripts must not require an IRS API session')
+  // The CRM must never read or relay IRS/ID.me browser credentials
+  for(const bad of ['document.cookie','localStorage','sessionStorage','access_token','Authorization:']) {
+    if(ui.includes(bad)) failures.push('TranscriptPull: must not touch browser credentials: '+bad)
+    if(l.slice(l.indexOf('// ── Browser-assisted IRS TDS')).includes(bad)) failures.push('transcriptPull browser section: must not touch browser credentials: '+bad)
+  }
+}
 
 if(fs.existsSync(pullUi)){
   const ui=read(pullUi)
