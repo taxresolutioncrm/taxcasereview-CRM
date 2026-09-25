@@ -107,7 +107,7 @@ const SECTIONS = [
 ]
 
 export default function Sidebar() {
-  const { user, logout, can, role, mobileNavOpen, setMobileNavOpen, employeeName, planTier } = useApp()
+  const { user, logout, can, role, mobileNavOpen, setMobileNavOpen, employeeName, planTier, myTenantId } = useApp()
   const location = useLocation()
   const navigate = useNavigate()
   const [logoUrl, setLogoUrl] = useState(() => FIRM.logoUrl || null)
@@ -435,7 +435,7 @@ export default function Sidebar() {
       setEmailActionNeeded(0)
       setEmailWaiting(0)
     }
-    if (!user) return
+    if (!user || !myTenantId) return
     loadEmailTaskCounts()
     // Realtime channel below does the actual live updating. This poll is
     // only a safety net for the rare case realtime misses an event — 5min
@@ -446,22 +446,25 @@ export default function Sidebar() {
     const poll = setInterval(loadEmailTaskCounts, 300000)
     function onVisible() { if (document.visibilityState === 'visible') loadEmailTaskCounts() }
     document.addEventListener('visibilitychange', onVisible)
-    const ch = supabase.channel('sidebar-email-tasks-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'emails' }, loadEmailTaskCounts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, loadEmailTaskCounts)
+    const filter = `tenant_id=eq.${myTenantId}`
+    const ch = supabase.channel('sidebar-email-tasks-rt-' + myTenantId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'emails', filter }, loadEmailTaskCounts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter }, loadEmailTaskCounts)
       .subscribe()
     return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user])
+  }, [user, myTenantId])
 
   // Chat badge — count messages (rebuild) newer than when this user last had /chat open
   useEffect(() => {
-    const storageKey = `tcr_chat_last_seen_${user?.email || 'anon'}`
+    if (!myTenantId) { setUnreadChat(0); return }
+    const storageKey = `tcr_chat_last_seen_${myTenantId}_${user?.email || 'anon'}`
     async function countUnreadChat() {
       const lastSeen = localStorage.getItem(storageKey)
       if (!lastSeen) { setUnreadChat(0); return }
       const { count } = await supabase
         .from('chat_messages')
         .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', myTenantId)
         .gt('created_at', lastSeen)
         .neq('sender', employeeName || user?.email || '')
       setUnreadChat(count || 0)
@@ -476,8 +479,8 @@ export default function Sidebar() {
     function onVisible() { if (document.visibilityState === 'visible') countUnreadChat() }
     document.addEventListener('visibilitychange', onVisible)
     // Realtime — new chat message arrives
-    const ch = supabase.channel('sidebar-chat-badge')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
+    const ch = supabase.channel('sidebar-chat-badge-' + myTenantId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `tenant_id=eq.${myTenantId}` }, (payload) => {
         if (payload.new?.sender !== (employeeName || user?.email || '')) {
           const isOnChat = window.location.pathname.includes('/chat')
           if (isOnChat) {
@@ -489,7 +492,7 @@ export default function Sidebar() {
       })
       .subscribe()
     return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user?.email, employeeName, location.pathname])
+  }, [user?.email, employeeName, location.pathname, myTenantId])
 
   const [tagline,  setTagline]  = useState('IRS Resolution Services')
 
