@@ -1,0 +1,63 @@
+name: CloudCPA Sandbox Certification Only
+
+on:
+  push:
+    branches:
+      - sandbox/cloudcpa-green-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: CloudCPA gates
+        run: |
+          npm run cloudcpa:readiness
+          npm run check-cloudcpa-core
+          npm run check-lead-conversion
+          npm run check-critical-workflows
+          npm run check-client-case-quick-actions
+          npm run check-family-auth
+          npm run check-password-visibility
+          npm run check-supabase-io-guardrails
+          npm run check-transcript-coverage
+      - name: Full tracked source scan
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,re,subprocess,sys,json
+          files=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          exts={'.js','.jsx','.ts','.tsx','.mjs','.cjs','.sql','.yml','.yaml','.json','.html','.css','.md','.toml'}
+          total=0; scanned=0; hard=[]
+          for f in files:
+            if f=='package-lock.json' or os.path.splitext(f)[1].lower() not in exts: continue
+            try: text=open(f,encoding='utf-8').read()
+            except Exception as e: hard.append([f,0,'UNREADABLE',str(e)]); continue
+            scanned+=1; total+=text.count('\n')+1
+            for i,line in enumerate(text.splitlines(),1):
+              s=line.strip()
+              if re.search(r'^(<<<<<<<\s|>>>>>>>\s)',s): hard.append([f,i,'MERGE_MARKER',s[:180]])
+              if re.search(r'\beval\s*\(|new\s+Function\s*\(',line): hard.append([f,i,'DYNAMIC_EXEC',s[:180]])
+              if f.startswith('src/') and re.search(r'(?i)(SUPABASE_SERVICE_ROLE_KEY|service_role)',line) and not s.startswith('//'):
+                hard.append([f,i,'SERVICE_ROLE_FRONTEND',s[:180]])
+          print(json.dumps({'files_scanned':scanned,'lines_scanned':total,'hard_failures':len(hard)},indent=2))
+          if hard:
+            print(json.dumps(hard[:200],indent=2))
+            sys.exit(2)
+          PY
+      - name: Verify checks did not mutate source
+        run: git diff --exit-code
+      - name: Build sandbox bundle
+        run: npx vite build
