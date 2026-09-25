@@ -530,22 +530,16 @@ export default function Settings() {
                       </div>
                     )}
                     <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.6 }}>
-                      Each employee connects their own Gmail from the Email page. This section configures the app-level OAuth credentials (done once by an admin).
+                      Employees connect their own Gmail from the Email page. Admin setup is only needed once.
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                      {[
-                        ['1', 'Go to console.cloud.google.com → create or select a project'],
-                        ['2', 'Enable the Gmail API under APIs & Services → Library'],
-                        ['3', 'Create OAuth 2.0 Client ID → Web application'],
-                        ['4', `Add Redirect URI: ${window.location.origin}/auth/callback`],
-                        ['5', 'Paste Client ID and Secret below, then save.'],
-                      ].map(([s, t]) => (
-                        <div key={s} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                          <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#4285F4', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>{s}</div>
-                          <div style={{ fontSize: 12, color: 'var(--t2)', lineHeight: 1.5, paddingTop: 1 }}>{t}</div>
-                        </div>
-                      ))}
-                    </div>
+                    <details style={{ marginBottom: 14, border: '1px solid var(--br)', borderRadius: 8, background: 'var(--s2)' }}>
+                      <summary style={{ cursor: 'pointer', padding: '9px 11px', fontSize: 11, fontWeight: 700, color: 'var(--t2)', userSelect: 'none' }}>
+                        Setup details
+                      </summary>
+                      <div style={{ padding: '0 11px 10px', fontSize: 11, color: 'var(--t3)', lineHeight: 1.65 }}>
+                        Google Cloud → enable Gmail API → create a Web OAuth client → add <strong>{window.location.origin}/auth/callback</strong> as the redirect URI → paste the Client ID and Client Secret below.
+                      </div>
+                    </details>
                     <div className="fg2">
                       <div className="field"><label>Client ID</label><input value={firm.gmail_client_id} onChange={set('gmail_client_id')} placeholder="xxxxx.apps.googleusercontent.com"/></div>
                       <div className="field"><label>Client Secret</label><input type="password" value={firm.gmail_client_secret} onChange={set('gmail_client_secret')} placeholder="GOCSPX-…"/></div>
@@ -584,23 +578,16 @@ export default function Settings() {
                       </div>
                     )}
                     <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.6 }}>
-                      Connects each employee's Outlook inbox and calendar. Done once by an admin, then each employee connects their own account from the Email page.
+                      Connects Outlook mail and calendar. Admin configuration is done once; employees connect their own account from Email.
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                      {[
-                        ['1', 'Go to portal.azure.com → Azure Active Directory → App registrations → New registration'],
-                        ['2', 'Supported account types: "Accounts in any organizational directory and personal Microsoft accounts"'],
-                        ['3', `Add Redirect URI: ${typeof window !== 'undefined' ? window.location.origin : ''}/auth/m365/callback — type: Web`],
-                        ['4', 'API permissions → Microsoft Graph → Delegated → Mail.Read, Mail.Send, Calendars.ReadWrite, User.Read'],
-                        ['5', 'Certificates & secrets → New client secret → copy the Value'],
-                        ['6', 'Copy the Application (client) ID from Overview and paste both below.'],
-                      ].map(([s, t]) => (
-                        <div key={s} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                          <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#0078D4', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>{s}</div>
-                          <div style={{ fontSize: 12, color: 'var(--t2)', lineHeight: 1.5, paddingTop: 1 }}>{t}</div>
-                        </div>
-                      ))}
-                    </div>
+                    <details style={{ marginBottom: 14, border: '1px solid var(--br)', borderRadius: 8, background: 'var(--s2)' }}>
+                      <summary style={{ cursor: 'pointer', padding: '9px 11px', fontSize: 11, fontWeight: 700, color: 'var(--t2)', userSelect: 'none' }}>
+                        Setup details
+                      </summary>
+                      <div style={{ padding: '0 11px 10px', fontSize: 11, color: 'var(--t3)', lineHeight: 1.65 }}>
+                        Microsoft Entra → register a Web app → add the CRM redirect URI → grant the approved Microsoft Graph delegated permissions → create a client secret → paste the Application ID, secret, and tenant below.
+                      </div>
+                    </details>
                     <div className="fg2">
                       <div className="field"><label>Azure Application (Client) ID</label><input value={firm.m365_client_id||''} onChange={set('m365_client_id')} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
                       <div className="field"><label>Azure Client Secret</label><input type="password" value={firm.m365_client_secret||''} onChange={set('m365_client_secret')} placeholder="Paste the secret Value from Azure"/></div>
