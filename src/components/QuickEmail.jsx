@@ -12,7 +12,7 @@ import { EMAIL_TEMPLATES, applyTemplate } from '../lib/emailTemplatesList'
 // the lead/client file — same shapes the Email page writes.
 
 export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [form, setForm] = useState({ to: contact?.email || '', subject: '', body: '' })
   const [state, setState] = useState('idle') // idle | sending | sent | error
   const [errMsg, setErrMsg] = useState('')
@@ -25,13 +25,13 @@ export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
       try {
         // Also fetch logourl — RLS scopes this to the logged-in tenant automatically.
         // logourl is per-tenant since 7/21; email_signature_logo_url may be null.
-        const { data: st } = await supabase.from('settings').select('email_signature,email_signature_logo_url,logourl').limit(1).maybeSingle()
+        const { data: st } = await supabase.from('settings').select('email_signature,email_signature_logo_url,logourl').eq('tenant_id', myTenantId).maybeSingle()
         sigText = st?.email_signature || ''
         sigLogo = st?.email_signature_logo_url || ''
         firmLogo = st?.logourl || ''
         if (user?.email) {
           const { data: emp } = await supabase.from('employees')
-            .select('email_signature,email_signature_logo_url').eq('email', user.email).maybeSingle()
+            .select('email_signature,email_signature_logo_url').eq('tenant_id', myTenantId).eq('email', user.email).maybeSingle()
           if (emp?.email_signature) sigText = emp.email_signature
           if (emp?.email_signature_logo_url) sigLogo = emp.email_signature_logo_url
         }
@@ -62,7 +62,7 @@ export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
     // ── Document everything (best-effort; the email already went out) ──
     let authorName = user?.email || 'Staff'
     try {
-      const { data: empRec } = await supabase.from('employees').select('name').eq('email', user?.email).maybeSingle()
+      const { data: empRec } = await supabase.from('employees').select('name').eq('tenant_id', myTenantId).eq('email', user?.email).maybeSingle()
       if (empRec?.name) authorName = empRec.name
     } catch { /* noop */ }
     const preview = form.body.slice(0, 120).replace(/\n/g, ' ').trim()
