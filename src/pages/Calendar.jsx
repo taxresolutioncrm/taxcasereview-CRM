@@ -62,7 +62,7 @@ function scOf(ev) {
 }
 
 export default function Calendar() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const isRomyLabsAdmin = window.location.hostname.toLowerCase() === 'admin.romylabs.com'
   const adminCalendarOwner = 'Romy Cruz'
   const [events,        setEvents]        = useState([])
@@ -165,7 +165,7 @@ export default function Calendar() {
         : supabase.from('clients').select('id,name,email,address'),
       isRomyLabsAdmin
         ? Promise.resolve({ data:[{ id:'romy-admin-calendar-owner', name:adminCalendarOwner }] })
-        : supabase.from('employees').select('id,name').order('name'),
+        : supabase.from('employees').select('id,name').eq('tenant_id', myTenantId).order('name'),
       isRomyLabsAdmin
         ? Promise.resolve({ data:[] })
         : supabase.from('deadlines').select('id,title,dueDate,clientName,client_id,status').neq('status', 'Completed'),
