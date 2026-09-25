@@ -419,7 +419,11 @@ export default function Leads() {
   const settingsRef = useRef(null)
   async function getSettings() {
     if (settingsRef.current) return settingsRef.current
-    const { data } = await supabase.from('settings').select('signalwire_backend,sw_inbound_did,sw_space_url').limit(1).maybeSingle()
+    if (!myTenantId) return {}
+    const { data } = await supabase.from('settings')
+      .select('signalwire_backend,sw_inbound_did,sw_space_url')
+      .eq('tenant_id', myTenantId)
+      .maybeSingle()
     settingsRef.current = data || {}
     return settingsRef.current
   }
@@ -1581,22 +1585,36 @@ export default function Leads() {
     const clientName = l.name || ''
     const normalizedName = clientName.trim()
     if (!normalizedName) { showToast('Lead name is required before conversion.'); return }
+    if (!myTenantId) { showToast('Office tenant is not resolved yet. Refresh and try again.'); return }
+    if (l.tenant_id && String(l.tenant_id) !== String(myTenantId)) {
+      showToast('Blocked: this lead does not belong to the active office.')
+      return
+    }
     if (!skipConfirm && !confirm(`Convert "${normalizedName}" to a full client?`)) return
     setConverting(true)
     // A second conversion of the same lead (double-click, or the resolution-fee
     // path firing alongside the button) used to insert a duplicate client.
     // Clients are keyed by name everywhere, so a duplicate splits the file.
     const candidateNames = Array.from(new Set([clientName, normalizedName].filter(Boolean)))
-    const { data: dupe } = await supabase.from('clients').select('id,name').in('name', candidateNames).limit(1)
+    const { data: dupe } = await supabase.from('clients')
+      .select('id,name,tenant_id')
+      .eq('tenant_id', myTenantId)
+      .in('name', candidateNames)
+      .limit(1)
     if (dupe?.length) {
       setConverting(false)
       showToast(`${l.name} is already a client — opening their file`)
-      await supabase.from('leads').update({ status: 'Converted to Client' }).eq('id', l.id)
+      const { error: markErr } = await supabase.from('leads')
+        .update({ status: 'Converted to Client' })
+        .eq('tenant_id', myTenantId)
+        .eq('id', l.id)
+      if (markErr) { showToast('Client exists, but lead status could not be updated: ' + markErr.message); return }
       navigate('/clients/' + dupe[0].id)
       return
     }
     const taxYearsStr = l.taxYearsCustom || (()=>{try{return JSON.parse(l.taxYears||'[]').join(', ')}catch{return l.taxYears||''}})()
     const { data: newClient, error } = await supabase.from('clients').insert([{
+      tenant_id: myTenantId,
       name: clientName, clientType: l.clientType || 'Individual',
       business_name: l.business_name || null,
       first: l.first, mi: l.mi, last: l.last,
@@ -1648,24 +1666,33 @@ export default function Leads() {
       record_type: 'client', record_id: newClient.id,
     }).eq('record_type', 'lead').eq('record_id', l.id)
     // Update lead status
-    await supabase.from('leads').update({ status: 'Converted to Client' }).eq('id', l.id)
+    const { error: leadStatusErr } = await supabase.from('leads')
+      .update({ status: 'Converted to Client' })
+      .eq('tenant_id', myTenantId)
+      .eq('id', l.id)
+    if (leadStatusErr) throw leadStatusErr
     // Carry lead notes over to the new client record so case history isn't lost
-    const { data: oldNotes } = await supabase.from('lead_notes').select('*').eq('lead_id', l.id)
+    const { data: oldNotes, error: oldNotesErr } = await supabase.from('lead_notes')
+      .select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('lead_id', l.id)
+    if (oldNotesErr) throw oldNotesErr
     if (oldNotes && oldNotes.length) {
       await supabase.from('client_notes').insert(
-        oldNotes.map(n => ({ clientname: l.name, text: n.text, author: n.author || 'Staff', created_at: n.created_at }))
+        oldNotes.map(n => ({ tenant_id: myTenantId, clientname: l.name, text: n.text, author: n.author || 'Staff', created_at: n.created_at }))
       )
     }
     // Auto-create the 3 onboarding tasks now that contracts are signed
     const today = new Date()
     const addDays = n => { const d = new Date(today); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10) }
     await supabase.from('tasks').insert([
-      { title: `Email IRS POA — ${l.name}`,        clientName: l.name, priority: 'High', dueDate: addDays(0), done: false, created_at: new Date().toISOString() },
-      { title: `Call IRS — ${l.name}`,             clientName: l.name, priority: 'High', dueDate: addDays(1), done: false, created_at: new Date().toISOString() },
-      { title: `Schedule ${FIRM.name || 'CRM'} call — ${l.name}`, clientName: l.name, priority: 'Normal', dueDate: addDays(3), done: false, created_at: new Date().toISOString() },
+      { tenant_id: myTenantId, title: `Email IRS POA — ${l.name}`,        clientName: l.name, priority: 'High', dueDate: addDays(0), done: false, created_at: new Date().toISOString() },
+      { tenant_id: myTenantId, title: `Call IRS — ${l.name}`,             clientName: l.name, priority: 'High', dueDate: addDays(1), done: false, created_at: new Date().toISOString() },
+      { tenant_id: myTenantId, title: `Schedule ${FIRM.name || 'CRM'} call — ${l.name}`, clientName: l.name, priority: 'Normal', dueDate: addDays(3), done: false, created_at: new Date().toISOString() },
     ])
     // Auto-create a case for the new client with Associate + Para assigned
     await supabase.from('cases').insert([{
+      tenant_id: myTenantId,
       id: 'case-' + newClient.id,
       clientName: l.name,
       clientid: newClient.id,
@@ -1759,6 +1786,7 @@ export default function Leads() {
     try {
       const actor = resolveActorName(user, employees)
       await supabase.from('client_notes').insert({
+        tenant_id: myTenantId,
         clientname: l.name,
         text: `🔄 Converted from lead to client by ${actor}.`,
         author: actor, visible_to_client: false, created_at: new Date().toISOString()
@@ -1775,6 +1803,7 @@ export default function Leads() {
         // in the client file since both lead and client use the same name.
         // Just log a note confirming the transfer.
         await supabase.from('client_notes').insert({
+          tenant_id: myTenantId,
           clientname: l.name,
           text: `📁 ${leadDocs.length} document(s) from lead file carried over to client record.`,
           author: 'System', visible_to_client: false, created_at: new Date().toISOString()
@@ -1787,7 +1816,11 @@ export default function Leads() {
     }
 
     setConverting(false)
-    const { count } = await supabase.from('client_compliance_records').select('*', { count: 'exact', head: true }).eq('client_name', l.name).catch(() => ({ count: null }))
+    const { count } = await supabase.from('client_compliance_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', myTenantId)
+      .eq('client_name', l.name)
+      .catch(() => ({ count: null }))
     const intakeMsg = intakeAlreadySubmitted ? ', financial intake already on file'
       : intakeSent ? ', financial intake form emailed'
       : (l.email ? '' : ', financial intake created but no email on file to send it to')
