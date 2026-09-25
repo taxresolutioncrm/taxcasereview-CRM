@@ -97,10 +97,10 @@ export default function Sms() {
 
   async function load(){
     const [{data:sms},{data:cls},{data:lds},{data:s}]=await Promise.all([
-      supabase.from('sms_messages').select('*').order('created_at',{ascending:false}),
-      supabase.from('clients').select('id,name,phone,smsConsent'),
-      supabase.from('leads').select('id,name,phone'),
-      supabase.from('settings').select('sw_space_url,sw_inbound_did').limit(1).maybeSingle(),
+      supabase.from('sms_messages').select('*').eq('tenant_id', myTenantId).order('created_at',{ascending:false}),
+      supabase.from('clients').select('id,name,phone,smsConsent').eq('tenant_id', myTenantId),
+      supabase.from('leads').select('id,name,phone').eq('tenant_id', myTenantId),
+      supabase.from('settings').select('sw_space_url,sw_inbound_did').eq('tenant_id', myTenantId).maybeSingle(),
     ])
     if(sms)setSent(sms)
     if(cls)setClients(cls)
@@ -201,7 +201,7 @@ export default function Sms() {
       const preview = (form.body || '').slice(0, 120).trim()
       let authorName = user?.email || 'Staff'
       if (user?.email) {
-        const { data: empRec } = await supabase.from('employees').select('name').eq('email', user.email).maybeSingle()
+        const { data: empRec } = await supabase.from('employees').select('name').eq('tenant_id', myTenantId).eq('email', user.email).maybeSingle()
         if (empRec?.name) authorName = empRec.name
       }
       await supabase.from('client_notes').insert({
