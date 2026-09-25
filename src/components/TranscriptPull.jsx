@@ -31,10 +31,12 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [delId, setDelId] = useState(null)
   const [msg, setMsg] = useState('')
   const [fallbackOpen, setFallbackOpen] = useState(false)
+  const [sorBridgeReady, setSorBridgeReady] = useState(false)
 
   const dirRef = useRef(null)
   const seenRef = useRef(new Set())
   const scanBusyRef = useRef(false)
+  const bridgeSeenRef = useRef(new Set())
   const [dirName, setDirName] = useState('')
   const [scanning, setScanning] = useState(false)
   const [lastScan, setLastScan] = useState(null)
@@ -136,6 +138,71 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     }
   }
   useEffect(() => { loadRequests() }, [])
+
+
+  useEffect(() => {
+    let active = true
+    async function onSorBridgeMessage(event) {
+      if (!active || event.source !== window || event.origin !== window.location.origin) return
+      const msg = event.data
+      if (!msg || msg.source !== 'taxres-sor-bridge-extension') return
+      if (msg.type === 'TAXRES_SOR_BRIDGE_READY') {
+        setSorBridgeReady(true)
+        return
+      }
+      if (msg.type !== 'TAXRES_SOR_DELIVERY' || !msg.delivery?.bridgeId) return
+      const delivery = msg.delivery
+      if (bridgeSeenRef.current.has(delivery.bridgeId)) return
+      bridgeSeenRef.current.add(delivery.bridgeId)
+      try {
+        const type = delivery.contentType || 'text/html'
+        const file = new File([delivery.content || ''], delivery.fileName || `IRS-TDS-${delivery.transactionId || Date.now()}.html`, { type })
+        file.__taxresSorMeta = {
+          transactionId: delivery.transactionId || null,
+          tinLast4: delivery.tinLast4 || null,
+          taxYear: delivery.taxYear || null,
+          taxPeriod: delivery.taxPeriod || null,
+        }
+        const parsed = await analyzeReturnedTranscript(file)
+        const target = await matchBrowserRequest(requests.filter(isOpenBrowserRequest), parsed)
+        if (target) {
+          const out = await fileBrowserTranscripts(target.id, [file])
+          const filed = out.results.some(x => x.status === 'filed')
+          const duplicate = out.results.some(x => x.status === 'duplicate')
+          const failed = out.results.find(x => x.status === 'rejected' || x.status === 'error')
+          if (failed) throw new Error(failed.reason || 'SOR transcript could not be filed.')
+          window.postMessage({ source: 'taxres-crm', type: 'TAXRES_SOR_ACK', bridgeId: delivery.bridgeId }, window.location.origin)
+          await loadRequests()
+          if (filed && onImported) onImported()
+          flash(filed
+            ? `✅ IRS SOR transcript received and filed automatically to ${target.client_name}.`
+            : duplicate
+              ? `✅ IRS SOR transcript was already filed for ${target.client_name}.`
+              : `✅ IRS SOR transcript received for ${target.client_name}.`)
+          return
+        }
+
+        setUnmatched(items => [...items.filter(x => x.key !== `sor:${delivery.bridgeId}`), {
+          key: `sor:${delivery.bridgeId}`,
+          fileName: file.name,
+          file,
+          analysis: parsed.analysis,
+          assignTo: '',
+          error: 'SOR transcript received, but there was not exactly one pending request matching its taxpayer/year/type.',
+        }])
+        window.postMessage({ source: 'taxres-crm', type: 'TAXRES_SOR_ACK', bridgeId: delivery.bridgeId }, window.location.origin)
+        flash('⚠ IRS SOR transcript received but needs manual client assignment below.')
+      } catch (e) {
+        bridgeSeenRef.current.delete(delivery.bridgeId)
+        flash('❌ IRS SOR bridge could not file the returned transcript: ' + (e?.message || 'Unknown error'))
+      }
+    }
+    window.addEventListener('message', onSorBridgeMessage)
+    return () => {
+      active = false
+      window.removeEventListener('message', onSorBridgeMessage)
+    }
+  }, [requests]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const hasLiveDirect = requests.some(r => (r.provider === 'irs_a2a' || r.provider === BROWSER_PROVIDER_ID) && r.status !== 'Completed' && r.status !== 'Canceled')
@@ -388,8 +455,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
 
   async function addReturnedFiles(req, fileList) {
-    const files = [...(fileList || [])].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf')
-    if (!files.length) { flash('⚠ Choose the transcript PDF files you saved from IRS TDS.'); return }
+    const files = [...(fileList || [])].filter(f => /\.(?:pdf|html?)$/i.test(f.name) || f.type === 'application/pdf' || f.type === 'text/html')
+    if (!files.length) { flash('⚠ Choose the transcript PDF/HTML files you saved from IRS TDS.'); return }
     setReturnBusyId(req.id)
     try {
       const out = await fileBrowserTranscripts(req.id, files)
@@ -552,14 +619,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             <div style={{ fontWeight: 800, fontSize: 15 }}>IRS Transcript Delivery</div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3 }}>
               Use the IRS-hosted TDS sign-in for practitioner access.
-              {' '}<span style={{ opacity: 0.75 }}>Returned PDFs attach to the selected client file automatically.</span>
+              {' '}<span style={{ opacity: 0.75 }}>Returned SOR transcript attachments are matched, filed and analyzed automatically when the IRS Bridge helper is connected.</span>
             </div>
           </div>
           <span style={{
-            background: dirName ? '#15803d' : '#1d4ed8',
+            background: sorBridgeReady ? '#15803d' : dirName ? '#15803d' : '#1d4ed8',
             color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700, flexShrink: 0,
           }}>
-            {dirName ? '● Watching TDS downloads' : '○ Browser sign-in'}
+            {sorBridgeReady ? '● SOR Bridge connected' : dirName ? '● Watching TDS downloads' : '○ IRS Bridge helper not detected'}
           </span>
         </div>
 
@@ -578,9 +645,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               </div>
             </div>
             <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.45, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <strong style={{ color: 'var(--t2)' }}>Returned PDFs:</strong>
-              {!fsSupported ? (
-                <span>Drop the saved PDFs on the request below (folder watching needs Chrome or Edge).</span>
+              <strong style={{ color: 'var(--t2)' }}>Returned transcripts:</strong>
+              {sorBridgeReady ? (
+                <span>SOR Bridge is listening. Open the returned TDS message in the IRS Secure Mailbox; its attachment is passed to this CRM, matched to the pending client request, filed and analyzed automatically. IRS cookies and credentials stay inside the IRS browser session.</span>
+              ) : !fsSupported ? (
+                <span>Install the TaxRes IRS SOR Bridge helper for automatic SOR capture, or drop the saved transcript files on the request below.</span>
               ) : dirName ? (
                 <>
                   <span>Watching <b>{dirName}</b> — PDFs you save there are matched to the pending request and filed automatically{lastScan ? ` · last scan ${lastScan.toLocaleTimeString()}` : ''}.</span>
