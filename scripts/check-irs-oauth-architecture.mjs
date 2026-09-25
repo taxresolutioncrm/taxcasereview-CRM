@@ -7,7 +7,7 @@
  *
  * This is a STATIC analysis test. It verifies that every required code path
  * exists and that no forbidden patterns (public TDS shortcut, manual-only
- * workflow as primary, hardcoded TCR tenant data) are present.
+ * workflow as primary, hardcoded Nashville tenant data) are present.
  *
  * Acceptance test (live credentials required for full E2E):
  *   No synthetic/stub IRS session or transcript path may exist in production code.
@@ -46,6 +46,8 @@ forbid(session, 'begin-test-session', 'synthetic CRM live-test route in TDSSessi
 forbid(session, 'Run CRM Live Test', 'synthetic CRM live-test button')
 need(session, 'authorizationUrl', 'authorizationUrl used from begin-session response')
 need(session, 'window.open(', 'popup opened with authorizationUrl')
+forbid(session, "window.open(authorizationUrl, '_blank'", 'separate-tab fallback for IRS authorization')
+need(session, 'IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.', 'blocked-popup recovery stays inside CRM')
 forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public IRS TDS URL hardcoded as primary flow')
 forbid(session, 'openPractitionerTds', 'old openPractitionerTds function that opens public TDS')
 need(pull, "action === 'begin-session'", 'begin-session action handler')
@@ -86,12 +88,12 @@ need(session, 'apiSessionActive', 'CRM shows IRS session as active after authori
 
 console.log('Checking Step 4: Request Transcripts in CRM…')
 need(pullUi, 'submitCanopyStyleRequest', 'Canopy-style request submission function present')
-need(pullUi, 'provider: BROWSER_PROVIDER_ID', 'browser-assisted IRS TDS request provider')
+need(pullUi, "provider: 'irs_a2a'", 'irs_a2a provider used for automated CRM requests')
 need(pullUi, 'client_id: client.id', 'client_id included in request payload')
 need(pullUi, 'poa_record_id', 'POA record referenced in request')
 need(pullUi, 'tax_years', 'tax years included in request')
 need(pullUi, 'transcript_types', 'transcript types included in request')
-need(pullUi, 'openIrsTds(IRS_TDS_URL)', 'Request Transcripts opens the normal IRS TDS page')
+need(pullUi, 'directAvailable', 'directAvailable gates the Request Transcripts button')
 need(lib, "action: 'submit'", 'submit action called in transcriptPull.js library')
 need(pull, "action === 'submit'", 'submit action handler in transcript-pull')
 need(pull, 'submitWire', 'real IRS API submission function called on submit')
@@ -152,8 +154,10 @@ forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public TDS URL used as p
 forbid(pullUi, 'Save Transcript Request', 'legacy manual save CTA must not be primary')
 forbid(pullUi, 'Watched TDS Download Folder', 'legacy download folder reference must be gone')
 forbid(pullUi, 'providers.map(p =>', 'legacy provider map must be gone')
-forbid(session, 'mpxgxfqdbquzkrvvejkh', 'TCR Supabase project hardcoded in session component')
-forbid(callback, "const CRM_ORIGIN = 'https://taxrescrm.app'", 'TCR CRM origin hardcoded in callback')
+forbid(pullUi, "provider: 'irs_interactive'", 'obsolete interactive provider in primary request path')
+forbid(lib, "id: 'irs_interactive'", 'obsolete interactive provider definition')
+forbid(session, 'ydrvncdedgjtcprczwpu', 'Nashville Supabase project hardcoded in session component')
+forbid(callback, "const CRM_ORIGIN = 'https://nashville.taxrescrm.app'", 'Nashville CRM origin hardcoded in callback')
 
 need(config, '[functions.transcript-pull]', 'transcript-pull function registered in config')
 need(config, '[functions.transcript-pull-callback]', 'transcript-pull-callback function registered in config')
