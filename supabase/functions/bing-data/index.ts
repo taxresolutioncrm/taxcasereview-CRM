@@ -95,19 +95,12 @@ serve(async (req) => {
     const requestedHost = host(requestedSite)
     const userSites = rows(sitesJson)
     const matched = userSites.find((s:any)=>host(String(s?.Url||''))===requestedHost)
-    if (!matched?.Url) {
-      return new Response(JSON.stringify({
-        connected:false, product_key:productKey, siteUrl:requestedSite,
-        error:'bing_site_not_registered',
-        message:'This product domain is not present in GetUserSites for the connected Bing Webmaster account.',
-        available_hosts:userSites.map((s:any)=>host(String(s?.Url||''))).filter(Boolean)
-      }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
-    }
 
-    // Do not gate data access solely on GetUserSites.IsVerified. Bing metadata can
-    // lag behind the actual site state. The traffic/query/page endpoints are the
-    // authoritative connectivity test.
-    const siteUrl = String(matched.Url)
+    // Never let GetUserSites metadata block a real data request. Use Bing's
+    // traffic/query/page endpoints as the authoritative connectivity test.
+    // If GetUserSites knows a canonical URL, prefer it; otherwise try the
+    // configured product URL directly.
+    const siteUrl = String(matched?.Url || requestedSite)
     const bingVerified = matched?.IsVerified === true
     const endpoint = (method:string) =>
       `${BING_JSON_BASE}/${method}?siteUrl=${encodeURIComponent(siteUrl)}&apikey=${encodeURIComponent(apiKey)}`
@@ -128,13 +121,16 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         connected:false, product_key:productKey, siteUrl,
         error:'bing_data_unavailable',
+        bingVerified,
+        site_registered_in_get_user_sites: Boolean(matched?.Url),
+        available_hosts:userSites.map((s:any)=>host(String(s?.Url||''))).filter(Boolean),
         upstream_status:{traffic:trafficRes.status,queries:queryRes.status,pages:pageRes.status}
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
     const traffic = rows(trafficJson)
     const queryAgg = aggregateBy(rows(queryJson), ['Query','query'])
-    const pageAgg = aggregateBy(rows(pageJson), ['Query','Url','url'])
+    const pageAgg = aggregateBy(rows(pageJson), ['Url','url'])
 
     const clicks = traffic.reduce((s:number,r:any)=>s+Number(r?.Clicks||0),0)
     const impressions = traffic.reduce((s:number,r:any)=>s+Number(r?.Impressions||0),0)
