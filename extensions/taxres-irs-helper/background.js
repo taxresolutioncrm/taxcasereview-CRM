@@ -61,21 +61,24 @@ function codeIn(url) {
     return m ? m[1] : null
   } catch { return null }
 }
+// Both halves (the CRM's snapshot, and the IRS tab that showed the code) meet in ONE queued update, so they
+// always find each other. Until its new code is claimed, a tab showing a code is unpaired (fails closed).
+async function meetBindCode(code, half) {
+  let match = null
+  await updateReg('codes', reg => {
+    for (const k of Object.keys(reg)) if (Date.now() - reg[k].at > NONCE_TTL_MS) delete reg[k]
+    const cur = { ...(reg[code] || {}), ...half, at: Date.now() }
+    if (cur.snap && typeof cur.tabId === 'number') { match = cur; delete reg[code] } else reg[code] = cur
+  })
+  if (match) await updateReg('pairs', reg => { reg[match.tabId] = { ...match.snap, at: Date.now() } })
+}
 async function pairWithCode(irsTabId, url) {
   const code = codeIn(url)
   if (!code) return
-  const nonces = await getReg('nonces')
-  const snap = nonces[code]
-  if (snap && Date.now() - snap.at < NONCE_TTL_MS) {
-    await updateReg('nonces', reg => { delete reg[code] })
-    await updateReg('pairs', reg => { reg[irsTabId] = { ...snap, at: Date.now() } })
-  } else {
-    // The page loaded before the CRM's message arrived: hold the code briefly for the CRM to claim.
-    await updateReg('seenCodes', reg => {
-      for (const k of Object.keys(reg)) if (Date.now() - reg[k].at > NONCE_TTL_MS) delete reg[k]
-      reg[code] = { tabId: irsTabId, at: Date.now() }
-    })
-  }
+  const pairs = await getReg('pairs')
+  if (pairs[irsTabId] && pairs[irsTabId].code === code) return // already paired with this code
+  await updateReg('pairs', reg => { delete reg[irsTabId] })
+  await meetBindCode(code, { tabId: irsTabId })
 }
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   const url = info.url || (tab && tab.url) || ''
@@ -91,9 +94,10 @@ chrome.tabs.onRemoved.addListener(tabId => {
 })
 
 async function pairOf(tabId) {
-  const [openers, pairs] = await Promise.all([getReg('openers'), getReg('pairs')])
+  const [openers, pairs, crmTabs] = await Promise.all([getReg('openers'), getReg('pairs'), getReg('crmTabs')])
   let id = tabId
   for (let hops = 0; hops < 6 && typeof id === 'number'; hops++) {
+    if (crmTabs[id]) return null // never walk through a CRM tab to some other IRS window
     if (pairs[id]) return pairs[id]
     id = openers[id]
   }
@@ -168,23 +172,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'crm-bind': {
       if (fromIrs || !msg.tenantId || typeof msg.nonce !== 'string' || !CODE_RE.test(msg.nonce)) return false
       const snap = {
-        crmTabId: tabId, tenantId: String(msg.tenantId), origin: sender.origin || originOf(sender.url),
+        code: msg.nonce, crmTabId: tabId, tenantId: String(msg.tenantId), origin: sender.origin || originOf(sender.url),
         label: String(msg.label || '').slice(0, 120),
         requestIds: Array.isArray(msg.requestIds) ? [...new Set(msg.requestIds.map(String))].slice(0, 200) : [],
         at: Date.now(),
       }
-      ;(async () => {
-        const seen = (await getReg('seenCodes'))[msg.nonce]
-        if (seen && Date.now() - seen.at < NONCE_TTL_MS) {
-          await updateReg('seenCodes', reg => { delete reg[msg.nonce] })
-          await updateReg('pairs', reg => { reg[seen.tabId] = snap })
-          return
-        }
-        await updateReg('nonces', reg => {
-          for (const k of Object.keys(reg)) if (Date.now() - reg[k].at > NONCE_TTL_MS) delete reg[k]
-          reg[msg.nonce] = snap
-        })
-      })()
+      meetBindCode(msg.nonce, { snap })
       return false
     }
     case 'irs-ready':
@@ -290,7 +283,7 @@ async function onClaimFile(irsTabId, code) {
 // Which IRS window a finished download came from. Downloads carry no tab number, so only certain evidence counts:
 //  1) exactly one IRS window where that exact file link was clicked (last 2 minutes), else
 //  2) exactly one IRS window on the whole site that was clicked in the last 30 seconds or is waiting for a
-//     file it clicked — and, when Chrome reports the page the download came from, that window is on that page.
+//     file it clicked — AND Chrome reports the download came from exactly the page that window is showing.
 // Anything else is ambiguous → nothing is sent.
 async function downloadSourceTab(item) {
   const urls = [...new Set([item.url, item.finalUrl].filter(Boolean))]
@@ -303,11 +296,10 @@ async function downloadSourceTab(item) {
   if (exact.length) return exact.length === 1 ? exact[0] : null
   const active = same.filter(id => (clicks[id] && now - clicks[id].at < RECENT_CLICK_MS) || catching[id] > now)
   if (active.length !== 1) return null
-  if (item.referrer && isIrsUrl(item.referrer)) {
-    const refHash = await hashText(withoutHash(item.referrer))
-    if (irsTabs[active[0]].pageHash !== refHash) return null
-  }
-  return active[0]
+  // Without an exact click, the download must also say which IRS page it came from, and it must be that window's page.
+  if (!item.referrer || !isIrsUrl(item.referrer)) return null
+  const refHash = await hashText(withoutHash(item.referrer))
+  return irsTabs[active[0]].pageHash === refHash ? active[0] : null
 }
 function looksLikePdf(item) {
   return /pdf/i.test(item.mime || '') || /\.pdf$/i.test(item.filename || '') || /\.pdf(\?|$)/i.test(item.finalUrl || item.url || '')

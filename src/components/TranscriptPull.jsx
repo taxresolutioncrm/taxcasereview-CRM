@@ -428,9 +428,10 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       try {
         if (!tenantRef.current || String(data.tenantId || '') !== tenantRef.current) throw new Error('This transcript was addressed to a different office — not filed here')
         // Re-check the office this tab is signed in to right now (a sign-in in another tab can switch it).
-        const { data: nowTenant } = await supabase.rpc('current_tenant_id')
-        if (!nowTenant || String(nowTenant) !== tenantRef.current) {
-          tenantRef.current = nowTenant ? String(nowTenant) : null
+        const { data: nowTenant, error: tenantErr } = await supabase.rpc('current_tenant_id')
+        if (tenantErr || !nowTenant) throw new Error('Could not confirm which office this CRM tab is signed in to — not filed. Try Send again.')
+        if (String(nowTenant) !== tenantRef.current) {
+          tenantRef.current = String(nowTenant)
           post({ type: 'crm-ready', tenantId: tenantRef.current })
           throw new Error('This CRM tab is now signed in to a different office — not filed. Reopen Secure Mailbox from the right office.')
         }

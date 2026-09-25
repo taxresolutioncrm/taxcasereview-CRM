@@ -143,6 +143,11 @@
       .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
   }
   const shortName = el => fullText(el).slice(0, 140)
+  // A plain file name: never carries ";jsessionid=…", a query or anything after "#".
+  const fileNameOf = u => {
+    const last = String(u.pathname || '').split('/').pop().split(/[;?#]/)[0]
+    try { return decodeURIComponent(last) || 'irs-transcript.pdf' } catch { return last || 'irs-transcript.pdf' }
+  }
   const addrOf = url => { const u = new URL(url); return u.pathname + u.search }
   function urlInScript(code, base) {
     // A same-site address written into an onclick / javascript: link, e.g. window.open('/semail/view_file.jsp?id=1').
@@ -219,7 +224,7 @@
     // 4) files shown inside the page (frames / embeds)
     for (const el of root.querySelectorAll('iframe[src], frame[src], embed[src], object[data]')) {
       const u = sameSite(el.getAttribute('src') || el.getAttribute('data'), base)
-      if (u && ATTACH_URL.test(u.pathname + u.search) && !DANGER.test(u.pathname + u.search)) add({ kind: 'file', url: u.href, name: u.pathname.split('/').pop() })
+      if (u && ATTACH_URL.test(u.pathname + u.search) && !DANGER.test(u.pathname + u.search)) add({ kind: 'file', url: u.href, name: fileNameOf(u) })
     }
     if (live) {
       for (const frame of root.querySelectorAll('iframe, frame')) {
@@ -328,7 +333,8 @@
     const got = await openFollowing(target)
     if (!got.pdf) return { html: true, items: got.items || [] }
     const id = (await hashText(got.finalUrl)).slice(0, 16) + '-' + Date.now()
-    const fileName = /\.pdf$/i.test(name) ? name : (name ? name.replace(/[^\w .-]+/g, '').slice(0, 60) || 'irs-transcript' : 'irs-transcript') + '.pdf'
+    const base = String(name || '').split(/[;?#]/)[0].replace(/[^\w .()-]+/g, '').trim().slice(0, 80)
+    const fileName = /\.pdf$/i.test(base) ? base : (base || 'irs-transcript') + '.pdf'
     const answer = await ask({ type: 'deliver', id, name: fileName, base64: got.base64 })
     const status = answer && answer.status ? answer.status : 'no-crm'
     results.push({ name: fileName, status, detail: (answer && answer.detail) || '' })
