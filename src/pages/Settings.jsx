@@ -512,7 +512,7 @@ export default function Settings() {
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>📬</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tx)' }}>POP / SMTP</div>
-                    <div style={{ fontSize: 11, color: firm.smtp_email ? 'var(--ok)' : 'var(--t3)' }}>{firm.smtp_email ? '✅ ' + firm.smtp_email : 'Not configured'}</div>
+                    <div style={{ display:'inline-flex', alignItems:'center', marginTop:4, padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700, color: firm.smtp_email ? 'var(--ok)' : 'var(--t3)', background: firm.smtp_email ? 'rgba(34,197,94,.08)' : 'var(--s2)', border:'1px solid var(--br)', maxWidth:'100%' }}>{firm.smtp_email ? firm.smtp_email : 'Not configured'}</div>
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--t3)' }}>{expandedInt.smtp ? '▲' : '▼'}</span>
                 </div>
@@ -536,7 +536,7 @@ export default function Settings() {
                     <div style={{background:'var(--s2)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--t3)',lineHeight:1.7,marginBottom:12}}>
                       💡 Outlook: smtp.office365.com:587 · Yahoo: smtp.mail.yahoo.com:587 · Zoho: smtp.zoho.com:587
                     </div>
-                    <button className="btn pri" onClick={saveFirm} disabled={saving} style={{width:'100%',justifyContent:'center'}}>{saving ? 'Saving…' : 'Save Email Settings'}</button>
+                    <div style={{display:'flex',justifyContent:'flex-end'}}><button className="btn pri" onClick={saveFirm} disabled={saving}>{saving ? 'Saving…' : 'Save Email Settings'}</button></div>
                   </div>
                 )}
               </div>
@@ -550,21 +550,12 @@ export default function Settings() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tx)' }}>Gmail</div>
-                    <div style={{ fontSize: 11, color: connectedGmailCount > 0 ? 'var(--ok)' : 'var(--t3)' }}>{connectedGmailCount > 0 ? `✅ ${connectedGmailCount} connected` : 'Not connected'}</div>
+                    <div style={{ display:'inline-flex', alignItems:'center', marginTop:4, padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700, color: connectedGmailCount > 0 ? 'var(--ok)' : 'var(--t3)', background: connectedGmailCount > 0 ? 'rgba(34,197,94,.08)' : 'var(--s2)', border:'1px solid var(--br)' }}>{connectedGmailCount > 0 ? `${connectedGmailCount} connected` : 'Not connected'}</div>
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--t3)' }}>{expandedInt.gmail ? '▲' : '▼'}</span>
                 </div>
                 {expandedInt.gmail && (
                   <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--br)' }}>
-                    {connectedGmailCount > 0 ? (
-                      <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.25)",borderRadius:8,padding:"10px 14px",margin:"12px 0 10px",fontSize:12,color:"var(--ok)"}}>
-                        ✅ {connectedGmailCount} employee{connectedGmailCount === 1 ? ' has' : 's have'} connected their Gmail.
-                      </div>
-                    ) : (
-                      <div style={{background:"rgba(250,204,21,.08)",border:"1px solid rgba(250,204,21,.25)",borderRadius:8,padding:"10px 14px",margin:"12px 0 10px",fontSize:12,color:"var(--warn)"}}>
-                        ⚠️ No employees have connected Gmail yet.
-                      </div>
-                    )}
                     <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.6 }}>
                       Employees connect their own Gmail from the Email page. Admin setup is only needed once.
                     </div>
@@ -583,7 +574,7 @@ export default function Settings() {
                     <div className="field"><label>Redirect URI <span style={{fontWeight:400,color:'var(--t3)'}}>(click to copy)</span></label>
                       <input readOnly value={window.location.origin + '/auth/callback'} style={{color:'var(--t3)',cursor:'text'}} onClick={e=>{e.target.select();document.execCommand('copy')}}/>
                     </div>
-                    <button className="btn pri" onClick={saveFirm} disabled={saving} style={{width:'100%',justifyContent:'center',marginTop:4}}>{saving ? 'Saving…' : 'Save Gmail Config'}</button>
+                    <div style={{display:'flex',justifyContent:'flex-end',marginTop:4}}><button className="btn pri" onClick={saveFirm} disabled={saving}>{saving ? 'Saving…' : 'Save Gmail Config'}</button></div>
                   </div>
                 )}
               </div>
@@ -598,21 +589,12 @@ export default function Settings() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tx)' }}>Microsoft 365</div>
-                    <div style={{ fontSize: 11, color: connectedM365Count > 0 ? 'var(--ok)' : 'var(--t3)' }}>{connectedM365Count > 0 ? `✅ ${connectedM365Count} connected` : 'Not connected'}</div>
+                    <div style={{ display:'inline-flex', alignItems:'center', marginTop:4, padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:700, color: connectedM365Count > 0 ? 'var(--ok)' : 'var(--t3)', background: connectedM365Count > 0 ? 'rgba(34,197,94,.08)' : 'var(--s2)', border:'1px solid var(--br)' }}>{connectedM365Count > 0 ? `${connectedM365Count} connected` : 'Not connected'}</div>
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--t3)' }}>{expandedInt.m365 ? '▲' : '▼'}</span>
                 </div>
                 {expandedInt.m365 && (
                   <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--br)' }}>
-                    {connectedM365Count > 0 ? (
-                      <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.25)",borderRadius:8,padding:"10px 14px",margin:"12px 0 10px",fontSize:12,color:"var(--ok)"}}>
-                        ✅ {connectedM365Count} employee{connectedM365Count === 1 ? ' has' : 's have'} connected Microsoft 365.
-                      </div>
-                    ) : (
-                      <div style={{background:"rgba(250,204,21,.08)",border:"1px solid rgba(250,204,21,.25)",borderRadius:8,padding:"10px 14px",margin:"12px 0 10px",fontSize:12,color:"var(--warn)"}}>
-                        ⚠️ No employees connected yet. Complete setup below, then each employee connects from the Email page.
-                      </div>
-                    )}
                     <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.6 }}>
                       Connects Outlook mail and calendar. Admin configuration is done once; employees connect their own account from Email.
                     </div>
@@ -632,7 +614,7 @@ export default function Settings() {
                       <input value={firm.m365_tenant_id||'common'} onChange={set('m365_tenant_id')} placeholder="common"/>
                       <div style={{fontSize:10,color:'var(--t3)',marginTop:3}}>Use "common" to allow any Microsoft account. For single-tenant, paste your Azure Directory ID.</div>
                     </div>
-                    <button className="btn pri" onClick={saveFirm} disabled={saving} style={{width:'100%',justifyContent:'center',marginTop:4}}>{saving ? 'Saving…' : 'Save M365 Config'}</button>
+                    <div style={{display:'flex',justifyContent:'flex-end',marginTop:4}}><button className="btn pri" onClick={saveFirm} disabled={saving}>{saving ? 'Saving…' : 'Save M365 Config'}</button></div>
                   </div>
                 )}
               </div>
