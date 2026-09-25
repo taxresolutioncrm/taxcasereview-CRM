@@ -258,17 +258,26 @@ export function AppProvider({ children }) {
       setMyEmpId(data.id || null)
       myRealNameRef.current = data.name?.trim() || null
       // Re-run the mute-prefs load now that we may have a corrected name.
-      supabase.from('chat_conv_prefs').select('conv_id, muted').eq('viewer_name', data.name?.trim() || fallbackName)
+      supabase.from('chat_conv_prefs')
+        .select('conv_id, muted')
+        .eq('tenant_id', tenantId)
+        .eq('viewer_name', data.name?.trim() || fallbackName)
         .then(({ data: prefs }) => {
           if (cancelled || !prefs) return
           mutedRef.current = new Set(prefs.filter(r => r.muted).map(r => r.conv_id))
         })
     })()
-    supabase.from('chat_conv_prefs').select('conv_id, muted').eq('viewer_name', fallbackName)
-      .then(({ data }) => {
+    supabase.rpc('current_tenant_id').then(({ data: tenantId }) => {
+      if (!tenantId || cancelled) return
+      supabase.from('chat_conv_prefs')
+        .select('conv_id, muted')
+        .eq('tenant_id', tenantId)
+        .eq('viewer_name', fallbackName)
+        .then(({ data }) => {
         if (cancelled || !data) return
-        mutedRef.current = new Set(data.filter(r => r.muted).map(r => r.conv_id))
-      })
+          mutedRef.current = new Set(data.filter(r => r.muted).map(r => r.conv_id))
+        })
+    })
     return () => { cancelled = true }
   }, [user?.email])
 
