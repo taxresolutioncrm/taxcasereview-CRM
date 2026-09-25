@@ -20,7 +20,7 @@
     if (!data || data.source !== CRM) return
     if (data.type === 'crm-hello' || data.type === 'crm-ready') {
       crmReady = true
-      if (cleanId(data.tenantId)) tenantId = data.tenantId
+      tenantId = cleanId(data.tenantId) // the office this tab is signed in to right now (null until known)
       toHelper({ type: 'crm-ready', tenantId })
       if (data.type === 'crm-hello') toPage({ type: 'helper-hello' })
     } else if (data.type === 'crm-bind') {
@@ -31,6 +31,7 @@
       toHelper({ type: 'crm-bind', tenantId, label: String(data.label || '').slice(0, 120), requestIds, nonce })
     } else if (data.type === 'crm-gone') {
       crmReady = false
+      tenantId = null
       toHelper({ type: 'crm-gone' })
     } else if (data.type === 'transcript-ack') {
       const done = pending.get(String(data.id))

@@ -146,6 +146,8 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
 
   const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
   if (tenantErr || !tenantId) throw new Error(`Could not resolve office tenant: ${tenantErr?.message || 'No tenant returned'}`)
+  // Every filed transcript keeps the SHA-256 of its PDF bytes, so any later copy is recognized as a duplicate.
+  if (!a?.file_sha256) a = { ...a, file_sha256: await sha256File(file) }
 
   let clientId = existing?.clientId || null
   let canonicalName = clientNameInput
@@ -442,7 +444,7 @@ export async function sha256File(file) {
 }
 
 function tinLast4(text) {
-  const m = String(text || '').match(/(?:Taxpayer Identification Number|SSN\/EIN|SSN|EIN|TIN)\s*(?:provided)?\s*:?\s*[X*\d]{3}[- ]?[X*\d]{2}[- ]?(\d{4})\b|(?:Taxpayer Identification Number|EIN)\s*:?\s*[X*\d]{2}-?[X*\d]{3}(\d{4})\b/i)
+  const m = String(text || '').match(/\b(?:Taxpayer Identification Number|SSN\/EIN|SSN|EIN|TIN)\b\s*(?:provided)?\s*:?\s*[X*\d]{3}[- ]?[X*\d]{2}[- ]?(\d{4})\b|(?:Taxpayer Identification Number|EIN)\s*:?\s*[X*\d]{2}-?[X*\d]{3}(\d{4})\b/i)
   return m ? (m[1] || m[2]) : null
 }
 
@@ -539,14 +541,16 @@ async function fileBrowserTranscriptsNow(requestId, files) {
 // Office scoping comes from the database's row-level security.
 export async function findFiledTranscriptBySha(key) {
   if (!key) return null
-  const { data, error } = await supabase.from('transcript_analyses').select('id,client_id,client_name').eq('raw_analysis->>file_sha256', key).limit(1)
+  const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
+  if (tenantErr || !tenantId) throw new Error(`Duplicate check failed: could not resolve office tenant`)
+  const { data, error } = await supabase.from('transcript_analyses').select('id,client_id,client_name').eq('tenant_id', tenantId).eq('raw_analysis->>file_sha256', key).limit(1)
   if (error) throw new Error(`Duplicate check failed: ${error.message}`)
   return data?.[0] || null
 }
 
-// How many clients in this office have an SSN/EIN ending in these 4 digits.
+// The clients in this office whose SSN/EIN ends in these 4 digits.
 async function clientsWithTinLast4(last4) {
-  if (!/^\d{4}$/.test(String(last4 || ''))) return 0
+  if (!/^\d{4}$/.test(String(last4 || ''))) return new Set()
   const ids = new Set()
   for (const col of ['ssn', 'ein']) {
     const { data, error } = await supabase.from('clients').select(`id,${col}`).ilike(col, `%${last4}`).limit(10)
@@ -556,7 +560,7 @@ async function clientsWithTinLast4(last4) {
       if (digits.length >= 4 && digits.slice(-4) === last4) ids.add(row.id)
     }
   }
-  return ids.size
+  return ids
 }
 
 // Pick the one open browser request a returned PDF belongs to. Fails closed — returns null (→ "Needs a client")
@@ -572,7 +576,8 @@ export async function matchBrowserRequest(openRequests, parsed, { onlyRequestIds
   }
   if (candidates.length !== 1) return null
   if (onlyRequestIds && onlyRequestIds.size && !onlyRequestIds.has(candidates[0].id)) return null
-  if ((await clientsWithTinLast4(parsed.tinLast4)) !== 1) return null
+  const sameTin = await clientsWithTinLast4(parsed.tinLast4)
+  if (sameTin.size !== 1 || !sameTin.has(candidates[0].client_id)) return null
   return candidates[0]
 }
 

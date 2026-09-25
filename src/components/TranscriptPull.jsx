@@ -423,10 +423,17 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       post({ type: 'crm-ready', tenantId: tenantRef.current })
     }, () => {})
     async function handle(data) {
-      const name = String(data.name || 'irs-transcript.pdf').replace(/[^\w.\- ()]/g, '_').slice(0, 120)
+      const name = String(data.name || 'irs-transcript.pdf').split(/[;?#]/)[0].replace(/[^\w.\- ()]/g, '_').slice(0, 120) || 'irs-transcript.pdf'
       const id = String(data.id || '')
       try {
         if (!tenantRef.current || String(data.tenantId || '') !== tenantRef.current) throw new Error('This transcript was addressed to a different office — not filed here')
+        // Re-check the office this tab is signed in to right now (a sign-in in another tab can switch it).
+        const { data: nowTenant } = await supabase.rpc('current_tenant_id')
+        if (!nowTenant || String(nowTenant) !== tenantRef.current) {
+          tenantRef.current = nowTenant ? String(nowTenant) : null
+          post({ type: 'crm-ready', tenantId: tenantRef.current })
+          throw new Error('This CRM tab is now signed in to a different office — not filed. Reopen Secure Mailbox from the right office.')
+        }
         if (typeof data.base64 !== 'string' || data.base64.length > MAX_HELPER_PDF_BYTES * 1.4) throw new Error('File is missing or too large')
         const file = base64ToFile(data.base64, /\.pdf$/i.test(name) ? name : `${name}.pdf`)
         const head = new Uint8Array(await file.slice(0, 5).arrayBuffer())
@@ -476,7 +483,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   function bindHelper(extraIds = []) {
     if (!tenantRef.current) return null
     const nonce = crypto.randomUUID()
-    const ids = [...new Set([...requestsRef.current.filter(isOpenBrowserRequest).map(r => r.id), ...extraIds].map(String))]
+    const ids = [...new Set([...extraIds, ...requestsRef.current.filter(isOpenBrowserRequest).map(r => r.id)].map(String))]
     const title = String(document.title || '').split(' — ')[0].trim()
     const label = title && title !== window.location.host ? `${title} (${window.location.host})` : window.location.host
     window.postMessage({ source: CRM_SOURCE, type: 'crm-bind', tenantId: tenantRef.current, label, requestIds: ids, nonce }, window.location.origin)

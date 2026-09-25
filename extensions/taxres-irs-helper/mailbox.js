@@ -9,22 +9,39 @@
   const MAX_PDF_BYTES = 15 * 1024 * 1024
   const PACE_MS = 1500
   const CLICK_WAIT_MS = 9000
-  const ATTACHMENT = /\.pdf\b|attach|download|view_?file|get_?file|file_?id|fileid|doc_?id|transcript|\bpdf\b/i
+  // What makes something an attachment: its address, or a label that names a file / attachment.
+  const ATTACH_URL = /\.pdf\b|attach|download|view_?file|get_?file|file_?id|fileid|doc_?id|document_?id/i
+  const ATTACH_NAME = /\.pdf\b|attachment|download|📎/i
+  const FILE_FIELD = /^(file_?id|attach(ment)?_?id|doc(ument)?_?id)$/i
   const MESSAGE_LINK = /view.?mail|read.?mail|message_?id|messageid|mail_?id|msg_?id|view_?message|viewmessage|open_?message/i
-  const DANGER = /delete|remove|trash|log.?out|log.?off|sign.?out|archive|reply|compose|forward|\bmove\b|mark.?(as|un)|unread|settings|preferences|password|cancel|withdraw/i
+  const DANGER = /delete|remove|trash|log.?out|log.?off|sign.?out|sign.?in|log.?in|logon|archive|reply|compose|forward|\bmove\b|mark.?(as|un)|unread|settings|preferences|password|cancel|withdraw|submit.?request|request.?transcript|\bauth|oauth|saml/i
   const SECRET_FIELD = /token|csrf|xsrf|nonce|session|viewstate|eventvalidation|auth/i
-  const MAILBOX_PAGE = /semail|\/sor\b|\/sor\/|secure.?mail|mailbox|inbox|message|mail/i
+  // The panel only appears on mailbox / message pages — never on the TDS request pages.
+  const MAILBOX_PAGE = /semail|\/sor(\/|\b)|secure.?mail|mailbox|inbox|message/i
 
   const ask = msg => new Promise(resolve => {
     try { chrome.runtime.sendMessage(msg, answer => { void chrome.runtime.lastError; resolve(answer || null) }) } catch { resolve(null) }
   })
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+  const randomCode = () => (crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join(''))
   let busy = false
   let captured = []
 
-  // A file (PDF) shown in its own tab: tell the helper, which decides whether an IRS window is waiting for it.
+  // A file (PDF) shown in its own tab: tell the helper, and tell the exact IRS window that opened this tab
+  // (window.opener) a one-time code, so the helper can pair them without guessing.
   const isFileTab = !!(document.contentType && !/html/i.test(document.contentType))
-  if (isFileTab) { ask({ type: 'file-tab' }) } else ask({ type: 'irs-ready' })
+  if (isFileTab) {
+    const code = randomCode()
+    ask({ type: 'file-tab', code })
+    try { if (window.opener) window.opener.postMessage({ source: 'taxres-irs-helper-file', code }, location.origin) } catch { /* no opener */ }
+  } else {
+    ask({ type: 'irs-ready' })
+    // A file tab this window opened says hello: claim it (the helper only accepts it while this window is waiting).
+    window.addEventListener('message', event => {
+      if (event.origin !== location.origin || !event.data || event.data.source !== 'taxres-irs-helper-file') return
+      if (typeof event.data.code === 'string') ask({ type: 'claim-file', code: event.data.code })
+    })
+  }
 
   // ---- read a file the same way the page would open it (same IRS site, the rep's own session) ----
   function sameSite(url, base) {
@@ -46,6 +63,7 @@
   async function open(target) {
     const u = sameSite(target.url)
     if (!u) throw new Error('Not on this IRS site')
+    if (DANGER.test(u.pathname + u.search)) throw new Error('Not an attachment address')
     const init = { credentials: 'same-origin', redirect: 'follow' }
     if (target.method === 'POST') {
       init.method = 'POST'
@@ -60,8 +78,8 @@
     if (isPdfBytes(buf)) return { pdf: true, base64: toBase64(buf), finalUrl }
     return { pdf: false, html: new TextDecoder().decode(buf), finalUrl }
   }
-  // Open a target; if the IRS answers with a page that wraps the file (frame, embed, redirect, one link),
-  // follow it up to two steps. Returns { pdf } or { page, items } for a message page with attachments.
+  // Open a target; if the IRS answers with a page that only wraps the file (one frame / embed, or an
+  // immediate redirect), follow it up to two steps. Otherwise treat it as a message page and list its attachments.
   async function openFollowing(target, depth = 0) {
     const got = await open(target)
     if (got.pdf || depth >= 2) return got
@@ -74,21 +92,23 @@
     return { pdf: false, items: findItems(doc, got.finalUrl, false).filter(i => i.kind !== 'click' && i.kind !== 'message') }
   }
   function wrapperTarget(doc, base) {
-    for (const el of doc.querySelectorAll('iframe[src], frame[src], embed[src], object[data]')) {
-      const u = sameSite(el.getAttribute('src') || el.getAttribute('data'), base)
-      if (u) return { url: u.href }
+    const safe = u => u && !DANGER.test(u.pathname + u.search) ? { url: u.href } : null
+    const frames = doc.querySelectorAll('iframe[src], frame[src], embed[src], object[data]')
+    if (frames.length === 1) {
+      const el = frames[0]
+      const hit = safe(sameSite(el.getAttribute('src') || el.getAttribute('data'), base))
+      if (hit) return hit
     }
     const refresh = doc.querySelector('meta[http-equiv="refresh" i]')
-    const m = refresh && /url\s*=\s*['"]?([^'";]+)/i.exec(refresh.getAttribute('content') || '')
-    const u = m && sameSite(m[1].trim(), base)
-    return u ? { url: u.href } : null
+    const m = refresh && /^\s*0\s*;\s*url\s*=\s*['"]?([^'";]+)/i.exec(refresh.getAttribute('content') || '')
+    return m ? safe(sameSite(m[1].trim(), base)) : null
   }
   async function hashText(text) {
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
     return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
   }
 
-  // Background asks this page to re-open a file the page itself opened (a download or a new tab).
+  // Background asks this page to re-open a file (one this page opened, or this file tab's own file).
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg || typeof msg !== 'object') return false
     if (msg.type === 'refetch') {
@@ -101,8 +121,10 @@
     return false
   })
 
-  // Remember what the rep clicks here (address only, for telling which window a download came from).
-  // (Clicks on the helper's own panel don't count.)
+  if (isFileTab) return // a PDF or other file, not a page
+
+  // Remember what the rep clicks here (as a fingerprint, for telling which window a download came from).
+  // Clicks on the helper's own panel don't count.
   document.addEventListener('click', event => {
     if (!event.isTrusted) return
     const t = event.target
@@ -115,13 +137,13 @@
     ask({ type: 'user-click', url: u ? u.href : '' })
   }, true)
 
-  if (isFileTab) return // a PDF or other file, not a page
-
   // ---- find attachments on a page (the live page, or a message page opened in the background) ----
-  function textOf(el) {
+  function fullText(el) {
     return [el.textContent, el.getAttribute('title'), el.getAttribute('aria-label'), el.getAttribute('value'), el.getAttribute('alt')]
-      .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 140)
+      .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
   }
+  const shortName = el => fullText(el).slice(0, 140)
+  const addrOf = url => { const u = new URL(url); return u.pathname + u.search }
   function urlInScript(code, base) {
     // A same-site address written into an onclick / javascript: link, e.g. window.open('/semail/view_file.jsp?id=1').
     const re = /['"]((?:https:\/\/[^'"\s]+|\/[^'"\s]*|[\w.-]+\.(?:jsp|do|pdf|aspx?|action)\b[^'"\s]*))['"]/gi
@@ -132,23 +154,28 @@
     }
     return null
   }
+  // Only simple attachment forms: hidden fields + a button, an attachment address or file-id field,
+  // no sign-in box, no drop-downs or typed fields, nothing that reads like delete/move/request.
   function formTarget(form, base) {
-    if (form.querySelector('input[type="password" i]')) return null // never touch a sign-in form
+    if (form.querySelector('input[type="password" i], select, textarea')) return null
     const method = String(form.getAttribute('method') || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET'
     const u = sameSite(form.getAttribute('action') || base, base)
-    if (!u) return null
+    if (!u || DANGER.test(u.pathname + u.search)) return null
     const pairs = []
     const keyPairs = []
-    for (const el of form.querySelectorAll('input[name], select[name], textarea[name]')) {
-      const type = String(el.getAttribute('type') || '').toLowerCase()
-      if (['submit', 'button', 'image', 'reset', 'file', 'password'].includes(type)) continue
-      if ((type === 'checkbox' || type === 'radio') && !el.hasAttribute('checked')) continue
+    let fileField = false
+    for (const el of form.querySelectorAll('input[name]')) {
+      const type = String(el.getAttribute('type') || 'text').toLowerCase()
+      if (['submit', 'button', 'image', 'reset'].includes(type)) continue
+      if (type !== 'hidden') return null
       const name = el.getAttribute('name')
-      const value = el.tagName === 'SELECT' ? (el.querySelector('option[selected]') || el.querySelector('option') || { value: '' }).value
-        : el.tagName === 'TEXTAREA' ? el.textContent : (el.value ?? el.getAttribute('value') ?? '')
+      const value = el.getAttribute('value') ?? ''
+      if (DANGER.test(name) || DANGER.test(value)) return null
+      if (FILE_FIELD.test(name)) fileField = true
       pairs.push([name, value])
       if (!SECRET_FIELD.test(name)) keyPairs.push(name + '=' + value)
     }
+    if (!ATTACH_URL.test(u.pathname + u.search) && !fileField) return null
     const body = new URLSearchParams(pairs).toString()
     if (method === 'GET') { u.search = body; return { url: u.href, method, key: u.href } }
     return { url: u.href, method, body, key: 'POST ' + u.origin + u.pathname + '?' + keyPairs.sort().join('&') }
@@ -159,41 +186,40 @@
     const add = item => { const k = item.key || item.url || item.clickKey; if (k && !seen.has(k)) { seen.add(k); items.push(item) } }
     // 1) links (including javascript: links that carry an address in their code)
     for (const a of root.querySelectorAll('a[href], area[href]')) {
-      const name = textOf(a)
+      const text = fullText(a)
       const raw = a.getAttribute('href') || ''
       const onclick = a.getAttribute('onclick') || ''
-      if (DANGER.test(name) || DANGER.test(raw) || DANGER.test(onclick)) continue
+      if (DANGER.test(text) || DANGER.test(raw) || DANGER.test(onclick)) continue
       const scripted = /^javascript:/i.test(raw) || raw === '#' || raw === ''
       const url = scripted ? urlInScript(raw + ' ' + onclick, base) : (sameSite(raw, base) || {}).href
-      if (url && (ATTACHMENT.test(url) || ATTACHMENT.test(name))) add({ kind: 'file', url, name })
-      else if (!url && scripted && live && ATTACHMENT.test(name + ' ' + onclick)) add({ kind: 'click', el: a, name, clickKey: 'click:' + name + onclick })
+      const name = shortName(a)
+      if (url && (ATTACH_URL.test(addrOf(url)) || ATTACH_NAME.test(text))) add({ kind: 'file', url, name })
+      else if (!url && scripted && live && (ATTACH_NAME.test(text) || ATTACH_URL.test(onclick))) add({ kind: 'click', el: a, name, clickKey: 'click:' + name + onclick })
     }
     // 2) buttons / rows / icons that open the file from code, and data-* addresses
     for (const el of root.querySelectorAll('[onclick], [data-href], [data-url], [data-file-url]')) {
       if (el.matches('a[href], area[href]')) continue
-      const name = textOf(el)
+      if (el.closest('form') && el.matches('button, input')) continue // buttons inside forms are handled with their form
+      const text = fullText(el)
       const onclick = el.getAttribute('onclick') || ''
-      if (DANGER.test(name) || DANGER.test(onclick)) continue
-      if (el.closest('form') && el.matches('button, input')) continue // handled with its form below
+      if (DANGER.test(text) || DANGER.test(onclick)) continue
       const dataUrl = el.getAttribute('data-href') || el.getAttribute('data-url') || el.getAttribute('data-file-url')
       const url = (dataUrl && (sameSite(dataUrl, base) || {}).href) || urlInScript(onclick, base)
-      if (url && (ATTACHMENT.test(url) || ATTACHMENT.test(name))) add({ kind: 'file', url, name })
-      else if (!url && live && ATTACHMENT.test(name + ' ' + onclick)) add({ kind: 'click', el, name, clickKey: 'click:' + name + onclick })
+      const name = shortName(el)
+      if (url && (ATTACH_URL.test(addrOf(url)) || ATTACH_NAME.test(text))) add({ kind: 'file', url, name })
+      else if (!url && live && (ATTACH_NAME.test(text) || ATTACH_URL.test(onclick))) add({ kind: 'click', el, name, clickKey: 'click:' + name + onclick })
     }
-    // 3) forms whose button / address says it opens a file (never sign-in forms)
+    // 3) simple attachment forms
     for (const form of root.querySelectorAll('form')) {
-      const buttons = [...form.querySelectorAll('button, input[type="submit" i], input[type="image" i]')].map(textOf).join(' ')
-      const names = [...form.querySelectorAll('[name]')].map(el => el.getAttribute('name')).join(' ')
-      const label = buttons || textOf(form)
-      if (DANGER.test(buttons) || DANGER.test(form.getAttribute('action') || '')) continue
-      if (!ATTACHMENT.test(`${form.getAttribute('action') || ''} ${label} ${names}`)) continue
+      const label = [...form.querySelectorAll('button, input[type="submit" i], input[type="image" i]')].map(fullText).join(' ') || fullText(form)
+      if (DANGER.test(label)) continue
       const t = formTarget(form, base)
-      if (t) add({ kind: 'file', ...t, name: label || 'attachment' })
+      if (t) add({ kind: 'file', ...t, name: label.slice(0, 140) || 'attachment' })
     }
     // 4) files shown inside the page (frames / embeds)
     for (const el of root.querySelectorAll('iframe[src], frame[src], embed[src], object[data]')) {
       const u = sameSite(el.getAttribute('src') || el.getAttribute('data'), base)
-      if (u && ATTACHMENT.test(u.href) && !DANGER.test(u.href)) add({ kind: 'file', url: u.href, name: u.pathname.split('/').pop() })
+      if (u && ATTACH_URL.test(u.pathname + u.search) && !DANGER.test(u.pathname + u.search)) add({ kind: 'file', url: u.href, name: u.pathname.split('/').pop() })
     }
     if (live) {
       for (const frame of root.querySelectorAll('iframe, frame')) {
@@ -206,14 +232,15 @@
     if (!items.length) {
       for (const a of root.querySelectorAll('a[href]')) {
         const u = sameSite(a.getAttribute('href'), base)
-        const name = textOf(a)
-        if (u && MESSAGE_LINK.test(u.href) && u.href !== location.href && !DANGER.test(u.href + ' ' + name)) add({ kind: 'message', url: u.href, name })
+        const text = fullText(a)
+        if (u && MESSAGE_LINK.test(u.pathname + u.search) && u.href !== location.href && !DANGER.test(u.pathname + u.search + ' ' + text)) add({ kind: 'message', url: u.href, name: shortName(a) })
       }
     }
     return items
   }
 
-  const isMailboxPage = () => MAILBOX_PAGE.test(location.pathname + location.search)
+  const isMailboxPage = () => MAILBOX_PAGE.test(location.pathname + location.search) && !/\/esrv\/tds/i.test(location.pathname)
+  if (!isMailboxPage()) return // TDS request pages and other IRS pages: no panel, never scanned or clicked
 
   // ---- panel (shadow DOM so the IRS page styles are untouched) ----
   const host = document.createElement('div')
@@ -246,6 +273,9 @@
   const setStatus = text => { $('.status').textContent = text }
   let items = []
   let binding = { bound: false }
+  let hidden = false
+  const DELIVERED = s => s === 'filed' || s === 'duplicate'
+  const PROBLEM = s => ['no-crm', 'timeout', 'error', 'unbound', 'unreadable'].includes(s)
 
   function onCaptured(msg) {
     captured.push({ name: String(msg.name || 'file'), status: String(msg.status || ''), detail: String(msg.detail || '') })
@@ -264,7 +294,7 @@
       dest.textContent = 'Not linked to a CRM. This IRS window wasn\'t opened from the TaxRes CRM, so the helper won\'t send anything from it. In the CRM, open IRS Transcripts and click "Secure Mailbox".'
     } else if (!binding.ready) {
       dest.className = 'dest warn'
-      dest.textContent = `Sends to: ${binding.label} — that CRM tab isn't open right now.`
+      dest.textContent = `Sends to: ${binding.label} — that CRM tab is closed or signed in to a different office. Open Secure Mailbox again from the right CRM tab.`
     } else {
       dest.className = 'dest'
       dest.textContent = `Sends to: ${binding.label}`
@@ -272,7 +302,7 @@
   }
 
   async function refresh() {
-    if (busy) return
+    if (busy || hidden) return
     await refreshBinding()
     const scanned = findItems(document, location.href, true)
     const withState = []
@@ -291,7 +321,7 @@
     sendBtn.textContent = todo.length ? `Send ${todo.length} transcript${todo.length === 1 ? '' : 's'} to CRM` : 'Nothing new to send'
     sendBtn.disabled = !todo.length || !binding.bound
     $('.again').disabled = !items.length || !binding.bound
-    if (items.length || isMailboxPage()) { if (!host.isConnected) document.documentElement.appendChild(host) }
+    if (!host.isConnected) document.documentElement.appendChild(host)
   }
 
   async function sendFile(target, name, results) {
@@ -302,34 +332,36 @@
     const answer = await ask({ type: 'deliver', id, name: fileName, base64: got.base64 })
     const status = answer && answer.status ? answer.status : 'no-crm'
     results.push({ name: fileName, status, detail: (answer && answer.detail) || '' })
-    return { ok: !['no-crm', 'timeout', 'error', 'unbound'].includes(status) }
+    // Only files the CRM actually filed (or already had) count as sent. "Needs a client" is offered again next time.
+    return { ok: DELIVERED(status) }
   }
 
   async function clickAndCatch(item, results) {
     // The attachment only opens from the IRS page's own code: click it for the rep and catch the file it opens.
     const before = captured.length
+    await ask({ type: 'catch', ms: CLICK_WAIT_MS + 1000 })
     item.el.click()
     const until = Date.now() + CLICK_WAIT_MS
     while (Date.now() < until && captured.length === before) await sleep(250)
+    await ask({ type: 'catch', ms: 0 })
     if (captured.length === before) {
       results.push({ name: item.name || 'attachment', status: 'needs-click', detail: 'click it yourself — the helper sends it when it opens' })
       return false
     }
     for (const c of captured.slice(before)) results.push({ name: c.name, status: c.status, detail: c.detail })
-    return captured.slice(before).some(c => !['no-crm', 'timeout', 'error', 'unbound', 'unreadable'].includes(c.status))
+    return captured.slice(before).every(c => DELIVERED(c.status))
   }
 
   async function sendAll(everything = false) {
     if (busy) return
     await refreshBinding()
     if (!binding.bound) { setStatus('Nothing sent. Open Secure Mailbox from the CRM\'s IRS Transcripts page so the helper knows which office these transcripts belong to.'); return }
-    if (!binding.ready) { setStatus(`Nothing sent. Open the CRM tab for ${binding.label} (IRS Transcripts page, signed in), then click Send again.`); return }
+    if (!binding.ready) { setStatus(`Nothing sent. Open the CRM tab for ${binding.label} (IRS Transcripts page, signed in to that office), then click Send again.`); return }
     busy = true
     sendBtn.disabled = true
     const results = []
     const todo = everything ? items.slice() : items.filter(i => !i.sent)
     let needsClick = false
-    await ask({ type: 'catch', ms: (todo.length + 2) * (PACE_MS + CLICK_WAIT_MS) })
     try {
       for (let n = 0; n < todo.length; n++) {
         const item = todo[n]
@@ -338,7 +370,7 @@
         try {
           if (item.kind === 'click') {
             if (await clickAndCatch(item, results)) await ask({ type: 'mark-sent', key: item.sentKey })
-            else needsClick = true
+            else if (results[results.length - 1] && results[results.length - 1].status === 'needs-click') needsClick = true
             continue
           }
           const first = await sendFile(item, item.name, results)
@@ -365,13 +397,14 @@
       }
     } finally {
       busy = false
-      await ask({ type: 'catch', ms: needsClick ? 2 * 60 * 1000 : 0 })
+      // Attachments the helper couldn't open: wait up to 2 minutes for the rep to click them in this window.
+      if (needsClick) await ask({ type: 'catch', ms: 2 * 60 * 1000 })
     }
     const count = s => results.filter(r => r.status === s).length
     const lines = [
-      `Done. Filed: ${count('filed')}, already in CRM: ${count('duplicate')}, needs a client: ${count('unmatched')}, problems: ${count('error') + count('no-crm') + count('timeout') + count('unbound') + count('unreadable')}`,
-      ...(needsClick ? ['Some attachments only open when you click them yourself. Click each one now — the helper sends it when it opens (for the next 2 minutes).'] : []),
-      ...results.filter(r => r.status !== 'filed' && r.status !== 'duplicate').slice(0, 6).map(r => `• ${r.name}: ${r.status}${r.detail ? ' – ' + r.detail : ''}`),
+      `Done. Filed: ${count('filed')}, already in CRM: ${count('duplicate')}, needs a client: ${count('unmatched')}, problems: ${results.filter(r => PROBLEM(r.status)).length}`,
+      ...(needsClick ? ['Some attachments only open when you click them yourself. Click each one now in this window — the helper sends it when it opens (for the next 2 minutes).'] : []),
+      ...results.filter(r => !DELIVERED(r.status)).slice(0, 6).map(r => `• ${r.name}: ${r.status}${r.detail ? ' – ' + r.detail : ''}`),
     ]
     setStatus(lines.join('\n'))
     await refresh()
@@ -380,7 +413,7 @@
   sendBtn.addEventListener('click', () => sendAll(false))
   $('.again').addEventListener('click', () => sendAll(true))
   $('.rescan').addEventListener('click', () => { setStatus(''); refresh() })
-  $('.hide').addEventListener('click', () => host.remove())
+  $('.hide').addEventListener('click', () => { hidden = true; host.remove() })
 
   let timer = null
   new MutationObserver(mutations => {
