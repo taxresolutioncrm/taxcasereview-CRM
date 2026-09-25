@@ -93,17 +93,22 @@ serve(async (req) => {
     }
 
     const requestedHost = host(requestedSite)
-    const verifiedSites = rows(sitesJson).filter((s:any)=>s?.IsVerified === true)
-    const matched = verifiedSites.find((s:any)=>host(String(s?.Url||''))===requestedHost)
+    const userSites = rows(sitesJson)
+    const matched = userSites.find((s:any)=>host(String(s?.Url||''))===requestedHost)
     if (!matched?.Url) {
       return new Response(JSON.stringify({
         connected:false, product_key:productKey, siteUrl:requestedSite,
-        error:'bing_site_not_verified',
-        message:'This product domain is not verified in the connected Bing Webmaster account.'
+        error:'bing_site_not_registered',
+        message:'This product domain is not present in GetUserSites for the connected Bing Webmaster account.',
+        available_hosts:userSites.map((s:any)=>host(String(s?.Url||''))).filter(Boolean)
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
+    // Do not gate data access solely on GetUserSites.IsVerified. Bing metadata can
+    // lag behind the actual site state. The traffic/query/page endpoints are the
+    // authoritative connectivity test.
     const siteUrl = String(matched.Url)
+    const bingVerified = matched?.IsVerified === true
     const endpoint = (method:string) =>
       `${BING_JSON_BASE}/${method}?siteUrl=${encodeURIComponent(siteUrl)}&apikey=${encodeURIComponent(apiKey)}`
 
@@ -144,6 +149,7 @@ serve(async (req) => {
       connected:true,
       product_key:productKey,
       siteUrl,
+      bingVerified,
       clicks,
       impressions,
       ctr,
