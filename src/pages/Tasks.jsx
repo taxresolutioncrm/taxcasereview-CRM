@@ -19,7 +19,7 @@ function resolveActorName(user, employees) {
 }
 
 export default function Tasks() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const navigate = useNavigate()
 
   // Jump from a task to the client/lead file it belongs to.
@@ -67,12 +67,13 @@ export default function Tasks() {
   const [sortBy, setSortBy] = useState('dueDate') // 'dueDate' | 'priority' | 'created'
 
   useEffect(() => {
+    if (!myTenantId) return
     load()
     // Request notification permission for reminders
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
-  }, [])
+  }, [myTenantId])
 
   // Check for due tasks and show browser notifications
   useEffect(() => {
@@ -96,7 +97,7 @@ export default function Tasks() {
   }, [user])
 
   async function checkRole(email) {
-    const { data } = await supabase.from('employees').select('access').eq('email', email).maybeSingle()
+    const { data } = await supabase.from('employees').select('access').eq('tenant_id', myTenantId).eq('email', email).maybeSingle()
     if (data?.access === 'Super Admin') setIsSuperAdmin(true)
     // Also check against known super admin email directly
     if (email === 'romy@taxcasereview.org') setIsSuperAdmin(true)
@@ -108,18 +109,18 @@ export default function Tasks() {
       // set is NULL, and eq('deleted', false) hid those from this page entirely
       // — so they could never be deleted from here while still showing on the
       // lead and client tabs.
-      supabase.from('tasks').select('*').not('deleted','is',true).order('created_at',{ascending:false}),
-      supabase.from('tasks').select('*').eq('deleted', true).order('deleted_at',{ascending:false}),
-      supabase.from('clients').select('id,name'),
-      supabase.from('leads').select('id,name'),
-      supabase.from('employees').select('id,name,email,avatar_url'),
-      supabase.from('workflow_status_categories').select('*').order('sort_order'),
-      supabase.from('workflow_statuses').select('*').order('sort_order'),
+      supabase.from('tasks').select('*').eq('tenant_id', myTenantId).not('deleted','is',true).order('created_at',{ascending:false}),
+      supabase.from('tasks').select('*').eq('tenant_id', myTenantId).eq('deleted', true).order('deleted_at',{ascending:false}),
+      supabase.from('clients').select('id,name').eq('tenant_id', myTenantId),
+      supabase.from('leads').select('id,name').eq('tenant_id', myTenantId),
+      supabase.from('employees').select('id,name,email,avatar_url').eq('tenant_id', myTenantId),
+      supabase.from('workflow_status_categories').select('*').eq('tenant_id', myTenantId).order('sort_order'),
+      supabase.from('workflow_statuses').select('*').eq('tenant_id', myTenantId).order('sort_order'),
     ])
     // Handle case where 'deleted' column may not exist yet — fall back gracefully
     if (t) setTasks(t)
     else {
-      const { data: fallback } = await supabase.from('tasks').select('*').order('created_at',{ascending:false})
+      const { data: fallback } = await supabase.from('tasks').select('*').eq('tenant_id', myTenantId).order('created_at',{ascending:false})
       if (fallback) setTasks(fallback)
     }
     if (dt) setDeleted(dt)
