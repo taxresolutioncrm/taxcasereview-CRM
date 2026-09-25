@@ -22,6 +22,8 @@ const schemaMigration = fs.readFileSync('supabase/migrations/20260924215000_oper
 const settingsMigration = fs.readFileSync('supabase/migrations/20260924221500_settings_integration_alignment.sql', 'utf8')
 const conversionMigration = fs.readFileSync('supabase/migrations/20260924211000_lead_conversion_integrity.sql', 'utf8')
 const invoiceAdjustMigration = fs.readFileSync('supabase/migrations/20260924220000_atomic_invoice_payment_adjustments.sql', 'utf8')
+const tenantBleedMigration = fs.readFileSync('supabase/migrations/20260925050000_cloudcpa_tenant_bleed_hardening.sql', 'utf8')
+const chatPrefMigration = fs.readFileSync('supabase/migrations/20260925044500_chat_preference_tenant_uniqueness.sql', 'utf8')
 
 function need(src, text, msg) {
   if (!src.includes(text)) failures.push(msg)
@@ -104,6 +106,12 @@ need(useFirm, "const _cacheByTenant = new Map()", 'useFirm cache must be keyed b
 forbid(useFirm, "let _cache = null", 'useFirm still has one global tenant-unsafe cache')
 need(firmBranding, "resetFirmBranding()", 'Global firm branding must clear on tenant/session switches')
 forbid(firmBranding, "localStorage.setItem('tcr_firm_branding'", 'Tenant branding must not be cached globally in localStorage')
+need(tenantBleedMigration, 'as restrictive', 'Employee QA visibility policy must be restrictive')
+need(tenantBleedMigration, 'tenant_id = (select public.current_tenant_id())', 'Tenant bleed hardening must bind to current tenant')
+need(tenantBleedMigration, 'drop policy if exists chat_rep_prefs_access', 'Chat rep preference policy hardening missing')
+need(tenantBleedMigration, 'drop policy if exists chat_conv_prefs_access', 'Chat conversation preference policy hardening missing')
+need(chatPrefMigration, 'unique (tenant_id, viewer_name, rep_name)', 'Chat rep preference uniqueness must include tenant')
+need(chatPrefMigration, 'unique (tenant_id, viewer_name, conv_id)', 'Chat conversation preference uniqueness must include tenant')
 
 if (failures.length) {
   console.error('CloudCPA tenant isolation check FAILED:')
