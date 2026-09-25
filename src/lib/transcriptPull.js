@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
+import { parseIrsTranscript, extractTranscriptText } from './irsTranscriptParser'
 
 // Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
 // Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
@@ -30,7 +30,7 @@ const MANUAL_PROVIDER = {
   note: 'Watch a local folder where IRS TDS PDFs are saved; the CRM auto-imports, parses and files each PDF.',
 }
 
-export const PULL_PROVIDERS = [DIRECT_PROVIDER, INTERACTIVE_PROVIDER, MANUAL_PROVIDER]
+export const PULL_PROVIDERS = [INTERACTIVE_PROVIDER, MANUAL_PROVIDER]
 const activeDirectPolls = new Set()
 
 async function refreshProviderCapability() {
@@ -51,7 +51,7 @@ async function refreshProviderCapability() {
   return PULL_PROVIDERS.map(p => ({ ...p }))
 }
 
-export async function loadPullProviders() { return refreshProviderCapability() }
+export async function loadPullProviders() { return PULL_PROVIDERS.map(p => ({ ...p })) }
 
 export function getProvider(id, providers = PULL_PROVIDERS) {
   return providers.find(p => p.id === id) || providers[0]
@@ -134,8 +134,8 @@ export function namesMatch(transcriptName, clientName) {
 }
 
 export async function parseTranscriptFile(file) {
-  const text = await extractPdfText(file)
-  if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
+  const text = await extractTranscriptText(file)
+  if (!text || text.trim().length < 40) throw new Error('The IRS transcript attachment did not contain readable text.')
   return parseIrsTranscript(text)
 }
 
@@ -396,9 +396,12 @@ function tinLast4(text) {
 
 // Read a returned PDF once: text layer → parsed analysis + masked-TIN last 4 for matching.
 export async function analyzeReturnedTranscript(file) {
-  const text = await extractPdfText(file)
-  if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
-  return { analysis: parseIrsTranscript(text), tinLast4: tinLast4(text) }
+  const text = await extractTranscriptText(file)
+  if (!text || text.trim().length < 40) throw new Error('The IRS transcript attachment did not contain readable text.')
+  const analysis = parseIrsTranscript(text)
+  const meta = file?.__taxresSorMeta || {}
+  if (!analysis.tax_year && meta.taxYear) analysis.tax_year = String(meta.taxYear)
+  return { analysis, tinLast4: tinLast4(text) || meta.tinLast4 || null, transactionId: meta.transactionId || null }
 }
 
 // Why a parsed transcript does not belong to this pending request (null = it belongs).
@@ -507,7 +510,3 @@ export async function forgetWatchedFolder() {
   try { const db = await handleDb(); const tx = db.transaction(HANDLE_STORE, 'readwrite'); tx.objectStore(HANDLE_STORE).delete('tds') } catch { /* noop */ }
 }
 
-if (typeof window !== 'undefined') {
-  setTimeout(() => refreshProviderCapability(), 0)
-  setTimeout(() => resumeDirectPulls(), 2000)
-}
