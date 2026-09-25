@@ -139,6 +139,18 @@ export async function parseTranscriptFile(file) {
   return parseIrsTranscript(text)
 }
 
+// Thrown when the exact same PDF (same SHA-256 of its bytes) is already filed in this office.
+// Every way a transcript enters the CRM goes through storeTranscriptAnalysis, so this is the one duplicate gate;
+// the database's unique index on (tenant_id, raw_analysis->>'file_sha256') backs it up when two reps file at once.
+export class DuplicateTranscriptError extends Error {
+  constructor(prior = null) {
+    super(`Already filed${prior?.client_name ? ` to ${prior.client_name}` : ''} — the same PDF is not filed twice.`)
+    this.name = 'DuplicateTranscriptError'
+    this.code = 'duplicate'
+    this.prior = prior
+  }
+}
+
 export async function storeTranscriptAnalysis(file, clientName, a, existing = null) {
   const clientNameInput = String(clientName || '').trim()
   if (!clientNameInput) throw new Error('Client name is required before filing a transcript.')
@@ -146,8 +158,10 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
 
   const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
   if (tenantErr || !tenantId) throw new Error(`Could not resolve office tenant: ${tenantErr?.message || 'No tenant returned'}`)
-  // Every filed transcript keeps the SHA-256 of its PDF bytes, so any later copy is recognized as a duplicate.
+  // Every filed transcript keeps the SHA-256 of its PDF bytes; a copy already filed in this office is refused.
   if (!a?.file_sha256) a = { ...a, file_sha256: await sha256File(file) }
+  const prior = await findFiledTranscriptBySha(a.file_sha256)
+  if (prior) throw new DuplicateTranscriptError(prior)
 
   let clientId = existing?.clientId || null
   let canonicalName = clientNameInput
@@ -192,6 +206,10 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
       file_url: durableUrl,
       file_path: filePath,
     }).select('id').single()
+    if (analysisErr?.code === '23505') {
+      // Another rep filed the same PDF a moment earlier: the database's uniqueness rule stopped this copy.
+      throw new DuplicateTranscriptError(await findFiledTranscriptBySha(a.file_sha256).catch(() => null))
+    }
     if (analysisErr || !analysis?.id) throw new Error(`Transcript analysis save failed: ${analysisErr?.message || 'No analysis ID returned'}`)
     analysisId = analysis.id
 
@@ -230,7 +248,13 @@ async function finalizeDirectDelivery(req, result) {
   const blob = await response.blob()
   const file = new File([blob], `IRS-TDS-${req.id}-${result.resultKey.slice(0, 12)}.pdf`, { type: 'application/pdf' })
   const analysis = await parseTranscriptFile(file)
-  const analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl, clientId: req.client_id || null })
+  let analysisId
+  try {
+    analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl, clientId: req.client_id || null })
+  } catch (e) {
+    if (e?.code !== 'duplicate' || !e.prior?.id) throw e
+    analysisId = e.prior.id
+  }
   const ids = new Set(req.result_analysis_ids || [])
   ids.add(analysisId)
   const filedKeys = new Set(req.provider_filed_keys || [])
@@ -514,6 +538,7 @@ async function fileBrowserTranscriptsNow(requestId, files) {
       ids.add(analysisId); filedKeys.add(key)
       results.push({ file: name, status: 'filed', year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type })
     } catch (e) {
+      if (e?.code === 'duplicate') { results.push({ file: name, status: 'duplicate', client: e.prior?.client_name || null }); continue }
       results.push({ file: name, status: 'error', reason: e?.message || 'Could not file this PDF.' })
     }
   }

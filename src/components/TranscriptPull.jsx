@@ -523,6 +523,12 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       await loadRequests()
       if (onImported) onImported()
     } catch (e) {
+      if (e?.code === 'duplicate') {
+        seenRef.current.add(item.key)
+        setUnmatched(u => u.filter(x => x.key !== item.key))
+        flash(`ℹ ${item.fileName}: ${e.message}`)
+        return
+      }
       flash('❌ ' + (e?.message || 'Could not file transcript.'))
     }
   }

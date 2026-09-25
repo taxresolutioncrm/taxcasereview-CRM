@@ -86,6 +86,7 @@ export default function IRSPortal() {
     if (!uploadClientRow) { setParseStatus('❌ Select one unique client record before filing the transcript.'); return }
     setParsing(true)
     let done = 0
+    const already = []
     for (const file of files) {
       setParseStatus(`Analyzing ${file.name} (${done + 1} of ${files.length})…`)
       try {
@@ -96,13 +97,15 @@ export default function IRSPortal() {
         await storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })
         done++
       } catch (err) {
+        // Same PDF already filed in this office (checked by its SHA-256): skip it, keep going.
+        if (err?.code === 'duplicate') { already.push(`${file.name}${err.prior?.client_name ? ` (already filed to ${err.prior.client_name})` : ''}`); continue }
         setParseStatus(`❌ ${file.name}: ${err?.message || 'Analysis failed'}`)
         setParsing(false)
         await loadAnalyses()
         return
       }
     }
-    setParseStatus(`✅ Analyzed ${done} transcript${done === 1 ? '' : 's'}.`)
+    setParseStatus(`✅ Analyzed ${done} transcript${done === 1 ? '' : 's'}.${already.length ? ` ${already.length} already filed, not filed again: ${already.join(', ')}.` : ''}`)
     setParsing(false)
     await loadAnalyses()
     setTimeout(() => setParseStatus(''), 6000)
