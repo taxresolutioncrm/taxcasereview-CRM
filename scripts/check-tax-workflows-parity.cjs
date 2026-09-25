@@ -7,7 +7,7 @@ const need = (p,n,label=n) => {
 }
 
 const transcript = 'src/components/TranscriptPull.jsx'
-for (const n of ['IRS Transcript Delivery','Request Transcripts','Add a tax year…','selectedYears.has(year)','selectedYears.size','poaYears.has(y)','Manual PDF fallback','provider: BROWSER_PROVIDER_ID','client_id: client.id']) need(transcript,n)
+for (const n of ['IRS Transcript Delivery','Request Transcripts','Add a tax year…','selectedYears.has(year)','selectedYears.size','poaYears.has(y)','Manual PDF fallback',"provider: 'irs_a2a'",'client_id: client.id']) need(transcript,n)
 const t = read(transcript)
 for (const bad of ['selectedYears.includes(','selectedYears.length','selectedYears.every(','poaYears.includes(','poaYears.length']) {
   if (t.includes(bad)) failures.push('TranscriptPull contains Set-unsafe year handling: '+bad)
