@@ -1154,10 +1154,11 @@ export default function Leads() {
         return
       }
     }
+    if (!myTenantId) { showToast('Office tenant is not resolved yet.'); return }
     setSaving(true)
     const actor = resolveActorName(user, employees)
     const beforeEdit = modal === 'edit' ? leads.find(l=>l.id===form.id) : null
-    let payload = buildLeadPayload(form)
+    let payload = { ...buildLeadPayload(form), tenant_id: myTenantId }
     let error
     let oldName = null
     if (modal === 'edit') {
@@ -1168,7 +1169,7 @@ export default function Leads() {
     // Fail loudly on schema/save errors. Silently stripping unknown fields
     // caused records to look saved while important data never persisted.
     if (modal === 'edit') {
-      ;({ error } = await supabase.from('leads').update(payload).eq('id', form.id))
+      ;({ error } = await supabase.from('leads').update(payload).eq('tenant_id', myTenantId).eq('id', form.id))
     } else {
       ;({ error } = await supabase.from('leads').insert([payload]))
     }
@@ -1177,7 +1178,7 @@ export default function Leads() {
     // If the name changed, repoint any compliance records gathered under the old name
     // so they don't get orphaned (compliance is stored keyed by client_name text).
     if (oldName && oldName !== form.name) {
-      await supabase.from('client_compliance_records').update({ client_name: form.name }).eq('client_name', oldName)
+      await supabase.from('client_compliance_records').update({ client_name: form.name }).eq('tenant_id', myTenantId).eq('client_name', oldName)
     }
     showToast(modal==='edit' ? '✅ Lead updated!' : '✅ Lead added!')
     if (modal !== 'edit') {
