@@ -7,7 +7,7 @@
  *
  * This is a STATIC analysis test. It verifies that every required code path
  * exists and that no forbidden patterns (public TDS shortcut, manual-only
- * workflow as primary, hardcoded Nashville tenant data) are present.
+ * workflow as primary, hardcoded TCR tenant data) are present.
  *
  * Acceptance test (live credentials required for full E2E):
  *   No synthetic/stub IRS session or transcript path may exist in production code.
@@ -37,19 +37,24 @@ const callback = 'supabase/functions/transcript-pull-callback/index.ts'
 const session  = 'src/components/TDSSessionPresence.jsx'
 const lib      = 'src/lib/transcriptPull.js'
 const pullUi   = 'src/components/TranscriptPull.jsx'
+const portal   = 'src/pages/IRSPortal.jsx'
 const parser   = 'src/lib/irsTranscriptParser.js'
 const config   = 'supabase/config.toml'
 
-console.log('Checking Step 1: Sign In to IRS…')
-need(session, "'begin-session'", 'begin-session route in TDSSessionPresence')
-forbid(session, 'begin-test-session', 'synthetic CRM live-test route in TDSSessionPresence')
-forbid(session, 'Run CRM Live Test', 'synthetic CRM live-test button')
-need(session, 'authorizationUrl', 'authorizationUrl used from begin-session response')
-need(session, 'window.open(', 'popup opened with authorizationUrl')
-forbid(session, "window.open(authorizationUrl, '_blank'", 'separate-tab fallback for IRS authorization')
-need(session, 'IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.', 'blocked-popup recovery stays inside CRM')
-forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public IRS TDS URL hardcoded as primary flow')
-forbid(session, 'openPractitionerTds', 'old openPractitionerTds function that opens public TDS')
+console.log('Checking Step 1: Sign In to IRS (rep\'s own login in a popup)…')
+if (fs.existsSync(session)) failures.push(`${session}: must be removed (API-credential sign-in panel replaced by the IRS popup)`)
+need(lib, "export const IRS_POPUP_NAME = 'taxres-irs-tds'", 'named IRS popup window')
+need(lib, 'w.opener = null', 'popup cut off from the CRM window')
+need(lib, '<meta name="referrer" content="no-referrer">', 'popup opens IRS with no referrer')
+need(lib, 'freshPopups', 'only a freshly opened popup is closed on save failure')
+need(portal, 'openIrsPopup(IRS_TDS_URL)', 'IRS Portal opens the real IRS TDS page in the popup')
+for (const f of [lib, pullUi, portal]) {
+  forbid(f, 'begin-test-session', 'synthetic CRM live-test route')
+  forbid(f, 'Run CRM Live Test', 'synthetic CRM live-test button')
+  forbid(f, 'IRS_TDS_STUB_MODE', 'stub mode')
+}
+forbid(pullUi, 'API credentials', 'API-credentials message in the transcript UI')
+forbid(pullUi, '<TDSSessionPresence', 'old API sign-in panel')
 need(pull, "action === 'begin-session'", 'begin-session action handler')
 need(pull, 'AUTHORIZE_URL', 'IRS ISP OAuth authorization URL builder')
 need(pull, 'IRS_TDS_ISP_AUTHORIZE_URL', 'IRS_TDS_ISP_AUTHORIZE_URL env var used for real OAuth')
@@ -74,26 +79,23 @@ need(callback, 'access_token_ciphertext', 'encrypted access token stored in irs_
 need(callback, 'refresh_token_ciphertext', 'encrypted refresh token stored in irs_tds_sessions')
 need(callback, 'session_expires_at', 'session expiry written after successful authorization')
 
-console.log('Checking Step 3: Return to CRM via postMessage…')
-need(callback, 'taxres-irs-tds-oauth', 'postMessage type taxres-irs-tds-oauth sent by callback')
-need(callback, 'window.opener.postMessage', 'postMessage sent to opener (CRM window)')
-need(callback, 'CRM_ORIGIN', 'postMessage target origin restricted to CRM_ORIGIN')
-need(callback, 'window.close()', 'popup closes after postMessage')
-need(session, "window.addEventListener('message'", 'postMessage listener in TDSSessionPresence')
-need(session, 'taxres-irs-tds-oauth', 'listener filters for taxres-irs-tds-oauth type')
-need(session, 'event.origin', 'postMessage listener validates event.origin against expected callback origin')
-need(session, 'expectedCallbackOrigin', 'callback origin stored from begin-session redirectUri and checked in handleMessage')
-need(session, 'loadStatus', 'loadStatus called after successful postMessage to refresh state')
-need(session, 'apiSessionActive', 'CRM shows IRS session as active after authorization')
+console.log('Checking Step 3: Helper returns transcripts to the CRM…')
+need(pullUi, 'event.source !== window || event.origin !== window.location.origin', 'helper messages accepted only from this page and origin')
+need(pullUi, 'data.source !== HELPER_SOURCE', 'helper messages filtered by source')
+need(pullUi, "'%PDF-'", 'returned files must be real PDFs')
+need(pullUi, '/taxres-irs-helper.zip', 'helper download link')
+need('public/taxres-irs-helper.zip', 'crm-bridge.js', 'helper zip published')
+need('extensions/taxres-irs-helper/mailbox.js', "sendBtn.addEventListener('click', sendAll)", 'Secure Mailbox sends only on click')
 
 console.log('Checking Step 4: Request Transcripts in CRM…')
 need(pullUi, 'submitCanopyStyleRequest', 'Canopy-style request submission function present')
-need(pullUi, "provider: 'irs_a2a'", 'irs_a2a provider used for automated CRM requests')
+need(pullUi, 'provider: BROWSER_PROVIDER_ID', 'browser-assisted IRS TDS request provider')
 need(pullUi, 'client_id: client.id', 'client_id included in request payload')
 need(pullUi, 'poa_record_id', 'POA record referenced in request')
 need(pullUi, 'tax_years', 'tax years included in request')
 need(pullUi, 'transcript_types', 'transcript types included in request')
-need(pullUi, 'directAvailable', 'directAvailable gates the Request Transcripts button')
+need(pullUi, 'openIrsPopup(', 'Request Transcripts opens the IRS TDS popup')
+need(pullUi, 'types: []', 'no transcript types pre-selected')
 need(lib, "action: 'submit'", 'submit action called in transcriptPull.js library')
 need(pull, "action === 'submit'", 'submit action handler in transcript-pull')
 need(pull, 'submitWire', 'real IRS API submission function called on submit')
@@ -150,14 +152,10 @@ if (fs.existsSync(completionSql)) {
 }
 
 console.log('Checking anti-patterns (manual workflow as primary)…')
-forbid(session, "'https://la.www4.irs.gov/esrv/tds/'", 'public TDS URL used as primary sign-in')
 forbid(pullUi, 'Save Transcript Request', 'legacy manual save CTA must not be primary')
 forbid(pullUi, 'Watched TDS Download Folder', 'legacy download folder reference must be gone')
 forbid(pullUi, 'providers.map(p =>', 'legacy provider map must be gone')
-forbid(pullUi, "provider: 'irs_interactive'", 'obsolete interactive provider in primary request path')
-forbid(lib, "id: 'irs_interactive'", 'obsolete interactive provider definition')
-forbid(session, 'ydrvncdedgjtcprczwpu', 'Nashville Supabase project hardcoded in session component')
-forbid(callback, "const CRM_ORIGIN = 'https://nashville.taxrescrm.app'", 'Nashville CRM origin hardcoded in callback')
+forbid(callback, "const CRM_ORIGIN = 'https://taxrescrm.app'", 'TCR CRM origin hardcoded in callback')
 
 need(config, '[functions.transcript-pull]', 'transcript-pull function registered in config')
 need(config, '[functions.transcript-pull-callback]', 'transcript-pull-callback function registered in config')
@@ -177,20 +175,7 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('\n✅ IRS OAuth architecture check passed.')
-console.log('\nCurrent status:')
-console.log('  CODE COMPLETE: All OAuth flow code paths are present (begin-session, callback, session persistence,')
-console.log('    submit, status polling, auto-filing, transcript analysis, tenant isolation). No synthetic path.')
-console.log('')
-console.log('  LIVE IRS BLOCKED: The real IRS e-Services API requires the following from the IRS:')
-console.log('    IRS_TDS_CLIENT_ID          — OAuth Client ID from an approved IRS e-Services API application')
-console.log('    IRS_TDS_JWT_KID            — Key ID for the RSA JWK registered with the IRS')
-console.log('    IRS_TDS_JWT_PRIVATE_KEY_PEM — RSA private key matching the registered JWK (PKCS#8 or PKCS#1 PEM)')
-console.log('    IRS_TDS_REDIRECT_URI       — Callback URL registered with the IRS (transcript-pull-callback edge fn URL)')
-console.log('    IRS_TDS_REQUEST_URL        — IRS TDS API endpoint for submitting transcript requests')
-console.log('    IRS_TDS_REQUEST_TEMPLATE   — JSON body template for transcript requests (per IRS contract)')
-console.log('    IRS_TDS_STATUS_URL_TEMPLATE — IRS polling endpoint template (per IRS contract)')
-console.log('    IRS_TDS_AUTH_FLOW_VERIFIED  — Set to "1" after verifying the auth flow end-to-end with real IRS')
-console.log('')
-console.log('    These values come exclusively from the IRS e-Services enrollment process.')
-console.log('    Without IRS enrollment, the live flow cannot be activated regardless of code changes.')
+console.log('\n✅ IRS transcript architecture check passed.')
+console.log('  Primary flow: rep signs in to the real IRS site in a popup with their own login, requests')
+console.log('  transcripts there, and the free TaxRes IRS Helper returns the PDFs to the CRM for matching,')
+console.log('  filing and Transcript Analysis. The server-side OAuth code paths above remain dormant.')

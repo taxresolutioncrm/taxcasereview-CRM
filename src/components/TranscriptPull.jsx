@@ -1,29 +1,43 @@
+// Production rebuild trigger: browser-assisted IRS TDS release 2026-09-24
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
-import TDSSessionPresence from './TDSSessionPresence'
 import {
-  PULL_PROVIDERS, loadPullProviders, getProvider, submitToProvider,
-  parseYearSpec, nameKey, namesMatch, requestCoverageSatisfied,
+  parseYearSpec, nameKey, requestCoverageSatisfied,
   parseTranscriptFile, storeTranscriptAnalysis,
+  BROWSER_PROVIDER_ID, IRS_TDS_URL, IRS_SOR_URL, isOpenBrowserRequest,
+  openIrsPopup, isIrsPopupOpen, focusIrsPopup, IRS_POPUP_BLOCKED,
+  openPendingIrsTab, startBrowserTdsRequest, sha256File,
+  analyzeReturnedTranscript, matchBrowserRequest, fileBrowserTranscripts,
+  saveWatchedFolder, loadWatchedFolder, forgetWatchedFolder,
 } from '../lib/transcriptPull'
 
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
-const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
+// Messages exchanged with the free TaxRes IRS Helper (Chrome extension) through window.postMessage.
+// The helper only ever sends transcript PDFs the rep chose to send; it never sends IRS logins, cookies or tokens.
+const HELPER_SOURCE = 'taxres-irs-helper'
+const CRM_SOURCE = 'taxres-crm'
+const HELPER_ZIP_URL = '/taxres-irs-helper.zip'
+const MAX_HELPER_PDF_BYTES = 15 * 1024 * 1024
+function base64ToFile(base64, name) {
+  const bin = atob(base64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new File([bytes], name, { type: 'application/pdf', lastModified: Date.now() })
+}
+const BLANK = { clientName: '', clientId: null, types: [], taxYears: '', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
-  const [providers, setProviders] = useState(PULL_PROVIDERS.map(p => ({ ...p })))
   const [requests, setRequests] = useState([])
   const [legacyCount, setLegacyCount] = useState(0)
   const [migrating, setMigrating] = useState(false)
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState(BLANK)
   const [saving, setSaving] = useState(false)
-  const [retryingId, setRetryingId] = useState(null)
   const [delId, setDelId] = useState(null)
   const [msg, setMsg] = useState('')
   const [fallbackOpen, setFallbackOpen] = useState(false)
@@ -36,6 +50,16 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [lastScan, setLastScan] = useState(null)
   const [imported, setImported] = useState([])
   const [unmatched, setUnmatched] = useState([])
+  const [savedFolder, setSavedFolder] = useState(null)
+  const [returnBusyId, setReturnBusyId] = useState(null)
+  const [dropId, setDropId] = useState(null)
+  const [helperConnected, setHelperConnected] = useState(false)
+  const [helperLog, setHelperLog] = useState([])
+  const [popupOpen, setPopupOpen] = useState(false)
+  const requestsRef = useRef([])
+  const intakeRef = useRef(null)
+  const scanRef = useRef(null)
+  const onImportedRef = useRef(null)
   const fsSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
   // Client combobox state
@@ -103,24 +127,13 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   function flash(t) { setMsg(t); setTimeout(() => setMsg(''), 6000) }
   function ff(k, v) { setForm(f => ({ ...f, [k]: v })) }
 
-  async function refreshProviders() {
-    const next = await loadPullProviders()
-    setProviders(next)
-    return next
-  }
-
-  useEffect(() => {
-    let alive = true
-    loadPullProviders().then(next => { if (alive) setProviders(next) }).catch(() => {})
-    return () => { alive = false }
-  }, [])
-
   async function loadRequests() {
     setLoading(true)
     try {
       const { data, error } = await supabase.from('transcript_pull_requests').select('*').order('requested_at', { ascending: false })
       if (error) throw new Error(error.message)
       setRequests(data || [])
+      requestsRef.current = data || []
     } catch (e) {
       setRequests([])
       flash('❌ Could not load pull requests: ' + (e?.message || 'Unknown error'))
@@ -131,7 +144,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   useEffect(() => { loadRequests() }, [])
 
   useEffect(() => {
-    const hasLiveDirect = requests.some(r => r.provider === 'irs_a2a' && r.status !== 'Completed' && r.status !== 'Canceled')
+    const hasLiveDirect = requests.some(r => (r.provider === 'irs_a2a' || r.provider === BROWSER_PROVIDER_ID) && r.status !== 'Completed' && r.status !== 'Canceled')
     if (!hasLiveDirect) return undefined
     const t = setInterval(loadRequests, 30000)
     return () => clearInterval(t)
@@ -206,24 +219,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
   const formClient = resolveClient(form)
   const formPoa = poaOnFile(formClient)
-  async function retryDirect(req) {
-    setRetryingId(req.id)
-    try {
-      const next = await refreshProviders()
-      const direct = getProvider('irs_a2a', next)
-      if (!direct?.available) throw new Error('IRS TDS ISP connection is not configured.')
-      if (!direct.sessionActive) throw new Error('Sign in to the IRS first, then retry this request.')
-      await submitToProvider('irs_a2a', req)
-      await loadRequests()
-      flash('✅ IRS TDS pull resubmitted.')
-    } catch (e) {
-      await loadRequests()
-      flash('❌ IRS TDS retry failed: ' + (e?.message || 'Unknown error'))
-    } finally {
-      setRetryingId(null)
-    }
-  }
-
   async function setStatus(id, status) {
     try {
       const patch = {
@@ -278,6 +273,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       const handle = await window.showDirectoryPicker({ id: 'tds-downloads', mode: 'read' })
       dirRef.current = handle
       setDirName(handle.name)
+      setSavedFolder(null)
+      saveWatchedFolder(handle)
       await scanFolder(true)
     } catch (e) {
       if (e?.name !== 'AbortError') flash('❌ Could not connect TDS download folder: ' + (e?.message || 'Unknown error'))
@@ -287,34 +284,82 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   function disconnectFolder() {
     dirRef.current = null
     setDirName('')
+    setSavedFolder(null)
+    forgetWatchedFolder()
   }
 
-  async function routeAnalysis(file, a, key) {
-    const tp = a.taxpayer_name || ''
-    const open = requests.filter(r => r.status === 'Requested' || r.status === 'In Progress')
-    const req = open.find(r => namesMatch(tp, r.client_name))
-    if (req) {
-      const id = await storeTranscriptAnalysis(file, req.client_name, a, { clientId: req.client_id || null })
-      seenRef.current.add(key)
-      setUnmatched(u => u.filter(x => x.key !== key))
-      setImported(im => [...im, { file: file.name, client: req.client_name, year: a.tax_year, type: a.transcript_type }])
-      try {
-        await refreshCoverage(req, id)
-      } catch (e) {
-        flash(`⚠ ${file.name} was filed, but its pull-request status could not update: ${e?.message || 'Unknown error'}`)
+  // Re-attach the folder chosen on an earlier visit. Chrome/Edge may keep read access; otherwise one click re-grants it.
+  useEffect(() => {
+    if (!fsSupported) return
+    let alive = true
+    loadWatchedFolder().then(async handle => {
+      if (!alive || !handle) return
+      let perm = 'prompt'
+      try { perm = await handle.queryPermission({ mode: 'read' }) } catch { /* unsupported */ }
+      if (perm === 'granted') { dirRef.current = handle; setDirName(handle.name) }
+      else setSavedFolder(handle)
+    })
+    return () => { alive = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function reconnectFolder() {
+    const handle = savedFolder
+    if (!handle) return connectFolder()
+    try {
+      if (await handle.requestPermission({ mode: 'read' }) !== 'granted') return
+      dirRef.current = handle
+      setDirName(handle.name)
+      setSavedFolder(null)
+      await scanFolder(true)
+    } catch (e) {
+      flash('❌ Could not reconnect the TDS download folder: ' + (e?.message || 'Unknown error'))
+    }
+  }
+
+  async function addReturnedFiles(req, fileList) {
+    const files = [...(fileList || [])].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf')
+    if (!files.length) { flash('⚠ Choose the transcript PDF files you saved from IRS TDS.'); return }
+    setReturnBusyId(req.id)
+    try {
+      const out = await fileBrowserTranscripts(req.id, files)
+      const filed = out.results.filter(r => r.status === 'filed').length
+      const dup = out.results.filter(r => r.status === 'duplicate').length
+      const bad = out.results.filter(r => r.status === 'rejected' || r.status === 'error')
+      await loadRequests()
+      if (filed && onImported) onImported()
+      flash(`${filed ? '✅' : '⚠'} ${filed} filed to ${req.client_name}${dup ? ` · ${dup} already filed` : ''}${bad.length ? ` · ${bad.length} not filed (${bad.map(b => `${b.file}: ${b.reason}`).join('; ')})` : ''}${out.completed ? ' · request complete' : ''}`)
+    } catch (e) {
+      flash('❌ Could not file returned transcripts: ' + (e?.message || 'Unknown error'))
+    } finally {
+      setReturnBusyId(null)
+    }
+  }
+
+  // One place that decides what happens to a returned IRS PDF (from the helper or the watched folder):
+  // positive SSN/EIN last-4 + year + type match to exactly one open request -> filed and analyzed; otherwise -> "Needs a client".
+  async function intakeReturnedPdf(file, key, { since = -Infinity } = {}) {
+    const openBrowser = requestsRef.current.filter(isOpenBrowserRequest)
+    try {
+      const parsed = await analyzeReturnedTranscript(file)
+      const target = file.lastModified >= since ? await matchBrowserRequest(openBrowser, parsed) : null
+      if (target) {
+        const out = await fileBrowserTranscripts(target.id, [file])
+        const res = out.results[0] || {}
+        if (res.status === 'filed') {
+          setImported(im => [...im, { file: file.name, client: target.client_name, year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type }])
+          return { status: 'filed', client: target.client_name }
+        }
+        if (res.status === 'duplicate') return { status: 'duplicate', client: target.client_name }
+        setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: parsed.analysis, error: res.reason || null, assignTo: '' }])
+        return { status: 'unmatched', detail: res.reason || 'Could not file' }
       }
-      return true
+      // No positive taxpayer (SSN/EIN) match to a pending request: never auto-file — leave it for manual assignment.
+      setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: parsed.analysis, assignTo: '' }])
+      return { status: 'unmatched' }
+    } catch (err) {
+      setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: null, error: err?.message || 'Import failed', assignTo: '' }])
+      return { status: 'error', detail: err?.message || 'Import failed' }
     }
-    const client = clientNames.find(c => namesMatch(tp, c))
-    if (client) {
-      await storeTranscriptAnalysis(file, client, a)
-      seenRef.current.add(key)
-      setUnmatched(u => u.filter(x => x.key !== key))
-      setImported(im => [...im, { file: file.name, client, year: a.tax_year, type: a.transcript_type }])
-      return true
-    }
-    setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: a, assignTo: '' }])
-    return false
   }
 
   async function scanFolder(manual = false) {
@@ -330,13 +375,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         const key = `${entry.name}:${file.size}:${file.lastModified}`
         if (seenRef.current.has(key)) continue
         found++
-        try {
-          const a = await parseTranscriptFile(file)
-          if (await routeAnalysis(file, a, key)) filed++
-          else seenRef.current.add(key)
-        } catch (err) {
-          setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: entry.name, file, analysis: null, error: err?.message || 'Import failed', assignTo: '' }])
-        }
+        const openBrowser = requestsRef.current.filter(isOpenBrowserRequest)
+        const since = openBrowser.reduce((m, r) => Math.min(m, new Date(r.requested_at || 0).getTime()), Infinity) - 10 * 60 * 1000
+        const out = await intakeReturnedPdf(file, key, { since })
+        if (out.status !== 'error') seenRef.current.add(key)
+        if (out.status === 'filed') filed++
       }
       setLastScan(new Date())
       await loadRequests()
@@ -354,6 +397,68 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     const t = setInterval(() => { if (dirRef.current) scanFolder(false) }, 30000)
     return () => clearInterval(t)
   }, [requests, clientNames])
+
+  intakeRef.current = intakeReturnedPdf
+  scanRef.current = scanFolder
+  onImportedRef.current = onImported
+
+  // TaxRes IRS Helper bridge. Only accepts messages from this same page (the helper's content script),
+  // only accepts PDF bytes, and never asks for or receives any IRS/ID.me login, cookie or token.
+  useEffect(() => {
+    const post = msg => window.postMessage({ source: CRM_SOURCE, ...msg }, window.location.origin)
+    let queue = Promise.resolve()
+    async function handle(data) {
+      const name = String(data.name || 'irs-transcript.pdf').replace(/[^\w.\- ()]/g, '_').slice(0, 120)
+      const id = String(data.id || '')
+      try {
+        if (typeof data.base64 !== 'string' || data.base64.length > MAX_HELPER_PDF_BYTES * 1.4) throw new Error('File is missing or too large')
+        const file = base64ToFile(data.base64, /\.pdf$/i.test(name) ? name : `${name}.pdf`)
+        const head = new Uint8Array(await file.slice(0, 5).arrayBuffer())
+        if (String.fromCharCode(...head) !== '%PDF-') throw new Error('Not a PDF')
+        const key = 'helper:' + await sha256File(file)
+        const out = await intakeRef.current(file, key)
+        setHelperLog(l => [{ at: new Date(), name, ...out }, ...l].slice(0, 25))
+        post({ type: 'transcript-ack', id, status: out.status, detail: out.client || out.detail || '' })
+        if (out.status === 'filed') { await loadRequests(); if (onImportedRef.current) onImportedRef.current() }
+      } catch (e) {
+        setHelperLog(l => [{ at: new Date(), name, status: 'error', detail: e?.message || 'Failed' }, ...l].slice(0, 25))
+        post({ type: 'transcript-ack', id, status: 'error', detail: e?.message || 'Failed' })
+      }
+    }
+    function onMessage(event) {
+      if (event.source !== window || event.origin !== window.location.origin) return
+      const data = event.data
+      if (!data || data.source !== HELPER_SOURCE) return
+      if (data.type === 'helper-hello') { setHelperConnected(true); post({ type: 'crm-ready' }) }
+      else if (data.type === 'transcript-pdf') { setHelperConnected(true); queue = queue.then(() => handle(data)) }
+      else if (data.type === 'download-unreadable') {
+        // The helper saw a transcript download it could not re-open (for example a PDF the IRS built on the fly).
+        setHelperConnected(true)
+        const name = String(data.name || 'the PDF').replace(/[^\w.\- ()]/g, '_').slice(0, 120)
+        if (dirRef.current) {
+          flash(`⏳ ${name} was downloaded — checking your TDS download folder for it…`)
+          setTimeout(() => { if (scanRef.current) scanRef.current(true) }, 2500)
+        } else {
+          flash(`⚠ ${name} was downloaded but the helper could not send it. Drag that PDF onto its request below, or use "Send to CRM" in Secure Mailbox.`)
+        }
+      }
+    }
+    window.addEventListener('message', onMessage)
+    post({ type: 'crm-hello' })
+    return () => { window.removeEventListener('message', onMessage); post({ type: 'crm-gone' }) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the "Show IRS window" button in step with the popup.
+  useEffect(() => {
+    const t = setInterval(() => setPopupOpen(isIrsPopupOpen()), 1500)
+    return () => clearInterval(t)
+  }, [])
+
+  function openIrs(url) {
+    const w = openIrsPopup(url)
+    if (!w) { flash('❌ ' + IRS_POPUP_BLOCKED); return }
+    setPopupOpen(true)
+  }
 
   async function assignUnmatched(item) {
     if (!item.assignTo.trim() || !item.analysis) return
@@ -379,11 +484,10 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   const importedCount = (r) => (r.result_analysis_ids || []).length
   const inputStyle = { width: '100%', boxSizing: 'border-box' }
-  const direct = getProvider('irs_a2a', providers)
   const selectedYears = parseYearSpec(form.taxYears)
   const poaYears = formPoa ? parseYearSpec(formPoa.tax_years || '') : new Set()
   const selectedYearsCovered = Boolean(formPoa && selectedYears.size > 0 && poaYears.size > 0 && [...selectedYears].every(y => poaYears.has(y)))
-  const canRequest = Boolean(formClient && formPoa && selectedYearsCovered && direct?.available && direct?.sessionActive && form.types.length > 0)
+  const canRequest = Boolean(formClient && formPoa && selectedYearsCovered && form.types.length > 0)
 
   function toggleTaxYear(year) {
     const next = new Set(selectedYears)
@@ -398,14 +502,19 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
 
   async function submitCanopyStyleRequest() {
-    ff('provider', 'irs_a2a')
-    const nextForm = { ...form, provider: 'irs_a2a' }
+    const nextForm = { ...form }
     if (!nextForm.clientName.trim() || nextForm.types.length === 0 || !nextForm.taxYears.trim()) return
     const client = resolveClient(nextForm)
     const poa = poaOnFile(client)
-    if (!client || !poa || !direct?.available || !direct?.sessionActive) return
+    if (!client || !poa || !selectedYearsCovered) return
+    // Open the IRS window inside the click so the browser does not block it; it goes to IRS TDS only after the request is saved.
+    const irsTab = openPendingIrsTab()
+    if (!irsTab) {
+      flash('❌ ' + IRS_POPUP_BLOCKED + ' No transcript request was saved.')
+      return
+    }
+    setPopupOpen(true)
     setSaving(true)
-    let saved = false
     try {
       const row = {
         id: crypto.randomUUID(),
@@ -413,27 +522,20 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         client_id: client.id,
         transcript_types: nextForm.types,
         tax_years: nextForm.taxYears.trim(),
-        provider: 'irs_a2a',
+        provider: BROWSER_PROVIDER_ID,
         status: 'Requested',
+        provider_status: 'Awaiting IRS files',
         poa_record_id: poa.id,
         requested_by: employeeName || null,
         notes: nextForm.notes || null,
       }
-      const { error } = await supabase.from('transcript_pull_requests').insert([row])
-      if (error) throw new Error(error.message)
-      saved = true
-      await submitToProvider('irs_a2a', row)
+      await startBrowserTdsRequest(row, irsTab)
       setForm(BLANK)
       setClientSearch('')
       await loadRequests()
-      flash('✅ Transcript request sent to IRS. Returned PDFs will be filed to this client automatically.')
+      flash(`✅ Request saved for ${client.name}. Finish the request in the IRS window. When the transcripts arrive, open Secure Mailbox and click "Send to CRM" on the TaxRes helper — they will be filed here automatically.`)
     } catch (e) {
-      if (saved) {
-        await loadRequests()
-        flash('⚠ Request saved, but IRS submission failed: ' + (e?.message || 'Unknown error') + '.')
-      } else {
-        flash('❌ ' + (e?.message || 'Could not request transcripts.'))
-      }
+      flash('❌ ' + (e?.message || 'Could not save the transcript request.') + ' IRS TDS was not opened.')
     } finally {
       setSaving(false)
     }
@@ -441,8 +543,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   // Derive the single most-actionable reason the CTA is unavailable (used below CTA only)
   const ctaBlockReason = (() => {
-    if (!direct?.available) return 'IRS API integration not yet activated — IRS e-Services enrollment required.'
-    if (!direct?.sessionActive) return 'Sign in to IRS above to start an authorized session.'
     if (!formClient) return 'Select a client.'
     if (!formPoa) return 'POA must be On File before requesting transcripts.'
     if (selectedYears.size === 0) return 'Select at least one tax year.'
@@ -464,19 +564,88 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             </div>
           </div>
           <span style={{
-            background: direct?.available && direct?.sessionActive ? '#15803d' : direct?.available ? '#1d4ed8' : '#374151',
+            background: dirName ? '#15803d' : '#1d4ed8',
             color: '#fff', borderRadius: 6, padding: '4px 9px', fontSize: 10.5, fontWeight: 700, flexShrink: 0,
           }}>
-            {direct?.available && direct?.sessionActive ? '● IRS session active' : direct?.available ? '○ Sign-in required' : '○ API not activated'}
+            {dirName ? '● Watching TDS downloads' : '○ Browser sign-in'}
           </span>
         </div>
 
         <div style={{ padding: '14px 16px' }} id="irs-session-status">
-          <TDSSessionPresence onStatusChange={(st) => {
-            setProviders(current => current.map(p => p.id === 'irs_a2a'
-              ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'API activation required' : st.sessionActive ? 'IRS API session active' : 'API authorization required' }
-              : p))
-          }} />
+          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '11px 13px', background: 'var(--s1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <div style={{ fontWeight: 800, fontSize: 13 }}>IRS / ID.me Sign-In</div>
+                <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
+                  Opens the real IRS Transcript Delivery System in a pop-up window. Sign in there with your own IRS / ID.me login — your sign-in stays in that window and is never seen, saved or shared by the CRM.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                <button className="btn" onClick={() => openIrs(IRS_TDS_URL)} data-testid="irs-sign-in">Sign in to IRS</button>
+                <button className="btn sec" onClick={() => openIrs(IRS_SOR_URL)} data-testid="irs-secure-mailbox">Secure Mailbox</button>
+                {popupOpen && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) setPopupOpen(false) }} data-testid="irs-show-window">Show IRS window</button>}
+              </div>
+            </div>
+            <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.45 }} data-testid="irs-helper-status">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <strong style={{ color: 'var(--t2)' }}>TaxRes IRS Helper:</strong>
+                {helperConnected ? (
+                  <span style={{ color: '#22c55e', fontWeight: 700 }}>● Helper connected</span>
+                ) : (
+                  <span>Not detected in this browser.</span>
+                )}
+                <span>
+                  {helperConnected
+                    ? 'Open Secure Mailbox, then click "Send to CRM" on the helper panel. Transcript PDFs you download from the IRS window are also sent here.'
+                    : 'Free Chrome add-on that sends your IRS transcript PDFs back here. It never sees your IRS password or sign-in.'}
+                </span>
+                {!helperConnected && <a className="btn sec" style={{ fontSize: 11 }} href={HELPER_ZIP_URL} download>Download helper</a>}
+              </div>
+              {!helperConnected && (
+                <details style={{ marginTop: 6 }}>
+                  <summary style={{ cursor: 'pointer', color: 'var(--t2)' }}>How to install (one time, about 1 minute)</summary>
+                  <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                    <li>Click <b>Download helper</b> and unzip the file.</li>
+                    <li>In Chrome, go to <b>chrome://extensions</b> and turn on <b>Developer mode</b> (top right).</li>
+                    <li>Click <b>Load unpacked</b> and pick the unzipped <b>taxres-irs-helper</b> folder.</li>
+                    <li>Reload this page. It will say <b>Helper connected</b>.</li>
+                  </ol>
+                </details>
+              )}
+              {helperLog.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  {helperLog.slice(0, 5).map((h, i) => (
+                    <div key={i} style={{ fontSize: 11 }}>
+                      {h.status === 'filed' ? '✅' : h.status === 'duplicate' ? '↺' : h.status === 'unmatched' ? '⚠' : '❌'}{' '}
+                      {h.name} — {h.status === 'filed' ? `filed to ${h.client}` : h.status === 'duplicate' ? 'already filed' : h.status === 'unmatched' ? 'needs a client (see below)' : h.detail}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.45, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <strong style={{ color: 'var(--t2)' }}>Returned PDFs:</strong>
+              {!fsSupported ? (
+                <span>Drop the saved PDFs on the request below (folder watching needs Chrome or Edge).</span>
+              ) : dirName ? (
+                <>
+                  <span>Watching <b>{dirName}</b> — PDFs you save there are matched to the pending request and filed automatically{lastScan ? ` · last scan ${lastScan.toLocaleTimeString()}` : ''}.</span>
+                  <button className="btn sec" style={{ fontSize: 11 }} disabled={scanning} onClick={() => scanFolder(true)}>{scanning ? 'Scanning…' : 'Scan Now'}</button>
+                  <button className="btn sec" style={{ fontSize: 11 }} onClick={disconnectFolder}>Disconnect</button>
+                </>
+              ) : savedFolder ? (
+                <>
+                  <span>Allow the CRM to keep reading <b>{savedFolder.name}</b> for this visit.</span>
+                  <button className="btn sec" style={{ fontSize: 11 }} onClick={reconnectFolder}>Reconnect Folder</button>
+                </>
+              ) : (
+                <>
+                  <span>Choose the folder where your browser saves IRS transcript PDFs (one time), or drop the PDFs on the request below.</span>
+                  <button className="btn sec" style={{ fontSize: 11 }} onClick={connectFolder}>Connect Download Folder</button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -637,6 +806,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                   <button
                     key={t}
                     type="button"
+                    aria-pressed={checked}
                     onClick={() => ff('types', checked ? form.types.filter(x => x !== t) : [...form.types, t])}
                     style={{
                       padding: '6px 12px', fontSize: 11.5, borderRadius: 8, cursor: 'pointer',
@@ -700,7 +870,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                   </thead>
                   <tbody>
                     {requests.map(r => (
-                      <tr key={r.id} style={{ borderTop:'1px solid var(--line)' }}>
+                      <tr key={r.id} style={{ borderTop:'1px solid var(--line)', outline: dropId === r.id ? '2px dashed var(--blue)' : 'none', outlineOffset: -2 }}
+                        onDragOver={isOpenBrowserRequest(r) ? (e => { e.preventDefault(); setDropId(r.id) }) : undefined}
+                        onDragLeave={isOpenBrowserRequest(r) ? (() => setDropId(null)) : undefined}
+                        onDrop={isOpenBrowserRequest(r) ? (e => { e.preventDefault(); setDropId(null); addReturnedFiles(r, e.dataTransfer.files) }) : undefined}
+                        data-testid={`transcript-request-${r.id}`}>
                         <td style={{ padding:'8px 12px', fontWeight:700 }}>{r.client_name}</td>
                         <td style={{ padding:'8px 12px', color:'var(--t2)', fontSize:11 }}>{(r.transcript_types || []).join(', ') || '—'}</td>
                         <td style={{ padding:'8px 12px', color:'var(--t2)' }}>{r.tax_years || '—'}</td>
@@ -711,7 +885,12 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                         <td style={{ padding:'8px 12px', color:'var(--t2)' }}>{importedCount(r)}</td>
                         <td style={{ padding:'8px 12px', color:'var(--t2)', fontSize:11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
                         <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                          {r.provider === 'irs_a2a' && (r.provider_status === 'Error' || !r.provider_request_id) && <button className="btn sec" disabled={retryingId === r.id} style={{ fontSize:10, padding:'3px 8px', marginRight:4 }} onClick={() => retryDirect(r)}>{retryingId === r.id ? 'Retrying…' : 'Retry'}</button>}
+                          {isOpenBrowserRequest(r) && (
+                            <label className="btn sec" title="Add the transcript PDFs you saved from IRS TDS (or drop them on this row)" style={{ fontSize:10, padding:'3px 8px', marginRight:4, cursor: returnBusyId === r.id ? 'wait' : 'pointer' }}>
+                              {returnBusyId === r.id ? 'Filing…' : 'Add IRS PDFs'}
+                              <input type="file" accept="application/pdf" multiple style={{ display:'none' }} disabled={returnBusyId === r.id} data-testid={`transcript-return-input-${r.id}`} onChange={e => { const f = e.target.files; addReturnedFiles(r, f); e.target.value = '' }} />
+                            </label>
+                          )}
                           <button className="btn sec" style={{ fontSize:10, padding:'3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
                         </td>
                       </tr>
@@ -735,6 +914,36 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         </div>
       </div>
 
+      {unmatched.length > 0 && (
+        <div style={{ marginBottom: 14, background: 'var(--s2)', border: '1px solid #b45309', borderRadius: 10, padding: 14 }} data-testid="transcript-needs-client">
+          <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Needs a client ({unmatched.length})</div>
+          <div style={{ color: 'var(--t3)', fontSize: 11.5, marginBottom: 6 }}>These transcripts did not match exactly one open request by SSN/EIN last 4, year and type, so they were not filed automatically. Pick the client to file each one.</div>
+          <datalist id="transcript-fallback-clients">
+            {clients.map(c => <option key={c.id} value={c.name} />)}
+          </datalist>
+          {unmatched.map(u => (
+            <div key={u.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0', fontSize: 12 }}>
+              <span style={{ minWidth: 200 }}>{u.fileName}</span>
+              {u.analysis && <span style={{ color: 'var(--t3)', fontSize: 11 }}>{[u.analysis.transcript_type, u.analysis.tax_year].filter(Boolean).join(' · ')}</span>}
+              {u.error && <span style={{ color: '#f87171' }}>{u.error}</span>}
+              {u.analysis && (
+                <>
+                  <input
+                    list="transcript-fallback-clients"
+                    placeholder="Assign to client…"
+                    value={u.assignTo}
+                    style={{ width: 200 }}
+                    onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))}
+                  />
+                  <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()} onClick={() => assignUnmatched(u)}>File It</button>
+                </>
+              )}
+              <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} title="Remove from this list (nothing is filed)" onClick={() => setUnmatched(x => x.filter(i => i.key !== u.key))}>Dismiss</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div id="irs-manual-fallback" style={{ borderTop: '1px solid var(--line)', paddingTop: 12, scrollMarginTop: 20 }}>
         <button className="btn sec" style={{ fontSize: 11 }} onClick={() => setFallbackOpen(v => !v)}>
           {fallbackOpen ? 'Hide manual fallback' : 'Manual PDF fallback'}
@@ -743,7 +952,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           <div style={{ marginTop: 10, background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Manual IRS TDS fallback</div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 5, lineHeight: 1.45 }}>
-              Use this only when direct IRS delivery is unavailable. Connect the folder where IRS TDS PDFs are saved; new PDFs are parsed and filed to the matching client.
+              Use this if the TaxRes IRS Helper isn't installed. Connect the folder where your browser saves IRS transcript PDFs; new PDFs are parsed and filed to the matching client.
             </div>
             <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               {!fsSupported ? (
@@ -758,33 +967,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 <button className="btn sec" onClick={connectFolder}>Connect Download Folder</button>
               )}
             </div>
-            {unmatched.length > 0 && (
-              <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
-                <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>Needs a client ({unmatched.length})</div>
-                {unmatched.map(u => (
-                  <div key={u.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0', fontSize: 12 }}>
-                    <span style={{ minWidth: 200 }}>{u.fileName}</span>
-                    {u.error ? <span style={{ color: '#f87171' }}>{u.error}</span> : (
-                      <>
-                        <>
-                          <input
-                            list="transcript-fallback-clients"
-                            placeholder="Assign to client…"
-                            value={u.assignTo}
-                            style={{ width: 200 }}
-                            onChange={e => setUnmatched(x => x.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))}
-                          />
-                          <datalist id="transcript-fallback-clients">
-                            {clients.map(c => <option key={c.id} value={c.name} />)}
-                          </datalist>
-                        </>
-                        <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()} onClick={() => assignUnmatched(u)}>File It</button>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
