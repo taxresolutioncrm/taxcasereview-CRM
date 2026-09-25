@@ -975,7 +975,11 @@ export default function Clients() {
   const settingsRef = useRef(null)
   async function getSettings() {
     if (settingsRef.current) return settingsRef.current
-    const { data } = await supabase.from('settings').select('sw_inbound_did,sw_space_url').limit(1).maybeSingle()
+    if (!myTenantId) return {}
+    const { data } = await supabase.from('settings')
+      .select('sw_inbound_did,sw_space_url')
+      .eq('tenant_id', myTenantId)
+      .maybeSingle()
     settingsRef.current = data || {}
     return settingsRef.current
   }
@@ -1115,13 +1119,13 @@ export default function Clients() {
   useEffect(() => {
     // Guard: don't load until auth session confirmed so current_tenant_id()
     // is established before the first query — prevents wrong-tenant data on hard refresh.
-    if (!user) return
+    if (!user || !myTenantId) { setClients([]); return }
     load()
-    const ch = supabase.channel('clients-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => load())
+    const ch = supabase.channel('clients-rt-' + myTenantId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients', filter: `tenant_id=eq.${myTenantId}` }, () => load())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [user?.id])
+  }, [user?.id, myTenantId])
 
   // Live-update the currently-open client's related data (notes, tasks,
   // payments, documents, cases) — these previously only loaded once when the
@@ -1129,18 +1133,19 @@ export default function Clients() {
   // or an automated process without a manual refresh. Scoped to only run
   // while a specific client is open, and re-subscribes if you switch clients.
   useEffect(() => {
-    if (!detail?.name) return
+    if (!detail?.name || !myTenantId) return
     const name = detail.name
     function reload() { loadRelated(name) }
-    const ch = supabase.channel('client-detail-rt-' + (detail.id || name))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, reload)
+    const filter = `tenant_id=eq.${myTenantId}`
+    const ch = supabase.channel('client-detail-rt-' + myTenantId + '-' + (detail.id || name))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes', filter }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents', filter }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases', filter }, reload)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [detail?.id, detail?.name])
+  }, [detail?.id, detail?.name, myTenantId])
 
   // Save scroll position before refresh/navigation away, restore after detail (+ related data) loads.
   // Note: this targets .page-content, the element with overflow-y:auto — the
@@ -1177,13 +1182,17 @@ export default function Clients() {
   // background for the table view, but it no longer blocks opening
   // a record you already know the id of.
   useEffect(() => {
-    if (!urlId || detail) return
+    if (!urlId || detail || !myTenantId) return
     let cancelled = false
-    supabase.from('clients').select('*').eq('id', urlId).single().then(({ data }) => {
-      if (!cancelled && data) openDetail(data, { preserveTab: true, full: true })
-    })
+    supabase.from('clients').select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('id', urlId)
+      .single()
+      .then(({ data }) => {
+        if (!cancelled && data) openDetail(data, { preserveTab: true, full: true })
+      })
     return () => { cancelled = true }
-  }, [urlId])
+  }, [urlId, myTenantId])
   useEffect(() => {
     if (urlId && clients.length > 0 && !detail) {
       const found = clients.find(c => String(c.id) === String(urlId))
@@ -1201,11 +1210,16 @@ export default function Clients() {
   }, [urlId, detail])
 
   async function load() {
+    if (!myTenantId) { setClients([]); setEmployees([]); return }
     const [{ data:cl },{ data:em },{ data:cats },{ data:sts }] = await Promise.all([
-      supabase.from('clients').select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at').or('archived.eq.true,deleted_at.is.null').order('name',{ascending:true}),
-      supabase.from('employees').select('id,name,avatar_url,email'),
-      supabase.from('workflow_status_categories').select('*').order('sort_order'),
-      supabase.from('workflow_statuses').select('*').order('sort_order'),
+      supabase.from('clients')
+        .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+        .eq('tenant_id', myTenantId)
+        .or('archived.eq.true,deleted_at.is.null')
+        .order('name',{ascending:true}),
+      supabase.from('employees').select('id,name,avatar_url,email,tenant_id').eq('tenant_id', myTenantId),
+      supabase.from('workflow_status_categories').select('*').eq('tenant_id', myTenantId).order('sort_order'),
+      supabase.from('workflow_statuses').select('*').eq('tenant_id', myTenantId).order('sort_order'),
     ])
     if (cl) setClients(cl)
     if (em) setEmployees(em)
@@ -1222,7 +1236,8 @@ export default function Clients() {
   // note_type, tenant_id. There is no 'content' column and no 'created_by'
   // column — the note text goes in 'text', the creator goes in 'author'.
   async function insertClientNote({ clientname, content, created_by, created_at, note_type, visible_to_client }) {
-    const payload = { clientname, text: content, author: created_by }
+    if (!myTenantId) return { error: new Error('Office tenant is not resolved') }
+    const payload = { tenant_id: myTenantId, clientname, text: content, author: created_by }
     if (created_at !== undefined) payload.created_at = created_at
     if (note_type !== undefined) payload.note_type = note_type
     if (visible_to_client !== undefined) payload.visible_to_client = visible_to_client
@@ -1240,16 +1255,18 @@ export default function Clients() {
   }
 
   async function loadRelated(clientName, clientId = (detail?.name === clientName ? detail?.id : null)) {
+    if (!myTenantId) { setLoadingRel(false); return }
     setLoadingRel(true)
+    const docsQuery = supabase.from('documents').select('*').eq('tenant_id', myTenantId)
     const [casesRes,tasksRes,invoicesRes,docsRes,clientNotesRes,paymentsRes,smsRes,deadlinesRes] = await Promise.all([
-      supabase.from('cases').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('tasks').select('*').eq('clientName', clientName).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}),
-      supabase.from('invoices').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      (clientId ? supabase.from('documents').select('*').eq('client_id', String(clientId)) : supabase.from('documents').select('*').eq('client', clientName)).order('created_at',{ascending:false}),
-      supabase.from('client_notes').select('*').eq('clientname', clientName).order('created_at',{ascending:false}),
-      supabase.from('payments').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('sms_messages').select('*').eq('clientName', clientName).order('created_at',{ascending:false}),
-      supabase.from('deadlines').select('*').eq('clientName', clientName).order('dueDate',{ascending:true}),
+      supabase.from('cases').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('created_at',{ascending:false}),
+      supabase.from('tasks').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}),
+      supabase.from('invoices').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('created_at',{ascending:false}),
+      (clientId ? docsQuery.eq('client_id', String(clientId)) : docsQuery.eq('client', clientName)).order('created_at',{ascending:false}),
+      supabase.from('client_notes').select('*').eq('tenant_id', myTenantId).eq('clientname', clientName).order('created_at',{ascending:false}),
+      supabase.from('payments').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('created_at',{ascending:false}),
+      supabase.from('sms_messages').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('created_at',{ascending:false}),
+      supabase.from('deadlines').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('dueDate',{ascending:true}),
     ])
     // These 8 queries used to only look at .data, silently discarding any
     // .error — a table failing here (RLS, schema cache, anything) looked
@@ -1372,7 +1389,8 @@ export default function Clients() {
   async function save() {
     if (!form.name.trim()){showToast('Name is required');return}
     setSaving(true)
-    const payload = {...buildPayload(form),created_at:new Date().toISOString()}
+    if (!myTenantId) { showToast('Office tenant is not resolved yet.'); setSaving(false); return }
+    const payload = {...buildPayload(form), tenant_id: myTenantId, created_at:new Date().toISOString()}
     const { error } = await supabase.from('clients').insert([payload])
     setSaving(false)
     if (error){showToast('Error: '+error.message);return}
@@ -1382,7 +1400,11 @@ export default function Clients() {
     await logActivity(supabase,{employeeName:actorC,action:'client_created',category:'client',description:`Added client: ${form.name}`,entityName:form.name}).catch(()=>{})
     setModal(false); setForm(BLANK)
     // Reload then navigate straight into the new client's detail
-    const { data: allClients } = await supabase.from('clients').select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at').or('archived.eq.true,deleted_at.is.null').order('name', { ascending: true })
+    const { data: allClients } = await supabase.from('clients')
+      .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+      .eq('tenant_id', myTenantId)
+      .or('archived.eq.true,deleted_at.is.null')
+      .order('name', { ascending: true })
     if (allClients) setClients(allClients)
     const newest = allClients?.find(c => c.name === form.name)
     if (newest) { setDetail(newest); loadRelated(newest.name); navigate('/clients/' + newest.id, { replace: false }) }
@@ -1392,12 +1414,12 @@ export default function Clients() {
     setSaving(true)
     const before = clients.find(cl=>cl.id===form.id) || detail
     const payload = buildPayload(form)
-    const { error } = await supabase.from('clients').update(payload).eq('id',form.id)
+    const { error } = await supabase.from('clients').update(payload).eq('tenant_id', myTenantId).eq('id',form.id)
     setSaving(false)
     if (error){showToast('Error: '+error.message);return}
     showToast('✅ Saved!')
     setEditModal(false)
-    const {data}=await supabase.from('clients').select('*').eq('id',form.id).single()
+    const {data}=await supabase.from('clients').select('*').eq('tenant_id', myTenantId).eq('id',form.id).single()
     if (data){setDetail(data);loadRelated(data.name)}
     load()
     if (data) {
@@ -1411,7 +1433,7 @@ export default function Clients() {
   async function archiveClient(id,name) { setConfirmArchive({id,name}) }
   async function confirmArchiveClient() {
     const {id,name} = confirmArchive; setConfirmArchive(null)
-    const { error } = await supabase.from('clients').update({ archived: true, deleted_at: new Date().toISOString() }).eq('id',id)
+    const { error } = await supabase.from('clients').update({ archived: true, deleted_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id',id)
     if (error) { showToast('Error: '+error.message); return }
     const actorA = resolveActorName(user, employees)
     await triggerWorkflow('client_archived', 'client', name || '', actorA).catch(()=>{})
@@ -1426,7 +1448,7 @@ export default function Clients() {
 
   async function restoreClient(id) {
     const client = clients.find(c=>c.id===id)
-    const { error } = await supabase.from('clients').update({ archived: false, deleted_at: null }).eq('id',id)
+    const { error } = await supabase.from('clients').update({ archived: false, deleted_at: null }).eq('tenant_id', myTenantId).eq('id',id)
     if (error) { showToast('Error: '+error.message); return }
     showToast('Client restored');load()
     if (client) await logAction(client.name, '📤 Client restored from archive')
