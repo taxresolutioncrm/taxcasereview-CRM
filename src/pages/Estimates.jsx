@@ -2,6 +2,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { formatMoneyInput, parseMoney } from '../lib/money'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useApp } from '../context/AppContext'
 import { sendGmailEmail } from '../lib/gmailUtils'
 
 const BLANK = { clientName:'', client_id:'', service:'', description:'', amount:'', depositAmount:'', validUntil:'', status:'Draft', assignedTo:'', notes:'' }
@@ -9,6 +10,7 @@ const SERVICES = ['OIC — Offer in Compromise','Installment Agreement (IA)','Cu
 const EST_STATUSES = ['Draft','Sent','In Review','Accepted','Rejected','Expired']
 
 export default function Estimates() {
+  const { myTenantId } = useApp()
   const [items,     setItems]    = useState([])
   const [clients,   setClients]  = useState([])
   const [employees, setEmployees]= useState([])
@@ -23,13 +25,13 @@ export default function Estimates() {
   const [suggestions, setSug]    = useState([])
   const [showSug,   setShowSug]  = useState(false)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (myTenantId) load() }, [myTenantId])
 
   async function load() {
     const [{ data:e },{ data:c },{ data:emp }] = await Promise.all([
-      supabase.from('estimates').select('*').order('created_at',{ascending:false}),
-      supabase.from('clients').select('id,name,email,issueType,assignedTo'),
-      supabase.from('employees').select('name'),
+      supabase.from('estimates').select('*').eq('tenant_id', myTenantId).order('created_at',{ascending:false}),
+      supabase.from('clients').select('id,name,email,issueType,assignedTo').eq('tenant_id', myTenantId),
+      supabase.from('employees').select('name').eq('tenant_id', myTenantId),
     ])
     if (e)   setItems(e)
     if (c)   setClients(c)
