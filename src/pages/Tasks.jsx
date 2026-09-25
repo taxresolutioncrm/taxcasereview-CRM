@@ -92,9 +92,9 @@ export default function Tasks() {
     }
   }, [tasks])
   useEffect(() => {
-    // Check if current user is Super Admin
-    if (user?.email) checkRole(user.email)
-  }, [user])
+    // Check the current user's role only after the tenant is resolved.
+    if (user?.email && myTenantId) checkRole(user.email)
+  }, [user, myTenantId])
 
   async function checkRole(email) {
     const { data } = await supabase.from('employees').select('access').eq('tenant_id', myTenantId).eq('email', email).maybeSingle()
