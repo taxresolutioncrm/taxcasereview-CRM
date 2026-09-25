@@ -17,7 +17,7 @@ const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Ac
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
 const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
 
-// legacy-check-string: Returned PDFs attach to the selected client file automatically.\nexport default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
+export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
   const [providers, setProviders] = useState(PULL_PROVIDERS.map(p => ({ ...p })))
   const [requests, setRequests] = useState([])
