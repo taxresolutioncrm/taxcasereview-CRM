@@ -2,6 +2,9 @@ const fs = require('fs')
 
 const leads = fs.readFileSync('src/pages/Leads.jsx', 'utf8')
 const clients = fs.readFileSync('src/pages/Clients.jsx', 'utf8')
+const chat = fs.readFileSync('src/pages/Chat.jsx', 'utf8')
+const useFirm = fs.readFileSync('src/lib/useFirm.js', 'utf8')
+const firmBranding = fs.readFileSync('src/lib/firmBranding.js', 'utf8')
 const failures = []
 
 const calendar = fs.readFileSync('src/pages/Calendar.jsx', 'utf8')
@@ -84,3 +87,27 @@ need(schemaMigration, 'assign_estimate_number', 'Estimate numbering must be tena
 need(settingsMigration, 'otter_api_key', 'Settings schema must persist the Otter credential exposed in the UI')
 need(conversionMigration, 'trg_lead_conversion_integrity', 'Database must reject orphaned Converted-to-Client statuses')
 need(invoiceAdjustMigration, 'for update', 'Invoice payment adjustment RPC must row-lock the invoice')
+
+
+// CloudCPA tenant-bleed hard stops.
+need(chat, "const { user, role, myTenantId } = useApp()", 'Team Chat must resolve the active tenant from AppContext')
+need(chat, ".eq('tenant_id', myTenantId)", 'Team Chat roster/messages must carry explicit tenant predicates')
+need(chat, "tenant_id: myTenantId, channel: channelId", 'Team Chat message inserts must persist the active tenant')
+need(chat, "dedupeEmployeeRoster", 'Team Chat roster must collapse duplicate employee identities')
+need(chat, "chat-presence:${myTenantId}", 'Team Chat presence must be isolated by the authoritative tenant id')
+forbid(chat, "chat-presence:${FIRM.tenantId || 'default'}", 'Team Chat presence still depends on mutable/stale global branding tenant')
+need(clients, ".eq('tenant_id', myTenantId)", 'Client list/detail queries must be explicitly tenant scoped')
+need(clients, "tenant_id: myTenantId, created_at:new Date().toISOString()", 'New client records must include the active tenant id')
+need(leads, "tenant_id: myTenantId,\n      name: clientName", 'Lead conversion client insert must include the active tenant id')
+need(leads, "Blocked: this lead does not belong to the active office.", 'Lead conversion cross-tenant guard missing')
+need(useFirm, "const _cacheByTenant = new Map()", 'useFirm cache must be keyed by tenant')
+forbid(useFirm, "let _cache = null", 'useFirm still has one global tenant-unsafe cache')
+need(firmBranding, "resetFirmBranding()", 'Global firm branding must clear on tenant/session switches')
+forbid(firmBranding, "localStorage.setItem('tcr_firm_branding'", 'Tenant branding must not be cached globally in localStorage')
+
+if (failures.length) {
+  console.error('CloudCPA tenant isolation check FAILED:')
+  failures.forEach(f => console.error(' - ' + f))
+  process.exit(1)
+}
+console.log('CloudCPA tenant isolation check PASS')
