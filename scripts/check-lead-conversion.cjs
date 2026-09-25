@@ -12,7 +12,10 @@ need("STATUSES.filter(s=>s!=='Converted to Client')", 'Generic lead editor must 
 need("if (modal === 'edit' && form.status === 'Converted to Client')", 'Generic lead save must guard converted status')
 need("if (Array.isArray(l.services)) return l.services", 'Lead services must be normalized to an array before client insert')
 need("navigate('/clients/' + newClient.id)", 'Successful conversion must navigate to the new client record')
-need("await supabase.from('leads').update({ status: 'Converted to Client' }).eq('id', l.id)", 'Lead status may only be marked converted from conversion path')
+need(".update({ status: 'Converted to Client' })", 'Lead status may only be marked converted from conversion path')
+need(".eq('tenant_id', myTenantId)", 'Lead conversion writes must be tenant-scoped')
+need("tenant_id: myTenantId,\n      name: clientName", 'Converted client insert must carry the active tenant id')
+need("if (l.tenant_id && String(l.tenant_id) !== String(myTenantId))", 'Cross-tenant lead conversion guard missing')
 need("{['All',...STATUSES].map(s => (", 'Converted status must remain inspectable from Leads filters')
 
 if (failures.length) {
