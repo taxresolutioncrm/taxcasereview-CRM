@@ -25,7 +25,18 @@ export default function Settings() {
   const [acctStatus, setAcctStatus] = useState({}) // { quickbooks: {...}, xero: {...} }
   const [syncing, setSyncing] = useState({ quickbooks: false, xero: false })
   const [expandedInt, setExpandedInt] = useState({}) // which integration cards are expanded
-  function toggleInt(key) { setExpandedInt(p => ({ ...p, [key]: !p[key] })) }
+  function toggleInt(key) {
+    if (['smtp','gmail','m365'].includes(key)) {
+      setExpandedInt(p => ({
+        ...p,
+        smtp: key === 'smtp' ? !p.smtp : false,
+        gmail: key === 'gmail' ? !p.gmail : false,
+        m365: key === 'm365' ? !p.m365 : false,
+      }))
+      return
+    }
+    setExpandedInt(p => ({ ...p, [key]: !p[key] }))
+  }
 
   useEffect(() => {
     if (!user?.email) return
@@ -493,11 +504,11 @@ export default function Settings() {
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12, paddingLeft: 2 }}>
               📧 Email &amp; Calendar
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
 
               {/* POP / SMTP */}
               <div style={{ border: '1px solid var(--br)', borderRadius: 12, overflow: 'hidden', background: 'var(--s1)' }}>
-                <div onClick={() => toggleInt('smtp')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer', userSelect: 'none' }}>
+                <div onClick={() => toggleInt('smtp')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer', userSelect: 'none', minHeight: 62 }}>
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>📬</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tx)' }}>POP / SMTP</div>
@@ -533,7 +544,7 @@ export default function Settings() {
 
               {/* Gmail */}
               <div style={{ border: '1px solid var(--br)', borderRadius: 12, overflow: 'hidden', background: 'var(--s1)' }}>
-                <div onClick={() => toggleInt('gmail')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer', userSelect: 'none' }}>
+                <div onClick={() => toggleInt('gmail')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer', userSelect: 'none', minHeight: 62 }}>
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: '#fff3f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <svg viewBox="0 0 48 48" width="24" height="24"><path fill="#EA4335" d="M6 40h6V23L4 17v20a3 3 0 003 3z"/><path fill="#34A853" d="M36 40h6a3 3 0 003-3V17l-9 6z"/><path fill="#FBBC04" d="M36 8l-12 9L12 8H6l18 13L42 8z"/><path fill="#4285F4" d="M4 17l8 6V8H6a3 3 0 00-2 6z"/><path fill="#C5221F" d="M42 8h-6v15l8-6a3 3 0 00-2-9z"/></svg>
                   </div>
@@ -581,7 +592,7 @@ export default function Settings() {
 
               {/* Microsoft 365 */}
               <div style={{ border: '1px solid var(--br)', borderRadius: 12, overflow: 'hidden', background: 'var(--s1)' }}>
-                <div onClick={() => toggleInt('m365')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer', userSelect: 'none' }}>
+                <div onClick={() => toggleInt('m365')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer', userSelect: 'none', minHeight: 62 }}>
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <svg viewBox="0 0 48 48" width="24" height="24"><path fill="#0078D4" d="M6 6h17v17H6z"/><path fill="#50D9FF" d="M25 6h17v17H25z"/><path fill="#FFB900" d="M6 25h17v17H6z"/><path fill="#EB3C00" d="M25 25h17v17H25z"/></svg>
                   </div>
