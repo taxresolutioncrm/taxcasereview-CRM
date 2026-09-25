@@ -1,0 +1,87 @@
+name: CloudCPA Sandbox Trace Fix Verify Deploy
+
+on:
+  push:
+    branches:
+      - sandbox/cloudcpa-green-20260925
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudcpa-sandbox-green
+  cancel-in-progress: true
+
+jobs:
+  certify-and-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies without prebuild mutation
+        run: npm ci --ignore-scripts
+
+      - name: CloudCPA tenant and conversion gates
+        run: |
+          npm run cloudcpa:readiness
+          npm run check-cloudcpa-core
+          npm run check-lead-conversion
+          npm run check-critical-workflows
+          npm run check-client-case-quick-actions
+          npm run check-family-auth
+          npm run check-password-visibility
+          npm run check-supabase-io-guardrails
+
+      - name: Full tracked source scan
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, sys, json
+          files=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          exts={'.js','.jsx','.ts','.tsx','.mjs','.cjs','.sql','.yml','.yaml','.json','.html','.css','.md','.toml'}
+          skip={'package-lock.json'}
+          total=0; scanned=0; hard=[]; review=[]
+          for f in files:
+            if f in skip or os.path.splitext(f)[1].lower() not in exts: continue
+            try: text=open(f,encoding='utf-8').read()
+            except Exception as e:
+              hard.append([f,0,'UNREADABLE',str(e)]); continue
+            scanned+=1; total+=text.count('\n')+1
+            for i,line in enumerate(text.splitlines(),1):
+              s=line.strip()
+              if re.search(r'^(<<<<<<<\s|>>>>>>>\s)',s): hard.append([f,i,'MERGE_MARKER',s[:180]])
+              if re.search(r'\beval\s*\(|new\s+Function\s*\(',line): hard.append([f,i,'DYNAMIC_EXEC',s[:180]])
+              if f.startswith('src/') and re.search(r'(?i)(SUPABASE_SERVICE_ROLE_KEY|service_role)',line) and not s.startswith('//'):
+                hard.append([f,i,'SERVICE_ROLE_FRONTEND',s[:180]])
+              if re.search(r'\b(TODO|FIXME|HACK|XXX)\b',line,re.I): review.append([f,i,s[:180]])
+          print(json.dumps({'files_scanned':scanned,'lines_scanned':total,'hard_failures':len(hard),'review_markers':len(review)},indent=2))
+          if hard:
+            print(json.dumps(hard[:200],indent=2))
+            sys.exit(2)
+          PY
+
+      - name: Verify checks did not mutate tracked source
+        run: git diff --exit-code
+
+      - name: Build exact sandbox source
+        run: npx vite build
+
+      - name: Verify Cloudflare credentials
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+
+      - name: Deploy Cloudflare sandbox preview only
+        run: npx --yes wrangler@latest pages deploy dist --project-name=taxcasereview-crm --branch=sandbox-cloudcpa-green-20260925 --commit-dirty=true
