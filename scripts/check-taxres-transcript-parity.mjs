@@ -107,7 +107,7 @@ if(fs.existsSync(pullUi) && fs.existsSync(lib)){
   const ui=read(pullUi), l=read(lib)
   // The IRS tab may only be sent to IRS after the pending request is saved
   const submit=ui.slice(ui.indexOf('async function submitCanopyStyleRequest'), ui.indexOf('// Derive the single most-actionable reason'))
-  if(submit.includes('openIrsTds(') || !submit.includes('openPendingIrsTab()') || !submit.includes('startBrowserTdsRequest(row, irsTab)')) failures.push('TranscriptPull: Request Transcripts must save the pending request before navigating to IRS TDS')
+  if(submit.includes('openIrsTds(') || !submit.includes('openPendingIrsTab()') || !submit.includes('startBrowserTdsRequest(row, irsTab, withHelperPairing(IRS_TDS_URL, pairing))')) failures.push('TranscriptPull: Request Transcripts must save the pending request before navigating to IRS TDS')
   if(ui.includes('routeAnalysis(')) failures.push('TranscriptPull: watched folder must not auto-file by name without a positive TIN match')
   if(ui.includes('<TDSSessionPresence')) failures.push('TranscriptPull: IRS API OAuth sign-in must not gate the browser TDS workflow')
   if(/canRequest = Boolean\([^)]*(sessionActive|direct\?\.available)/.test(ui)) failures.push('TranscriptPull: Request Transcripts must not require an IRS API session')
@@ -233,14 +233,18 @@ else {
   const allowedPerms=new Set(['downloads','storage'])
   for(const perm of [...(m.permissions||[]), ...(m.optional_permissions||[])]) if(!allowedPerms.has(perm)) failures.push('TaxRes IRS Helper: permission not allowed: '+perm)
   for(const h of [...(m.host_permissions||[]), ...(m.optional_host_permissions||[])]) if(h!=='https://*.irs.gov/*') failures.push('TaxRes IRS Helper: host permission not allowed: '+h)
-  const okMatch=u=>/^https:\/\/\*\.irs\.gov\/(semail|esrv)\/\*$/.test(u) || u==='https://taxrescrm.app/*' || u==='https://*.taxrescrm.app/*'
-  for(const cs of m.content_scripts||[]) for(const u of cs.matches||[]) if(!okMatch(u)) failures.push('TaxRes IRS Helper: content script may not run on '+u)
+  // IRS pages: any irs.gov page EXCEPT the sign-in host and sign-in/auth addresses (the real mailbox layout/paths are not assumed).
+  const signInExcluded=cs=>(cs.exclude_matches||[]).includes('https://sa.www4.irs.gov/*') && ['*login*','*signin*','*/auth/*','*oauth*','*saml*','*logout*'].every(g=>(cs.exclude_globs||[]).includes(g))
+  const okMatch=(u,cs)=>/^https:\/\/\*\.irs\.gov\/(semail|esrv)\/\*$/.test(u) || (u==='https://*.irs.gov/*' && signInExcluded(cs)) || u==='https://taxrescrm.app/*' || u==='https://*.taxrescrm.app/*'
+  for(const cs of m.content_scripts||[]) for(const u of cs.matches||[]) if(!okMatch(u,cs)) failures.push('TaxRes IRS Helper: content script may not run on '+u+(u==='https://*.irs.gov/*'?' without excluding the IRS sign-in pages':''))
   if(m.externally_connectable) failures.push('TaxRes IRS Helper: externally_connectable is not allowed')
   if(m.web_accessible_resources) failures.push('TaxRes IRS Helper: web_accessible_resources is not allowed')
   for(const f of ['background.js','mailbox.js','crm-bridge.js']) {
     const p=extDir+'/'+f
     if(!fs.existsSync(p)) { failures.push(p+': missing'); continue }
+    // The only allowed mentions of "password" are the ones that make the helper stay AWAY from sign-in forms.
     const code=read(p).replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'').replace(/\s\/\/ .*$/gm,'')
+      .split('input[type="password" i]').join('').split("'file', 'password']").join("'file']").split('|password|').join('|')
     for(const bad of [/document\.cookie/,/chrome\.cookies/,/\bcookies\s*:/i,/localStorage/,/sessionStorage/,/Authorization/i,/[Bb]earer/,/webRequest/,/chrome\.debugger/,/password/i,/id\.me/i,/access_token|refresh_token/i,/eval\(|new Function\(/,/chrome\.tabs\.executeScript|chrome\.scripting/]) {
       if(bad.test(code)) failures.push(p+': forbidden in helper code: '+bad)
     }
@@ -248,8 +252,8 @@ else {
   const bridge=fs.existsSync(extDir+'/crm-bridge.js')?read(extDir+'/crm-bridge.js'):''
   if(!bridge.includes('event.source !== window || event.origin !== window.location.origin')) failures.push('TaxRes IRS Helper: CRM bridge must only accept messages from its own page')
   const mailbox=fs.existsSync(extDir+'/mailbox.js')?read(extDir+'/mailbox.js'):''
-  if(!mailbox.includes("addEventListener('click', sendAll)")) failures.push('TaxRes IRS Helper: mailbox sending must start only from the rep clicking')
-  if(!mailbox.includes("credentials: 'same-origin'") || !mailbox.includes('u.origin !== location.origin')) failures.push('TaxRes IRS Helper: files may only be opened from the same IRS page origin')
+  if(!mailbox.includes("sendBtn.addEventListener('click', () => sendAll(false))")) failures.push('TaxRes IRS Helper: mailbox sending must start only from the rep clicking')
+  if(!mailbox.includes("credentials: 'same-origin'") || !mailbox.includes("u.protocol === 'https:' && u.origin === location.origin ? u : null")) failures.push('TaxRes IRS Helper: files may only be opened from the same IRS page origin')
 }
 const zipPath='public/taxres-irs-helper.zip'
 if(!fs.existsSync(zipPath)) failures.push(zipPath+': missing (zip extensions/taxres-irs-helper so reps can download it)')

@@ -7,8 +7,8 @@ import {
   parseTranscriptFile, storeTranscriptAnalysis,
   BROWSER_PROVIDER_ID, IRS_TDS_URL, IRS_SOR_URL, isOpenBrowserRequest,
   openIrsPopup, isIrsPopupOpen, focusIrsPopup, IRS_POPUP_BLOCKED,
-  openPendingIrsTab, startBrowserTdsRequest, sha256File,
-  analyzeReturnedTranscript, matchBrowserRequest, fileBrowserTranscripts,
+  openPendingIrsTab, startBrowserTdsRequest, sha256File, withHelperPairing,
+  analyzeReturnedTranscript, matchBrowserRequest, fileBrowserTranscripts, findFiledTranscriptBySha,
   saveWatchedFolder, loadWatchedFolder, forgetWatchedFolder,
 } from '../lib/transcriptPull'
 
@@ -60,6 +60,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const intakeRef = useRef(null)
   const scanRef = useRef(null)
   const onImportedRef = useRef(null)
+  const tenantRef = useRef(null)
   const fsSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
   // Client combobox state
@@ -337,11 +338,17 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   // One place that decides what happens to a returned IRS PDF (from the helper or the watched folder):
   // positive SSN/EIN last-4 + year + type match to exactly one open request -> filed and analyzed; otherwise -> "Needs a client".
-  async function intakeReturnedPdf(file, key, { since = -Infinity } = {}) {
+  async function intakeReturnedPdf(file, key, { since = -Infinity, onlyRequestIds = null } = {}) {
     const openBrowser = requestsRef.current.filter(isOpenBrowserRequest)
     try {
+      // Same PDF bytes already filed anywhere in this office → duplicate, whatever the file name or IRS address.
+      const prior = await findFiledTranscriptBySha(await sha256File(file))
+      if (prior) {
+        setUnmatched(u => u.filter(x => x.key !== key))
+        return { status: 'duplicate', client: prior.client_name || '' }
+      }
       const parsed = await analyzeReturnedTranscript(file)
-      const target = file.lastModified >= since ? await matchBrowserRequest(openBrowser, parsed) : null
+      const target = file.lastModified >= since ? await matchBrowserRequest(openBrowser, parsed, { onlyRequestIds }) : null
       if (target) {
         const out = await fileBrowserTranscripts(target.id, [file])
         const res = out.results[0] || {}
@@ -407,16 +414,26 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   useEffect(() => {
     const post = msg => window.postMessage({ source: CRM_SOURCE, ...msg }, window.location.origin)
     let queue = Promise.resolve()
+    let alive = true
+    // Which office this CRM tab is signed in to. The helper binds every IRS window to it, and anything addressed
+    // to another office is refused here too.
+    supabase.rpc('current_tenant_id').then(({ data }) => {
+      if (!alive || !data) return
+      tenantRef.current = String(data)
+      post({ type: 'crm-ready', tenantId: tenantRef.current })
+    }, () => {})
     async function handle(data) {
       const name = String(data.name || 'irs-transcript.pdf').replace(/[^\w.\- ()]/g, '_').slice(0, 120)
       const id = String(data.id || '')
       try {
+        if (!tenantRef.current || String(data.tenantId || '') !== tenantRef.current) throw new Error('This transcript was addressed to a different office — not filed here')
         if (typeof data.base64 !== 'string' || data.base64.length > MAX_HELPER_PDF_BYTES * 1.4) throw new Error('File is missing or too large')
         const file = base64ToFile(data.base64, /\.pdf$/i.test(name) ? name : `${name}.pdf`)
         const head = new Uint8Array(await file.slice(0, 5).arrayBuffer())
         if (String.fromCharCode(...head) !== '%PDF-') throw new Error('Not a PDF')
         const key = 'helper:' + await sha256File(file)
-        const out = await intakeRef.current(file, key)
+        const onlyRequestIds = Array.isArray(data.requestIds) && data.requestIds.length ? new Set(data.requestIds.map(String)) : null
+        const out = await intakeRef.current(file, key, { onlyRequestIds })
         setHelperLog(l => [{ at: new Date(), name, ...out }, ...l].slice(0, 25))
         post({ type: 'transcript-ack', id, status: out.status, detail: out.client || out.detail || '' })
         if (out.status === 'filed') { await loadRequests(); if (onImportedRef.current) onImportedRef.current() }
@@ -429,7 +446,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       if (event.source !== window || event.origin !== window.location.origin) return
       const data = event.data
       if (!data || data.source !== HELPER_SOURCE) return
-      if (data.type === 'helper-hello') { setHelperConnected(true); post({ type: 'crm-ready' }) }
+      if (data.type === 'helper-hello') { setHelperConnected(true); post({ type: 'crm-ready', tenantId: tenantRef.current }) }
       else if (data.type === 'transcript-pdf') { setHelperConnected(true); queue = queue.then(() => handle(data)) }
       else if (data.type === 'download-unreadable') {
         // The helper saw a transcript download it could not re-open (for example a PDF the IRS built on the fly).
@@ -444,8 +461,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       }
     }
     window.addEventListener('message', onMessage)
-    post({ type: 'crm-hello' })
-    return () => { window.removeEventListener('message', onMessage); post({ type: 'crm-gone' }) }
+    post({ type: 'crm-hello', tenantId: tenantRef.current })
+    return () => { alive = false; window.removeEventListener('message', onMessage); post({ type: 'crm-gone' }) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the "Show IRS window" button in step with the popup.
@@ -454,8 +471,20 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     return () => clearInterval(t)
   }, [])
 
+  // Tell the helper which office (and which open requests) the IRS window opened from this tab belongs to.
+  // The helper only ever delivers that window's transcripts back to this tab/office.
+  function bindHelper(extraIds = []) {
+    if (!tenantRef.current) return null
+    const nonce = crypto.randomUUID()
+    const ids = [...new Set([...requestsRef.current.filter(isOpenBrowserRequest).map(r => r.id), ...extraIds].map(String))]
+    const title = String(document.title || '').split(' — ')[0].trim()
+    const label = title && title !== window.location.host ? `${title} (${window.location.host})` : window.location.host
+    window.postMessage({ source: CRM_SOURCE, type: 'crm-bind', tenantId: tenantRef.current, label, requestIds: ids, nonce }, window.location.origin)
+    return nonce
+  }
+
   function openIrs(url) {
-    const w = openIrsPopup(url)
+    const w = openIrsPopup(withHelperPairing(url, bindHelper()))
     if (!w) { flash('❌ ' + IRS_POPUP_BLOCKED); return }
     setPopupOpen(true)
   }
@@ -463,7 +492,15 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   async function assignUnmatched(item) {
     if (!item.assignTo.trim() || !item.analysis) return
     try {
-      const id = await storeTranscriptAnalysis(item.file, item.assignTo.trim(), item.analysis)
+      const sha = await sha256File(item.file)
+      const prior = await findFiledTranscriptBySha(sha)
+      if (prior) {
+        seenRef.current.add(item.key)
+        setUnmatched(u => u.filter(x => x.key !== item.key))
+        flash(`ℹ ${item.fileName} is already filed${prior.client_name ? ` to ${prior.client_name}` : ''} — not filed again.`)
+        return
+      }
+      const id = await storeTranscriptAnalysis(item.file, item.assignTo.trim(), { ...item.analysis, file_sha256: sha })
       seenRef.current.add(item.key)
       setUnmatched(u => u.filter(x => x.key !== item.key))
       setImported(im => [...im, { file: item.fileName, client: item.assignTo.trim(), year: item.analysis.tax_year, type: item.analysis.transcript_type }])
@@ -508,6 +545,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     const poa = poaOnFile(client)
     if (!client || !poa || !selectedYearsCovered) return
     // Open the IRS window inside the click so the browser does not block it; it goes to IRS TDS only after the request is saved.
+    const rowId = crypto.randomUUID()
+    const pairing = bindHelper([rowId])
     const irsTab = openPendingIrsTab()
     if (!irsTab) {
       flash('❌ ' + IRS_POPUP_BLOCKED + ' No transcript request was saved.')
@@ -517,7 +556,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     setSaving(true)
     try {
       const row = {
-        id: crypto.randomUUID(),
+        id: rowId,
         client_name: client.name,
         client_id: client.id,
         transcript_types: nextForm.types,
@@ -529,7 +568,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         requested_by: employeeName || null,
         notes: nextForm.notes || null,
       }
-      await startBrowserTdsRequest(row, irsTab)
+      await startBrowserTdsRequest(row, irsTab, withHelperPairing(IRS_TDS_URL, pairing))
       setForm(BLANK)
       setClientSearch('')
       await loadRequests()

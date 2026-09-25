@@ -415,7 +415,7 @@ export function closePendingIrsTab(w) {
 }
 
 // Save the pending request first; the IRS popup is navigated only after the insert succeeds.
-export async function startBrowserTdsRequest(row, w) {
+export async function startBrowserTdsRequest(row, w, url = IRS_TDS_URL) {
   try {
     const { error } = await supabase.from('transcript_pull_requests').insert([row])
     if (error) throw new Error(error.message)
@@ -423,7 +423,13 @@ export async function startBrowserTdsRequest(row, w) {
     closePendingIrsTab(w)
     throw e
   }
-  navigateIrsPopup(w, IRS_TDS_URL)
+  navigateIrsPopup(w, url)
+}
+
+// Add the TaxRes IRS Helper's one-time pairing code after "#" in an IRS address. Browsers never send the
+// part after "#" to the IRS; the helper uses it only to know which CRM tab opened that IRS window.
+export function withHelperPairing(url, code) {
+  return code && /^[A-Za-z0-9-]{16,64}$/.test(code) ? `${url}#taxres-bind=${code}` : url
 }
 
 export function isOpenBrowserRequest(r) {
@@ -448,16 +454,21 @@ export async function analyzeReturnedTranscript(file) {
 }
 
 // Why a parsed transcript does not belong to this pending request (null = it belongs).
+// Fails closed: automatic filing needs all three identifiers — taxpayer SSN/EIN last 4, a tax year
+// the request asked for, and a transcript type the request asked for. Anything missing → not a match.
 export function browserMatchProblem(req, clientTinLast4, parsed) {
   const a = parsed?.analysis || {}
-  // Automatic filing needs a positive taxpayer match — never year/type alone.
   if (!clientTinLast4) return 'client has no SSN/EIN on file to match against — file this PDF manually'
   if (!parsed?.tinLast4) return 'no readable taxpayer SSN/EIN on this PDF — file it manually'
   if (parsed.tinLast4 !== clientTinLast4) return `TIN ending ${parsed.tinLast4} is not this client`
   const years = parseYearSpec(req?.tax_years)
-  if (years.size && a.tax_year && !years.has(String(a.tax_year))) return `tax year ${a.tax_year} was not requested`
+  if (!years.size) return 'this request has no tax years to match against — file this PDF manually'
+  if (!a.tax_year) return 'no readable tax year on this PDF — file it manually'
+  if (!years.has(String(a.tax_year))) return `tax year ${a.tax_year} was not requested`
   const types = (req?.transcript_types || []).filter(Boolean)
-  if (types.length && a.transcript_type && a.transcript_type !== 'Other' && !types.some(t => sameTranscriptType(a.transcript_type, t))) return `${a.transcript_type} was not requested`
+  if (!types.length) return 'this request has no transcript types to match against — file this PDF manually'
+  if (!a.transcript_type || a.transcript_type === 'Other') return 'transcript type could not be read on this PDF — file it manually'
+  if (!types.some(t => sameTranscriptType(a.transcript_type, t))) return `${a.transcript_type} was not requested`
   return null
 }
 
@@ -491,8 +502,9 @@ async function fileBrowserTranscriptsNow(requestId, files) {
     try {
       const key = await sha256File(file)
       if (filedKeys.has(key)) { results.push({ file: name, status: 'duplicate' }); continue }
-      const { data: prior } = await supabase.from('transcript_analyses').select('id').eq('client_id', req.client_id).eq('raw_analysis->>file_sha256', key).limit(1)
-      if (prior?.length) { filedKeys.add(key); results.push({ file: name, status: 'duplicate' }); continue }
+      // Authoritative duplicate check: the SHA-256 of the PDF bytes, across the whole office (not just this client).
+      const prior = await findFiledTranscriptBySha(key)
+      if (prior) { filedKeys.add(key); results.push({ file: name, status: 'duplicate', client: prior.client_name || null }); continue }
       const parsed = await analyzeReturnedTranscript(file)
       const problem = browserMatchProblem(req, clientLast4, parsed)
       if (problem) { results.push({ file: name, status: 'rejected', reason: problem }); continue }
@@ -522,15 +534,46 @@ async function fileBrowserTranscriptsNow(requestId, files) {
   return { results, completed: covered, filedCount: idList.length }
 }
 
-// Pick the one open browser request a returned PDF belongs to (by client TIN + requested year/type).
-export async function matchBrowserRequest(openRequests, parsed) {
+// The transcript already filed in this office with exactly these PDF bytes (SHA-256), or null.
+// This byte-level check is the final word on duplicates; URL/"already sent" memory in the helper is only a convenience.
+// Office scoping comes from the database's row-level security.
+export async function findFiledTranscriptBySha(key) {
+  if (!key) return null
+  const { data, error } = await supabase.from('transcript_analyses').select('id,client_id,client_name').eq('raw_analysis->>file_sha256', key).limit(1)
+  if (error) throw new Error(`Duplicate check failed: ${error.message}`)
+  return data?.[0] || null
+}
+
+// How many clients in this office have an SSN/EIN ending in these 4 digits.
+async function clientsWithTinLast4(last4) {
+  if (!/^\d{4}$/.test(String(last4 || ''))) return 0
+  const ids = new Set()
+  for (const col of ['ssn', 'ein']) {
+    const { data, error } = await supabase.from('clients').select(`id,${col}`).ilike(col, `%${last4}`).limit(10)
+    if (error) throw new Error(`Client match check failed: ${error.message}`)
+    for (const row of data || []) {
+      const digits = String(row[col] || '').replace(/\D/g, '')
+      if (digits.length >= 4 && digits.slice(-4) === last4) ids.add(row.id)
+    }
+  }
+  return ids.size
+}
+
+// Pick the one open browser request a returned PDF belongs to. Fails closed — returns null (→ "Needs a client")
+// unless there is exactly ONE positive match on SSN/EIN last 4 + requested year + requested type, exactly one
+// client in the office carries that SSN/EIN ending, and (when given) that request is one the helper was bound to.
+export async function matchBrowserRequest(openRequests, parsed, { onlyRequestIds = null } = {}) {
+  if (!parsed?.tinLast4 || !parsed?.analysis?.tax_year) return null
   const candidates = []
   for (const r of openRequests.filter(isOpenBrowserRequest)) {
     const last4 = await clientTinLast4(r.client_id)
-    if (!parsed.tinLast4 || !last4 || parsed.tinLast4 !== last4) continue
+    if (!last4 || parsed.tinLast4 !== last4) continue
     if (!browserMatchProblem(r, last4, parsed)) candidates.push(r)
   }
-  return candidates.length === 1 ? candidates[0] : null
+  if (candidates.length !== 1) return null
+  if (onlyRequestIds && onlyRequestIds.size && !onlyRequestIds.has(candidates[0].id)) return null
+  if ((await clientsWithTinLast4(parsed.tinLast4)) !== 1) return null
+  return candidates[0]
 }
 
 // Remember the watched folder between visits (the handle stays in this browser only).

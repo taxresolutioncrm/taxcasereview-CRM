@@ -2,20 +2,41 @@
 
 Sends the IRS transcript PDFs a rep chooses back to the TaxRes CRM, where they are matched to the
 client (last 4 of SSN/EIN, tax year, transcript type), filed and analyzed. Anything it can't match
-shows up under **Needs a client** on the CRM's IRS Transcripts page.
+exactly shows up under **Needs a client** on the CRM's IRS Transcripts page.
+
+## Which office gets the files
+- Every IRS window is tied to the CRM tab that opened it ("Sign in to IRS", "Secure Mailbox" or
+  "Request Transcripts"). The CRM adds a one-time pairing code after `#` in the IRS address; browsers
+  never send that part to the IRS. The helper panel always shows **Sends to: <office>**.
+- Files from that window go only to that CRM tab, and only while it is still signed in to the same office.
+  If that tab is closed, they go to another tab of the same office on the same site only if there is
+  exactly one. Otherwise nothing is sent and the rep is told which CRM tab to open.
+- An IRS window that was not opened from the CRM sends nothing.
+- The CRM page also refuses any file addressed to a different office.
 
 ## What it does
-- **Secure Mailbox button (main way):** on the IRS Secure Mailbox page a small panel shows
+- **Secure Mailbox button (main way):** on an IRS mailbox/message page a small panel shows
   "Send N transcripts to CRM". Nothing happens until the rep clicks it. Files are opened one at a
-  time, about 1.5 seconds apart.
-- **Downloads (backup):** if the rep downloads a transcript PDF from an IRS page, the helper asks
-  that IRS page to open the same file again and sends it to the CRM. If it can't, the CRM tells the
-  rep to drag the PDF in (or scans the watched download folder).
+  time, about 1.5 seconds apart. It finds attachments in plain links, links and buttons that open the
+  file from page code, `view_file.jsp`-style addresses, GET and POST attachment forms, pages that wrap
+  the PDF in a frame, frames inside the message, and message links (it opens the message and sends
+  the files inside). An attachment that only the page's own code can open is clicked for the rep and
+  caught when it opens (download or new tab). If it still won't open, the panel says "click it
+  yourself" and catches it when the rep does.
+- **Downloads (backup):** if the rep downloads a transcript PDF in an IRS window opened from the CRM,
+  the helper asks that IRS page to open the same file again and sends it to that window's office. If it
+  can't tell which window a download came from, it sends nothing. If the file can't be re-opened, the CRM
+  tells the rep to drag it in.
+- **Duplicates:** the CRM checks the PDF's bytes (SHA-256) against everything already filed in the
+  office; that check is final. The helper's own "already sent" memory is only there so the button
+  doesn't offer the same files twice. **Send all again** resends everything and lets the CRM decide.
 
 ## What it never does
 - Never reads, stores or sends IRS / ID.me passwords, cookies, tokens or session IDs.
-- Never signs in, never touches the sign-in pages, never runs in the background on its own.
-- Has no `cookies`, `webRequest`, `debugger` or `tabs` permission.
+- Never runs on sign-in pages, never touches a form with a password box, never signs in.
+- Never clicks or opens delete, archive, move, reply, log-out or settings links.
+- Has no `cookies`, `webRequest`, `webNavigation`, `debugger` or `tabs` permission.
+- Stores only tab numbers, office IDs, request IDs and SHA-256 fingerprints (never addresses or files).
 - The IRS session stays in the rep's own browser. Each rep uses their own IRS login.
 
 ## Install (each rep, once)
@@ -25,7 +46,7 @@ shows up under **Needs a client** on the CRM's IRS Transcripts page.
 4. Reload the CRM's IRS Transcripts page. It should say **Helper connected**.
 
 ## Files
-- `manifest.json` – permissions: `downloads`, `storage`; runs on `*.irs.gov` mailbox/TDS pages and `taxrescrm.app` pages only.
-- `mailbox.js` – the Secure Mailbox panel, and re-opening a downloaded file for the backup path.
-- `crm-bridge.js` – hands PDF files to the CRM page and passes back the CRM's answer.
-- `background.js` – keeps track of which tabs are CRM / IRS tabs and routes files between them.
+- `manifest.json` – permissions: `downloads`, `storage`; runs on `*.irs.gov` pages (not sign-in pages) and `taxrescrm.app` pages only.
+- `mailbox.js` – the Secure Mailbox panel, finding attachments, and re-opening a file for the backup path.
+- `crm-bridge.js` – tells the helper which office the CRM tab is in, hands PDFs to the CRM page, passes back the answer.
+- `background.js` – ties each IRS window to its CRM tab/office and routes files only there.

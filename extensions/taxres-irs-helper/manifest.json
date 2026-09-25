@@ -1,14 +1,16 @@
 {
   "manifest_version": 3,
   "name": "TaxRes IRS Helper",
-  "version": "1.0.0",
-  "description": "Sends the IRS transcript PDFs you choose back to your TaxRes CRM. Never reads, stores or sends your IRS / ID.me sign-in.",
+  "version": "1.1.0",
+  "description": "Sends the IRS transcript PDFs you choose back to the TaxRes CRM tab that opened your IRS window. Never reads, stores or sends your IRS / ID.me sign-in.",
   "permissions": ["downloads", "storage"],
   "host_permissions": ["https://*.irs.gov/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
-      "matches": ["https://*.irs.gov/semail/*", "https://*.irs.gov/esrv/*"],
+      "matches": ["https://*.irs.gov/*"],
+      "exclude_matches": ["https://sa.www4.irs.gov/*", "https://sa.www.irs.gov/*"],
+      "exclude_globs": ["*login*", "*logon*", "*signin*", "*sign-in*", "*/auth/*", "*oauth*", "*saml*", "*/idp/*", "*logout*"],
       "js": ["mailbox.js"],
       "run_at": "document_idle"
     },

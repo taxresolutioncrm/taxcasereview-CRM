@@ -85,7 +85,24 @@ need(pullUi, 'data.source !== HELPER_SOURCE', 'helper messages filtered by sourc
 need(pullUi, "'%PDF-'", 'returned files must be real PDFs')
 need(pullUi, '/taxres-irs-helper.zip', 'helper download link')
 need('public/taxres-irs-helper.zip', 'crm-bridge.js', 'helper zip published')
-need('extensions/taxres-irs-helper/mailbox.js', "sendBtn.addEventListener('click', sendAll)", 'Secure Mailbox sends only on click')
+need('extensions/taxres-irs-helper/mailbox.js', "sendBtn.addEventListener('click', () => sendAll(false))", 'Secure Mailbox sends only on click')
+need('extensions/taxres-irs-helper/mailbox.js', "input[type=\"password\" i]", 'helper never touches a sign-in form')
+
+console.log('Checking helper office binding and matching rules…')
+const helperDir = 'extensions/taxres-irs-helper'
+need(`${helperDir}/background.js`, 'async function bindingFor(', 'IRS window bound to the CRM tab/office that opened it')
+need(`${helperDir}/background.js`, 'return others.length === 1 ? others[0] : null', 'ambiguous CRM tabs refused')
+forbid(`${helperDir}/background.js`, 'findCrmTab', '"most recent CRM tab" delivery')
+need(`${helperDir}/crm-bridge.js`, 'msg.tenantId !== tenantId', 'bridge refuses another office\'s file')
+need(pullUi, "String(data.tenantId || '') !== tenantRef.current", 'CRM refuses a file addressed to another office')
+need(pullUi, 'findFiledTranscriptBySha(await sha256File(file))', 'PDF-bytes SHA-256 duplicate check before matching')
+need(lib, 'if (candidates.length !== 1) return null', 'auto-file only on exactly one request match')
+need(lib, '(await clientsWithTinLast4(parsed.tinLast4)) !== 1', 'auto-file only when exactly one client has that SSN/EIN ending')
+need(lib, "if (!a.tax_year) return", 'missing tax year never auto-files')
+need(lib, "a.transcript_type === 'Other'", 'unreadable transcript type never auto-files')
+for (const f of ['background.js', 'mailbox.js', 'crm-bridge.js', 'manifest.json']) {
+  for (const bad of ['document.cookie', 'chrome.cookies', '"cookies"', 'webRequest', 'localStorage', 'sessionStorage', 'Authorization']) forbid(`${helperDir}/${f}`, bad, `helper must not read or store sign-in data (${bad})`)
+}
 
 console.log('Checking Step 4: Request Transcripts in CRM…')
 need(pullUi, 'submitCanopyStyleRequest', 'Canopy-style request submission function present')
