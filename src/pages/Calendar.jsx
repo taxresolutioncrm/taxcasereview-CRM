@@ -98,7 +98,7 @@ export default function Calendar() {
     return () => { el.style.padding = op; el.style.overflow = oo; el.style.height = oh }
   }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (isRomyLabsAdmin || myTenantId) load() }, [myTenantId, isRomyLabsAdmin])
 
   // Realtime sync: when a new appointment is booked via the external Tax Case Review
   // booking widget (cfoservicesnow), it gets inserted into calevents with source='booking_widget'.
@@ -107,8 +107,12 @@ export default function Calendar() {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
-    const ch = supabase.channel('calevents-booking-sync')
-    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calevents' }, ({ new: row }) => {
+    if (!isRomyLabsAdmin && !myTenantId) return
+    const ch = supabase.channel('calevents-booking-sync-' + (isRomyLabsAdmin ? 'admin' : myTenantId))
+    const eventFilter = isRomyLabsAdmin
+      ? { event: 'INSERT', schema: 'public', table: 'calevents' }
+      : { event: 'INSERT', schema: 'public', table: 'calevents', filter: `tenant_id=eq.${myTenantId}` }
+    ch.on('postgres_changes', eventFilter, ({ new: row }) => {
       if (isRomyLabsAdmin) {
         if (String(row.product_id || '').toLowerCase() !== 'romylabs' && row.assignedTo !== adminCalendarOwner) return
         load()
@@ -126,7 +130,8 @@ export default function Calendar() {
           })
           cn.onclick = () => { window.focus(); cn.close() }
         }
-        supabase.from('chat_messages').insert([{
+        if (!isRomyLabsAdmin && myTenantId) supabase.from('chat_messages').insert([{
+          tenant_id: myTenantId,
           channel: 'general', sender: '🔔 System',
           text: `📅 New appointment booked online: **${who}** on ${row.date}${row.time?` at ${fmtTime(row.time)}`:''}${row.eventType?` (${row.eventType})`:''}.`,
           created_at: new Date().toISOString()
@@ -135,7 +140,7 @@ export default function Calendar() {
     })
     ch.subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [myTenantId, isRomyLabsAdmin])
 
   async function load() {
     setLoading(true)
