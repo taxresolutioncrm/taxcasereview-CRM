@@ -244,6 +244,53 @@
     return items
   }
 
+  // "Page outline" for support: how the page is built (tags, attribute names, address shapes, function names),
+  // with every name, number, text and field value blanked out. No cookies, no taxpayer data, never sent anywhere
+  // by the helper — the rep copies it by hand if asked.
+  const KEEP_WORDS = /attachment|attach|download|view|file|pdf|transcript|message|mail|inbox|open|print|display|record|account|wage|income|return|verification|non-filing/gi
+  function maskAddr(raw, base) {
+    const u = sameSite(raw, base)
+    if (!u) return /^javascript:/i.test(raw || '') ? 'javascript:' + maskCode(raw.slice(11)) : (raw ? '[other site or #]' : '')
+    const path = u.pathname.replace(/;[^/]*/g, ';*').replace(/\d/g, '9').replace(/[A-Za-z0-9_-]{24,}/g, '*')
+    const q = [...u.searchParams.keys()].map(k => k + '=*').join('&')
+    return path + (q ? '?' + q : '')
+  }
+  function maskCode(code) {
+    return String(code || '').replace(/(['"])(?:(?!\1).)*\1/g, m => { const inner = m.slice(1, -1); return /^\/|\.(jsp|do|pdf|aspx?|action)\b/i.test(inner) ? "'" + maskAddr(inner, location.href) + "'" : "'*'" })
+      .replace(/\d+/g, '9').replace(/\s+/g, ' ').slice(0, 120)
+  }
+  function maskText(t) {
+    const words = (String(t || '').match(KEEP_WORDS) || []).map(w => w.toLowerCase())
+    const len = String(t || '').trim().length
+    return len ? `[${len} chars${words.length ? ': ' + [...new Set(words)].join(' ') : ''}]` : ''
+  }
+  function pageOutline(root = document, base = location.href, depth = 0) {
+    const out = []
+    const sel = 'a[href], area[href], button, input[type="submit" i], input[type="image" i], input[type="hidden" i], form, iframe, frame, embed, object, [onclick], [data-href], [data-url], [data-file-url], meta[http-equiv="refresh" i]'
+    for (const el of root.querySelectorAll(sel)) {
+      if (el.closest && el.closest('#taxres-irs-helper')) continue
+      const tag = el.tagName.toLowerCase()
+      const parts = [('  '.repeat(depth)) + tag]
+      if (el.getAttribute('type')) parts.push('type=' + el.getAttribute('type'))
+      if (el.getAttribute('name')) parts.push('name=' + el.getAttribute('name'))
+      for (const a of ['href', 'action', 'src', 'data', 'data-href', 'data-url', 'data-file-url', 'formaction']) if (el.hasAttribute(a)) parts.push(a + '=' + maskAddr(el.getAttribute(a), base))
+      if (el.hasAttribute('method')) parts.push('method=' + el.getAttribute('method'))
+      if (el.hasAttribute('target')) parts.push('target=' + el.getAttribute('target'))
+      if (el.hasAttribute('onclick')) parts.push('onclick=' + maskCode(el.getAttribute('onclick')))
+      if (el.hasAttribute('download')) parts.push('download')
+      if (tag === 'meta') parts.push('content=' + maskCode(el.getAttribute('content')))
+      if (tag !== 'form' && tag !== 'input' && tag !== 'meta') { const t = maskText(el.textContent || el.getAttribute('value') || el.getAttribute('title') || el.getAttribute('aria-label')); if (t) parts.push(t) }
+      out.push(parts.join(' '))
+      if ((tag === 'iframe' || tag === 'frame') && depth < 2) {
+        let doc = null
+        try { doc = el.contentDocument } catch { doc = null }
+        if (doc && doc.documentElement) out.push(...pageOutline(doc, doc.baseURI || base, depth + 1))
+      }
+      if (out.length > 400) break
+    }
+    return out
+  }
+
   const isMailboxPage = () => MAILBOX_PAGE.test(location.pathname + location.search) && !/\/esrv\/tds/i.test(location.pathname)
   if (!isMailboxPage()) return // TDS request pages and other IRS pages: no panel, never scanned or clicked
 
@@ -264,6 +311,9 @@
       .row{display:flex;gap:6px;justify-content:space-between;align-items:center}
       .rescan,.again,.hide{background:#fff;color:#1e3a8a}
       .status{white-space:pre-line;color:#374151;margin-top:4px;max-height:170px;overflow:auto}
+      .outline-btn{background:none;border:none;color:#475569;text-decoration:underline;padding:4px 0;margin-top:4px;font-size:12px}
+      .outline{width:100%;height:120px;font:11px/1.35 ui-monospace,monospace;margin-top:4px;box-sizing:border-box}
+      [hidden]{display:none!important}
     </style>
     <div class="box" role="region" aria-label="TaxRes IRS Helper">
       <div class="title">TaxRes IRS Helper</div>
@@ -272,6 +322,8 @@
       <button class="send" type="button">Send transcripts to CRM</button>
       <div class="row"><button class="rescan" type="button">Rescan</button><button class="again" type="button">Send all again</button><button class="hide" type="button">Hide</button></div>
       <div class="status"></div>
+      <button class="outline-btn" type="button">Page outline (for support)</button>
+      <textarea class="outline" readonly hidden aria-label="Page outline with all names and numbers blanked out"></textarea>
     </div>`
   const $ = sel => shadow.querySelector(sel)
   const sendBtn = $('.send')
@@ -420,6 +472,12 @@
   $('.again').addEventListener('click', () => sendAll(true))
   $('.rescan').addEventListener('click', () => { setStatus(''); refresh() })
   $('.hide').addEventListener('click', () => { hidden = true; host.remove() })
+  $('.outline-btn').addEventListener('click', () => {
+    const box = $('.outline')
+    box.value = ['TaxRes IRS Helper page outline (names, numbers and values blanked)', 'page: ' + maskAddr(location.href, location.href), ...pageOutline()].join('\n')
+    box.hidden = false
+    box.focus(); box.select()
+  })
 
   let timer = null
   new MutationObserver(mutations => {

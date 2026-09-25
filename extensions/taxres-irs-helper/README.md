@@ -35,6 +35,11 @@ exactly shows up under **Needs a client** on the CRM's IRS Transcripts page.
   doesn't offer the same files twice, and only counts files the CRM filed or already had ("Needs a
   client" files are offered again). **Send all again** resends everything and lets the CRM decide.
 
+- **Page outline (for support):** a link at the bottom of the panel shows how the IRS page is built —
+  tags, address shapes and function names — with every name, number, text and field value blanked out.
+  The rep copies it by hand only if support asks (for example if the helper finds no attachments on the
+  real mailbox). The helper never sends it anywhere.
+
 ## What it never does
 - Never reads, stores or sends IRS / ID.me passwords, cookies, tokens or session IDs.
 - Never runs on sign-in pages, never touches a form with a password box, never signs in.
