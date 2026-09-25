@@ -512,28 +512,29 @@ export default function Leads() {
     // Guard: don't load until the auth session is confirmed so current_tenant_id()
     // is established in the DB before the first query fires. Without this, a hard
     // refresh can return the wrong tenant's records before RLS kicks in.
-    if (!user) return
+    if (!user || !myTenantId) { setLeads([]); return }
     load()
-    const ch = supabase.channel('leads-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => load())
+    const ch = supabase.channel('leads-rt-' + myTenantId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `tenant_id=eq.${myTenantId}` }, () => load())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [user?.id])
+  }, [user?.id, myTenantId])
 
   // Live-update the currently-open lead's related data (notes, tasks, docs)
   // — same reasoning and same pattern as the equivalent addition in
   // Clients.jsx. Scoped to only run while a specific lead is open.
   useEffect(() => {
-    if (!detail?.id) return
+    if (!detail?.id || !myTenantId) return
     const id = detail.id, name = detail.name
     function reloadNotes() { loadLeadNotes(id) }
     function reloadTasks() { loadLeadTasks(name) }
-    const ch = supabase.channel('lead-detail-rt-' + id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_notes' }, reloadNotes)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, reloadTasks)
+    const filter = `tenant_id=eq.${myTenantId}`
+    const ch = supabase.channel('lead-detail-rt-' + myTenantId + '-' + id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_notes', filter }, reloadNotes)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter }, reloadTasks)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [detail?.id, detail?.name])
+  }, [detail?.id, detail?.name, myTenantId])
 
   // Save scroll position before refresh/navigation away, restore once the
   // lead loads back in — keyed to .page-content, the element that actually scrolls.
@@ -553,20 +554,26 @@ export default function Leads() {
     }
   }, [detail?.id])
   useEffect(() => {
-    if (!detail) return
-    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('client', detail.name)
+    if (!detail || !myTenantId) return
+    supabase.from('documents').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', myTenantId)
+      .eq('client', detail.name)
       .then(({ count }) => setLeadDocCount(count || 0))
-  }, [detail?.id])
+  }, [detail?.id, myTenantId])
   // Fast path: same fix as Clients — don't make opening one lead wait on
   // the entire leads table downloading first.
   useEffect(() => {
-    if (!urlLeadId || detail) return
+    if (!urlLeadId || detail || !myTenantId) return
     let cancelled = false
-    supabase.from('leads').select('*').eq('id', urlLeadId).single().then(({ data }) => {
-      if (!cancelled && data) { setDetail(data); loadLeadNotes(data.id) }
-    })
+    supabase.from('leads').select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('id', urlLeadId)
+      .single()
+      .then(({ data }) => {
+        if (!cancelled && data) { setDetail(data); loadLeadNotes(data.id) }
+      })
     return () => { cancelled = true }
-  }, [urlLeadId])
+  }, [urlLeadId, myTenantId])
   useEffect(() => {
     if (urlLeadId && leads.length > 0 && !detail) {
       const found = leads.find(l => String(l.id) === String(urlLeadId))
@@ -583,11 +590,12 @@ export default function Leads() {
   }, [urlLeadId, detail])
 
   async function load() {
+    if (!myTenantId) { setLeads([]); setEmployees([]); return }
     const [{ data }, { data: emp }, { data: cats }, { data: sts }] = await Promise.all([
-      supabase.from('leads').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id,name,avatar_url,email,role').order('name'),
-      supabase.from('workflow_status_categories').select('*').order('sort_order'),
-      supabase.from('workflow_statuses').select('*').order('sort_order'),
+      supabase.from('leads').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
+      supabase.from('employees').select('id,name,avatar_url,email,role,tenant_id').eq('tenant_id', myTenantId).order('name'),
+      supabase.from('workflow_status_categories').select('*').eq('tenant_id', myTenantId).order('sort_order'),
+      supabase.from('workflow_statuses').select('*').eq('tenant_id', myTenantId).order('sort_order'),
     ])
     if (emp) setEmployees(emp)
     if (cats) setStatusCategories(cats.map(cat => ({ ...cat, statuses: (sts||[]).filter(s => s.category_id === cat.id) })))
@@ -599,7 +607,11 @@ export default function Leads() {
   }
 
   async function loadLeadNotes(leadId) {
-    const { data } = await supabase.from('lead_notes').select('*').eq('lead_id', leadId).order('created_at', { ascending: false })
+    if (!myTenantId) { setLeadNotes([]); return }
+    const { data } = await supabase.from('lead_notes').select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false })
     setLeadNotes(data || [])
   }
 
@@ -609,7 +621,9 @@ export default function Leads() {
   async function logAction(leadId, leadName, text) {
     if (!leadId) return
     const actor = resolveActorName(user, employees)
+    if (!myTenantId) return false
     const { error } = await supabase.from('lead_notes').insert({
+      tenant_id: myTenantId,
       lead_id: leadId, lead_name: leadName, text, type: 'System',
       author: actor, created_at: new Date().toISOString()
     })
@@ -624,7 +638,11 @@ export default function Leads() {
   // them, so the only place to see a lead's texts was the global SMS page
   // (every contact's messages, unfiltered).
   async function loadLeadSms(leadName) {
-    const { data } = await supabase.from('sms_messages').select('*').eq('clientName', leadName).order('created_at', { ascending: false })
+    if (!myTenantId) { setLeadSms([]); return }
+    const { data } = await supabase.from('sms_messages').select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('clientName', leadName)
+      .order('created_at', { ascending: false })
     setLeadSms(data || [])
   }
   // Same clientName key the tasks table already uses for clients, and that
@@ -1172,7 +1190,7 @@ export default function Leads() {
     }
     setModal(false); setForm(BLANK)
     if (modal === 'edit' && detail) {
-      const { data } = await supabase.from('leads').select('*').eq('id', form.id).single()
+      const { data } = await supabase.from('leads').select('*').eq('tenant_id', myTenantId).eq('id', form.id).single()
       if (data) setDetail(data)
       load()
       if (data && beforeEdit) {
@@ -1181,7 +1199,7 @@ export default function Leads() {
       }
     } else {
       // New lead — reload then navigate straight into the detail view
-      const { data: allLeads } = await supabase.from('leads').select('*').order('created_at', { ascending: false })
+      const { data: allLeads } = await supabase.from('leads').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false })
       if (allLeads) setLeads(allLeads)
       const newest = allLeads?.find(l => l.name === form.name)
       if (newest) {
@@ -1199,7 +1217,7 @@ export default function Leads() {
   async function confirmArchiveLead() {
     const l = confirmArchive; setConfirmArchive(null)
     const actor = resolveActorName(user, employees)
-    const { error } = await supabase.from('leads').update({ archived: true, deleted_at: new Date().toISOString() }).eq('id', l.id)
+    const { error } = await supabase.from('leads').update({ archived: true, deleted_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', l.id)
     if (error) { showToast('Error: ' + error.message); return }
     await logAction(l.id, l.name, '🗄️ Lead archived')
     // Update local state immediately — no refresh needed
@@ -1212,7 +1230,7 @@ export default function Leads() {
   }
 
   async function restoreLead(l) {
-    const { error } = await supabase.from('leads').update({ archived: false, deleted_at: null }).eq('id', l.id)
+    const { error } = await supabase.from('leads').update({ archived: false, deleted_at: null }).eq('tenant_id', myTenantId).eq('id', l.id)
     if (error) { showToast('Error: ' + error.message); return }
     await logAction(l.id, l.name, '📤 Lead restored from archive')
     showToast('Lead restored'); load()
