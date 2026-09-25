@@ -183,7 +183,7 @@ export default function Email() {
     // gmail_client_id stays shared (the app's own OAuth registration, not a
     // personal secret) — but whether GMAIL IS CONNECTED is now per-employee,
     // not the old single shared settings.gmail_refresh_token check.
-    const { data } = await supabase.from('settings').select('gmail_client_id,email_signature,email_signature_logo_url').not('gmail_client_id', 'is', null).limit(1).maybeSingle()
+    const { data } = await supabase.from('settings').select('gmail_client_id,email_signature,email_signature_logo_url').eq('tenant_id', myTenantId).not('gmail_client_id', 'is', null).maybeSingle()
     if (data?.gmail_client_id) setGmailClientId(data.gmail_client_id)
     if (user?.email) {
       if (isDemoMailbox) {
@@ -203,7 +203,7 @@ export default function Email() {
       setM365ConnectedEmail(m365Acct?.m365_email || '')
     }
     // Get M365 client ID for the connect button
-    const { data: m365Settings } = await supabase.from('settings').select('m365_client_id,m365_tenant_id').not('m365_client_id', 'is', null).limit(1).maybeSingle()
+    const { data: m365Settings } = await supabase.from('settings').select('m365_client_id,m365_tenant_id').eq('tenant_id', myTenantId).not('m365_client_id', 'is', null).maybeSingle()
     if (m365Settings?.m365_client_id) setM365ClientId(m365Settings.m365_client_id)
 
     // Each employee has their own signature now — fall back to the firm
@@ -213,7 +213,7 @@ export default function Email() {
     if (user?.email) {
       const { data: emp } = await supabase.from('employees')
         .select('email_signature,email_signature_logo_url')
-        .eq('email', user.email).maybeSingle()
+        .eq('tenant_id', myTenantId).eq('email', user.email).maybeSingle()
       if (emp?.email_signature) sigText = emp.email_signature
       if (emp?.email_signature_logo_url) sigLogo = emp.email_signature_logo_url
     }
@@ -488,7 +488,7 @@ export default function Email() {
       const preview = (form.body || '').slice(0, 120).replace(/\n/g, ' ').trim()
       let authorName = user?.email || 'Staff'
       if (user?.email) {
-        const { data: empRec } = await supabase.from('employees').select('name').eq('email', user.email).maybeSingle()
+        const { data: empRec } = await supabase.from('employees').select('name').eq('tenant_id', myTenantId).eq('email', user.email).maybeSingle()
         if (empRec?.name) authorName = empRec.name
       }
       await supabase.from('client_notes').insert({
