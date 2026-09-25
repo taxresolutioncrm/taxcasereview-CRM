@@ -230,14 +230,14 @@ serve(async (req) => {
       }
     }
 
-    if (recordId) {
+    if (recordId && recordTenantId) {
       const amount = (session.amount_total || 0) / 100
       await supabase.from('payments').insert([{
-        clientName: session.customer_details?.name || '',
+        clientName: recordName || session.customer_details?.name || '',
         amount,
         method: 'Stripe Checkout',
         status: 'Cleared',
-        tenant_id: lead.tenant_id,
+        tenant_id: recordTenantId,
         date: new Date().toISOString().slice(0, 10),
         notes: 'Paid via Stripe Checkout link',
         stripe_payment_intent_id: session.payment_intent || null,
@@ -256,7 +256,7 @@ serve(async (req) => {
               payment_method_type: isCard ? 'card' : 'us_bank_account',
               payment_method_brand: isCard ? (pm.card?.brand || 'card') : (pm.us_bank_account?.bank_name || 'Bank account'),
               payment_method_last4: isCard ? (pm.card?.last4 || '') : (pm.us_bank_account?.last4 || ''),
-            }).eq('id', recordId)
+            }).eq('tenant_id', recordTenantId).eq('id', recordId)
           }
         } catch (pmErr: any) {
           console.error('stripe-checkout-webhook: payment method save failed:', pmErr.message)
