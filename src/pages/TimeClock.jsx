@@ -51,7 +51,7 @@ function elapsedStr(inTime, now) {
 }
 
 export default function TimeClock() {
-  const { role, employeeName } = useApp()
+  const { role, employeeName, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin','Manager'].includes(role)
 
   const [items,      setItems]      = useState([])
@@ -99,7 +99,7 @@ export default function TimeClock() {
     const [{ data:todayRows }, { data:openRows }, { data:e }] = await Promise.all([
       supabase.from('timeentries').select('*').eq('date', todayKey).order('created_at', { ascending: false }),
       supabase.from('timeentries').select('*').or('outTime.is.null,hours.is.null').order('created_at', { ascending: false }).limit(500),
-      supabase.from('employees').select('*').eq('status','Active').order('name'),
+      supabase.from('employees').select('*').eq('tenant_id', myTenantId).eq('status','Active').order('name'),
     ])
     const merged = []
     const seen = new Set()
