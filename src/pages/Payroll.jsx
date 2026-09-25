@@ -19,7 +19,7 @@ function Stat({ label, value, color, bold, big }) {
 }
 
 export default function Payroll() {
-  const { role, employeeName } = useApp()
+  const { role, employeeName, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin','Manager'].includes(role)
 
   const [runs,       setRuns]       = useState([])
@@ -74,7 +74,7 @@ export default function Payroll() {
   }, [])
 
   async function loadEmployees() {
-    const { data } = await supabase.from('employees').select('*').eq('status','Active').order('name')
+    const { data } = await supabase.from('employees').select('*').eq('tenant_id', myTenantId).eq('status','Active').order('name')
     if (data) setEmployees(data)
   }
 
