@@ -60,6 +60,14 @@ function patchSidebar() {
   const path = 'src/components/layout/Sidebar.jsx'
   let s = fs.readFileSync(path, 'utf8')
   const original = s
+
+  // The sidebar now uses the tenant-safe get_sidebar_badge_counts RPC. This
+  // historical row-count repair must not replace that newer implementation or
+  // search for legacy anchors that no longer exist.
+  if (s.includes("supabase.rpc('get_sidebar_badge_counts')")) {
+    console.log('Sidebar email counts already use authoritative badge RPC; legacy patch skipped.')
+    return
+  }
   const start = `    async function loadEmailTaskCounts() {`
   const end = `    if (!user) return`
   if (!s.includes(start) || !s.includes(end)) throw new Error('Sidebar.jsx: email count anchors missing')
