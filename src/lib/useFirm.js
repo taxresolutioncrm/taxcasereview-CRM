@@ -11,40 +11,67 @@ import { supabase } from './supabase'
 
 const BUCKET = 'firm-assets'
 
-let _cache = null   // module-level cache so we only hit DB once per session
+const _cacheByTenant = new Map() // tenant-keyed only; never reuse one office's branding for another
 
 async function loadFirmData() {
-  // During impersonation RLS blocks cross-tenant reads — read from sessionStorage instead.
+  // During impersonation use the explicitly selected tenant identity. Cache by
+  // tenant id, never by module/session globally, so switching offices cannot
+  // retain CloudCPA/TCR/Nashville branding from the previous view.
   try {
     const imp = sessionStorage.getItem('admin_impersonation')
     if (imp) {
-      const { firm_name, logo_url } = JSON.parse(imp)
-      return { firm: { name: firm_name, logourl: logo_url }, logoUrl: logo_url || '/logo.png' }
+      const { tenant_id, firm_name, logo_url } = JSON.parse(imp)
+      const key = tenant_id ? 'tenant:' + tenant_id : null
+      if (key && _cacheByTenant.has(key)) return _cacheByTenant.get(key)
+      const data = { cacheKey: key, firm: { tenant_id, name: firm_name, logourl: logo_url }, logoUrl: logo_url || '/logo.png' }
+      if (key) _cacheByTenant.set(key, data)
+      return data
     }
   } catch (_) {}
-  const { data: s } = await supabase.from('settings').select('*').limit(1).maybeSingle()
-  // Each tenant shows ONLY its own uploaded logo (settings.logourl). We do NOT
-  // fall back to the shared firm-assets/logo bucket file — that single file is
-  // global and gets overwritten by whichever tenant last uploaded, which would
-  // bleed one firm's logo onto another. No logourl → neutral bundled default.
-  const logo = (s && s.logourl) ? s.logourl : '/logo.png'
-  return { firm: s || {}, logoUrl: logo }
+
+  const { data: tenantId } = await supabase.rpc('current_tenant_id')
+  if (!tenantId) return { cacheKey: null, firm: {}, logoUrl: '/logo.png' }
+  const key = 'tenant:' + tenantId
+  if (_cacheByTenant.has(key)) return _cacheByTenant.get(key)
+
+  const { data: settings } = await supabase.from('settings')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  const logo = settings?.logourl || '/logo.png'
+  const data = { cacheKey: key, firm: settings || {}, logoUrl: logo }
+  _cacheByTenant.set(key, data)
+  return data
 }
 
 export function useFirm() {
-  const [firm, setFirm]     = useState(_cache?.firm || null)
-  const [logoUrl, setLogo]  = useState(_cache?.logoUrl || '')
-  const [loading, setLoading] = useState(!_cache)
+  const [firm, setFirm]     = useState(null)
+  const [logoUrl, setLogo]  = useState('')
+  const [loading, setLoading] = useState(true)
+  const [cacheKey, setCacheKey] = useState(null)
 
   useEffect(() => {
-    if (_cache) return
-    loadFirmData().then(data => { _cache = data; setFirm(data.firm); setLogo(data.logoUrl); setLoading(false) })
+    let cancelled = false
+    setLoading(true)
+    loadFirmData().then(data => {
+      if (cancelled) return
+      setCacheKey(data.cacheKey || null)
+      setFirm(data.firm)
+      setLogo(data.logoUrl)
+      setLoading(false)
+    })
+    return () => { cancelled = true }
   }, [])
 
   function refresh() {
-    _cache = null
+    if (cacheKey) _cacheByTenant.delete(cacheKey)
     setLoading(true)
-    loadFirmData().then(data => { _cache = data; setFirm(data.firm); setLogo(data.logoUrl); setLoading(false) })
+    loadFirmData().then(data => {
+      setCacheKey(data.cacheKey || null)
+      setFirm(data.firm)
+      setLogo(data.logoUrl)
+      setLoading(false)
+    })
   }
 
   const name      = firm?.name     || 'Tax Case Review'
