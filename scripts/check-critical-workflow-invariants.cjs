@@ -56,12 +56,14 @@ requireAll('src/pages/Payments.jsx', [
 ])
 
 const invoiceSync = requireAll('src/lib/invoiceSync.js', [
-  "select('id, invNum, total, taxRate, paid, status')",
-  "subtotal + (subtotal * taxRate / 100)",
-  "paid >= total - 0.005",
+  "supabase.rpc('invoice_adjust_paid'",
+  "p_inv_num: invNum",
+  "p_delta: numericDelta",
+  "Math.abs(Number(amount || 0))",
+  "-Math.abs(Number(amount || 0))",
 ])
-if (invoiceSync.includes(".maybeSingle()")) {
-  console.error('ERROR: invoiceSync reverted to duplicate-sensitive maybeSingle invoice lookup.')
+if (invoiceSync.includes(".from('invoices')")) {
+  console.error('ERROR: invoiceSync reverted to browser-side invoice read/modify/write instead of the atomic database RPC.')
   process.exit(1)
 }
 
