@@ -1,4 +1,4 @@
-name: CloudCPA Sandbox Trace Fix Verify Deploy
+name: CloudCPA Sandbox Trace Fix Verify
 
 on:
   push:
@@ -17,9 +17,6 @@ jobs:
   certify-and-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,10 +75,3 @@ jobs:
       - name: Build exact sandbox source
         run: npx vite build
 
-      - name: Verify Cloudflare credentials
-        run: |
-          test -n "$CLOUDFLARE_API_TOKEN"
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
-
-      - name: Deploy Cloudflare sandbox preview only
-        run: npx --yes wrangler@latest pages deploy dist --project-name=taxcasereview-crm --branch=sandbox-cloudcpa-green-20260925 --commit-dirty=true
