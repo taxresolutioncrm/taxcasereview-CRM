@@ -1,11 +1,4 @@
-import fs from 'node:fs'
-
-const src=fs.readFileSync('src/lib/transcriptPull.js','utf8')
-const start=src.indexOf('export function parseYearSpec')
-const end=src.indexOf('export function nameKey')
-if(start<0||end<0||end<=start) throw new Error('Could not isolate transcript coverage helpers')
-const pure=src.slice(start,end).replace(/export /g,'')
-const { parseYearSpec, requestCoverageSatisfied }=(new Function(pure+';return {parseYearSpec,requestCoverageSatisfied};'))()
+import { parseYearSpec, requestCoverageSatisfied } from '../src/lib/transcriptCoverage.js'
 
 const failures=[]
 const ok=(label,v)=>{if(!v)failures.push(label)}
