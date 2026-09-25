@@ -253,9 +253,10 @@ export default function Chat() {
     const current = convPrefs[convId] || { starred: false, muted: false, section: null }
     const next = { ...current, section: section.trim() || null }
     setConvPrefs(p => ({ ...p, [convId]: next }))
+    if (!myTenantId) return
     supabase.from('chat_conv_prefs').upsert(
-      { viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
-      { onConflict: 'viewer_name,conv_id' }
+      { tenant_id: myTenantId, viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
+      { onConflict: 'tenant_id,viewer_name,conv_id' }
     )
   }
   const [searchQ, setSearchQ]   = useState('')
@@ -488,22 +489,27 @@ export default function Chat() {
   // ── per-viewer rep prefs (hidden / VIP) ──
   useEffect(() => {
     if (!myName) return
-    supabase.from('chat_rep_prefs').select('rep_name, hidden, vip').eq('viewer_name', myName)
+    if (!myTenantId) { setRepPrefs({}); return }
+    supabase.from('chat_rep_prefs')
+      .select('rep_name, hidden, vip')
+      .eq('tenant_id', myTenantId)
+      .eq('viewer_name', myName)
       .then(({ data }) => {
         if (!data) return
         const map = {}
         data.forEach(r => { map[r.rep_name] = { hidden: r.hidden, vip: r.vip } })
         setRepPrefs(map)
       })
-  }, [myName])
+  }, [myName, myTenantId])
 
   async function toggleRepPref(repName, key) {
     const current = repPrefs[repName] || { hidden: false, vip: false }
     const next = { ...current, [key]: !current[key] }
     setRepPrefs(p => ({ ...p, [repName]: next }))
+    if (!myTenantId) return
     await supabase.from('chat_rep_prefs').upsert(
-      { viewer_name: myName, rep_name: repName, hidden: next.hidden, vip: next.vip },
-      { onConflict: 'viewer_name,rep_name' }
+      { tenant_id: myTenantId, viewer_name: myName, rep_name: repName, hidden: next.hidden, vip: next.vip },
+      { onConflict: 'tenant_id,viewer_name,rep_name' }
     )
     setRepMenu(null)
   }
@@ -524,22 +530,27 @@ export default function Chat() {
   // ── per-viewer conversation prefs (star / mute / section) ──
   useEffect(() => {
     if (!myName) return
-    supabase.from('chat_conv_prefs').select('conv_id, starred, muted, section').eq('viewer_name', myName)
+    if (!myTenantId) { setConvPrefs({}); return }
+    supabase.from('chat_conv_prefs')
+      .select('conv_id, starred, muted, section')
+      .eq('tenant_id', myTenantId)
+      .eq('viewer_name', myName)
       .then(({ data }) => {
         if (!data) return
         const map = {}
         data.forEach(r => { map[r.conv_id] = { starred: r.starred, muted: r.muted, section: r.section } })
         setConvPrefs(map)
       })
-  }, [myName])
+  }, [myName, myTenantId])
 
   async function toggleConvPref(convId, convType, key) {
     const current = convPrefs[convId] || { starred: false, muted: false, section: null }
     const next = { ...current, [key]: !current[key] }
     setConvPrefs(p => ({ ...p, [convId]: next }))
+    if (!myTenantId) return
     await supabase.from('chat_conv_prefs').upsert(
-      { viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
-      { onConflict: 'viewer_name,conv_id' }
+      { tenant_id: myTenantId, viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
+      { onConflict: 'tenant_id,viewer_name,conv_id' }
     )
     setChanMenu(null)
   }
