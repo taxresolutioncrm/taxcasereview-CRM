@@ -16,6 +16,7 @@ const parser='src/lib/irsTranscriptParser.js'
 const portal='src/pages/IRSPortal.jsx'
 const pullUi='src/components/TranscriptPull.jsx'
 const completionSql='supabase/migrations/20260920025000_taxres_family_transcript_isp_completion.sql'
+const browserProviderSql='supabase/migrations/20260924133000_allow_browser_tds_provider.sql'
 const config='supabase/config.toml'
 
 for(const n of [
@@ -130,6 +131,11 @@ for(const n of [
   'tenant_id = current_tenant_id()',
   'transcript_analyses_tenant_client_idx'
 ]) need(completionSql,n)
+
+for(const n of [
+  "drop constraint if exists transcript_pull_requests_provider_check",
+  "'irs_browser'::text"
+]) need(browserProviderSql,n)
 
 need(config,'[functions.transcript-pull]')
 need(config,'[functions.transcript-pull-callback]')
