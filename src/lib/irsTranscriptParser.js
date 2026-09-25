@@ -189,3 +189,43 @@ export async function extractPdfText(file) {
   try { doc.destroy() } catch { /* noop */ }
   return pages.join('\n')
 }
+
+
+function htmlEntityDecode(value) {
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea')
+    textarea.innerHTML = value
+    return textarea.value
+  }
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+}
+
+export async function extractHtmlText(file) {
+  const raw = await file.text()
+  const withBreaks = raw
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/(?:p|div|tr|li|pre|h[1-6]|table)>/gi, '\n')
+    .replace(/<\/(?:td|th)>/gi, '  ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+  return htmlEntityDecode(withBreaks)
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+export async function extractTranscriptText(file) {
+  const type = String(file?.type || '').toLowerCase()
+  const name = String(file?.name || '').toLowerCase()
+  if (type.includes('text/html') || /\.html?$/.test(name)) return extractHtmlText(file)
+  return extractPdfText(file)
+}
