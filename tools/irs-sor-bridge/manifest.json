@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "TaxRes IRS SOR Bridge",
+  "version": "1.0.0",
+  "description": "Moves IRS SOR transcript attachments from the practitioner's authenticated browser session into TaxRes without storing IRS credentials or cookies.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://la.www4.irs.gov/*",
+    "https://taxrescrm.app/*",
+    "https://*.taxrescrm.app/*",
+    "https://*.taxcasereview-crm.pages.dev/*",
+    "https://*.nashville-tax-crm.pages.dev/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://la.www4.irs.gov/semail/*"],
+      "js": ["irs-sor.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://taxrescrm.app/*",
+        "https://*.taxrescrm.app/*",
+        "https://*.taxcasereview-crm.pages.dev/*",
+        "https://*.nashville-tax-crm.pages.dev/*"
+      ],
+      "js": ["crm-bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
