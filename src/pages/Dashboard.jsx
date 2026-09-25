@@ -95,7 +95,7 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { user, role, employeeName, can } = useApp()
+  const { user, role, employeeName, can, myTenantId } = useApp()
   const [metrics, setMetrics] = useState({})
   const [recentCases, setRecentCases] = useState([])
   const [tasks, setTasks] = useState([])
@@ -303,11 +303,11 @@ export default function Dashboard() {
   // Load saved layout from employees table on mount
   useEffect(() => {
     if (!user?.email) return
-    supabase.from('employees').select('dashboard_layout').eq('email', user.email).maybeSingle()
+    supabase.from('employees').select('dashboard_layout').eq('tenant_id', myTenantId).eq('email', user.email).maybeSingle()
       .then(({ data }) => {
         if (data?.dashboard_layout?.length) setCardOrder(data.dashboard_layout)
       })
-  }, [user?.email])
+  }, [user?.email, myTenantId])
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--t3)', fontSize: 14 }}>
@@ -402,7 +402,7 @@ export default function Dashboard() {
 
   async function saveLayout(newOrder) {
     if (!user?.email) return
-    await supabase.from('employees').update({ dashboard_layout: newOrder }).eq('email', user.email)
+    await supabase.from('employees').update({ dashboard_layout: newOrder }).eq('tenant_id', myTenantId).eq('email', user.email)
     setSaveIndicator(true)
     setTimeout(() => setSaveIndicator(false), 1500)
   }
