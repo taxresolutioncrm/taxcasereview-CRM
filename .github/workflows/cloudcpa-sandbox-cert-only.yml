@@ -1,9 +1,10 @@
-name: CloudCPA Sandbox Certification Only
+name: CloudCPA Sandbox Final Certification
 
 on:
   push:
     branches:
       - sandbox/cloudcpa-green-20260925
+      - sandbox/cloudcpa-full-crm-repair-20260924
 
 permissions:
   contents: read
