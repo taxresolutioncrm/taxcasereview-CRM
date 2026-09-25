@@ -1,7 +1,5 @@
 import { supabase } from './supabase'
 import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
-export { parseYearSpec, requestCoverageSatisfied } from './transcriptCoverage'
-import { requestCoverageSatisfied } from './transcriptCoverage'
 
 // Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
 // Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
@@ -14,15 +12,6 @@ const DIRECT_PROVIDER = {
   note: 'Requires an approved IRS e-Services API Client ID and a verified product auth/request contract. Web TDS remains a separate practitioner login path.',
 }
 
-// Interactive practitioner path: always available; practitioner logs in to IRS TDS directly
-const INTERACTIVE_PROVIDER = {
-  id: 'irs_interactive',
-  label: 'Practitioner IRS / ID.me TDS',
-  chip: 'Available',
-  available: true,
-  note: 'Practitioner signs in to the IRS Transcript Delivery System using their IRS / ID.me credentials. This path is always available and independent of the automated API integration.',
-}
-
 // Manual fallback: folder watcher
 const MANUAL_PROVIDER = {
   id: 'manual',
@@ -32,7 +21,7 @@ const MANUAL_PROVIDER = {
   note: 'Watch a local folder where IRS TDS PDFs are saved; the CRM auto-imports, parses and files each PDF.',
 }
 
-export const PULL_PROVIDERS = [DIRECT_PROVIDER, INTERACTIVE_PROVIDER, MANUAL_PROVIDER]
+export const PULL_PROVIDERS = [DIRECT_PROVIDER, MANUAL_PROVIDER]
 const activeDirectPolls = new Set()
 
 async function refreshProviderCapability() {
@@ -60,7 +49,7 @@ export function getProvider(id, providers = PULL_PROVIDERS) {
 }
 
 export async function submitToProvider(providerId, requestRow) {
-  if (providerId === 'manual' || providerId === 'irs_interactive') return { status: 'Requested' }
+  if (providerId === 'manual') return { status: 'Requested' }
   if (providerId !== 'irs_a2a') throw new Error('Unsupported transcript provider.')
   if (!requestRow?.id) throw new Error('Direct IRS TDS requires a saved pull request.')
   const { data, error } = await supabase.functions.invoke('transcript-pull', {
@@ -79,6 +68,46 @@ export async function checkDirectPull(requestId) {
   if (error) throw error
   if (data?.error) throw new Error(data.error)
   return data
+}
+
+export function parseYearSpec(spec) {
+  const out = new Set()
+  if (!spec) return out
+  const s = String(spec)
+  const ranges = s.match(/((?:19|20)\d{2})\s*[-–—]\s*((?:19|20)\d{2})/g) || []
+  for (const r of ranges) {
+    const [a, b] = r.match(/(?:19|20)\d{2}/g).map(Number)
+    for (let y = Math.min(a, b); y <= Math.max(a, b); y++) out.add(String(y))
+  }
+  const rest = s.replace(/((?:19|20)\d{2})\s*[-–—]\s*((?:19|20)\d{2})/g, ' ')
+  for (const m of rest.match(/(?:19|20)\d{2}/g) || []) out.add(m)
+  return out
+}
+
+function typeKey(v) {
+  let x = String(v || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (x === 'tax return transcript') x = 'return transcript'
+  if (x === 'wage income') x = 'wage and income'
+  if (x === 'wage income transcript') x = 'wage and income transcript'
+  return x
+}
+
+function sameTranscriptType(a, b) {
+  const x = typeKey(a), y = typeKey(b)
+  if (!x || !y) return false
+  return x === y || x.includes(y) || y.includes(x)
+}
+
+export function requestCoverageSatisfied(req, rows) {
+  const wantedYears = parseYearSpec(req?.tax_years)
+  const wantedTypes = (req?.transcript_types || []).filter(Boolean)
+  const have = rows || []
+  if (wantedYears.size === 0 && wantedTypes.length === 0) return have.length > 0
+  if (wantedYears.size > 0 && wantedTypes.length > 0) {
+    return [...wantedYears].every(year => wantedTypes.every(type => have.some(r => String(r.tax_year || '') === year && sameTranscriptType(r.transcript_type, type))))
+  }
+  if (wantedYears.size > 0) return [...wantedYears].every(year => have.some(r => String(r.tax_year || '') === year))
+  return wantedTypes.every(type => have.some(r => sameTranscriptType(r.transcript_type, type)))
 }
 
 export function nameKey(s) {
@@ -286,186 +315,7 @@ async function resumeDirectPulls() {
   } catch { /* page can still use the manual path */ }
 }
 
-
-// ── Browser-assisted IRS TDS ────────────────────────────────────────────
-// The practitioner signs in to the normal IRS / ID.me TDS site in their own browser tab and
-// requests transcripts there. The CRM never sees, stores or relays IRS/ID.me credentials,
-// cookies or tokens: it only opens the public IRS page and later receives the transcript
-// PDFs the practitioner saved (watched folder or drop/upload), then files and analyzes them.
-export const BROWSER_PROVIDER_ID = 'irs_browser'
-export const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'
-export const IRS_SOR_URL = 'https://la.www4.irs.gov/semail/views/list_mail'
-
-export function openIrsTds(url = IRS_TDS_URL) {
-  // noopener/noreferrer: the IRS tab and the CRM tab cannot reach each other.
-  if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener,noreferrer')
+if (typeof window !== 'undefined') {
+  setTimeout(() => refreshProviderCapability(), 0)
+  setTimeout(() => resumeDirectPulls(), 2000)
 }
-
-// Open an empty tab inside the click (so the browser does not block it). It is only sent to the
-// IRS after the CRM request is saved. The link back to the CRM is cut immediately.
-export function openPendingIrsTab() {
-  if (typeof window === 'undefined') return null
-  const tab = window.open('', '_blank')
-  if (!tab) return null
-  try { tab.opener = null } catch { /* already isolated */ }
-  try { tab.document.title = 'Saving request…'; tab.document.body.textContent = 'Saving your transcript request in the CRM…' } catch { /* cross-origin */ }
-  return tab
-}
-
-// Send the waiting tab to the IRS. The redirect is issued from inside that tab with a
-// no-referrer policy, so the IRS page receives no CRM address and no link back to the CRM.
-export function navigatePendingIrsTab(tab, url = IRS_TDS_URL) {
-  if (!tab || tab.closed) { openIrsTds(url); return }
-  try {
-    const safe = String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
-    tab.document.open()
-    tab.document.write(`<!doctype html><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=${safe}"><title>Opening IRS TDS…</title>`)
-    tab.document.close()
-  } catch {
-    tab.location.replace(url)
-  }
-}
-
-export function closePendingIrsTab(tab) {
-  try { if (tab && !tab.closed) tab.close() } catch { /* noop */ }
-}
-
-// Save the pending request first; the IRS tab is navigated only after the insert succeeds.
-export async function startBrowserTdsRequest(row, tab) {
-  try {
-    const { error } = await supabase.from('transcript_pull_requests').insert([row])
-    if (error) throw new Error(error.message)
-  } catch (e) {
-    closePendingIrsTab(tab)
-    throw e
-  }
-  navigatePendingIrsTab(tab, IRS_TDS_URL)
-}
-
-export function isOpenBrowserRequest(r) {
-  return r?.provider === BROWSER_PROVIDER_ID && (r.status === 'Requested' || r.status === 'In Progress')
-}
-
-export async function sha256File(file) {
-  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
-  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-function tinLast4(text) {
-  const m = String(text || '').match(/(?:Taxpayer Identification Number|SSN\/EIN|SSN|EIN|TIN)\s*(?:provided)?\s*:?\s*[X*\d]{3}[- ]?[X*\d]{2}[- ]?(\d{4})\b|(?:Taxpayer Identification Number|EIN)\s*:?\s*[X*\d]{2}-?[X*\d]{3}(\d{4})\b/i)
-  return m ? (m[1] || m[2]) : null
-}
-
-// Read a returned PDF once: text layer → parsed analysis + masked-TIN last 4 for matching.
-export async function analyzeReturnedTranscript(file) {
-  const text = await extractPdfText(file)
-  if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
-  return { analysis: parseIrsTranscript(text), tinLast4: tinLast4(text) }
-}
-
-// Why a parsed transcript does not belong to this pending request (null = it belongs).
-export function browserMatchProblem(req, clientTinLast4, parsed) {
-  const a = parsed?.analysis || {}
-  // Automatic filing needs a positive taxpayer match — never year/type alone.
-  if (!clientTinLast4) return 'client has no SSN/EIN on file to match against — file this PDF manually'
-  if (!parsed?.tinLast4) return 'no readable taxpayer SSN/EIN on this PDF — file it manually'
-  if (parsed.tinLast4 !== clientTinLast4) return `TIN ending ${parsed.tinLast4} is not this client`
-  const years = parseYearSpec(req?.tax_years)
-  if (years.size && a.tax_year && !years.has(String(a.tax_year))) return `tax year ${a.tax_year} was not requested`
-  const types = (req?.transcript_types || []).filter(Boolean)
-  if (types.length && a.transcript_type && a.transcript_type !== 'Other' && !types.some(t => sameTranscriptType(a.transcript_type, t))) return `${a.transcript_type} was not requested`
-  return null
-}
-
-async function clientTinLast4(clientId) {
-  if (!clientId) return null
-  const { data } = await supabase.from('clients').select('ssn,ein').eq('id', clientId).maybeSingle()
-  const digits = String(data?.ein || data?.ssn || '').replace(/\D/g, '')
-  return digits.length >= 4 ? digits.slice(-4) : null
-}
-
-// One filing at a time per browser tab, so a folder scan and a drop can never file the same PDF twice.
-let browserFilingQueue = Promise.resolve()
-
-// File returned IRS PDFs against one pending browser request. Returns per-file results.
-export function fileBrowserTranscripts(requestId, files) {
-  const job = browserFilingQueue.then(() => fileBrowserTranscriptsNow(requestId, files))
-  browserFilingQueue = job.catch(() => {})
-  return job
-}
-
-async function fileBrowserTranscriptsNow(requestId, files) {
-  const { data: req, error } = await supabase.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle()
-  if (error || !req) throw new Error('Transcript request not found in this office.')
-  if (req.provider !== BROWSER_PROVIDER_ID) throw new Error('This request is not an IRS TDS browser request.')
-  const clientLast4 = await clientTinLast4(req.client_id)
-  const ids = new Set(req.result_analysis_ids || [])
-  const filedKeys = new Set(req.provider_filed_keys || [])
-  const results = []
-  for (const file of files) {
-    const name = file?.name || 'transcript.pdf'
-    try {
-      const key = await sha256File(file)
-      if (filedKeys.has(key)) { results.push({ file: name, status: 'duplicate' }); continue }
-      const { data: prior } = await supabase.from('transcript_analyses').select('id').eq('client_id', req.client_id).eq('raw_analysis->>file_sha256', key).limit(1)
-      if (prior?.length) { filedKeys.add(key); results.push({ file: name, status: 'duplicate' }); continue }
-      const parsed = await analyzeReturnedTranscript(file)
-      const problem = browserMatchProblem(req, clientLast4, parsed)
-      if (problem) { results.push({ file: name, status: 'rejected', reason: problem }); continue }
-      const analysisId = await storeTranscriptAnalysis(file, req.client_name, { ...parsed.analysis, file_sha256: key }, { clientId: req.client_id || null })
-      ids.add(analysisId); filedKeys.add(key)
-      results.push({ file: name, status: 'filed', year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type })
-    } catch (e) {
-      results.push({ file: name, status: 'error', reason: e?.message || 'Could not file this PDF.' })
-    }
-  }
-  const idList = [...ids]
-  let covered = false
-  if (idList.length) {
-    const { data: rows, error: rowsErr } = await supabase.from('transcript_analyses').select('id,tax_year,transcript_type').in('id', idList)
-    if (rowsErr) throw new Error(rowsErr.message)
-    covered = requestCoverageSatisfied(req, rows || [])
-  }
-  const { error: upErr } = await supabase.from('transcript_pull_requests').update({
-    result_analysis_ids: idList,
-    provider_filed_keys: [...filedKeys],
-    provider_status: covered ? 'Filed' : idList.length ? 'Partially filed' : 'Awaiting IRS files',
-    status: covered ? 'Completed' : 'In Progress',
-    completed_at: covered ? new Date().toISOString() : null,
-    updated_at: new Date().toISOString(),
-  }).eq('id', requestId)
-  if (upErr) throw new Error(upErr.message)
-  return { results, completed: covered, filedCount: idList.length }
-}
-
-// Pick the one open browser request a returned PDF belongs to (by client TIN + requested year/type).
-export async function matchBrowserRequest(openRequests, parsed) {
-  const candidates = []
-  for (const r of openRequests.filter(isOpenBrowserRequest)) {
-    const last4 = await clientTinLast4(r.client_id)
-    if (!parsed.tinLast4 || !last4 || parsed.tinLast4 !== last4) continue
-    if (!browserMatchProblem(r, last4, parsed)) candidates.push(r)
-  }
-  return candidates.length === 1 ? candidates[0] : null
-}
-
-// Remember the watched folder between visits (the handle stays in this browser only).
-const HANDLE_DB = 'taxres-tds-folder', HANDLE_STORE = 'handles'
-function handleDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(HANDLE_DB, 1)
-    req.onupgradeneeded = () => req.result.createObjectStore(HANDLE_STORE)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-export async function saveWatchedFolder(handle) {
-  try { const db = await handleDb(); await new Promise((res, rej) => { const tx = db.transaction(HANDLE_STORE, 'readwrite'); tx.objectStore(HANDLE_STORE).put(handle, 'tds'); tx.oncomplete = res; tx.onerror = () => rej(tx.error) }) } catch { /* optional convenience */ }
-}
-export async function loadWatchedFolder() {
-  try { const db = await handleDb(); return await new Promise(res => { const tx = db.transaction(HANDLE_STORE, 'readonly'); const g = tx.objectStore(HANDLE_STORE).get('tds'); g.onsuccess = () => res(g.result || null); g.onerror = () => res(null) }) } catch { return null }
-}
-export async function forgetWatchedFolder() {
-  try { const db = await handleDb(); const tx = db.transaction(HANDLE_STORE, 'readwrite'); tx.objectStore(HANDLE_STORE).delete('tds') } catch { /* noop */ }
-}
-
