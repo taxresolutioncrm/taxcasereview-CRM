@@ -25,7 +25,7 @@
     "ui:quick-create": "node scripts/fix-quick-create-routes.mjs",
     "ui:navigation-audit": "node scripts/audit-ui-navigation.mjs",
     "source:verify-current": "git diff --exit-code -- src scripts package.json vite.config.js 2>/dev/null || (echo 'ERROR: prebuild repair scripts changed tracked source. Commit the source fix instead of building mutated source.' && exit 1)",
-    "prebuild": "npm run dashboard:glow && npm run forms:state-esign-prefill && npm run forms:irs-current && npm run reports:accuracy && npm run accounting:oauth-state",
+    "prebuild": "npm run admin:metrics-proxy && npm run admin:product-usage-labels && npm run cases:modal-scope && npm run ui:quick-create && npm run ui:navigation-audit && npm run source:verify-current && npm run check-transcripts && npm run check-transcript-parser && npm run check-transcript-coverage && npm run check-tax-workflows-parity",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist --dotfiles",
