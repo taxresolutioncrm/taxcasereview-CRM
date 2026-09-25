@@ -2,6 +2,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useApp } from '../context/AppContext'
 
 const YEARS = Array.from({length:21},(_,i)=>2026-i)
 const BLANK = { clientName:'', transcriptType:'Tax Return (1040)', taxYears:[], taxYearsCustom:'', requestDate:'', receivedDate:'', method:'IRS e-Services', status:'Pending', assignedTo:'', notes:'' }
@@ -15,6 +16,7 @@ const REQUEST_METHODS = ['IRS e-Services','CAF Unit (Fax)','IRS Online Portal','
 const STATUSES = ['Pending','Requested — Waiting','Received — Partial','Received — Complete','Error / Rejected','On Hold']
 
 export default function Transcripts() {
+  const { myTenantId } = useApp()
   const location = useLocation()
   const [items,     setItems]    = useState([])
   const [clients,   setClients]  = useState([])
@@ -39,13 +41,13 @@ export default function Transcripts() {
   }, [location.search])
 
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (myTenantId) load() }, [myTenantId])
 
   async function load() {
     const [{ data:t },{ data:c },{ data:e }] = await Promise.all([
-      supabase.from('transcripts').select('*').order('created_at',{ascending:false}),
-      supabase.from('clients').select('id,name,ssn,taxYears,assignedTo'),
-      supabase.from('employees').select('name'),
+      supabase.from('transcripts').select('*').eq('tenant_id', myTenantId).order('created_at',{ascending:false}),
+      supabase.from('clients').select('id,name,ssn,taxYears,assignedTo').eq('tenant_id', myTenantId),
+      supabase.from('employees').select('name').eq('tenant_id', myTenantId),
     ])
     if (t) setItems(t)
     if (c) setClients(c)
