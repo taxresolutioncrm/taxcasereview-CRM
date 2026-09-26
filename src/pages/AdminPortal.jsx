@@ -5262,19 +5262,18 @@ function CommandCenter() {
   const crmUpcomingDemos = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_demos || []) : []
   const crmUpcomingDeadlines = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_deadlines || []) : []
 
-  const TABS = [
-    { key:'overview',  label:'Overview'  },
-    { key:'support',   label:'Support'   },
-    { key:'products',  label:'Products'  },
-    { key:'marketing', label:'Analytics' },
-    { key:'search',    label:'SEO'       },
-    { key:'linkedin',  label:'LinkedIn'  },
-    { key:'content',   label:'Content'   },
-    { key:'sales',     label:'Sales'     },
-    { key:'crm',       label:'CRM'       },
-    { key:'goals',     label:'Goals'     },
-    { key:'system',    label:'System'    },
+  const TAB_GROUPS = [
+    { label:'Portfolio', tabs:[
+      { key:'overview', label:'Overview' }, { key:'products', label:'Products' }, { key:'crm', label:'CRM' }, { key:'support', label:'Support' },
+    ]},
+    { label:'Growth', tabs:[
+      { key:'marketing', label:'Analytics' }, { key:'search', label:'SEO' }, { key:'linkedin', label:'LinkedIn' }, { key:'content', label:'Content' }, { key:'sales', label:'Sales' },
+    ]},
+    { label:'Management', tabs:[
+      { key:'goals', label:'Goals' }, { key:'system', label:'System' },
+    ]},
   ]
+  const TABS = TAB_GROUPS.flatMap(g => g.tabs)
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
@@ -5291,17 +5290,23 @@ function CommandCenter() {
           <div style={{ fontSize:13, color:'#475569' }}>{data.todayDate}</div>
         </div>
 
-        {/* Tab bar */}
-        <div style={{ display:'flex', gap:4, marginBottom:28, padding:'4px', background:'rgba(255,255,255,.04)',
-          borderRadius:10, border:'1px solid rgba(99,102,241,.15)', width:'fit-content' }}>
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              padding:'7px 18px', borderRadius:7, border:'none', cursor:'pointer',
-              fontWeight: tab===t.key ? 700 : 500, fontSize:13,
-              background: tab===t.key ? 'rgba(99,102,241,.35)' : 'transparent',
-              color: tab===t.key ? '#a5b4fc' : '#64748b',
-              transition:'all .15s',
-            }}>{t.label}</button>
+        {/* Grouped navigation — keeps the Command Center readable as modules grow */}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:10, marginBottom:28 }}>
+          {TAB_GROUPS.map(group => (
+            <div key={group.label} style={{ padding:'5px', background:'rgba(255,255,255,.04)',
+              borderRadius:10, border:'1px solid rgba(99,102,241,.15)' }}>
+              <div style={{fontSize:8,fontWeight:800,color:'#334155',textTransform:'uppercase',letterSpacing:'.08em',padding:'0 8px 4px'}}>{group.label}</div>
+              <div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
+                {group.tabs.map(t => (
+                  <button key={t.key} onClick={() => setTab(t.key)} style={{
+                    padding:'7px 13px', borderRadius:7, border:'none', cursor:'pointer',
+                    fontWeight: tab===t.key ? 700 : 500, fontSize:12,
+                    background: tab===t.key ? 'rgba(99,102,241,.35)' : 'transparent',
+                    color: tab===t.key ? '#a5b4fc' : '#64748b', transition:'all .15s',
+                  }}>{t.label}</button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -5443,6 +5448,42 @@ function CommandCenter() {
               </div>
             )
           })()}
+
+
+          {/* ── Demo Offices / product workspaces ─────────────────────────── */}
+          <div style={{ marginBottom:24 }}>
+            <div style={{display:'flex',alignItems:'end',justifyContent:'space-between',gap:12,marginBottom:10}}>
+              <div>
+                <div style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.1em' }}>Demo Offices</div>
+                <div style={{fontSize:10,color:'#334155',marginTop:3}}>Quick launch into each live product workspace. Tax Res CRM uses the real DEMO tenant; other products open their product app/demo workspace.</div>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
+              {[
+                {key:'taxres_demo',label:'Tax Res CRM Demo',icon:'📊',url:'https://taxrescrm.app',tenantId:'518808b4-10dd-47fd-900e-6c3fc1ff2e7e',mode:'Jump In'},
+                ...mergeProductRegistry(reportingProducts)
+                  .filter(p=>!p.isTenant && ['taxres_crm'].indexOf(p.key)===-1 && p.appUrl)
+                  .map(p=>({key:p.key,label:`${p.label} Demo`,icon:p.icon,url:p.appUrl,mode:'Open App'}))
+              ].map(d => (
+                <div key={d.key} style={{...CC.card({padding:'14px 16px'}),display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{fontSize:22}}>{d.icon}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{d.label}</div>
+                    <div style={{fontSize:9,color:'#475569',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.url}</div>
+                  </div>
+                  <button onClick={async()=>{
+                    if(d.tenantId){
+                      try {
+                        await supabase.rpc('set_admin_tenant_override',{p_tenant_id:d.tenantId})
+                        sessionStorage.setItem('admin_impersonation',JSON.stringify({tenant_id:d.tenantId,firm_name:d.label,started_at:new Date().toISOString()}))
+                      } catch(e) { console.error('Demo jump-in override failed',e) }
+                    }
+                    window.open(d.url,'_blank','noopener,noreferrer')
+                  }} style={{...S.btn('ghost'),fontSize:10,padding:'5px 9px',whiteSpace:'nowrap'}}>{d.mode} ↗</button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* ── Needs Attention ─────────────────────────────────────────── */}
           {(() => {
@@ -5621,18 +5662,23 @@ function CommandCenter() {
             </div>
           ) : ga4Data ? (<>
             {ga4Data.syncWarning && <div style={{marginBottom:14,padding:'10px 12px',borderRadius:8,background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.2)',color:'#fbbf24',fontSize:11}}>Latest Google sync failed; showing the most recent cached GA4 data.</div>}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
-              {[
-                { label:'Sessions Today',    value: ga4Data.sessions.toLocaleString(), sub: ga4Data.sessionChange!==0 ? `${ga4Data.sessionChange>0?'↑':'↓'} ${Math.abs(ga4Data.sessionChange)}% vs yesterday` : 'vs yesterday', icon:'📊', color:'#6366f1' },
-                { label:'Users Today',       value: ga4Data.users.toLocaleString(),    sub:`${ga4Data.newUsers.toLocaleString()} new`,   icon:'👥', color:'#0ea5e9' },
-                { label:'Bounce Rate',       value:`${ga4Data.bounceRate}%`,            sub:'GA4 today',     icon:'↩️', color:'#10b981' },
-                { label:'Pages / Session',   value: ga4Data.pagesPerSession,            sub:'GA4 today',     icon:'📄', color:'#f59e0b' },
-              ].map(k => <KPICard key={k.label} {...k} />)}
-            </div>
+            {(() => {
+              const reportLabel = ga4Data.reportingDate
+                ? new Date(ga4Data.reportingDate + 'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric'})
+                : 'latest'
+              return <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
+                {[
+                  { label:`Sessions · ${reportLabel}`, value:ga4Data.sessions.toLocaleString(), sub:ga4Data.sessionChange!==0 ? `${ga4Data.sessionChange>0?'↑':'↓'} ${Math.abs(ga4Data.sessionChange)}% vs prior day` : 'vs prior day', icon:'📊', color:'#6366f1' },
+                  { label:`Users · ${reportLabel}`, value:ga4Data.users.toLocaleString(), sub:`${ga4Data.newUsers.toLocaleString()} new`, icon:'👥', color:'#0ea5e9' },
+                  { label:'Bounce Rate', value:`${ga4Data.bounceRate}%`, sub:`GA4 · ${reportLabel}`, icon:'↩️', color:'#10b981' },
+                  { label:'Pages / Session', value:ga4Data.pagesPerSession, sub:`GA4 · ${reportLabel}`, icon:'📄', color:'#f59e0b' },
+                ].map(k => <KPICard key={k.label} {...k} />)}
+              </div>
+            })()}
 
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18, marginBottom:24 }}>
               <div style={CC.card({padding:'22px 24px'})}>
-                <div style={CC.sectionLabel}>Session sources — today</div>
+                <div style={CC.sectionLabel}>Session sources — reporting date</div>
                 {ga4Data.channels.map((s,i) => (
                   <div key={i} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
                     <div style={{ fontSize:12, color:'#94a3b8', width:130, flexShrink:0 }}>{s.label}</div>
@@ -6388,9 +6434,15 @@ function ContentCenter({ embeddedMode = false }) {
 
   async function loadDrafts() {
     setLoading(true)
-    let data = []
-    try { const r = await supabase.rpc('get_content_drafts', { p_limit: 200 }); data = r.data || [] } catch(_) { data = [] }
-    setDrafts(data || [])
+    try {
+      const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'list_drafts', limit:200 } })
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Could not load content drafts')
+      setDrafts(data.drafts || [])
+    } catch(e) {
+      console.error('Content Center load failed', e)
+      setDrafts([])
+      showToast('Content Center could not load: ' + String(e?.message || e), false)
+    }
     setLoading(false)
   }
 
@@ -6452,14 +6504,16 @@ function ContentCenter({ embeddedMode = false }) {
   }
 
   async function updateStatus(id, status) {
-    await supabase.rpc('update_content_status', { p_id: id, p_status: status, p_actor: 'romy@taxrescrm.net' })
+    const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'update_status', id, status } })
+    if (error || !data?.ok) { showToast('Status update failed', false); return }
     setDrafts(prev => prev.map(d => d.id===id ? {...d, status} : d))
     if (selected?.id === id) setSelected(s => ({...s, status}))
     showToast(status==='approved'?'Approved ✓':status==='archived'?'Archived':status==='published'?'Marked published':'Updated')
   }
 
   async function deleteDraft(id) {
-    await supabase.from('content_drafts').delete().eq('id', id)
+    const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'delete_draft', id } })
+    if (error || !data?.ok) { showToast('Delete failed', false); return }
     setDrafts(prev => prev.filter(d => d.id !== id))
     if (selected?.id === id) setSelected(null)
     showToast('Deleted')
@@ -6468,7 +6522,8 @@ function ContentCenter({ embeddedMode = false }) {
   async function saveEdit() {
     if (!selected) return
     setSaving(true)
-    await supabase.rpc('save_content_draft', { p_id: selected.id, p_title: selected.title, p_body: editBody })
+    const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'save_draft', id:selected.id, title:selected.title, body:editBody } })
+    if (error || !data?.ok) { setSaving(false); showToast('Save failed', false); return }
     setDrafts(prev => prev.map(d => d.id===selected.id ? {...d, body: editBody} : d))
     setSelected(s => ({...s, body: editBody}))
     setEditing(false)
@@ -7239,8 +7294,11 @@ function LinkedInPublisher({ embeddedMode = false }) {
                   <span style={{ width:7, height:7, borderRadius:'50%', background:'#10b981', display:'inline-block' }} />
                   <span style={{ fontSize:11, fontWeight:700, color:'#10b981' }}>{connection.display_name}</span>
                 </div>
-                <div style={{ fontSize:10, color:'#475569', marginBottom:8 }}>
-                  Expires {new Date(connection.expires_at).toLocaleDateString()}
+                <div style={{ fontSize:10, color:'#475569', marginBottom:4 }}>
+                  Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
+                </div>
+                <div style={{ fontSize:9, color:'#64748b', marginBottom:8, lineHeight:1.4 }}>
+                  Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
                 </div>
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={disconnect} style={{ ...S.btn('ghost'), fontSize:10, padding:'4px 10px', color:'#ef4444', borderColor:'rgba(239,68,68,.3)' }}>
@@ -7263,6 +7321,13 @@ function LinkedInPublisher({ embeddedMode = false }) {
               style={{ ...S.btn('primary'), width:'100%', padding:'8px 0', fontSize:12 }}>
               + New Post
             </button>
+            <a href="https://www.linkedin.com/messaging/" target="_blank" rel="noopener noreferrer"
+              style={{...S.btn('ghost'),display:'block',textAlign:'center',textDecoration:'none',width:'100%',boxSizing:'border-box',marginTop:7,padding:'7px 0',fontSize:11}}>
+              Open LinkedIn Inbox ↗
+            </a>
+            <div style={{fontSize:9,color:'#f59e0b',lineHeight:1.45,marginTop:7}}>
+              Inbox monitoring is not active in RomyLabs. The current LinkedIn API grant is for publishing, so DMs must still be checked in LinkedIn.
+            </div>
           </div>
 
           {/* Sub-tabs */}
