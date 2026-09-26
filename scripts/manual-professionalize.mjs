@@ -3,11 +3,11 @@ import fs from 'node:fs'
 const manualPath = 'src/pages/Manual.jsx'
 const mainPath = 'src/main.jsx'
 
-let manual = fs.readFileSync(manualPath, 'utf8')
+let manual = fs.readFileSync(manualPath, 'utf8').replace(/\r\n/g, '\n')
 let changed = false
 
-const replaceOnce = (from, to) => {
-  if (manual.includes(to)) return
+const replaceOnce = (from, to, alreadyPresent = to) => {
+  if (manual.includes(alreadyPresent)) return
   if (!manual.includes(from)) throw new Error(`Manual patch anchor missing: ${from.slice(0, 80)}`)
   manual = manual.replace(from, to)
   changed = true
@@ -47,7 +47,8 @@ replaceOnce(`<div style={S.content}>`, `<div className="manual-content" style={S
             <button className="manual-jump" onClick={() => setSelected('dashboard')}><span className="manual-jump-icon">📊</span><div className="manual-jump-title">Run the daily dashboard</div><div className="manual-jump-body">Cases, tasks, deadlines, AR and production at a glance.</div></button>
             <button className="manual-jump" onClick={() => setSelected('reports')}><span className="manual-jump-icon">⚡</span><div className="manual-jump-title">Reports & office controls</div><div className="manual-jump-body">Production, billing, activity, employees and operational health.</div></button>
           </div>
-        </section>`
+        </section>`,
+  'className="manual-content"'
 )
 replaceOnce(`<div style={{ paddingTop:4, marginBottom:20, paddingBottom:16, borderBottom:'1px solid var(--br)' }}>`, `<div className="manual-section-head" style={{ paddingTop:4, marginBottom:20, paddingBottom:16, borderBottom:'1px solid var(--br)' }}>`)
 
