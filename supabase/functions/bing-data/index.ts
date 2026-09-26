@@ -27,6 +27,31 @@ function rows(payload:any){
   return Array.isArray(payload?.d) ? payload.d : []
 }
 
+function xmlLocs(xml:string){ return [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map(m=>m[1].trim()) }
+function countUrlEntries(xml:string){ return (xml.match(/<url(?:\s|>)/gi) || []).length }
+async function sitemapSummary(siteUrl:string){
+  const root = new URL(siteUrl)
+  const candidates = [new URL('/sitemap.xml',root).toString(), new URL('/sitemap-index.xml',root).toString(), new URL('/sitemap_index.xml',root).toString()]
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate,{headers:{'Accept':'application/xml,text/xml,*/*'}})
+      if (!res.ok) continue
+      const xml = await res.text()
+      if (/<sitemapindex(?:\s|>)/i.test(xml)) {
+        const children = xmlLocs(xml).filter(x=>/^https?:\/\//i.test(x)).slice(0,50)
+        let urls = 0; const childSitemaps:any[] = []
+        for (const child of children) {
+          try { const cr=await fetch(child,{headers:{'Accept':'application/xml,text/xml,*/*'}}); if(!cr.ok){childSitemaps.push({url:child,ok:false,status:cr.status,urls:0});continue}; const cx=await cr.text(); const n=countUrlEntries(cx); urls+=n; childSitemaps.push({url:child,ok:true,status:cr.status,urls:n}) }
+          catch { childSitemaps.push({url:child,ok:false,urls:0}) }
+        }
+        return {ok:true,sitemapUrl:candidate,type:'sitemap_index',urlsDiscovered:urls,childSitemaps}
+      }
+      if (/<urlset(?:\s|>)/i.test(xml)) return {ok:true,sitemapUrl:candidate,type:'urlset',urlsDiscovered:countUrlEntries(xml),childSitemaps:[]}
+    } catch {}
+  }
+  return {ok:false,sitemapUrl:null,type:null,urlsDiscovered:0,childSitemaps:[]}
+}
+
 function aggregateBy(items:any[], labelKeys:string[]){
   const map = new Map<string,{label:string,clicks:number,impressions:number,posNum:number,posDen:number}>()
   for (const item of items) {
@@ -107,10 +132,11 @@ serve(async (req) => {
     const endpoint = (method:string) =>
       `${BING_JSON_BASE}/${method}?siteUrl=${encodeURIComponent(siteUrl)}&apikey=${encodeURIComponent(apiKey)}`
 
-    const [trafficRes, queryRes, pageRes] = await Promise.all([
+    const [trafficRes, queryRes, pageRes, sitemap] = await Promise.all([
       fetch(endpoint('GetRankAndTrafficStats'), { headers:{'Content-Type':'application/json; charset=utf-8'} }),
       fetch(endpoint('GetQueryStats'), { headers:{'Content-Type':'application/json; charset=utf-8'} }),
       fetch(endpoint('GetPageStats'), { headers:{'Content-Type':'application/json; charset=utf-8'} }),
+      sitemapSummary(siteUrl),
     ])
 
     const [trafficJson, queryJson, pageJson] = await Promise.all([
@@ -150,6 +176,7 @@ serve(async (req) => {
       avgPosition,
       topPages:pageAgg.slice(0,10).map(p=>({url:p.label,clicks:p.clicks,impressions:p.impressions,avgPosition:p.avgPosition})),
       topKeywords:queryAgg.slice(0,10).map(q=>({query:q.label,clicks:q.clicks,impressions:q.impressions,avgPosition:q.avgPosition})),
+      sitemap,
       raw:{trafficStatus:trafficRes.status,queryStatus:queryRes.status,pageStatus:pageRes.status},
     }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
   } catch (err) {
