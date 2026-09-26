@@ -346,7 +346,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         if (content.trim().length < 40) throw new Error('IRS SOR delivery was empty.')
         const type = String(delivery.contentType || 'text/html')
         const name = String(delivery.fileName || ('IRS-TDS-' + key.slice(0, 12) + '.html'))
-        const file = new File([content], name, { type })
+        let body = content
+        if (delivery.contentEncoding === 'base64') {
+          const binary = atob(content)
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+          body = bytes
+        }
+        const file = new File([body], name, { type })
         const analysis = await parseTranscriptFile(file)
 
         // Prefer an exact open request match using SOR metadata when available.
