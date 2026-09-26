@@ -22,6 +22,8 @@ jobs:
         run: node scripts/check-taxres-transcript-parity.mjs
       - name: TDS edge runtime
         run: node scripts/check-tds-edge-runtime.mjs
+      - name: Claude IRS Edge lifecycle
+        run: node scripts/test-claude-irs-edge-lifecycle.mjs
       - name: Transcript parser fixtures
         run: node scripts/check-irs-transcript-parser-fixtures.mjs
       - name: Transcript coverage fixtures
