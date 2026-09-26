@@ -31,6 +31,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const dirRef = useRef(null)
   const seenRef = useRef(new Set())
   const scanBusyRef = useRef(false)
+  const sorBusyRef = useRef(new Set())
+  const [sorBridgeReady, setSorBridgeReady] = useState(false)
   const [dirName, setDirName] = useState('')
   const [scanning, setScanning] = useState(false)
   const [lastScan, setLastScan] = useState(null)
@@ -317,6 +319,76 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     return false
   }
 
+  useEffect(() => {
+    async function onSorBridgeMessage(event) {
+      if (event.source !== window || event.origin !== window.location.origin) return
+      const msg = event.data
+      if (!msg || msg.source !== 'taxres-sor-bridge-extension') return
+
+      if (msg.type === 'TAXRES_SOR_BRIDGE_READY') {
+        setSorBridgeReady(true)
+        return
+      }
+      if (msg.type !== 'TAXRES_SOR_DELIVERY' || !msg.delivery?.bridgeId) return
+
+      const delivery = msg.delivery
+      const key = String(delivery.bridgeId)
+      if (seenRef.current.has(key) || sorBusyRef.current.has(key)) {
+        if (seenRef.current.has(key)) {
+          window.postMessage({ source: 'taxres-crm', type: 'TAXRES_SOR_ACK', bridgeId: key }, window.location.origin)
+        }
+        return
+      }
+
+      sorBusyRef.current.add(key)
+      try {
+        const content = String(delivery.content || '')
+        if (content.trim().length < 40) throw new Error('IRS SOR delivery was empty.')
+        const type = String(delivery.contentType || 'text/html')
+        const name = String(delivery.fileName || ('IRS-TDS-' + key.slice(0, 12) + '.html'))
+        const file = new File([content], name, { type })
+        const analysis = await parseTranscriptFile(file)
+
+        // Prefer an exact open request match using SOR metadata when available.
+        // This avoids relying only on the taxpayer name text inside the attachment.
+        let filed = false
+        const last4 = String(delivery.tinLast4 || '').replace(/\D/g, '').slice(-4)
+        const year = String(delivery.taxYear || analysis.tax_year || '')
+        const open = requests.filter(r => r.status === 'Requested' || r.status === 'In Progress')
+        const exactReq = open.find(r => {
+          const client = clients.find(c => String(c.id) === String(r.client_id))
+          const clientLast4 = String(client?.ssn || '').replace(/\D/g, '').slice(-4)
+          const years = parseYearSpec(r.tax_years)
+          return last4 && clientLast4 === last4 && (!year || years.size === 0 || years.has(year))
+        })
+
+        if (exactReq) {
+          const id = await storeTranscriptAnalysis(file, exactReq.client_name, analysis, { clientId: exactReq.client_id || null })
+          seenRef.current.add(key)
+          setImported(im => [...im, { file: file.name, client: exactReq.client_name, year: analysis.tax_year, type: analysis.transcript_type }])
+          await refreshCoverage(exactReq, id)
+          filed = true
+        } else {
+          filed = await routeAnalysis(file, analysis, key)
+        }
+
+        if (filed) {
+          window.postMessage({ source: 'taxres-crm', type: 'TAXRES_SOR_ACK', bridgeId: key }, window.location.origin)
+          await loadRequests()
+          if (onImported) onImported()
+          flash('✅ IRS SOR transcript received and filed to the client.')
+        }
+      } catch (e) {
+        flash('❌ IRS SOR delivery failed: ' + (e?.message || 'Unknown error'))
+      } finally {
+        sorBusyRef.current.delete(key)
+      }
+    }
+
+    window.addEventListener('message', onSorBridgeMessage)
+    return () => window.removeEventListener('message', onSorBridgeMessage)
+  }, [requests, clients, clientNames])
+
   async function scanFolder(manual = false) {
     const handle = dirRef.current
     if (!handle || scanBusyRef.current) return
@@ -477,6 +549,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               ? { ...p, available: Boolean(st.directAvailable), sessionActive: Boolean(st.sessionActive), chip: !st.directAvailable ? 'API activation required' : st.sessionActive ? 'IRS API session active' : 'API authorization required' }
               : p))
           }} />
+          <div data-testid="irs-sor-bridge-status" style={{ marginTop: 8, fontSize: 11.5, color: sorBridgeReady ? '#22c55e' : 'var(--t3)' }}>
+            {sorBridgeReady ? '● SOR bridge connected' : '○ SOR bridge not detected'}
+          </div>
         </div>
       </div>
 
