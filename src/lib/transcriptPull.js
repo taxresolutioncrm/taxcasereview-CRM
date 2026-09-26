@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
+import { parseIrsTranscript, extractTranscriptText } from './irsTranscriptParser'
 
 // Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
 // Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
@@ -125,7 +125,7 @@ export function namesMatch(transcriptName, clientName) {
 }
 
 export async function parseTranscriptFile(file) {
-  const text = await extractPdfText(file)
+  const text = await extractTranscriptText(file)
   if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
   return parseIrsTranscript(text)
 }
