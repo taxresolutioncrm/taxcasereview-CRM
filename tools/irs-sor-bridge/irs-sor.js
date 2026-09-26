@@ -61,11 +61,24 @@
     })
     if (!response.ok) throw new Error(`SOR attachment returned HTTP ${response.status}`)
     const contentType = (response.headers.get('content-type') || 'text/html').split(';')[0].trim()
-    const content = await response.text()
-    if (content.trim().length < 40) throw new Error('SOR attachment was empty.')
+    let content = ''
+    let contentEncoding = 'utf8'
+    if (/application\/pdf/i.test(contentType) || /\.pdf$/i.test(file.fileName)) {
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      if (bytes.byteLength < 40) throw new Error('SOR PDF attachment was empty.')
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      }
+      content = btoa(binary)
+      contentEncoding = 'base64'
+    } else {
+      content = await response.text()
+      if (content.trim().length < 40) throw new Error('SOR attachment was empty.')
+    }
 
     const meta = metadata(subject)
-    const bridgeId = await digest([meta.transactionId, meta.taxPeriod, file.fileName, content].join('|'))
+    const bridgeId = await digest([meta.transactionId, meta.taxPeriod, file.fileName, contentType, content].join('|'))
     const current = await chrome.storage.local.get(DELIVERY_KEY)
     const rows = Array.isArray(current[DELIVERY_KEY]) ? current[DELIVERY_KEY] : []
     if (rows.some(x => x.bridgeId === bridgeId)) return
@@ -76,6 +89,7 @@
       subject,
       fileName: file.fileName,
       contentType,
+      contentEncoding,
       content,
       ...meta,
     })
