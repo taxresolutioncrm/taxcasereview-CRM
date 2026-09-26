@@ -7,7 +7,7 @@
   }
 
   async function publish() {
-    post('TAXRES_SOR_BRIDGE_READY', { version: '1.0.0' })
+    post('TAXRES_SOR_BRIDGE_READY', { version: '1.1.0' })
     const current = await chrome.storage.local.get(DELIVERY_KEY)
     const deliveries = Array.isArray(current[DELIVERY_KEY]) ? current[DELIVERY_KEY] : []
     for (const delivery of deliveries) post('TAXRES_SOR_DELIVERY', { delivery })
