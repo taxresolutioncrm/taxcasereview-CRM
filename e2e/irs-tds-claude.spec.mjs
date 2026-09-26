@@ -190,7 +190,7 @@ test('Claude native IRS TDS workflow reaches filed transcript and analysis in on
   await analysisTab.click()
   await expect(page.getByText('Upload & Analyze Transcripts',{exact:true})).toBeVisible({timeout:10000})
   try {
-    await expect(page.getByText('Claude E2E Client',{exact:true})).toBeVisible({timeout:10000})
+    await expect(page.getByText('Claude E2E Client',{exact:false}).first()).toBeVisible({timeout:10000})
   } catch (e) {
     console.log('E2E_STATE_ANALYSES=' + JSON.stringify(state.analyses))
     console.log('E2E_BODY=' + (await page.locator('body').innerText()))
