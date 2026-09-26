@@ -28,3 +28,20 @@ jobs:
         run: node scripts/check-transcript-coverage-fixtures.mjs
       - name: Full application build
         run: npm run build
+      - name: Install browser acceptance dependency
+        run: |
+          npm install --no-save @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start sandbox preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/irs-preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/irs-preview.log
+          exit 1
+      - name: Claude IRS browser acceptance
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+        run: npx playwright test e2e/irs-tds-claude.spec.mjs --browser=chromium --reporter=line
