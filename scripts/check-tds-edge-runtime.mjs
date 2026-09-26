@@ -43,6 +43,13 @@ async function loadEdgeModule(rel) {
   const Deno = { env: { get: () => undefined } }
   const module = { exports: {} }
   try {
+    const runner = script.runInThisContext()
+    // Expose the sandbox-only PDF builder to this runtime contract without
+    // changing the Edge Function's public HTTP surface.
+    if (rel === FUNCTIONS.pull) {
+      code += '\n;module.exports.__buildStubTranscriptPdf = typeof buildStubTranscriptPdf === "function" ? buildStubTranscriptPdf : null;\n'
+      script = new vm.Script(`(function (exports, require, module, Deno) {\n${code}\n})`, { filename: rel })
+    }
     script.runInThisContext()(module.exports, req, module, Deno)
   } catch (e) { fail(`${rel}: module top-level threw at boot — ${e.name}: ${e.message}`); return null }
   if (typeof handler !== 'function') { fail(`${rel}: serve(handler) was not called at boot`); return null }
@@ -119,6 +126,21 @@ function fixturePdf(lines) {
       } catch (e) {
         fail(`transcript PDF fixture (${type} ${year}): pdf.js could not open it — ${e.message}`)
       }
+    }
+  }
+  const stubBuilder = pull?.exports?.__buildStubTranscriptPdf
+  if (typeof stubBuilder !== 'function') {
+    fail('transcript-pull: sandbox stub PDF builder is unavailable to runtime contract')
+  } else {
+    try {
+      const bytes = stubBuilder({ transcriptTypes: ['Account Transcript'], taxYears: ['2024'] })
+      const text = await extractPdfText(new File([bytes], 'claude-stub.pdf', { type: 'application/pdf' }))
+      const parsed = parseIrsTranscript(text)
+      if (parsed.transcript_type !== 'Account Transcript') fail(`Claude stub PDF parsed type "${parsed.transcript_type}"`)
+      if (parsed.tax_year !== '2024') fail(`Claude stub PDF parsed year "${parsed.tax_year}"`)
+      if (parsed.account_balance !== 0) fail(`Claude stub PDF parsed balance ${parsed.account_balance}`)
+    } catch (e) {
+      fail(`Claude stub PDF runtime path failed — ${e.message}`)
     }
   }
   console.warn = origWarn
