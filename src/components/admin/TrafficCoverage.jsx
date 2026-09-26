@@ -40,12 +40,16 @@ export default function TrafficCoverage() {
     return [...m.entries()]
   },[visible])
 
-  const totals = useMemo(() => ({
-    live: rows.filter(r=>r.status==='live').length,
-    configured: rows.filter(r=>r.status==='configured').length,
-    planned: rows.filter(r=>r.status==='planned').length,
-    blocked: rows.filter(r=>r.status==='blocked').length,
-  }),[rows])
+  const totals = useMemo(() => {
+    const now = Date.now()
+    const isStale = r => r.status==='live' && r.last_verified_at && (now - new Date(r.last_verified_at).getTime()) > 30*86400000
+    return {
+      live: rows.filter(r=>r.status==='live' && !isStale(r)).length,
+      configured: rows.filter(r=>r.status==='configured').length,
+      blocked: rows.filter(r=>r.status==='blocked' || isStale(r)).length,
+      not_applicable: rows.filter(r=>r.status==='not_applicable').length,
+    }
+  },[rows])
 
   async function updateStatus(row,status) {
     const { error } = await supabase.from('product_traffic_channels')
@@ -85,11 +89,16 @@ export default function TrafficCoverage() {
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:0}}>
             {p.rows.map(r => {
-              const st=STATUS[r.status]||STATUS.planned
+              const ageDays = r.last_verified_at ? Math.floor((Date.now()-new Date(r.last_verified_at).getTime())/86400000) : null
+              const stale = r.status==='live' && ageDays != null && ageDays > 30
+              const st = stale ? STATUS.blocked : (STATUS[r.status]||STATUS.planned)
               return <div key={r.channel_key} style={{padding:'14px 16px',borderRight:'1px solid rgba(99,102,241,.08)',borderBottom:'1px solid rgba(99,102,241,.08)',minHeight:92}}>
                 <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',marginBottom:6}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{r.channel_label}</div><span style={{fontSize:9,fontWeight:900,color:st.color,textTransform:'uppercase'}}>{st.label}</span></div>
                 <div style={{fontSize:10,color:'#475569',marginBottom:8,textTransform:'uppercase'}}>{r.category}</div>
-                {r.tracking_id && <div style={{fontSize:10,color:'#64748b',marginBottom:8}}>ID: {r.tracking_id}</div>}
+                {r.tracking_id && <div style={{fontSize:10,color:'#64748b',marginBottom:5}}>ID: {r.tracking_id}</div>}
+                <div style={{fontSize:9,color:stale?'#f59e0b':'#475569',marginBottom:8}}>
+                  {r.last_verified_at ? `${stale?'Verification stale · ':'Verified '}${new Date(r.last_verified_at).toLocaleDateString()}` : 'No live verification recorded'}
+                </div>
                 <select value={r.status} onChange={e=>updateStatus(r,e.target.value)} style={{width:'100%',background:'#111827',border:'1px solid rgba(99,102,241,.2)',color:'#cbd5e1',borderRadius:6,padding:'5px 7px',fontSize:10}}>{Object.keys(STATUS).map(s=><option key={s} value={s}>{STATUS[s].label}</option>)}</select>
               </div>
             })}
