@@ -14,6 +14,9 @@ const config=read('supabase/config.toml')
 const employees=read('src/pages/Employees.jsx')
 const inviteEmployee=read('supabase/functions/invite-employee/index.ts')
 const sendEmail=read('supabase/functions/send-email/index.ts')
+const configSectionHas=(name,value)=>new RegExp(`\\[functions\\.${name.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\const sendEmail=read('supabase/functions/send-email/index.ts')
+')}\\][\\s\\S]*?(?=\\n\\[|$)`).test(config) && new RegExp(`\\[functions\\.${name.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\const sendEmail=read('supabase/functions/send-email/index.ts')
+')}\\][\\s\\S]*?verify_jwt\\s*=\\s*${value}`).test(config)
 
 const checks=[
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
@@ -28,9 +31,9 @@ const checks=[
   ['Nashville access validates the exact bearer token',nashAccess.includes('auth.getUser(token)')],
   ['Nashville admin proof validates the exact bearer token',nashProof.includes('auth.getUser(token)')],
   ['Nashville invite points to family password page',invite.includes("PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
-  ['config enables JWT on issue',config.includes('[functions.taxres-family-sso-issue]\nverify_jwt = true')],
-  ['custom-code endpoints keep gateway JWT off',config.includes('[functions.taxres-family-sso-redeem]\nverify_jwt = false')&&config.includes('[functions.taxres-family-admin-invite]')],
-  ['central employee invite requires authenticated caller',config.includes('[functions.invite-employee]\nverify_jwt = true')&&inviteEmployee.includes('Employee invite permission denied')],
+  ['config enables JWT on issue',configSectionHas('taxres-family-sso-issue','true')],
+  ['custom-code endpoints keep gateway JWT off',configSectionHas('taxres-family-sso-redeem','false')&&configSectionHas('taxres-family-admin-invite','false')],
+  ['central employee invite requires authenticated caller',configSectionHas('invite-employee','true')&&inviteEmployee.includes('Employee invite permission denied')],
   ['central employee invite validates the exact bearer token',inviteEmployee.includes('auth.getUser(token)')],
   ['central employee invite does not call .catch on Supabase RPC',!inviteEmployee.includes("rpc('_is_platform_admin').catch")],
   ['central employee invite avoids global auth listUsers',!inviteEmployee.includes('admin.auth.admin.listUsers')&&inviteEmployee.includes("rpc('taxres_auth_user_by_email'")],
