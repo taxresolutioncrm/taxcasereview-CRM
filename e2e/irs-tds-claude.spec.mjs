@@ -139,7 +139,7 @@ async function installMocks(page) {
 async function login(page) {
   await page.goto('/')
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill('qa-password-not-sent')
+  await page.locator('#tcr-password').fill('qa-password-not-sent')
   await page.getByRole('button',{name:'Sign In'}).click()
   await expect(page.getByRole('button',{name:/New$/})).toBeVisible({timeout:15000})
 }
