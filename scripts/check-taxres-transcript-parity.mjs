@@ -31,17 +31,17 @@ for(const n of [
   "['Filed','Partial','Error'].includes(req.provider_status)"
 ]) need(lib,n)
 
-// TDSSessionPresence must wire the real begin-session OAuth flow, not open the public TDS website.
+// Practitioner TDS sign-in is always available and is separate from automated IRS API authorization.
 for(const n of [
-  "action: 'begin-session'",
-  'taxres-irs-tds-oauth',
-  'addEventListener',
+  "const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
+  'openPractitionerTds',
+  'window.open(IRS_TDS_URL',
   'interactiveAvailable: true',
   'directAvailable',
   'apiFlowVerified',
   'apiSessionActive',
-  'authorizationUrl',
-  'Sign in to IRS',
+  'Sign in to IRS TDS',
+  'Automated CRM delivery (separate path)',
 ]) need(session,n)
 
 for(const n of [
@@ -153,12 +153,11 @@ if(fs.existsSync(lib)){
 }
 if(fs.existsSync(session)){
   const s=read(session)
-  // TDSSessionPresence must NOT open the public IRS TDS practitioner website as the primary sign-in path.
-  // It must call begin-session and open the returned OAuth authorization URL.
-  if(s.includes("'https://la.www4.irs.gov/esrv/tds/'")) failures.push('TDSSessionPresence: must not open public IRS TDS website as primary flow — use begin-session OAuth')
-  if(s.includes("window.open(IRS_TDS_URL")) failures.push('TDSSessionPresence: must not directly open the practitioner TDS website — use begin-session OAuth URL')
-  // Must have a postMessage listener wired to receive the taxres-irs-tds-oauth callback
-  if(!s.includes("window.addEventListener('message'") && !s.includes('window.addEventListener("message"')) failures.push('TDSSessionPresence: missing postMessage listener for taxres-irs-tds-oauth callback')
+  // Practitioner web login must not be coupled to the automated API OAuth begin-session path.
+  if(s.includes("action: 'begin-session'")) failures.push('TDSSessionPresence: practitioner TDS sign-in must not call automated API begin-session')
+  if(s.includes('taxres-irs-tds-oauth')) failures.push('TDSSessionPresence: practitioner TDS sign-in must not depend on API OAuth callback messages')
+  if(s.includes('disabled={signingIn}')) failures.push('TDSSessionPresence: practitioner TDS button must not be API-gated')
+  if(!s.includes("window.open(IRS_TDS_URL")) failures.push('TDSSessionPresence: practitioner TDS sign-in must open the official IRS TDS site')
   // Nashville tenant must not be hardcoded
   if(s.includes('ydrvncdedgjtcprczwpu')) failures.push('TDSSessionPresence: Nashville Supabase project is hardcoded')
 }
