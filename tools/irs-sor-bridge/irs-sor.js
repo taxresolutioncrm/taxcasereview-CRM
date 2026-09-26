@@ -47,7 +47,7 @@
   }
 
   async function capture() {
-    if (!/\/semail\/views\/read_content\.jsp$/i.test(location.pathname)) return
+    if (!/\/semail\//i.test(location.pathname)) return
     const subject = subjectText()
     if (!/TDS\s+Transaction\s+ID/i.test(subject)) return
     const file = attachment()
