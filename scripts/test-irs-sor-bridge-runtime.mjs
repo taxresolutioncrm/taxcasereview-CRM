@@ -28,7 +28,7 @@ function btoaNode(value){ return Buffer.from(value, 'binary').toString('base64')
     querySelectorAll:(sel)=>sel==='tr'?[row]:sel==='a[onclick]'?[link]:[],
     body:{ textContent:'' },
   }
-  const location={ pathname:'/semail/views/read_content.jsp', origin:'https://la.www4.irs.gov' }
+  const location={ pathname:'/semail/views/message_detail.jsp', origin:'https://la.www4.irs.gov' }
   const expected=Buffer.from('%PDF-1.7\n'+('A'.repeat(96)))
   const fetch=async()=>({
     ok:true,
