@@ -254,14 +254,20 @@ async function loadPlatformOfficeRowsFresh() {
     const metrics = result.data?.metrics || {}
     const idx = rows.findIndex(r => String(r.firm_name || '').trim().toLowerCase() === result.name.toLowerCase())
     if (idx < 0) continue
+    const centralStaff = Number(rows[idx].employee_count ?? 0)
+    const liveStaffRaw = metrics.active_staff ?? metrics.active_users
+    const liveStaff = liveStaffRaw == null ? null : Number(liveStaffRaw)
+    const resolvedStaff = result.key === 'nashville'
+      ? (Number.isFinite(liveStaff) ? liveStaff : centralStaff)
+      : Math.max(centralStaff, Number.isFinite(liveStaff) ? liveStaff : 0)
     rows[idx] = {
       ...rows[idx],
       client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
       lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
-      // Prefer the live product's staff/case totals whenever it supplies them.
-      // The central directory remains a fallback only; Nashville in particular
-      // lives in its own CRM database and must not inherit stale legacy counts.
-      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      // TCR/CloudCPA users are authoritative in the central employee directory.
+      // A stale zero from a live feed must not erase real active users. Nashville
+      // stays remote-authoritative because its CRM lives in a separate project.
+      employee_count:resolvedStaff,
       cases_count:Number(metrics.open_jobs ?? metrics.active_cases ?? rows[idx].cases_count ?? 0),
       tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
       storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
