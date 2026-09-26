@@ -14,9 +14,10 @@ const config=read('supabase/config.toml')
 const employees=read('src/pages/Employees.jsx')
 const inviteEmployee=read('supabase/functions/invite-employee/index.ts')
 const sendEmail=read('supabase/functions/send-email/index.ts')
-const configSectionHas=(name,value)=>new RegExp(`\\[functions\\.${name.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\const sendEmail=read('supabase/functions/send-email/index.ts')
-')}\\][\\s\\S]*?(?=\\n\\[|$)`).test(config) && new RegExp(`\\[functions\\.${name.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\const sendEmail=read('supabase/functions/send-email/index.ts')
-')}\\][\\s\\S]*?verify_jwt\\s*=\\s*${value}`).test(config)
+const configSectionHas=(name,value)=>{
+  const section=new RegExp(`\\[functions\\.${name}\\]([\\s\\S]*?)(?=\\n\\[|$)`).exec(config)
+  return !!section && new RegExp(`\\bverify_jwt\\s*=\\s*${value}\\b`).test(section[1])
+}
 
 const checks=[
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
