@@ -371,17 +371,27 @@ serve(async (req) => {
     }
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
-      if (stubMode() && pull.provider_request_id?.startsWith('stub-txn-') && pull.provider_status !== 'Delivered') {
-        // Stub mode: synthesize a valid text-layer PDF and mark the request as Delivered.
-        // This exercises the same pdf.js/parser/coverage path used by an IRS-delivered transcript.
-        const pdfBytes = buildStubTranscriptPdf(ctx)
-        const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
-        if (stored.added && stored.filePath) {
-          const { error: updateErr } = await userDb.from('transcript_pull_requests').update({ provider_status: 'Delivered', provider_error: null, provider_last_checked_at: new Date().toISOString(), provider_file_path: stored.filePath, provider_result_keys: stored.resultKeys, provider_file_paths: stored.filePaths }).eq('id', requestId)
-          if (updateErr) throw new Error(updateErr.message)
-          const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(stored.filePath, 900)
-          if (signErr || !signed?.signedUrl) throw new Error('Could not create secure stub transcript link.')
-          return json({ ok: true, status: 'Delivered', resultKey: stored.resultKey, filePath: stored.filePath, signedUrl: signed.signedUrl, deliveredCount: stored.resultKeys.length, stub: true })
+      if (stubMode() && pull.provider_request_id?.startsWith('stub-txn-')) {
+        // Stub mode: synthesize one real text-layer PDF for every requested
+        // year/type pair. Each status call exposes the next undelivered result,
+        // matching the multi-result behavior the live SOR contract must provide.
+        const stubYears = ctx.taxYears?.length ? ctx.taxYears : ['2023']
+        const stubTypes = ctx.transcriptTypes?.length ? ctx.transcriptTypes : ['Account Transcript']
+        const stubCombinations = stubYears.flatMap((year: string) =>
+          stubTypes.map((type: string) => ({ year, type }))
+        )
+        const generatedCount = (pull.provider_result_keys || []).length
+        if (generatedCount < stubCombinations.length) {
+          const next = stubCombinations[generatedCount]
+          const pdfBytes = buildStubTranscriptPdf({ ...ctx, taxYears: [next.year], transcriptTypes: [next.type] })
+          const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
+          if (stored.added && stored.filePath) {
+            const { error: updateErr } = await userDb.from('transcript_pull_requests').update({ provider_status: 'Delivered', provider_error: null, provider_last_checked_at: new Date().toISOString(), provider_file_path: stored.filePath, provider_result_keys: stored.resultKeys, provider_file_paths: stored.filePaths }).eq('id', requestId)
+            if (updateErr) throw new Error(updateErr.message)
+            const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(stored.filePath, 900)
+            if (signErr || !signed?.signedUrl) throw new Error('Could not create secure stub transcript link.')
+            return json({ ok: true, status: 'Delivered', resultKey: stored.resultKey, filePath: stored.filePath, signedUrl: signed.signedUrl, deliveredCount: stored.resultKeys.length, stub: true })
+          }
         }
       }
       const resultKeys: string[] = pull.provider_result_keys || [], filePaths: string[] = pull.provider_file_paths || [], filedKeys: string[] = pull.provider_filed_keys || [], pendingIndex = resultKeys.findIndex((k: string) => !filedKeys.includes(k))
