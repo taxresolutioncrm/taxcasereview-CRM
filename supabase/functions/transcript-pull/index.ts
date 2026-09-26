@@ -108,6 +108,7 @@ async function createClientAssertion() {
 }
 
 async function authorizationConfigError() {
+  if (stubMode()) return null
   if (!authorizationConfigured()) return 'IRS TDS authorization credentials are incomplete.'
   try {
     new URL(AUTHORIZE_URL())
