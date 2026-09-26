@@ -900,7 +900,12 @@ function Overview() {
   const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)
   const totalMRR     = operatingStats.reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = operatingStats.filter(r => r.status==='active').length
-  const totalSeats   = operatingStats.reduce((s,r) => s+Number(r.billing_seats ?? 0), 0)
+  const effectiveSeatCount = row => {
+    const purchased = Number(row?.billing_seats || 0)
+    const active = Number(row?.employee_count || 0)
+    return purchased > 0 ? purchased : active
+  }
+  const totalSeats   = operatingStats.reduce((s,r) => s + effectiveSeatCount(r), 0)
   const totalClients = operatingStats.reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
   const totalLeads   = operatingStats.reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
   const totalStorage = operatingStats.reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
@@ -922,7 +927,7 @@ function Overview() {
   ]
 
   const sortValue = (row, key) => {
-    if (key === 'seats_staff') return row.billing_seats ?? row.employee_count ?? null
+    if (key === 'seats_staff') return effectiveSeatCount(row)
     if (key === 'last_activity') return row.last_activity ? new Date(row.last_activity).getTime() : null
     return row[key] ?? null
   }
@@ -1043,10 +1048,11 @@ function Overview() {
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{(() => {
-                  const seats = r.billing_seats
-                  return (seats == null && r.employee_count == null)
+                  const staff = r.employee_count == null ? null : Number(r.employee_count)
+                  const seats = effectiveSeatCount(r)
+                  return (r.billing_seats == null && staff == null)
                     ? '—'
-                    : `${seats == null ? '—' : Number(seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()}`
+                    : `${Number(seats).toLocaleString()} / ${staff == null ? '—' : staff.toLocaleString()}`
                 })()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
