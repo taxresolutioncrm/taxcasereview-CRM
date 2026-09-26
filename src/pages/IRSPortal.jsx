@@ -76,6 +76,7 @@ export default function IRSPortal() {
     }
   }
   useEffect(() => { loadAnalyses() }, [])
+  useEffect(() => { if (tab === 'transcripts') loadAnalyses() }, [tab])
 
   async function handleTranscriptFiles(e) {
     const files = Array.from(e.target.files || [])
