@@ -1,5 +1,5 @@
 const fs=require('fs')
-const read=p=>read(p).replace(/\r\n/g,'\n')
+const read=p=>fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n')
 
 const clients=read('src/pages/Clients.jsx')
 const cases=read('src/pages/Cases.jsx')
