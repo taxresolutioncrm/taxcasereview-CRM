@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const env = (name: string) => (Deno.env.get(name) || '').trim()
 const TOKEN_URL = () => env('IRS_TDS_ISP_TOKEN_URL') || 'https://api.www4.irs.gov/auth/oauth/v2/token'
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
-const CRM_ORIGIN = () => env('IRS_TDS_CRM_ORIGIN') || 'https://taxrescrm.app'
+const CRM_ORIGIN = () => env('IRS_TDS_CRM_ORIGIN') || 'https://nashville.taxrescrm.app'
 
 function b64url(bytes: Uint8Array) { let s = ''; bytes.forEach(b => { s += String.fromCharCode(b) }); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '') }
 function b64urlJson(value: unknown) { return b64url(new TextEncoder().encode(JSON.stringify(value))) }
