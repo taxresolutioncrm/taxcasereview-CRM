@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 
-const read=p=>fs.readFileSync(p,'utf8')
+const read=p=>fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n')
 const app=read('src/App.jsx')
 const ctx=read('src/context/AppContext.jsx')
 const page=read('src/pages/FamilyPassword.jsx')
