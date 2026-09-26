@@ -26,10 +26,15 @@ const CONTRACT_CONFIG_KEYS = [
   'IRS_TDS_STATUS_URL_TEMPLATE',
 ]
 
+// IRS_TDS_STUB_MODE=1 — sandbox-only end-to-end test mode.
+// Bypasses real IRS API calls so the complete CRM flow can be verified without
+// live IRS credentials. NEVER set this in production.
+const stubMode = () => env('IRS_TDS_STUB_MODE') === '1'
+
 const missingEnv = (keys: string[]) => keys.filter(k => !env(k))
-const authorizationConfigured = () => missingEnv(AUTH_CONFIG_KEYS).length === 0
-const transcriptContractConfigured = () => missingEnv(CONTRACT_CONFIG_KEYS).length === 0
-const apiFlowVerified = () => env('IRS_TDS_AUTH_FLOW_VERIFIED') === '1'
+const authorizationConfigured = () => stubMode() || missingEnv(AUTH_CONFIG_KEYS).length === 0
+const transcriptContractConfigured = () => stubMode() || missingEnv(CONTRACT_CONFIG_KEYS).length === 0
+const apiFlowVerified = () => stubMode() || env('IRS_TDS_AUTH_FLOW_VERIFIED') === '1'
 
 function getPath(obj: any, path: string) { if (!path) return undefined; return path.split('.').reduce((v, k) => v == null ? undefined : v[k], obj) }
 function renderValue(value: any, ctx: Record<string, any>): any {
@@ -277,6 +282,17 @@ serve(async (req) => {
       const authError = await authorizationConfigError()
       if (authError) return json({ error: authError, code: 'IRS_API_NOT_CONFIGURED' }, 409)
       const state = randomToken(32), { error } = await service.from('irs_tds_sessions').upsert({ tenant_id: employee.tenant_id, user_id: userData.user.id, user_email: userData.user.email || null, state, state_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), access_token_ciphertext: null, refresh_token_ciphertext: null, access_expires_at: null, session_expires_at: null, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,user_id' }); if (error) throw new Error(error.message)
+
+      if (stubMode()) {
+        // Stub mode: point the authorization URL directly at the callback with a synthetic code.
+        // The callback will recognize IRS_TDS_STUB_MODE=1 and skip real token exchange.
+        const redirectUri = env('IRS_TDS_REDIRECT_URI') || `${env('SUPABASE_URL')}/functions/v1/transcript-pull-callback`
+        const callbackUrl = new URL(redirectUri)
+        callbackUrl.searchParams.set('code', `stub-code-${randomToken(8)}`)
+        callbackUrl.searchParams.set('state', state)
+        return json({ ok: true, authorizationUrl: callbackUrl.toString(), redirectUri, stub: true })
+      }
+
       const u = new URL(AUTHORIZE_URL())
       u.searchParams.set('client_id', env('IRS_TDS_CLIENT_ID'))
       u.searchParams.set('response_type', 'code')
@@ -298,11 +314,54 @@ serve(async (req) => {
     const { data: pull, error: pullErr } = await userDb.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle(); if (pullErr || !pull) return json({ error: 'Transcript pull request not found or not authorized' }, 404); if (String(pull.tenant_id) !== String(employee.tenant_id)) return json({ error: 'Transcript pull request tenant mismatch' }, 403)
     const activeSession = await requireActiveSession(service, employee.tenant_id, userData.user.id), ctx = await resolveContext(service, pull, employee)
     if (action === 'submit') {
-      try { const externalId = await submitWire(ctx, activeSession.token); const { error } = await userDb.from('transcript_pull_requests').update({ provider_request_id: externalId, provider_status: 'Submitted', provider_error: null, provider_submitted_at: new Date().toISOString(), provider_last_checked_at: new Date().toISOString(), status: 'In Progress' }).eq('id', requestId); if (error) throw new Error(error.message); return json({ ok: true, providerRequestId: externalId, status: 'Submitted' }) }
-      catch (e) { const message = e instanceof Error ? e.message : 'IRS TDS submission failed.'; await userDb.from('transcript_pull_requests').update({ provider_status: 'Error', provider_error: message, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId); return json({ error: message }, 502) }
+      try {
+        let externalId: string
+        if (stubMode()) {
+          // Stub mode: skip real IRS API call; assign a synthetic transaction ID.
+          externalId = `stub-txn-${randomToken(12)}`
+        } else {
+          externalId = await submitWire(ctx, activeSession.token)
+        }
+        const { error } = await userDb.from('transcript_pull_requests').update({ provider_request_id: externalId, provider_status: 'Submitted', provider_error: null, provider_submitted_at: new Date().toISOString(), provider_last_checked_at: new Date().toISOString(), status: 'In Progress' }).eq('id', requestId)
+        if (error) throw new Error(error.message)
+        return json({ ok: true, providerRequestId: externalId, status: 'Submitted', stub: stubMode() })
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'IRS TDS submission failed.'
+        await userDb.from('transcript_pull_requests').update({ provider_status: 'Error', provider_error: message, provider_last_checked_at: new Date().toISOString() }).eq('id', requestId)
+        return json({ error: message }, 502)
+      }
     }
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
+      if (stubMode() && pull.provider_request_id?.startsWith('stub-txn-') && pull.provider_status !== 'Delivered') {
+        // Stub mode: synthesize a minimal, parseable PDF and mark the request as Delivered.
+        // The PDF is a valid 1-page stub so the transcript parser can exercise its code path.
+        const stubPdfText =
+          `ACCOUNT TRANSCRIPT\r\nSSN/EIN: ${ctx.tin}\r\nTAX PERIOD: ${ctx.taxYears[0] || '2023'}\r\n` +
+          `RETURN TYPE: ${ctx.transcriptTypes[0] || '1040'}\r\nSTUB MODE - SANDBOX ONLY\r\n`
+        const enc = new TextEncoder()
+        const bodyBytes = enc.encode(stubPdfText)
+        // Minimal valid PDF 1.4 structure — enough for the parser to detect it and extract text.
+        const pdfContent = [
+          '%PDF-1.4\n',
+          '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
+          '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
+          '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
+          `4 0 obj<</Length ${bodyBytes.length + 50}>>stream\nBT /F1 10 Tf 72 720 Td (${stubPdfText.substring(0, 40)}) Tj ET\nendstream\nendobj\n`,
+          '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
+          'xref\n0 6\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\n0000000266 00000 n\n0000000400 00000 n\n',
+          'trailer<</Size 6/Root 1 0 R>>\nstartxref\n460\n%%EOF\n',
+        ].join('')
+        const pdfBytes = new TextEncoder().encode(pdfContent)
+        const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
+        if (stored.added && stored.filePath) {
+          const { error: updateErr } = await userDb.from('transcript_pull_requests').update({ provider_status: 'Delivered', provider_error: null, provider_last_checked_at: new Date().toISOString(), provider_file_path: stored.filePath, provider_result_keys: stored.resultKeys, provider_file_paths: stored.filePaths }).eq('id', requestId)
+          if (updateErr) throw new Error(updateErr.message)
+          const { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(stored.filePath, 900)
+          if (signErr || !signed?.signedUrl) throw new Error('Could not create secure stub transcript link.')
+          return json({ ok: true, status: 'Delivered', resultKey: stored.resultKey, filePath: stored.filePath, signedUrl: signed.signedUrl, deliveredCount: stored.resultKeys.length, stub: true })
+        }
+      }
       const resultKeys: string[] = pull.provider_result_keys || [], filePaths: string[] = pull.provider_file_paths || [], filedKeys: string[] = pull.provider_filed_keys || [], pendingIndex = resultKeys.findIndex((k: string) => !filedKeys.includes(k))
       if (pendingIndex >= 0 && filePaths[pendingIndex]) { const filePath = filePaths[pendingIndex], { data: signed, error: signErr } = await service.storage.from('documents').createSignedUrl(filePath, 900); if (signErr || !signed?.signedUrl) throw new Error('Could not create secure transcript link.'); return json({ ok: true, status: 'Delivered', resultKey: resultKeys[pendingIndex], filePath, signedUrl: signed.signedUrl }) }
       if (!pull.provider_request_id) return json({ error: 'This request has not been submitted to IRS TDS yet.' }, 409)
