@@ -25,7 +25,7 @@
     "ui:quick-create": "node scripts/fix-quick-create-routes.mjs",
     "ui:navigation-audit": "node scripts/audit-ui-navigation.mjs",
     "source:verify-current": "git diff --exit-code -- src scripts package.json vite.config.js 2>/dev/null || (echo 'ERROR: prebuild repair scripts changed tracked source. Commit the source fix instead of building mutated source.' && exit 1)",
-    "prebuild": "npm run cloudcpa:readiness && npm run check-family-auth && npm run check-password-visibility && npm run check-nashville-closeout && npm run check-polling && npm run check-supabase-io-guardrails && npm run check-client-work-header-badge && npm run check-admin-portal-performance && npm run check-critical-workflows && npm run check-client-case-quick-actions && npm run check-formacorp-native && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run sidebar:badge-rpc && npm run dashboard:glow && npm run forms:state-esign-prefill && npm run forms:irs-current && npm run reports:accuracy && npm run accounting:oauth-state && npm run admin:metrics-proxy && npm run admin:product-usage-labels && npm run cases:modal-scope && npm run ui:quick-create && npm run ui:navigation-audit && npm run source:verify-current && npm run check-transcripts && npm run check-transcript-parser && npm run check-transcript-coverage && npm run check-tax-workflows-parity && npm run check-irs-sor-handoff",
+    "prebuild": "npm run cloudcpa:readiness && npm run check-family-auth && npm run check-password-visibility && npm run check-nashville-closeout && npm run check-polling && npm run check-supabase-io-guardrails && npm run check-client-work-header-badge && npm run check-admin-portal-performance && npm run check-critical-workflows && npm run check-client-case-quick-actions && npm run check-formacorp-native && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run sidebar:badge-rpc && npm run dashboard:glow && npm run forms:state-esign-prefill && npm run forms:irs-current && npm run reports:accuracy && npm run accounting:oauth-state && npm run admin:metrics-proxy && npm run admin:product-usage-labels && npm run cases:modal-scope && npm run ui:quick-create && npm run ui:navigation-audit && npm run source:verify-current && npm run check-transcripts && npm run check-transcript-parser && npm run check-transcript-coverage && npm run check-tax-workflows-parity && npm run check-irs-sor-handoff && npm run test-irs-sor-bridge-runtime",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist --dotfiles",
@@ -42,7 +42,8 @@
     "check-client-work-header-badge": "node scripts/check-client-work-header-badge.cjs",
     "check-password-visibility": "node scripts/check-password-visibility.mjs",
     "check-tax-workflows-parity": "node scripts/check-tax-workflows-parity.cjs",
-    "check-irs-sor-handoff": "node scripts/check-irs-sor-handoff.mjs"
+    "check-irs-sor-handoff": "node scripts/check-irs-sor-handoff.mjs",
+    "test-irs-sor-bridge-runtime": "node scripts/test-irs-sor-bridge-runtime.mjs"
   },
   "dependencies": {
     "@signalwire/js": "^1.5.0",
