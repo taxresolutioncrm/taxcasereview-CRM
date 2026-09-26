@@ -203,6 +203,44 @@ async function submitWire(ctx: Record<string, any>, token: string) {
   const idPath = env('IRS_TDS_RESPONSE_ID_PATH') || 'transactionId', externalId = String(getPath(parsed.data, idPath) || '').trim(); if (!externalId) throw new Error(`IRS TDS response did not contain a request ID at ${idPath}.`); return externalId
 }
 
+function pdfEscape(value: string) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+}
+function byteLength(value: string) { return new TextEncoder().encode(value).length }
+function buildStubTranscriptPdf(ctx: Record<string, any>) {
+  const type = String(ctx.transcriptTypes?.[0] || 'Account Transcript')
+  const year = String(ctx.taxYears?.[0] || '2023')
+  const lines = [
+    type.toUpperCase(),
+    `TAX PERIOD: Dec. 31, ${year}`,
+    'ACCOUNT BALANCE: 0.00',
+    'ACCRUED PENALTY: 0.00',
+    'ACCRUED INTEREST: 0.00',
+    'STUB MODE - SANDBOX ONLY',
+  ]
+  const stream = ['BT', '/F1 10 Tf', '72 720 Td', ...lines.flatMap((line, i) =>
+    i === 0 ? [`(${pdfEscape(line)}) Tj`] : ['0 -16 Td', `(${pdfEscape(line)}) Tj`]
+  ), 'ET'].join('\n')
+  const objects = [
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
+    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
+    `4 0 obj<</Length ${byteLength(stream)}>>stream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+  for (const object of objects) {
+    offsets.push(byteLength(pdf))
+    pdf += object
+  }
+  const xref = byteLength(pdf)
+  pdf += 'xref\n0 6\n0000000000 65535 f \n' +
+    offsets.map(offset => String(offset).padStart(10, '0') + ' 00000 n \n').join('')
+  pdf += `trailer<</Size 6/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`
+  return new TextEncoder().encode(pdf)
+}
+
 function normalizeResultItems(data: any) {
   const path = env('IRS_TDS_RESULTS_PATH')
   if (!path) return []
@@ -334,25 +372,9 @@ serve(async (req) => {
     if (action === 'status') {
       if (pull.provider_status === 'Filed' && pull.status === 'Completed') return json({ ok: true, status: 'Filed' })
       if (stubMode() && pull.provider_request_id?.startsWith('stub-txn-') && pull.provider_status !== 'Delivered') {
-        // Stub mode: synthesize a minimal, parseable PDF and mark the request as Delivered.
-        // The PDF is a valid 1-page stub so the transcript parser can exercise its code path.
-        const stubPdfText =
-          `ACCOUNT TRANSCRIPT\r\nSSN/EIN: ${ctx.tin}\r\nTAX PERIOD: ${ctx.taxYears[0] || '2023'}\r\n` +
-          `RETURN TYPE: ${ctx.transcriptTypes[0] || '1040'}\r\nSTUB MODE - SANDBOX ONLY\r\n`
-        const enc = new TextEncoder()
-        const bodyBytes = enc.encode(stubPdfText)
-        // Minimal valid PDF 1.4 structure — enough for the parser to detect it and extract text.
-        const pdfContent = [
-          '%PDF-1.4\n',
-          '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
-          '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
-          '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
-          `4 0 obj<</Length ${bodyBytes.length + 50}>>stream\nBT /F1 10 Tf 72 720 Td (${stubPdfText.substring(0, 40)}) Tj ET\nendstream\nendobj\n`,
-          '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
-          'xref\n0 6\n0000000000 65535 f\n0000000009 00000 n\n0000000058 00000 n\n0000000115 00000 n\n0000000266 00000 n\n0000000400 00000 n\n',
-          'trailer<</Size 6/Root 1 0 R>>\nstartxref\n460\n%%EOF\n',
-        ].join('')
-        const pdfBytes = new TextEncoder().encode(pdfContent)
+        // Stub mode: synthesize a valid text-layer PDF and mark the request as Delivered.
+        // This exercises the same pdf.js/parser/coverage path used by an IRS-delivered transcript.
+        const pdfBytes = buildStubTranscriptPdf(ctx)
         const stored = await persistTranscriptPdf(service, pull, pdfBytes, pull.provider_result_keys || [], pull.provider_file_paths || [])
         if (stored.added && stored.filePath) {
           const { error: updateErr } = await userDb.from('transcript_pull_requests').update({ provider_status: 'Delivered', provider_error: null, provider_last_checked_at: new Date().toISOString(), provider_file_path: stored.filePath, provider_result_keys: stored.resultKeys, provider_file_paths: stored.filePaths }).eq('id', requestId)
