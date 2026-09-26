@@ -29,6 +29,12 @@ jobs:
         run: node scripts/check-irs-transcript-parser-fixtures.mjs
       - name: Transcript coverage fixtures
         run: node scripts/check-transcript-coverage-fixtures.mjs
+      - name: Nashville Claude snapshot parity
+        run: node scripts/check-nashville-claude-snapshot-parity.mjs
+      - name: Nashville Claude Edge lifecycle snapshot
+        run: node scripts/test-nashville-claude-edge-lifecycle.mjs
+      - name: Nashville transcript parser snapshot
+        run: node scripts/check-nashville-irs-transcript-parser-fixtures.mjs
       - name: Full application build
         run: npm run build
       - name: Install browser acceptance dependency
