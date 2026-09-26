@@ -35,12 +35,12 @@ async function installMocks(page) {
   const accountPdf=fixturePdf(['ACCOUNT TRANSCRIPT','TAX PERIOD: Dec. 31, 2024','ACCOUNT BALANCE: 0.00','ACCRUED PENALTY: 0.00','ACCRUED INTEREST: 0.00'])
   const wagePdf=fixturePdf(['WAGE AND INCOME','TAX PERIOD: Dec. 31, 2024','ACCOUNT BALANCE: 0.00','ACCRUED PENALTY: 0.00','ACCRUED INTEREST: 0.00'])
 
-  await page.route('http://127.0.0.1:4173/mock-irs-callback**', async route => {
+  await page.context().route('http://127.0.0.1:4173/mock-irs-callback**', async route => {
     state.sessionActive=true
     await route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><script>window.opener.postMessage({type:"taxres-irs-tds-oauth",ok:true,message:"stub ok"},location.origin);setTimeout(()=>window.close(),100)</script>'})
   })
-  await page.route('http://127.0.0.1:4173/mock-transcript-account.pdf', route => route.fulfill({status:200,contentType:'application/pdf',body:accountPdf}))
-  await page.route('http://127.0.0.1:4173/mock-transcript-wage.pdf', route => route.fulfill({status:200,contentType:'application/pdf',body:wagePdf}))
+  await page.context().route('http://127.0.0.1:4173/mock-transcript-account.pdf', route => route.fulfill({status:200,contentType:'application/pdf',body:accountPdf}))
+  await page.context().route('http://127.0.0.1:4173/mock-transcript-wage.pdf', route => route.fulfill({status:200,contentType:'application/pdf',body:wagePdf}))
   await page.route('https://api.rss2json.com/**', route => route.fulfill({status:200,contentType:'application/json',body:'{"status":"ok","items":[]}'}))
   await page.route('https://api.allorigins.win/**', route => route.fulfill({status:200,contentType:'application/json',body:'{"contents":"","status":{"http_code":200}}'}))
   await page.routeWebSocket('wss://' + projectRef + '.supabase.co/**', () => {})
