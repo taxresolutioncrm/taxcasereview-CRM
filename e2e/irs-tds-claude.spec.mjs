@@ -32,13 +32,15 @@ function fixturePdf(lines) {
 
 async function installMocks(page) {
   const state={sessionActive:false,requests:[],analyses:[],documents:[],submitCount:0,statusCount:0}
-  const pdf=fixturePdf(['ACCOUNT TRANSCRIPT','TAX PERIOD: Dec. 31, 2024','ACCOUNT BALANCE: 0.00','ACCRUED PENALTY: 0.00','ACCRUED INTEREST: 0.00'])
+  const accountPdf=fixturePdf(['ACCOUNT TRANSCRIPT','TAX PERIOD: Dec. 31, 2024','ACCOUNT BALANCE: 0.00','ACCRUED PENALTY: 0.00','ACCRUED INTEREST: 0.00'])
+  const wagePdf=fixturePdf(['WAGE AND INCOME','TAX PERIOD: Dec. 31, 2024','ACCOUNT BALANCE: 0.00','ACCRUED PENALTY: 0.00','ACCRUED INTEREST: 0.00'])
 
   await page.route('http://127.0.0.1:4173/mock-irs-callback**', async route => {
     state.sessionActive=true
     await route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><script>window.opener.postMessage({type:"taxres-irs-tds-oauth",ok:true,message:"stub ok"},location.origin);setTimeout(()=>window.close(),100)</script>'})
   })
-  await page.route('http://127.0.0.1:4173/mock-transcript.pdf', route => route.fulfill({status:200,contentType:'application/pdf',body:pdf}))
+  await page.route('http://127.0.0.1:4173/mock-transcript-account.pdf', route => route.fulfill({status:200,contentType:'application/pdf',body:accountPdf}))
+  await page.route('http://127.0.0.1:4173/mock-transcript-wage.pdf', route => route.fulfill({status:200,contentType:'application/pdf',body:wagePdf}))
   await page.route('https://api.rss2json.com/**', route => route.fulfill({status:200,contentType:'application/json',body:'{"status":"ok","items":[]}'}))
   await page.route('https://api.allorigins.win/**', route => route.fulfill({status:200,contentType:'application/json',body:'{"contents":"","status":{"http_code":200}}'}))
   await page.routeWebSocket('wss://' + projectRef + '.supabase.co/**', () => {})
@@ -61,7 +63,8 @@ async function installMocks(page) {
       }
       if(body.action==='status') {
         state.statusCount++
-        return json({ok:true,status:'Delivered',resultKey:'stub-result-2024-account',filePath:'tds-direct/'+tenant+'/'+body.requestId+'/stub-result.pdf',signedUrl:'http://127.0.0.1:4173/mock-transcript.pdf',deliveredCount:1,stub:true})
+        const wage=state.statusCount>1
+        return json({ok:true,status:'Delivered',resultKey:wage?'stub-result-2024-wage':'stub-result-2024-account',filePath:'tds-direct/'+tenant+'/'+body.requestId+'/'+(wage?'wage.pdf':'account.pdf'),signedUrl:wage?'http://127.0.0.1:4173/mock-transcript-wage.pdf':'http://127.0.0.1:4173/mock-transcript-account.pdf',deliveredCount:wage?2:1,stub:true})
       }
       if(body.action==='end-session'){state.sessionActive=false;return json({ok:true})}
       return json({error:'unknown action'},400)
@@ -146,6 +149,10 @@ async function login(page) {
 
 test('Claude native IRS TDS workflow reaches filed transcript and analysis in one CRM session', async ({page}) => {
   const errors=[]; page.on('pageerror',e=>errors.push(e.message))
+  await page.addInitScript(() => {
+    const nativeSetInterval=window.setInterval.bind(window)
+    window.setInterval=(fn,ms,...args)=>nativeSetInterval(fn,ms===30000?150:ms,...args)
+  })
   const state=await installMocks(page)
   await login(page)
   await page.goto('/irsportal')
@@ -169,14 +176,14 @@ test('Claude native IRS TDS workflow reaches filed transcript and analysis in on
 
   await expect.poll(()=>state.submitCount,{timeout:10000}).toBe(1)
   await expect.poll(()=>state.statusCount,{timeout:10000}).toBeGreaterThan(0)
-  await expect.poll(()=>state.analyses.length,{timeout:15000}).toBe(1)
-  await expect.poll(()=>state.documents.length,{timeout:15000}).toBe(1)
+  await expect.poll(()=>state.analyses.length,{timeout:15000}).toBe(2)
+  await expect.poll(()=>state.documents.length,{timeout:15000}).toBe(2)
   await expect.poll(()=>state.requests[0]?.status,{timeout:15000}).toBe('Completed')
-  expect(state.analyses[0].client_id).toBe(client.id)
-  expect(state.analyses[0].tax_year).toBe('2024')
-  expect(state.analyses[0].transcript_type).toBe('Account Transcript')
-  expect(state.documents[0].client_id).toBe(client.id)
-  expect(state.documents[0].docType).toBe('Transcripts')
+  expect(state.analyses.every(a=>a.client_id===client.id)).toBeTruthy()
+  expect(state.analyses.every(a=>a.tax_year==='2024')).toBeTruthy()
+  expect(new Set(state.analyses.map(a=>a.transcript_type))).toEqual(new Set(['Account Transcript','Wage and Income']))
+  expect(state.documents.every(d=>d.client_id===client.id)).toBeTruthy()
+  expect(state.documents.every(d=>d.docType==='Transcripts')).toBeTruthy()
 
   const analysisTab=page.getByRole('button',{name:/Transcript Analysis/i})
   if(await analysisTab.count()) await analysisTab.click()
