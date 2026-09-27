@@ -68,7 +68,45 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   if(!await authorized(req,supabase))return json({error:'Unauthorized'},401)
   const body = await req.json().catch(() => ({}))
-  const { useCrmData, regenerateType, regenerateId, scoreOnly, contentType } = body
+  const { action, useCrmData, regenerateType, regenerateId, scoreOnly, contentType } = body
+
+  // Content Center CRUD travels through this owner-authenticated edge function so
+  // the Admin Portal never silently renders an empty library when an RPC/session
+  // authorization path changes.
+  if (action === 'list_drafts') {
+    const limit = Math.min(Math.max(Number(body.limit || 200), 1), 1000)
+    const { data, error } = await supabase.from('content_drafts')
+      .select('id,content_type,title,body,status,week_of,metadata,created_at,updated_at,approved_at,approved_by,published_at,archived_at')
+      .order('week_of',{ascending:false}).order('created_at',{ascending:false}).limit(limit)
+    if (error) return json({ok:false,error:error.message},500)
+    return json({ok:true,drafts:data || [],count:(data || []).length})
+  }
+  if (action === 'update_status') {
+    const allowed = new Set(['draft','approved','published','archived','rejected'])
+    const status = String(body.status || '')
+    if (!body.id || !allowed.has(status)) return json({ok:false,error:'invalid_status_update'},400)
+    const stamp:any = { status, updated_at:new Date().toISOString() }
+    if (status === 'approved') { stamp.approved_at = new Date().toISOString(); stamp.approved_by = 'RomyLabs Admin' }
+    if (status === 'published') stamp.published_at = new Date().toISOString()
+    if (status === 'archived') stamp.archived_at = new Date().toISOString()
+    const { data, error } = await supabase.from('content_drafts').update(stamp).eq('id',body.id).select('*').single()
+    if (error) return json({ok:false,error:error.message},500)
+    return json({ok:true,draft:data})
+  }
+  if (action === 'save_draft') {
+    if (!body.id) return json({ok:false,error:'draft_id_required'},400)
+    const { data, error } = await supabase.from('content_drafts')
+      .update({ title:String(body.title || ''), body:String(body.body || ''), updated_at:new Date().toISOString() })
+      .eq('id',body.id).select('*').single()
+    if (error) return json({ok:false,error:error.message},500)
+    return json({ok:true,draft:data})
+  }
+  if (action === 'delete_draft') {
+    if (!body.id) return json({ok:false,error:'draft_id_required'},400)
+    const { error } = await supabase.from('content_drafts').delete().eq('id',body.id)
+    if (error) return json({ok:false,error:error.message},500)
+    return json({ok:true})
+  }
 
   if (scoreOnly && body.body) {
     const scoreText = await callClaude(`Score this ${contentType || 'content'} draft on four dimensions. Return ONLY valid JSON, no other text:\n{"Educational Value": <1-5>, "Engagement Potential": <1-5>, "SEO Potential": <1-5>, "Conversion Potential": <1-5>}\n\nContent to score:\n${String(body.body).slice(0, 1200)}`, BRAND_VOICE, 100)
