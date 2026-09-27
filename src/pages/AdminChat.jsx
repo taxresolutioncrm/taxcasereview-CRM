@@ -95,9 +95,14 @@ export default function AdminChat() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, async ({ new: msg }) => {
         const hydrated = await hydrateChatAttachment(msg)
         setAllRecent(prev => [hydrated, ...prev].slice(0, 300))
-        if (selectedOffice && selectedChan && hydrated.channel === selectedChan) {
+        const activeTenantId = selectedOffice?.id || null
+        if (activeTenantId && selectedChan && hydrated.tenant_id === activeTenantId && hydrated.channel === selectedChan) {
           setMessages(prev => [...prev, hydrated])
+          localStorage.setItem('romylabs_admin_chat_seen_' + activeTenantId, new Date().toISOString())
+          setUnread(prev => ({ ...prev, [activeTenantId]: 0 }))
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+        } else if (hydrated.tenant_id) {
+          setUnread(prev => ({ ...prev, [hydrated.tenant_id]: (prev[hydrated.tenant_id] || 0) + 1 }))
         }
       })
       .subscribe()
@@ -107,12 +112,25 @@ export default function AdminChat() {
 
   async function loadInbox() {
     setLoading(true)
-    const { data } = await supabase.rpc('admin_get_all_chat_messages', { p_limit: 300 })
-    setAllRecent(await hydrateChatAttachments(data || []))
+    const { data, error } = await supabase.rpc('admin_get_all_chat_messages', { p_limit: 300 })
+    const hydrated = await hydrateChatAttachments(data || [])
+    setAllRecent(hydrated)
+    if (!error) {
+      const counts = {}
+      for (const m of hydrated) {
+        if (!m.tenant_id) continue
+        const seenRaw = localStorage.getItem('romylabs_admin_chat_seen_' + m.tenant_id)
+        const seenMs = seenRaw ? new Date(seenRaw).getTime() : 0
+        if (new Date(m.created_at).getTime() > seenMs) counts[m.tenant_id] = (counts[m.tenant_id] || 0) + 1
+      }
+      setUnread(counts)
+    }
     setLoading(false)
   }
 
   async function openOffice(office) {
+    localStorage.setItem('romylabs_admin_chat_seen_' + office.id, new Date().toISOString())
+    setUnread(prev => ({ ...prev, [office.id]: 0 }))
     setSelectedOffice(office)
     setView('office')
     setMessages([])
@@ -158,6 +176,7 @@ export default function AdminChat() {
     if (!input.trim() || !selectedChan || sending) return
     setSending(true)
     const payload = {
+      tenant_id: selectedOffice.id,
       channel: selectedChan,
       sender: 'Romy Cruz (Admin)',
       text: input.trim(),
@@ -311,6 +330,7 @@ export default function AdminChat() {
           const offMsgs = allRecent.filter(m => m.tenant_id === o.id)
           const last = offMsgs[0]
           const count = offMsgs.length
+          const unreadCount = unread[o.id] || 0
           return (
             <div key={o.id} onClick={() => openOffice(o)}
               style={{ ...S.card, padding: '16px 18px', cursor: 'pointer', transition: 'transform .15s, box-shadow .15s' }}
@@ -324,7 +344,9 @@ export default function AdminChat() {
                   <div style={{ fontWeight: 700, fontSize: 14, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.firm_name}</div>
                   <div style={{ fontSize: 11, color: '#475569' }}>{o.employee_count} employees</div>
                 </div>
-                {count > 0 && <span style={{ background: 'rgba(99,102,241,.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>{count} msgs</span>}
+                {unreadCount > 0
+                  ? <span style={{ background:'rgba(239,68,68,.18)', color:'#fca5a5', fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:20 }}>{unreadCount} new</span>
+                  : count > 0 && <span style={{ background: 'rgba(99,102,241,.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>{count} msgs</span>}
               </div>
               {last ? (
                 <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
