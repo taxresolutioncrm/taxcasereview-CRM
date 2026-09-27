@@ -81,7 +81,8 @@ export default function TrafficCoverage() {
 
       {error && <div style={{padding:12,border:'1px solid rgba(239,68,68,.3)',background:'rgba(239,68,68,.08)',borderRadius:10,color:'#fca5a5',marginBottom:14}}>{error}</div>}
       {loading ? <div style={{padding:30,color:'#64748b'}}>Loading traffic coverage…</div> : grouped.map(([id,p]) => {
-        const live = p.rows.filter(r=>r.status==='live').length
+        const now = Date.now()
+        const live = p.rows.filter(r => r.status==='live' && (!r.last_verified_at || (now - new Date(r.last_verified_at).getTime()) <= 30*86400000)).length
         return <div key={id} style={{background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.15)',borderRadius:14,marginBottom:14,overflow:'hidden'}}>
           <div style={{padding:'14px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid rgba(99,102,241,.1)'}}>
             <div><strong style={{color:'#fff'}}>{p.name}</strong><span style={{marginLeft:9,fontSize:10,color:'#64748b',textTransform:'uppercase'}}>{p.lifecycle}</span></div>
