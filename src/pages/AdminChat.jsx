@@ -97,7 +97,7 @@ export default function AdminChat() {
         setAllRecent(prev => [hydrated, ...prev].slice(0, 300))
         const activeTenantId = selectedOffice?.id || null
         if (activeTenantId && selectedChan && hydrated.tenant_id === activeTenantId && hydrated.channel === selectedChan) {
-          setMessages(prev => [...prev, hydrated])
+          setMessages(prev => prev.some(m => m.id === hydrated.id) ? prev : [...prev, hydrated])
           localStorage.setItem('romylabs_admin_chat_seen_' + activeTenantId, new Date().toISOString())
           setUnread(prev => ({ ...prev, [activeTenantId]: 0 }))
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
@@ -182,10 +182,12 @@ export default function AdminChat() {
       text: input.trim(),
       created_at: new Date().toISOString(),
     }
-    const { error } = await supabase.from('chat_messages').insert([payload])
+    const { data: sent, error } = await supabase.from('chat_messages').insert([payload]).select('*').single()
     if (!error) {
-      setMessages(prev => [...prev, { ...payload, id: Date.now() }])
+      if (sent) setMessages(prev => prev.some(m => m.id === sent.id) ? prev : [...prev, sent])
       setInput('')
+      localStorage.setItem('romylabs_admin_chat_seen_' + selectedOffice.id, new Date().toISOString())
+      setUnread(prev => ({ ...prev, [selectedOffice.id]: 0 }))
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     }
     setSending(false)
