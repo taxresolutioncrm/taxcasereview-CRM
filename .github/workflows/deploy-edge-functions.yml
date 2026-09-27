@@ -5,11 +5,6 @@ name: Deploy Supabase Edge Functions
 # changes in one commit are all deployed; there is no first-match/elif gap.
 on:
   workflow_dispatch:
-    inputs:
-      function:
-        description: 'Function slug to deploy (or TDS_SOR / ALL_INTENTIONAL)'
-        required: true
-        default: 'TDS_SOR'
 
 permissions:
   contents: read
@@ -52,9 +47,7 @@ jobs:
             start-outbound-call \
             save-email-account \
             imap-sync \
-            smtp-send \
-            transcript-pull \
-            transcript-pull-callback
+            smtp-send
           do
             if echo "$CHANGED" | grep -q "^supabase/functions/${FN}/"; then
               FNS+=("$FN")
@@ -73,41 +66,6 @@ jobs:
           fi
           echo "fns=${FNS[*]}" >> "$GITHUB_OUTPUT"
 
-      - name: Validate IRS TDS production prerequisites
-        shell: bash
-        run: |
-          set -euo pipefail
-          FNS="${{ steps.scope.outputs.fns }}"
-          case " $FNS " in
-            *" TDS_SOR "*|*" transcript-pull "*|*" transcript-pull-callback "*)
-              OUT="$(supabase secrets list --project-ref "$PROJECT_REF")"
-              REQUIRED=(
-                IRS_TDS_CLIENT_ID
-                IRS_TDS_JWT_KID
-                IRS_TDS_JWT_PRIVATE_KEY_PEM
-                IRS_TDS_REDIRECT_URI
-                IRS_TDS_REQUEST_URL
-                IRS_TDS_REQUEST_TEMPLATE
-                IRS_TDS_STATUS_URL_TEMPLATE
-                IRS_TDS_AUTH_FLOW_VERIFIED
-              )
-              for NAME in "${REQUIRED[@]}"; do
-                if ! printf '%s\n' "$OUT" | grep -Eq "(^|[[:space:]|])${NAME}([[:space:]|]|$)"; then
-                  echo "::error::Missing required IRS TDS secret name: ${NAME}"
-                  exit 1
-                fi
-              done
-              if printf '%s\n' "$OUT" | grep -Eq '(^|[[:space:]|])IRS_TDS_STUB_MODE([[:space:]|]|$)'; then
-                echo "::error::IRS_TDS_STUB_MODE is configured; refusing production TDS deployment."
-                exit 1
-              fi
-              echo "IRS TDS production prerequisites present."
-              ;;
-            *)
-              echo "Non-TDS deploy; IRS TDS prerequisite gate not applicable."
-              ;;
-          esac
-
       - name: Deploy edge functions
         shell: bash
         run: |
@@ -117,12 +75,9 @@ jobs:
             supabase functions deploy --project-ref "$PROJECT_REF"
             exit 0
           fi
-          if [ "$FNS" = "TDS_SOR" ]; then
-            FNS="transcript-pull transcript-pull-callback"
-          fi
           for FN in $FNS; do
             echo "Deploying $FN"
-            if [ "$FN" = "linkedin-queue-replenisher" ] || [ "$FN" = "linkedin-scheduler" ] || [ "$FN" = "support-api" ] || [ "$FN" = "transcript-pull-callback" ]; then
+            if [ "$FN" = "linkedin-queue-replenisher" ] || [ "$FN" = "linkedin-scheduler" ] || [ "$FN" = "support-api" ]; then
               supabase functions deploy "$FN" --project-ref "$PROJECT_REF" --no-verify-jwt
             else
               supabase functions deploy "$FN" --project-ref "$PROJECT_REF"
