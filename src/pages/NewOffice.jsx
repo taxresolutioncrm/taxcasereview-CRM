@@ -512,7 +512,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
               <input value={edit.per_seat_rate} onChange={e=>setEdit(f=>({...f,per_seat_rate:e.target.value}))} type="number" step="0.01" placeholder="e.g. 55.00"/>
             </Row>
             <div style={{fontSize:11.5,color:'var(--t3)'}}>
-              {detail.employees.length} seat{detail.employees.length===1?'':'s'} × {edit.per_seat_rate ? `$${edit.per_seat_rate}` : '—'} = {edit.per_seat_rate ? `$${(detail.employees.length * parseFloat(edit.per_seat_rate||0)).toFixed(2)}/mo` : '—'} (recalculates automatically as staff are added or removed)
+              {Number(detail.billing?.seats ?? detail.billing?.active_staff ?? 0)} seat{Number(detail.billing?.seats ?? detail.billing?.active_staff ?? 0)===1?'':'s'} / {Number(detail.billing?.active_staff ?? 0)} active staff × {edit.per_seat_rate ? `${edit.per_seat_rate}` : '—'} = {edit.per_seat_rate ? `${(Number(detail.billing?.seats ?? detail.billing?.active_staff ?? 0) * parseFloat(edit.per_seat_rate||0)).toFixed(2)}/mo` : '—'} (uses purchased seats when set; otherwise active staff)
             </div>
             <Row label="Flat Rate Override ($/mo)">
               <input value={edit.monthly_rate} onChange={e=>setEdit(f=>({...f,monthly_rate:e.target.value}))} type="number" step="0.01" placeholder="Leave blank to bill per-seat"/>
