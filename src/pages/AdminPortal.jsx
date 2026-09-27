@@ -2175,7 +2175,7 @@ function SystemHealth() {
 }
 
 // ── Employee Lookup + Edit ───────────────────────────────────────────────────
-const ACCESS_LEVELS = ['Super Admin','Admin','Tax Associate','Read Only']
+const ACCESS_LEVELS = ['Super Admin','Admin','Manager','Tax Advisor','Tax Associate','Associate','Para','Sales Rep','Staff','Read Only','View Only']
 
 function EmployeeEditModal({ emp, onClose, onSaved }) {
   const [form, setForm] = useState({
