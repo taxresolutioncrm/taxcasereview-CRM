@@ -14,7 +14,7 @@ begin
     select coalesce(jsonb_agg(to_jsonb(x) order by lower(x.name), lower(x.email)),'[]'::jsonb)
     from (
       select e.id,e.name,e.email,e.role,e.access,e.phone,e.avatar_url,e.tenant_id,e.created_at,e.status,
-             t.firm_name as tenant_name
+             t.firm_name as tenant_name, t.tenant_code
       from public.employees e
       left join public.tenants t on t.id=e.tenant_id
       where e.name ilike '%'||v_q||'%'
