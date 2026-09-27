@@ -12,8 +12,9 @@ const required = [
   "GA4 Data API connection",
   "Analytics · Google Analytics 4 (GA4)",
   "Live GA4 traffic and behavior metrics for each RomyLabs product.",
-  "{ label:'Sessions Today',",
-  "{ label:'Users Today',",
+  "label:\`Sessions · \${reportLabel}\`",
+  "label:\`Users · \${reportLabel}\`",
+  "Session sources — reporting date",
   "<div style={CC.sectionLabel}>Top pages — last 7 days</div>",
   "{p.views} sessions",
 ];
@@ -29,6 +30,8 @@ const forbidden = [
   "Product Usage · GA4 tracked activity",
   "Tracked Sessions Today",
   "Active Users Today",
+  "{ label:'Sessions Today',",
+  "{ label:'Users Today',",
   "Most-used routes — last 7 days",
   "GA4 product-usage connection",
 ];
