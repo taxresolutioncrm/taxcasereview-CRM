@@ -554,7 +554,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
         )}
       </Section>
 
-      <Section title={`Staff (${detail.employees.length})`}>
+      <Section title={`Staff Directory (${Number(detail.billing?.active_staff ?? detail.employees.length)} active / ${detail.employees.length} total)`}>
         {detail.employees.length === 0 ? <div style={{color:'var(--t3)',fontSize:13}}>No staff yet.</div> : (
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             {detail.employees.map(e => (
