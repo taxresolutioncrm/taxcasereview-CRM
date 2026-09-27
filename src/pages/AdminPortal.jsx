@@ -1974,33 +1974,96 @@ function Billing() {
 function DemoMgmt() {
   const [rows, setRows] = useState(null)
   const [toast, setToast] = useState(null)
+  const [launching, setLaunching] = useState(null)
+  const [query, setQuery] = useState('')
   const toast_ = (msg,type='ok')=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3500) }
-  useEffect(()=>{ supabase.rpc('admin_tenant_overview').then(({data})=>setRows(data||[])) },[])
 
-  async function jumpIn(tenantId, firmName) {
-    const { data:token, error } = await supabase.rpc('create_impersonation_token',{ p_tenant_id:tenantId })
-    if (error) { toast_(error.message,'error'); return }
-    window.open(`${window.location.origin}/impersonate?admin_token=${token}`,'_blank')
-    toast_(`✅ Opened ${firmName}`)
+  useEffect(()=>{
+    let cancelled=false
+    ;(async()=>{
+      try {
+        const {rows:allRows}=await loadPlatformOfficeRows()
+        if(!cancelled) setRows(allRows)
+      } catch(e) {
+        if(!cancelled){setRows([]);toast_(e?.message||'Could not load demo workspaces','error')}
+      }
+    })()
+    return()=>{cancelled=true}
+  },[])
+
+  async function jumpIn(row) {
+    if (row.is_product_main || row.product !== 'taxres_crm') {
+      const main=(rows||[]).find(r=>r.product===row.product && r.is_product_main)
+      const url=row.app_url || main?.app_url || EXTERNAL_OFFICE_PRODUCTS[row.product]?.appUrl
+      if(!url){toast_('No app URL is registered for this product','error');return}
+      window.open(url,'_blank','noopener,noreferrer')
+      return
+    }
+    setLaunching(row.id)
+    const { data:token, error } = await supabase.rpc('create_impersonation_token',{ p_tenant_id:row.id })
+    setLaunching(null)
+    if (error || !token) { toast_(error?.message || 'Could not create admin session','error'); return }
+    window.open(`${window.location.origin}/impersonate?admin_token=${encodeURIComponent(token)}`,'_blank','noopener,noreferrer')
+    toast_(`Opened ${row.firm_name}`)
+  }
+
+  const q=query.trim().toLowerCase()
+  const visible=(rows||[]).filter(r=>!q || [r.firm_name,r.product,r.plan_tier].some(v=>String(v||'').toLowerCase().includes(q)))
+  const groups=[]
+  for(const row of visible){
+    const key=row.product||'taxres_crm'
+    let g=groups.find(x=>x.key===key)
+    if(!g){g={key,label:key,rows:[]};groups.push(g)}
+    g.rows.push(row)
+    const main=g.rows.find(x=>x.is_product_main)
+    if(main) g.label=main.firm_name
+    else if(key==='taxres_crm') g.label='TaxRes CRM'
   }
 
   return (
-    <div style={{ padding:'28px 36px', maxWidth:820 }}>
+    <div style={{ padding:'28px 36px', width:'100%', maxWidth:1100, boxSizing:'border-box' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} />}
       <div style={{ fontSize:22,fontWeight:800,color:'#fff',marginBottom:6 }}>🎭 Demo Management</div>
-      <div style={{ fontSize:14,color:'#475569',marginBottom:24 }}>Jump into any office, run a demo, reset demo data before a prospect call.</div>
-      {!rows ? <Spinner /> : rows.map(r=>(
-        <div key={r.id} style={{ ...S.card,padding:'18px 20px',marginBottom:12,display:'flex',alignItems:'center',gap:14 }}>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:15,fontWeight:700,color:'#fff' }}>{r.firm_name}</div>
-            <div style={{ fontSize:12,color:'#475569',marginTop:2 }}>{r.employee_count} seats · {r.client_count} clients · Last active {fmtAgo(r.last_activity)}</div>
-          </div>
-          <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
-          <button onClick={()=>jumpIn(r.id,r.firm_name)} style={{ ...S.btn('primary'),fontSize:12,padding:'7px 16px' }}>
-            🚀 Jump In
-          </button>
+      <div style={{ fontSize:14,color:'#475569',marginBottom:18 }}>
+        Every live CRM family is represented here. TaxRes offices support secure admin jump-in; separate product CRMs open their registered app workspace.
+      </div>
+      <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search product or office…"
+        style={{width:'100%',maxWidth:520,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.25)',background:'#0f0e1a',color:'#e2e8f0',outline:'none',marginBottom:20}}/>
+
+      {!rows ? <Spinner /> : groups.length===0 ? <div style={{color:'#64748b',fontSize:13}}>No matching demo workspaces.</div> : (
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+          {groups.map(group=>(
+            <section key={group.key}>
+              <div style={{fontSize:11,fontWeight:800,color:'#a5b4fc',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>{group.label}</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:10}}>
+                {group.rows.map(r=>{
+                  const staff=r.employee_count==null?null:Number(r.employee_count)
+                  const seats=Number(r.billing_seats||0)>0?Number(r.billing_seats):staff
+                  const isExternal=r.product!=='taxres_crm'
+                  return <div key={r.id} style={{...S.card,padding:'15px 16px',display:'flex',alignItems:'center',gap:12,
+                    borderColor:r.is_demo?'rgba(245,158,11,.35)':r.is_product_main?'rgba(99,102,241,.35)':undefined}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <div style={{fontSize:14,fontWeight:800,color:'#fff'}}>{r.firm_name}</div>
+                        {r.is_product_main&&<span style={S.badge('#64748b')}>Main CRM</span>}
+                        {r.is_demo&&<span style={S.badge('#f59e0b')}>Demo</span>}
+                      </div>
+                      <div style={{fontSize:10,color:'#475569',marginTop:3}}>
+                        {r.is_product_main ? (r.app_url||'Product workspace')
+                          : `Seats / Staff: ${seats==null?'—':seats} / ${staff==null?'—':staff} · ${r.client_count==null?'—':Number(r.client_count).toLocaleString()} clients`}
+                      </div>
+                    </div>
+                    <button onClick={()=>jumpIn(r)} disabled={launching===r.id}
+                      style={{...S.btn(r.is_demo?'primary':'ghost'),fontSize:10,padding:'6px 10px',whiteSpace:'nowrap'}}>
+                      {launching===r.id?'⏳':(isExternal||r.is_product_main?'Open ↗':'🚀 Jump In')}
+                    </button>
+                  </div>
+                })}
+              </div>
+            </section>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
