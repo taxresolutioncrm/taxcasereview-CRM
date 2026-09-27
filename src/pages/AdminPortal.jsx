@@ -5474,40 +5474,7 @@ function CommandCenter() {
           })()}
 
 
-          {/* ── Demo Offices / product workspaces ─────────────────────────── */}
-          <div style={{ marginBottom:24 }}>
-            <div style={{display:'flex',alignItems:'end',justifyContent:'space-between',gap:12,marginBottom:10}}>
-              <div>
-                <div style={{ fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.1em' }}>Demo Offices</div>
-                <div style={{fontSize:10,color:'#334155',marginTop:3}}>Quick launch into each live product workspace. Tax Res CRM uses the real DEMO tenant; other products open their product app/demo workspace.</div>
-              </div>
-            </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}}>
-              {[
-                {key:'taxres_demo',label:'Tax Res CRM Demo',icon:'📊',url:'https://taxrescrm.app',tenantId:'518808b4-10dd-47fd-900e-6c3fc1ff2e7e',mode:'Jump In'},
-                ...mergeProductRegistry(reportingProducts)
-                  .filter(p=>!p.isTenant && ['taxres_crm'].indexOf(p.key)===-1 && p.appUrl)
-                  .map(p=>({key:p.key,label:`${p.label} Demo`,icon:p.icon,url:p.appUrl,mode:'Open App'}))
-              ].map(d => (
-                <div key={d.key} style={{...CC.card({padding:'14px 16px'}),display:'flex',alignItems:'center',gap:12}}>
-                  <div style={{fontSize:22}}>{d.icon}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{d.label}</div>
-                    <div style={{fontSize:9,color:'#475569',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.url}</div>
-                  </div>
-                  <button onClick={async()=>{
-                    if(d.tenantId){
-                      try {
-                        await supabase.rpc('set_admin_tenant_override',{p_tenant_id:d.tenantId})
-                        sessionStorage.setItem('admin_impersonation',JSON.stringify({tenant_id:d.tenantId,firm_name:d.label,started_at:new Date().toISOString()}))
-                      } catch(e) { console.error('Demo jump-in override failed',e) }
-                    }
-                    window.open(d.url,'_blank','noopener,noreferrer')
-                  }} style={{...S.btn('ghost'),fontSize:10,padding:'5px 9px',whiteSpace:'nowrap'}}>{d.mode} ↗</button>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Demo workspaces live in the dedicated Demo Mgmt module to avoid duplicate launch logic. */}
 
           {/* ── Needs Attention ─────────────────────────────────────────── */}
           {(() => {
