@@ -2008,7 +2008,8 @@ function DemoMgmt() {
   }
 
   const q=query.trim().toLowerCase()
-  const visible=(rows||[]).filter(r=>!q || [r.firm_name,r.product,r.plan_tier].some(v=>String(v||'').toLowerCase().includes(q)))
+  const demoRows=(rows||[]).filter(r=>r.is_demo)
+  const visible=demoRows.filter(r=>!q || [r.firm_name,r.product,r.plan_tier].some(v=>String(v||'').toLowerCase().includes(q)))
   const groups=[]
   for(const row of visible){
     const key=row.product||'taxres_crm'
@@ -2025,7 +2026,7 @@ function DemoMgmt() {
       {toast && <Toast msg={toast.msg} type={toast.type} />}
       <div style={{ fontSize:22,fontWeight:800,color:'#fff',marginBottom:6 }}>🎭 Demo Management</div>
       <div style={{ fontSize:14,color:'#475569',marginBottom:18 }}>
-        Every live CRM family is represented here. TaxRes offices support secure admin jump-in; separate product CRMs open their registered app workspace.
+        One demo workspace per live CRM family. TaxRes uses secure admin jump-in; separate product CRMs open their registered demo/app workspace.
       </div>
       <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search product or office…"
         style={{width:'100%',maxWidth:520,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.25)',background:'#0f0e1a',color:'#e2e8f0',outline:'none',marginBottom:20}}/>
@@ -2207,10 +2208,10 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
   async function resetPassword() {
     if (!confirm(`Send password reset email to ${emp.email}?`)) return
     setResetting(true)
-    const { data, error } = await supabase.functions.invoke('employee-access-link', { body:{ email:emp.email } })
+    const { data, error } = await supabase.functions.invoke('taxres-family-password-reset', { body:{ email:emp.email } })
     setResetting(false)
     if (error || data?.error) { toast_(data?.error || error?.message || 'Could not send password reset','error') }
-    else { toast_(data?.message || `✅ Reset email sent to ${emp.email}`) }
+    else { toast_(data?.message || `✅ Reset email requested for ${emp.email}`) }
   }
 
   return (
