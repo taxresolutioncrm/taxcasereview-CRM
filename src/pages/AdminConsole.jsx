@@ -104,7 +104,7 @@ function AdminOverview() {
 
   const totalTenants   = rows.length
   const activeTenants  = rows.filter(r => r.status === 'active').length
-  const totalSeats     = rows.reduce((s,r) => s + (r.employee_count||0), 0)
+  const totalSeats     = rows.reduce((s,r) => s + (Number(r.billing_seats||0)>0 ? Number(r.billing_seats) : Number(r.employee_count||0)), 0)
   const totalClients   = rows.reduce((s,r) => s + (r.client_count||0), 0)
   const totalLeads     = rows.reduce((s,r) => s + (r.lead_count||0), 0)
   const totalStorage   = rows.reduce((s,r) => s + (r.storage_bytes||0), 0)
@@ -134,7 +134,7 @@ function AdminOverview() {
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
           <thead>
             <tr style={{background:'var(--s2)',textAlign:'left'}}>
-              {['Firm','Status','Seats','Clients','Leads','Storage','MRR','Last Activity'].map(h=>(
+              {['Firm','Status','Seats / Staff','Clients','Leads','Storage','MRR','Last Activity'].map(h=>(
                 <th key={h} style={{padding:'9px 12px',fontSize:10.5,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.04em'}}>{h}</th>
               ))}
             </tr>
@@ -150,7 +150,7 @@ function AdminOverview() {
                   <span style={{fontSize:10.5,fontWeight:700,padding:'2px 9px',borderRadius:20,textTransform:'capitalize',
                     background:(STATUS_COLORS[r.status]||'#94a3b8')+'22',color:STATUS_COLORS[r.status]||'#94a3b8'}}>{r.status}</span>
                 </td>
-                <td style={{padding:'9px 12px',color:'var(--t2)'}}>{r.employee_count}</td>
+                <td style={{padding:'9px 12px',color:'var(--t2)'}}>{Number(r.billing_seats||0)>0 ? `${r.billing_seats} / ${r.employee_count||0}` : `${r.employee_count||0} / ${r.employee_count||0}`}</td>
                 <td style={{padding:'9px 12px',color:'var(--t2)'}}>{r.client_count}</td>
                 <td style={{padding:'9px 12px',color:'var(--t2)'}}>{r.lead_count}</td>
                 <td style={{padding:'9px 12px',color:'var(--t2)'}}>{fmtBytes(r.storage_bytes)}</td>
