@@ -25,6 +25,10 @@ function fmtTime(ts) {
   if (isToday) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
+function isHumanMessage(m) {
+  const sender = String(m?.sender || '').replace(/^🔔\s*/, '').trim().toLowerCase()
+  return sender && sender !== 'system' && sender !== 'romy cruz (admin)'
+}
 function fmtAgo(ts) {
   if (!ts) return ''
   const s = (Date.now() - new Date(ts).getTime()) / 1000
@@ -102,10 +106,10 @@ export default function AdminChat() {
           localStorage.setItem('romylabs_admin_chat_seen_' + activeTenantId, new Date().toISOString())
           setUnread(prev => ({ ...prev, [activeTenantId]: 0 }))
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-        } else if (hydrated.tenant_id) {
+        } else if (hydrated.tenant_id && isHumanMessage(hydrated)) {
           setUnread(prev => ({ ...prev, [hydrated.tenant_id]: (prev[hydrated.tenant_id] || 0) + 1 }))
         }
-        if (hydrated.sender !== 'Romy Cruz (Admin)' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        if (isHumanMessage(hydrated) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           const officeName = offices.find(o => o.id === hydrated.tenant_id)?.firm_name || 'TaxRes office'
           try { new Notification(`New message · ${officeName}`, { body:`${hydrated.sender}: ${hydrated.text || 'Attachment'}` }) } catch (_) {}
         }
@@ -123,7 +127,7 @@ export default function AdminChat() {
     if (!error) {
       const counts = {}
       for (const m of hydrated) {
-        if (!m.tenant_id) continue
+        if (!m.tenant_id || !isHumanMessage(m)) continue
         const seenRaw = localStorage.getItem('romylabs_admin_chat_seen_' + m.tenant_id)
         const seenMs = seenRaw ? new Date(seenRaw).getTime() : 0
         if (new Date(m.created_at).getTime() > seenMs) counts[m.tenant_id] = (counts[m.tenant_id] || 0) + 1
