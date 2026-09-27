@@ -46,7 +46,7 @@ export default function TrafficCoverage() {
     const isVerifiedLive = r => r.status==='live' && r.last_verified_at && !isStale(r)
     return {
       live: rows.filter(isVerifiedLive).length,
-      configured: rows.filter(r=>r.status==='configured').length,
+      configured: rows.filter(r=>r.status==='configured' || (r.status==='live' && !r.last_verified_at)).length,
       blocked: rows.filter(r=>r.status==='blocked' || isStale(r)).length,
       not_applicable: rows.filter(r=>r.status==='not_applicable').length,
     }
