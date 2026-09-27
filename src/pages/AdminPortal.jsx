@@ -6015,16 +6015,16 @@ function CommandCenter() {
               <div style={CC.sectionLabel}>Service status</div>
               {(()=>{
                 const checks = [
-                  { label:'Supabase DB',          ok: sysStatus?.dbOk ?? null },
-                  { label:'Email (Stalwart)',      ok: sysStatus?.mailOk ?? null },
-                  { label:'taxrescrm.net',         ok: sysStatus?.netOk ?? null },
-                  { label:'taxrescrm.app',         ok: sysStatus?.appOk ?? null },
-                  { label:'GA4 · TaxRes (G-M6J80B65LG)',   ok: true },
-                  { label:'GA4 · RomyLabs (G-2MSNYF9XBE)', ok: true },
-                  { label:'Clarity · TaxRes (xyck7g2mfl)',  ok: true },
-                  { label:'Clarity · RomyLabs (y54zqoj6c2)',ok: true },
-                  { label:'Google Search Console', ok: gscConnected ? true : null },
-                  { label:'Bing Webmaster',        ok: bingConnected ? true : null },
+                  { label:'Supabase DB',          ok: sysStatus?.dbOk ?? null, kind:'service' },
+                  { label:'Email (Stalwart)',      ok: sysStatus?.mailOk ?? null, kind:'reachability' },
+                  { label:'taxrescrm.net',         ok: sysStatus?.netOk ?? null, kind:'reachability' },
+                  { label:'taxrescrm.app',         ok: sysStatus?.appOk ?? null, kind:'reachability' },
+                  { label:'GA4 · TaxRes (G-M6J80B65LG)',   ok: true, kind:'connected' },
+                  { label:'GA4 · RomyLabs (G-2MSNYF9XBE)', ok: true, kind:'connected' },
+                  { label:'Clarity · TaxRes (xyck7g2mfl)',  ok: true, kind:'connected' },
+                  { label:'Clarity · RomyLabs (y54zqoj6c2)',ok: true, kind:'connected' },
+                  { label:'Google Search Console', ok: gscConnected ? true : null, kind:'connected' },
+                  { label:'Bing Webmaster',        ok: bingConnected ? true : null, kind:'connected' },
                 ]
                 return checks.map((s,i)=>(
                   <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -6033,7 +6033,11 @@ function CommandCenter() {
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <StatusDot ok={s.ok} />
                       <span style={{ fontSize:11, fontWeight:600, color: s.ok===null?'#475569':s.ok?'#10b981':'#ef4444' }}>
-                        {s.ok===null ? (sysStatus===null?'Checking…':'Not connected') : s.ok?'Operational':'Down'}
+                        {s.ok===null
+                          ? (sysStatus===null?'Checking…':s.kind==='connected'?'Not connected':'Unknown')
+                          : s.ok
+                            ? (s.kind==='reachability'?'Reachable':s.kind==='connected'?'Connected':'Operational')
+                            : (s.kind==='reachability'?'Unreachable':s.kind==='connected'?'Not connected':'Down')}
                       </span>
                     </div>
                   </div>
