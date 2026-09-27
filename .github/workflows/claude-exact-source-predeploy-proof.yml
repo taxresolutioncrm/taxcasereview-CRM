@@ -1,0 +1,26 @@
+name: Claude Exact Source Predeploy Proof
+
+on:
+  push:
+    branches:
+      - sandbox/claude-exact-source-cert-20260927
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Production build and repository prebuild checks
+        run: npm run build
+      - name: Claude IRS OAuth architecture check
+        run: node scripts/check-irs-oauth-architecture.mjs
