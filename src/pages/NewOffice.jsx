@@ -184,7 +184,7 @@ export default function NewOffice() {
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{background:'var(--s2)',textAlign:'left'}}>
-                {['Firm','Code','Admin','Staff','Billing','Status'].map(h=>(
+                {['Firm','Code','Admin','Seats / Staff','Billing','Status'].map(h=>(
                   <th key={h} style={{padding:'10px 14px',fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.04em'}}>{h}</th>
                 ))}
               </tr>
@@ -201,7 +201,11 @@ export default function NewOffice() {
                   </td>
                   <td style={{padding:'10px 14px',color:'var(--t2)',fontFamily:'monospace'}}>{o.tenant_code}</td>
                   <td style={{padding:'10px 14px',color:'var(--t2)'}}>{o.admin_email || '—'}</td>
-                  <td style={{padding:'10px 14px',color:'var(--t2)'}}>{o.employee_count}</td>
+                  <td style={{padding:'10px 14px',color:'var(--t2)'}}>{(() => {
+                    const staff=Number(o.employee_count||0)
+                    const seats=Number(o.billing_seats||0)>0?Number(o.billing_seats):staff
+                    return `${seats} / ${staff}`
+                  })()}</td>
                   <td style={{padding:'10px 14px',color:'var(--t2)'}}>{o.effective_monthly != null ? `$${Number(o.effective_monthly).toFixed(2)}/mo` : '—'}</td>
                   <td style={{padding:'10px 14px'}}>
                     <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,textTransform:'capitalize',
