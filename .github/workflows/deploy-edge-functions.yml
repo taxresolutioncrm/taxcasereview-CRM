@@ -73,6 +73,41 @@ jobs:
           fi
           echo "fns=${FNS[*]}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate IRS TDS production prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          FNS="${{ steps.scope.outputs.fns }}"
+          case " $FNS " in
+            *" TDS_SOR "*|*" transcript-pull "*|*" transcript-pull-callback "*)
+              OUT="$(supabase secrets list --project-ref "$PROJECT_REF")"
+              REQUIRED=(
+                IRS_TDS_CLIENT_ID
+                IRS_TDS_JWT_KID
+                IRS_TDS_JWT_PRIVATE_KEY_PEM
+                IRS_TDS_REDIRECT_URI
+                IRS_TDS_REQUEST_URL
+                IRS_TDS_REQUEST_TEMPLATE
+                IRS_TDS_STATUS_URL_TEMPLATE
+                IRS_TDS_AUTH_FLOW_VERIFIED
+              )
+              for NAME in "${REQUIRED[@]}"; do
+                if ! printf '%s\n' "$OUT" | grep -Eq "(^|[[:space:]|])${NAME}([[:space:]|]|$)"; then
+                  echo "::error::Missing required IRS TDS secret name: ${NAME}"
+                  exit 1
+                fi
+              done
+              if printf '%s\n' "$OUT" | grep -Eq '(^|[[:space:]|])IRS_TDS_STUB_MODE([[:space:]|]|$)'; then
+                echo "::error::IRS_TDS_STUB_MODE is configured; refusing production TDS deployment."
+                exit 1
+              fi
+              echo "IRS TDS production prerequisites present."
+              ;;
+            *)
+              echo "Non-TDS deploy; IRS TDS prerequisite gate not applicable."
+              ;;
+          esac
+
       - name: Deploy edge functions
         shell: bash
         run: |
