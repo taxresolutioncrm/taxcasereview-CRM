@@ -5,6 +5,11 @@ name: Deploy Supabase Edge Functions
 # changes in one commit are all deployed; there is no first-match/elif gap.
 on:
   workflow_dispatch:
+    inputs:
+      function:
+        description: 'Function slug to deploy (or TDS_SOR / ALL_INTENTIONAL)'
+        required: true
+        default: 'TDS_SOR'
 
 permissions:
   contents: read
@@ -47,7 +52,9 @@ jobs:
             start-outbound-call \
             save-email-account \
             imap-sync \
-            smtp-send
+            smtp-send \
+            transcript-pull \
+            transcript-pull-callback
           do
             if echo "$CHANGED" | grep -q "^supabase/functions/${FN}/"; then
               FNS+=("$FN")
@@ -75,9 +82,12 @@ jobs:
             supabase functions deploy --project-ref "$PROJECT_REF"
             exit 0
           fi
+          if [ "$FNS" = "TDS_SOR" ]; then
+            FNS="transcript-pull transcript-pull-callback"
+          fi
           for FN in $FNS; do
             echo "Deploying $FN"
-            if [ "$FN" = "linkedin-queue-replenisher" ] || [ "$FN" = "linkedin-scheduler" ] || [ "$FN" = "support-api" ]; then
+            if [ "$FN" = "linkedin-queue-replenisher" ] || [ "$FN" = "linkedin-scheduler" ] || [ "$FN" = "support-api" ] || [ "$FN" = "transcript-pull-callback" ]; then
               supabase functions deploy "$FN" --project-ref "$PROJECT_REF" --no-verify-jwt
             else
               supabase functions deploy "$FN" --project-ref "$PROJECT_REF"
