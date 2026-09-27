@@ -26,3 +26,35 @@ jobs:
         run: node scripts/check-irs-oauth-architecture.mjs
       - name: TaxRes transcript parity contract
         run: node scripts/check-taxres-transcript-parity.mjs
+      - name: Verify required IRS TDS secret names exist in both live projects
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SUPABASE_ACCESS_TOKEN:-}" || { echo "SUPABASE_ACCESS_TOKEN is unavailable"; exit 1; }
+          required=(
+            IRS_TDS_CLIENT_ID
+            IRS_TDS_JWT_KID
+            IRS_TDS_JWT_PRIVATE_KEY_PEM
+            IRS_TDS_REDIRECT_URI
+            IRS_TDS_REQUEST_URL
+            IRS_TDS_REQUEST_TEMPLATE
+            IRS_TDS_STATUS_URL_TEMPLATE
+            IRS_TDS_AUTH_FLOW_VERIFIED
+          )
+          for ref in mpxgxfqdbquzkrvvejkh ydrvncdedgjtcprczwpu; do
+            body="$(curl -fsS "https://api.supabase.com/v1/projects/$ref/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")"
+            names="$(printf '%s' "$body" | jq -r '.[]?.name // empty')"
+            echo "Checking IRS TDS secret names for $ref"
+            missing=0
+            for key in "${required[@]}"; do
+              if printf '%s\n' "$names" | grep -Fxq "$key"; then
+                echo "PASS $key"
+              else
+                echo "MISSING $key"
+                missing=1
+              fi
+            done
+            test "$missing" -eq 0
+          done
