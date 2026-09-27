@@ -12,7 +12,7 @@ const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
 const REQ_COLORS = { Requested: '#2563eb', 'In Progress': '#b45309', Completed: '#15803d', Canceled: '#64748b' }
 const TRANSCRIPT_TYPES = ['Account Transcript', 'Wage and Income', 'Record of Account', 'Return Transcript', 'Verification of Non-Filing']
 const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFullYear() - i))
-const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_interactive', notes: '' }
+const BLANK = { clientName: '', clientId: null, types: ['Account Transcript', 'Wage and Income'], taxYears: '', provider: 'irs_a2a', notes: '' }
 
 export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
   const { employeeName } = useApp()
@@ -21,7 +21,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [legacyCount, setLegacyCount] = useState(0)
   const [migrating, setMigrating] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false)
   const [form, setForm] = useState(BLANK)
   const [saving, setSaving] = useState(false)
   const [retryingId, setRetryingId] = useState(null)
@@ -207,65 +206,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
   const formClient = resolveClient(form)
   const formPoa = poaOnFile(formClient)
-  const formProvider = getProvider(form.provider, providers)
-  const directNeedsSignIn = form.provider === 'irs_a2a' && formProvider?.available && !formProvider?.sessionActive
-
-  function openNewRequest() {
-    setForm({ ...BLANK, provider: 'irs_interactive' })
-    setClientSearch('')
-    setModal(true)
-  }
-
-  async function createRequest() {
-    if (!form.clientName.trim() || form.types.length === 0) return
-    const client = resolveClient(form)
-    const poa = poaOnFile(client)
-    const provider = getProvider(form.provider, providers)
-    if (!client || !poa || !provider?.available) return
-    if (form.provider === 'irs_a2a' && !provider.sessionActive) {
-      flash('⚠ Sign in to the IRS first, then request transcripts.')
-      return
-    }
-    setSaving(true)
-    let saved = false
-    try {
-      const dbProvider = form.provider === 'irs_interactive' ? 'manual' : form.provider
-      const row = {
-        id: crypto.randomUUID(),
-        client_name: client.name,
-        client_id: client.id,
-        transcript_types: form.types,
-        tax_years: form.taxYears.trim() || null,
-        provider: dbProvider,
-        status: 'Requested',
-        poa_record_id: poa.id,
-        requested_by: employeeName || null,
-        notes: form.notes || null,
-      }
-      const { error } = await supabase.from('transcript_pull_requests').insert([row])
-      if (error) throw new Error(error.message)
-      saved = true
-      await submitToProvider(form.provider, row)
-      setModal(false)
-      setForm(BLANK)
-      setClientSearch('')
-      await loadRequests()
-      flash(form.provider === 'irs_a2a' ? '✅ IRS TDS pull submitted. The CRM will retrieve and file delivered transcripts automatically.' : form.provider === 'irs_interactive' ? '✅ Practitioner TDS request logged. Sign in to IRS TDS above, pull the transcripts, then upload them here.' : '✅ Manual TDS pull request created. The watched folder will file downloaded transcripts automatically.')
-    } catch (e) {
-      if (saved) {
-        setModal(false)
-        setForm(BLANK)
-        setClientSearch('')
-        await loadRequests()
-        flash('⚠ Pull request was saved, but IRS TDS submission failed: ' + (e?.message || 'Unknown error') + '. Use Retry on the saved request after the connection issue is corrected.')
-      } else {
-        flash('❌ ' + (e?.message || 'Could not create pull request.'))
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
   async function retryDirect(req) {
     setRetryingId(req.id)
     try {
