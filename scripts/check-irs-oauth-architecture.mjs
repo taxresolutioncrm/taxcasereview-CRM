@@ -9,8 +9,8 @@
  * exists and that no forbidden patterns (public TDS shortcut, manual-only
  * workflow as primary, hardcoded Nashville tenant data) are present.
  *
- * Acceptance test (live credentials required for full E2E):
- *   IRS_TDS_STUB_MODE=1 enables sandbox E2E without real IRS enrollment.
+ * Acceptance test requires the real IRS e-Services configuration.
+ * Synthetic/stub IRS authorization paths are forbidden in the release build.
  */
 
 import fs from 'node:fs'
@@ -122,15 +122,12 @@ need(parser, 'accrued_penalty', 'penalty accrual calculation present')
 need(parser, 'csed_estimate', 'CSED estimate calculation present')
 need(lib, 'requestCoverageSatisfied', 'coverage check for transcript analysis present')
 
-console.log('Checking Stub Mode (sandbox E2E)…')
-need(pull, 'IRS_TDS_STUB_MODE', 'IRS_TDS_STUB_MODE env var checked in transcript-pull')
-need(pull, 'stubMode()', 'stubMode() helper used in transcript-pull')
-need(pull, 'stub: true', 'stub flag returned in responses when stub mode active')
-need(pull, 'stub-txn-', 'synthetic transaction ID generated in stub mode')
-need(callback, 'IRS_TDS_STUB_MODE', 'IRS_TDS_STUB_MODE env var checked in callback')
-need(callback, 'isStub', 'isStub flag used in callback to bypass real token exchange')
-need(callback, 'stub-access-', 'synthetic access token generated in stub mode')
-need(pull, 'stub-code-', 'stub code generated in begin-session for direct callback redirect')
+console.log('Checking production-only IRS path…')
+forbid(pull, 'IRS_TDS_STUB_MODE', 'synthetic IRS stub mode must not ship in transcript-pull')
+forbid(callback, 'IRS_TDS_STUB_MODE', 'synthetic IRS stub mode must not ship in callback')
+forbid(pull, 'stub-txn-', 'synthetic IRS transaction IDs must not ship')
+forbid(pull, 'stub-code-', 'synthetic IRS authorization codes must not ship')
+forbid(callback, 'stub-access-', 'synthetic IRS access tokens must not ship')
 
 console.log('Checking Tenant Isolation…')
 need(pull, 'tenant_id', 'tenant_id enforced in transcript-pull')
@@ -172,13 +169,9 @@ if (failures.length) {
 
 console.log('\n✅ IRS OAuth architecture check passed.')
 console.log('\nCurrent status:')
-console.log('  CODE COMPLETE: All OAuth flow code paths are present (begin-session, callback, session persistence,')
-console.log('    submit, status polling, auto-filing, transcript analysis, stub mode, tenant isolation).')
-console.log('')
-console.log('  SANDBOX E2E: Set IRS_TDS_STUB_MODE=1 in Supabase secrets to run the complete flow')
-console.log('    without live IRS credentials. The stub bypasses real IRS API calls while exercising')
-console.log('    every code path: OAuth popup → postMessage → session active → submit → status → PDF delivery')
-console.log('    → auto-filing → transcript analysis.')
+console.log('  CODE COMPLETE: Real OAuth flow code paths are present (begin-session, callback, session persistence,')
+console.log('    submit, status polling, auto-filing, transcript analysis, tenant isolation).')
+console.log('  RELEASE GUARD: Synthetic/stub IRS paths are absent from the release functions.')
 console.log('')
 console.log('  LIVE IRS BLOCKED: The real IRS e-Services API requires the following from the IRS:')
 console.log('    IRS_TDS_CLIENT_ID          — OAuth Client ID from an approved IRS e-Services API application')
