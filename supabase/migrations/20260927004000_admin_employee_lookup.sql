@@ -17,14 +17,16 @@ begin
              t.firm_name as tenant_name
       from public.employees e
       left join public.tenants t on t.id=e.tenant_id
-      where e.name ilike '%'||v_q||'%' or e.email ilike '%'||v_q||'%'
+      where e.name ilike '%'||v_q||'%'
+         or e.email ilike '%'||v_q||'%'
+         or regexp_replace(coalesce(e.phone,''),'[^0-9]','','g') like '%'||regexp_replace(v_q,'[^0-9]','','g')||'%'
       limit least(greatest(coalesce(p_limit,50),1),200)
     ) x
   );
 end $$;
 
 create or replace function public.admin_update_employee_profile(
-  p_employee_id uuid,
+  p_employee_id text,
   p_name text,
   p_access text,
   p_role text,
@@ -35,7 +37,7 @@ as $$
 declare v_row public.employees;
 begin
   if not public._is_platform_admin() then raise exception 'Not authorized'; end if;
-  if p_access not in ('Super Admin','Admin','Tax Associate','Read Only') then
+  if p_access not in ('Super Admin','Admin','Manager','Tax Advisor','Tax Associate','Associate','Para','Sales Rep','Read Only','View Only','Staff') then
     raise exception 'Invalid access level';
   end if;
   update public.employees
@@ -51,5 +53,5 @@ end $$;
 
 revoke all on function public.admin_search_employees(text,integer) from public,anon;
 grant execute on function public.admin_search_employees(text,integer) to authenticated,service_role;
-revoke all on function public.admin_update_employee_profile(uuid,text,text,text,text) from public,anon;
-grant execute on function public.admin_update_employee_profile(uuid,text,text,text,text) to authenticated,service_role;
+revoke all on function public.admin_update_employee_profile(text,text,text,text,text) from public,anon;
+grant execute on function public.admin_update_employee_profile(text,text,text,text,text) to authenticated,service_role;
