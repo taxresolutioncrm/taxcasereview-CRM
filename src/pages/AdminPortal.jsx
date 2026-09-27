@@ -259,14 +259,14 @@ async function loadPlatformOfficeRowsFresh() {
     const liveStaff = liveStaffRaw == null ? null : Number(liveStaffRaw)
     const resolvedStaff = result.key === 'nashville'
       ? (Number.isFinite(liveStaff) ? liveStaff : centralStaff)
-      : Math.max(centralStaff, Number.isFinite(liveStaff) ? liveStaff : 0)
+      : centralStaff
     rows[idx] = {
       ...rows[idx],
       client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
       lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
-      // TCR/CloudCPA users are authoritative in the central employee directory.
-      // A stale zero from a live feed must not erase real active users. Nashville
-      // stays remote-authoritative because its CRM lives in a separate project.
+      // Central TaxRes tenants use the active employee directory as the staff
+      // authority. Nashville stays remote-authoritative because its CRM lives
+      // in a separate project.
       employee_count:resolvedStaff,
       cases_count:Number(metrics.open_jobs ?? metrics.active_cases ?? rows[idx].cases_count ?? 0),
       tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
