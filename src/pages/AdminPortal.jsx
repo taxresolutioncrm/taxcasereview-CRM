@@ -1808,15 +1808,17 @@ function OfficePage() {
 function OfficesList() {
   const [rows, setRows] = useState(null)
   const [loadError, setLoadError] = useState('')
+  const [query, setQuery] = useState('')
+  const [scope, setScope] = useState('all')
   const navigate = useNavigate()
+
   useEffect(() => {
     let cancelled=false
     ;(async()=>{
       try {
-        const { rows: allRows, warnings } = await loadPlatformOfficeRows()
+        const { rows: allRows } = await loadPlatformOfficeRows()
         if(cancelled) return
         setRows(allRows)
-        // Keep the office directory usable when an optional live metrics feed is unavailable.
         setLoadError('')
       } catch(error) {
         if(cancelled) return
@@ -1834,44 +1836,88 @@ function OfficesList() {
     }
     navigate(`/crm-admin/offices/${row.id}`)
   }
+
+  const normalizedQuery=query.trim().toLowerCase()
+  const visibleRows=(rows||[]).filter(r=>{
+    if(scope==='main' && !r.is_product_main) return false
+    if(scope==='offices' && (r.is_product_main || r.is_demo)) return false
+    if(scope==='demo' && !r.is_demo) return false
+    if(!normalizedQuery) return true
+    return [r.firm_name,r.product,r.plan_tier,r.status].some(v=>String(v||'').toLowerCase().includes(normalizedQuery))
+  })
+  const groups=[]
+  for(const row of visibleRows){
+    const key=row.product||'taxres_crm'
+    let group=groups.find(g=>g.key===key)
+    if(!group){group={key,label:key,rows:[]};groups.push(group)}
+    group.rows.push(row)
+    const main=group.rows.find(x=>x.is_product_main)
+    if(main) group.label=main.firm_name
+    else if(row.product_label) group.label=row.product_label
+    else if(key==='taxres_crm') group.label='TaxRes CRM'
+  }
+
   return (
-    <div style={{ padding:'28px 36px', maxWidth:1050 }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
-        <div style={{ fontSize:22, fontWeight:800, color:'#fff' }}>🏢 All Offices</div>
+    <div style={{ padding:'28px 36px', width:'100%', maxWidth:1180, boxSizing:'border-box' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, marginBottom:18 }}>
+        <div>
+          <div style={{ fontSize:22, fontWeight:800, color:'#fff' }}>🏢 All Offices</div>
+          <div style={{fontSize:11,color:'#475569',marginTop:4}}>Grouped by CRM family so main products, demos, and customer offices stay together.</div>
+        </div>
         <button onClick={()=>navigate('/crm-admin/provision')} style={S.btn('primary')}>➕ New Office</button>
       </div>
+
+      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:18,padding:'10px 12px',borderRadius:10,background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.12)'}}>
+        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search office, product, plan, or status…"
+          style={{flex:'1 1 280px',minWidth:220,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.25)',background:'#0f0e1a',color:'#e2e8f0',outline:'none'}}/>
+        {[['all','All'],['main','Main CRMs'],['offices','Customer Offices'],['demo','Demos']].map(([key,label])=>(
+          <button key={key} onClick={()=>setScope(key)} style={{...S.btn(scope===key?'primary':'ghost'),fontSize:11,padding:'7px 11px'}}>{label}</button>
+        ))}
+      </div>
+
       {loadError && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:16}}>Unable to load offices: {loadError}</div>}
-      {!rows ? <Spinner /> : rows.length===0 && !loadError ? <div style={{color:'#64748b',fontSize:13}}>No offices found.</div> : (
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          {rows.map(r => (
-            <div key={r.id} style={{ ...S.card, padding:'18px 20px', display:'flex', alignItems:'center', gap:16, cursor:'pointer' }}
-              onClick={()=>openOffice(r)}>
-              <div style={{ width:40,height:40,borderRadius:10,flexShrink:0,
-                background: r.brand_color ? r.brand_color+'33' : 'rgba(99,102,241,.15)',
-                border: `2px solid ${r.brand_color||'#6366f1'}44`,
-                display:'flex',alignItems:'center',justifyContent:'center',
-                fontSize:16,fontWeight:800,color:r.brand_color||'#6366f1' }}>
-                {(r.firm_name||'?')[0]}
+      {!rows ? <Spinner /> : groups.length===0 && !loadError ? <div style={{color:'#64748b',fontSize:13}}>No matching offices.</div> : (
+        <div style={{display:'flex',flexDirection:'column',gap:18}}>
+          {groups.map(group=>(
+            <section key={group.key}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:800,color:'#a5b4fc',textTransform:'uppercase',letterSpacing:'.08em'}}>{group.label}</div>
+                <div style={{fontSize:9,color:'#475569'}}>{group.rows.length} {group.rows.length===1?'row':'rows'}</div>
               </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{r.is_product_main ? r.firm_name : `↳ ${r.firm_name}`}</div>
-                <div style={{ fontSize:12, color:'#475569', marginTop:2 }}>
-                  {r.is_product_main
-                    ? 'Main CRM'
-                    : `Seats / Staff: ${r.billing_seats == null ? '—' : Number(r.billing_seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()} · ${r.client_count == null ? '—' : Number(r.client_count).toLocaleString()} clients · ${r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}`}
-                </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(340px,1fr))', gap:10 }}>
+                {group.rows.map(r=>{
+                  const activeStaff=r.employee_count==null?null:Number(r.employee_count)
+                  const seats=Number(r.billing_seats||0)>0?Number(r.billing_seats):activeStaff
+                  return <div key={r.id} style={{ ...S.card, padding:'15px 16px', display:'flex', alignItems:'center', gap:13, cursor:'pointer',
+                    borderColor:r.is_product_main?'rgba(99,102,241,.35)':undefined, background:r.is_product_main?'rgba(99,102,241,.055)':undefined }}
+                    onClick={()=>openOffice(r)}>
+                    <div style={{ width:38,height:38,borderRadius:10,flexShrink:0,
+                      background:r.brand_color?r.brand_color+'33':'rgba(99,102,241,.15)',
+                      border:`2px solid ${r.brand_color||'#6366f1'}44`,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      fontSize:15,fontWeight:800,color:r.brand_color||'#6366f1' }}>{(r.firm_name||'?')[0]}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <div style={{fontSize:14,fontWeight:800,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.firm_name}</div>
+                        {r.is_product_main && <span style={S.badge('#64748b')}>Main CRM</span>}
+                        {r.is_demo && <span style={S.badge('#f59e0b')}>Demo</span>}
+                      </div>
+                      <div style={{fontSize:10,color:'#475569',marginTop:3}}>
+                        {r.is_product_main
+                          ? (r.app_url || 'Product workspace')
+                          : `Seats / Staff: ${seats==null?'—':seats.toLocaleString()} / ${activeStaff==null?'—':activeStaff.toLocaleString()} · ${r.client_count==null?'—':Number(r.client_count).toLocaleString()} clients`}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5,flexShrink:0}}>
+                      <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
+                      <button onClick={e=>{e.stopPropagation();openOffice(r)}} style={{...S.btn('ghost'),padding:'5px 10px',fontSize:10}}>
+                        {r.is_product_main?'Open App ↗':'Open →'}
+                      </button>
+                    </div>
+                  </div>
+                })}
               </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
-                <span style={{ ...S.badge(TIER_COLOR[r.plan_tier]||'#64748b'), opacity:r.plan_tier?1:0.3 }}>{r.plan_tier||'no plan'}</span>
-                <span style={{ color:'#10b981', fontWeight:700, fontSize:13 }}>
-                  {r.is_product_main ? '—' : (r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—')}
-                </span>
-                <div style={{ fontSize:12, color:'#475569' }}>{r.is_product_main ? '—' : fmtAgo(r.last_activity)}</div>
-              </div>
-              <button onClick={e=>{e.stopPropagation();openOffice(r)}}
-                style={{ ...S.btn('ghost'), padding:'6px 14px', fontSize:12, flexShrink:0 }}>Open →</button>
-            </div>
+            </section>
           ))}
         </div>
       )}
