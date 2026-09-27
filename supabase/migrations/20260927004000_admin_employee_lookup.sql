@@ -19,7 +19,10 @@ begin
       left join public.tenants t on t.id=e.tenant_id
       where e.name ilike '%'||v_q||'%'
          or e.email ilike '%'||v_q||'%'
-         or regexp_replace(coalesce(e.phone,''),'[^0-9]','','g') like '%'||regexp_replace(v_q,'[^0-9]','','g')||'%'
+         or (
+           regexp_replace(v_q,'[^0-9]','','g') <> ''
+           and regexp_replace(coalesce(e.phone,''),'[^0-9]','','g') like '%'||regexp_replace(v_q,'[^0-9]','','g')||'%'
+         )
       limit least(greatest(coalesce(p_limit,50),1),200)
     ) x
   );
