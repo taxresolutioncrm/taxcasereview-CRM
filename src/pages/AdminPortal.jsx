@@ -254,14 +254,20 @@ async function loadPlatformOfficeRowsFresh() {
     const metrics = result.data?.metrics || {}
     const idx = rows.findIndex(r => String(r.firm_name || '').trim().toLowerCase() === result.name.toLowerCase())
     if (idx < 0) continue
+    const centralStaff = Number(rows[idx].employee_count ?? 0)
+    const liveStaffRaw = metrics.active_staff ?? metrics.active_users
+    const liveStaff = liveStaffRaw == null ? null : Number(liveStaffRaw)
+    const resolvedStaff = result.key === 'nashville'
+      ? (Number.isFinite(liveStaff) ? liveStaff : centralStaff)
+      : Math.max(centralStaff, Number.isFinite(liveStaff) ? liveStaff : 0)
     rows[idx] = {
       ...rows[idx],
       client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
       lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
-      // Prefer the live product's staff/case totals whenever it supplies them.
-      // The central directory remains a fallback only; Nashville in particular
-      // lives in its own CRM database and must not inherit stale legacy counts.
-      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      // TCR/CloudCPA users are authoritative in the central employee directory.
+      // A stale zero from a live feed must not erase real active users. Nashville
+      // stays remote-authoritative because its CRM lives in a separate project.
+      employee_count:resolvedStaff,
       cases_count:Number(metrics.open_jobs ?? metrics.active_cases ?? rows[idx].cases_count ?? 0),
       tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
       storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
@@ -900,7 +906,12 @@ function Overview() {
   const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)
   const totalMRR     = operatingStats.reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = operatingStats.filter(r => r.status==='active').length
-  const totalSeats   = operatingStats.reduce((s,r) => s+Number(r.billing_seats ?? 0), 0)
+  const effectiveSeatCount = row => {
+    const purchased = Number(row?.billing_seats || 0)
+    const active = Number(row?.employee_count || 0)
+    return purchased > 0 ? purchased : active
+  }
+  const totalSeats   = operatingStats.reduce((s,r) => s + effectiveSeatCount(r), 0)
   const totalClients = operatingStats.reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
   const totalLeads   = operatingStats.reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
   const totalStorage = operatingStats.reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
@@ -922,7 +933,7 @@ function Overview() {
   ]
 
   const sortValue = (row, key) => {
-    if (key === 'seats_staff') return row.billing_seats ?? row.employee_count ?? null
+    if (key === 'seats_staff') return effectiveSeatCount(row)
     if (key === 'last_activity') return row.last_activity ? new Date(row.last_activity).getTime() : null
     return row[key] ?? null
   }
@@ -1043,10 +1054,11 @@ function Overview() {
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{(() => {
-                  const seats = r.billing_seats
-                  return (seats == null && r.employee_count == null)
+                  const staff = r.employee_count == null ? null : Number(r.employee_count)
+                  const seats = effectiveSeatCount(r)
+                  return (r.billing_seats == null && staff == null)
                     ? '—'
-                    : `${seats == null ? '—' : Number(seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()}`
+                    : `${Number(seats).toLocaleString()} / ${staff == null ? '—' : staff.toLocaleString()}`
                 })()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
