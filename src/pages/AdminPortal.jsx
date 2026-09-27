@@ -2128,11 +2128,15 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
 
   async function save() {
     setSaving(true)
-    const { error } = await supabase.from('employees')
-      .update({ name:form.name, access:form.access, role:form.role, phone:form.phone })
-      .eq('id', emp.id)
+    const { data, error } = await supabase.rpc('admin_update_employee_profile', {
+      p_employee_id: emp.id,
+      p_name: form.name,
+      p_access: form.access,
+      p_role: form.role,
+      p_phone: form.phone,
+    })
     setSaving(false)
-    if (error) { toast_(error.message,'error'); return }
+    if (error || !data?.ok) { toast_(error?.message || 'Could not update employee','error'); return }
     toast_('✅ Employee updated')
     setTimeout(()=>{ onSaved(); onClose() }, 800)
   }
@@ -2140,12 +2144,10 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
   async function resetPassword() {
     if (!confirm(`Send password reset email to ${emp.email}?`)) return
     setResetting(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(emp.email, {
-      redirectTo: window.location.origin + '/'
-    })
+    const { data, error } = await supabase.functions.invoke('employee-access-link', { body:{ email:emp.email } })
     setResetting(false)
-    if (error) { toast_(error.message,'error') }
-    else { toast_(`✅ Reset email sent to ${emp.email}`) }
+    if (error || data?.error) { toast_(data?.error || error?.message || 'Could not send password reset','error') }
+    else { toast_(data?.message || `✅ Reset email sent to ${emp.email}`) }
   }
 
   return (
@@ -2158,7 +2160,7 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
         <div style={{ display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:20 }}>
           <div>
             <div style={{ fontSize:18,fontWeight:800,color:'#fff' }}>{emp.name}</div>
-            <div style={{ fontSize:12,color:'#6366f1',marginTop:2 }}>{emp.tenants?.firm_name||'—'}</div>
+            <div style={{ fontSize:12,color:'#6366f1',marginTop:2 }}>{emp.tenant_name||'—'}</div>
             <div style={{ fontSize:11,color:'#475569',marginTop:1 }}>Joined {fmtDate(emp.created_at)}</div>
           </div>
           <button onClick={onClose} style={{ background:'none',border:'none',color:'#64748b',
@@ -2223,19 +2225,17 @@ function EmployeeLookup() {
   const [results,setResults] = useState(null)
   const [busy,setBusy]       = useState(false)
   const [selected,setSelected] = useState(null)
+  const [error,setError]       = useState('')
 
   async function search() {
     if (!q.trim()) return
     setBusy(true)
-    // Clear tenant override so RLS returns employees across ALL tenants
+    setError('')
     await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null }).then(()=>{}).catch(()=>{})
-    const { data } = await supabase
-      .from('employees')
-      .select('id,name,email,role,access,phone,avatar_url,tenant_id,created_at,tenants(firm_name)')
-      .or(`name.ilike.%${q}%,email.ilike.%${q}%`)
-      .limit(50)
+    const { data, error } = await supabase.rpc('admin_search_employees', { p_query:q.trim(), p_limit:50 })
     setBusy(false)
-    setResults(data||[])
+    if (error) { setError(error.message); setResults([]); return }
+    setResults(Array.isArray(data) ? data : [])
   }
 
   return (
@@ -2254,6 +2254,7 @@ function EmployeeLookup() {
           {busy?'…':'Search'}
         </button>
       </div>
+      {error && <div style={{marginBottom:14,padding:'10px 12px',borderRadius:8,background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',fontSize:12}}>Employee lookup failed: {error}</div>}
       {results!==null && (results.length===0 ? (
         <div style={{ color:'#475569',fontSize:14 }}>No employees found.</div>
       ) : (
@@ -2278,7 +2279,7 @@ function EmployeeLookup() {
                       e.access==='Tax Associate'?'#0ea5e9':'#64748b'
                     )}>{e.access||e.role}</span>
                   </td>
-                  <td style={{ ...S.td,color:'#6366f1',fontWeight:600 }}>{e.tenants?.firm_name||'—'}</td>
+                  <td style={{ ...S.td,color:'#6366f1',fontWeight:600 }}>{e.tenant_name||'—'}</td>
                   <td style={{ ...S.td,color:'#475569' }}>{fmtDate(e.created_at)}</td>
                   <td style={S.td}>
                     <button onClick={ev=>{ev.stopPropagation();setSelected(e)}}
