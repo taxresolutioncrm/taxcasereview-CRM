@@ -5058,19 +5058,32 @@ function CommandCenter() {
   // ── System live status ──
   const [sysStatus, setSysStatus] = useState(null)
   useEffect(()=>{
+    let cancelled=false
+    async function reachable(url){
+      try { await fetch(url,{mode:'no-cors',signal:AbortSignal.timeout(5000),cache:'no-store'}); return true } catch(_) { return false }
+    }
     async function checkSys(){
-      let dbOk = false
-      try { const r = await supabase.from('tenants').select('id').limit(1); dbOk = !r.error } catch(_){}
-      let mailOk=false,netOk=false,appOk=false,romylabsOk=false,adminOk=false
-      try{await fetch('https://webmail.taxrescrm.net:7443',{mode:'no-cors',signal:AbortSignal.timeout(4000)});mailOk=true}catch(_){}
-      try{await fetch('https://taxrescrm.net',{mode:'no-cors',signal:AbortSignal.timeout(4000)});netOk=true}catch(_){}
-      try{await fetch('https://taxrescrm.app',{mode:'no-cors',signal:AbortSignal.timeout(4000)});appOk=true}catch(_){}
-      try{await fetch('https://romylabs.com',{mode:'no-cors',signal:AbortSignal.timeout(4000)});romylabsOk=true}catch(_){}
-      try{await fetch('https://admin.romylabs.com',{mode:'no-cors',signal:AbortSignal.timeout(4000)});adminOk=true}catch(_){}
-      setSysStatus({dbOk,mailOk,netOk,appOk,romylabsOk,adminOk})
+      let dbOk=false
+      try { const r=await supabase.from('tenants').select('id').limit(1); dbOk=!r.error } catch(_){}
+      const fixed = {
+        mailOk: await reachable('https://webmail.taxrescrm.net:7443'),
+        netOk: await reachable('https://taxrescrm.net'),
+        appOk: await reachable('https://taxrescrm.app'),
+        romylabsOk: await reachable('https://romylabs.com'),
+        adminOk: await reachable('https://admin.romylabs.com'),
+      }
+      const productRows = mergeProductRegistry(reportingProducts)
+        .filter(p=>!p.isTenant && (p.websiteUrl || p.appUrl))
+      const productChecks = await Promise.all(productRows.map(async p => ({
+        key:p.key,label:p.label,
+        websiteUrl:p.websiteUrl||null,websiteOk:p.websiteUrl?await reachable(p.websiteUrl):null,
+        appUrl:p.appUrl||null,appOk:p.appUrl?await reachable(p.appUrl):null,
+      })))
+      if(!cancelled) setSysStatus({dbOk,...fixed,products:productChecks,checkedAt:new Date().toISOString()})
     }
     checkSys()
-  },[])
+    return()=>{cancelled=true}
+  },[reportingProducts])
 
   useEffect(() => {
     // Handle GSC OAuth callback (?code= in URL after redirect)
@@ -5627,13 +5640,15 @@ function CommandCenter() {
               {[
                 { label:'romylabs.com',       ok: sysStatus?.romylabsOk ?? null },
                 { label:'admin.romylabs.com', ok: sysStatus?.adminOk    ?? null },
-                { label:'TaxRes (taxrescrm.app)', ok: sysStatus?.appOk ?? null },
-                { label:'TaxRes (taxrescrm.net)', ok: sysStatus?.netOk ?? null },
                 { label:'TaxRes Mail (Stalwart)', ok: sysStatus?.mailOk ?? null },
                 { label:'Supabase (TaxRes DB)',   ok: sysStatus?.dbOk  ?? null },
+                ...(sysStatus?.products||[]).flatMap(p=>[
+                  ...(p.websiteUrl?[{label:`${p.label} site`,ok:p.websiteOk}]:[]),
+                  ...(p.appUrl && p.appUrl!==p.websiteUrl?[{label:`${p.label} app`,ok:p.appOk}]:[]),
+                ]),
               ].map((s,i) => (
                 <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                  padding:'7px 0', borderBottom: i<5?'1px solid rgba(99,102,241,.08)':'none' }}>
+                  padding:'7px 0', borderBottom:'1px solid rgba(99,102,241,.08)' }}>
                   <div style={{ fontSize:11, color:'#94a3b8' }}>{s.label}</div>
                   <StatusDot ok={s.ok} />
                 </div>
