@@ -25,6 +25,10 @@ function fmtTime(ts) {
   if (isToday) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
+function isHumanMessage(m) {
+  const sender = String(m?.sender || '').replace(/^🔔\s*/, '').trim().toLowerCase()
+  return sender && sender !== 'system' && sender !== 'romy cruz (admin)'
+}
 function fmtAgo(ts) {
   if (!ts) return ''
   const s = (Date.now() - new Date(ts).getTime()) / 1000
@@ -77,6 +81,7 @@ export default function AdminChat() {
   const [loading, setLoading]       = useState(false)
   const [unread, setUnread]         = useState({})   // { tenantId: count }
   const [view, setView]             = useState('inbox') // 'inbox' | 'office'
+  const [alertsEnabled, setAlertsEnabled] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted')
   const bottomRef = useRef(null)
   const rtRef = useRef(null)
 
@@ -95,24 +100,46 @@ export default function AdminChat() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, async ({ new: msg }) => {
         const hydrated = await hydrateChatAttachment(msg)
         setAllRecent(prev => [hydrated, ...prev].slice(0, 300))
-        if (selectedOffice && selectedChan && hydrated.channel === selectedChan) {
-          setMessages(prev => [...prev, hydrated])
+        const activeTenantId = selectedOffice?.id || null
+        if (activeTenantId && selectedChan && hydrated.tenant_id === activeTenantId && hydrated.channel === selectedChan) {
+          setMessages(prev => prev.some(m => m.id === hydrated.id) ? prev : [...prev, hydrated])
+          localStorage.setItem('romylabs_admin_chat_seen_' + activeTenantId, new Date().toISOString())
+          setUnread(prev => ({ ...prev, [activeTenantId]: 0 }))
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+        } else if (hydrated.tenant_id && isHumanMessage(hydrated)) {
+          setUnread(prev => ({ ...prev, [hydrated.tenant_id]: (prev[hydrated.tenant_id] || 0) + 1 }))
+        }
+        if (isHumanMessage(hydrated) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const officeName = offices.find(o => o.id === hydrated.tenant_id)?.firm_name || 'TaxRes office'
+          try { new Notification(`New message · ${officeName}`, { body:`${hydrated.sender}: ${hydrated.text || 'Attachment'}` }) } catch (_) {}
         }
       })
       .subscribe()
     rtRef.current = rt
     return () => { supabase.removeChannel(rt) }
-  }, [selectedOffice, selectedChan])
+  }, [selectedOffice, selectedChan, offices])
 
   async function loadInbox() {
     setLoading(true)
-    const { data } = await supabase.rpc('admin_get_all_chat_messages', { p_limit: 300 })
-    setAllRecent(await hydrateChatAttachments(data || []))
+    const { data, error } = await supabase.rpc('admin_get_all_chat_messages', { p_limit: 300 })
+    const hydrated = await hydrateChatAttachments(data || [])
+    setAllRecent(hydrated)
+    if (!error) {
+      const counts = {}
+      for (const m of hydrated) {
+        if (!m.tenant_id || !isHumanMessage(m)) continue
+        const seenRaw = localStorage.getItem('romylabs_admin_chat_seen_' + m.tenant_id)
+        const seenMs = seenRaw ? new Date(seenRaw).getTime() : 0
+        if (new Date(m.created_at).getTime() > seenMs) counts[m.tenant_id] = (counts[m.tenant_id] || 0) + 1
+      }
+      setUnread(counts)
+    }
     setLoading(false)
   }
 
   async function openOffice(office) {
+    localStorage.setItem('romylabs_admin_chat_seen_' + office.id, new Date().toISOString())
+    setUnread(prev => ({ ...prev, [office.id]: 0 }))
     setSelectedOffice(office)
     setView('office')
     setMessages([])
@@ -157,16 +184,17 @@ export default function AdminChat() {
   async function sendMessage() {
     if (!input.trim() || !selectedChan || sending) return
     setSending(true)
-    const payload = {
-      channel: selectedChan,
-      sender: 'Romy Cruz (Admin)',
-      text: input.trim(),
-      created_at: new Date().toISOString(),
-    }
-    const { error } = await supabase.from('chat_messages').insert([payload])
-    if (!error) {
-      setMessages(prev => [...prev, { ...payload, id: Date.now() }])
+    const { data, error } = await supabase.rpc('admin_send_chat_message', {
+      p_tenant_id: selectedOffice.id,
+      p_channel: selectedChan,
+      p_text: input.trim(),
+    })
+    const sent = data?.message || null
+    if (!error && data?.ok) {
+      if (sent) setMessages(prev => prev.some(m => m.id === sent.id) ? prev : [...prev, sent])
       setInput('')
+      localStorage.setItem('romylabs_admin_chat_seen_' + selectedOffice.id, new Date().toISOString())
+      setUnread(prev => ({ ...prev, [selectedOffice.id]: 0 }))
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     }
     setSending(false)
@@ -302,7 +330,16 @@ export default function AdminChat() {
           <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 4 }}>💬 Cross-Office Chat</div>
           <div style={{ fontSize: 14, color: '#475569' }}>All office channels · Read and reply as Admin</div>
         </div>
-        <button onClick={loadInbox} style={{ background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc', borderRadius: 8, padding: '7px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>⟳ Refresh</button>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+            <button onClick={async()=>{ const p=await Notification.requestPermission(); setAlertsEnabled(p==='granted') }}
+              style={{ background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.25)',color:'#fbbf24',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:700 }}>
+              🔔 Enable alerts
+            </button>
+          )}
+          {alertsEnabled && <span style={{fontSize:10,color:'#10b981'}}>● Alerts on</span>}
+          <button onClick={loadInbox} style={{ background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc', borderRadius: 8, padding: '7px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>⟳ Refresh</button>
+        </div>
       </div>
 
       {/* Office cards */}
@@ -311,6 +348,7 @@ export default function AdminChat() {
           const offMsgs = allRecent.filter(m => m.tenant_id === o.id)
           const last = offMsgs[0]
           const count = offMsgs.length
+          const unreadCount = unread[o.id] || 0
           return (
             <div key={o.id} onClick={() => openOffice(o)}
               style={{ ...S.card, padding: '16px 18px', cursor: 'pointer', transition: 'transform .15s, box-shadow .15s' }}
@@ -324,7 +362,9 @@ export default function AdminChat() {
                   <div style={{ fontWeight: 700, fontSize: 14, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.firm_name}</div>
                   <div style={{ fontSize: 11, color: '#475569' }}>{o.employee_count} employees</div>
                 </div>
-                {count > 0 && <span style={{ background: 'rgba(99,102,241,.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>{count} msgs</span>}
+                {unreadCount > 0
+                  ? <span style={{ background:'rgba(239,68,68,.18)', color:'#fca5a5', fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:20 }}>{unreadCount} new</span>
+                  : count > 0 && <span style={{ background: 'rgba(99,102,241,.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>{count} msgs</span>}
               </div>
               {last ? (
                 <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

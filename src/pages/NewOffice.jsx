@@ -184,7 +184,7 @@ export default function NewOffice() {
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{background:'var(--s2)',textAlign:'left'}}>
-                {['Firm','Code','Admin','Staff','Billing','Status'].map(h=>(
+                {['Firm','Code','Admin','Seats / Staff','Billing','Status'].map(h=>(
                   <th key={h} style={{padding:'10px 14px',fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.04em'}}>{h}</th>
                 ))}
               </tr>
@@ -201,7 +201,11 @@ export default function NewOffice() {
                   </td>
                   <td style={{padding:'10px 14px',color:'var(--t2)',fontFamily:'monospace'}}>{o.tenant_code}</td>
                   <td style={{padding:'10px 14px',color:'var(--t2)'}}>{o.admin_email || '—'}</td>
-                  <td style={{padding:'10px 14px',color:'var(--t2)'}}>{o.employee_count}</td>
+                  <td style={{padding:'10px 14px',color:'var(--t2)'}}>{(() => {
+                    const staff=Number(o.employee_count||0)
+                    const seats=Number(o.billing_seats||0)>0?Number(o.billing_seats):staff
+                    return `${seats} / ${staff}`
+                  })()}</td>
                   <td style={{padding:'10px 14px',color:'var(--t2)'}}>{o.effective_monthly != null ? `$${Number(o.effective_monthly).toFixed(2)}/mo` : '—'}</td>
                   <td style={{padding:'10px 14px'}}>
                     <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,textTransform:'capitalize',
@@ -512,7 +516,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
               <input value={edit.per_seat_rate} onChange={e=>setEdit(f=>({...f,per_seat_rate:e.target.value}))} type="number" step="0.01" placeholder="e.g. 55.00"/>
             </Row>
             <div style={{fontSize:11.5,color:'var(--t3)'}}>
-              {detail.employees.length} seat{detail.employees.length===1?'':'s'} × {edit.per_seat_rate ? `$${edit.per_seat_rate}` : '—'} = {edit.per_seat_rate ? `$${(detail.employees.length * parseFloat(edit.per_seat_rate||0)).toFixed(2)}/mo` : '—'} (recalculates automatically as staff are added or removed)
+              {Number(detail.billing?.seats ?? detail.billing?.active_staff ?? 0)} seat{Number(detail.billing?.seats ?? detail.billing?.active_staff ?? 0)===1?'':'s'} / {Number(detail.billing?.active_staff ?? 0)} active staff × {edit.per_seat_rate ? `${edit.per_seat_rate}` : '—'} = {edit.per_seat_rate ? `${(Number(detail.billing?.seats ?? detail.billing?.active_staff ?? 0) * parseFloat(edit.per_seat_rate||0)).toFixed(2)}/mo` : '—'} (uses purchased seats when set; otherwise active staff)
             </div>
             <Row label="Flat Rate Override ($/mo)">
               <input value={edit.monthly_rate} onChange={e=>setEdit(f=>({...f,monthly_rate:e.target.value}))} type="number" step="0.01" placeholder="Leave blank to bill per-seat"/>
@@ -554,7 +558,7 @@ function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) 
         )}
       </Section>
 
-      <Section title={`Staff (${detail.employees.length})`}>
+      <Section title={`Staff Directory (${Number(detail.billing?.active_staff ?? detail.employees.length)} active / ${detail.employees.length} total)`}>
         {detail.employees.length === 0 ? <div style={{color:'var(--t3)',fontSize:13}}>No staff yet.</div> : (
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             {detail.employees.map(e => (

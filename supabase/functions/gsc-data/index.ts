@@ -84,7 +84,7 @@ async function fetchLive(token:string,siteUrl:string,productKey:string){
   const [cur,prev,queries]=await Promise.all([
     post({startDate:fmt(start),endDate:fmt(end),dimensions:[]}),
     post({startDate:fmt(prevStart),endDate:fmt(prevEnd),dimensions:[]}),
-    post({startDate:fmt(start),endDate:fmt(end),dimensions:['query'],rowLimit:10}),
+    post({startDate:fmt(start),endDate:fmt(end),dimensions:['query'],rowLimit:250}),
   ])
   const c=cur.rows?.[0]||{}, p=prev.rows?.[0]||{}
   const pct=(a:number,b:number)=>b?Math.round(((a-b)/b)*100):0
@@ -94,7 +94,11 @@ async function fetchLive(token:string,siteUrl:string,productKey:string){
     clicks:Math.round(c.clicks||0),clicksChange:pct(c.clicks||0,p.clicks||0),
     ctr:Math.round((c.ctr||0)*1000)/10,ctrChange:Math.round(((c.ctr||0)-(p.ctr||0))*1000)/10,
     avgPosition:Math.round((c.position||0)*10)/10,posChange:Math.round(((p.position||0)-(c.position||0))*10)/10,
-    topQueries:(queries.rows||[]).map((r:any)=>({query:r.keys?.[0]||'',pos:Math.round((r.position||0)*10)/10,clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0)})),
+    topQueries:(queries.rows||[])
+      .map((r:any)=>({query:r.keys?.[0]||'',pos:Math.round((r.position||0)*10)/10,clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0)}))
+      .filter((r:any)=>r.query)
+      .sort((a:any,b:any)=>b.impressions-a.impressions || b.clicks-a.clicks || a.pos-b.pos)
+      .slice(0,10),
     rangeLabel:'Last 3 months',rangeDays:90,
     dataThrough:fmt(end),syncedAt:new Date().toISOString(),authMode:'oauth'
   }

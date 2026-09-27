@@ -254,14 +254,20 @@ async function loadPlatformOfficeRowsFresh() {
     const metrics = result.data?.metrics || {}
     const idx = rows.findIndex(r => String(r.firm_name || '').trim().toLowerCase() === result.name.toLowerCase())
     if (idx < 0) continue
+    const centralStaff = Number(rows[idx].employee_count ?? 0)
+    const liveStaffRaw = metrics.active_staff ?? metrics.active_users
+    const liveStaff = liveStaffRaw == null ? null : Number(liveStaffRaw)
+    const resolvedStaff = result.key === 'nashville'
+      ? (Number.isFinite(liveStaff) ? liveStaff : centralStaff)
+      : centralStaff
     rows[idx] = {
       ...rows[idx],
       client_count:Number(metrics.total_clients ?? metrics.active_clients ?? rows[idx].client_count ?? 0),
       lead_count:Number(metrics.total_leads ?? metrics.active_leads ?? rows[idx].lead_count ?? 0),
-      // Prefer the live product's staff/case totals whenever it supplies them.
-      // The central directory remains a fallback only; Nashville in particular
-      // lives in its own CRM database and must not inherit stale legacy counts.
-      employee_count:Number(metrics.active_staff ?? metrics.active_users ?? rows[idx].employee_count ?? 0),
+      // Central TaxRes tenants use the active employee directory as the staff
+      // authority. Nashville stays remote-authoritative because its CRM lives
+      // in a separate project.
+      employee_count:resolvedStaff,
       cases_count:Number(metrics.open_jobs ?? metrics.active_cases ?? rows[idx].cases_count ?? 0),
       tasks_count:Number(metrics.pending_tasks ?? rows[idx].tasks_count ?? 0),
       storage_bytes:Number(metrics.storage_bytes ?? rows[idx].storage_bytes ?? 0),
@@ -900,7 +906,12 @@ function Overview() {
   const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)
   const totalMRR     = operatingStats.reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = operatingStats.filter(r => r.status==='active').length
-  const totalSeats   = operatingStats.reduce((s,r) => s+Number(r.billing_seats ?? 0), 0)
+  const effectiveSeatCount = row => {
+    const purchased = Number(row?.billing_seats || 0)
+    const active = Number(row?.employee_count || 0)
+    return purchased > 0 ? purchased : active
+  }
+  const totalSeats   = operatingStats.reduce((s,r) => s + effectiveSeatCount(r), 0)
   const totalClients = operatingStats.reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
   const totalLeads   = operatingStats.reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
   const totalStorage = operatingStats.reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
@@ -922,7 +933,7 @@ function Overview() {
   ]
 
   const sortValue = (row, key) => {
-    if (key === 'seats_staff') return row.billing_seats ?? row.employee_count ?? null
+    if (key === 'seats_staff') return effectiveSeatCount(row)
     if (key === 'last_activity') return row.last_activity ? new Date(row.last_activity).getTime() : null
     return row[key] ?? null
   }
@@ -1043,10 +1054,11 @@ function Overview() {
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{(() => {
-                  const seats = r.billing_seats
-                  return (seats == null && r.employee_count == null)
+                  const staff = r.employee_count == null ? null : Number(r.employee_count)
+                  const seats = effectiveSeatCount(r)
+                  return (r.billing_seats == null && staff == null)
                     ? '—'
-                    : `${seats == null ? '—' : Number(seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()}`
+                    : `${Number(seats).toLocaleString()} / ${staff == null ? '—' : staff.toLocaleString()}`
                 })()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
@@ -1796,15 +1808,17 @@ function OfficePage() {
 function OfficesList() {
   const [rows, setRows] = useState(null)
   const [loadError, setLoadError] = useState('')
+  const [query, setQuery] = useState('')
+  const [scope, setScope] = useState('all')
   const navigate = useNavigate()
+
   useEffect(() => {
     let cancelled=false
     ;(async()=>{
       try {
-        const { rows: allRows, warnings } = await loadPlatformOfficeRows()
+        const { rows: allRows } = await loadPlatformOfficeRows()
         if(cancelled) return
         setRows(allRows)
-        // Keep the office directory usable when an optional live metrics feed is unavailable.
         setLoadError('')
       } catch(error) {
         if(cancelled) return
@@ -1822,44 +1836,88 @@ function OfficesList() {
     }
     navigate(`/crm-admin/offices/${row.id}`)
   }
+
+  const normalizedQuery=query.trim().toLowerCase()
+  const visibleRows=(rows||[]).filter(r=>{
+    if(scope==='main' && !r.is_product_main) return false
+    if(scope==='offices' && (r.is_product_main || r.is_demo)) return false
+    if(scope==='demo' && !r.is_demo) return false
+    if(!normalizedQuery) return true
+    return [r.firm_name,r.product,r.plan_tier,r.status].some(v=>String(v||'').toLowerCase().includes(normalizedQuery))
+  })
+  const groups=[]
+  for(const row of visibleRows){
+    const key=row.product||'taxres_crm'
+    let group=groups.find(g=>g.key===key)
+    if(!group){group={key,label:key,rows:[]};groups.push(group)}
+    group.rows.push(row)
+    const main=group.rows.find(x=>x.is_product_main)
+    if(main) group.label=main.firm_name
+    else if(row.product_label) group.label=row.product_label
+    else if(key==='taxres_crm') group.label='TaxRes CRM'
+  }
+
   return (
-    <div style={{ padding:'28px 36px', maxWidth:1050 }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
-        <div style={{ fontSize:22, fontWeight:800, color:'#fff' }}>🏢 All Offices</div>
+    <div style={{ padding:'28px 36px', width:'100%', maxWidth:1180, boxSizing:'border-box' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, marginBottom:18 }}>
+        <div>
+          <div style={{ fontSize:22, fontWeight:800, color:'#fff' }}>🏢 All Offices</div>
+          <div style={{fontSize:11,color:'#475569',marginTop:4}}>Grouped by CRM family so main products, demos, and customer offices stay together.</div>
+        </div>
         <button onClick={()=>navigate('/crm-admin/provision')} style={S.btn('primary')}>➕ New Office</button>
       </div>
+
+      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:18,padding:'10px 12px',borderRadius:10,background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.12)'}}>
+        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search office, product, plan, or status…"
+          style={{flex:'1 1 280px',minWidth:220,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.25)',background:'#0f0e1a',color:'#e2e8f0',outline:'none'}}/>
+        {[['all','All'],['main','Main CRMs'],['offices','Customer Offices'],['demo','Demos']].map(([key,label])=>(
+          <button key={key} onClick={()=>setScope(key)} style={{...S.btn(scope===key?'primary':'ghost'),fontSize:11,padding:'7px 11px'}}>{label}</button>
+        ))}
+      </div>
+
       {loadError && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:16}}>Unable to load offices: {loadError}</div>}
-      {!rows ? <Spinner /> : rows.length===0 && !loadError ? <div style={{color:'#64748b',fontSize:13}}>No offices found.</div> : (
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          {rows.map(r => (
-            <div key={r.id} style={{ ...S.card, padding:'18px 20px', display:'flex', alignItems:'center', gap:16, cursor:'pointer' }}
-              onClick={()=>openOffice(r)}>
-              <div style={{ width:40,height:40,borderRadius:10,flexShrink:0,
-                background: r.brand_color ? r.brand_color+'33' : 'rgba(99,102,241,.15)',
-                border: `2px solid ${r.brand_color||'#6366f1'}44`,
-                display:'flex',alignItems:'center',justifyContent:'center',
-                fontSize:16,fontWeight:800,color:r.brand_color||'#6366f1' }}>
-                {(r.firm_name||'?')[0]}
+      {!rows ? <Spinner /> : groups.length===0 && !loadError ? <div style={{color:'#64748b',fontSize:13}}>No matching offices.</div> : (
+        <div style={{display:'flex',flexDirection:'column',gap:18}}>
+          {groups.map(group=>(
+            <section key={group.key}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:800,color:'#a5b4fc',textTransform:'uppercase',letterSpacing:'.08em'}}>{group.label}</div>
+                <div style={{fontSize:9,color:'#475569'}}>{group.rows.length} {group.rows.length===1?'row':'rows'}</div>
               </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{r.is_product_main ? r.firm_name : `↳ ${r.firm_name}`}</div>
-                <div style={{ fontSize:12, color:'#475569', marginTop:2 }}>
-                  {r.is_product_main
-                    ? 'Main CRM'
-                    : `Seats / Staff: ${r.billing_seats == null ? '—' : Number(r.billing_seats).toLocaleString()} / ${r.employee_count == null ? '—' : Number(r.employee_count).toLocaleString()} · ${r.client_count == null ? '—' : Number(r.client_count).toLocaleString()} clients · ${r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}`}
-                </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(340px,1fr))', gap:10 }}>
+                {group.rows.map(r=>{
+                  const activeStaff=r.employee_count==null?null:Number(r.employee_count)
+                  const seats=Number(r.billing_seats||0)>0?Number(r.billing_seats):activeStaff
+                  return <div key={r.id} style={{ ...S.card, padding:'15px 16px', display:'flex', alignItems:'center', gap:13, cursor:'pointer',
+                    borderColor:r.is_product_main?'rgba(99,102,241,.35)':undefined, background:r.is_product_main?'rgba(99,102,241,.055)':undefined }}
+                    onClick={()=>openOffice(r)}>
+                    <div style={{ width:38,height:38,borderRadius:10,flexShrink:0,
+                      background:r.brand_color?r.brand_color+'33':'rgba(99,102,241,.15)',
+                      border:`2px solid ${r.brand_color||'#6366f1'}44`,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      fontSize:15,fontWeight:800,color:r.brand_color||'#6366f1' }}>{(r.firm_name||'?')[0]}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <div style={{fontSize:14,fontWeight:800,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.firm_name}</div>
+                        {r.is_product_main && <span style={S.badge('#64748b')}>Main CRM</span>}
+                        {r.is_demo && <span style={S.badge('#f59e0b')}>Demo</span>}
+                      </div>
+                      <div style={{fontSize:10,color:'#475569',marginTop:3}}>
+                        {r.is_product_main
+                          ? (r.app_url || 'Product workspace')
+                          : `Seats / Staff: ${seats==null?'—':seats.toLocaleString()} / ${activeStaff==null?'—':activeStaff.toLocaleString()} · ${r.client_count==null?'—':Number(r.client_count).toLocaleString()} clients`}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5,flexShrink:0}}>
+                      <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
+                      <button onClick={e=>{e.stopPropagation();openOffice(r)}} style={{...S.btn('ghost'),padding:'5px 10px',fontSize:10}}>
+                        {r.is_product_main?'Open App ↗':'Open →'}
+                      </button>
+                    </div>
+                  </div>
+                })}
               </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
-                <span style={{ ...S.badge(TIER_COLOR[r.plan_tier]||'#64748b'), opacity:r.plan_tier?1:0.3 }}>{r.plan_tier||'no plan'}</span>
-                <span style={{ color:'#10b981', fontWeight:700, fontSize:13 }}>
-                  {r.is_product_main ? '—' : (r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—')}
-                </span>
-                <div style={{ fontSize:12, color:'#475569' }}>{r.is_product_main ? '—' : fmtAgo(r.last_activity)}</div>
-              </div>
-              <button onClick={e=>{e.stopPropagation();openOffice(r)}}
-                style={{ ...S.btn('ghost'), padding:'6px 14px', fontSize:12, flexShrink:0 }}>Open →</button>
-            </div>
+            </section>
           ))}
         </div>
       )}
@@ -1916,33 +1974,98 @@ function Billing() {
 function DemoMgmt() {
   const [rows, setRows] = useState(null)
   const [toast, setToast] = useState(null)
+  const [launching, setLaunching] = useState(null)
+  const [query, setQuery] = useState('')
   const toast_ = (msg,type='ok')=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3500) }
-  useEffect(()=>{ supabase.rpc('admin_tenant_overview').then(({data})=>setRows(data||[])) },[])
 
-  async function jumpIn(tenantId, firmName) {
-    const { data:token, error } = await supabase.rpc('create_impersonation_token',{ p_tenant_id:tenantId })
-    if (error) { toast_(error.message,'error'); return }
-    window.open(`${window.location.origin}/impersonate?admin_token=${token}`,'_blank')
-    toast_(`✅ Opened ${firmName}`)
+  useEffect(()=>{
+    let cancelled=false
+    ;(async()=>{
+      try {
+        const {rows:allRows}=await loadPlatformOfficeRows()
+        if(!cancelled) setRows(allRows)
+      } catch(e) {
+        if(!cancelled){setRows([]);toast_(e?.message||'Could not load demo workspaces','error')}
+      }
+    })()
+    return()=>{cancelled=true}
+  },[])
+
+  async function jumpIn(row) {
+    if (row.is_product_main || row.product !== 'taxres_crm') {
+      const main=(rows||[]).find(r=>r.product===row.product && r.is_product_main)
+      const url=row.app_url || main?.app_url || EXTERNAL_OFFICE_PRODUCTS[row.product]?.appUrl
+      if(!url){toast_('No app URL is registered for this product','error');return}
+      window.open(url,'_blank','noopener,noreferrer')
+      return
+    }
+    setLaunching(row.id)
+    const { data:token, error } = await supabase.rpc('create_impersonation_token',{ p_tenant_id:row.id })
+    setLaunching(null)
+    if (error || !token) { toast_(error?.message || 'Could not create admin session','error'); return }
+    window.open(`${window.location.origin}/impersonate?admin_token=${encodeURIComponent(token)}`,'_blank','noopener,noreferrer')
+    toast_(`Opened ${row.firm_name}`)
+  }
+
+  const q=query.trim().toLowerCase()
+  const demoRows=(rows||[]).filter(r=>r.is_demo)
+  const visible=demoRows.filter(r=>!q || [r.firm_name,r.product,r.plan_tier].some(v=>String(v||'').toLowerCase().includes(q)))
+  const groups=[]
+  for(const row of visible){
+    const key=row.product||'taxres_crm'
+    let g=groups.find(x=>x.key===key)
+    if(!g){
+      const cfg=EXTERNAL_OFFICE_PRODUCTS[key]
+      g={key,label:key==='taxres_crm'?'TaxRes CRM':(row.product_label||cfg?.label||key),rows:[]}
+      groups.push(g)
+    }
+    g.rows.push(row)
   }
 
   return (
-    <div style={{ padding:'28px 36px', maxWidth:820 }}>
+    <div style={{ padding:'28px 36px', width:'100%', maxWidth:1100, boxSizing:'border-box' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} />}
       <div style={{ fontSize:22,fontWeight:800,color:'#fff',marginBottom:6 }}>🎭 Demo Management</div>
-      <div style={{ fontSize:14,color:'#475569',marginBottom:24 }}>Jump into any office, run a demo, reset demo data before a prospect call.</div>
-      {!rows ? <Spinner /> : rows.map(r=>(
-        <div key={r.id} style={{ ...S.card,padding:'18px 20px',marginBottom:12,display:'flex',alignItems:'center',gap:14 }}>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:15,fontWeight:700,color:'#fff' }}>{r.firm_name}</div>
-            <div style={{ fontSize:12,color:'#475569',marginTop:2 }}>{r.employee_count} seats · {r.client_count} clients · Last active {fmtAgo(r.last_activity)}</div>
-          </div>
-          <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
-          <button onClick={()=>jumpIn(r.id,r.firm_name)} style={{ ...S.btn('primary'),fontSize:12,padding:'7px 16px' }}>
-            🚀 Jump In
-          </button>
+      <div style={{ fontSize:14,color:'#475569',marginBottom:18 }}>
+        One demo workspace per live CRM family. TaxRes uses secure admin jump-in; separate product CRMs open their registered demo/app workspace.
+      </div>
+      <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search product or office…"
+        style={{width:'100%',maxWidth:520,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.25)',background:'#0f0e1a',color:'#e2e8f0',outline:'none',marginBottom:20}}/>
+
+      {!rows ? <Spinner /> : groups.length===0 ? <div style={{color:'#64748b',fontSize:13}}>No matching demo workspaces.</div> : (
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+          {groups.map(group=>(
+            <section key={group.key}>
+              <div style={{fontSize:11,fontWeight:800,color:'#a5b4fc',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>{group.label}</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:10}}>
+                {group.rows.map(r=>{
+                  const staff=r.employee_count==null?null:Number(r.employee_count)
+                  const seats=Number(r.billing_seats||0)>0?Number(r.billing_seats):staff
+                  const isExternal=r.product!=='taxres_crm'
+                  return <div key={r.id} style={{...S.card,padding:'15px 16px',display:'flex',alignItems:'center',gap:12,
+                    borderColor:r.is_demo?'rgba(245,158,11,.35)':r.is_product_main?'rgba(99,102,241,.35)':undefined}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        <div style={{fontSize:14,fontWeight:800,color:'#fff'}}>{r.firm_name}</div>
+                        {r.is_product_main&&<span style={S.badge('#64748b')}>Main CRM</span>}
+                        {r.is_demo&&<span style={S.badge('#f59e0b')}>Demo</span>}
+                      </div>
+                      <div style={{fontSize:10,color:'#475569',marginTop:3}}>
+                        {r.is_product_main ? (r.app_url||'Product workspace')
+                          : `Seats / Staff: ${seats==null?'—':seats} / ${staff==null?'—':staff} · ${r.client_count==null?'—':Number(r.client_count).toLocaleString()} clients`}
+                      </div>
+                    </div>
+                    <button onClick={()=>jumpIn(r)} disabled={launching===r.id}
+                      style={{...S.btn(r.is_demo?'primary':'ghost'),fontSize:10,padding:'6px 10px',whiteSpace:'nowrap'}}>
+                      {launching===r.id?'⏳':(isExternal||r.is_product_main?'Open ↗':'🚀 Jump In')}
+                    </button>
+                  </div>
+                })}
+              </div>
+            </section>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -2053,7 +2176,7 @@ function SystemHealth() {
 }
 
 // ── Employee Lookup + Edit ───────────────────────────────────────────────────
-const ACCESS_LEVELS = ['Super Admin','Admin','Tax Associate','Read Only']
+const ACCESS_LEVELS = ['Super Admin','Admin','Manager','Tax Advisor','Tax Associate','Associate','Para','Sales Rep','Staff','Read Only','View Only']
 
 function EmployeeEditModal({ emp, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -2070,11 +2193,15 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
 
   async function save() {
     setSaving(true)
-    const { error } = await supabase.from('employees')
-      .update({ name:form.name, access:form.access, role:form.role, phone:form.phone })
-      .eq('id', emp.id)
+    const { data, error } = await supabase.rpc('admin_update_employee_profile', {
+      p_employee_id: emp.id,
+      p_name: form.name,
+      p_access: form.access,
+      p_role: form.role,
+      p_phone: form.phone,
+    })
     setSaving(false)
-    if (error) { toast_(error.message,'error'); return }
+    if (error || !data?.ok) { toast_(error?.message || 'Could not update employee','error'); return }
     toast_('✅ Employee updated')
     setTimeout(()=>{ onSaved(); onClose() }, 800)
   }
@@ -2082,12 +2209,10 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
   async function resetPassword() {
     if (!confirm(`Send password reset email to ${emp.email}?`)) return
     setResetting(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(emp.email, {
-      redirectTo: window.location.origin + '/'
-    })
+    const { data, error } = await supabase.functions.invoke('taxres-family-password-reset', { body:{ email:emp.email, office:emp.tenant_code==='TRC-002'?'nashville':'' } })
     setResetting(false)
-    if (error) { toast_(error.message,'error') }
-    else { toast_(`✅ Reset email sent to ${emp.email}`) }
+    if (error || data?.error) { toast_(data?.error || error?.message || 'Could not send password reset','error') }
+    else { toast_(data?.message || `✅ Reset email requested for ${emp.email}`) }
   }
 
   return (
@@ -2100,7 +2225,7 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
         <div style={{ display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:20 }}>
           <div>
             <div style={{ fontSize:18,fontWeight:800,color:'#fff' }}>{emp.name}</div>
-            <div style={{ fontSize:12,color:'#6366f1',marginTop:2 }}>{emp.tenants?.firm_name||'—'}</div>
+            <div style={{ fontSize:12,color:'#6366f1',marginTop:2 }}>{emp.tenant_name||'—'}</div>
             <div style={{ fontSize:11,color:'#475569',marginTop:1 }}>Joined {fmtDate(emp.created_at)}</div>
           </div>
           <button onClick={onClose} style={{ background:'none',border:'none',color:'#64748b',
@@ -2165,19 +2290,17 @@ function EmployeeLookup() {
   const [results,setResults] = useState(null)
   const [busy,setBusy]       = useState(false)
   const [selected,setSelected] = useState(null)
+  const [error,setError]       = useState('')
 
   async function search() {
     if (!q.trim()) return
     setBusy(true)
-    // Clear tenant override so RLS returns employees across ALL tenants
+    setError('')
     await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null }).then(()=>{}).catch(()=>{})
-    const { data } = await supabase
-      .from('employees')
-      .select('id,name,email,role,access,phone,avatar_url,tenant_id,created_at,tenants(firm_name)')
-      .or(`name.ilike.%${q}%,email.ilike.%${q}%`)
-      .limit(50)
+    const { data, error } = await supabase.rpc('admin_search_employees', { p_query:q.trim(), p_limit:50 })
     setBusy(false)
-    setResults(data||[])
+    if (error) { setError(error.message); setResults([]); return }
+    setResults(Array.isArray(data) ? data : [])
   }
 
   return (
@@ -2196,6 +2319,7 @@ function EmployeeLookup() {
           {busy?'…':'Search'}
         </button>
       </div>
+      {error && <div style={{marginBottom:14,padding:'10px 12px',borderRadius:8,background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',fontSize:12}}>Employee lookup failed: {error}</div>}
       {results!==null && (results.length===0 ? (
         <div style={{ color:'#475569',fontSize:14 }}>No employees found.</div>
       ) : (
@@ -2220,7 +2344,7 @@ function EmployeeLookup() {
                       e.access==='Tax Associate'?'#0ea5e9':'#64748b'
                     )}>{e.access||e.role}</span>
                   </td>
-                  <td style={{ ...S.td,color:'#6366f1',fontWeight:600 }}>{e.tenants?.firm_name||'—'}</td>
+                  <td style={{ ...S.td,color:'#6366f1',fontWeight:600 }}>{e.tenant_name||'—'}</td>
                   <td style={{ ...S.td,color:'#475569' }}>{fmtDate(e.created_at)}</td>
                   <td style={S.td}>
                     <button onClick={ev=>{ev.stopPropagation();setSelected(e)}}
@@ -2396,121 +2520,8 @@ function AdminCalendar(){
 
 // ── Live Demo Launcher ───────────────────────────────────────────────────────
 function LiveDemo() {
-  const [rows, setRows] = useState(null)
-  const [toast, setToast] = useState(null)
-  const [launching, setLaunching] = useState(null)
-  const toast_ = (msg,type='ok')=>{ setToast({msg,type}); setTimeout(()=>setToast(null),4000) }
-
-  useEffect(()=>{
-    supabase.rpc('admin_tenant_overview').then(({data})=>setRows(data||[]))
-  },[])
-
-  async function launchDemo(tenantId, firmName) {
-    setLaunching(tenantId)
-    const { data:token, error } = await supabase.rpc('create_impersonation_token',{ p_tenant_id:tenantId })
-    setLaunching(null)
-    if (error) { toast_(error.message,'error'); return }
-    const url = `${window.location.origin}/impersonate?admin_token=${token}`
-    window.open(url, '_blank')
-    toast_(`✅ Demo opened for ${firmName} — token valid 15 min`)
-  }
-
-  const DEMO_TENANT = DEMO_RUNTIME_TENANT
-
-  return (
-    <div style={{ padding:'28px 36px', maxWidth:900 }}>
-      {toast && <Toast msg={toast.msg} type={toast.type} />}
-
-      {/* Header with logo */}
-      <div style={{ display:'flex', alignItems:'center', gap:20, marginBottom:32,
-        padding:'24px 28px', borderRadius:16, background:'rgba(99,102,241,.06)',
-        border:'1px solid rgba(99,102,241,.2)' }}>
-        {FIRM.logoUrl && (
-          <img src={FIRM.logoUrl} alt={FIRM.name || 'TaxRes CRM'}
-            style={{ height:52, objectFit:'contain', flexShrink:0 }}
-            onError={e=>{e.target.style.display='none'}} />
-        )}
-        <div>
-          <div style={{ fontSize:22, fontWeight:800, color:'#fff', marginBottom:4 }}>🖥️ Live Demo Launcher</div>
-          <div style={{ fontSize:14, color:'#64748b' }}>
-            Jump into any office as an admin — opens a live CRM session in a new tab.
-            Perfect for prospect demos and support calls. Each token expires in 15 minutes.
-          </div>
-        </div>
-      </div>
-
-      {/* Quick launch — Nash Demo highlighted */}
-      {rows && rows.find(r=>r.id===DEMO_TENANT) && (() => {
-        const demo = rows.find(r=>r.id===DEMO_TENANT)
-        return (
-          <div style={{ ...S.card, padding:'20px 24px', marginBottom:20,
-            border:'1px solid rgba(251,146,60,.4)', background:'rgba(251,146,60,.04)' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-              <div style={{ fontSize:32 }}>🎭</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:16, fontWeight:800, color:'#fff', marginBottom:2 }}>TaxRes CRM Demo</div>
-                <div style={{ fontSize:13, color:'#64748b' }}>
-                  Canonical TaxRes Demo · {demo.client_count} demo clients · {demo.employee_count} seats · Last active {fmtAgo(demo.last_activity)}
-                </div>
-              </div>
-              <div style={{ display:'flex', gap:10 }}>
-                <button onClick={()=>launchDemo(demo.id, demo.firm_name)}
-                  disabled={launching===demo.id}
-                  style={{ ...S.btn('primary'), fontSize:14, padding:'10px 24px',
-                    background:'linear-gradient(135deg,#f97316,#fb923c)' }}>
-                  {launching===demo.id ? '⏳ Opening…' : '🚀 Launch Demo'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* All offices */}
-      <div style={{ fontSize:12, fontWeight:700, color:'#475569', textTransform:'uppercase',
-        letterSpacing:'.06em', marginBottom:14 }}>All Offices</div>
-
-      {!rows ? <Spinner /> : (
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {rows.map(r => (
-            <div key={r.id} style={{ ...S.card, padding:'16px 20px', display:'flex', alignItems:'center', gap:14 }}>
-              <div style={{ width:40, height:40, borderRadius:10, flexShrink:0,
-                background: r.brand_color ? r.brand_color+'22' : 'rgba(99,102,241,.12)',
-                border: `2px solid ${r.brand_color||'#6366f1'}33`,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                fontSize:18, fontWeight:800, color:r.brand_color||'#6366f1' }}>
-                {(r.firm_name||'?')[0]}
-              </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{r.firm_name}</div>
-                <div style={{ fontSize:12, color:'#475569', marginTop:2 }}>
-                  {r.employee_count} employees · {r.client_count} clients · {r.lead_count} leads · Last active {fmtAgo(r.last_activity)}
-                </div>
-              </div>
-              <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
-              <button onClick={()=>launchDemo(r.id, r.firm_name)}
-                disabled={!!launching}
-                style={{ ...S.btn('ghost'), fontSize:12, padding:'7px 18px', flexShrink:0 }}>
-                {launching===r.id ? '⏳' : '🚀'} {launching===r.id ? 'Opening…' : 'Open Session'}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* How it works */}
-      <div style={{ marginTop:28, padding:'16px 20px', borderRadius:12,
-        background:'rgba(99,102,241,.05)', border:'1px solid rgba(99,102,241,.15)',
-        fontSize:12, color:'#475569', lineHeight:1.7 }}>
-        <div style={{ fontWeight:700, color:'#a5b4fc', marginBottom:4 }}>How it works</div>
-        Each session creates a signed 15-minute impersonation token and opens the full CRM pre-authenticated as a Super Admin inside that office.
-        You see exactly what the client sees — their data, their branding, their settings.
-        Every session is logged in the Audit Log with timestamp and which office you accessed.
-      </div>
-    </div>
-  )
+  return <DemoMgmt />
 }
-
 
 // ── Demo Setup Wizard ────────────────────────────────────────────────────────
 // Lets Romy skin the demo tenant as either the generic TaxRes CRM demo
@@ -5046,19 +5057,32 @@ function CommandCenter() {
   // ── System live status ──
   const [sysStatus, setSysStatus] = useState(null)
   useEffect(()=>{
+    let cancelled=false
+    async function reachable(url){
+      try { await fetch(url,{mode:'no-cors',signal:AbortSignal.timeout(5000),cache:'no-store'}); return true } catch(_) { return false }
+    }
     async function checkSys(){
-      let dbOk = false
-      try { const r = await supabase.from('tenants').select('id').limit(1); dbOk = !r.error } catch(_){}
-      let mailOk=false,netOk=false,appOk=false,romylabsOk=false,adminOk=false
-      try{await fetch('https://webmail.taxrescrm.net:7443',{mode:'no-cors',signal:AbortSignal.timeout(4000)});mailOk=true}catch(_){}
-      try{await fetch('https://taxrescrm.net',{mode:'no-cors',signal:AbortSignal.timeout(4000)});netOk=true}catch(_){}
-      try{await fetch('https://taxrescrm.app',{mode:'no-cors',signal:AbortSignal.timeout(4000)});appOk=true}catch(_){}
-      try{await fetch('https://romylabs.com',{mode:'no-cors',signal:AbortSignal.timeout(4000)});romylabsOk=true}catch(_){}
-      try{await fetch('https://admin.romylabs.com',{mode:'no-cors',signal:AbortSignal.timeout(4000)});adminOk=true}catch(_){}
-      setSysStatus({dbOk,mailOk,netOk,appOk,romylabsOk,adminOk})
+      let dbOk=false
+      try { const r=await supabase.from('tenants').select('id').limit(1); dbOk=!r.error } catch(_){}
+      const fixed = {
+        mailOk: await reachable('https://webmail.taxrescrm.net:7443'),
+        netOk: await reachable('https://taxrescrm.net'),
+        appOk: await reachable('https://taxrescrm.app'),
+        romylabsOk: await reachable('https://romylabs.com'),
+        adminOk: await reachable('https://admin.romylabs.com'),
+      }
+      const productRows = mergeProductRegistry(reportingProducts)
+        .filter(p=>!p.isTenant && (p.websiteUrl || p.appUrl))
+      const productChecks = await Promise.all(productRows.map(async p => ({
+        key:p.key,label:p.label,
+        websiteUrl:p.websiteUrl||null,websiteOk:p.websiteUrl?await reachable(p.websiteUrl):null,
+        appUrl:p.appUrl||null,appOk:p.appUrl?await reachable(p.appUrl):null,
+      })))
+      if(!cancelled) setSysStatus({dbOk,...fixed,products:productChecks,checkedAt:new Date().toISOString()})
     }
     checkSys()
-  },[])
+    return()=>{cancelled=true}
+  },[reportingProducts])
 
   useEffect(() => {
     // Handle GSC OAuth callback (?code= in URL after redirect)
@@ -5262,19 +5286,18 @@ function CommandCenter() {
   const crmUpcomingDemos = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_demos || []) : []
   const crmUpcomingDeadlines = crmProduct === 'taxres_crm' ? (taxresScopeData?.upcoming_deadlines || []) : []
 
-  const TABS = [
-    { key:'overview',  label:'Overview'  },
-    { key:'support',   label:'Support'   },
-    { key:'products',  label:'Products'  },
-    { key:'marketing', label:'Analytics' },
-    { key:'search',    label:'SEO'       },
-    { key:'linkedin',  label:'LinkedIn'  },
-    { key:'content',   label:'Content'   },
-    { key:'sales',     label:'Sales'     },
-    { key:'crm',       label:'CRM'       },
-    { key:'goals',     label:'Goals'     },
-    { key:'system',    label:'System'    },
+  const TAB_GROUPS = [
+    { label:'Portfolio', tabs:[
+      { key:'overview', label:'Overview' }, { key:'products', label:'Products' }, { key:'crm', label:'CRM' }, { key:'support', label:'Support' },
+    ]},
+    { label:'Growth', tabs:[
+      { key:'marketing', label:'Analytics' }, { key:'search', label:'SEO' }, { key:'linkedin', label:'LinkedIn' }, { key:'content', label:'Content' }, { key:'sales', label:'Sales' },
+    ]},
+    { label:'Management', tabs:[
+      { key:'goals', label:'Goals' }, { key:'system', label:'System' },
+    ]},
   ]
+  const TABS = TAB_GROUPS.flatMap(g => g.tabs)
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
@@ -5291,17 +5314,23 @@ function CommandCenter() {
           <div style={{ fontSize:13, color:'#475569' }}>{data.todayDate}</div>
         </div>
 
-        {/* Tab bar */}
-        <div style={{ display:'flex', gap:4, marginBottom:28, padding:'4px', background:'rgba(255,255,255,.04)',
-          borderRadius:10, border:'1px solid rgba(99,102,241,.15)', width:'fit-content' }}>
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              padding:'7px 18px', borderRadius:7, border:'none', cursor:'pointer',
-              fontWeight: tab===t.key ? 700 : 500, fontSize:13,
-              background: tab===t.key ? 'rgba(99,102,241,.35)' : 'transparent',
-              color: tab===t.key ? '#a5b4fc' : '#64748b',
-              transition:'all .15s',
-            }}>{t.label}</button>
+        {/* Grouped navigation — keeps the Command Center readable as modules grow */}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:10, marginBottom:28 }}>
+          {TAB_GROUPS.map(group => (
+            <div key={group.label} style={{ padding:'5px', background:'rgba(255,255,255,.04)',
+              borderRadius:10, border:'1px solid rgba(99,102,241,.15)' }}>
+              <div style={{fontSize:8,fontWeight:800,color:'#334155',textTransform:'uppercase',letterSpacing:'.08em',padding:'0 8px 4px'}}>{group.label}</div>
+              <div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
+                {group.tabs.map(t => (
+                  <button key={t.key} onClick={() => setTab(t.key)} style={{
+                    padding:'7px 13px', borderRadius:7, border:'none', cursor:'pointer',
+                    fontWeight: tab===t.key ? 700 : 500, fontSize:12,
+                    background: tab===t.key ? 'rgba(99,102,241,.35)' : 'transparent',
+                    color: tab===t.key ? '#a5b4fc' : '#64748b', transition:'all .15s',
+                  }}>{t.label}</button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -5444,6 +5473,9 @@ function CommandCenter() {
             )
           })()}
 
+
+          {/* Demo workspaces live in the dedicated Demo Mgmt module to avoid duplicate launch logic. */}
+
           {/* ── Needs Attention ─────────────────────────────────────────── */}
           {(() => {
             const products = mergeProductRegistry(reportingProducts)
@@ -5574,13 +5606,15 @@ function CommandCenter() {
               {[
                 { label:'romylabs.com',       ok: sysStatus?.romylabsOk ?? null },
                 { label:'admin.romylabs.com', ok: sysStatus?.adminOk    ?? null },
-                { label:'TaxRes (taxrescrm.app)', ok: sysStatus?.appOk ?? null },
-                { label:'TaxRes (taxrescrm.net)', ok: sysStatus?.netOk ?? null },
                 { label:'TaxRes Mail (Stalwart)', ok: sysStatus?.mailOk ?? null },
                 { label:'Supabase (TaxRes DB)',   ok: sysStatus?.dbOk  ?? null },
+                ...(sysStatus?.products||[]).flatMap(p=>[
+                  ...(p.websiteUrl?[{label:`${p.label} site`,ok:p.websiteOk}]:[]),
+                  ...(p.appUrl && p.appUrl!==p.websiteUrl?[{label:`${p.label} app`,ok:p.appOk}]:[]),
+                ]),
               ].map((s,i) => (
                 <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                  padding:'7px 0', borderBottom: i<5?'1px solid rgba(99,102,241,.08)':'none' }}>
+                  padding:'7px 0', borderBottom:'1px solid rgba(99,102,241,.08)' }}>
                   <div style={{ fontSize:11, color:'#94a3b8' }}>{s.label}</div>
                   <StatusDot ok={s.ok} />
                 </div>
@@ -5621,18 +5655,23 @@ function CommandCenter() {
             </div>
           ) : ga4Data ? (<>
             {ga4Data.syncWarning && <div style={{marginBottom:14,padding:'10px 12px',borderRadius:8,background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.2)',color:'#fbbf24',fontSize:11}}>Latest Google sync failed; showing the most recent cached GA4 data.</div>}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
-              {[
-                { label:'Sessions Today',    value: ga4Data.sessions.toLocaleString(), sub: ga4Data.sessionChange!==0 ? `${ga4Data.sessionChange>0?'↑':'↓'} ${Math.abs(ga4Data.sessionChange)}% vs yesterday` : 'vs yesterday', icon:'📊', color:'#6366f1' },
-                { label:'Users Today',       value: ga4Data.users.toLocaleString(),    sub:`${ga4Data.newUsers.toLocaleString()} new`,   icon:'👥', color:'#0ea5e9' },
-                { label:'Bounce Rate',       value:`${ga4Data.bounceRate}%`,            sub:'GA4 today',     icon:'↩️', color:'#10b981' },
-                { label:'Pages / Session',   value: ga4Data.pagesPerSession,            sub:'GA4 today',     icon:'📄', color:'#f59e0b' },
-              ].map(k => <KPICard key={k.label} {...k} />)}
-            </div>
+            {(() => {
+              const reportLabel = ga4Data.reportingDate
+                ? new Date(ga4Data.reportingDate + 'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric'})
+                : 'latest'
+              return <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
+                {[
+                  { label:`Sessions · ${reportLabel}`, value:ga4Data.sessions.toLocaleString(), sub:ga4Data.sessionChange!==0 ? `${ga4Data.sessionChange>0?'↑':'↓'} ${Math.abs(ga4Data.sessionChange)}% vs prior day` : 'vs prior day', icon:'📊', color:'#6366f1' },
+                  { label:`Users · ${reportLabel}`, value:ga4Data.users.toLocaleString(), sub:`${ga4Data.newUsers.toLocaleString()} new`, icon:'👥', color:'#0ea5e9' },
+                  { label:'Bounce Rate', value:`${ga4Data.bounceRate}%`, sub:`GA4 · ${reportLabel}`, icon:'↩️', color:'#10b981' },
+                  { label:'Pages / Session', value:ga4Data.pagesPerSession, sub:`GA4 · ${reportLabel}`, icon:'📄', color:'#f59e0b' },
+                ].map(k => <KPICard key={k.label} {...k} />)}
+              </div>
+            })()}
 
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18, marginBottom:24 }}>
               <div style={CC.card({padding:'22px 24px'})}>
-                <div style={CC.sectionLabel}>Session sources — today</div>
+                <div style={CC.sectionLabel}>Session sources — reporting date</div>
                 {ga4Data.channels.map((s,i) => (
                   <div key={i} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
                     <div style={{ fontSize:12, color:'#94a3b8', width:130, flexShrink:0 }}>{s.label}</div>
@@ -5976,16 +6015,16 @@ function CommandCenter() {
               <div style={CC.sectionLabel}>Service status</div>
               {(()=>{
                 const checks = [
-                  { label:'Supabase DB',          ok: sysStatus?.dbOk ?? null },
-                  { label:'Email (Stalwart)',      ok: sysStatus?.mailOk ?? null },
-                  { label:'taxrescrm.net',         ok: sysStatus?.netOk ?? null },
-                  { label:'taxrescrm.app',         ok: sysStatus?.appOk ?? null },
-                  { label:'GA4 · TaxRes (G-M6J80B65LG)',   ok: true },
-                  { label:'GA4 · RomyLabs (G-2MSNYF9XBE)', ok: true },
-                  { label:'Clarity · TaxRes (xyck7g2mfl)',  ok: true },
-                  { label:'Clarity · RomyLabs (y54zqoj6c2)',ok: true },
-                  { label:'Google Search Console', ok: gscConnected ? true : null },
-                  { label:'Bing Webmaster',        ok: bingConnected ? true : null },
+                  { label:'Supabase DB',          ok: sysStatus?.dbOk ?? null, kind:'service' },
+                  { label:'Email (Stalwart)',      ok: sysStatus?.mailOk ?? null, kind:'reachability' },
+                  { label:'taxrescrm.net',         ok: sysStatus?.netOk ?? null, kind:'reachability' },
+                  { label:'taxrescrm.app',         ok: sysStatus?.appOk ?? null, kind:'reachability' },
+                  { label:'GA4 · TaxRes (G-M6J80B65LG)',   ok: true, kind:'connected' },
+                  { label:'GA4 · RomyLabs (G-2MSNYF9XBE)', ok: true, kind:'connected' },
+                  { label:'Clarity · TaxRes (xyck7g2mfl)',  ok: true, kind:'connected' },
+                  { label:'Clarity · RomyLabs (y54zqoj6c2)',ok: true, kind:'connected' },
+                  { label:'Google Search Console', ok: gscConnected ? true : null, kind:'connected' },
+                  { label:'Bing Webmaster',        ok: bingConnected ? true : null, kind:'connected' },
                 ]
                 return checks.map((s,i)=>(
                   <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -5994,7 +6033,11 @@ function CommandCenter() {
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <StatusDot ok={s.ok} />
                       <span style={{ fontSize:11, fontWeight:600, color: s.ok===null?'#475569':s.ok?'#10b981':'#ef4444' }}>
-                        {s.ok===null ? (sysStatus===null?'Checking…':'Not connected') : s.ok?'Operational':'Down'}
+                        {s.ok===null
+                          ? (sysStatus===null?'Checking…':s.kind==='connected'?'Not connected':'Unknown')
+                          : s.ok
+                            ? (s.kind==='reachability'?'Reachable':s.kind==='connected'?'Connected':'Operational')
+                            : (s.kind==='reachability'?'Unreachable':s.kind==='connected'?'Not connected':'Down')}
                       </span>
                     </div>
                   </div>
@@ -6388,9 +6431,15 @@ function ContentCenter({ embeddedMode = false }) {
 
   async function loadDrafts() {
     setLoading(true)
-    let data = []
-    try { const r = await supabase.rpc('get_content_drafts', { p_limit: 200 }); data = r.data || [] } catch(_) { data = [] }
-    setDrafts(data || [])
+    try {
+      const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'list_drafts', limit:200 } })
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Could not load content drafts')
+      setDrafts(data.drafts || [])
+    } catch(e) {
+      console.error('Content Center load failed', e)
+      setDrafts([])
+      showToast('Content Center could not load: ' + String(e?.message || e), false)
+    }
     setLoading(false)
   }
 
@@ -6452,14 +6501,16 @@ function ContentCenter({ embeddedMode = false }) {
   }
 
   async function updateStatus(id, status) {
-    await supabase.rpc('update_content_status', { p_id: id, p_status: status, p_actor: 'romy@taxrescrm.net' })
+    const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'update_status', id, status } })
+    if (error || !data?.ok) { showToast('Status update failed', false); return }
     setDrafts(prev => prev.map(d => d.id===id ? {...d, status} : d))
     if (selected?.id === id) setSelected(s => ({...s, status}))
     showToast(status==='approved'?'Approved ✓':status==='archived'?'Archived':status==='published'?'Marked published':'Updated')
   }
 
   async function deleteDraft(id) {
-    await supabase.from('content_drafts').delete().eq('id', id)
+    const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'delete_draft', id } })
+    if (error || !data?.ok) { showToast('Delete failed', false); return }
     setDrafts(prev => prev.filter(d => d.id !== id))
     if (selected?.id === id) setSelected(null)
     showToast('Deleted')
@@ -6468,7 +6519,8 @@ function ContentCenter({ embeddedMode = false }) {
   async function saveEdit() {
     if (!selected) return
     setSaving(true)
-    await supabase.rpc('save_content_draft', { p_id: selected.id, p_title: selected.title, p_body: editBody })
+    const { data, error } = await supabase.functions.invoke('content-generator', { body:{ action:'save_draft', id:selected.id, title:selected.title, body:editBody } })
+    if (error || !data?.ok) { setSaving(false); showToast('Save failed', false); return }
     setDrafts(prev => prev.map(d => d.id===selected.id ? {...d, body: editBody} : d))
     setSelected(s => ({...s, body: editBody}))
     setEditing(false)
@@ -7239,8 +7291,11 @@ function LinkedInPublisher({ embeddedMode = false }) {
                   <span style={{ width:7, height:7, borderRadius:'50%', background:'#10b981', display:'inline-block' }} />
                   <span style={{ fontSize:11, fontWeight:700, color:'#10b981' }}>{connection.display_name}</span>
                 </div>
-                <div style={{ fontSize:10, color:'#475569', marginBottom:8 }}>
-                  Expires {new Date(connection.expires_at).toLocaleDateString()}
+                <div style={{ fontSize:10, color:'#475569', marginBottom:4 }}>
+                  Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
+                </div>
+                <div style={{ fontSize:9, color:'#64748b', marginBottom:8, lineHeight:1.4 }}>
+                  Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
                 </div>
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={disconnect} style={{ ...S.btn('ghost'), fontSize:10, padding:'4px 10px', color:'#ef4444', borderColor:'rgba(239,68,68,.3)' }}>
@@ -7263,6 +7318,13 @@ function LinkedInPublisher({ embeddedMode = false }) {
               style={{ ...S.btn('primary'), width:'100%', padding:'8px 0', fontSize:12 }}>
               + New Post
             </button>
+            <a href="https://www.linkedin.com/messaging/" target="_blank" rel="noopener noreferrer"
+              style={{...S.btn('ghost'),display:'block',textAlign:'center',textDecoration:'none',width:'100%',boxSizing:'border-box',marginTop:7,padding:'7px 0',fontSize:11}}>
+              Open LinkedIn Inbox ↗
+            </a>
+            <div style={{fontSize:9,color:'#f59e0b',lineHeight:1.45,marginTop:7}}>
+              Inbox monitoring is not active in RomyLabs. The current LinkedIn API grant is for publishing, so DMs must still be checked in LinkedIn.
+            </div>
           </div>
 
           {/* Sub-tabs */}
