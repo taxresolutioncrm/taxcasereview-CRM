@@ -10,9 +10,3 @@ set tracking_id='y6ou1vr1q0',
     updated_at=now()
 where product_id='arcvena' and channel_key='clarity';
 
--- Keep Oculivo explicitly tied to its own Clarity project.
-update public.product_traffic_channels
-set tracking_id='yguz2tkhnt',
-    destination_url='https://oculivo.com',
-    updated_at=now()
-where product_id='oculivo' and channel_key='clarity';
