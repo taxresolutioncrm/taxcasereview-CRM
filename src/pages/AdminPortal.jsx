@@ -2209,7 +2209,7 @@ function EmployeeEditModal({ emp, onClose, onSaved }) {
   async function resetPassword() {
     if (!confirm(`Send password reset email to ${emp.email}?`)) return
     setResetting(true)
-    const { data, error } = await supabase.functions.invoke('taxres-family-password-reset', { body:{ email:emp.email } })
+    const { data, error } = await supabase.functions.invoke('taxres-family-password-reset', { body:{ email:emp.email, office:emp.tenant_code==='TRC-002'?'nashville':'' } })
     setResetting(false)
     if (error || data?.error) { toast_(data?.error || error?.message || 'Could not send password reset','error') }
     else { toast_(data?.message || `✅ Reset email requested for ${emp.email}`) }
