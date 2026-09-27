@@ -77,6 +77,7 @@ export default function AdminChat() {
   const [loading, setLoading]       = useState(false)
   const [unread, setUnread]         = useState({})   // { tenantId: count }
   const [view, setView]             = useState('inbox') // 'inbox' | 'office'
+  const [alertsEnabled, setAlertsEnabled] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted')
   const bottomRef = useRef(null)
   const rtRef = useRef(null)
 
@@ -104,11 +105,15 @@ export default function AdminChat() {
         } else if (hydrated.tenant_id) {
           setUnread(prev => ({ ...prev, [hydrated.tenant_id]: (prev[hydrated.tenant_id] || 0) + 1 }))
         }
+        if (hydrated.sender !== 'Romy Cruz (Admin)' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const officeName = offices.find(o => o.id === hydrated.tenant_id)?.firm_name || 'TaxRes office'
+          try { new Notification(`New message · ${officeName}`, { body:`${hydrated.sender}: ${hydrated.text || 'Attachment'}` }) } catch (_) {}
+        }
       })
       .subscribe()
     rtRef.current = rt
     return () => { supabase.removeChannel(rt) }
-  }, [selectedOffice, selectedChan])
+  }, [selectedOffice, selectedChan, offices])
 
   async function loadInbox() {
     setLoading(true)
@@ -175,15 +180,13 @@ export default function AdminChat() {
   async function sendMessage() {
     if (!input.trim() || !selectedChan || sending) return
     setSending(true)
-    const payload = {
-      tenant_id: selectedOffice.id,
-      channel: selectedChan,
-      sender: 'Romy Cruz (Admin)',
-      text: input.trim(),
-      created_at: new Date().toISOString(),
-    }
-    const { data: sent, error } = await supabase.from('chat_messages').insert([payload]).select('*').single()
-    if (!error) {
+    const { data, error } = await supabase.rpc('admin_send_chat_message', {
+      p_tenant_id: selectedOffice.id,
+      p_channel: selectedChan,
+      p_text: input.trim(),
+    })
+    const sent = data?.message || null
+    if (!error && data?.ok) {
       if (sent) setMessages(prev => prev.some(m => m.id === sent.id) ? prev : [...prev, sent])
       setInput('')
       localStorage.setItem('romylabs_admin_chat_seen_' + selectedOffice.id, new Date().toISOString())
@@ -323,7 +326,16 @@ export default function AdminChat() {
           <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 4 }}>💬 Cross-Office Chat</div>
           <div style={{ fontSize: 14, color: '#475569' }}>All office channels · Read and reply as Admin</div>
         </div>
-        <button onClick={loadInbox} style={{ background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc', borderRadius: 8, padding: '7px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>⟳ Refresh</button>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+            <button onClick={async()=>{ const p=await Notification.requestPermission(); setAlertsEnabled(p==='granted') }}
+              style={{ background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.25)',color:'#fbbf24',borderRadius:8,padding:'7px 12px',cursor:'pointer',fontSize:11,fontWeight:700 }}>
+              🔔 Enable alerts
+            </button>
+          )}
+          {alertsEnabled && <span style={{fontSize:10,color:'#10b981'}}>● Alerts on</span>}
+          <button onClick={loadInbox} style={{ background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc', borderRadius: 8, padding: '7px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>⟳ Refresh</button>
+        </div>
       </div>
 
       {/* Office cards */}
