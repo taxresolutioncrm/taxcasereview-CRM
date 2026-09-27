@@ -2014,11 +2014,12 @@ function DemoMgmt() {
   for(const row of visible){
     const key=row.product||'taxres_crm'
     let g=groups.find(x=>x.key===key)
-    if(!g){g={key,label:key,rows:[]};groups.push(g)}
+    if(!g){
+      const cfg=EXTERNAL_OFFICE_PRODUCTS[key]
+      g={key,label:key==='taxres_crm'?'TaxRes CRM':(row.product_label||cfg?.label||key),rows:[]}
+      groups.push(g)
+    }
     g.rows.push(row)
-    const main=g.rows.find(x=>x.is_product_main)
-    if(main) g.label=main.firm_name
-    else if(key==='taxres_crm') g.label='TaxRes CRM'
   }
 
   return (
