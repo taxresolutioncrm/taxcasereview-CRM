@@ -2,6 +2,9 @@ name: Exhaustive Source Audit
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - sandbox/validate-claude-tds-release-20260927
 
 permissions:
   contents: read
