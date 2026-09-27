@@ -43,18 +43,21 @@ jobs:
             IRS_TDS_STATUS_URL_TEMPLATE
             IRS_TDS_AUTH_FLOW_VERIFIED
           )
+          overall_missing=0
           for ref in mpxgxfqdbquzkrvvejkh ydrvncdedgjtcprczwpu; do
             body="$(curl -fsS "https://api.supabase.com/v1/projects/$ref/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")"
             names="$(printf '%s' "$body" | jq -r '.[]?.name // empty')"
             echo "Checking IRS TDS secret names for $ref"
-            missing=0
+            project_missing=0
             for key in "${required[@]}"; do
               if printf '%s\n' "$names" | grep -Fxq "$key"; then
                 echo "PASS $key"
               else
                 echo "MISSING $key"
-                missing=1
+                project_missing=1
+                overall_missing=1
               fi
             done
-            test "$missing" -eq 0
+            echo "PROJECT_MISSING=$project_missing"
           done
+          test "$overall_missing" -eq 0
