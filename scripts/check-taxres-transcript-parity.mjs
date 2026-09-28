@@ -74,7 +74,7 @@ for(const n of [
   "IRS_POPUP_BLOCKED + ' No transcript request was saved.'",
   'openIrsPopup(',
   'Sign in to IRS',
-  'Secure Mailbox',
+  'Secure Object Repository',
   'types: []',
   // TaxRes IRS Helper bridge: same-page messages only, PDFs only
   "event.source !== window || event.origin !== window.location.origin",
