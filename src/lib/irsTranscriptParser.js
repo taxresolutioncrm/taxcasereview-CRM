@@ -152,6 +152,30 @@ export function parseIrsTranscript(text) {
 }
 
 // ── PDF text extraction (pdf.js) ──
+// IRS SOR delivers transcripts as .html files, not PDFs. Strip all HTML tags
+// and collapse whitespace so the same line-based patterns work on the text.
+export async function extractHtmlText(file) {
+  const raw = await file.text()
+  // Remove script/style blocks entirely
+  const noScript = raw.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+                      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+  // Replace block-level tags with newlines so table rows and divs become separate lines
+  const withBreaks = noScript.replace(/<\/?(tr|td|th|div|p|br|li|h[1-6])[^>]*>/gi, '\n')
+  // Strip remaining tags
+  const text = withBreaks.replace(/<[^>]+>/g, ' ')
+  // Decode common HTML entities
+  const decoded = text
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#160;/g, ' ')
+    .replace(/&quot;/gi, '"')
+  // Collapse runs of whitespace while preserving newlines
+  return decoded.split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n')
+}
+
+
 // Reconstructs lines by grouping text items on similar Y coordinates and
 // sorting by X, which preserves the transcript's tabular rows well enough
 // for the line-based patterns above.
