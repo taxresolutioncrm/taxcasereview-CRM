@@ -628,14 +628,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '11px 13px', background: 'var(--s1)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 260 }}>
-                <div style={{ fontWeight: 800, fontSize: 13 }}>IRS / ID.me Sign-In</div>
+                <div style={{ fontWeight: 800, fontSize: 13 }}>IRS Transcript Access</div>
                 <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
-                  Opens the real IRS Transcript Delivery System in a pop-up window. Sign in there with your own IRS / ID.me login — your sign-in stays in that window and is never seen, saved or shared by the CRM.
+                  Use TDS to request and receive transcripts. Use SOR to receive transcripts already delivered by the IRS. Both open the real IRS system in a pop-up window, and your IRS / ID.me sign-in is never seen, saved or shared by the CRM.
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-                <button className="btn" onClick={() => openIrs(IRS_TDS_URL)} data-testid="irs-sign-in">Sign in to IRS</button>
-                <button className="btn sec" onClick={() => openIrs(IRS_SOR_URL)} data-testid="irs-secure-mailbox">Secure Object Repository</button>
+                <button className="btn" onClick={() => openIrs(IRS_TDS_URL)} data-testid="irs-tds">TDS — Request & Receive</button>
+                <button className="btn sec" onClick={() => openIrs(IRS_SOR_URL)} data-testid="irs-sor">SOR — Receive Only</button>
                 {popupOpen && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) setPopupOpen(false) }} data-testid="irs-show-window">Show IRS window</button>}
               </div>
             </div>
@@ -649,7 +649,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 )}
                 <span>
                   {helperConnected
-                    ? 'Open Secure Object Repository, then click "Send to CRM" on the helper panel. Transcript PDFs you download from the IRS window are also sent here.'
+                    ? 'Open SOR (Secure Object Repository), then click "Send to CRM" on the helper panel. Transcript PDFs you download from TDS or SOR are also sent here.'
                     : 'Free Chrome add-on that sends your IRS transcript PDFs back here. It never sees your IRS password or sign-in.'}
                 </span>
                 {!helperConnected && <a className="btn sec" style={{ fontSize: 11 }} href={HELPER_ZIP_URL} download>Download helper</a>}
