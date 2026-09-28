@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
+import { parseIrsTranscript, extractPdfText, extractHtmlText } from './irsTranscriptParser'
 
 // Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
 // Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
@@ -134,8 +134,11 @@ export function namesMatch(transcriptName, clientName) {
 }
 
 export async function parseTranscriptFile(file) {
-  const text = await extractPdfText(file)
-  if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
+  // IRS SOR delivers transcripts as .html files; IRS TDS delivers PDFs.
+  // Both go through the same line-pattern parser once text is extracted.
+  const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html'
+  const text = isHtml ? await extractHtmlText(file) : await extractPdfText(file)
+  if (!text || text.trim().length < 40) throw new Error('No readable text found — if this is a scanned image, download the HTML version from SOR instead.')
   return parseIrsTranscript(text)
 }
 
@@ -474,10 +477,12 @@ function tinLast4(text) {
   return m ? (m[1] || m[2]) : null
 }
 
-// Read a returned PDF once: text layer → parsed analysis + masked-TIN last 4 for matching.
+// Read a returned PDF or HTML transcript: extract text → parsed analysis + masked-TIN last 4 for matching.
+// IRS SOR sends .html; IRS TDS sends PDFs. Both are handled here.
 export async function analyzeReturnedTranscript(file) {
-  const text = await extractPdfText(file)
-  if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
+  const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html'
+  const text = isHtml ? await extractHtmlText(file) : await extractPdfText(file)
+  if (!text || text.trim().length < 40) throw new Error('No readable text found — if this is a scanned image, download the HTML version from SOR instead.')
   return { analysis: parseIrsTranscript(text), tinLast4: tinLast4(text) }
 }
 
