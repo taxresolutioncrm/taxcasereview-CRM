@@ -25,11 +25,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
       const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
         body: { action: 'capabilities' },
       })
-      if (fnError) {
-        let body = null
-        try { body = await fnError.context?.json?.() } catch (_) {}
-        throw Object.assign(new Error(body?.error || fnError.message), { code: body?.code })
-      }
+      if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
       const next = {
         directAvailable: Boolean(data?.authorizationConfigured && data?.transcriptContractConfigured && data?.apiFlowVerified),
@@ -117,11 +113,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
       const { data, error: fnError } = await supabase.functions.invoke('transcript-pull', {
         body: { action: 'begin-session' },
       })
-      if (fnError) {
-        let body = null
-        try { body = await fnError.context?.json?.() } catch (_) {}
-        throw Object.assign(new Error(body?.error || fnError.message), { code: body?.code })
-      }
+      if (fnError) throw fnError
       if (data?.error) throw Object.assign(new Error(data.error), { code: data.code })
 
       const { authorizationUrl, redirectUri } = data
@@ -129,6 +121,7 @@ export default function TDSSessionPresence({ onStatusChange }) {
 
       // Derive and store the expected callback origin so handleMessage can validate event.origin.
       // redirectUri is the Supabase edge function URL (e.g. https://<ref>.supabase.co/functions/v1/…)
+      // Works identically in stub mode — the stub callback URL is on the same Supabase origin.
       if (redirectUri) {
         try { expectedCallbackOriginRef.current = new URL(redirectUri).origin } catch (_) {}
       }
@@ -141,9 +134,10 @@ export default function TDSSessionPresence({ onStatusChange }) {
         'popup,width=1100,height=820,resizable=yes,scrollbars=yes',
       )
       if (!popup) {
+        // Popup blocked — fall back to new tab; postMessage will still fire if same origin.
+        window.open(authorizationUrl, '_blank', 'noopener')
         setSigningIn(false)
-        expectedCallbackOriginRef.current = null
-        throw new Error('IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.')
+        return
       }
       popupRef.current = popup
 

@@ -413,7 +413,7 @@ export default function Documents() {
             )
           })}
         </div>
-      )}}
+      )}
 
       {previewDoc&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setPreviewDoc(null)}>
