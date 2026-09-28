@@ -21,7 +21,10 @@ const TAX_YEARS = Array.from({ length: 31 }, (_, i) => String(new Date().getFull
 const HELPER_SOURCE = 'taxres-irs-helper'
 const CRM_SOURCE = 'taxres-crm'
 const HELPER_ZIP_URL = '/taxres-irs-helper.zip'
+const SOR_BRIDGE_SOURCE = 'taxres-sor-bridge-extension'
+const SOR_BRIDGE_ZIP_URL = '/TaxRes-IRS-SOR-Bridge-1.1.0.zip'
 const MAX_HELPER_PDF_BYTES = 15 * 1024 * 1024
+const MAX_SOR_BRIDGE_BYTES = 25 * 1024 * 1024
 function base64ToFile(base64, name) {
   const bin = atob(base64)
   const bytes = new Uint8Array(bin.length)
@@ -55,6 +58,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [dropId, setDropId] = useState(null)
   const [helperConnected, setHelperConnected] = useState(false)
   const [helperLog, setHelperLog] = useState([])
+  const [sorBridgeConnected, setSorBridgeConnected] = useState(false)
+  const [sorBridgeVersion, setSorBridgeVersion] = useState('')
   const [popupOpen, setPopupOpen] = useState(false)
   const requestsRef = useRef([])
   const intakeRef = useRef(null)
@@ -474,6 +479,78 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     return () => { alive = false; window.removeEventListener('message', onMessage); post({ type: 'crm-gone' }) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // IRS SOR Bridge 1.1.0: receives transcript attachments captured from the rep's already-authenticated
+  // SOR tab. It never receives IRS credentials/cookies. Deliveries are acknowledged only after the CRM
+  // has filed them (or confirmed the same bytes were already filed), so the extension queue cannot drop work.
+  useEffect(() => {
+    let queue = Promise.resolve()
+    const attempted = new Set()
+
+    function ack(bridgeId) {
+      if (!bridgeId) return
+      window.postMessage({ source: CRM_SOURCE, type: 'TAXRES_SOR_ACK', bridgeId }, window.location.origin)
+    }
+
+    async function handleSorDelivery(delivery) {
+      const bridgeId = String(delivery?.bridgeId || '')
+      if (!bridgeId || attempted.has(bridgeId)) return
+      attempted.add(bridgeId)
+      const rawName = String(delivery?.fileName || 'IRS-SOR-transcript.html')
+      const name = rawName.split(/[;?#]/)[0].replace(/[^\w.\- ()]/g, '_').slice(0, 120) || 'IRS-SOR-transcript.html'
+      try {
+        if (delivery?.source !== 'irs-sor') throw new Error('Unrecognized SOR delivery source')
+        const content = typeof delivery?.content === 'string' ? delivery.content : ''
+        if (!content) throw new Error('SOR transcript file is missing')
+        const mime = String(delivery?.contentType || (/\.pdf$/i.test(name) ? 'application/pdf' : 'text/html')).split(';')[0].trim()
+        let file
+        if (delivery?.contentEncoding === 'base64') {
+          if (content.length > MAX_SOR_BRIDGE_BYTES * 1.4) throw new Error('SOR transcript file is too large')
+          const bin = atob(content)
+          const bytes = new Uint8Array(bin.length)
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+          file = new File([bytes], name, { type: mime || 'application/octet-stream', lastModified: Date.now() })
+        } else {
+          if (content.length > MAX_SOR_BRIDGE_BYTES) throw new Error('SOR transcript file is too large')
+          file = new File([content], name, { type: mime || 'text/html', lastModified: Date.now() })
+        }
+        const out = await intakeRef.current(file, 'sor-bridge:' + bridgeId)
+        setHelperLog(l => [{ at: new Date(), name, source: 'SOR Bridge', ...out }, ...l].slice(0, 25))
+        if (out.status === 'filed' || out.status === 'duplicate') {
+          ack(bridgeId)
+          if (out.status === 'filed') {
+            await loadRequests()
+            if (onImportedRef.current) onImportedRef.current()
+          }
+        }
+      } catch (e) {
+        setHelperLog(l => [{ at: new Date(), name, source: 'SOR Bridge', status: 'error', detail: e?.message || 'Failed' }, ...l].slice(0, 25))
+      }
+    }
+
+    function onSorMessage(event) {
+      if (event.source !== window || event.origin !== window.location.origin) return
+      const data = event.data
+      if (!data || data.source !== SOR_BRIDGE_SOURCE) return
+      if (data.type === 'TAXRES_SOR_BRIDGE_READY') {
+        setSorBridgeConnected(true)
+        setSorBridgeVersion(String(data.version || ''))
+      } else if (data.type === 'TAXRES_SOR_DELIVERY' && data.delivery) {
+        setSorBridgeConnected(true)
+        queue = queue.then(() => handleSorDelivery(data.delivery))
+      }
+    }
+
+    window.addEventListener('message', onSorMessage)
+    return () => window.removeEventListener('message', onSorMessage)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function ackSorBridgeKey(key) {
+    const prefix = 'sor-bridge:'
+    if (!String(key || '').startsWith(prefix)) return
+    const bridgeId = String(key).slice(prefix.length)
+    if (bridgeId) window.postMessage({ source: CRM_SOURCE, type: 'TAXRES_SOR_ACK', bridgeId }, window.location.origin)
+  }
+
   // Keep the "Show IRS window" button in step with the popup.
   useEffect(() => {
     const t = setInterval(() => setPopupOpen(isIrsPopupOpen()), 1500)
@@ -506,12 +583,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       if (prior) {
         seenRef.current.add(item.key)
         setUnmatched(u => u.filter(x => x.key !== item.key))
+        ackSorBridgeKey(item.key)
         flash(`ℹ ${item.fileName} is already filed${prior.client_name ? ` to ${prior.client_name}` : ''} — not filed again.`)
         return
       }
       const id = await storeTranscriptAnalysis(item.file, item.assignTo.trim(), { ...item.analysis, file_sha256: sha })
       seenRef.current.add(item.key)
       setUnmatched(u => u.filter(x => x.key !== item.key))
+      ackSorBridgeKey(item.key)
       setImported(im => [...im, { file: item.fileName, client: item.assignTo.trim(), year: item.analysis.tax_year, type: item.analysis.transcript_type }])
       const open = requests.filter(r => (r.status === 'Requested' || r.status === 'In Progress') && nameKey(r.client_name) === nameKey(item.assignTo))
       if (open[0]) {
@@ -641,6 +720,15 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               </div>
             </div>
             <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.45 }} data-testid="irs-helper-status">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }} data-testid="irs-sor-bridge-status">
+                <strong style={{ color: 'var(--t2)' }}>SOR Bridge:</strong>
+                {sorBridgeConnected ? (
+                  <span style={{ color: '#22c55e', fontWeight: 700 }}>● SOR bridge connected{sorBridgeVersion ? ` v${sorBridgeVersion}` : ''}</span>
+                ) : (
+                  <span>SOR bridge not detected.</span>
+                )}
+                {!sorBridgeConnected && <a className="btn sec" style={{ fontSize: 11 }} href={SOR_BRIDGE_ZIP_URL} download>Download SOR Bridge 1.1.0</a>}
+              </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <strong style={{ color: 'var(--t2)' }}>TaxRes IRS Helper:</strong>
                 {helperConnected ? (
