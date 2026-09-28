@@ -419,7 +419,11 @@ export default function Leads() {
   const settingsRef = useRef(null)
   async function getSettings() {
     if (settingsRef.current) return settingsRef.current
-    const { data } = await supabase.from('settings').select('signalwire_backend,sw_inbound_did,sw_space_url').limit(1).maybeSingle()
+    if (!myTenantId) return {}
+    const { data } = await supabase.from('settings')
+      .select('signalwire_backend,sw_inbound_did,sw_space_url')
+      .eq('tenant_id', myTenantId)
+      .maybeSingle()
     settingsRef.current = data || {}
     return settingsRef.current
   }
@@ -508,28 +512,29 @@ export default function Leads() {
     // Guard: don't load until the auth session is confirmed so current_tenant_id()
     // is established in the DB before the first query fires. Without this, a hard
     // refresh can return the wrong tenant's records before RLS kicks in.
-    if (!user) return
+    if (!user || !myTenantId) { setLeads([]); return }
     load()
-    const ch = supabase.channel('leads-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => load())
+    const ch = supabase.channel('leads-rt-' + myTenantId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `tenant_id=eq.${myTenantId}` }, () => load())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [user?.id])
+  }, [user?.id, myTenantId])
 
   // Live-update the currently-open lead's related data (notes, tasks, docs)
   // — same reasoning and same pattern as the equivalent addition in
   // Clients.jsx. Scoped to only run while a specific lead is open.
   useEffect(() => {
-    if (!detail?.id) return
+    if (!detail?.id || !myTenantId) return
     const id = detail.id, name = detail.name
     function reloadNotes() { loadLeadNotes(id) }
     function reloadTasks() { loadLeadTasks(name) }
-    const ch = supabase.channel('lead-detail-rt-' + id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_notes' }, reloadNotes)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, reloadTasks)
+    const filter = `tenant_id=eq.${myTenantId}`
+    const ch = supabase.channel('lead-detail-rt-' + myTenantId + '-' + id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_notes', filter }, reloadNotes)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter }, reloadTasks)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [detail?.id, detail?.name])
+  }, [detail?.id, detail?.name, myTenantId])
 
   // Save scroll position before refresh/navigation away, restore once the
   // lead loads back in — keyed to .page-content, the element that actually scrolls.
@@ -549,20 +554,26 @@ export default function Leads() {
     }
   }, [detail?.id])
   useEffect(() => {
-    if (!detail) return
-    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('client', detail.name)
+    if (!detail || !myTenantId) return
+    supabase.from('documents').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', myTenantId)
+      .eq('client', detail.name)
       .then(({ count }) => setLeadDocCount(count || 0))
-  }, [detail?.id])
+  }, [detail?.id, myTenantId])
   // Fast path: same fix as Clients — don't make opening one lead wait on
   // the entire leads table downloading first.
   useEffect(() => {
-    if (!urlLeadId || detail) return
+    if (!urlLeadId || detail || !myTenantId) return
     let cancelled = false
-    supabase.from('leads').select('*').eq('id', urlLeadId).single().then(({ data }) => {
-      if (!cancelled && data) { setDetail(data); loadLeadNotes(data.id) }
-    })
+    supabase.from('leads').select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('id', urlLeadId)
+      .single()
+      .then(({ data }) => {
+        if (!cancelled && data) { setDetail(data); loadLeadNotes(data.id) }
+      })
     return () => { cancelled = true }
-  }, [urlLeadId])
+  }, [urlLeadId, myTenantId])
   useEffect(() => {
     if (urlLeadId && leads.length > 0 && !detail) {
       const found = leads.find(l => String(l.id) === String(urlLeadId))
@@ -579,11 +590,12 @@ export default function Leads() {
   }, [urlLeadId, detail])
 
   async function load() {
+    if (!myTenantId) { setLeads([]); setEmployees([]); return }
     const [{ data }, { data: emp }, { data: cats }, { data: sts }] = await Promise.all([
-      supabase.from('leads').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id,name,avatar_url,email,role').order('name'),
-      supabase.from('workflow_status_categories').select('*').order('sort_order'),
-      supabase.from('workflow_statuses').select('*').order('sort_order'),
+      supabase.from('leads').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
+      supabase.from('employees').select('id,name,avatar_url,email,role,tenant_id').eq('tenant_id', myTenantId).order('name'),
+      supabase.from('workflow_status_categories').select('*').eq('tenant_id', myTenantId).order('sort_order'),
+      supabase.from('workflow_statuses').select('*').eq('tenant_id', myTenantId).order('sort_order'),
     ])
     if (emp) setEmployees(emp)
     if (cats) setStatusCategories(cats.map(cat => ({ ...cat, statuses: (sts||[]).filter(s => s.category_id === cat.id) })))
@@ -595,7 +607,11 @@ export default function Leads() {
   }
 
   async function loadLeadNotes(leadId) {
-    const { data } = await supabase.from('lead_notes').select('*').eq('lead_id', leadId).order('created_at', { ascending: false })
+    if (!myTenantId) { setLeadNotes([]); return }
+    const { data } = await supabase.from('lead_notes').select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false })
     setLeadNotes(data || [])
   }
 
@@ -605,7 +621,9 @@ export default function Leads() {
   async function logAction(leadId, leadName, text) {
     if (!leadId) return
     const actor = resolveActorName(user, employees)
+    if (!myTenantId) return false
     const { error } = await supabase.from('lead_notes').insert({
+      tenant_id: myTenantId,
       lead_id: leadId, lead_name: leadName, text, type: 'System',
       author: actor, created_at: new Date().toISOString()
     })
@@ -620,7 +638,11 @@ export default function Leads() {
   // them, so the only place to see a lead's texts was the global SMS page
   // (every contact's messages, unfiltered).
   async function loadLeadSms(leadName) {
-    const { data } = await supabase.from('sms_messages').select('*').eq('clientName', leadName).order('created_at', { ascending: false })
+    if (!myTenantId) { setLeadSms([]); return }
+    const { data } = await supabase.from('sms_messages').select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('clientName', leadName)
+      .order('created_at', { ascending: false })
     setLeadSms(data || [])
   }
   // Same clientName key the tasks table already uses for clients, and that
@@ -992,16 +1014,25 @@ export default function Leads() {
     if (d.length <= 2) return d
     return `${d.slice(0,2)}-${d.slice(2)}`
   }
+  function setLeadPersonalAddressField(key, value) {
+    fld(key, value)
+    if (!form.biz_same_as_personal) return
+    const bizKey = { street:'biz_street', city:'biz_city', state:'biz_state', zip:'biz_zip' }[key]
+    if (bizKey) fld(bizKey, value)
+  }
   async function handleZip(v) {
     const d = v.replace(/\D/g,'').slice(0,5)
-    fld('zip', d)
+    setLeadPersonalAddressField('zip', d)
     if (d.length === 5) {
       try {
         const r = await fetch(`https://api.zippopotam.us/us/${d}`)
         if (r.ok) {
           const data = await r.json()
           const place = data.places?.[0]
-          if (place) setForm(f=>({...f, zip:d, city: place['place name'], state: place['state abbreviation']}))
+          if (place) {
+            setLeadPersonalAddressField('city', place['place name'])
+            setLeadPersonalAddressField('state', place['state abbreviation'])
+          }
         }
       } catch(e) {}
     }
@@ -1081,6 +1112,31 @@ export default function Leads() {
     return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
   })
 
+  function buildLeadPayload(source) {
+    const {
+      id, created_at, tenant_id, archived, deleted_at, biz_same_as_personal,
+      stripe_payment_id, stripe_customer_id, default_payment_method_id,
+      payment_method_type, payment_method_brand, payment_method_last4,
+      stripe_checkout_url, stripe_checkout_sent_at,
+      inv_fee_paid, inv_fee_amount, investigation_fee_paid, investigation_fee_amount,
+      irsbalance, issuetype, irsorstate, taxyears, taxyearscustom,
+      assignedto, taxfee, taxfeeoverride,
+      ...rest
+    } = source
+    const toArray = value => {
+      if (Array.isArray(value)) return value
+      try { return JSON.parse(value || '[]') } catch { return [] }
+    }
+    const payload = {
+      ...rest,
+      taxYears: JSON.stringify(toArray(source.taxYears)),
+      filingRequirements: JSON.stringify(toArray(source.filingRequirements)),
+      services: JSON.stringify(toArray(source.services)),
+    }
+    Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
+    return payload
+  }
+
   async function save() {
     if (form.clientType !== 'Business' && !composeName(form.first,form.mi,form.last)) {
       showToast('First and last name are required'); return
@@ -1089,54 +1145,53 @@ export default function Leads() {
       showToast('Business name is required'); return
     }
     if (!form.name.trim()) { showToast('Name is required'); return }
+    // Never let the generic lead editor manufacture a "converted" status.
+    // Conversion must go through convertToClient(), which creates the client.
+    if (modal === 'edit' && form.status === 'Converted to Client') {
+      const original = leads.find(l=>l.id===form.id)
+      if (original?.status !== 'Converted to Client') {
+        showToast('Use Convert to Client so the client record is created.')
+        return
+      }
+    }
+    if (!myTenantId) { showToast('Office tenant is not resolved yet.'); return }
     setSaving(true)
     const actor = resolveActorName(user, employees)
     const beforeEdit = modal === 'edit' ? leads.find(l=>l.id===form.id) : null
-    let payload = { ...form, taxYears: JSON.stringify(form.taxYears), filingRequirements: JSON.stringify(form.filingRequirements||[]), services: JSON.stringify(form.services||[]) }
-    // Empty-string values blow up non-text columns (date, numeric) with
-    // "invalid input syntax" — Postgres wants null for "no value", not ''.
-    Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
+    let payload = { ...buildLeadPayload(form), tenant_id: myTenantId }
     let error
     let oldName = null
     if (modal === 'edit') {
-      const { id, created_at, ...rest } = payload
-      payload = rest
       oldName = detail?.name
     } else {
       payload.created_at = new Date().toISOString()
     }
-    // Self-healing save: if Postgres/PostgREST reports an unknown column,
-    // strip it and retry so one missing field doesn't block the whole save.
-    const skipped = []
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (modal === 'edit') {
-        ;({ error } = await supabase.from('leads').update(payload).eq('id', form.id))
-      } else {
-        ;({ error } = await supabase.from('leads').insert([payload]))
-      }
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        skipped.push(match[1])
-        continue
-      }
-      break
+    // Fail loudly on schema/save errors. Silently stripping unknown fields
+    // caused records to look saved while important data never persisted.
+    if (modal === 'edit') {
+      ;({ error } = await supabase.from('leads').update(payload).eq('tenant_id', myTenantId).eq('id', form.id))
+    } else {
+      ;({ error } = await supabase.from('leads').insert([payload]))
     }
     setSaving(false)
     if (error) { showToast('Error: '+error.message); return }
-    if (skipped.length) showToast(`✅ Saved — but these fields aren't set up in the database yet and were skipped: ${skipped.join(', ')}`)
     // If the name changed, repoint any compliance records gathered under the old name
     // so they don't get orphaned (compliance is stored keyed by client_name text).
     if (oldName && oldName !== form.name) {
-      await supabase.from('client_compliance_records').update({ client_name: form.name }).eq('client_name', oldName)
+      await supabase.from('client_compliance_records').update({ client_name: form.name }).eq('tenant_id', myTenantId).eq('client_name', oldName)
     }
-    if (!skipped.length) { showToast(modal==='edit' ? '✅ Lead updated!' : '✅ Lead added!'); if (modal !== 'edit') { await triggerWorkflow('lead_created', 'lead', form.name, actor); const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_created',category:'lead',description:`Added lead: ${form.name}`,entityName:form.name,meta:{status:form.status||'New Lead'}}) } else { const _a=getActor(user); await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_updated',category:'lead',description:`Updated lead: ${form.name}`,entityName:form.name}) } }
+    showToast(modal==='edit' ? '✅ Lead updated!' : '✅ Lead added!')
+    if (modal !== 'edit') {
+      await triggerWorkflow('lead_created', 'lead', form.name, actor)
+      const _a=getActor(user)
+      await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_created',category:'lead',description:`Added lead: ${form.name}`,entityName:form.name,meta:{status:form.status||'New Lead'}})
+    } else {
+      const _a=getActor(user)
+      await logActivity(supabase,{employeeName:_a.name,employeeEmail:_a.email,action:'lead_updated',category:'lead',description:`Updated lead: ${form.name}`,entityName:form.name})
+    }
     setModal(false); setForm(BLANK)
     if (modal === 'edit' && detail) {
-      const { data } = await supabase.from('leads').select('*').eq('id', form.id).single()
+      const { data } = await supabase.from('leads').select('*').eq('tenant_id', myTenantId).eq('id', form.id).single()
       if (data) setDetail(data)
       load()
       if (data && beforeEdit) {
@@ -1145,7 +1200,7 @@ export default function Leads() {
       }
     } else {
       // New lead — reload then navigate straight into the detail view
-      const { data: allLeads } = await supabase.from('leads').select('*').order('created_at', { ascending: false })
+      const { data: allLeads } = await supabase.from('leads').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false })
       if (allLeads) setLeads(allLeads)
       const newest = allLeads?.find(l => l.name === form.name)
       if (newest) {
@@ -1163,7 +1218,7 @@ export default function Leads() {
   async function confirmArchiveLead() {
     const l = confirmArchive; setConfirmArchive(null)
     const actor = resolveActorName(user, employees)
-    const { error } = await supabase.from('leads').update({ archived: true, deleted_at: new Date().toISOString() }).eq('id', l.id)
+    const { error } = await supabase.from('leads').update({ archived: true, deleted_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', l.id)
     if (error) { showToast('Error: ' + error.message); return }
     await logAction(l.id, l.name, '🗄️ Lead archived')
     // Update local state immediately — no refresh needed
@@ -1176,7 +1231,7 @@ export default function Leads() {
   }
 
   async function restoreLead(l) {
-    const { error } = await supabase.from('leads').update({ archived: false, deleted_at: null }).eq('id', l.id)
+    const { error } = await supabase.from('leads').update({ archived: false, deleted_at: null }).eq('tenant_id', myTenantId).eq('id', l.id)
     if (error) { showToast('Error: ' + error.message); return }
     await logAction(l.id, l.name, '📤 Lead restored from archive')
     showToast('Lead restored'); load()
@@ -1184,6 +1239,14 @@ export default function Leads() {
 
   async function updateStatus(l, status) {
     if (status === l.status) return
+    // "Converted to Client" is not an ordinary lead status. It must create the
+    // client row and complete the conversion workflow atomically through the
+    // dedicated conversion path. Allowing a plain status update here creates
+    // orphaned "converted" leads with no client record.
+    if (status === 'Converted to Client') {
+      await convertToClient(l)
+      return
+    }
     const prevStatus = l.status || 'New Lead'
     const willArchive = AUTO_ARCHIVE_STATUSES.includes(status) && !l.archived
     const willRestore = !AUTO_ARCHIVE_STATUSES.includes(status) && AUTO_ARCHIVE_STATUSES.includes(prevStatus) && l.archived
@@ -1538,22 +1601,40 @@ export default function Leads() {
 
   async function convertToClient(l, skipConfirm) {
     if (converting) return
-    if (!skipConfirm && !confirm(`Convert "${l.name}" to a full client?`)) return
+    const clientName = l.name || ''
+    const normalizedName = clientName.trim()
+    if (!normalizedName) { showToast('Lead name is required before conversion.'); return }
+    if (!myTenantId) { showToast('Office tenant is not resolved yet. Refresh and try again.'); return }
+    if (l.tenant_id && String(l.tenant_id) !== String(myTenantId)) {
+      showToast('Blocked: this lead does not belong to the active office.')
+      return
+    }
+    if (!skipConfirm && !confirm(`Convert "${normalizedName}" to a full client?`)) return
     setConverting(true)
     // A second conversion of the same lead (double-click, or the resolution-fee
     // path firing alongside the button) used to insert a duplicate client.
     // Clients are keyed by name everywhere, so a duplicate splits the file.
-    const { data: dupe } = await supabase.from('clients').select('id').eq('name', l.name).limit(1)
+    const candidateNames = Array.from(new Set([clientName, normalizedName].filter(Boolean)))
+    const { data: dupe } = await supabase.from('clients')
+      .select('id,name,tenant_id')
+      .eq('tenant_id', myTenantId)
+      .in('name', candidateNames)
+      .limit(1)
     if (dupe?.length) {
       setConverting(false)
       showToast(`${l.name} is already a client — opening their file`)
-      await supabase.from('leads').update({ status: 'Converted to Client' }).eq('id', l.id)
+      const { error: markErr } = await supabase.from('leads')
+        .update({ status: 'Converted to Client' })
+        .eq('tenant_id', myTenantId)
+        .eq('id', l.id)
+      if (markErr) { showToast('Client exists, but lead status could not be updated: ' + markErr.message); return }
       navigate('/clients/' + dupe[0].id)
       return
     }
     const taxYearsStr = l.taxYearsCustom || (()=>{try{return JSON.parse(l.taxYears||'[]').join(', ')}catch{return l.taxYears||''}})()
     const { data: newClient, error } = await supabase.from('clients').insert([{
-      name: l.name, clientType: l.clientType || 'Individual',
+      tenant_id: myTenantId,
+      name: clientName, clientType: l.clientType || 'Individual',
       business_name: l.business_name || null,
       first: l.first, mi: l.mi, last: l.last,
       phone: l.phone, phone2: l.phone2, email: l.email,
@@ -1579,7 +1660,10 @@ export default function Leads() {
     
       filingRequirements: l.filingRequirements,
       taxYears: taxYearsStr,
-      services: l.services || null,
+      services: (() => {
+        if (Array.isArray(l.services)) return l.services
+        try { return JSON.parse(l.services || '[]') } catch { return [] }
+      })(),
       salesRep: l.salesRep || null,
       contractFee: l.contractFee || null,
       trade1Amount: l.trade1Amount || null, trade1Date: l.trade1Date || null,
@@ -1601,24 +1685,33 @@ export default function Leads() {
       record_type: 'client', record_id: newClient.id,
     }).eq('record_type', 'lead').eq('record_id', l.id)
     // Update lead status
-    await supabase.from('leads').update({ status: 'Converted to Client' }).eq('id', l.id)
+    const { error: leadStatusErr } = await supabase.from('leads')
+      .update({ status: 'Converted to Client' })
+      .eq('tenant_id', myTenantId)
+      .eq('id', l.id)
+    if (leadStatusErr) throw leadStatusErr
     // Carry lead notes over to the new client record so case history isn't lost
-    const { data: oldNotes } = await supabase.from('lead_notes').select('*').eq('lead_id', l.id)
+    const { data: oldNotes, error: oldNotesErr } = await supabase.from('lead_notes')
+      .select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('lead_id', l.id)
+    if (oldNotesErr) throw oldNotesErr
     if (oldNotes && oldNotes.length) {
       await supabase.from('client_notes').insert(
-        oldNotes.map(n => ({ clientname: l.name, text: n.text, author: n.author || 'Staff', created_at: n.created_at }))
+        oldNotes.map(n => ({ tenant_id: myTenantId, clientname: l.name, text: n.text, author: n.author || 'Staff', created_at: n.created_at }))
       )
     }
     // Auto-create the 3 onboarding tasks now that contracts are signed
     const today = new Date()
     const addDays = n => { const d = new Date(today); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10) }
     await supabase.from('tasks').insert([
-      { title: `Email IRS POA — ${l.name}`,        clientName: l.name, priority: 'High', dueDate: addDays(0), done: false, created_at: new Date().toISOString() },
-      { title: `Call IRS — ${l.name}`,             clientName: l.name, priority: 'High', dueDate: addDays(1), done: false, created_at: new Date().toISOString() },
-      { title: `Schedule ${FIRM.name || 'CRM'} call — ${l.name}`, clientName: l.name, priority: 'Normal', dueDate: addDays(3), done: false, created_at: new Date().toISOString() },
+      { tenant_id: myTenantId, title: `Email IRS POA — ${l.name}`,        clientName: l.name, priority: 'High', dueDate: addDays(0), done: false, created_at: new Date().toISOString() },
+      { tenant_id: myTenantId, title: `Call IRS — ${l.name}`,             clientName: l.name, priority: 'High', dueDate: addDays(1), done: false, created_at: new Date().toISOString() },
+      { tenant_id: myTenantId, title: `Schedule ${FIRM.name || 'CRM'} call — ${l.name}`, clientName: l.name, priority: 'Normal', dueDate: addDays(3), done: false, created_at: new Date().toISOString() },
     ])
     // Auto-create a case for the new client with Associate + Para assigned
     await supabase.from('cases').insert([{
+      tenant_id: myTenantId,
       id: 'case-' + newClient.id,
       clientName: l.name,
       clientid: newClient.id,
@@ -1712,6 +1805,7 @@ export default function Leads() {
     try {
       const actor = resolveActorName(user, employees)
       await supabase.from('client_notes').insert({
+        tenant_id: myTenantId,
         clientname: l.name,
         text: `🔄 Converted from lead to client by ${actor}.`,
         author: actor, visible_to_client: false, created_at: new Date().toISOString()
@@ -1728,6 +1822,7 @@ export default function Leads() {
         // in the client file since both lead and client use the same name.
         // Just log a note confirming the transfer.
         await supabase.from('client_notes').insert({
+          tenant_id: myTenantId,
           clientname: l.name,
           text: `📁 ${leadDocs.length} document(s) from lead file carried over to client record.`,
           author: 'System', visible_to_client: false, created_at: new Date().toISOString()
@@ -1740,7 +1835,11 @@ export default function Leads() {
     }
 
     setConverting(false)
-    const { count } = await supabase.from('client_compliance_records').select('*', { count: 'exact', head: true }).eq('client_name', l.name).catch(() => ({ count: null }))
+    const { count } = await supabase.from('client_compliance_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', myTenantId)
+      .eq('client_name', l.name)
+      .catch(() => ({ count: null }))
     const intakeMsg = intakeAlreadySubmitted ? ', financial intake already on file'
       : intakeSent ? ', financial intake form emailed'
       : (l.email ? '' : ', financial intake created but no email on file to send it to')
@@ -1842,11 +1941,11 @@ export default function Leads() {
             <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',margin:'6px 0 4px'}}>
               {form.clientType === 'Business' ? 'Address' : 'Personal Address'}
             </div>
-            <div className="field"><label>Street Address</label><input value={form.street} onChange={e=>fld('street',e.target.value)}/></div>
+            <div className="field"><label>Street Address</label><input value={form.street} onChange={e=>setLeadPersonalAddressField('street',e.target.value)}/></div>
             <div className="fg3">
-              <div className="field"><label>City</label><input value={form.city} onChange={e=>fld('city',e.target.value)}/></div>
+              <div className="field"><label>City</label><input value={form.city} onChange={e=>setLeadPersonalAddressField('city',e.target.value)}/></div>
               <div className="field"><label>State</label>
-                <select value={form.state} onChange={e=>fld('state',e.target.value)}>
+                <select value={form.state} onChange={e=>setLeadPersonalAddressField('state',e.target.value)}>
                   <option value="">Select...</option>{STATES.map(s=><option key={s}>{s}</option>)}
                 </select>
               </div>
@@ -2037,7 +2136,8 @@ export default function Leads() {
               </div>
               <div className="field"><label>Lead Status</label>
                 <select value={form.status} onChange={e=>fld('status',e.target.value)}>
-                  {STATUSES.map(s=><option key={s}>{s}</option>)}
+                  {STATUSES.filter(s=>s!=='Converted to Client').map(s=><option key={s}>{s}</option>)}
+                  {form.status==='Converted to Client' && <option>Converted to Client</option>}
                 </select>
               </div>
             </div>
@@ -3010,7 +3110,7 @@ export default function Leads() {
         return (
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:14}}>
             {[
-              {label:'Total Leads', val:leads.filter(l=>!l.archived).length, color:'var(--tx)'},
+              {label:'Total Leads', val:leads.filter(l=>!l.archived&&l.status!=='Converted to Client').length, color:'var(--tx)'},
               {label:'New',         val:newL,   color:'var(--blue)'},
               {label:'In Progress', val:active, color:'var(--warn)'},
               {label:'Converted',   val:conv,   color:'var(--green)'},
@@ -3034,7 +3134,7 @@ export default function Leads() {
         />
       </div>
       <div className="pipeline-chips" style={{marginBottom:10,display:'flex',flexWrap:'wrap',gap:4,alignItems:'center'}}>
-        {['All',...STATUSES.slice(0,8)].map(s => (
+        {['All',...STATUSES].map(s => (
           <span key={s} className={`chip${filter===s?' on':''}`} onClick={()=>setFilter(s)}>{s}</span>
         ))}
         <span className={`chip${showArchived?' on':''}`} style={{marginLeft:8}} onClick={()=>setShowArchived(a=>!a)}>🗄 Archived</span>
