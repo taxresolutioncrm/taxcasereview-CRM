@@ -359,7 +359,9 @@ async function resumeDirectPulls() {
 // afterwards (TaxRes IRS Helper, watched folder, or drop/upload), then files and analyzes them.
 export const BROWSER_PROVIDER_ID = 'irs_browser'
 export const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'
-export const IRS_SOR_URL = 'https://la.www4.irs.gov/semail/views/list_mail'
+// IRS e-Services portal: the SOR link on this page goes straight to the SOR inbox after login.
+// The direct semail URL triggers an org-picker warning; going through e-services avoids it.
+export const IRS_SOR_URL = 'https://www.irs.gov/e-services'
 export const IRS_POPUP_NAME = 'taxres-irs-tds'
 export const IRS_POPUP_BLOCKED = 'IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.'
 
