@@ -1,11 +1,17 @@
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const src=fs.readFileSync('src/lib/transcriptPull.js','utf8')
 const start=src.indexOf('export function parseYearSpec')
 const end=src.indexOf('export function nameKey')
 if(start<0||end<0||end<=start) throw new Error('Could not isolate transcript coverage helpers')
-const pure=src.slice(start,end).replace(/export /g,'')
-const { parseYearSpec, requestCoverageSatisfied }=(new Function(pure+';return {parseYearSpec,requestCoverageSatisfied};'))()
+const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),'tds-coverage-'))
+const tempModule=path.join(tempDir,'coverage.mjs')
+fs.writeFileSync(tempModule,src.slice(start,end))
+const { parseYearSpec, requestCoverageSatisfied }=await import(pathToFileURL(tempModule).href)
+fs.rmSync(tempDir,{recursive:true,force:true})
 
 const failures=[]
 const ok=(label,v)=>{if(!v)failures.push(label)}
