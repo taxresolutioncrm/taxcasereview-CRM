@@ -1,17 +1,6 @@
 import { supabase } from './supabase'
 import { parseIrsTranscript, extractPdfText } from './irsTranscriptParser'
 
-// Practitioner Web TDS intent. This provider represents the user-driven IRS TDS path
-// and is always available; it does not call the automated IRS API.
-const INTERACTIVE_PROVIDER = {
-  id: 'irs_interactive',
-  label: 'IRS TDS — Practitioner Web',
-  chip: 'Available',
-  available: true,
-  sessionActive: false,
-  note: 'Use the practitioner IRS TDS workflow and log the request in the CRM. Automated API delivery remains a separate provider.',
-}
-
 // Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
 // Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
 const DIRECT_PROVIDER = {
@@ -23,6 +12,15 @@ const DIRECT_PROVIDER = {
   note: 'Requires an approved IRS e-Services API Client ID and a verified product auth/request contract. Web TDS remains a separate practitioner login path.',
 }
 
+// Interactive practitioner path: always available; practitioner logs in to IRS TDS directly
+const INTERACTIVE_PROVIDER = {
+  id: 'irs_interactive',
+  label: 'Practitioner IRS / ID.me TDS',
+  chip: 'Available',
+  available: true,
+  note: 'Practitioner signs in to the IRS Transcript Delivery System using their IRS / ID.me credentials. This path is always available and independent of the automated API integration.',
+}
+
 // Manual fallback: folder watcher
 const MANUAL_PROVIDER = {
   id: 'manual',
@@ -32,7 +30,7 @@ const MANUAL_PROVIDER = {
   note: 'Watch a local folder where IRS TDS PDFs are saved; the CRM auto-imports, parses and files each PDF.',
 }
 
-export const PULL_PROVIDERS = [INTERACTIVE_PROVIDER, DIRECT_PROVIDER, MANUAL_PROVIDER]
+export const PULL_PROVIDERS = [DIRECT_PROVIDER, INTERACTIVE_PROVIDER, MANUAL_PROVIDER]
 const activeDirectPolls = new Set()
 
 async function refreshProviderCapability() {
@@ -141,6 +139,18 @@ export async function parseTranscriptFile(file) {
   return parseIrsTranscript(text)
 }
 
+// Thrown when the exact same PDF (same SHA-256 of its bytes) is already filed in this office.
+// Every way a transcript enters the CRM goes through storeTranscriptAnalysis, so this is the one duplicate gate;
+// the database's unique index on (tenant_id, raw_analysis->>'file_sha256') backs it up when two reps file at once.
+export class DuplicateTranscriptError extends Error {
+  constructor(prior = null) {
+    super(`Already filed${prior?.client_name ? ` to ${prior.client_name}` : ''} — the same PDF is not filed twice.`)
+    this.name = 'DuplicateTranscriptError'
+    this.code = 'duplicate'
+    this.prior = prior
+  }
+}
+
 export async function storeTranscriptAnalysis(file, clientName, a, existing = null) {
   const clientNameInput = String(clientName || '').trim()
   if (!clientNameInput) throw new Error('Client name is required before filing a transcript.')
@@ -148,6 +158,10 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
 
   const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
   if (tenantErr || !tenantId) throw new Error(`Could not resolve office tenant: ${tenantErr?.message || 'No tenant returned'}`)
+  // Every filed transcript keeps the SHA-256 of its PDF bytes; a copy already filed in this office is refused.
+  if (!a?.file_sha256) a = { ...a, file_sha256: await sha256File(file) }
+  const prior = await findFiledTranscriptBySha(a.file_sha256)
+  if (prior) throw new DuplicateTranscriptError(prior)
 
   let clientId = existing?.clientId || null
   let canonicalName = clientNameInput
@@ -192,6 +206,10 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
       file_url: durableUrl,
       file_path: filePath,
     }).select('id').single()
+    if (analysisErr?.code === '23505') {
+      // Another rep filed the same PDF a moment earlier: the database's uniqueness rule stopped this copy.
+      throw new DuplicateTranscriptError(await findFiledTranscriptBySha(a.file_sha256).catch(() => null))
+    }
     if (analysisErr || !analysis?.id) throw new Error(`Transcript analysis save failed: ${analysisErr?.message || 'No analysis ID returned'}`)
     analysisId = analysis.id
 
@@ -230,7 +248,13 @@ async function finalizeDirectDelivery(req, result) {
   const blob = await response.blob()
   const file = new File([blob], `IRS-TDS-${req.id}-${result.resultKey.slice(0, 12)}.pdf`, { type: 'application/pdf' })
   const analysis = await parseTranscriptFile(file)
-  const analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl, clientId: req.client_id || null })
+  let analysisId
+  try {
+    analysisId = await storeTranscriptAnalysis(file, req.client_name, analysis, { filePath: result.filePath, signedUrl: result.signedUrl, clientId: req.client_id || null })
+  } catch (e) {
+    if (e?.code !== 'duplicate' || !e.prior?.id) throw e
+    analysisId = e.prior.id
+  }
   const ids = new Set(req.result_analysis_ids || [])
   ids.add(analysisId)
   const filedKeys = new Set(req.provider_filed_keys || [])
@@ -326,7 +350,279 @@ async function resumeDirectPulls() {
   } catch { /* page can still use the manual path */ }
 }
 
-if (typeof window !== 'undefined') {
-  setTimeout(() => refreshProviderCapability(), 0)
-  setTimeout(() => resumeDirectPulls(), 2000)
+
+// ── Browser-assisted IRS TDS ────────────────────────────────────────────
+// The practitioner signs in to the normal IRS / ID.me site with their own login, inside a
+// sign-in popup window the CRM opens. The CRM never sees, stores or relays IRS/ID.me
+// passwords, cookies or tokens: the IRS pages live on irs.gov, which the CRM cannot read,
+// and the popup's link back to the CRM is cut. The CRM only receives the transcript PDFs
+// afterwards (TaxRes IRS Helper, watched folder, or drop/upload), then files and analyzes them.
+export const BROWSER_PROVIDER_ID = 'irs_browser'
+export const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'
+export const IRS_SOR_URL = 'https://la.www4.irs.gov/semail/views/list_mail'
+export const IRS_POPUP_NAME = 'taxres-irs-tds'
+export const IRS_POPUP_BLOCKED = 'IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.'
+
+let irsPopup = null
+const freshPopups = new WeakSet()
+
+function popupFeatures() {
+  const sw = window.screen?.availWidth || 1280, sh = window.screen?.availHeight || 900
+  const width = Math.max(720, Math.min(1180, sw - 80))
+  const height = Math.max(600, Math.min(940, sh - 80))
+  const left = Math.max(0, Math.round((window.screenX || 0) + ((window.outerWidth || sw) - width) / 2))
+  const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || sh) - height) / 2))
+  return `popup=yes,width=${width},height=${height},left=${left},top=${top}`
 }
+
+export function isIrsPopupOpen() {
+  try { return Boolean(irsPopup && !irsPopup.closed) } catch { return false }
+}
+
+export function focusIrsPopup() {
+  try { if (isIrsPopupOpen()) { irsPopup.focus(); return true } } catch { /* noop */ }
+  return false
+}
+
+// Open (or reuse) the one IRS sign-in popup. Must run inside a click so the browser allows it.
+// A new popup starts blank (same origin), its opener link is cut, and it is only then sent to
+// the IRS with no referrer. Returns null if the browser blocked the popup.
+function openBlankIrsPopup(message) {
+  if (typeof window === 'undefined') return null
+  if (isIrsPopupOpen()) return irsPopup
+  const w = window.open('about:blank', IRS_POPUP_NAME, popupFeatures())
+  if (!w) return null
+  try { w.opener = null } catch { /* already isolated */ }
+  try { w.document.title = 'IRS sign-in'; w.document.body.textContent = message } catch { /* not blank */ }
+  freshPopups.add(w)
+  irsPopup = w
+  return w
+}
+
+export function navigateIrsPopup(w, url = IRS_TDS_URL) {
+  if (!w || w.closed) return false
+  try {
+    // Still blank and ours: redirect from inside with a no-referrer policy.
+    const safe = String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+    w.document.open()
+    w.document.write(`<!doctype html><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=${safe}"><title>Opening IRS…</title>`)
+    w.document.close()
+  } catch {
+    // Already on irs.gov (cross-origin): the CRM may only change its address, never read it.
+    try { w.location.replace(url) } catch { return false }
+  }
+  freshPopups.delete(w)
+  try { w.focus() } catch { /* noop */ }
+  return true
+}
+
+// "Sign in to IRS" / "Secure Mailbox": open or reuse the popup and go straight to the page.
+export function openIrsPopup(url = IRS_TDS_URL) {
+  const w = openBlankIrsPopup('Opening the IRS sign-in page…')
+  if (!w) return null
+  navigateIrsPopup(w, url)
+  return w
+}
+
+// Kept for older callers: same controlled popup.
+export function openIrsTds(url = IRS_TDS_URL) { return openIrsPopup(url) }
+
+// Request Transcripts: grab the popup inside the click, but only send it to the IRS after the
+// CRM request is saved. If the rep's IRS window is already open it is reused as-is.
+export function openPendingIrsTab() {
+  return openBlankIrsPopup('Saving your transcript request in the CRM…')
+}
+
+export function navigatePendingIrsTab(w, url = IRS_TDS_URL) { return navigateIrsPopup(w, url) }
+
+// Close only a popup this click just opened — never the rep's signed-in IRS window.
+export function closePendingIrsTab(w) {
+  try { if (w && freshPopups.has(w) && !w.closed) { w.close(); freshPopups.delete(w); if (irsPopup === w) irsPopup = null } } catch { /* noop */ }
+}
+
+// Save the pending request first; the IRS popup is navigated only after the insert succeeds.
+export async function startBrowserTdsRequest(row, w, url = IRS_TDS_URL) {
+  try {
+    const { error } = await supabase.from('transcript_pull_requests').insert([row])
+    if (error) throw new Error(error.message)
+  } catch (e) {
+    closePendingIrsTab(w)
+    throw e
+  }
+  navigateIrsPopup(w, url)
+}
+
+// Add the TaxRes IRS Helper's one-time pairing code after "#" in an IRS address. Browsers never send the
+// part after "#" to the IRS; the helper uses it only to know which CRM tab opened that IRS window.
+export function withHelperPairing(url, code) {
+  return code && /^[A-Za-z0-9-]{16,64}$/.test(code) ? `${url}#taxres-bind=${code}` : url
+}
+
+export function isOpenBrowserRequest(r) {
+  return r?.provider === BROWSER_PROVIDER_ID && (r.status === 'Requested' || r.status === 'In Progress')
+}
+
+export async function sha256File(file) {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function tinLast4(text) {
+  const m = String(text || '').match(/\b(?:Taxpayer Identification Number|SSN\/EIN|SSN|EIN|TIN)\b\s*(?:provided)?\s*:?\s*[X*\d]{3}[- ]?[X*\d]{2}[- ]?(\d{4})\b|(?:Taxpayer Identification Number|EIN)\s*:?\s*[X*\d]{2}-?[X*\d]{3}(\d{4})\b/i)
+  return m ? (m[1] || m[2]) : null
+}
+
+// Read a returned PDF once: text layer → parsed analysis + masked-TIN last 4 for matching.
+export async function analyzeReturnedTranscript(file) {
+  const text = await extractPdfText(file)
+  if (!text || text.trim().length < 40) throw new Error('No text layer found — this looks like a scanned image, not a TDS download.')
+  return { analysis: parseIrsTranscript(text), tinLast4: tinLast4(text) }
+}
+
+// Why a parsed transcript does not belong to this pending request (null = it belongs).
+// Fails closed: automatic filing needs all three identifiers — taxpayer SSN/EIN last 4, a tax year
+// the request asked for, and a transcript type the request asked for. Anything missing → not a match.
+export function browserMatchProblem(req, clientTinLast4, parsed) {
+  const a = parsed?.analysis || {}
+  if (!clientTinLast4) return 'client has no SSN/EIN on file to match against — file this PDF manually'
+  if (!parsed?.tinLast4) return 'no readable taxpayer SSN/EIN on this PDF — file it manually'
+  if (parsed.tinLast4 !== clientTinLast4) return `TIN ending ${parsed.tinLast4} is not this client`
+  const years = parseYearSpec(req?.tax_years)
+  if (!years.size) return 'this request has no tax years to match against — file this PDF manually'
+  if (!a.tax_year) return 'no readable tax year on this PDF — file it manually'
+  if (!years.has(String(a.tax_year))) return `tax year ${a.tax_year} was not requested`
+  const types = (req?.transcript_types || []).filter(Boolean)
+  if (!types.length) return 'this request has no transcript types to match against — file this PDF manually'
+  if (!a.transcript_type || a.transcript_type === 'Other') return 'transcript type could not be read on this PDF — file it manually'
+  if (!types.some(t => sameTranscriptType(a.transcript_type, t))) return `${a.transcript_type} was not requested`
+  return null
+}
+
+async function clientTinLast4(clientId) {
+  if (!clientId) return null
+  const { data } = await supabase.from('clients').select('ssn,ein').eq('id', clientId).maybeSingle()
+  const digits = String(data?.ein || data?.ssn || '').replace(/\D/g, '')
+  return digits.length >= 4 ? digits.slice(-4) : null
+}
+
+// One filing at a time per browser tab, so a folder scan and a drop can never file the same PDF twice.
+let browserFilingQueue = Promise.resolve()
+
+// File returned IRS PDFs against one pending browser request. Returns per-file results.
+export function fileBrowserTranscripts(requestId, files) {
+  const job = browserFilingQueue.then(() => fileBrowserTranscriptsNow(requestId, files))
+  browserFilingQueue = job.catch(() => {})
+  return job
+}
+
+async function fileBrowserTranscriptsNow(requestId, files) {
+  const { data: req, error } = await supabase.from('transcript_pull_requests').select('*').eq('id', requestId).maybeSingle()
+  if (error || !req) throw new Error('Transcript request not found in this office.')
+  if (req.provider !== BROWSER_PROVIDER_ID) throw new Error('This request is not an IRS TDS browser request.')
+  const clientLast4 = await clientTinLast4(req.client_id)
+  const ids = new Set(req.result_analysis_ids || [])
+  const filedKeys = new Set(req.provider_filed_keys || [])
+  const results = []
+  for (const file of files) {
+    const name = file?.name || 'transcript.pdf'
+    try {
+      const key = await sha256File(file)
+      if (filedKeys.has(key)) { results.push({ file: name, status: 'duplicate' }); continue }
+      // Authoritative duplicate check: the SHA-256 of the PDF bytes, across the whole office (not just this client).
+      const prior = await findFiledTranscriptBySha(key)
+      if (prior) { filedKeys.add(key); results.push({ file: name, status: 'duplicate', client: prior.client_name || null }); continue }
+      const parsed = await analyzeReturnedTranscript(file)
+      const problem = browserMatchProblem(req, clientLast4, parsed)
+      if (problem) { results.push({ file: name, status: 'rejected', reason: problem }); continue }
+      const analysisId = await storeTranscriptAnalysis(file, req.client_name, { ...parsed.analysis, file_sha256: key }, { clientId: req.client_id || null })
+      ids.add(analysisId); filedKeys.add(key)
+      results.push({ file: name, status: 'filed', year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type })
+    } catch (e) {
+      if (e?.code === 'duplicate') { results.push({ file: name, status: 'duplicate', client: e.prior?.client_name || null }); continue }
+      results.push({ file: name, status: 'error', reason: e?.message || 'Could not file this PDF.' })
+    }
+  }
+  const idList = [...ids]
+  let covered = false
+  if (idList.length) {
+    const { data: rows, error: rowsErr } = await supabase.from('transcript_analyses').select('id,tax_year,transcript_type').in('id', idList)
+    if (rowsErr) throw new Error(rowsErr.message)
+    covered = requestCoverageSatisfied(req, rows || [])
+  }
+  const { error: upErr } = await supabase.from('transcript_pull_requests').update({
+    result_analysis_ids: idList,
+    provider_filed_keys: [...filedKeys],
+    provider_status: covered ? 'Filed' : idList.length ? 'Partially filed' : 'Awaiting IRS files',
+    status: covered ? 'Completed' : 'In Progress',
+    completed_at: covered ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', requestId)
+  if (upErr) throw new Error(upErr.message)
+  return { results, completed: covered, filedCount: idList.length }
+}
+
+// The transcript already filed in this office with exactly these PDF bytes (SHA-256), or null.
+// This byte-level check is the final word on duplicates; URL/"already sent" memory in the helper is only a convenience.
+// Office scoping comes from the database's row-level security.
+export async function findFiledTranscriptBySha(key) {
+  if (!key) return null
+  const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
+  if (tenantErr || !tenantId) throw new Error(`Duplicate check failed: could not resolve office tenant`)
+  const { data, error } = await supabase.from('transcript_analyses').select('id,client_id,client_name').eq('tenant_id', tenantId).eq('raw_analysis->>file_sha256', key).limit(1)
+  if (error) throw new Error(`Duplicate check failed: ${error.message}`)
+  return data?.[0] || null
+}
+
+// The clients in this office whose SSN/EIN ends in these 4 digits.
+async function clientsWithTinLast4(last4) {
+  if (!/^\d{4}$/.test(String(last4 || ''))) return new Set()
+  const ids = new Set()
+  for (const col of ['ssn', 'ein']) {
+    const { data, error } = await supabase.from('clients').select(`id,${col}`).ilike(col, `%${last4}`).limit(10)
+    if (error) throw new Error(`Client match check failed: ${error.message}`)
+    for (const row of data || []) {
+      const digits = String(row[col] || '').replace(/\D/g, '')
+      if (digits.length >= 4 && digits.slice(-4) === last4) ids.add(row.id)
+    }
+  }
+  return ids
+}
+
+// Pick the one open browser request a returned PDF belongs to. Fails closed — returns null (→ "Needs a client")
+// unless there is exactly ONE positive match on SSN/EIN last 4 + requested year + requested type, exactly one
+// client in the office carries that SSN/EIN ending, and (when given) that request is one the helper was bound to.
+export async function matchBrowserRequest(openRequests, parsed, { onlyRequestIds = null } = {}) {
+  if (!parsed?.tinLast4 || !parsed?.analysis?.tax_year) return null
+  const candidates = []
+  for (const r of openRequests.filter(isOpenBrowserRequest)) {
+    const last4 = await clientTinLast4(r.client_id)
+    if (!last4 || parsed.tinLast4 !== last4) continue
+    if (!browserMatchProblem(r, last4, parsed)) candidates.push(r)
+  }
+  if (candidates.length !== 1) return null
+  if (onlyRequestIds && onlyRequestIds.size && !onlyRequestIds.has(candidates[0].id)) return null
+  const sameTin = await clientsWithTinLast4(parsed.tinLast4)
+  if (sameTin.size !== 1 || !sameTin.has(candidates[0].client_id)) return null
+  return candidates[0]
+}
+
+// Remember the watched folder between visits (the handle stays in this browser only).
+const HANDLE_DB = 'taxres-tds-folder', HANDLE_STORE = 'handles'
+function handleDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(HANDLE_DB, 1)
+    req.onupgradeneeded = () => req.result.createObjectStore(HANDLE_STORE)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+export async function saveWatchedFolder(handle) {
+  try { const db = await handleDb(); await new Promise((res, rej) => { const tx = db.transaction(HANDLE_STORE, 'readwrite'); tx.objectStore(HANDLE_STORE).put(handle, 'tds'); tx.oncomplete = res; tx.onerror = () => rej(tx.error) }) } catch { /* optional convenience */ }
+}
+export async function loadWatchedFolder() {
+  try { const db = await handleDb(); return await new Promise(res => { const tx = db.transaction(HANDLE_STORE, 'readonly'); const g = tx.objectStore(HANDLE_STORE).get('tds'); g.onsuccess = () => res(g.result || null); g.onerror = () => res(null) }) } catch { return null }
+}
+export async function forgetWatchedFolder() {
+  try { const db = await handleDb(); const tx = db.transaction(HANDLE_STORE, 'readwrite'); tx.objectStore(HANDLE_STORE).delete('tds') } catch { /* noop */ }
+}
+
