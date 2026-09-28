@@ -416,7 +416,7 @@ export function navigateIrsPopup(w, url = IRS_TDS_URL) {
   return true
 }
 
-// "Sign in to IRS" / "Secure Object Repository": open or reuse the popup and go straight to the page.
+// TDS / SOR buttons: open or reuse the IRS popup and go straight to the selected IRS system.
 export function openIrsPopup(url = IRS_TDS_URL) {
   const w = openBlankIrsPopup('Opening the IRS sign-in page…')
   if (!w) return null
