@@ -228,6 +228,7 @@ export default function Chat() {
   const [showSearch, setShowSearch] = useState(false)
   const [TEAM, setTEAM] = useState([])
   const [myEmpId, setMyEmpId] = useState(null)
+  const [myTenantId, setMyTenantId] = useState(null)
   // Real display name from the employees table — messages were being sent
   // under user.email's local-part (e.g. "romy", "rcruz187") whenever Supabase
   // Auth's user_metadata.name wasn't set, which also broke avatar matching
@@ -400,12 +401,48 @@ export default function Chat() {
     if (hit) setActive(hit)
   }, [TEAM, active])
 
-  // ── fetch all employees for DM list ──
+  // ── fetch only this tenant's employees for the DM list ──
+  // Defense in depth: even if an RLS policy is accidentally loosened, the
+  // client never asks for another office's employee rows.
   useEffect(() => {
-    supabase.from('employees').select('id, name, role, avatar_url, email').order('name').then(({ data }) => {
-      if (!data) return
-      const me = data.find(e => e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase())
-      if (me) { setMyEmpId(me.id); setMyRealName(me.name) }
+    if (!user?.email) {
+      setTEAM([])
+      setMyEmpId(null)
+      setMyTenantId(null)
+      setMyRealName(null)
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      const { data: me, error: meErr } = await supabase
+        .from('employees')
+        .select('id, name, role, avatar_url, email, tenant_id')
+        .ilike('email', user.email)
+        .limit(1)
+        .maybeSingle()
+
+      if (cancelled) return
+      if (meErr || !me?.tenant_id) {
+        setTEAM([])
+        setMyEmpId(null)
+        setMyTenantId(null)
+        setMyRealName(null)
+        return
+      }
+
+      setMyEmpId(me.id)
+      setMyTenantId(me.tenant_id)
+      setMyRealName(me.name)
+
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name, role, avatar_url, email, tenant_id')
+        .eq('tenant_id', me.tenant_id)
+        .order('name')
+
+      if (cancelled || error || !data) return
+
       let roster = data.map(e => ({
         id: 'dm_' + e.id,
         empId: e.id,
@@ -415,8 +452,9 @@ export default function Chat() {
         avatarUrl: e.avatar_url || null,
         email: e.email || '',
       }))
+
       // When platform admin is impersonating another tenant, inject Romy into
-      // that tenant's roster so their staff can DM him directly
+      // that tenant's roster so their staff can DM him directly.
       try {
         const imp = sessionStorage.getItem('admin_impersonation')
         if (imp && user?.email === 'romy@taxrescrm.net') {
@@ -424,12 +462,14 @@ export default function Chat() {
           if (!alreadyInRoster) {
             const adminEntry = { id: 'dm_taxrescrm-admin', empId: 'taxrescrm-admin', name: 'Romy Cruz', role: 'TaxRes CRM Admin', color: colorFor('Romy Cruz'), avatarUrl: null, email: 'romy@taxrescrm.net' }
             roster = [adminEntry, ...roster]
-            if (!me) { setMyEmpId('taxrescrm-admin'); setMyRealName('Romy Cruz') }
           }
         }
       } catch (_) {}
+
       setTEAM(roster)
-    })
+    })()
+
+    return () => { cancelled = true }
   }, [user?.email])
 
   // ── per-viewer rep prefs (hidden / VIP) ──
@@ -1092,10 +1132,15 @@ export default function Chat() {
         <DraftsView TEAM={TEAM} myName={myName} channels={allChannels} />
       ) : active.id === 'directories' ? (
         <DirectoriesView TEAM={TEAM} myName={myName} myEmail={user?.email} onUpdated={() => {
-          supabase.from('employees').select('id, name, role, avatar_url, email').order('name').then(({ data }) => {
-            if (!data) return
-            setTEAM(data.map(e => ({ id: 'dm_' + e.id, empId: e.id, name: e.name, role: e.role || '', color: colorFor(e.name), avatarUrl: e.avatar_url || null, email: e.email || '' })))
-          })
+          if (!myTenantId) return
+          supabase.from('employees')
+            .select('id, name, role, avatar_url, email')
+            .eq('tenant_id', myTenantId)
+            .order('name')
+            .then(({ data }) => {
+              if (!data) return
+              setTEAM(data.map(e => ({ id: 'dm_' + e.id, empId: e.id, name: e.name, role: e.role || '', color: colorFor(e.name), avatarUrl: e.avatar_url || null, email: e.email || '' })))
+            })
         }} />
       ) : (
       <>
