@@ -5537,9 +5537,19 @@ function CommandCenter() {
           {(() => {
             const products = mergeProductRegistry(reportingProducts)
             const attention = []
-            // Partial connections — metrics not deployed
-            products.filter(p => p.connection === 'partial').forEach(p => {
-              attention.push({ product: p.label, icon: '🟡', item: 'Platform metrics deploy pending', priority: 'medium' })
+            // Partial connections — use the same live hub-proxy status as Product Portfolio.
+            // Do not surface stale hard-coded connection labels as active warnings.
+            products.filter(p => {
+              const liveStatus = portfolioCrmStatus[p.key]?.status
+              return liveStatus ? liveStatus === 'partial' : p.connection === 'partial'
+            }).forEach(p => {
+              const liveError = portfolioCrmStatus[p.key]?.error
+              attention.push({
+                product: p.label,
+                icon: '🟡',
+                item: liveError ? `CRM metrics partial — ${liveError}` : 'CRM metrics partial',
+                priority: 'medium',
+              })
             })
             // Coming Soon with no marketing domain
             products.filter(p => p.lifecycleStage === 'coming').forEach(p => {
