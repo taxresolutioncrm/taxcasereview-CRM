@@ -433,7 +433,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         if (String(nowTenant) !== tenantRef.current) {
           tenantRef.current = String(nowTenant)
           post({ type: 'crm-ready', tenantId: tenantRef.current })
-          throw new Error('This CRM tab is now signed in to a different office — not filed. Reopen Secure Mailbox from the right office.')
+          throw new Error('This CRM tab is now signed in to a different office — not filed. Reopen Secure Object Repository from the right office.')
         }
         if (typeof data.base64 !== 'string' || data.base64.length > MAX_HELPER_PDF_BYTES * 1.4) throw new Error('File is missing or too large')
         const file = base64ToFile(data.base64, /\.pdf$/i.test(name) ? name : `${name}.pdf`)
@@ -464,7 +464,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           flash(`⏳ ${name} was downloaded — checking your TDS download folder for it…`)
           setTimeout(() => { if (scanRef.current) scanRef.current(true) }, 2500)
         } else {
-          flash(`⚠ ${name} was downloaded but the helper could not send it. Drag that PDF onto its request below, or use "Send to CRM" in Secure Mailbox.`)
+          flash(`⚠ ${name} was downloaded but the helper could not send it. Drag that PDF onto its request below, or use "Send to CRM" in Secure Object Repository.`)
         }
       }
     }
@@ -586,7 +586,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       setForm(BLANK)
       setClientSearch('')
       await loadRequests()
-      flash(`✅ Request saved for ${client.name}. Finish the request in the IRS window. When the transcripts arrive, open Secure Mailbox and click "Send to CRM" on the TaxRes helper — they will be filed here automatically.`)
+      flash(`✅ Request saved for ${client.name}. Finish the request in the IRS window. When the transcripts arrive, open Secure Object Repository and click "Send to CRM" on the TaxRes helper — they will be filed here automatically.`)
     } catch (e) {
       flash('❌ ' + (e?.message || 'Could not save the transcript request.') + ' IRS TDS was not opened.')
     } finally {
@@ -635,7 +635,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               </div>
               <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
                 <button className="btn" onClick={() => openIrs(IRS_TDS_URL)} data-testid="irs-sign-in">Sign in to IRS</button>
-                <button className="btn sec" onClick={() => openIrs(IRS_SOR_URL)} data-testid="irs-secure-mailbox">Secure Mailbox</button>
+                <button className="btn sec" onClick={() => openIrs(IRS_SOR_URL)} data-testid="irs-secure-mailbox">Secure Object Repository</button>
                 {popupOpen && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) setPopupOpen(false) }} data-testid="irs-show-window">Show IRS window</button>}
               </div>
             </div>
@@ -649,7 +649,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 )}
                 <span>
                   {helperConnected
-                    ? 'Open Secure Mailbox, then click "Send to CRM" on the helper panel. Transcript PDFs you download from the IRS window are also sent here.'
+                    ? 'Open Secure Object Repository, then click "Send to CRM" on the helper panel. Transcript PDFs you download from the IRS window are also sent here.'
                     : 'Free Chrome add-on that sends your IRS transcript PDFs back here. It never sees your IRS password or sign-in.'}
                 </span>
                 {!helperConnected && <a className="btn sec" style={{ fontSize: 11 }} href={HELPER_ZIP_URL} download>Download helper</a>}
