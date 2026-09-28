@@ -318,8 +318,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   }
 
   async function addReturnedFiles(req, fileList) {
-    const files = [...(fileList || [])].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf')
-    if (!files.length) { flash('⚠ Choose the transcript PDF files you saved from IRS TDS.'); return }
+    // Accept PDFs (from TDS) and HTML files (from SOR — IRS delivers HTML attachments there)
+    const files = [...(fileList || [])].filter(f => /\.(pdf|html?)$/i.test(f.name) || f.type === 'application/pdf' || f.type === 'text/html')
+    if (!files.length) { flash('⚠ Choose the transcript PDF or HTML files you downloaded from IRS TDS or SOR.'); return }
     setReturnBusyId(req.id)
     try {
       const out = await fileBrowserTranscripts(req.id, files)
@@ -377,7 +378,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     let found = 0, filed = 0
     try {
       for await (const entry of handle.values()) {
-        if (entry.kind !== 'file' || !/\.pdf$/i.test(entry.name)) continue
+        if (entry.kind !== 'file' || !/\.(pdf|html?)$/i.test(entry.name)) continue
         const file = await entry.getFile()
         const key = `${entry.name}:${file.size}:${file.lastModified}`
         if (seenRef.current.has(key)) continue
@@ -939,9 +940,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                         <td style={{ padding:'8px 12px', color:'var(--t2)', fontSize:11 }}>{r.requested_at ? new Date(r.requested_at).toLocaleDateString() : '—'}{r.requested_by ? ` · ${r.requested_by}` : ''}</td>
                         <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
                           {isOpenBrowserRequest(r) && (
-                            <label className="btn sec" title="Add the transcript PDFs you saved from IRS TDS (or drop them on this row)" style={{ fontSize:10, padding:'3px 8px', marginRight:4, cursor: returnBusyId === r.id ? 'wait' : 'pointer' }}>
-                              {returnBusyId === r.id ? 'Filing…' : 'Add IRS PDFs'}
-                              <input type="file" accept="application/pdf" multiple style={{ display:'none' }} disabled={returnBusyId === r.id} data-testid={`transcript-return-input-${r.id}`} onChange={e => { const f = e.target.files; addReturnedFiles(r, f); e.target.value = '' }} />
+                            <label className="btn sec" title="Add transcript files from IRS TDS or SOR — PDF or HTML (or drop them on this row)" style={{ fontSize:10, padding:'3px 8px', marginRight:4, cursor: returnBusyId === r.id ? 'wait' : 'pointer' }}>
+                              {returnBusyId === r.id ? 'Filing…' : 'Add IRS Files'}
+                              <input type="file" accept="application/pdf,text/html,.html,.htm" multiple style={{ display:'none' }} disabled={returnBusyId === r.id} data-testid={`transcript-return-input-${r.id}`} onChange={e => { const f = e.target.files; addReturnedFiles(r, f); e.target.value = '' }} />
                             </label>
                           )}
                           <button className="btn sec" style={{ fontSize:10, padding:'3px 8px' }} onClick={() => setDelId(r.id)}>✕</button>
