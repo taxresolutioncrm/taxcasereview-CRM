@@ -212,10 +212,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       }
       const supportEnv: Record<string,string> = {
-        camvella: 'CAMVELLA_SUPPORT_SECRET',
         arcvena: 'ARCVENA_SUPPORT_SECRET',
-        groundivo: 'GROUNDIVO_SUPPORT_SECRET',
-        restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET',
       }
       if (productKey === 'nashville') {
         const nashvilleToken = await getInternalSecret('nashville_metrics_token')
@@ -224,10 +221,8 @@ Deno.serve(async (req) => {
         }
         productHeaders['x-romylabs-internal-token'] = nashvilleToken
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (productKey === 'bocasync') {
-        productHeaders['x-hub-secret'] = hubSecret
-      } else if (productKey === 'oculivo') {
-        if (!jwt) return { status: 401, data: null, error: 'Oculivo metrics require an authenticated RomyLabs admin session' }
+      } else if (['camvella','bocasync','groundivo','oculivo','restore_relay'].includes(productKey)) {
+        if (!jwt) return { status: 401, data: null, error: `${productKey} metrics require an authenticated RomyLabs admin session` }
         productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (supportEnv[productKey]) {
         const supportSecret = Deno.env.get(supportEnv[productKey]) || ''
