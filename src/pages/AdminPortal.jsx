@@ -7032,7 +7032,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const state = crypto.randomUUID() + crypto.randomUUID()
     sessionStorage.setItem('linkedin_oauth_state', state)
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
-    const scope = selectedPid === 'arcvena'
+    const scope = ['taxres_crm','arcvena'].includes(selectedPid)
       ? 'openid profile w_organization_social'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
