@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { parseTranscriptFile, storeTranscriptAnalysis } from '../lib/transcriptPull'
+import { parseTranscriptFile, storeTranscriptAnalysis, openIrsPopup, IRS_TDS_URL, IRS_POPUP_BLOCKED } from '../lib/transcriptPull'
 import TranscriptPull from '../components/TranscriptPull'
 
 // ── IRS Portal ──
@@ -86,6 +86,7 @@ export default function IRSPortal() {
     if (!uploadClientRow) { setParseStatus('❌ Select one unique client record before filing the transcript.'); return }
     setParsing(true)
     let done = 0
+    const already = []
     for (const file of files) {
       setParseStatus(`Analyzing ${file.name} (${done + 1} of ${files.length})…`)
       try {
@@ -96,13 +97,15 @@ export default function IRSPortal() {
         await storeTranscriptAnalysis(file, uploadClientRow.name, a, { clientId: uploadClientRow.id })
         done++
       } catch (err) {
+        // Same PDF already filed in this office (checked by its SHA-256): skip it, keep going.
+        if (err?.code === 'duplicate') { already.push(`${file.name}${err.prior?.client_name ? ` (already filed to ${err.prior.client_name})` : ''}`); continue }
         setParseStatus(`❌ ${file.name}: ${err?.message || 'Analysis failed'}`)
         setParsing(false)
         await loadAnalyses()
         return
       }
     }
-    setParseStatus(`✅ Analyzed ${done} transcript${done === 1 ? '' : 's'}.`)
+    setParseStatus(`✅ Analyzed ${done} transcript${done === 1 ? '' : 's'}.${already.length ? ` ${already.length} already filed, not filed again: ${already.join(', ')}.` : ''}`)
     setParsing(false)
     await loadAnalyses()
     setTimeout(() => setParseStatus(''), 6000)
@@ -255,10 +258,7 @@ export default function IRSPortal() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             className="btn"
-            onClick={() => {
-              setTab('pull')
-              setTimeout(() => document.getElementById('irs-session-status')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
-            }}
+            onClick={() => { if (!openIrsPopup(IRS_TDS_URL)) window.alert(IRS_POPUP_BLOCKED) }}
           >
             Sign in to IRS TDS
           </button>
@@ -313,7 +313,7 @@ export default function IRSPortal() {
               {parseStatus && <span style={{ fontSize: 12.5, color: 'var(--t2)' }}>{parseStatus}</span>}
             </div>
             <div style={{ color: 'var(--t3)', fontSize: 11.5, marginTop: 8 }}>
-              Direct ISP-authorized pulls are available from Pull Transcripts. Manual IRS e-Services/TDS PDFs remain supported here as a fallback. Each file is parsed into
+              Transcripts requested through IRS TDS from Pull Transcripts are filed automatically. IRS e-Services/TDS PDFs can also be uploaded here. Each file is parsed into
               balances, penalties, interest, assessment dates, an estimated CSED, transaction history and compliance flags.
             </div>
           </div>

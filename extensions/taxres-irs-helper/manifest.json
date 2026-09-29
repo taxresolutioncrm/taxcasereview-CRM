@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "TaxRes IRS Helper",
+  "version": "1.4.0",
+  "description": "Sends IRS TDS and SOR transcripts directly into the TaxRes CRM. Never touches your IRS login or credentials.",
+  "permissions": ["downloads", "storage"],
+  "host_permissions": [
+    "https://*.irs.gov/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://*.irs.gov/*"],
+      "exclude_matches": ["https://sa.www4.irs.gov/*"],
+      "exclude_globs": ["*login*", "*signin*", "*/auth/*", "*oauth*", "*saml*", "*logout*"],
+      "js": ["crm-bridge.js", "mailbox.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "TaxRes IRS Helper",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
