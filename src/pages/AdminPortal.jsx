@@ -3588,26 +3588,31 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
     try {
       // Route through hub-proxy — HUB_METRICS_SECRET never reaches the browser.
       // Browser sends its Supabase JWT; hub-proxy verifies platform_admin server-side.
-      const { data: { session } } = await supabase.auth.getSession()
+      const refreshed = await supabase.auth.refreshSession()
+      const session = refreshed?.data?.session || (await supabase.auth.getSession())?.data?.session
       if (!session?.access_token) throw new Error('Not authenticated')
       const HUB_PROXY = 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy'
-      const res = ['camvella', 'arcvena'].includes(product.key)
-        ? await fetch(product.metricsUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-          })
-        : await fetch(HUB_PROXY, {
+      let res = await fetch(HUB_PROXY, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ product: product.key }),
+      })
+      if (res.status === 401) {
+        const retrySession = (await supabase.auth.refreshSession())?.data?.session
+        if (retrySession?.access_token) {
+          res = await fetch(HUB_PROXY, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type':  'application/json',
-              'apikey':        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1weGd4ZnFkYnF1emtydnZlamtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTkwMDE4OTIsImV4cCI6MjAzNDU3Nzg5Mn0.zr0F_sV9-TJxO1wOST3VHr_n-5jPTpLY_AzEfKR1hSo',
+              'Authorization': `Bearer ${retrySession.access_token}`,
+              'Content-Type': 'application/json',
             },
             body: JSON.stringify({ product: product.key }),
           })
+        }
+      }
       const data = await res.json()
       setLiveData(d => ({ ...d, [product.key]: data }))
     } catch (e) {
@@ -4970,8 +4975,9 @@ function CommandCenter() {
     let cancelled = false
     ;(async () => {
       try {
-        const { data: sessionData } = await supabase.auth.getSession()
-        const token = sessionData?.session?.access_token
+        const refreshed = await supabase.auth.refreshSession()
+        const activeSession = refreshed?.data?.session || (await supabase.auth.getSession())?.data?.session
+        const token = activeSession?.access_token
         if (!token) throw new Error('Admin session unavailable')
         const res = await fetch('https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy', {
           method:'POST',
@@ -5001,17 +5007,25 @@ function CommandCenter() {
 
   const fetchCrmProductMetrics = React.useCallback(async (productKey) => {
     if (!productKey) return null
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData?.session?.access_token
+    const refreshed = await supabase.auth.refreshSession()
+    const activeSession = refreshed?.data?.session || (await supabase.auth.getSession())?.data?.session
+    let token = activeSession?.access_token
     if (!token) throw new Error('Admin session unavailable')
-    const res = await fetch('https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy', {
+    const endpoint = 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy'
+    const requestMetrics = (accessToken) => fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ product: productKey }),
     })
+    let res = await requestMetrics(token)
+    if (res.status === 401) {
+      const retrySession = (await supabase.auth.refreshSession())?.data?.session
+      token = retrySession?.access_token || ''
+      if (token) res = await requestMetrics(token)
+    }
     const body = await res.json().catch(() => ({}))
     if (!res.ok || body?.ok === false) throw new Error(body?.error || `Metrics request failed (${res.status})`)
     return body
