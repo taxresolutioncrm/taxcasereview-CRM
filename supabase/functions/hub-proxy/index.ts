@@ -221,13 +221,11 @@ Deno.serve(async (req) => {
 
       // Keep this authentication map aligned with sync-product-offices, which is
       // the canonical live contract for each CRM's platform-metrics endpoint.
-      if (productKey === 'camvella') {
-        if (!jwt) {
-          return { status: 401, data: null, error: 'Camvella requires an authenticated RomyLabs platform-admin session' }
-        }
-        productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (productKey === 'bocasync') {
-        productHeaders['x-hub-secret'] = hubSecret
+      if (productKey === 'camvella' || productKey === 'bocasync') {
+        const envKey = productKey === 'camvella' ? 'CAMVELLA_SUPPORT_SECRET' : 'BOCASYNC_SUPPORT_SECRET'
+        const productSecret = Deno.env.get(envKey) || ''
+        if (productSecret) productHeaders['x-romylabs-support-secret'] = productSecret
+        else productHeaders['x-hub-secret'] = hubSecret
       } else if (productKey === 'arcvena') {
         const productSecret = Deno.env.get(SUPPORT_SECRET_ENV.arcvena) || ''
         if (productSecret) productHeaders['x-arcvena-support-secret'] = productSecret
