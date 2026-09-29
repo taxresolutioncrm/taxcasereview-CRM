@@ -103,21 +103,22 @@ Deno.serve(async(req)=>{
     if(action==='generate_monday_drafts'||action==='generate_content'){const productId=input.product_id||TAXRES_PRODUCT;const x=await generate(sb,now,productId);if(x.unsupported)return response({ok:false,error:'no_content_library_for_product',product_id:productId},400);if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${productId}]: content withheld`,`<p>${x.quarantined.length} post(s) failed automated validation and were not approved.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);return response({ok:true,autopilot:true,product_id:productId,...x})}
     if(action!=='run')return response({ok:false,error:'unknown_action'},400)
 
-    const clock=et(now),result:any={ok:true,autopilot:true,generated:0,quarantined:0,skipped:0,products_skipped:[]};
-    if(clock.day==='Mon'&&clock.hour===7){
-      const {data:settingsRows}=await sb.from('linkedin_settings').select('product_id,autopilot').eq('tenant_id',ADMIN_TENANT).eq('autopilot',true);
-      const enabledProducts=(settingsRows||[]).map((r:any)=>r.product_id);
-      for(const pid of enabledProducts){
-        if(!LIBRARIES[pid]){result.products_skipped.push({product_id:pid,reason:'no_content_library_for_product'});continue}
-        const {data:conn}=await sb.from('linkedin_connections').select('product_id,expires_at,publish_target_type,linkedin_organization_id').eq('tenant_id',ADMIN_TENANT).eq('product_id',pid).maybeSingle();
-        if(!conn){result.products_skipped.push({product_id:pid,reason:'no_linkedin_connection'});continue}
-        if(new Date(conn.expires_at)<now){result.products_skipped.push({product_id:pid,reason:'linkedin_token_expired'});continue}
-        if(pid===ARCVENA_PRODUCT&&(String(conn.publish_target_type||'').toUpperCase()!=='ORGANIZATION'||String(conn.linkedin_organization_id||'')!=='146118085')){result.products_skipped.push({product_id:pid,reason:'arcvena_company_page_target_not_verified'});continue}
-        const x=await generate(sb,now,pid);result.generated+=x.created.length;result.quarantined+=x.quarantined.length;result.skipped+=x.skipped;
-        if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${pid}]: validation withheld content`,`<p>${x.quarantined.length} post(s) were safely withheld for ${pid}. No invalid content will publish.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);
+    const result:any={ok:true,autopilot:true,generated:0,quarantined:0,skipped:0,products_skipped:[]};
+    const {data:settingsRows}=await sb.from('linkedin_settings').select('product_id,autopilot').eq('tenant_id',ADMIN_TENANT).eq('autopilot',true);
+    const enabledProducts=(settingsRows||[]).map((r:any)=>r.product_id);
+    for(const pid of enabledProducts){
+      if(!LIBRARIES[pid]){result.products_skipped.push({product_id:pid,reason:'no_content_library_for_product'});continue}
+      const {data:conn}=await sb.from('linkedin_connections').select('product_id,expires_at,publish_target_type,linkedin_organization_id').eq('tenant_id',ADMIN_TENANT).eq('product_id',pid).maybeSingle();
+      if(!conn){result.products_skipped.push({product_id:pid,reason:'no_linkedin_connection'});continue}
+      if(new Date(conn.expires_at)<now){result.products_skipped.push({product_id:pid,reason:'linkedin_token_expired'});continue}
+      if((pid===TAXRES_PRODUCT||pid===ARCVENA_PRODUCT) && (String(conn.publish_target_type||'').toUpperCase()!=='ORGANIZATION'||!String(conn.linkedin_organization_id||'').trim())){
+        result.products_skipped.push({product_id:pid,reason:'company_page_target_not_verified'});
+        continue
       }
-      result.report=await report(sb,now)
+      const x=await generate(sb,now,pid);result.generated+=x.created.length;result.quarantined+=x.quarantined.length;result.skipped+=x.skipped;
+      if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${pid}]: validation withheld content`,`<p>${x.quarantined.length} post(s) were safely withheld for ${pid}. No invalid content will publish.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);
     }
+    result.report=await report(sb,now)
     return response(result)
   }catch(e){const msg=e instanceof Error?e.message:String(e);console.error('[linkedin-scheduler]',msg);return response({ok:false,error:msg},500)}
 })
