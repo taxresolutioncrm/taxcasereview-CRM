@@ -211,30 +211,40 @@ Deno.serve(async (req) => {
       const productHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
       }
-      if (productKey === 'arcvena') {
-        const arcvenaSupportSecret = Deno.env.get('ARCVENA_SUPPORT_SECRET')
-        if (!arcvenaSupportSecret) {
-          return { status: 503, data: null, error: 'Arcvena proxy credential not configured' }
-        }
-        productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
-      } else if (productKey === 'nashville') {
+      const supportEnv: Record<string,string> = {
+        camvella: 'CAMVELLA_SUPPORT_SECRET',
+        arcvena: 'ARCVENA_SUPPORT_SECRET',
+        groundivo: 'GROUNDIVO_SUPPORT_SECRET',
+        oculivo: 'OCULIVO_SUPPORT_SECRET',
+        restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET',
+      }
+      if (productKey === 'nashville') {
         const nashvilleToken = await getInternalSecret('nashville_metrics_token')
         if (!nashvilleToken) {
           return { status: 503, data: null, error: 'Nashville internal metrics token is not configured' }
         }
         productHeaders['x-romylabs-internal-token'] = nashvilleToken
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (resolved.standardExternal) {
-        if (!jwt) return { status: 401, data: null, error: `${productKey} requires an authenticated user session` }
-        productHeaders['Authorization'] = `Bearer ${jwt}`
+      } else if (productKey === 'bocasync') {
+        productHeaders['x-hub-secret'] = hubSecret
+      } else if (supportEnv[productKey]) {
+        const supportSecret = Deno.env.get(supportEnv[productKey]) || ''
+        if (!supportSecret) {
+          return { status: 503, data: null, error: `${productKey} proxy credential not configured` }
+        }
+        if (productKey === 'arcvena') productHeaders['x-arcvena-support-secret'] = supportSecret
+        else productHeaders['x-romylabs-support-secret'] = supportSecret
       } else {
         productHeaders['x-hub-secret'] = hubSecret
       }
 
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
       const productRes = await fetch(targetUrl, {
         method: 'GET',
         headers: productHeaders,
-      })
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout))
       const productData = await productRes.json().catch(() => null)
       const productError = productRes.ok && productData?.ok !== false
         ? null
