@@ -4949,9 +4949,11 @@ function CommandCenter() {
   const [ga4BlockedProducts, setGa4BlockedProducts] = React.useState([])
   const [gscLiveProducts, setGscLiveProducts] = React.useState([])
   const [clarityRows, setClarityRows] = React.useState([])
+  const [portfolioCrmStatus, setPortfolioCrmStatus] = React.useState({})
+  const [portfolioCrmCheckedAt, setPortfolioCrmCheckedAt] = React.useState(null)
   React.useEffect(() => {
     supabase.from('romylabs_products')
-      .select('product_id,name,accent_color,icon_ref,sort_order,lifecycle,public,app_url,marketing_url')
+      .select('product_id,name,accent_color,icon_ref,sort_order,lifecycle,public,app_url,marketing_url,supabase_url,industry,short_desc,description')
       .eq('active', true)
       .order('sort_order')
       .then(({ data, error }) => {
@@ -4959,6 +4961,49 @@ function CommandCenter() {
         if (data?.length) setReportingProducts(data.filter(p => String(p.lifecycle || '').toLowerCase() !== 'internal'))
       })
   }, [])
+
+  // Product Portfolio CRM status must reflect the live hub-proxy result, not
+  // stale hard-coded labels.
+  React.useEffect(() => {
+    const keys = reportingProducts
+      .filter(p => p.product_id && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
+      .map(p => p.product_id)
+    if (!keys.length) return
+    let cancelled = false
+    ;(async() => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const token = sessionData?.session?.access_token
+        if (!token) throw new Error('Admin session unavailable')
+        const res = await fetch('https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy', {
+          method:'POST',
+          headers:{ Authorization:`Bearer ${token}`, 'Content-Type':'application/json' },
+          body:JSON.stringify({ action:'metrics_batch', products:keys }),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok || body?.ok === false) throw new Error(body?.error || `Metrics batch failed (${res.status})`)
+        const next = {}
+        for (const key of keys) {
+          const item = body?.results?.[key]
+          const ok = !!item && !item.error && Number(item.status || 0) >= 200 && Number(item.status || 0) < 300 && item.data?.ok !== false
+          next[key] = ok
+            ? { status:'connected', checkedAt:new Date().toISOString(), error:null }
+            : { status:'partial', checkedAt:new Date().toISOString(), error:item?.error || item?.data?.error || 'Metrics endpoint unavailable' }
+        }
+        if (!cancelled) {
+          setPortfolioCrmStatus(next)
+          setPortfolioCrmCheckedAt(new Date().toISOString())
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const now = new Date().toISOString()
+          setPortfolioCrmStatus(Object.fromEntries(keys.map(k => [k,{status:'partial',checkedAt:now,error:String(e?.message || e)}])))
+          setPortfolioCrmCheckedAt(now)
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [reportingProducts])
 
   const fetchCrmProductMetrics = React.useCallback(async (productKey) => {
     if (!productKey) return null
@@ -5345,10 +5390,11 @@ function CommandCenter() {
             const buildN     = products.filter(p => p.lifecycleStage === 'building').length
             const researchN  = products.filter(p => p.lifecycleStage === 'research').length
             const internalN  = products.filter(p => p.lifecycleStage === 'internal').length
-            const connectedN = products.filter(p => p.connection === 'connected').length
-            const partialN   = products.filter(p => p.connection === 'partial').length
-            const noConnN    = products.filter(p => p.connection === 'not_connected').length
-            const attentionN = products.filter(p => p.connection === 'partial').length +
+            const statusFor = p => portfolioCrmStatus[p.key]?.status || (reportingProducts.some(r=>r.product_id===p.key) ? 'checking' : p.connection)
+            const connectedN = products.filter(p => statusFor(p) === 'connected').length
+            const partialN   = products.filter(p => statusFor(p) === 'partial').length
+            const noConnN    = products.filter(p => statusFor(p) === 'not_connected').length
+            const attentionN = products.filter(p => statusFor(p) === 'partial').length +
                                products.filter(p => p.lifecycleStage === 'coming' && !p.metricsUrl).length
             return (
               <div style={{ marginBottom:24 }}>
@@ -5431,6 +5477,13 @@ function CommandCenter() {
                     const analyticsStatus = analyticsConnected
                       ? '🟢 Connected'
                       : (isPublic ? '🟡 Pending' : 'N/A')
+                    const liveCrm = portfolioCrmStatus[p.key]
+                    const effectiveConnection = liveCrm?.status || (registryRow ? 'checking' : p.connection)
+                    const milestone = effectiveConnection === 'connected'
+                      ? '—'
+                      : effectiveConnection === 'checking'
+                        ? 'Checking live CRM metrics…'
+                        : (p.nextMilestone || (effectiveConnection === 'partial' ? 'Restore live CRM metrics feed' : '—'))
                     return (
                       <div key={p.key} style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr 1fr .8fr .8fr .8fr 1.2fr',
                         padding:'10px 16px', borderBottom: i < products.length-1 ? '1px solid rgba(99,102,241,.06)' : 'none',
@@ -5449,8 +5502,13 @@ function CommandCenter() {
                             {LIFECYCLE_LABEL[lc] || lc}
                           </span>
                         </div>
-                        <div style={{ fontSize:11, color: p.connection==='connected' ? '#10b981' : p.connection==='partial' ? '#f59e0b' : '#475569' }}>
-                          {CONN_DOT[p.connection]} {p.connection === 'connected' ? 'Connected' : p.connection === 'partial' ? 'Partial' : 'Not Connected'}
+                        <div
+                          style={{ fontSize:11, color: effectiveConnection==='connected' ? '#10b981' : effectiveConnection==='partial' ? '#f59e0b' : '#64748b' }}
+                          title={liveCrm?.error || (portfolioCrmCheckedAt ? `Checked ${new Date(portfolioCrmCheckedAt).toLocaleString()}` : '')}
+                        >
+                          {effectiveConnection === 'checking'
+                            ? '◌ Checking…'
+                            : `${CONN_DOT[effectiveConnection] || '⚪'} ${effectiveConnection === 'connected' ? 'Connected' : effectiveConnection === 'partial' ? 'Partial' : 'Not Connected'}`}
                         </div>
                         <div style={{ fontSize:11, color: commercialLive ? '#10b981' : '#475569' }}>
                           {commercialLive ? 'Live' : '—'}
@@ -5460,7 +5518,7 @@ function CommandCenter() {
                         </div>
                         <div style={{ fontSize:11, color:'#64748b' }}>{analyticsStatus}</div>
                         <div style={{ fontSize:10, color:'#6366f1', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {p.nextMilestone || '—'}
+                          {milestone}
                         </div>
                       </div>
                     )
@@ -5480,9 +5538,18 @@ function CommandCenter() {
           {(() => {
             const products = mergeProductRegistry(reportingProducts)
             const attention = []
-            // Partial connections — metrics not deployed
-            products.filter(p => p.connection === 'partial').forEach(p => {
-              attention.push({ product: p.label, icon: '🟡', item: 'Platform metrics deploy pending', priority: 'medium' })
+            // Partial connections — use the same live hub-proxy status as Product Portfolio.
+            products.filter(p => {
+              const liveStatus = portfolioCrmStatus[p.key]?.status
+              return liveStatus ? liveStatus === 'partial' : p.connection === 'partial'
+            }).forEach(p => {
+              const liveError = portfolioCrmStatus[p.key]?.error
+              attention.push({
+                product: p.label,
+                icon: '🟡',
+                item: liveError ? `CRM metrics partial — ${liveError}` : 'CRM metrics partial',
+                priority: 'medium',
+              })
             })
             // Coming Soon with no marketing domain
             products.filter(p => p.lifecycleStage === 'coming').forEach(p => {
@@ -6972,8 +7039,8 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
       if (data?.ok) {
         if (oauthProduct !== selectedPid) selectProduct(oauthProduct)
-        showToast(oauthProduct === 'arcvena'
-          ? 'Arcvena LinkedIn company page connected ✓'
+        showToast((oauthProduct === 'taxres_crm' || oauthProduct === 'arcvena')
+          ? `${oauthProduct === 'arcvena' ? 'Arcvena' : 'TaxRes CRM'} LinkedIn company page connected ✓`
           : `Connected as ${data.name} ✓`)
         load()
       } else {
@@ -7032,8 +7099,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const state = crypto.randomUUID() + crypto.randomUUID()
     sessionStorage.setItem('linkedin_oauth_state', state)
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
-    const scope = selectedPid === 'arcvena'
-      ? 'openid profile w_organization_social'
+    const companyPageProduct = selectedPid === 'taxres_crm' || selectedPid === 'arcvena'
+    const scope = companyPageProduct
+      ? 'openid profile w_organization_social rw_organization_admin'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
       response_type: 'code', client_id: LINKEDIN_CLIENT_ID,

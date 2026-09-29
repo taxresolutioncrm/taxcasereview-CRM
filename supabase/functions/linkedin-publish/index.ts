@@ -78,17 +78,71 @@ Deno.serve(async (req) => {
     const profile = await profileRes.json()
 
     const grantedScopes = String(tokenData.scope || '')
-    const isArcvena = productId === 'arcvena'
-    if (isArcvena && !grantedScopes.split(/[ ,]+/).includes('w_organization_social')) {
+    const companyPageProduct = productId === 'taxres_crm' || productId === 'arcvena'
+    const granted = new Set(grantedScopes.split(/[ ,]+/).filter(Boolean))
+    if (companyPageProduct && !granted.has('w_organization_social')) {
       return json({
         ok: false,
-        error: 'Arcvena requires LinkedIn organization posting permission',
+        error: 'LinkedIn company-page posting permission is required',
         required_scope: 'w_organization_social',
       }, 403)
     }
 
-    const publishTargetType = isArcvena ? 'ORGANIZATION' : 'PERSON'
-    const linkedinOrganizationId = isArcvena ? '146118085' : null
+    let publishTargetType = companyPageProduct ? 'ORGANIZATION' : 'PERSON'
+    let linkedinOrganizationId: string | null = null
+
+    if (companyPageProduct) {
+      const expectedNames = productId === 'arcvena'
+        ? ['arcvena']
+        : ['tax res crm','taxres crm','taxrescrm']
+      const aclRes = await fetch('https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED', {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+          'X-Restli-Protocol-Version': '2.0.0',
+        },
+      })
+      const aclJson = await aclRes.json().catch(() => ({}))
+      if (!aclRes.ok) {
+        return json({
+          ok:false,
+          error:'Could not verify LinkedIn company-page admin access',
+          detail:aclJson,
+          required_scope:'rw_organization_admin',
+        }, 403)
+      }
+
+      const orgIds = Array.isArray(aclJson?.elements)
+        ? aclJson.elements
+            .map((x:any)=>String(x?.organization || x?.organizationalTarget || '').match(/urn:li:organization:(\d+)/)?.[1] || '')
+            .filter(Boolean)
+        : []
+
+      const organizations:any[] = []
+      for (const orgId of [...new Set(orgIds)]) {
+        const orgRes = await fetch(`https://api.linkedin.com/v2/organizations/${orgId}`, {
+          headers: {
+            Authorization: `Bearer ${tokenData.access_token}`,
+            'X-Restli-Protocol-Version': '2.0.0',
+          },
+        })
+        const org = await orgRes.json().catch(() => ({}))
+        if (orgRes.ok) organizations.push({id:orgId,name:String(org?.localizedName || org?.name?.localized?.en_US || '').trim()})
+      }
+
+      const matches = organizations.filter((org:any) => {
+        const normalized = String(org.name || '').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()
+        return expectedNames.includes(normalized)
+      })
+      if (matches.length !== 1) {
+        return json({
+          ok:false,
+          error:'Could not uniquely resolve the correct LinkedIn company page',
+          product_id:productId,
+          organizations,
+        }, 409)
+      }
+      linkedinOrganizationId = matches[0].id
+    }
 
     await supabase.from('linkedin_connections').upsert({
       tenant_id: tenantId,
@@ -222,6 +276,9 @@ Deno.serve(async (req) => {
     }
 
     const targetType = conn.publish_target_type || 'PERSON'
+    if ((productId === 'taxres_crm' || productId === 'arcvena') && targetType !== 'ORGANIZATION') {
+      return json({ ok:false, error:'Company-page connection required for this product' },409)
+    }
     const author = targetType === 'ORGANIZATION'
       ? (conn.linkedin_organization_id ? `urn:li:organization:${conn.linkedin_organization_id}` : null)
       : (conn.linkedin_person_id ? `urn:li:person:${conn.linkedin_person_id}` : null)
