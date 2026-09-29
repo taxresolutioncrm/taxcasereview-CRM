@@ -230,8 +230,8 @@ export default function Documents() {
     }])
     setSaving(false)
     if (error) {
-      // If storage succeeded but the metadata insert failed, remove the
-      // just-uploaded object so the private bucket does not accumulate orphans.
+      // Roll back the uploaded object if metadata persistence fails so the
+      // private tenant bucket never accumulates orphaned files.
       if (storagePath) {
         const { error: cleanupErr } = await supabase.storage.from('documents').remove([storagePath])
         if (cleanupErr) console.error('Document upload rollback failed:', cleanupErr)
@@ -422,7 +422,7 @@ export default function Documents() {
             )
           })}
         </div>
-      )}}
+      )}
 
       {previewDoc&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setPreviewDoc(null)}>
