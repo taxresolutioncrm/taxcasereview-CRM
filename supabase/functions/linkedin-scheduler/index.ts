@@ -6,7 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-cron-token',
 }
 const TIMEZONE = 'America/New_York'
 const ADMIN_EMAIL = 'info@romylabs.com'
@@ -83,6 +83,22 @@ async function generate(sb:any,now:Date,productId:string){
   for(const slot of open){let source:Post|undefined;for(let tries=0;tries<library.length;tries++){const candidate=library[(cursor++)%library.length];if(validate(candidate,[...bodies,...created.map(x=>x.body||'')],productId).ok){source=candidate;break}}if(!source){quarantined.push({slot,reasons:['no_unique_valid_content']});continue}const post=utm(source,now,productId),check=validate(post,bodies,productId);if(!check.ok){quarantined.push({slot,title:post.title,reasons:check.reasons});continue}const {data,error:insertError}=await sb.from('linkedin_posts').insert({tenant_id:ADMIN_TENANT,product_id:productId,title:post.title,body:post.body,category:post.category,cta_type:post.cta_type,status:'approved',approved_at:now.toISOString(),scheduled_at:slot.iso,retry_count:0}).select('id,title,body,category,status,scheduled_at').single();if(insertError)quarantined.push({slot,title:post.title,reasons:[insertError.message]});else{created.push(data);bodies.push(post.body)}}
   return {created,quarantined,skipped:target.length-open.length,unsupported:false}
 }
+async function authorized(req:Request,sb:any,serviceKey:string){
+  const auth=req.headers.get('authorization')||''
+  if(serviceKey&&auth===`Bearer ${serviceKey}`)return true
+  const cron=req.headers.get('x-internal-cron-token')||''
+  if(cron){
+    const {data,error}=await sb.rpc('verify_internal_cron_token',{provided:cron})
+    if(!error&&data===true)return true
+  }
+  if(!auth.toLowerCase().startsWith('bearer '))return false
+  const token=auth.slice(7)
+  const {data:{user},error}=await sb.auth.getUser(token)
+  if(error||!user)return false
+  const email=String(user.email||'').toLowerCase()
+  return ['info@romylabs.com','romy@romylabs.com','romy@taxrescrm.net','romy@taxcasereview.org'].includes(email)
+}
+
 async function alert(sb:any,subject:string,html:string){try{await sb.functions.invoke('send-email',{body:{to:ADMIN_EMAIL,subject,html,tenant_id:ADMIN_TENANT}})}catch(e){console.error('[linkedin-scheduler] alert failed',String(e))}}
 async function report(sb:any,now:Date,productId?:string){const since=new Date(now.getTime()-7*86400000).toISOString();let pub=sb.from('linkedin_posts').select('id,title,category,published_at,linkedin_url,product_id').eq('tenant_id',ADMIN_TENANT).eq('status','published').gte('published_at',since);let fail=sb.from('linkedin_posts').select('id,title,error_msg,updated_at,product_id').eq('tenant_id',ADMIN_TENANT).eq('status','failed').gte('updated_at',since);let up=sb.from('linkedin_posts').select('id,title,category,status,scheduled_at,product_id').eq('tenant_id',ADMIN_TENANT).in('status',['approved','publishing']).gte('scheduled_at',now.toISOString()).order('scheduled_at',{ascending:true}).limit(20);if(productId){pub=pub.eq('product_id',productId);fail=fail.eq('product_id',productId);up=up.eq('product_id',productId)}const [{data:published},{data:failed},{data:upcoming}]=await Promise.all([pub,fail,up]);return {generated_at:now.toISOString(),product_id:productId||'all',published:published||[],failed:failed||[],upcoming:upcoming||[]}}
 
@@ -90,7 +106,9 @@ Deno.serve(async(req)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
   const url=Deno.env.get('SUPABASE_URL'),key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||Deno.env.get('SB_SERVICE_KEY');
   if(!url||!key)return response({ok:false,error:'server_configuration_missing'},500);
-  const sb=createClient(url,key); let input:any={}; try{input=await req.json()}catch{}
+  const sb=createClient(url,key);
+  if(!await authorized(req,sb,key))return response({ok:false,error:'Unauthorized'},401);
+  let input:any={}; try{input=await req.json()}catch{}
   const action=input.action||'run',now=new Date();
   try{
     if(action==='get_settings'){const productId=input.product_id||TAXRES_PRODUCT;const {data}=await sb.from('linkedin_settings').select('*').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).maybeSingle();return response({ok:true,settings:{...(data||{}),autopilot:data?.autopilot??false,timezone:data?.timezone||TIMEZONE},content_library_available:Boolean(LIBRARIES[productId]?.length)})}
