@@ -7095,7 +7095,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     sessionStorage.setItem('linkedin_oauth_state', state)
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
     const scope = ['taxres_crm','arcvena'].includes(selectedPid)
-      ? 'openid profile w_organization_social'
+      ? 'openid profile w_organization_social r_organization_admin'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
       response_type: 'code', client_id: LINKEDIN_CLIENT_ID,
