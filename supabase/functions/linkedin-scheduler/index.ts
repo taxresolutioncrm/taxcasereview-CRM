@@ -5,8 +5,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Origin': 'https://admin.romylabs.com',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-cron-token',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 const TIMEZONE = 'America/New_York'
 const ADMIN_EMAIL = 'info@romylabs.com'
@@ -84,17 +85,35 @@ async function generate(sb:any,now:Date,productId:string){
   return {created,quarantined,skipped:target.length-open.length,unsupported:false}
 }
 async function alert(sb:any,subject:string,html:string){try{await sb.functions.invoke('send-email',{body:{to:ADMIN_EMAIL,subject,html,tenant_id:ADMIN_TENANT}})}catch(e){console.error('[linkedin-scheduler] alert failed',String(e))}}
+const OWNER_EMAILS=new Set(['romy@taxcasereview.org','romy@romylabs.com','info@romylabs.com','romy@taxrescrm.net'])
+async function authorized(req:Request,sb:any,url:string,key:string){
+  const auth=req.headers.get('authorization')||''
+  if(key&&auth===`Bearer ${key}`)return true
+  const cron=req.headers.get('x-internal-cron-token')||''
+  if(cron){
+    const {data,error}=await sb.rpc('verify_internal_cron_token',{provided:cron})
+    if(!error&&data===true)return true
+  }
+  if(!auth.toLowerCase().startsWith('bearer '))return false
+  const anon=Deno.env.get('SUPABASE_ANON_KEY')||''
+  if(!anon)return false
+  const uc=createClient(url,anon,{global:{headers:{Authorization:auth}},auth:{persistSession:false,autoRefreshToken:false}})
+  const {data:{user},error}=await uc.auth.getUser()
+  return !error&&!!user?.email&&OWNER_EMAILS.has(user.email.toLowerCase())
+}
 async function report(sb:any,now:Date,productId?:string){const since=new Date(now.getTime()-7*86400000).toISOString();let pub=sb.from('linkedin_posts').select('id,title,category,published_at,linkedin_url,product_id').eq('tenant_id',ADMIN_TENANT).eq('status','published').gte('published_at',since);let fail=sb.from('linkedin_posts').select('id,title,error_msg,updated_at,product_id').eq('tenant_id',ADMIN_TENANT).eq('status','failed').gte('updated_at',since);let up=sb.from('linkedin_posts').select('id,title,category,status,scheduled_at,product_id').eq('tenant_id',ADMIN_TENANT).in('status',['approved','publishing']).gte('scheduled_at',now.toISOString()).order('scheduled_at',{ascending:true}).limit(20);if(productId){pub=pub.eq('product_id',productId);fail=fail.eq('product_id',productId);up=up.eq('product_id',productId)}const [{data:published},{data:failed},{data:upcoming}]=await Promise.all([pub,fail,up]);return {generated_at:now.toISOString(),product_id:productId||'all',published:published||[],failed:failed||[],upcoming:upcoming||[]}}
 
 Deno.serve(async(req)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
   const url=Deno.env.get('SUPABASE_URL'),key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||Deno.env.get('SB_SERVICE_KEY');
   if(!url||!key)return response({ok:false,error:'server_configuration_missing'},500);
-  const sb=createClient(url,key); let input:any={}; try{input=await req.json()}catch{}
+  const sb=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+  if(!await authorized(req,sb,url,key))return response({ok:false,error:'Unauthorized'},401)
+  let input:any={}; try{input=await req.json()}catch{}
   const action=input.action||'run',now=new Date();
   try{
     if(action==='get_settings'){const productId=input.product_id||TAXRES_PRODUCT;const {data}=await sb.from('linkedin_settings').select('*').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).maybeSingle();return response({ok:true,settings:{...(data||{}),autopilot:data?.autopilot??false,timezone:data?.timezone||TIMEZONE},content_library_available:Boolean(LIBRARIES[productId]?.length)})}
-    if(action==='save_settings'){const productId=input.product_id||TAXRES_PRODUCT;const {error}=await sb.from('linkedin_settings').upsert({tenant_id:ADMIN_TENANT,product_id:productId,...(input.settings||{}),timezone:TIMEZONE,updated_at:now.toISOString()},{onConflict:'tenant_id,product_id'});if(error)throw error;return response({ok:true,autopilot:input.settings?.autopilot??false})}
+    if(action==='save_settings'){const productId=input.product_id||TAXRES_PRODUCT;const incoming=input.settings||{};const row={tenant_id:ADMIN_TENANT,product_id:productId,autopilot:incoming.autopilot===true,schedule_slots:Array.isArray(incoming.schedule_slots)?incoming.schedule_slots:[],weekly_report_enabled:incoming.weekly_report_enabled!==false,timezone:TIMEZONE,updated_at:now.toISOString()};const {error}=await sb.from('linkedin_settings').upsert(row,{onConflict:'tenant_id,product_id'});if(error)throw error;return response({ok:true,autopilot:row.autopilot})}
     if(action==='get_health'){const {data,error}=await sb.rpc('get_linkedin_health');if(error)throw error;return response({ok:true,health:data})}
     if(action==='send_alert'){if(!input.subject||!input.html)return response({ok:false,error:'subject_and_html_required'},400);await alert(sb,String(input.subject),String(input.html));return response({ok:true})}
     if(action==='next_slots')return response({ok:true,slots:slots(now,8)})
@@ -103,21 +122,22 @@ Deno.serve(async(req)=>{
     if(action==='generate_monday_drafts'||action==='generate_content'){const productId=input.product_id||TAXRES_PRODUCT;const x=await generate(sb,now,productId);if(x.unsupported)return response({ok:false,error:'no_content_library_for_product',product_id:productId},400);if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${productId}]: content withheld`,`<p>${x.quarantined.length} post(s) failed automated validation and were not approved.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);return response({ok:true,autopilot:true,product_id:productId,...x})}
     if(action!=='run')return response({ok:false,error:'unknown_action'},400)
 
-    const clock=et(now),result:any={ok:true,autopilot:true,generated:0,quarantined:0,skipped:0,products_skipped:[]};
-    if(clock.day==='Mon'&&clock.hour===7){
-      const {data:settingsRows}=await sb.from('linkedin_settings').select('product_id,autopilot').eq('tenant_id',ADMIN_TENANT).eq('autopilot',true);
-      const enabledProducts=(settingsRows||[]).map((r:any)=>r.product_id);
-      for(const pid of enabledProducts){
-        if(!LIBRARIES[pid]){result.products_skipped.push({product_id:pid,reason:'no_content_library_for_product'});continue}
-        const {data:conn}=await sb.from('linkedin_connections').select('product_id,expires_at,publish_target_type,linkedin_organization_id').eq('tenant_id',ADMIN_TENANT).eq('product_id',pid).maybeSingle();
-        if(!conn){result.products_skipped.push({product_id:pid,reason:'no_linkedin_connection'});continue}
-        if(new Date(conn.expires_at)<now){result.products_skipped.push({product_id:pid,reason:'linkedin_token_expired'});continue}
-        if(pid===ARCVENA_PRODUCT&&(String(conn.publish_target_type||'').toUpperCase()!=='ORGANIZATION'||String(conn.linkedin_organization_id||'')!=='146118085')){result.products_skipped.push({product_id:pid,reason:'arcvena_company_page_target_not_verified'});continue}
-        const x=await generate(sb,now,pid);result.generated+=x.created.length;result.quarantined+=x.quarantined.length;result.skipped+=x.skipped;
-        if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${pid}]: validation withheld content`,`<p>${x.quarantined.length} post(s) were safely withheld for ${pid}. No invalid content will publish.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);
+    const result:any={ok:true,autopilot:true,generated:0,quarantined:0,skipped:0,products_skipped:[]};
+    const {data:settingsRows}=await sb.from('linkedin_settings').select('product_id,autopilot').eq('tenant_id',ADMIN_TENANT).eq('autopilot',true);
+    const enabledProducts=(settingsRows||[]).map((r:any)=>r.product_id);
+    for(const pid of enabledProducts){
+      if(!LIBRARIES[pid]){result.products_skipped.push({product_id:pid,reason:'no_content_library_for_product'});continue}
+      const {data:conn}=await sb.from('linkedin_connections').select('product_id,expires_at,publish_target_type,linkedin_organization_id').eq('tenant_id',ADMIN_TENANT).eq('product_id',pid).maybeSingle();
+      if(!conn){result.products_skipped.push({product_id:pid,reason:'no_linkedin_connection'});continue}
+      if(new Date(conn.expires_at)<now){result.products_skipped.push({product_id:pid,reason:'linkedin_token_expired'});continue}
+      if((pid===TAXRES_PRODUCT||pid===ARCVENA_PRODUCT) && (String(conn.publish_target_type||'').toUpperCase()!=='ORGANIZATION'||!String(conn.linkedin_organization_id||'').trim())){
+        result.products_skipped.push({product_id:pid,reason:'company_page_target_not_verified'});
+        continue
       }
-      result.report=await report(sb,now)
+      const x=await generate(sb,now,pid);result.generated+=x.created.length;result.quarantined+=x.quarantined.length;result.skipped+=x.skipped;
+      if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${pid}]: validation withheld content`,`<p>${x.quarantined.length} post(s) were safely withheld for ${pid}. No invalid content will publish.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);
     }
+    result.report=await report(sb,now)
     return response(result)
   }catch(e){const msg=e instanceof Error?e.message:String(e);console.error('[linkedin-scheduler]',msg);return response({ok:false,error:msg},500)}
 })

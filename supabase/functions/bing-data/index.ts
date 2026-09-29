@@ -81,10 +81,25 @@ function aggregateBy(items:any[], labelKeys:string[]){
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const url = Deno.env.get('SUPABASE_URL') ?? ''
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const supabase = createClient(url, serviceKey, { auth:{persistSession:false,autoRefreshToken:false} })
+
+    const auth = req.headers.get('authorization') || ''
+    if (!auth.toLowerCase().startsWith('bearer ') || !anonKey) {
+      return new Response(JSON.stringify({ connected:false,error:'unauthorized' }), {
+        status:401, headers:{...corsHeaders,'Content-Type':'application/json'}
+      })
+    }
+    const userClient = createClient(url, anonKey, { global:{headers:{Authorization:auth}}, auth:{persistSession:false,autoRefreshToken:false} })
+    const { data:{user}, error:authError } = await userClient.auth.getUser()
+    const allowed = new Set(['romy@taxcasereview.org','romy@romylabs.com','info@romylabs.com','romy@taxrescrm.net'])
+    if (authError || !user?.email || !allowed.has(user.email.toLowerCase())) {
+      return new Response(JSON.stringify({ connected:false,error:'forbidden' }), {
+        status:403, headers:{...corsHeaders,'Content-Type':'application/json'}
+      })
+    }
 
     const { data: settings } = await supabase.from('settings')
       .select('bing_api_key, bing_site_url')
@@ -118,17 +133,77 @@ serve(async (req) => {
     }
 
     const requestedHost = host(requestedSite)
-    const verifiedSites = rows(sitesJson).filter((s:any)=>s?.IsVerified === true)
-    const matched = verifiedSites.find((s:any)=>host(String(s?.Url||''))===requestedHost)
+    let userSites = rows(sitesJson)
+    let matched = userSites.find((s:any)=>host(String(s?.Url||''))===requestedHost)
+
+    // The reporting database previously marked every Bing channel as live even
+    // when the connected Bing account did not actually contain/verify the site.
+    // Repair that state from Bing itself and, when possible, self-heal by adding
+    // the site and asking Bing to verify the already-published ownership token.
     if (!matched?.Url) {
+      const addUrl = `${BING_JSON_BASE}/AddSite?apikey=${encodeURIComponent(apiKey)}`
+      const addRes = await fetch(addUrl, {
+        method:'POST',
+        headers:{'Content-Type':'application/json; charset=utf-8'},
+        body:JSON.stringify({ siteUrl:requestedSite }),
+      })
+      if (addRes.ok) {
+        const retryRes = await fetch(sitesUrl, { headers:{'Content-Type':'application/json; charset=utf-8'} })
+        const retryJson = await retryRes.json().catch(() => ({}))
+        userSites = rows(retryJson)
+        matched = userSites.find((s:any)=>host(String(s?.Url||''))===requestedHost)
+      }
+    }
+
+    if (matched?.Url && matched?.IsVerified !== true) {
+      const verifyUrl = `${BING_JSON_BASE}/VerifySite?apikey=${encodeURIComponent(apiKey)}`
+      const verifyRes = await fetch(verifyUrl, {
+        method:'POST',
+        headers:{'Content-Type':'application/json; charset=utf-8'},
+        body:JSON.stringify({ siteUrl:String(matched.Url) }),
+      })
+      const verifyJson = await verifyRes.json().catch(() => ({}))
+      if (verifyRes.ok && verifyJson?.d === true) {
+        const retryRes = await fetch(sitesUrl, { headers:{'Content-Type':'application/json; charset=utf-8'} })
+        const retryJson = await retryRes.json().catch(() => ({}))
+        userSites = rows(retryJson)
+        matched = userSites.find((s:any)=>host(String(s?.Url||''))===requestedHost)
+      }
+    }
+
+    if (!matched?.Url || matched?.IsVerified !== true) {
+      await supabase.from('product_traffic_channels')
+        .update({
+          status:'configured',
+          destination_url:requestedSite.replace(/\/$/,''),
+          notes:'Bing property exists or has been requested, but ownership verification is not complete in the connected Bing Webmaster account.',
+          updated_at:new Date().toISOString(),
+        })
+        .eq('product_id',productKey)
+        .eq('channel_key','bing_webmaster')
+
       return new Response(JSON.stringify({
-        connected:false, product_key:productKey, siteUrl:requestedSite,
+        connected:false,
+        product_key:productKey,
+        siteUrl:String(matched?.Url || requestedSite),
         error:'bing_site_not_verified',
-        message:'This product domain is not verified in the connected Bing Webmaster account.'
+        authenticationCode:matched?.AuthenticationCode || null,
+        dnsVerificationCode:matched?.DnsVerificationCode || null,
+        message:'Bing ownership verification is not complete for this product domain.'
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
     const siteUrl = String(matched.Url)
+    await supabase.from('product_traffic_channels')
+      .update({
+        status:'live',
+        destination_url:siteUrl.replace(/\/$/,''),
+        last_verified_at:new Date().toISOString(),
+        notes:'Verified live against the connected Bing Webmaster account.',
+        updated_at:new Date().toISOString(),
+      })
+      .eq('product_id',productKey)
+      .eq('channel_key','bing_webmaster')
     const endpoint = (method:string) =>
       `${BING_JSON_BASE}/${method}?siteUrl=${encodeURIComponent(siteUrl)}&apikey=${encodeURIComponent(apiKey)}`
 

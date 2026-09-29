@@ -4949,9 +4949,11 @@ function CommandCenter() {
   const [ga4BlockedProducts, setGa4BlockedProducts] = React.useState([])
   const [gscLiveProducts, setGscLiveProducts] = React.useState([])
   const [clarityRows, setClarityRows] = React.useState([])
+  const [portfolioCrmStatus, setPortfolioCrmStatus] = React.useState({})
+  const [portfolioCrmCheckedAt, setPortfolioCrmCheckedAt] = React.useState(null)
   React.useEffect(() => {
     supabase.from('romylabs_products')
-      .select('product_id,name,accent_color,icon_ref,sort_order,lifecycle,public,app_url,marketing_url')
+      .select('product_id,name,accent_color,icon_ref,sort_order,lifecycle,public,app_url,marketing_url,supabase_url,industry,short_desc,description')
       .eq('active', true)
       .order('sort_order')
       .then(({ data, error }) => {
@@ -4959,6 +4961,48 @@ function CommandCenter() {
         if (data?.length) setReportingProducts(data.filter(p => String(p.lifecycle || '').toLowerCase() !== 'internal'))
       })
   }, [])
+
+  React.useEffect(() => {
+    const keys = reportingProducts
+      .filter(p => p.product_id && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
+      .map(p => p.product_id)
+    if (!keys.length) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const token = sessionData?.session?.access_token
+        if (!token) throw new Error('Admin session unavailable')
+        const res = await fetch('https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy', {
+          method:'POST',
+          headers:{ Authorization:`Bearer ${token}`, 'Content-Type':'application/json' },
+          body:JSON.stringify({ action:'metrics_batch', products:keys }),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok || body?.ok === false) throw new Error(body?.error || `Metrics batch failed (${res.status})`)
+        const checkedAt = new Date().toISOString()
+        const next = {}
+        for (const key of keys) {
+          const item = body?.results?.[key]
+          const ok = !!item && !item.error && Number(item.status || 0) >= 200 && Number(item.status || 0) < 300 && item.data?.ok !== false
+          next[key] = ok
+            ? { status:'connected', checkedAt, error:null }
+            : { status:'partial', checkedAt, error:item?.error || item?.data?.error || 'Metrics endpoint unavailable' }
+        }
+        if (!cancelled) {
+          setPortfolioCrmStatus(next)
+          setPortfolioCrmCheckedAt(checkedAt)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const checkedAt = new Date().toISOString()
+          setPortfolioCrmStatus(Object.fromEntries(keys.map(key => [key,{status:'partial',checkedAt,error:String(e?.message || e)}])))
+          setPortfolioCrmCheckedAt(checkedAt)
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [reportingProducts])
 
   const fetchCrmProductMetrics = React.useCallback(async (productKey) => {
     if (!productKey) return null
@@ -5345,10 +5389,11 @@ function CommandCenter() {
             const buildN     = products.filter(p => p.lifecycleStage === 'building').length
             const researchN  = products.filter(p => p.lifecycleStage === 'research').length
             const internalN  = products.filter(p => p.lifecycleStage === 'internal').length
-            const connectedN = products.filter(p => p.connection === 'connected').length
-            const partialN   = products.filter(p => p.connection === 'partial').length
-            const noConnN    = products.filter(p => p.connection === 'not_connected').length
-            const attentionN = products.filter(p => p.connection === 'partial').length +
+            const statusFor = p => portfolioCrmStatus[p.key]?.status || (reportingProducts.some(r=>r.product_id===p.key) ? 'checking' : p.connection)
+            const connectedN = products.filter(p => statusFor(p) === 'connected').length
+            const partialN   = products.filter(p => statusFor(p) === 'partial').length
+            const noConnN    = products.filter(p => statusFor(p) === 'not_connected').length
+            const attentionN = products.filter(p => statusFor(p) === 'partial').length +
                                products.filter(p => p.lifecycleStage === 'coming' && !p.metricsUrl).length
             return (
               <div style={{ marginBottom:24 }}>
@@ -5431,6 +5476,13 @@ function CommandCenter() {
                     const analyticsStatus = analyticsConnected
                       ? '🟢 Connected'
                       : (isPublic ? '🟡 Pending' : 'N/A')
+                    const liveCrm = portfolioCrmStatus[p.key]
+                    const effectiveConnection = liveCrm?.status || (registryRow ? 'checking' : p.connection)
+                    const milestone = effectiveConnection === 'connected'
+                      ? '—'
+                      : effectiveConnection === 'checking'
+                        ? 'Checking live CRM metrics…'
+                        : (p.nextMilestone || (effectiveConnection === 'partial' ? 'Restore live CRM metrics feed' : '—'))
                     return (
                       <div key={p.key} style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr 1fr .8fr .8fr .8fr 1.2fr',
                         padding:'10px 16px', borderBottom: i < products.length-1 ? '1px solid rgba(99,102,241,.06)' : 'none',
@@ -5449,8 +5501,12 @@ function CommandCenter() {
                             {LIFECYCLE_LABEL[lc] || lc}
                           </span>
                         </div>
-                        <div style={{ fontSize:11, color: p.connection==='connected' ? '#10b981' : p.connection==='partial' ? '#f59e0b' : '#475569' }}>
-                          {CONN_DOT[p.connection]} {p.connection === 'connected' ? 'Connected' : p.connection === 'partial' ? 'Partial' : 'Not Connected'}
+                        <div
+                          title={liveCrm?.error || (portfolioCrmCheckedAt ? `Checked ${new Date(portfolioCrmCheckedAt).toLocaleString()}` : '')}
+                          style={{ fontSize:11, color: effectiveConnection==='connected' ? '#10b981' : effectiveConnection==='partial' ? '#f59e0b' : '#64748b' }}>
+                          {effectiveConnection === 'checking'
+                            ? '◌ Checking…'
+                            : `${CONN_DOT[effectiveConnection] || '⚪'} ${effectiveConnection === 'connected' ? 'Connected' : effectiveConnection === 'partial' ? 'Partial' : 'Not Connected'}`}
                         </div>
                         <div style={{ fontSize:11, color: commercialLive ? '#10b981' : '#475569' }}>
                           {commercialLive ? 'Live' : '—'}
@@ -5460,7 +5516,7 @@ function CommandCenter() {
                         </div>
                         <div style={{ fontSize:11, color:'#64748b' }}>{analyticsStatus}</div>
                         <div style={{ fontSize:10, color:'#6366f1', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {p.nextMilestone || '—'}
+                          {milestone}
                         </div>
                       </div>
                     )
@@ -5480,9 +5536,18 @@ function CommandCenter() {
           {(() => {
             const products = mergeProductRegistry(reportingProducts)
             const attention = []
-            // Partial connections — metrics not deployed
-            products.filter(p => p.connection === 'partial').forEach(p => {
-              attention.push({ product: p.label, icon: '🟡', item: 'Platform metrics deploy pending', priority: 'medium' })
+            // Partial connections come from the same live hub-proxy batch used by the portfolio.
+            products.filter(p => {
+              const liveStatus = portfolioCrmStatus[p.key]?.status
+              return liveStatus ? liveStatus === 'partial' : p.connection === 'partial'
+            }).forEach(p => {
+              const liveError = portfolioCrmStatus[p.key]?.error
+              attention.push({
+                product: p.label,
+                icon: '🟡',
+                item: liveError ? `CRM metrics partial — ${liveError}` : 'CRM metrics partial',
+                priority: 'medium',
+              })
             })
             // Coming Soon with no marketing domain
             products.filter(p => p.lifecycleStage === 'coming').forEach(p => {
@@ -6972,8 +7037,8 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
       if (data?.ok) {
         if (oauthProduct !== selectedPid) selectProduct(oauthProduct)
-        showToast(oauthProduct === 'arcvena'
-          ? 'Arcvena LinkedIn company page connected ✓'
+        showToast(['taxres_crm','arcvena'].includes(oauthProduct)
+          ? `${oauthProduct === 'taxres_crm' ? 'TaxRes CRM' : 'Arcvena'} LinkedIn company page connected ✓`
           : `Connected as ${data.name} ✓`)
         load()
       } else {
@@ -7032,7 +7097,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const state = crypto.randomUUID() + crypto.randomUUID()
     sessionStorage.setItem('linkedin_oauth_state', state)
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
-    const scope = selectedPid === 'arcvena'
+    const scope = ['taxres_crm','arcvena'].includes(selectedPid)
       ? 'openid profile w_organization_social'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
@@ -7146,7 +7211,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
   // Status badges for selected product
   const autopilotOn = settings?.autopilot === true
-  const liConnected = connection?.connected === true
+  const companyPageRequired = ['taxres_crm','arcvena'].includes(selectedPid)
+  const companyPageConnected = connection?.connected === true && connection?.expired !== true &&
+    (!companyPageRequired || (connection.publish_target_type === 'ORGANIZATION' && !!connection.linkedin_organization_id))
+  const liConnected = companyPageConnected
   // Integration status: always 'pending' by default — live connections override in the integration layer
   const seoStatus = 'pending'
   const mktStatus = 'pending'
@@ -7285,17 +7353,20 @@ function LinkedInPublisher({ embeddedMode = false }) {
             </div>
 
             {loading ? <div style={{ fontSize:12, color:'#475569' }}>Checking…</div>
-            : connection?.connected ? (
+            : connection?.connected && companyPageConnected ? (
               <div style={{ ...CC2.card, padding:'10px 14px', marginBottom:10 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
                   <span style={{ width:7, height:7, borderRadius:'50%', background:'#10b981', display:'inline-block' }} />
-                  <span style={{ fontSize:11, fontWeight:700, color:'#10b981' }}>{connection.display_name}</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#10b981' }}>
+                    {companyPageRequired ? `${selectedProduct?.name || selectedPid} company page` : connection.display_name}
+                  </span>
                 </div>
                 <div style={{ fontSize:10, color:'#475569', marginBottom:4 }}>
                   Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
                 </div>
                 <div style={{ fontSize:9, color:'#64748b', marginBottom:8, lineHeight:1.4 }}>
-                  Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
+                  Target: {connection.publish_target_type === 'ORGANIZATION' ? `Company page · organization ${connection.linkedin_organization_id}` : 'Personal profile'}
+                  <br/>Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
                 </div>
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={disconnect} style={{ ...S.btn('ghost'), fontSize:10, padding:'4px 10px', color:'#ef4444', borderColor:'rgba(239,68,68,.3)' }}>
@@ -7305,8 +7376,12 @@ function LinkedInPublisher({ embeddedMode = false }) {
               </div>
             ) : (
               <div style={{ ...CC2.card, padding:'12px', marginBottom:10 }}>
-                <div style={{ fontSize:11, color:'#94a3b8', marginBottom:8 }}>
-                  Connect LinkedIn to publish posts
+                <div style={{ fontSize:11, color: companyPageRequired && connection?.connected ? '#f59e0b' : '#94a3b8', marginBottom:8 }}>
+                  {companyPageRequired && connection?.connected
+                    ? 'Reconnect LinkedIn — the current authorization targets your personal profile. Company-page authorization is required.'
+                    : companyPageRequired
+                      ? `Connect LinkedIn and authorize the ${selectedProduct?.name || selectedPid} company page`
+                      : 'Connect LinkedIn to publish posts'}
                 </div>
                 <button onClick={connectLinkedIn} style={{ ...S.btn('primary'), fontSize:11, padding:'7px 14px', width:'100%' }}>
                   Connect LinkedIn

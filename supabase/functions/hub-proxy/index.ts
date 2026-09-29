@@ -200,6 +200,14 @@ Deno.serve(async (req) => {
     return { url: `${base}/functions/v1/platform-metrics`, standardExternal: true }
   }
 
+  const SUPPORT_SECRET_ENV: Record<string, string> = {
+    camvella: 'CAMVELLA_SUPPORT_SECRET',
+    arcvena: 'ARCVENA_SUPPORT_SECRET',
+    groundivo: 'GROUNDIVO_SUPPORT_SECRET',
+    oculivo: 'OCULIVO_SUPPORT_SECRET',
+    restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET',
+  }
+
   async function fetchProductMetrics(productKey: string) {
     const resolved = await resolveProductEndpoint(productKey)
     const targetUrl = resolved.url
@@ -211,12 +219,24 @@ Deno.serve(async (req) => {
       const productHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
       }
-      if (productKey === 'arcvena') {
-        const arcvenaSupportSecret = Deno.env.get('ARCVENA_SUPPORT_SECRET')
-        if (!arcvenaSupportSecret) {
-          return { status: 503, data: null, error: 'Arcvena proxy credential not configured' }
-        }
-        productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
+
+      // Keep this authentication map aligned with sync-product-offices, which is
+      // the canonical live contract for each CRM's platform-metrics endpoint.
+      if (productKey === 'camvella') {
+        const productSecret = Deno.env.get(SUPPORT_SECRET_ENV.camvella) || ''
+        if (!productSecret) return { status: 503, data: null, error: 'Camvella metrics credential not configured' }
+        productHeaders['x-romylabs-support-secret'] = productSecret
+      } else if (productKey === 'bocasync') {
+        productHeaders['x-hub-secret'] = hubSecret
+      } else if (productKey === 'arcvena') {
+        const productSecret = Deno.env.get(SUPPORT_SECRET_ENV.arcvena) || ''
+        if (productSecret) productHeaders['x-arcvena-support-secret'] = productSecret
+        else productHeaders['x-hub-secret'] = hubSecret
+      } else if (productKey === 'groundivo' || productKey === 'oculivo' || productKey === 'restore_relay') {
+        const envKey = SUPPORT_SECRET_ENV[productKey]
+        const productSecret = envKey ? (Deno.env.get(envKey) || '') : ''
+        if (productSecret) productHeaders['x-romylabs-support-secret'] = productSecret
+        else productHeaders['x-hub-secret'] = hubSecret
       } else if (productKey === 'nashville') {
         const nashvilleToken = await getInternalSecret('nashville_metrics_token')
         if (!nashvilleToken) {
@@ -225,8 +245,10 @@ Deno.serve(async (req) => {
         productHeaders['x-romylabs-internal-token'] = nashvilleToken
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (resolved.standardExternal) {
-        if (!jwt) return { status: 401, data: null, error: `${productKey} requires an authenticated user session` }
-        productHeaders['Authorization'] = `Bearer ${jwt}`
+        // Standard future RomyLabs product metrics are service-to-service by
+        // default. Individual products can be promoted into the explicit map
+        // above when they intentionally validate the central user session.
+        productHeaders['x-hub-secret'] = hubSecret
       } else {
         productHeaders['x-hub-secret'] = hubSecret
       }
