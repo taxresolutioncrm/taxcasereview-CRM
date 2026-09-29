@@ -7200,7 +7200,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
   ]
 
   // Status badges for selected product
-  const autopilotOn = settings?.autopilot === true
+  const companyPageRequired = ['taxres_crm','arcvena'].includes(selectedPid)
+  const companyPageReady = !companyPageRequired || (connection?.connected === true && connection?.publish_target_type === 'ORGANIZATION' && !!connection?.linkedin_organization_id)
+  const autopilotOn = settings?.autopilot === true && companyPageReady
   const liConnected = connection?.connected === true
   // Integration status: always 'pending' by default — live connections override in the integration layer
   const seoStatus = 'pending'
@@ -7523,9 +7525,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
                   </div>
                   <div style={{ marginBottom:12 }}>
                     <label style={{ fontSize:12, color:'#94a3b8', display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
-                      <input type="checkbox" checked={settings.autopilot}
+                      <input type="checkbox" checked={settings.autopilot && companyPageReady}
+                        disabled={!companyPageReady}
                         onChange={e => setSettings(s => ({...s, autopilot: e.target.checked}))} />
-                      <span>Autopilot enabled</span>
+                      <span>{companyPageReady ? 'Autopilot enabled' : 'Connect the product company page before enabling autopilot'}</span>
                     </label>
                   </div>
                   <div style={{ marginBottom:12 }}>
