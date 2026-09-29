@@ -5552,16 +5552,9 @@ function CommandCenter() {
             products.filter(p => p.lifecycleStage === 'internal').forEach(p => {
               attention.push({ product: p.label, icon: '⚪', item: 'Rebrand/migration decision pending before public launch', priority: 'low' })
             })
-            // Known external blockers from data state
-            const externalBlockers = [
-              { product: 'TaxRes', icon: '🔴', item: 'GSC deceptive pages review pending (taxrescrm.net)', priority: 'high' },
-              { product: 'TaxRes', icon: '🟡', item: 'CloudCPA contract not yet signed', priority: 'medium' },
-              { product: 'TaxRes', icon: '🟡', item: 'Nashville SignalWire credentials pending', priority: 'medium' },
-              { product: 'Arcvena', icon: '🔴', item: 'arcvena.com DNS cutover not complete', priority: 'high' },
-              { product: 'Arcvena', icon: '🟡', item: 'CRM UI polish — GH Actions minutes exhausted (Sept 1)', priority: 'medium' },
-              { product: 'Camvella', icon: '🟡', item: 'GA4 Data API reporting not yet wired to RomyLabs hub', priority: 'medium' },
-            ]
-            const all = [...attention, ...externalBlockers]
+            // Keep this list evidence-based. Historical launch notes do not belong
+            // in a live operational dashboard; only current registry/metrics state is shown.
+            const all = [...attention]
               .sort((a,b) => { const p = {high:0,medium:1,low:2}; return p[a.priority]-p[b.priority] })
             return (
               <div style={{ marginBottom:24 }}>
