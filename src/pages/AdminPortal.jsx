@@ -7287,11 +7287,11 @@ function LinkedInPublisher({ embeddedMode = false }) {
           {connection !== null && (
             <span style={{
               fontSize:10, fontWeight:700, padding:'3px 9px', borderRadius:20,
-              background: liConnected ? 'rgba(99,102,241,.15)' : 'rgba(239,68,68,.1)',
-              color: liConnected ? '#a5b4fc' : '#94a3b8',
-              border: `1px solid ${liConnected ? 'rgba(99,102,241,.3)' : 'rgba(239,68,68,.2)'}`,
+              background: liConnected && companyPageReady ? 'rgba(99,102,241,.15)' : 'rgba(239,68,68,.1)',
+              color: liConnected && companyPageReady ? '#a5b4fc' : '#ef4444',
+              border: `1px solid ${liConnected && companyPageReady ? 'rgba(99,102,241,.3)' : 'rgba(239,68,68,.2)'}`,
             }}>
-              LinkedIn {liConnected ? `Connected` : 'Not Connected'}
+              LinkedIn {liConnected ? (companyPageReady ? 'Company Page Connected' : 'Wrong Publish Target') : 'Not Connected'}
             </span>
           )}
           {seoStatus && seoStatus !== 'unknown' && (
@@ -7347,7 +7347,12 @@ function LinkedInPublisher({ embeddedMode = false }) {
                 <div style={{ fontSize:9, color:'#64748b', marginBottom:8, lineHeight:1.4 }}>
                   Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
                 </div>
-                <div style={{ display:'flex', gap:6 }}>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  {['taxres_crm','arcvena'].includes(selectedPid) && connection.publish_target_type !== 'ORGANIZATION' && (
+                    <button onClick={connectLinkedIn} style={{ ...S.btn('primary'), fontSize:10, padding:'4px 10px' }}>
+                      Reconnect Company Page
+                    </button>
+                  )}
                   <button onClick={disconnect} style={{ ...S.btn('ghost'), fontSize:10, padding:'4px 10px', color:'#ef4444', borderColor:'rgba(239,68,68,.3)' }}>
                     Disconnect
                   </button>
