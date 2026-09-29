@@ -18,7 +18,11 @@ select cron.schedule(
   $$
   select net.http_post(
     url := 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/linkedin-scheduler',
-    headers := '{"Content-Type":"application/json"}'::jsonb,
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'x-internal-cron-token',
+      (select decrypted_secret from vault.decrypted_secrets where name='tcr_internal_cron_token' limit 1)
+    ),
     body := '{"action":"run"}'::jsonb
   );
   $$
