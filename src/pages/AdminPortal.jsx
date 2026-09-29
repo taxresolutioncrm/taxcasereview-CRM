@@ -5478,7 +5478,7 @@ function CommandCenter() {
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
                   {[
                     { label:'🟢 Connected', val:connectedN, color:'#10b981', note:'live metrics', filter:'connected' },
-                    { label:'🟡 Partial',   val:partialN,   color:'#f59e0b', note:'metrics deploy pending', filter:'partial' },
+                    { label:'🟡 Partial',   val:partialN,   color:'#f59e0b', note:'live metrics need attention', filter:'partial' },
                     { label:'⚪ Not Connected', val:noConnN, color:'#64748b', note:'planned / research', filter:'not_connected' },
                   ].map(k => (
                     <div key={k.label} role="button" tabIndex={0}
