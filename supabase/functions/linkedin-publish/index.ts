@@ -7,6 +7,32 @@ const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+const ORG_PRODUCTS = new Set(['taxres_crm','arcvena'])
+const KNOWN_ORG_IDS: Record<string,string> = { arcvena:'146118085' }
+const ORG_NAME_MATCHERS: Record<string,RegExp> = {
+  taxres_crm: /tax\s*res(?:olution)?\s*crm/i,
+  arcvena: /arcvena/i,
+}
+
+async function resolveOrganization(accessToken:string, productId:string){
+  const known=KNOWN_ORG_IDS[productId]
+  const aclRes=await fetch('https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED',{
+    headers:{Authorization:`Bearer ${accessToken}`,'X-Restli-Protocol-Version':'2.0.0'}
+  })
+  const acl=await aclRes.json().catch(()=>({}))
+  if(!aclRes.ok) return {id:null,error:'Unable to read LinkedIn organization admin permissions',detail:acl}
+  const urns=(acl?.elements||[]).map((x:any)=>String(x?.organization||'')).filter((x:string)=>x.startsWith('urn:li:organization:'))
+  const ids=[...new Set(urns.map((u:string)=>u.split(':').pop()).filter(Boolean))] as string[]
+  if(known && ids.includes(known)) return {id:known,error:null}
+  const matcher=ORG_NAME_MATCHERS[productId]
+  for(const id of ids){
+    const orgRes=await fetch(`https://api.linkedin.com/v2/organizations/${id}`,{headers:{Authorization:`Bearer ${accessToken}`,'X-Restli-Protocol-Version':'2.0.0'}})
+    const org=await orgRes.json().catch(()=>({}))
+    const name=String(org?.localizedName||org?.name?.localized?.en_US||'')
+    if(orgRes.ok && matcher?.test(name)) return {id,error:null}
+  }
+  return {id:null,error:`No approved LinkedIn company-page admin target matched ${productId}`,detail:{organization_ids:ids}}
+}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -78,17 +104,23 @@ Deno.serve(async (req) => {
     const profile = await profileRes.json()
 
     const grantedScopes = String(tokenData.scope || '')
-    const isArcvena = productId === 'arcvena'
-    if (isArcvena && !grantedScopes.split(/[ ,]+/).includes('w_organization_social')) {
+    const requiresOrganization = ORG_PRODUCTS.has(productId)
+    if (requiresOrganization && !grantedScopes.split(/[ ,]+/).includes('w_organization_social')) {
       return json({
         ok: false,
-        error: 'Arcvena requires LinkedIn organization posting permission',
+        error: `${productId} requires LinkedIn organization posting permission`,
         required_scope: 'w_organization_social',
       }, 403)
     }
 
-    const publishTargetType = isArcvena ? 'ORGANIZATION' : 'PERSON'
-    const linkedinOrganizationId = isArcvena ? '146118085' : null
+    let publishTargetType = 'PERSON'
+    let linkedinOrganizationId: string | null = null
+    if (requiresOrganization) {
+      const resolved = await resolveOrganization(tokenData.access_token, productId)
+      if (!resolved.id) return json({ok:false,error:resolved.error,detail:resolved.detail||null},409)
+      publishTargetType = 'ORGANIZATION'
+      linkedinOrganizationId = resolved.id
+    }
 
     await supabase.from('linkedin_connections').upsert({
       tenant_id: tenantId,
@@ -222,6 +254,9 @@ Deno.serve(async (req) => {
     }
 
     const targetType = conn.publish_target_type || 'PERSON'
+    if (ORG_PRODUCTS.has(productId) && targetType !== 'ORGANIZATION') {
+      return json({ ok:false, error:'Company-page publishing is required for this product. Reconnect LinkedIn with organization permission.' },409)
+    }
     const author = targetType === 'ORGANIZATION'
       ? (conn.linkedin_organization_id ? `urn:li:organization:${conn.linkedin_organization_id}` : null)
       : (conn.linkedin_person_id ? `urn:li:person:${conn.linkedin_person_id}` : null)
