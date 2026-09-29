@@ -7212,7 +7212,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   // Status badges for selected product
   const autopilotOn = settings?.autopilot === true
   const companyPageRequired = ['taxres_crm','arcvena'].includes(selectedPid)
-  const companyPageConnected = connection?.connected === true &&
+  const companyPageConnected = connection?.connected === true && connection?.expired !== true &&
     (!companyPageRequired || (connection.publish_target_type === 'ORGANIZATION' && !!connection.linkedin_organization_id))
   const liConnected = companyPageConnected
   // Integration status: always 'pending' by default — live connections override in the integration layer
