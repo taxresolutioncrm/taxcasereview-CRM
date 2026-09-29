@@ -7037,8 +7037,8 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
       if (data?.ok) {
         if (oauthProduct !== selectedPid) selectProduct(oauthProduct)
-        showToast(oauthProduct === 'arcvena'
-          ? 'Arcvena LinkedIn company page connected ✓'
+        showToast(['taxres_crm','arcvena'].includes(oauthProduct)
+          ? `${oauthProduct === 'taxres_crm' ? 'TaxRes CRM' : 'Arcvena'} LinkedIn company page connected ✓`
           : `Connected as ${data.name} ✓`)
         load()
       } else {
@@ -7097,7 +7097,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const state = crypto.randomUUID() + crypto.randomUUID()
     sessionStorage.setItem('linkedin_oauth_state', state)
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
-    const scope = selectedPid === 'arcvena'
+    const scope = ['taxres_crm','arcvena'].includes(selectedPid)
       ? 'openid profile w_organization_social'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
@@ -7211,7 +7211,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
   // Status badges for selected product
   const autopilotOn = settings?.autopilot === true
-  const liConnected = connection?.connected === true
+  const companyPageRequired = ['taxres_crm','arcvena'].includes(selectedPid)
+  const companyPageConnected = connection?.connected === true &&
+    (!companyPageRequired || (connection.publish_target_type === 'ORGANIZATION' && !!connection.linkedin_organization_id))
+  const liConnected = companyPageConnected
   // Integration status: always 'pending' by default — live connections override in the integration layer
   const seoStatus = 'pending'
   const mktStatus = 'pending'
@@ -7350,17 +7353,20 @@ function LinkedInPublisher({ embeddedMode = false }) {
             </div>
 
             {loading ? <div style={{ fontSize:12, color:'#475569' }}>Checking…</div>
-            : connection?.connected ? (
+            : connection?.connected && companyPageConnected ? (
               <div style={{ ...CC2.card, padding:'10px 14px', marginBottom:10 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
                   <span style={{ width:7, height:7, borderRadius:'50%', background:'#10b981', display:'inline-block' }} />
-                  <span style={{ fontSize:11, fontWeight:700, color:'#10b981' }}>{connection.display_name}</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#10b981' }}>
+                    {companyPageRequired ? `${selectedProduct?.name || selectedPid} company page` : connection.display_name}
+                  </span>
                 </div>
                 <div style={{ fontSize:10, color:'#475569', marginBottom:4 }}>
                   Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
                 </div>
                 <div style={{ fontSize:9, color:'#64748b', marginBottom:8, lineHeight:1.4 }}>
-                  Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
+                  Target: {connection.publish_target_type === 'ORGANIZATION' ? `Company page · organization ${connection.linkedin_organization_id}` : 'Personal profile'}
+                  <br/>Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
                 </div>
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={disconnect} style={{ ...S.btn('ghost'), fontSize:10, padding:'4px 10px', color:'#ef4444', borderColor:'rgba(239,68,68,.3)' }}>
@@ -7370,8 +7376,12 @@ function LinkedInPublisher({ embeddedMode = false }) {
               </div>
             ) : (
               <div style={{ ...CC2.card, padding:'12px', marginBottom:10 }}>
-                <div style={{ fontSize:11, color:'#94a3b8', marginBottom:8 }}>
-                  Connect LinkedIn to publish posts
+                <div style={{ fontSize:11, color: companyPageRequired && connection?.connected ? '#f59e0b' : '#94a3b8', marginBottom:8 }}>
+                  {companyPageRequired && connection?.connected
+                    ? 'Reconnect LinkedIn — the current authorization targets your personal profile. Company-page authorization is required.'
+                    : companyPageRequired
+                      ? `Connect LinkedIn and authorize the ${selectedProduct?.name || selectedPid} company page`
+                      : 'Connect LinkedIn to publish posts'}
                 </div>
                 <button onClick={connectLinkedIn} style={{ ...S.btn('primary'), fontSize:11, padding:'7px 14px', width:'100%' }}>
                   Connect LinkedIn
