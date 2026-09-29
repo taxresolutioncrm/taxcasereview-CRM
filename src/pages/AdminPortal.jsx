@@ -7039,8 +7039,8 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
       if (data?.ok) {
         if (oauthProduct !== selectedPid) selectProduct(oauthProduct)
-        showToast(oauthProduct === 'arcvena'
-          ? 'Arcvena LinkedIn company page connected ✓'
+        showToast((oauthProduct === 'taxres_crm' || oauthProduct === 'arcvena')
+          ? `${oauthProduct === 'arcvena' ? 'Arcvena' : 'TaxRes CRM'} LinkedIn company page connected ✓`
           : `Connected as ${data.name} ✓`)
         load()
       } else {
@@ -7099,8 +7099,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const state = crypto.randomUUID() + crypto.randomUUID()
     sessionStorage.setItem('linkedin_oauth_state', state)
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
-    const scope = selectedPid === 'arcvena'
-      ? 'openid profile w_organization_social'
+    const companyPageProduct = selectedPid === 'taxres_crm' || selectedPid === 'arcvena'
+    const scope = companyPageProduct
+      ? 'openid profile w_organization_social rw_organization_admin'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
       response_type: 'code', client_id: LINKEDIN_CLIENT_ID,
