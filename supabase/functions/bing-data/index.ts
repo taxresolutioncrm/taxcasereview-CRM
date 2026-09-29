@@ -81,10 +81,25 @@ function aggregateBy(items:any[], labelKeys:string[]){
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const url = Deno.env.get('SUPABASE_URL') ?? ''
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const supabase = createClient(url, serviceKey, { auth:{persistSession:false,autoRefreshToken:false} })
+
+    const auth = req.headers.get('authorization') || ''
+    if (!auth.toLowerCase().startsWith('bearer ') || !anonKey) {
+      return new Response(JSON.stringify({ connected:false,error:'unauthorized' }), {
+        status:401, headers:{...corsHeaders,'Content-Type':'application/json'}
+      })
+    }
+    const userClient = createClient(url, anonKey, { global:{headers:{Authorization:auth}}, auth:{persistSession:false,autoRefreshToken:false} })
+    const { data:{user}, error:authError } = await userClient.auth.getUser()
+    const allowed = new Set(['romy@taxcasereview.org','romy@romylabs.com','info@romylabs.com','romy@taxrescrm.net'])
+    if (authError || !user?.email || !allowed.has(user.email.toLowerCase())) {
+      return new Response(JSON.stringify({ connected:false,error:'forbidden' }), {
+        status:403, headers:{...corsHeaders,'Content-Type':'application/json'}
+      })
+    }
 
     const { data: settings } = await supabase.from('settings')
       .select('bing_api_key, bing_site_url')
