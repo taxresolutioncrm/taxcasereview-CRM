@@ -4963,8 +4963,7 @@ function CommandCenter() {
   }, [])
 
   // Product Portfolio CRM status must reflect the live hub-proxy result, not
-  // stale hard-coded labels. One authenticated batch request checks every
-  // active non-corporate CRM and records the result independently.
+  // stale hard-coded labels.
   React.useEffect(() => {
     const keys = reportingProducts
       .filter(p => p.product_id && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
@@ -5503,8 +5502,10 @@ function CommandCenter() {
                             {LIFECYCLE_LABEL[lc] || lc}
                           </span>
                         </div>
-                        <div style={{ fontSize:11, color: effectiveConnection==='connected' ? '#10b981' : effectiveConnection==='partial' ? '#f59e0b' : '#64748b' }}
-                          title={liveCrm?.error || (portfolioCrmCheckedAt ? `Checked ${new Date(portfolioCrmCheckedAt).toLocaleString()}` : '')}>
+                        <div
+                          style={{ fontSize:11, color: effectiveConnection==='connected' ? '#10b981' : effectiveConnection==='partial' ? '#f59e0b' : '#64748b' }}
+                          title={liveCrm?.error || (portfolioCrmCheckedAt ? `Checked ${new Date(portfolioCrmCheckedAt).toLocaleString()}` : '')}
+                        >
                           {effectiveConnection === 'checking'
                             ? '◌ Checking…'
                             : `${CONN_DOT[effectiveConnection] || '⚪'} ${effectiveConnection === 'connected' ? 'Connected' : effectiveConnection === 'partial' ? 'Partial' : 'Not Connected'}`}
@@ -5538,7 +5539,6 @@ function CommandCenter() {
             const products = mergeProductRegistry(reportingProducts)
             const attention = []
             // Partial connections — use the same live hub-proxy status as Product Portfolio.
-            // Do not surface stale hard-coded connection labels as active warnings.
             products.filter(p => {
               const liveStatus = portfolioCrmStatus[p.key]?.status
               return liveStatus ? liveStatus === 'partial' : p.connection === 'partial'
