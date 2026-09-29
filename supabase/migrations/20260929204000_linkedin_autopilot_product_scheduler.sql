@@ -2,14 +2,19 @@
 -- Generation is database-scheduled (no GitHub Actions minutes) and publishing
 -- remains fail-closed unless the matching product has a verified ORGANIZATION target.
 
+update public.linkedin_settings
+set autopilot=true, timezone='America/New_York', updated_at=now()
+where tenant_id='a0000000-0000-0000-0000-000000000001'
+  and product_id in ('taxres_crm','arcvena');
+
 insert into public.linkedin_settings (tenant_id,product_id,autopilot,timezone,updated_at)
-values
-  ('a0000000-0000-0000-0000-000000000001','taxres_crm',true,'America/New_York',now()),
-  ('a0000000-0000-0000-0000-000000000001','arcvena',true,'America/New_York',now())
-on conflict (tenant_id,product_id) do update
-set autopilot=excluded.autopilot,
-    timezone=excluded.timezone,
-    updated_at=excluded.updated_at;
+select 'a0000000-0000-0000-0000-000000000001', v.product_id, true, 'America/New_York', now()
+from (values ('taxres_crm'),('arcvena')) as v(product_id)
+where not exists (
+  select 1 from public.linkedin_settings s
+  where s.tenant_id='a0000000-0000-0000-0000-000000000001'
+    and s.product_id=v.product_id
+);
 
 do $$
 declare r record;
