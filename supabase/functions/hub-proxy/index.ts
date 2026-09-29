@@ -215,7 +215,6 @@ Deno.serve(async (req) => {
         camvella: 'CAMVELLA_SUPPORT_SECRET',
         arcvena: 'ARCVENA_SUPPORT_SECRET',
         groundivo: 'GROUNDIVO_SUPPORT_SECRET',
-        oculivo: 'OCULIVO_SUPPORT_SECRET',
         restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET',
       }
       if (productKey === 'nashville') {
