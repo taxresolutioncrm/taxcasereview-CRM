@@ -105,11 +105,12 @@ Deno.serve(async (req) => {
 
     const grantedScopes = String(tokenData.scope || '')
     const requiresOrganization = ORG_PRODUCTS.has(productId)
-    if (requiresOrganization && !grantedScopes.split(/[ ,]+/).includes('w_organization_social')) {
+    const scopeSet = new Set(grantedScopes.split(/[ ,]+/).filter(Boolean))
+    if (requiresOrganization && (!scopeSet.has('w_organization_social') || (!scopeSet.has('r_organization_admin') && !scopeSet.has('rw_organization_admin')))) {
       return json({
         ok: false,
-        error: `${productId} requires LinkedIn organization posting permission`,
-        required_scope: 'w_organization_social',
+        error: `${productId} requires LinkedIn company-page posting and organization-admin permission`,
+        required_scopes: ['w_organization_social','r_organization_admin'],
       }, 403)
     }
 
@@ -129,7 +130,7 @@ Deno.serve(async (req) => {
       display_name: profile.name || profile.email || 'LinkedIn Account',
       access_token: tokenData.access_token,
       expires_at: new Date(Date.now() + (tokenData.expires_in || 5184000) * 1000).toISOString(),
-      scopes: grantedScopes || (isArcvena ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
+      scopes: grantedScopes || (requiresOrganization ? 'openid,profile,w_organization_social,r_organization_admin' : 'openid,profile,w_member_social'),
       publish_target_type: publishTargetType,
       linkedin_organization_id: linkedinOrganizationId,
       updated_at: new Date().toISOString(),
