@@ -3665,10 +3665,55 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   }
 
   function getLifecycle(p) { return LIFECYCLE_LABEL[p.lifecycleStage] || { label: p.lifecycleStage, color: '#64748b' } }
-  function getConn(p)      { return CONN_LABEL[p.connection] || { label: p.connection, color: '#64748b', dot: '⚪' } }
+  function connectionFor(p) {
+    const snapshot = liveData[p.key]
+    if (snapshot) return snapshot.ok === false ? 'partial' : 'connected'
+    return p.connection || 'not_connected'
+  }
+  function getConn(p) {
+    const status = connectionFor(p)
+    return CONN_LABEL[status] || { label: status, color: '#64748b', dot: '⚪' }
+  }
 
-  // ── Portfolio counts (from registry only — no live data needed) ─────────
+  // ── Portfolio counts and live connection health ─────────────────────────
   const products = mergeProductRegistry(registryProducts)
+  const productMetricsKey = products
+    .filter(p => p.metricsUrl && ['live','available'].includes(p.lifecycleStage) && p.key !== 'romylabs')
+    .map(p => p.key).sort().join('|')
+
+  useEffect(() => {
+    if (!productMetricsKey) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const refreshed = await supabase.auth.refreshSession()
+        const session = refreshed?.data?.session || (await supabase.auth.getSession())?.data?.session
+        if (!session?.access_token) throw new Error('Not authenticated')
+        const keys = productMetricsKey.split('|').filter(Boolean)
+        const res = await fetch('https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy', {
+          method:'POST',
+          headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},
+          body:JSON.stringify({action:'metrics_batch',products:keys}),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok || body?.ok === false) throw new Error(body?.error || `Metrics batch failed (${res.status})`)
+        const snapshots = {}
+        for (const key of keys) {
+          const item = body?.results?.[key]
+          snapshots[key] = item && !item.error && Number(item.status||0)>=200 && Number(item.status||0)<300 && item.data?.ok !== false
+            ? item.data
+            : { ok:false, error:item?.error || item?.data?.error || 'Live metrics endpoint unavailable' }
+        }
+        if (!cancelled) setLiveData(prev => ({...prev,...snapshots}))
+      } catch (e) {
+        if (!cancelled) {
+          const keys = productMetricsKey.split('|').filter(Boolean)
+          setLiveData(prev => ({...prev,...Object.fromEntries(keys.map(key => [key,{ok:false,error:String(e?.message||e)}]))}))
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [productMetricsKey, supabase])
   const staticTenants = PRODUCT_REGISTRY.filter(p => p.isTenant)
   const tenantKeys = new Set(staticTenants.map(p => p.key))
   const tenants = [...staticTenants, ...registryTenants.filter(p => !tenantKeys.has(p.key))]
@@ -3677,8 +3722,8 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   const buildingCount = products.filter(p => p.lifecycleStage === 'building').length
   const researchCount = products.filter(p => p.lifecycleStage === 'research').length
   const internalCount = products.filter(p => p.lifecycleStage === 'internal').length
-  const connectedCount= products.filter(p => p.connection === 'connected').length
-  const partialCount  = products.filter(p => p.connection === 'partial').length
+  const connectedCount= products.filter(p => connectionFor(p) === 'connected').length
+  const partialCount  = products.filter(p => connectionFor(p) === 'partial').length
 
   // ── Filtered list ───────────────────────────────────────────────────────
   const lifecycleOrder = { live:0, available:1, coming:2, internal:3, building:4, research:5 }
@@ -3695,10 +3740,10 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
     : portfolioFilter === 'building' ? products.filter(p => p.lifecycleStage === 'building')
     : portfolioFilter === 'research' ? products.filter(p => p.lifecycleStage === 'research')
     : portfolioFilter === 'internal' ? products.filter(p => p.lifecycleStage === 'internal')
-    : portfolioFilter === 'attention' ? products.filter(p => p.connection === 'partial' || (p.lifecycleStage === 'coming' && !p.metricsUrl))
-    : portfolioFilter === 'connected' ? products.filter(p => p.connection === 'connected')
-    : portfolioFilter === 'partial' ? products.filter(p => p.connection === 'partial')
-    : portfolioFilter === 'not_connected' ? products.filter(p => p.connection === 'not_connected')
+    : portfolioFilter === 'attention' ? products.filter(p => connectionFor(p) === 'partial' || (p.lifecycleStage === 'coming' && !p.metricsUrl))
+    : portfolioFilter === 'connected' ? products.filter(p => connectionFor(p) === 'connected')
+    : portfolioFilter === 'partial' ? products.filter(p => connectionFor(p) === 'partial')
+    : portfolioFilter === 'not_connected' ? products.filter(p => connectionFor(p) === 'not_connected')
     : null
 
   const filtered = portfolioFiltered ? [...portfolioFiltered].sort(sortByLifecycle)
@@ -3743,7 +3788,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
           <div>
             <span style={{ fontSize:12, fontWeight:700, color:'#f59e0b' }}>Setup Needed</span>
             <span style={{ fontSize:12, color:'#94a3b8', marginLeft:8 }}>
-              {partialCount} product{partialCount>1?'s':''} partially connected — metrics deploy pending
+              {partialCount} product{partialCount>1?'s':''} need live metrics attention
             </span>
           </div>
         </div>
@@ -3915,7 +3960,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
                 )}
 
                 {/* Next milestone for planned products */}
-                {selected.nextMilestone && (
+                {selected.nextMilestone && connectionFor(selected) !== 'connected' && (
                   <div style={{ background:'rgba(99,102,241,.08)', border:'1px solid rgba(99,102,241,.2)',
                     borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
                     <div style={{ fontSize:10, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>Next Milestone</div>
@@ -3924,7 +3969,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
                 )}
 
                 {/* Metrics for connected products */}
-                {selected.connection === 'not_connected' ? (
+                {connectionFor(selected) === 'not_connected' ? (
                   <div style={{ textAlign:'center', padding:'32px 0', color:'#334155' }}>
                     <div style={{ fontSize:32, marginBottom:10 }}>
                       {selected.lifecycleStage==='research' ? '🔬' : selected.lifecycleStage==='internal' ? '🔒' : '🔌'}
@@ -3939,16 +3984,15 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
                         ? 'This product is in the research and planning phase. No backend, domain, or metrics have been set up yet. Data will populate here once the build phase begins.'
                         : selected.lifecycleStage==='internal'
                         ? 'This product operates internally. No live metrics are connected. Rebrand or migration needed before public launch.'
-                        : 'Deploy the platform-metrics edge function to this product\'s Supabase project to connect live data.'}
+                        : 'No healthy live metrics endpoint is configured for this product yet.'}
                     </div>
                   </div>
-                ) : selected.connection === 'partial' ? (
+                ) : connectionFor(selected) === 'partial' ? (
                   <div style={{ textAlign:'center', padding:'32px 0', color:'#334155' }}>
                     <div style={{ fontSize:32, marginBottom:10 }}>🟡</div>
                     <div style={{ fontSize:14, fontWeight:700, color:'#f59e0b', marginBottom:8 }}>Partial Connection</div>
                     <div style={{ fontSize:12, color:'#94a3b8', maxWidth:340, margin:'0 auto', lineHeight:1.6 }}>
-                      Product exists and is deployed, but platform-metrics edge function has not been wired yet.
-                      Deploy <code style={{ background:'rgba(255,255,255,.06)', padding:'1px 5px', borderRadius:4 }}>push-platform-metrics</code> to this product's Supabase project to enable live data.
+                      {liveData[selected.key]?.error || 'The live metrics endpoint responded, but it is not healthy yet.'}
                     </div>
                   </div>
                 ) : loading[selected.key] ? (
