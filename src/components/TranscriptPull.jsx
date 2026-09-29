@@ -744,14 +744,48 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 {!helperConnected && <a className="btn sec" style={{ fontSize: 11 }} href={HELPER_ZIP_URL} download>Download helper</a>}
               </div>
               {!helperConnected && (
-                <details style={{ marginTop: 6 }}>
-                  <summary style={{ cursor: 'pointer', color: 'var(--t2)' }}>How to install (one time, about 1 minute)</summary>
-                  <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
-                    <li>Click <b>Download helper</b> and unzip the file.</li>
-                    <li>In Chrome, go to <b>chrome://extensions</b> and turn on <b>Developer mode</b> (top right).</li>
-                    <li>Click <b>Load unpacked</b> and pick the unzipped <b>taxres-irs-helper</b> folder.</li>
-                    <li>Reload this page. It will say <b>Helper connected</b>.</li>
-                  </ol>
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ cursor: 'pointer', color: 'var(--t2)', fontWeight: 600 }}>▶ How to install (one time, about 2 minutes)</summary>
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {[
+                      {
+                        n: 1,
+                        title: 'Download the helper',
+                        body: <>Click the <b>Download helper</b> button above. A file called <b>taxres-irs-helper.zip</b> will appear in your Downloads folder.</>,
+                      },
+                      {
+                        n: 2,
+                        title: 'Open Chrome Extensions',
+                        body: <>In Chrome, click the address bar, type <b>chrome://extensions</b> and press Enter. Or click the puzzle-piece icon <span style={{fontSize:13}}>🧩</span> at the top right of Chrome → <b>Manage Extensions</b>.</>,
+                      },
+                      {
+                        n: 3,
+                        title: 'Turn on Developer Mode',
+                        body: <>In the top-right corner of the Extensions page, flip the <b>Developer mode</b> toggle ON. A row of buttons will appear.</>,
+                      },
+                      {
+                        n: 4,
+                        title: 'Drag the zip file onto the page',
+                        body: <>Find the <b>taxres-irs-helper.zip</b> file you downloaded and <b>drag it directly onto the Chrome Extensions page</b>. Chrome will install it automatically. You should see "TaxRes IRS Helper" appear in your list.</>,
+                      },
+                      {
+                        n: 5,
+                        title: 'Come back here and reload',
+                        body: <>Return to this page and press <b>F5</b> (or Ctrl+R) to reload. The status above will change to <b style={{color:'#22c55e'}}>● Helper connected</b>. You only do this once — it stays installed.</>,
+                      },
+                    ].map(s => (
+                      <div key={s.n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--surface2,rgba(255,255,255,.04))', borderRadius: 7, padding: '8px 10px' }}>
+                        <div style={{ minWidth: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: '#fff', fontWeight: 800, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</div>
+                        <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+                          <div style={{ fontWeight: 700, color: 'var(--t1,#fff)', marginBottom: 2 }}>{s.title}</div>
+                          <div style={{ color: 'var(--t2,#94a3b8)' }}>{s.body}</div>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+                      ⚠ This installs in <b>your Chrome only</b>. Every person who uses the IRS Portal needs to do this once on their own computer.
+                    </div>
+                  </div>
                 </details>
               )}
               {helperLog.length > 0 && (
