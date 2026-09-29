@@ -226,6 +226,9 @@ Deno.serve(async (req) => {
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (productKey === 'bocasync') {
         productHeaders['x-hub-secret'] = hubSecret
+      } else if (productKey === 'oculivo') {
+        if (!jwt) return { status: 401, data: null, error: 'Oculivo metrics require an authenticated RomyLabs admin session' }
+        productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (supportEnv[productKey]) {
         const supportSecret = Deno.env.get(supportEnv[productKey]) || ''
         if (!supportSecret) {
