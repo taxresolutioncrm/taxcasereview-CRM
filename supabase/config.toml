@@ -173,7 +173,7 @@ verify_jwt = false
 # Admin Portal reporting; require an authenticated Supabase user.
 verify_jwt = true
 [functions.bing-data]
-verify_jwt = false
+verify_jwt = true
 [functions.content-generator]
 verify_jwt = false
 [functions.weekly-growth-report]
