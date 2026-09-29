@@ -14,6 +14,34 @@ function json(data: unknown, status = 200) {
   })
 }
 
+const COMPANY_PRODUCTS = new Set(['taxres_crm','arcvena'])
+const COMPANY_MATCH: Record<string, RegExp> = {
+  taxres_crm: /tax\s*res|taxres/i,
+  arcvena: /arcvena/i,
+}
+
+async function resolveCompanyOrganization(accessToken:string, productId:string) {
+  const aclRes = await fetch('https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED', {
+    headers: { Authorization: `Bearer ${accessToken}`, 'X-Restli-Protocol-Version':'2.0.0' }
+  })
+  const acl = await aclRes.json().catch(() => ({}))
+  if (!aclRes.ok) return { organizationId:null, organizations:[], error:'Could not read LinkedIn company-page administrator access' }
+
+  const ids = [...new Set((acl?.elements || []).map((x:any) => String(x?.organizationalTarget || '').split(':').pop()).filter(Boolean))]
+  const organizations:any[] = []
+  for (const id of ids) {
+    const orgRes = await fetch(`https://api.linkedin.com/v2/organizations/${id}?projection=(id,localizedName,vanityName)`, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'X-Restli-Protocol-Version':'2.0.0' }
+    })
+    const org = await orgRes.json().catch(() => ({}))
+    if (orgRes.ok) organizations.push({ id:String(org.id || id), name:String(org.localizedName || ''), vanityName:String(org.vanityName || '') })
+  }
+
+  const matcher = COMPANY_MATCH[productId]
+  const match = organizations.find(o => matcher?.test(`${o.name} ${o.vanityName}`))
+  return { organizationId:match?.id || null, organizations, error:null }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
@@ -78,17 +106,34 @@ Deno.serve(async (req) => {
     const profile = await profileRes.json()
 
     const grantedScopes = String(tokenData.scope || '')
-    const isArcvena = productId === 'arcvena'
-    if (isArcvena && !grantedScopes.split(/[ ,]+/).includes('w_organization_social')) {
+    const isCompanyProduct = COMPANY_PRODUCTS.has(productId)
+    if (isCompanyProduct && !grantedScopes.split(/[ ,]+/).includes('w_organization_social')) {
       return json({
         ok: false,
-        error: 'Arcvena requires LinkedIn organization posting permission',
+        error: 'This product requires LinkedIn company-page posting permission',
         required_scope: 'w_organization_social',
+        product_id: productId,
       }, 403)
     }
 
-    const publishTargetType = isArcvena ? 'ORGANIZATION' : 'PERSON'
-    const linkedinOrganizationId = isArcvena ? '146118085' : null
+    let publishTargetType = 'PERSON'
+    let linkedinOrganizationId:string|null = null
+    let organizationName:string|null = null
+    if (isCompanyProduct) {
+      const resolved = await resolveCompanyOrganization(tokenData.access_token, productId)
+      if (!resolved.organizationId) {
+        return json({
+          ok:false,
+          error:'No matching LinkedIn company page was found for this product under the connected administrator account',
+          product_id:productId,
+          available_organizations:resolved.organizations,
+          detail:resolved.error,
+        }, 409)
+      }
+      publishTargetType = 'ORGANIZATION'
+      linkedinOrganizationId = resolved.organizationId
+      organizationName = resolved.organizations.find((o:any)=>o.id===resolved.organizationId)?.name || null
+    }
 
     await supabase.from('linkedin_connections').upsert({
       tenant_id: tenantId,
@@ -97,7 +142,7 @@ Deno.serve(async (req) => {
       display_name: profile.name || profile.email || 'LinkedIn Account',
       access_token: tokenData.access_token,
       expires_at: new Date(Date.now() + (tokenData.expires_in || 5184000) * 1000).toISOString(),
-      scopes: grantedScopes || (isArcvena ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
+      scopes: grantedScopes || (isCompanyProduct ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
       publish_target_type: publishTargetType,
       linkedin_organization_id: linkedinOrganizationId,
       updated_at: new Date().toISOString(),
@@ -105,7 +150,8 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
-      name: profile.name || 'LinkedIn Account',
+      name: organizationName || profile.name || 'LinkedIn Account',
+      member_name: profile.name || null,
       product_id: productId,
       publish_target_type: publishTargetType,
       linkedin_organization_id: linkedinOrganizationId,
@@ -222,6 +268,9 @@ Deno.serve(async (req) => {
     }
 
     const targetType = conn.publish_target_type || 'PERSON'
+    if (COMPANY_PRODUCTS.has(productId) && targetType !== 'ORGANIZATION') {
+      return json({ ok:false, error:'Company-page publishing is required for this product. Reconnect LinkedIn and authorize the product company page.' }, 409)
+    }
     const author = targetType === 'ORGANIZATION'
       ? (conn.linkedin_organization_id ? `urn:li:organization:${conn.linkedin_organization_id}` : null)
       : (conn.linkedin_person_id ? `urn:li:person:${conn.linkedin_person_id}` : null)
