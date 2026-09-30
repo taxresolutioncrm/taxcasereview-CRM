@@ -72,11 +72,15 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const [callToast, setCallToast] = useState('')
   const [ending, setEnding] = useState(false)
   const [outboundCallerId, setOutboundCallerIdState] = useState(() =>
-    localStorage.getItem(phoneContext === 'romylabs' ? 'romylabs_outbound_caller_id' : 'taxres_outbound_caller_id') || 'local'
+    phoneContext === 'romylabs'
+      ? (localStorage.getItem('romylabs_outbound_caller_id') || 'local')
+      : 'tollfree'
   )
 
   function setOutboundCallerId(value) {
-    const next = value === 'tollfree' ? 'tollfree' : 'local'
+    // TCR voice identity is intentionally fixed to the public toll-free DID.
+    // RomyLabs keeps its own independent phone identity behavior.
+    const next = phoneContext === 'romylabs' ? (value === 'tollfree' ? 'tollfree' : 'local') : 'tollfree'
     setOutboundCallerIdState(next)
     try { localStorage.setItem(phoneContext === 'romylabs' ? 'romylabs_outbound_caller_id' : 'taxres_outbound_caller_id', next) } catch (_) {}
   }
@@ -999,18 +1003,25 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     if (outboundPollRef.current) { clearInterval(outboundPollRef.current); outboundPollRef.current = null }
     if (inboundStatusPollRef.current) { clearInterval(inboundStatusPollRef.current); inboundStatusPollRef.current = null }
 
-    if (!alreadyHungUp && liveCallRef.current) {
-      try { await Promise.resolve(liveCallRef.current.hangup?.()) }
-      catch (e) { console.warn('browser leg hangup failed:', e) }
-    }
-    liveCallRef.current = null
-    activeCallRef.current = null
-
+    // Kill the provider conference BEFORE tearing down the browser leg.
+    // Hanging up the agent/browser leg first can strand the remote party alone
+    // in the conference (audibly on hold) if the SDK hangup promise stalls.
     const conf = activeConferenceRef.current
     if (conf && !skipConferenceKill) {
       const providerEnded = await endConferenceWithRetry(conf)
       if (!providerEnded) return false
     }
+
+    if (!alreadyHungUp && liveCallRef.current) {
+      try {
+        await Promise.race([
+          Promise.resolve(liveCallRef.current.hangup?.()),
+          new Promise(resolve => setTimeout(resolve, 1500)),
+        ])
+      } catch (e) { console.warn('browser leg hangup failed:', e) }
+    }
+    liveCallRef.current = null
+    activeCallRef.current = null
 
     clearPersistedCallSession()
     callStartedAtRef.current = null

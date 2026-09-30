@@ -102,9 +102,13 @@ serve(async (req) => {
     const to = params.get('To') || ''
     const toDigits = digits10(to)
     if (toDigits.length !== 10) return xmlResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 400)
-    const { data: rows, error: settingsError } = await supabase.from('settings').select('tenant_id,sw_inbound_did').not('tenant_id','is',null).not('sw_inbound_did','is',null)
+    const { data: rows, error: settingsError } = await supabase.from('settings')
+      .select('tenant_id,sw_inbound_did,firm_fax_number,fax_number')
+      .not('tenant_id','is',null)
     if (settingsError) throw settingsError
-    const matches = (rows || []).filter((r: any) => digits10(r.sw_inbound_did) === toDigits)
+    const matches = (rows || []).filter((r: any) =>
+      [r.firm_fax_number, r.fax_number, r.sw_inbound_did].some(v => digits10(v) === toDigits)
+    )
     if (matches.length !== 1) {
       console.error('[receive-fax] inbound DID did not resolve uniquely', { toDigits, matches: matches.length })
       return xmlResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 403)
