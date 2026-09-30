@@ -320,13 +320,25 @@ export default function Employees() {
     if (!form.name || !form.email) { if (!silent) showToast('Name and email required', 'err'); return false }
     setSaving(true)
     setSaveError('')
-    const payload = toDbPayload(form)
+    let payload = toDbPayload(form)
     let error, data
-    if (editing) {
-      ;({ error } = await supabase.from('employees').update(payload).eq('id', editing))
-    } else {
-      ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
-      if (!error && data?.id) setEditing(data.id)
+    // Retry loop: if PostgREST rejects an unknown column, strip it and retry (same pattern as Clients.jsx)
+    for (let attempt = 0; attempt < 12; attempt++) {
+      if (editing) {
+        ;({ error } = await supabase.from('employees').update(payload).eq('id', editing))
+      } else {
+        ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
+        if (!error && data?.id) setEditing(data.id)
+      }
+      if (!error) break
+      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
+        || error.message?.match(/Could not find the '(\w+)' column/i)
+      if (match && match[1] in payload) {
+        const { [match[1]]: _, ...rest } = payload
+        payload = rest
+        continue
+      }
+      break
     }
     setSaving(false)
     if (error) { setSaveError(error.message); if (!silent) showToast('Save error: ' + error.message, 'err'); return false }
@@ -366,7 +378,6 @@ export default function Employees() {
         const { data: inserted, error: insErr } = await supabase.from('documents').insert([{
           name: file.name, employee: form.name, docType: nextDocLabel,
           file_url: urlData?.signedUrl || '', file_name: file.name, file_size: file.size,
-          storage_path: path,
           created_at: new Date().toISOString()
         }]).select().single()
         if (!insErr && inserted) setEmpDocs(prev => [inserted, ...prev])
@@ -444,67 +455,79 @@ export default function Employees() {
           <div style={{ fontSize: 13, marginTop: 4 }}>Add your first team member to get started</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
-          {filtered.map(emp => (
-            <div key={emp.id} className="card" style={{ padding:'12px 13px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                {/* Avatar */}
-                <div style={{
-                  width: 38, height: 38, borderRadius: '50%',
-                  background: TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0, overflow: 'hidden'
-                }}>
-                  {emp.avatar_url
-                    ? <img src={emp.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                    : (emp.name || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--tx)' }}>{emp.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 1 }}>{emp.title || emp.role || 'Staff'}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--t3)' }}>{emp.email}</div>
-                  <div style={{ marginTop: 5, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
-                      background: (TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b') + '22',
-                      color: TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b',
-                      border: '1px solid ' + (TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b') + '44'
-                    }}>{emp.role || emp.title || emp.access || 'Staff'}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(285px, 100%), 1fr))', gap: 10, alignItems: 'start' }}>
+          {filtered.map(emp => {
+            const roleColor = TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b'
+            const displayTitle = emp.title || emp.role || 'Staff'
+            const displayAccess = emp.access || 'Staff'
+            return (
+              <div key={emp.id} className="card" style={{ padding:'12px 13px', minWidth:0, boxSizing:'border-box' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '38px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
+                  {/* Avatar */}
+                  <div style={{
+                    width: 38, height: 38, borderRadius: '50%',
+                    background: roleColor,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 13, fontWeight: 800, color: '#fff', overflow: 'hidden'
+                  }}>
+                    {emp.avatar_url
+                      ? <img src={emp.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                      : (emp.name || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5, color: 'var(--tx)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{emp.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--t2)', marginTop: 2, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{displayTitle}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 1, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{emp.email}</div>
+                    <div style={{ marginTop: 5, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 20,
+                        background: roleColor + '22', color: roleColor,
+                        border: '1px solid ' + roleColor + '44',
+                        whiteSpace: 'nowrap'
+                      }}>{displayAccess}</span>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0, flexWrap:'wrap', justifyContent:'flex-end', maxWidth:132 }}>
+
+                {/* Employee actions live on their own row so identity text never gets crushed. */}
+                <div style={{
+                  marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--br)',
+                  display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center'
+                }}>
                   <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑</button>
                   {can('edit', 'employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite">✉️ Invite</button>}
                   {can('edit', 'employees') && (
                     <>
                       <button className="btn sm" onClick={() => openEdit(emp)}>Edit</button>
                       <button className="btn sm" onClick={() => remove(emp.id)}
-                        style={{ color: 'var(--bad)' }}>✕</button>
+                        style={{ color: 'var(--bad)', marginLeft: 'auto' }} title="Remove employee">✕</button>
                     </>
                   )}
                 </div>
-              </div>
 
-              {/* Permission chips */}
-              <div style={{ marginTop: 9, display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                {PERM_SECTIONS.map(s => {
-                  const fallback = safeRoleDefaults(emp.access)?.[s.key] ?? 0
-                  const level = safePermLevel(emp[s.key], fallback)
-                  if (level === 0) return null
-                  const opt = LEVEL_OPTIONS[level] || LEVEL_OPTIONS[0]
-                  return (
-                    <span key={s.key} title={s.label + ': ' + opt.label} style={{
-                      fontSize: 9, padding: '1px 6px', borderRadius: 12,
-                      background: opt.color + '22', color: opt.color,
-                      border: '1px solid ' + opt.color + '44', fontWeight: 600
-                    }}>
-                      {s.icon} {s.label.split(' ')[0]}
-                    </span>
-                  )
-                })}
+                {/* Permission chips */}
+                <div style={{ marginTop: 9, display: 'flex', gap: 3, flexWrap: 'wrap', alignContent: 'flex-start' }}>
+                  {PERM_SECTIONS.map(s => {
+                    const fallback = safeRoleDefaults(emp.access)?.[s.key] ?? 0
+                    const level = safePermLevel(emp[s.key], fallback)
+                    if (level === 0) return null
+                    const opt = LEVEL_OPTIONS[level] || LEVEL_OPTIONS[0]
+                    return (
+                      <span key={s.key} title={s.label + ': ' + opt.label} style={{
+                        fontSize: 9, padding: '1px 6px', borderRadius: 12,
+                        background: opt.color + '18', color: opt.color,
+                        border: '1px solid ' + opt.color + '3d', fontWeight: 700,
+                        lineHeight: 1.2, whiteSpace: 'nowrap'
+                      }}>
+                        {s.icon} {s.label.split(' ')[0]}
+                      </span>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
