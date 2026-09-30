@@ -211,30 +211,37 @@ Deno.serve(async (req) => {
       const productHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
       }
-      if (productKey === 'arcvena') {
-        const arcvenaSupportSecret = Deno.env.get('ARCVENA_SUPPORT_SECRET')
-        if (!arcvenaSupportSecret) {
-          return { status: 503, data: null, error: 'Arcvena proxy credential not configured' }
-        }
-        productHeaders['x-arcvena-support-secret'] = arcvenaSupportSecret
-      } else if (productKey === 'nashville') {
+      const supportEnv: Record<string,string> = {
+        arcvena: 'ARCVENA_SUPPORT_SECRET',
+      }
+      if (productKey === 'nashville') {
         const nashvilleToken = await getInternalSecret('nashville_metrics_token')
         if (!nashvilleToken) {
           return { status: 503, data: null, error: 'Nashville internal metrics token is not configured' }
         }
         productHeaders['x-romylabs-internal-token'] = nashvilleToken
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (resolved.standardExternal) {
-        if (!jwt) return { status: 401, data: null, error: `${productKey} requires an authenticated user session` }
+      } else if (['camvella','bocasync','groundivo','oculivo','restore_relay'].includes(productKey)) {
+        if (!jwt) return { status: 401, data: null, error: `${productKey} metrics require an authenticated RomyLabs admin session` }
         productHeaders['Authorization'] = `Bearer ${jwt}`
+      } else if (supportEnv[productKey]) {
+        const supportSecret = Deno.env.get(supportEnv[productKey]) || ''
+        if (!supportSecret) {
+          return { status: 503, data: null, error: `${productKey} proxy credential not configured` }
+        }
+        if (productKey === 'arcvena') productHeaders['x-arcvena-support-secret'] = supportSecret
+        else productHeaders['x-romylabs-support-secret'] = supportSecret
       } else {
         productHeaders['x-hub-secret'] = hubSecret
       }
 
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
       const productRes = await fetch(targetUrl, {
         method: 'GET',
         headers: productHeaders,
-      })
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout))
       const productData = await productRes.json().catch(() => null)
       const productError = productRes.ok && productData?.ok !== false
         ? null
