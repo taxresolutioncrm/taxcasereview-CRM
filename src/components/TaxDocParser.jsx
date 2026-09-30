@@ -111,7 +111,10 @@ async function parseDocWithAI(file, docType) {
   })
 
   if (fnErr) throw new Error(fnErr.message)
-  if (fnData?.error) console.log('Edge fn error:', fnData.error)
+  if (fnData?.error) {
+    const detail = fnData?.detail ? `: ${String(fnData.detail).slice(0, 180)}` : ''
+    throw new Error(`${fnData.error}${detail}`)
+  }
   return fnData?.parsed || {}
 }
 
@@ -206,7 +209,7 @@ export default function TaxDocParser({ clientName = '', taxYear = '2024', onPars
       <div style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 6px' }}>📎 Upload Tax Documents</h3>
         <p style={{ fontSize: 13, color: 'var(--t3)', margin: 0, lineHeight: 1.6 }}>
-          Upload W-2s, 1099s, K-1s, or prior Schedule Cs. Claude will read each document and extract all values automatically.
+          Upload W-2s, 1099s, K-1s, or prior Schedule Cs. AI will read each document and extract all values automatically.
         </p>
       </div>
 
