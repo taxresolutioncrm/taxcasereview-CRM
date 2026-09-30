@@ -1088,6 +1088,9 @@ export default function Clients() {
   const [taskPriority,setTaskPriority]= useState('Normal')
   const [taskDueDate, setTaskDueDate] = useState('')
   const [taskSectionTitle, setTaskSectionTitle] = useState('')
+  const [taskAssignedTo, setTaskAssignedTo] = useState('')
+  const [taskStatusValue, setTaskStatusValue] = useState('')
+  const [taskNotes, setTaskNotes] = useState('')
   // When set, the quick-add box below the Tasks list is adding a sub-task
   // into this existing section instead of creating a new standalone task.
   const [pendingSection, setPendingSection] = useState('')
@@ -1572,21 +1575,25 @@ export default function Clients() {
     loadRelated(detail.name)
   }
 
+  function openTaskComposer(title = '', section = '') {
+    const defaultAssignee = detail?.assignedTo && employees.some(e => e.name === detail.assignedTo) ? detail.assignedTo : ''
+    setTaskTitle(title)
+    setTaskPriority('Normal')
+    setTaskDueDate('')
+    setTaskSectionTitle(section || '')
+    setTaskAssignedTo(defaultAssignee)
+    setTaskStatusValue('')
+    setTaskNotes('')
+    setTaskModal(true)
+  }
+
   async function addQuickTask() {
     if (!quickTask.trim()||!detail) return
-    setAddingTask(true)
-    const {error}=await supabase.from('tasks').insert([{
-      title:quickTask.trim(), clientName:detail.name, priority:'Normal',
-      done:false, section_title: pendingSection || null, created_at:new Date().toISOString()
-    }])
-    setAddingTask(false)
-    if (error){showToast('Task error: '+error.message);return}
+    const title = quickTask.trim()
+    const section = pendingSection || ''
     setQuickTask('')
     setPendingSection('')
-    loadRelated(detail.name)
-    showToast('✅ Task added!')
-    await logAction(detail.name, `📌 Task created: "${quickTask.trim()}"`)
-    loadRelated(detail.name)
+    openTaskComposer(title, section)
   }
 
   async function addClientNote(visibleToClient = false) {
@@ -1606,19 +1613,43 @@ export default function Clients() {
   async function addTaskFromModal() {
     if (!taskTitle.trim()||!detail) return
     setAddingTask(true)
+
+    let status_category = null
+    let status_label = null
+    let done = false
+    if (taskStatusValue) {
+      const [category, label] = taskStatusValue.split('|||')
+      status_category = category || null
+      status_label = label || null
+      done = String(category || '').toLowerCase() === 'completed'
+    }
+
     const {error}=await supabase.from('tasks').insert([{
-      title:taskTitle.trim(), clientName:detail.name,
-      priority:taskPriority, dueDate:taskDueDate||null,
-      section_title: taskSectionTitle.trim() || null,
-      done:false, created_at:new Date().toISOString()
+      title:taskTitle.trim(),
+      clientName:detail.name,
+      assignedTo:taskAssignedTo||null,
+      priority:taskPriority,
+      dueDate:taskDueDate||null,
+      notes:taskNotes.trim()||null,
+      status_category,
+      status_label,
+      section_title:taskSectionTitle.trim()||null,
+      done,
+      created_at:new Date().toISOString()
     }])
     setAddingTask(false)
     if(error){showToast('Task error: '+error.message);return}
     const loggedTitle = taskTitle.trim()
-    setTaskTitle('');setTaskPriority('Normal');setTaskDueDate('');setTaskSectionTitle('')
+    setTaskTitle('')
+    setTaskPriority('Normal')
+    setTaskDueDate('')
+    setTaskSectionTitle('')
+    setTaskAssignedTo('')
+    setTaskStatusValue('')
+    setTaskNotes('')
     setTaskModal(false)
     loadRelated(detail.name)
-    showToast('✅ Task added!')
+    showToast('✅ Task scheduled!')
     await logAction(detail.name, `📌 Task created: "${loggedTitle}"`)
     loadRelated(detail.name)
   }
@@ -2214,7 +2245,7 @@ export default function Clients() {
           <div className="ovx">
           <div style={{display:'grid',gridTemplateColumns:'repeat(10, 1fr)',gap:8,minWidth:800}}>
             <ActionBtn color="#0891b2" icon="📅" label="Schedule" sub="Book Appointment" onClick={()=>setBookingClient(c)}/>
-            <ActionBtn color="#7c3aed" icon="✅" label="Add Task" sub="Assign Work" onClick={()=>{setTaskTitle('');setTaskPriority('Normal');setTaskDueDate('');setTaskModal(true)}}/>
+            <ActionBtn color="#7c3aed" icon="✅" label="Add Task" sub="Assign Work" onClick={()=>openTaskComposer()}/>
             <ActionBtn color="#dc2626" icon="📠" label="Send Fax" sub="SignalWire Fax" onClick={()=>{setFaxClient(c);setFaxModal(true)}}/>
             <ActionBtn color="#e11d48" icon="✍️" label="E-Signature" sub="Request Sign" onClick={()=>{setEsignClient(c);setEsignModal(true)}}/>
             <ActionBtn color="#0369a1" icon="📋" label="Pre-Fill 8821/2848" sub="IRS PDF Forms" onClick={()=>{
@@ -2642,6 +2673,7 @@ export default function Clients() {
                     <option value="active" style={{color:'#000',background:'#fff'}}>Show: Active</option>
                     <option value="completed" style={{color:'#000',background:'#fff'}}>Show: Completed</option>
                   </select>
+                  <button className="btn pri" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>openTaskComposer()}>+ Add Task</button>
                   <button className="btn sec" style={{fontSize:11,padding:'5px 12px'}} onClick={openTemplatePicker}>📋 Apply Work Template</button>
                 </div>
               {loadingRel&&<div style={{color:'var(--t3)',fontSize:12}}>Loading…</div>}
@@ -2681,7 +2713,11 @@ export default function Clients() {
                     >{t.done?'✓':''}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:t.done?400:600,textDecoration:t.done?'line-through':'none',color:t.done?'var(--t3)':'var(--tx)'}}>{t.title}</div>
-                      {t.priority&&<div style={{marginTop:2}}><span className={`bdg ${t.priority==='High'?'br':t.priority==='Low'?'bn':'ba'}`} style={{fontSize:9}}>{t.priority}</span></div>}
+                      <div style={{marginTop:3,display:'flex',gap:7,alignItems:'center',flexWrap:'wrap',fontSize:9.5,color:'var(--t3)'}}>
+                        {t.priority&&<span className={`bdg ${t.priority==='High'?'br':t.priority==='Low'?'bn':'ba'}`} style={{fontSize:9}}>{t.priority}</span>}
+                        {t.dueDate&&<span style={{color:overdue?'var(--bad)':'var(--t3)',fontWeight:overdue?700:500}}>Due: {t.dueDate}</span>}
+                        {t.assignedTo&&<span>Assigned: {t.assignedTo}</span>}
+                      </div>
                     </div>
                     <div style={{width:110,flexShrink:0,position:'relative'}}>
                       <select
@@ -2767,8 +2803,8 @@ export default function Clients() {
                   placeholder={pendingSection ? 'Add a sub-task…' : 'Add a task…'}
                   style={{flex:1,padding:'5px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}
                 />
-                <button className="btn pri" style={{fontSize:11,padding:'5px 12px'}} onClick={addQuickTask} disabled={addingTask}>
-                  {addingTask?'…':'+ Add'}
+                <button className="btn pri" style={{fontSize:11,padding:'5px 12px'}} onClick={addQuickTask}>
+                  Set Details →
                 </button>
               </div>
 
@@ -3048,17 +3084,40 @@ export default function Clients() {
                   placeholder="Optional — groups with other sub-tasks"/>
               </div>
               <div className="fg2">
-                <div className="field"><label>Priority</label>
-                  <select value={taskPriority} onChange={e=>setTaskPriority(e.target.value)}>
-                    <option>Low</option><option>Normal</option><option>High</option><option>Urgent</option>
+                <div className="field"><label>Assigned To</label>
+                  <select value={taskAssignedTo} onChange={e=>setTaskAssignedTo(e.target.value)}>
+                    <option value="">Unassigned</option>
+                    {employees.map(e=><option key={e.id||e.email||e.name} value={e.name}>{e.name}</option>)}
                   </select>
                 </div>
                 <div className="field"><label>Due Date</label>
                   <input type="date" value={taskDueDate} onChange={e=>setTaskDueDate(e.target.value)}/>
                 </div>
               </div>
+              <div className="fg2">
+                <div className="field"><label>Priority</label>
+                  <select value={taskPriority} onChange={e=>setTaskPriority(e.target.value)}>
+                    <option>Low</option><option>Normal</option><option>High</option><option>Urgent</option>
+                  </select>
+                </div>
+                <div className="field"><label>Disposition / Status</label>
+                  <select value={taskStatusValue} onChange={e=>setTaskStatusValue(e.target.value)}>
+                    <option value="">Ready to Start</option>
+                    {statusCategories.map(cat => (
+                      <optgroup key={cat.id} label={cat.name}>
+                        <option value={`${cat.name}|||${cat.name}`}>{cat.name} (general)</option>
+                        {(cat.statuses||[]).map(s=><option key={s.id} value={`${cat.name}|||${s.label}`}>{s.label}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="field"><label>Notes / Instructions</label>
+                <textarea rows={3} value={taskNotes} onChange={e=>setTaskNotes(e.target.value)}
+                  placeholder="Add instructions, follow-up details, or what needs to happen next…"/>
+              </div>
               <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:10}} onClick={addTaskFromModal} disabled={addingTask}>
-                {addingTask?'Adding…':'✅ Add Task'}
+                {addingTask?'Scheduling…':'✅ Schedule Task'}
               </button>
             </div>
           </div>
