@@ -221,7 +221,7 @@ export default function TopBar({ onNew }) {
         <div style={{width:1,height:14,background:'var(--br)'}}/>
         <div style={{display:'flex',alignItems:'center',gap:5,fontSize:12,color:'var(--t2)',whiteSpace:'nowrap'}}>
           <span style={{fontSize:13}}>📠</span>
-          <span style={{fontWeight:700,letterSpacing:'.02em'}}>{firm?.firm_fax_number || '(561) 420-6999'}</span>
+          <span style={{fontWeight:700,letterSpacing:'.02em'}}>{firm?.firm_fax_number || '(561) 420-6626'}</span>
         </div>
       </div>
       <div role="group" aria-label="Language" style={{display:'flex',gap:2,padding:2,border:'1px solid var(--br)',borderRadius:7,background:'var(--s2)'}}>
