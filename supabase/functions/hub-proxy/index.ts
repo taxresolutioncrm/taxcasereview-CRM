@@ -228,7 +228,8 @@ Deno.serve(async (req) => {
         if (!jwt) return { status: 401, data: null, error: 'Camvella metrics require an authenticated RomyLabs admin session' }
         productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (productKey === 'bocasync') {
-        productHeaders['x-hub-secret'] = hubSecret
+        if (!jwt) return { status: 401, data: null, error: 'BocaSync metrics require an authenticated RomyLabs admin session' }
+        productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (supportEnv[productKey]) {
         const supportSecret = Deno.env.get(supportEnv[productKey]) || ''
         const fallbackSecret = hubSecret
