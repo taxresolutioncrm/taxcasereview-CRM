@@ -60,8 +60,22 @@ begin
 end
 $function$;
 
--- Repair CloudCPA, the office shown in the failing client-file workflow picker.
-select public.seed_taxres_workflow_library('ecd3d3ce-016a-4bb4-800e-f090f51e4cae'::uuid);
+-- Repair every existing TaxRes-family office that was provisioned without a
+-- workflow library. Offices that already have workflows are left untouched.
+do $block$
+declare
+  r record;
+begin
+  for r in
+    select id
+    from public.tenants
+    where tenant_code like 'TRC-%'
+      and id <> '61a89aef-0e7e-4ea2-b222-44ab2024655a'::uuid
+  loop
+    perform public.seed_taxres_workflow_library(r.id);
+  end loop;
+end
+$block$;
 
 -- Keep future TaxRes-family offices from being created without the standard library.
 create or replace function public.seed_taxres_workflows_after_tenant_insert()
