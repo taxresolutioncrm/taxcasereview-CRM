@@ -46,6 +46,7 @@ serve(async(req)=>{
     const spaceDomain=settings.sw_space_url.replace(/^https?:\/\//,'')
     const providerAuth='Basic '+btoa(`${settings.sw_project_id}:${settings.sw_api_token}`)
     const base=`https://${spaceDomain}/api/laml/2010-04-01/Accounts/${settings.sw_project_id}`
+    const holdUrl=`${SUPABASE_URL}/functions/v1/hold-music`
     let businessNumber=settings.sw_inbound_did||''
     if(isRomyLabs){const {data:adminPhone}=await db.from('settings').select('sw_inbound_did').eq('tenant_id','a0000000-0000-0000-0000-000000000001').limit(1).maybeSingle();businessNumber=adminPhone?.sw_inbound_did||''}
     const businessDigits=businessNumber.replace(/\D/g,'').slice(-10)
@@ -71,9 +72,10 @@ serve(async(req)=>{
       if(isAgent) continue
       const holdBody:Record<string,string>={Hold:hold?'true':'false'}
       if(hold){
-        // SignalWire supports a HoldUrl for participant hold media.
-        // Use the provider's default conference music by omitting HoldUrl
-        // rather than pointing at custom LaML that may not be valid for hold media.
+        // SignalWire does not guarantee audible media when HoldUrl is omitted.
+        // Point held remote legs at our public LaML endpoint so hold is never silent.
+        holdBody.HoldUrl=holdUrl
+        holdBody.HoldMethod='POST'
       }
       const upd=await fetch(`${base}/Conferences/${conf.sid}/Participants/${callSid}.json`,{method:'POST',headers:{Authorization:providerAuth,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(holdBody)})
       if(upd.ok) touched++; else console.error('call-hold participant update failed',callSid,upd.status,await upd.text())
