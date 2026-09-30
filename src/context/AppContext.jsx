@@ -50,6 +50,7 @@ export const ACCESS_LEVELS = {
   'Tax Associate': { label: 'Tax Associate', color: '#3b82f6' },
   'View Only':   { label: 'View Only',   color: '#64748b' },
   'Tax Advisor': { label: 'Tax Advisor', color: '#10b981' },
+  'EA':          { label: 'EA',          color: '#22c55e' },
   'Manager':     { label: 'Manager',     color: '#06b6d4' },
 }
 
@@ -61,6 +62,10 @@ const ROLE_DEFAULTS = {
     canEdit: ['leads','clients','cases','tasks','calendar','deadlines','transcripts',
               'irsforms','irsreference','taxreturns','estimates','invoices','payments','sms','email',
               'documents','esign','timeclock','reports','dialer','chat','books','irs'],
+  },
+  'EA': {
+    canView: ['dashboard','clients','cases','tasks','calendar','deadlines','transcripts','irsforms','irsreference','taxreturns','documents','esign','sms','email','dialer','chat','reports','books','estimates','invoices','payments'],
+    canEdit: ['clients','cases','tasks','calendar','deadlines','transcripts','irsforms','irsreference','taxreturns','documents','esign','sms','email','dialer','chat'],
   },
   'Tax Associate': {
     canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','settings'],
