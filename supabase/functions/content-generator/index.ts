@@ -6,7 +6,8 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')!
 const OWNER_EMAILS=new Set(['romy@taxrescrm.net','romy@romylabs.com','romy@taxcasereview.org','info@romylabs.com'])
-const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})
+const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, x-force-regenerate','Access-Control-Allow-Methods':'POST,OPTIONS'}
+const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}})
 
 const BRAND_VOICE = `You are writing content for TaxRes CRM — a purpose-built CRM for tax resolution firms.
 Audience: Licensed Enrolled Agents (EAs), CPAs, and tax attorneys who represent clients before the IRS.
@@ -64,6 +65,7 @@ async function callClaude(prompt: string, system: string = BRAND_VOICE, maxToken
 }
 
 serve(async (req) => {
+  if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
   if(req.method!=='POST')return json({error:'Method not allowed'},405)
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   if(!await authorized(req,supabase))return json({error:'Unauthorized'},401)

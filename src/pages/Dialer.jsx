@@ -34,7 +34,6 @@ export default function Dialer() {
   const {
     relayStatus, calling, active,
     startCall: startCallShared, logModal,
-    outboundCallerId, setOutboundCallerId,
   } = useCall()
   const { role } = useApp()
   const canDeleteRecordings = role === 'Super Admin' || role === 'Admin'
@@ -339,29 +338,9 @@ export default function Dialer() {
 
       {/* ── Caller ID + calling connection status ─────────────────── */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:8 }}>
-        <div style={{ display:'inline-flex', gap:3, background:'var(--s2)', padding:3, borderRadius:8, border:'1px solid var(--br)' }}>
-          <button
-            type="button"
-            onClick={() => setOutboundCallerId('local')}
-            style={{
-              border:0, borderRadius:6, padding:'5px 9px', cursor:'pointer',
-              fontSize:10.5, fontWeight:700,
-              background: outboundCallerId === 'local' ? 'var(--blue)' : 'transparent',
-              color: outboundCallerId === 'local' ? '#fff' : 'var(--t2)',
-            }}>
-            561 Local
-          </button>
-          <button
-            type="button"
-            onClick={() => setOutboundCallerId('tollfree')}
-            style={{
-              border:0, borderRadius:6, padding:'5px 9px', cursor:'pointer',
-              fontSize:10.5, fontWeight:700,
-              background: outboundCallerId === 'tollfree' ? 'var(--blue)' : 'transparent',
-              color: outboundCallerId === 'tollfree' ? '#fff' : 'var(--t2)',
-            }}>
-            888 Toll-Free
-          </button>
+        <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'var(--s2)', padding:'6px 10px', borderRadius:8, border:'1px solid var(--br)', fontSize:10.5, fontWeight:700, color:'var(--t2)' }}>
+          <span>Outbound caller ID</span>
+          <span style={{color:'var(--tx)'}}>(888) 334-5052</span>
         </div>
         <span style={{
           fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 600,
