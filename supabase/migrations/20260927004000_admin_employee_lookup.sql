@@ -40,7 +40,7 @@ as $$
 declare v_row public.employees;
 begin
   if not public._is_platform_admin() then raise exception 'Not authorized'; end if;
-  if p_access not in ('Super Admin','Admin','Manager','Tax Advisor','Tax Associate','Associate','Para','Sales Rep','Read Only','View Only','Staff') then
+  if p_access not in ('Super Admin','Admin','Manager','Tax Advisor','EA','Tax Associate','Associate','Para','Sales Rep','Read Only','View Only','Staff') then
     raise exception 'Invalid access level';
   end if;
   update public.employees
