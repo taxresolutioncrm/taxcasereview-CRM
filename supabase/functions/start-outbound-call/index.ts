@@ -85,8 +85,10 @@ serve(async (req) => {
     }
     const localNumber = normalize(settings.sw_outbound_did || '')
     const tollFreeNumber = normalize(settings.sw_inbound_did || '')
-    const requestedCallerId = callerIdPreference === 'tollfree' ? tollFreeNumber : localNumber
-    const fromNumber = romylabsContext ? romylabsNumber : (requestedCallerId || localNumber || tollFreeNumber)
+    // Tax Case Review outbound voice must always present the public toll-free number.
+    // The local 561 number is reserved for direct IRS/state return calls that bypass
+    // the auto attendant; it must never be exposed as ordinary outbound caller ID.
+    const fromNumber = romylabsContext ? romylabsNumber : (tollFreeNumber || localNumber)
     if (!fromNumber) return json({ error: romylabsContext ? 'RomyLabs phone number is not configured.' : 'Configured outbound caller ID is invalid.' }, 422)
 
     // Real production authorization/provider validation, but guaranteed no call,
@@ -151,7 +153,7 @@ serve(async (req) => {
     if (clientCallsid) {
       await db.from('outbound_calls').update({ provider_call_sid: clientCallsid }).eq('tenant_id', effectiveTenantId).eq('conference_name', conferenceName)
     }
-    return json({ ok: true, conferenceName, clientCallsid, outboundCallId: insertedCall?.id || null, fromNumber, platformRelay })
+    return json({ ok: true, conferenceName, clientCallsid, outboundCallId: insertedCall?.id || null, fromNumber, platformRelay, callerIdPolicy: romylabsContext ? 'romylabs' : 'tollfree' })
   } catch (err) {
     console.error('start-outbound-call error:', err)
     return json({ error: 'Unable to start call.' }, 500)
