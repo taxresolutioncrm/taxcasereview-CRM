@@ -765,8 +765,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                       },
                       {
                         n: 4,
-                        title: 'Drag the zip file onto the page',
-                        body: <>Find the <b>taxres-irs-helper.zip</b> file you downloaded and <b>drag it directly onto the Chrome Extensions page</b>. Chrome will install it automatically. You should see "TaxRes IRS Helper" appear in your list.</>,
+                        title: 'Extract the zip and load the helper',
+                        body: <>Right-click <b>taxres-irs-helper.zip</b> → <b>Extract All</b>. Back on the Chrome Extensions page, click <b>Load unpacked</b> and choose the extracted folder that contains <b>manifest.json</b>.</>,
                       },
                       {
                         n: 5,

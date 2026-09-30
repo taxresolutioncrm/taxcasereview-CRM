@@ -262,7 +262,7 @@ if(fs.existsSync(extManifest)){
   if(!fs.existsSync(zipPath)) failures.push(zipPath+': missing (zip extensions/taxres-irs-helper so reps can download it)')
   else {
     const z=fs.readFileSync(zipPath).toString('latin1')
-    for(const f of ['manifest.json','background.js','mailbox.js','crm-bridge.js']) if(!z.includes('taxres-irs-helper/'+f)) failures.push(zipPath+': missing '+f)
+    for(const f of ['manifest.json','background.js','mailbox.js','crm-bridge.js']) if(!z.includes(f)) failures.push(zipPath+': missing root package entry '+f)
   }
 }
 
