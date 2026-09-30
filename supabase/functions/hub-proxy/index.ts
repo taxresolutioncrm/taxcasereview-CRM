@@ -213,6 +213,9 @@ Deno.serve(async (req) => {
       }
       const supportEnv: Record<string,string> = {
         arcvena: 'ARCVENA_SUPPORT_SECRET',
+        groundivo: 'GROUNDIVO_SUPPORT_SECRET',
+        oculivo: 'OCULIVO_SUPPORT_SECRET',
+        restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET',
       }
       if (productKey === 'nashville') {
         const nashvilleToken = await getInternalSecret('nashville_metrics_token')
@@ -221,16 +224,21 @@ Deno.serve(async (req) => {
         }
         productHeaders['x-romylabs-internal-token'] = nashvilleToken
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (['camvella','bocasync','groundivo','oculivo','restore_relay'].includes(productKey)) {
-        if (!jwt) return { status: 401, data: null, error: `${productKey} metrics require an authenticated RomyLabs admin session` }
+      } else if (productKey === 'camvella') {
+        if (!jwt) return { status: 401, data: null, error: 'Camvella metrics require an authenticated RomyLabs admin session' }
         productHeaders['Authorization'] = `Bearer ${jwt}`
+      } else if (productKey === 'bocasync') {
+        productHeaders['x-hub-secret'] = hubSecret
       } else if (supportEnv[productKey]) {
         const supportSecret = Deno.env.get(supportEnv[productKey]) || ''
-        if (!supportSecret) {
-          return { status: 503, data: null, error: `${productKey} proxy credential not configured` }
+        const fallbackSecret = hubSecret
+        if (productKey === 'arcvena') {
+          if (supportSecret) productHeaders['x-arcvena-support-secret'] = supportSecret
+          else productHeaders['x-hub-secret'] = fallbackSecret
+        } else {
+          if (supportSecret) productHeaders['x-romylabs-support-secret'] = supportSecret
+          else productHeaders['x-hub-secret'] = fallbackSecret
         }
-        if (productKey === 'arcvena') productHeaders['x-arcvena-support-secret'] = supportSecret
-        else productHeaders['x-romylabs-support-secret'] = supportSecret
       } else {
         productHeaders['x-hub-secret'] = hubSecret
       }
