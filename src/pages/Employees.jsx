@@ -460,30 +460,29 @@ export default function Employees() {
           <div style={{ fontSize: 13, marginTop: 4 }}>Add your first team member to get started</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(270px, 100%), 1fr))', gap: 10, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 12, alignItems: 'start' }}>
           {filtered.map(emp => {
             const roleColor = TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b'
             const displayTitle = emp.title || emp.role || 'Staff'
             const displayAccess = emp.access || 'Staff'
             return (
-              <div key={emp.id} className="card" style={{ padding: 12, minWidth: 0, boxSizing: 'border-box' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '36px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
-                  {/* Avatar */}
+              <div key={emp.id} className="card" style={{ padding: 14, minWidth: 0, boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: '50%',
                     background: roleColor,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, fontWeight: 800, color: '#fff', overflow: 'hidden'
+                    fontSize: 12, fontWeight: 800, color: '#fff', flexShrink: 0, overflow: 'hidden'
                   }}>
                     {emp.avatar_url
                       ? <img src={emp.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
                       : (emp.name || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
 
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800, fontSize: 13.5, color: 'var(--tx)', lineHeight: 1.2, overflowWrap: 'anywhere' }}>{emp.name}</div>
                     <div style={{ fontSize: 10.5, color: 'var(--t2)', marginTop: 2, lineHeight: 1.25, overflowWrap: 'anywhere' }}>{displayTitle}</div>
-                    <div style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 1, lineHeight: 1.25, overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }} title={emp.email}>{emp.email}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 1, lineHeight: 1.25, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={emp.email}>{emp.email}</div>
                     <div style={{ marginTop: 5, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span style={{
                         fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20,
@@ -493,26 +492,16 @@ export default function Employees() {
                       }}>{displayAccess}</span>
                     </div>
                   </div>
+
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                    <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password" style={{fontSize:10,padding:'4px 7px'}}>🔑 Reset</button>
+                    {can('edit', 'employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite" style={{fontSize:10,padding:'4px 7px'}}>✉️ Invite</button>}
+                    {can('edit', 'employees') && <button className="btn sm" onClick={() => openEdit(emp)} style={{fontSize:10,padding:'4px 7px'}}>Edit</button>}
+                    {can('edit', 'employees') && <button className="btn sm" onClick={() => remove(emp.id)} style={{ color: 'var(--bad)', fontSize:11, padding:'4px 7px' }} title="Remove employee">✕</button>}
+                  </div>
                 </div>
 
-                {/* Employee actions live on their own row so identity text never gets crushed. */}
-                <div style={{
-                  marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--br)',
-                  display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center'
-                }}>
-                  <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑 Reset</button>
-                  {can('edit', 'employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite">✉️ Invite</button>}
-                  {can('edit', 'employees') && (
-                    <>
-                      <button className="btn sm" onClick={() => openEdit(emp)}>Edit</button>
-                      <button className="btn sm" onClick={() => remove(emp.id)}
-                        style={{ color: 'var(--bad)', marginLeft: 'auto' }} title="Remove employee">✕</button>
-                    </>
-                  )}
-                </div>
-
-                {/* Permission chips */}
-                <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap', alignContent: 'flex-start' }}>
+                <div style={{ marginTop: 9, paddingTop: 8, borderTop:'1px solid var(--br)', display: 'flex', gap: 4, flexWrap: 'wrap', alignContent: 'flex-start' }}>
                   {PERM_SECTIONS.map(s => {
                     const fallback = safeRoleDefaults(emp.access)?.[s.key] ?? 0
                     const level = safePermLevel(emp[s.key], fallback)
@@ -520,7 +509,7 @@ export default function Employees() {
                     const opt = LEVEL_OPTIONS[level] || LEVEL_OPTIONS[0]
                     return (
                       <span key={s.key} title={s.label + ': ' + opt.label} style={{
-                        fontSize: 8.5, padding: '2px 6px', borderRadius: 10,
+                        fontSize: 9, padding: '2px 6px', borderRadius: 10,
                         background: opt.color + '18', color: opt.color,
                         border: '1px solid ' + opt.color + '3d', fontWeight: 700,
                         lineHeight: 1.2, whiteSpace: 'nowrap'
