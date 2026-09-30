@@ -525,7 +525,7 @@ export default function Employees() {
               </div>
             )
           })}
-        </div>        </div>
+        </div>
       )}
 
       {/* Add/Edit modal */}
