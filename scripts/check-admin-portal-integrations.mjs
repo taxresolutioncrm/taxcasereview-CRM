@@ -19,7 +19,7 @@ const checks=[
   ['stale historical blockers removed',!admin.includes('arcvena.com DNS cutover not complete')&&!admin.includes('GH Actions minutes exhausted')],
   ['content center supports browser preflight',content.includes("req.method==='OPTIONS'")&&content.includes('x-force-regenerate')],
   ['hub forwards central admin session to Camvella',hub.includes("productKey === 'camvella'")&&hub.includes("productHeaders['Authorization'] = \`Bearer \${jwt}\`")],
-  ['hub uses BocaSync hub credential',hub.includes("productKey === 'bocasync'")&&hub.includes("productHeaders['x-hub-secret'] = hubSecret")],
+  ['hub forwards central admin session to BocaSync',hub.includes("productKey === 'bocasync'")&&hub.includes("BocaSync metrics require an authenticated RomyLabs admin session")],
   ['hub uses product support credentials',hub.includes("groundivo: 'GROUNDIVO_SUPPORT_SECRET'")&&hub.includes("oculivo: 'OCULIVO_SUPPORT_SECRET'")&&hub.includes("restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET'")&&hub.includes("x-romylabs-support-secret")],
   ['hub keeps Arcvena server-side credential path',hub.includes("arcvena: 'ARCVENA_SUPPORT_SECRET'")&&hub.includes("x-arcvena-support-secret")],
   ['product cards never bypass hub proxy',!admin.includes("['camvella', 'arcvena'].includes(product.key)")&&!admin.includes("'apikey':        'eyJ")],
