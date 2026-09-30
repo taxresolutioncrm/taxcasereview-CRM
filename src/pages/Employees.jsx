@@ -18,7 +18,10 @@ function safePermLevel(value, fallback = 0) {
   return Number.isInteger(n) && n >= 0 && n <= 3 ? n : fallback
 }
 
-// Base access levels — these are the actual permission presets (never change these keys)
+const TCR_TENANT = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
+
+// Base access levels — these are the actual permission presets.
+// EA is a TCR-only option and is injected per-tenant in the employee form.
 const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Tax Associate', 'Tax Advisor', 'Sales Rep', 'View Only']
 // Display labels for each access level — pulled from FIRM.labels or defaults
 function getRoleLabels() {
@@ -28,12 +31,13 @@ function getRoleLabels() {
     'Admin':         l.associateRole || 'Admin',
     'Tax Associate': l.paraRole || 'Tax Associate',
     'Tax Advisor':   l.taxAdvisorRole || 'Tax Advisor',
+    'EA':            'EA',
     'Manager':       'Manager',
     'Sales Rep':     l.salesRepRole || 'Sales',
     'View Only':     'View Only',
   }
 }
-const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Rep': '#8b5cf6' }
+const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'EA': '#22c55e', 'Manager': '#06b6d4', 'Sales Rep': '#8b5cf6' }
 // Role display colors (for the role badge — role is the title, access is the permission level)
 const TITLE_COLORS = { 'Super Admin': '#ef4444', 'Associate': '#10b981', 'Para': '#0ea5e9', 'Manager': '#06b6d4', 'Staff': '#64748b', 'Sales': '#8b5cf6' }
 
@@ -62,6 +66,7 @@ const LEVEL_OPTIONS = [
 const ROLE_PERM_DEFAULTS = {
   'Super Admin': { perm_leads:3, perm_clients:3, perm_billing:3, perm_schedule:3, perm_documents:3, perm_irs:3, perm_comms:3, perm_reports:3, perm_hr:3, perm_settings:3 },
   'Admin':       { perm_leads:2, perm_clients:2, perm_billing:2, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:1, perm_settings:1 },
+  'EA':          { perm_leads:1, perm_clients:3, perm_billing:1, perm_schedule:2, perm_documents:2, perm_irs:3, perm_comms:2, perm_reports:1, perm_hr:0, perm_settings:0 },
   'Tax Associate':       { perm_leads:1, perm_clients:1, perm_billing:0, perm_schedule:1, perm_documents:1, perm_irs:1, perm_comms:2, perm_reports:0, perm_hr:0, perm_settings:0 },
   'View Only':   { perm_leads:1, perm_clients:1, perm_billing:0, perm_schedule:1, perm_documents:1, perm_irs:1, perm_comms:1, perm_reports:0, perm_hr:0, perm_settings:0 },
   // Sales rep — leads only (no Clients/Cases, no Billing/IRS/HR/Reports/Settings).
@@ -191,6 +196,7 @@ export default function Employees() {
   const [inviteVia, setInviteVia] = useState('email')
   const [inviteSending, setInviteSending] = useState(false)
   const [search, setSearch]       = useState('')
+  const [currentTenantId, setCurrentTenantId] = useState('')
   const [empDocs, setEmpDocs]     = useState([])
   const [docUploading, setDocUploading] = useState(false)
   const [nextDocLabel, setNextDocLabel] = useState('W-4')
@@ -212,10 +218,12 @@ export default function Employees() {
     try {
       const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
       if (tenantErr || !tenantId) {
+        setCurrentTenantId('')
         setEmployees([])
         showToast('Could not resolve this office. Please sign in again.', 'err')
         return
       }
+      setCurrentTenantId(tenantId)
       const { data, error } = await supabase
         .from('employees')
         .select('*')
@@ -771,7 +779,10 @@ export default function Employees() {
                   <div className="field">
                     <label>Role / Access Level</label>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                      {ACCESS_LEVELS.map(r => {
+                      {(currentTenantId === TCR_TENANT
+                        ? [...ACCESS_LEVELS.slice(0, 3), 'EA', ...ACCESS_LEVELS.slice(3)]
+                        : ACCESS_LEVELS
+                      ).map(r => {
                         const roleLabels = getRoleLabels()
                         const displayLabel = roleLabels[r] || r
                         return (
