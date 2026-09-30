@@ -8,7 +8,7 @@ const SYSTEM_MAIL_RELAY='https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/n
 const SYSTEM_MAIL_SECRET_KEY='nashville_system_mail_relay_v1'
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'}
 const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{...cors,'content-type':'application/json','Cache-Control':'no-store'}})
-const RANK:Record<string,number>={'Super Admin':100,'Admin':80,'Manager':60,'Tax Advisor':50,'EA':50,'Tax Associate':40,'Associate':40,'Para':40,'Sales Rep':30,'View Only':10}
+const RANK:Record<string,number>={'Super Admin':100,'Admin':80,'Manager':60,'Tax Advisor':50,'Tax Associate':40,'Associate':40,'Para':40,'Sales Rep':30,'View Only':10}
 const SELF_MESSAGE='If that email belongs to an active TaxRes family account, a password reset email will be sent.'
 
 function escapeHtml(v:string){return String(v||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch))}
