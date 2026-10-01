@@ -127,30 +127,46 @@ language sql
 security invoker
 stable
 as $$
-  with
+  with latest_runs as (
+    select distinct on (document_id)
+      id, document_id, status, created_at
+    from document_ai_runs
+    where tenant_id=current_tenant_id() and client_id=p_client_id
+    order by document_id, created_at desc
+  ),
+  current_complete as (
+    select id from latest_runs where status='complete'
+  ),
   runs as (
     select count(*)::int total_runs,
            count(*) filter (where status='complete')::int completed_runs,
            max(created_at) last_run_at
-    from document_ai_runs
-    where tenant_id=current_tenant_id() and client_id=p_client_id
+    from latest_runs
   ),
   facts as (
     select count(*)::int total_facts,
-           count(*) filter (where review_status='verified')::int verified_facts
-    from document_ai_facts
-    where tenant_id=current_tenant_id() and client_id=p_client_id
+           count(*) filter (where f.review_status='verified')::int verified_facts
+    from document_ai_facts f
+    where f.tenant_id=current_tenant_id()
+      and f.client_id=p_client_id
+      and f.run_id in (select id from current_complete)
+      and f.review_status <> 'rejected'
   ),
   entities as (
     select count(*)::int total_entities
-    from document_ai_entities
-    where tenant_id=current_tenant_id() and client_id=p_client_id
-      and review_status <> 'rejected'
+    from document_ai_entities e
+    where e.tenant_id=current_tenant_id()
+      and e.client_id=p_client_id
+      and e.run_id in (select id from current_complete)
+      and e.review_status <> 'rejected'
   ),
   questions as (
     select count(*)::int open_questions
-    from document_ai_questions
-    where tenant_id=current_tenant_id() and client_id=p_client_id and status='open'
+    from document_ai_questions q
+    where q.tenant_id=current_tenant_id()
+      and q.client_id=p_client_id
+      and q.status='open'
+      and (q.run_id is null or q.run_id in (select id from current_complete))
   )
   select jsonb_build_object(
     'runs', runs.total_runs,
