@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { validateFile, maybeCompressImage } from '../lib/uploadUtils'
 import { supabase } from '../lib/supabase'
 import { triggerWorkflow } from '../lib/triggerWorkflow'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { DOC_FOLDERS as ROOT_FOLDERS } from './Clients'
 
@@ -34,6 +34,7 @@ function fmtDate(d) { if(!d)return ''; const date=new Date(d); return Number.isN
 
 export default function Documents() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { role, user } = useApp()
   const isAdmin = role === 'Admin' || role === 'Super Admin' || role === 'Manager'
   const clientParam = new URLSearchParams(location.search).get('client') || ''
@@ -288,6 +289,7 @@ export default function Documents() {
   }
 
   const filtered = docs
+  const selectedClient = people.find(p => p.key === clientFilter && p.type === 'client')
 
   return (
     <div>
@@ -301,7 +303,12 @@ export default function Documents() {
       />
       <div className="page-header">
         <div><h1>Documents</h1><p>All client files and documents</p></div>
-        <button className="btn primary" onClick={()=>setModal(true)}>＋ Upload Document</button>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {selectedClient && (
+            <button className="btn" onClick={()=>navigate('/prepared-file/' + selectedClient.id)}>✦ AI File Review</button>
+          )}
+          <button className="btn primary" onClick={()=>setModal(true)}>＋ Upload Document</button>
+        </div>
       </div>
 
       <div className="card" style={{marginBottom:16}}>
