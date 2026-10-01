@@ -97,7 +97,7 @@ export default function PreparedFile() {
     setActiveDoc(doc.id)
     setError('')
     const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
-      body: { documentId: doc.id },
+      body: { documentId: doc.id, clientId },
     })
     setActiveDoc('')
     if (invokeError || data?.error) throw new Error(data?.error || invokeError?.message || 'Analysis failed')
