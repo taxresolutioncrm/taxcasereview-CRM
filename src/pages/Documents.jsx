@@ -313,7 +313,7 @@ export default function Documents() {
         <div><h1>Documents</h1><p>All client files and documents</p></div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {selectedClient && (
-            <button className="btn" onClick={()=>navigate('/prepared-file/' + selectedClient.id)}>✦ AI File Review</button>
+            <button className="btn" onClick={()=>navigate('/ai-file-review/' + selectedClient.id)}>✦ AI File Review</button>
           )}
           <button className="btn primary" onClick={()=>setModal(true)}>＋ Upload Document</button>
         </div>
