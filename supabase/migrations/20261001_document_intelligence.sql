@@ -3,7 +3,7 @@
 
 create table if not exists public.document_ai_runs (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references tenants(id) on delete cascade,
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
   client_id text,
   document_id text,
   status text not null default 'queued' check (status in ('queued','processing','complete','failed','needs_review')),
@@ -30,7 +30,7 @@ create index if not exists document_ai_runs_latest_complete_idx
 
 create table if not exists public.document_ai_facts (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references tenants(id) on delete cascade,
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
   run_id uuid not null references public.document_ai_runs(id) on delete cascade,
   client_id text,
   document_id text,
@@ -57,7 +57,7 @@ create index if not exists document_ai_facts_run_idx
 
 create table if not exists public.document_ai_entities (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references tenants(id) on delete cascade,
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
   run_id uuid not null references public.document_ai_runs(id) on delete cascade,
   client_id text,
   document_id text,
@@ -79,7 +79,7 @@ create index if not exists document_ai_entities_client_idx
 
 create table if not exists public.document_ai_questions (
   id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references tenants(id) on delete cascade,
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
   client_id text,
   run_id uuid references public.document_ai_runs(id) on delete set null,
   document_id text,
@@ -103,22 +103,22 @@ alter table public.document_ai_questions enable row level security;
 
 drop policy if exists "document_ai_runs_tenant" on public.document_ai_runs;
 create policy "document_ai_runs_tenant" on public.document_ai_runs
-  for all using (tenant_id = current_tenant_id())
+  for all to authenticated using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
 drop policy if exists "document_ai_facts_tenant" on public.document_ai_facts;
 create policy "document_ai_facts_tenant" on public.document_ai_facts
-  for all using (tenant_id = current_tenant_id())
+  for all to authenticated using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
 drop policy if exists "document_ai_entities_tenant" on public.document_ai_entities;
 create policy "document_ai_entities_tenant" on public.document_ai_entities
-  for all using (tenant_id = current_tenant_id())
+  for all to authenticated using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
 drop policy if exists "document_ai_questions_tenant" on public.document_ai_questions;
 create policy "document_ai_questions_tenant" on public.document_ai_questions
-  for all using (tenant_id = current_tenant_id())
+  for all to authenticated using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
 
