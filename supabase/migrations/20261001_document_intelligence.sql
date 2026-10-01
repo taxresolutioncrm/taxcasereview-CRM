@@ -11,7 +11,7 @@ create table if not exists document_ai_runs (
   document_type text,
   tax_year integer,
   summary text,
-  confidence numeric(5,4),
+  confidence numeric(5,4) check (confidence is null or (confidence >= 0 and confidence <= 1)),
   model text,
   error_message text,
   started_at timestamptz,
@@ -25,6 +25,8 @@ create index if not exists document_ai_runs_tenant_client_idx
   on document_ai_runs (tenant_id, client_id, created_at desc);
 create index if not exists document_ai_runs_document_idx
   on document_ai_runs (document_id, created_at desc);
+create index if not exists document_ai_runs_latest_complete_idx
+  on document_ai_runs (tenant_id, document_id, created_at desc) where status='complete';
 
 create table if not exists document_ai_facts (
   id uuid primary key default gen_random_uuid(),
@@ -38,8 +40,9 @@ create table if not exists document_ai_facts (
   value_json jsonb,
   normalized_text text,
   source_page integer,
+  source_locator text,
   source_excerpt text,
-  confidence numeric(5,4),
+  confidence numeric(5,4) check (confidence is null or (confidence >= 0 and confidence <= 1)),
   review_status text not null default 'unreviewed'
     check (review_status in ('unreviewed','verified','rejected','superseded')),
   reviewed_by uuid,
@@ -64,7 +67,8 @@ create table if not exists document_ai_entities (
   identifiers jsonb not null default '{}'::jsonb,
   attributes jsonb not null default '{}'::jsonb,
   source_page integer,
-  confidence numeric(5,4),
+  source_locator text,
+  confidence numeric(5,4) check (confidence is null or (confidence >= 0 and confidence <= 1)),
   review_status text not null default 'unreviewed'
     check (review_status in ('unreviewed','verified','rejected','superseded')),
   created_at timestamptz not null default now()
