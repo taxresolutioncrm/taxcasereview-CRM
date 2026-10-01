@@ -231,8 +231,8 @@ export default function Documents() {
     }]).select('id').single()
     setSaving(false)
     if (error) { showToast('Error: '+error.message); return }
-    showToast(file && savedDoc?.id ? '✅ Document saved — AI review started' : '✅ Document saved!')
-    if (file && savedDoc?.id) {
+    showToast(file && savedDoc?.id && entityClientId ? '✅ Document saved — AI review started' : '✅ Document saved!')
+    if (file && savedDoc?.id && entityClientId) {
       supabase.functions.invoke('document-intelligence', { body: { documentId: savedDoc.id } })
         .then(({ error: aiError, data: aiData }) => {
           if (aiError || aiData?.error) console.error('Document AI analysis failed:', aiData?.error || aiError?.message)
