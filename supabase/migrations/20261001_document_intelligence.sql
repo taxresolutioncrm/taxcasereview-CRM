@@ -4,8 +4,8 @@
 create table if not exists document_ai_runs (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  client_id uuid,
-  document_id uuid,
+  client_id text,
+  document_id text,
   status text not null default 'queued' check (status in ('queued','processing','complete','failed','needs_review')),
   vertical text not null default 'tax',
   document_type text,
@@ -30,8 +30,8 @@ create table if not exists document_ai_facts (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
   run_id uuid not null references document_ai_runs(id) on delete cascade,
-  client_id uuid,
-  document_id uuid,
+  client_id text,
+  document_id text,
   category text not null default 'general',
   field_key text not null,
   field_label text,
@@ -56,8 +56,8 @@ create table if not exists document_ai_entities (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
   run_id uuid not null references document_ai_runs(id) on delete cascade,
-  client_id uuid,
-  document_id uuid,
+  client_id text,
+  document_id text,
   entity_type text not null,
   display_name text not null,
   relationship text,
@@ -76,9 +76,9 @@ create index if not exists document_ai_entities_client_idx
 create table if not exists document_ai_questions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  client_id uuid,
+  client_id text,
   run_id uuid references document_ai_runs(id) on delete set null,
-  document_id uuid,
+  document_id text,
   question text not null,
   reason text,
   priority text not null default 'normal' check (priority in ('low','normal','high','urgent')),
@@ -117,7 +117,7 @@ create policy "document_ai_questions_tenant" on document_ai_questions
   for all using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
-create or replace function document_ai_client_overview(p_client_id uuid)
+create or replace function document_ai_client_overview(p_client_id text)
 returns jsonb
 language sql
 security invoker
