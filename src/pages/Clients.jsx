@@ -1414,20 +1414,50 @@ export default function Clients() {
   }
 
   async function saveEdit() {
+    if (!myTenantId || !form.id) return
     setSaving(true)
-    const before = clients.find(cl=>cl.id===form.id) || detail
+
+    // The clients list is intentionally a lightweight/partial projection. Never
+    // use that row as the "before" snapshot for audit diffs: fields omitted from
+    // the list look empty and caused the same giant Updated note to be logged
+    // again on every later edit. Read the complete tenant-scoped row first.
+    const { data: before, error: beforeErr } = await supabase.from('clients')
+      .select('*')
+      .eq('tenant_id', myTenantId)
+      .eq('id', form.id)
+      .single()
+    if (beforeErr || !before) {
+      setSaving(false)
+      showToast('Could not load the current client record before saving.')
+      return
+    }
+
     const payload = buildPayload(form)
     const { error } = await supabase.from('clients').update(payload).eq('tenant_id', myTenantId).eq('id',form.id)
     setSaving(false)
     if (error){showToast('Error: '+error.message);return}
     showToast('✅ Saved!')
     setEditModal(false)
+
     const {data}=await supabase.from('clients').select('*').eq('tenant_id', myTenantId).eq('id',form.id).single()
     if (data){setDetail(data);loadRelated(data.name)}
     load()
+
     if (data) {
       const changes = summarizeFieldChanges(before, data)
-      if (changes.length) { await logAction(data.name, `✏️ Updated: ${changes.join(', ')}`); loadRelated(data.name) }
+      if (changes.length) {
+        const noteText = `✏️ Updated: ${changes.join(', ')}`
+        // Guard rapid/replayed saves from creating the exact same audit note.
+        const { data: recentSame } = await supabase.from('client_notes')
+          .select('id')
+          .eq('tenant_id', myTenantId)
+          .eq('clientname', data.name)
+          .eq('text', noteText)
+          .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+          .limit(1)
+        if (!recentSame?.length) await logAction(data.name, noteText)
+        loadRelated(data.name, data.id)
+      }
     }
   }
 
