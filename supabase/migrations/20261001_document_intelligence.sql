@@ -96,6 +96,25 @@ create table if not exists public.document_ai_questions (
 create index if not exists document_ai_questions_client_idx
   on public.document_ai_questions (tenant_id, client_id, status, priority);
 
+
+-- Safely link legacy document rows to a client only when the name match is unique
+-- inside the same tenant. Ambiguous/unmatched legacy rows are left untouched.
+with unique_clients as (
+  select tenant_id, lower(trim(name)) as client_key, min(id) as client_id
+  from public.clients
+  where name is not null and trim(name) <> ''
+  group by tenant_id, lower(trim(name))
+  having count(*) = 1
+)
+update public.documents d
+set client_id = u.client_id
+from unique_clients u
+where d.client_id is null
+  and d.tenant_id = u.tenant_id
+  and coalesce(trim(d.client),'') <> ''
+  and lower(trim(d.client)) = u.client_key;
+
+
 alter table public.document_ai_runs enable row level security;
 alter table public.document_ai_facts enable row level security;
 alter table public.document_ai_entities enable row level security;
