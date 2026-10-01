@@ -29,6 +29,8 @@ assert(prepared.includes('answered_by'), 'question answers record staff identity
 
 assert(edge.includes("doc.tenant_id"), 'edge function derives tenant from RLS-authorized document')
 assert(!edge.includes("rpc('current_tenant_id')"), 'edge function does not trust a separate tenant RPC')
+assert(!edge.includes('SUPABASE_SERVICE_ROLE_KEY'), 'AI file download does not bypass Storage RLS')
+assert(edge.includes('requestedClientId'), 'legacy documents are validated against the active client')
 assert(edge.includes('sanitizeValue'), 'server-side sensitive-value sanitization is enabled')
 assert(edge.includes('sanitizeIdentifiers'), 'entity identifiers are reduced to last-four data')
 for (const ext of ['xlsx','xlsm','xls','csv','docx','pptx','pdf','png','webp']) {
@@ -36,6 +38,7 @@ for (const ext of ['xlsx','xlsm','xls','csv','docx','pptx','pdf','png','webp']) 
 }
 assert(edge.includes('source_locator'), 'AI extraction stores spreadsheet/office source locators')
 assert(migration.includes('source_locator text'), 'schema supports source locators')
+assert(migration.includes('with unique_clients as'), 'legacy document backfill only uses unique tenant-scoped client names')
 assert(migration.includes('enable row level security'), 'Document Intelligence tables have RLS')
 for (const table of ['document_ai_runs','document_ai_facts','document_ai_entities','document_ai_questions']) {
   assert(migration.includes('create table if not exists ' + table), table + ' is declared')
