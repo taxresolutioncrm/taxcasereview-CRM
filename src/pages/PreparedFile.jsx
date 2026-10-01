@@ -22,8 +22,28 @@ export default function PreparedFile() {
   const [activeDoc, setActiveDoc] = useState('')
   const [error, setError] = useState('')
   const [tab, setTab] = useState('overview')
+  const [clientOptions, setClientOptions] = useState([])
+  const [selectedClientId, setSelectedClientId] = useState('')
 
-  useEffect(() => { load() }, [clientId])
+  useEffect(() => {
+    if (clientId) load()
+    else loadClientOptions()
+  }, [clientId])
+
+  async function loadClientOptions() {
+    setError('')
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id,name,email,phone')
+      .order('name', { ascending:true })
+      .limit(500)
+    if (error) {
+      setError(error.message)
+      setClientOptions([])
+      return
+    }
+    setClientOptions(data || [])
+  }
 
   async function load() {
     if (!clientId) return
@@ -164,6 +184,38 @@ export default function PreparedFile() {
     load()
   }
 
+  if (!clientId) {
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <h1>AI File Review</h1>
+            <p>Select a client to open their prepared file, analyze documents, and review AI findings.</p>
+          </div>
+        </div>
+
+        {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
+
+        <div className="card" style={{maxWidth:760}}>
+          <div className="form-group" style={{marginBottom:12}}>
+            <label>Client</label>
+            <select className="select" value={selectedClientId} onChange={e=>setSelectedClientId(e.target.value)}>
+              <option value="">Select a client…</option>
+              {clientOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn primary" disabled={!selectedClientId} onClick={()=>navigate('/ai-file-review/' + selectedClientId)}>
+              Open AI File Review
+            </button>
+            <button className="btn" onClick={()=>navigate('/documents')}>Documents</button>
+          </div>
+          {!clientOptions.length && !error && <div style={{marginTop:14,fontSize:12,color:'var(--t3)'}}>No clients available.</div>}
+        </div>
+      </div>
+    )
+  }
+
   if (!client) {
     return <div><div className="page-header"><div><h1>AI File Review</h1><p>{error || 'Loading client file…'}</p></div></div></div>
   }
@@ -172,7 +224,7 @@ export default function PreparedFile() {
     <div>
       <div className="page-header">
         <div>
-          <button className="btn sm" onClick={()=>navigate('/documents')} style={{marginBottom:10}}>← Documents</button>
+          <button className="btn sm" onClick={()=>navigate('/ai-file-review')} style={{marginBottom:10}}>← All AI File Reviews</button>
           <h1>{client.name} — AI File Review</h1>
           <p>AI reads the client file, connects the facts, and surfaces only what still needs human review.</p>
         </div>
