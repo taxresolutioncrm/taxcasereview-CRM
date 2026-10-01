@@ -148,6 +148,7 @@ const Transactions = lazyWithRecovery('Transactions', () => import('./pages/Tran
 const Sms           = lazyWithRecovery('Sms', () => import('./pages/Sms'))
 const Email         = lazyWithRecovery('Email', () => import('./pages/Email'))
 const Documents     = lazyWithRecovery('Documents', () => import('./pages/Documents'))
+const PreparedFile  = lazyWithRecovery('PreparedFile', () => import('./pages/PreparedFile'))
 const Esign         = lazyWithRecovery('TaxOfficeEsign', () => import('./pages/TaxOfficeEsign'))
 const TimeClock     = lazyWithRecovery('TimeClock', () => import('./pages/TimeClock'))
 const Payroll       = lazyWithRecovery('Payroll', () => import('./pages/Payroll'))
@@ -279,6 +280,7 @@ function Shell() {
             <Route path="/sms"         element={<Guard section="sms"><Sms /></Guard>} />
             <Route path="/email"       element={<Guard section="email"><Email /></Guard>} />
             <Route path="/documents"   element={<Guard section="documents"><Documents /></Guard>} />
+            <Route path="/prepared-file/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
             <Route path="/esign"       element={<Guard section="esign"><Esign /></Guard>} />
             <Route path="/kiosk"       element={<Kiosk />} />
             <Route path="/employee"    element={<EmployeePortal />} />
