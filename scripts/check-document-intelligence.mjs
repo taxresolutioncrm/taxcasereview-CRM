@@ -1,0 +1,46 @@
+import fs from 'node:fs'
+
+function read(path) {
+  return fs.readFileSync(new URL('../' + path, import.meta.url), 'utf8')
+}
+function assert(condition, message) {
+  if (!condition) {
+    console.error('FAIL:', message)
+    process.exitCode = 1
+  } else {
+    console.log('PASS:', message)
+  }
+}
+
+const app = read('src/App.jsx')
+const docs = read('src/pages/Documents.jsx')
+const prepared = read('src/pages/PreparedFile.jsx')
+const edge = read('supabase/functions/document-intelligence/index.ts')
+const migration = read('supabase/migrations/20261001_document_intelligence.sql')
+
+assert(app.includes("import('./pages/PreparedFile')"), 'AI File Review route component is loaded')
+assert(app.includes('path="/prepared-file/:clientId"'), 'AI File Review is routed by client id')
+assert(docs.includes('document-intelligence'), 'document uploads invoke Document Intelligence')
+assert(docs.includes('entityClientId'), 'auto-analysis is limited to client-linked documents')
+assert(prepared.includes('latestCompleteRunIds'), 'prepared file shows current analysis instead of duplicate historical runs')
+assert(prepared.includes('Open source'), 'AI findings expose source navigation')
+assert(prepared.includes('reviewed_by'), 'fact verification records reviewer identity')
+assert(prepared.includes('answered_by'), 'question answers record staff identity')
+
+assert(edge.includes("doc.tenant_id"), 'edge function derives tenant from RLS-authorized document')
+assert(!edge.includes("rpc('current_tenant_id')"), 'edge function does not trust a separate tenant RPC')
+assert(edge.includes('sanitizeValue'), 'server-side sensitive-value sanitization is enabled')
+assert(edge.includes('sanitizeIdentifiers'), 'entity identifiers are reduced to last-four data')
+for (const ext of ['xlsx','xlsm','xls','csv','docx','pptx','pdf','png','webp']) {
+  assert(edge.includes(ext), 'AI intake supports ' + ext.toUpperCase())
+}
+assert(edge.includes('source_locator'), 'AI extraction stores spreadsheet/office source locators')
+assert(migration.includes('source_locator text'), 'schema supports source locators')
+assert(migration.includes('enable row level security'), 'Document Intelligence tables have RLS')
+for (const table of ['document_ai_runs','document_ai_facts','document_ai_entities','document_ai_questions']) {
+  assert(migration.includes('create table if not exists ' + table), table + ' is declared')
+  assert(migration.includes('"' + table + '_tenant"'), table + ' has a tenant policy')
+}
+
+if (process.exitCode) process.exit(process.exitCode)
+console.log('Document Intelligence contract checks passed.')
