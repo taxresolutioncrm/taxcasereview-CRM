@@ -24,6 +24,7 @@ const conversionMigration = fs.readFileSync('supabase/migrations/20260924211000_
 const invoiceAdjustMigration = fs.readFileSync('supabase/migrations/20260924220000_atomic_invoice_payment_adjustments.sql', 'utf8')
 const tenantBleedMigration = fs.readFileSync('supabase/migrations/20260925050000_cloudcpa_tenant_bleed_hardening.sql', 'utf8')
 const chatPrefMigration = fs.readFileSync('supabase/migrations/20260925044500_chat_preference_tenant_uniqueness.sql', 'utf8')
+const clientAuditMigration = fs.readFileSync('supabase/migrations/20261001120000_prevent_duplicate_client_update_audit.sql', 'utf8')
 
 function need(src, text, msg) {
   if (!src.includes(text)) failures.push(msg)
@@ -99,6 +100,12 @@ need(chat, "dedupeEmployeeRoster", 'Team Chat roster must collapse duplicate emp
 need(chat, "chat-presence:${myTenantId}", 'Team Chat presence must be isolated by the authoritative tenant id')
 forbid(chat, "chat-presence:${FIRM.tenantId || 'default'}", 'Team Chat presence still depends on mutable/stale global branding tenant')
 need(clients, ".eq('tenant_id', myTenantId)", 'Client list/detail queries must be explicitly tenant scoped')
+need(clients, "const saveEditLockRef = useRef(false)", 'Client edit save needs a synchronous replay lock')
+need(clients, ".select('*')\n        .eq('tenant_id', myTenantId)\n        .eq('id', form.id)", 'Client audit diff must read the full tenant-scoped before row')
+need(clients, ".eq('client_id', String(data.id))", 'Client audit dedupe must use immutable client id')
+need(clients, "client_id: clientId", 'Client update audit notes must persist client_id')
+need(clientAuditMigration, 'prevent_duplicate_client_update_audit', 'Database replay guard for client update audit notes missing')
+need(clientAuditMigration, "new.text like '✏️ Updated:%'", 'Database replay guard is not scoped to client update audits')
 need(clients, "tenant_id: myTenantId, created_at:new Date().toISOString()", 'New client records must include the active tenant id')
 need(leads, "tenant_id: myTenantId,\n      name: clientName", 'Lead conversion client insert must include the active tenant id')
 need(leads, "Blocked: this lead does not belong to the active office.", 'Lead conversion cross-tenant guard missing')
