@@ -1,0 +1,2 @@
+taxpayer_name,ssn,w2_employer,ein,wages,federal_withholding,tax_year
+Synthetic Test Client,123-45-6789,Example Services LLC,12-3456789,72500.00,9100.00,2025
