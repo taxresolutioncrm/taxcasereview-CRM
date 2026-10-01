@@ -282,7 +282,7 @@ function Shell() {
             <Route path="/documents"   element={<Guard section="documents"><Documents /></Guard>} />
             <Route path="/ai-file-review" element={<Guard section="documents"><PreparedFile /></Guard>} />
             <Route path="/ai-file-review/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
-            <Route path="/prepared-file/:clientId" element={<Navigate to={`/ai-file-review/${clientId}`} replace />} />
+            <Route path="/prepared-file/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
             <Route path="/esign"       element={<Guard section="esign"><Esign /></Guard>} />
             <Route path="/kiosk"       element={<Kiosk />} />
             <Route path="/employee"    element={<EmployeePortal />} />
