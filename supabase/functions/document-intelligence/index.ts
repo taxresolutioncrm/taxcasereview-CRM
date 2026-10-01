@@ -206,7 +206,6 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!anthropicKey) return jsonResponse({ error: 'ANTHROPIC_API_KEY not configured' }, 500)
 
@@ -214,7 +213,6 @@ serve(async (req) => {
   if (!authHeader.startsWith('Bearer ')) return jsonResponse({ error: 'unauthorized' }, 401)
 
   const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } })
-  const admin = createClient(supabaseUrl, serviceKey)
 
   try {
     const { documentId } = await req.json()
@@ -257,7 +255,8 @@ serve(async (req) => {
     if (runErr || !run) return jsonResponse({ error: runErr?.message || 'could_not_start_run' }, 500)
 
     try {
-      const { data: fileData, error: downloadErr } = await admin.storage.from('documents').download(storagePath)
+      // Download with the caller-scoped Supabase client so Storage RLS remains authoritative.
+      const { data: fileData, error: downloadErr } = await userClient.storage.from('documents').download(storagePath)
       if (downloadErr || !fileData) throw new Error(downloadErr?.message || 'document_download_failed')
 
       const bytes = new Uint8Array(await fileData.arrayBuffer())
