@@ -104,7 +104,8 @@ function redactText(input: unknown) {
 function sanitizeValue(value: unknown, key=''): unknown {
   const sensitiveKey = /(ssn|ein|tin|taxpayer.*id|routing|account.*(number|no|id)|bank.*(number|no|id))/i.test(key)
   if (value == null) return value
-  if (typeof value === 'string') return sensitiveKey ? maskDigits(value) : redactText(value)
+  if (sensitiveKey && (typeof value === 'string' || typeof value === 'number')) return maskDigits(String(value))
+  if (typeof value === 'string') return redactText(value)
   if (typeof value === 'number' || typeof value === 'boolean') return value
   if (Array.isArray(value)) return value.map((v) => sanitizeValue(v, key))
   if (typeof value === 'object') {
