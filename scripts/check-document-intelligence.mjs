@@ -33,6 +33,7 @@ assert(!edge.includes('SUPABASE_SERVICE_ROLE_KEY'), 'AI file download does not b
 assert(edge.includes('requestedClientId'), 'legacy documents are validated against the active client')
 assert(edge.includes('sanitizeValue'), 'server-side sensitive-value sanitization is enabled')
 assert(edge.includes('sanitizeIdentifiers'), 'entity identifiers are reduced to last-four data')
+assert(edge.includes("sensitiveKey && (typeof value === 'string' || typeof value === 'number')"), 'numeric sensitive identifiers are masked before persistence')
 for (const ext of ['xlsx','xlsm','xls','csv','docx','pptx','pdf','png','webp']) {
   assert(edge.includes(ext), 'AI intake supports ' + ext.toUpperCase())
 }
@@ -41,7 +42,7 @@ assert(migration.includes('source_locator text'), 'schema supports source locato
 assert(migration.includes('with unique_clients as'), 'legacy document backfill only uses unique tenant-scoped client names')
 assert(migration.includes('enable row level security'), 'Document Intelligence tables have RLS')
 for (const table of ['document_ai_runs','document_ai_facts','document_ai_entities','document_ai_questions']) {
-  assert(migration.includes('create table if not exists ' + table), table + ' is declared')
+  assert(migration.includes('create table if not exists public.' + table), table + ' is declared')
   assert(migration.includes('"' + table + '_tenant"'), table + ' has a tenant policy')
 }
 
