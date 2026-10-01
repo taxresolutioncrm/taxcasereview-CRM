@@ -216,7 +216,7 @@ export default function Documents() {
       const { data: signedData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
       fileUrl = signedData?.signedUrl || null; fileName = file.name || docName; fileSize = file.size
     }
-    const { error } = await supabase.from('documents').insert([{
+    const { data: savedDoc, error } = await supabase.from('documents').insert([{
       name: docName,
       client: entityName,
       clientname: entityName,
@@ -228,10 +228,18 @@ export default function Documents() {
       file_size: fileSize,
       storage_path: storagePath,
       created_at: new Date().toISOString()
-    }])
+    }]).select('id').single()
     setSaving(false)
     if (error) { showToast('Error: '+error.message); return }
-    showToast('✅ Document saved!')
+    showToast(file && savedDoc?.id ? '✅ Document saved — AI review started' : '✅ Document saved!')
+    if (file && savedDoc?.id) {
+      supabase.functions.invoke('document-intelligence', { body: { documentId: savedDoc.id } })
+        .then(({ error: aiError, data: aiData }) => {
+          if (aiError || aiData?.error) console.error('Document AI analysis failed:', aiData?.error || aiError?.message)
+          else loadDocuments()
+        })
+        .catch(aiError => console.error('Document AI analysis failed:', aiError))
+    }
     const actor = getActor(user)
     await triggerWorkflow('document_uploaded', 'client', entityName, actor.name).catch(()=>{})
     await logActivity(supabase, {
