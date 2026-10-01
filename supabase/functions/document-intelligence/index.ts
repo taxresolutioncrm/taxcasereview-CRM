@@ -215,7 +215,7 @@ serve(async (req) => {
   const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } })
 
   try {
-    const { documentId } = await req.json()
+    const { documentId, clientId: requestedClientId } = await req.json()
     if (!documentId) return jsonResponse({ error: 'documentId required' }, 400)
 
     const { data: userData, error: userErr } = await userClient.auth.getUser()
@@ -232,7 +232,28 @@ serve(async (req) => {
     if (docErr || !doc) return jsonResponse({ error: 'document_not_found' }, 404)
     const tenantId = doc.tenant_id
     if (!tenantId) return jsonResponse({ error: 'document_has_no_tenant' }, 400)
-    if (!doc.client_id) return jsonResponse({ error: 'document_not_linked_to_client' }, 400)
+
+    let effectiveClientId = doc.client_id || null
+    if (requestedClientId) {
+      const { data: requestedClient, error: clientErr } = await userClient
+        .from('clients')
+        .select('id,name')
+        .eq('id', requestedClientId)
+        .maybeSingle()
+      if (clientErr || !requestedClient) return jsonResponse({ error: 'client_not_found' }, 404)
+
+      if (effectiveClientId && String(effectiveClientId) !== String(requestedClient.id)) {
+        return jsonResponse({ error: 'document_client_mismatch' }, 403)
+      }
+      if (!effectiveClientId) {
+        const legacyName = String(doc.client || doc.clientname || '').trim().toLowerCase()
+        if (!legacyName || legacyName !== String(requestedClient.name || '').trim().toLowerCase()) {
+          return jsonResponse({ error: 'document_not_linked_to_client' }, 400)
+        }
+        effectiveClientId = requestedClient.id
+      }
+    }
+    if (!effectiveClientId) return jsonResponse({ error: 'document_not_linked_to_client' }, 400)
 
     const storagePath = doc.storage_path
       || (String(doc.file_url || '').startsWith('storage://documents/')
@@ -244,7 +265,7 @@ serve(async (req) => {
       .from('document_ai_runs')
       .insert({
         tenant_id: tenantId,
-        client_id: doc.client_id,
+        client_id: effectiveClientId,
         document_id: doc.id,
         status: 'processing',
         vertical: 'tax',
@@ -320,7 +341,7 @@ serve(async (req) => {
         const rows = facts.map((f:any) => ({
           tenant_id:tenantId,
           run_id:run.id,
-          client_id:doc.client_id,
+          client_id:effectiveClientId,
           document_id:doc.id,
           category:String(f.category || 'other').slice(0,80),
           field_key:String(f.field_key || 'unknown').slice(0,120),
@@ -340,7 +361,7 @@ serve(async (req) => {
         const rows = entities.map((e:any) => ({
           tenant_id:tenantId,
           run_id:run.id,
-          client_id:doc.client_id,
+          client_id:effectiveClientId,
           document_id:doc.id,
           entity_type:String(e.entity_type || 'other').slice(0,80),
           display_name:redactText(e.display_name || 'Unknown').slice(0,240),
@@ -358,7 +379,7 @@ serve(async (req) => {
       if (questions.length) {
         const rows = questions.map((q:any) => ({
           tenant_id:tenantId,
-          client_id:doc.client_id,
+          client_id:effectiveClientId,
           run_id:run.id,
           document_id:doc.id,
           question:redactText(q.question || '').trim().slice(0,1000),
