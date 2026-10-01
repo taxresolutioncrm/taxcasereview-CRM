@@ -1,7 +1,7 @@
 -- RomyLabs Document Intelligence foundation
 -- Sandbox-first: schema only. Do not apply to production until acceptance testing passes.
 
-create table if not exists document_ai_runs (
+create table if not exists public.document_ai_runs (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
   client_id text,
@@ -22,16 +22,16 @@ create table if not exists document_ai_runs (
 );
 
 create index if not exists document_ai_runs_tenant_client_idx
-  on document_ai_runs (tenant_id, client_id, created_at desc);
+  on public.document_ai_runs (tenant_id, client_id, created_at desc);
 create index if not exists document_ai_runs_document_idx
-  on document_ai_runs (document_id, created_at desc);
+  on public.document_ai_runs (document_id, created_at desc);
 create index if not exists document_ai_runs_latest_complete_idx
-  on document_ai_runs (tenant_id, document_id, created_at desc) where status='complete';
+  on public.document_ai_runs (tenant_id, document_id, created_at desc) where status='complete';
 
-create table if not exists document_ai_facts (
+create table if not exists public.document_ai_facts (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  run_id uuid not null references document_ai_runs(id) on delete cascade,
+  run_id uuid not null references public.document_ai_runs(id) on delete cascade,
   client_id text,
   document_id text,
   category text not null default 'general',
@@ -51,14 +51,14 @@ create table if not exists document_ai_facts (
 );
 
 create index if not exists document_ai_facts_client_idx
-  on document_ai_facts (tenant_id, client_id, category, field_key);
+  on public.document_ai_facts (tenant_id, client_id, category, field_key);
 create index if not exists document_ai_facts_run_idx
-  on document_ai_facts (run_id);
+  on public.document_ai_facts (run_id);
 
-create table if not exists document_ai_entities (
+create table if not exists public.document_ai_entities (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  run_id uuid not null references document_ai_runs(id) on delete cascade,
+  run_id uuid not null references public.document_ai_runs(id) on delete cascade,
   client_id text,
   document_id text,
   entity_type text not null,
@@ -75,13 +75,13 @@ create table if not exists document_ai_entities (
 );
 
 create index if not exists document_ai_entities_client_idx
-  on document_ai_entities (tenant_id, client_id, entity_type);
+  on public.document_ai_entities (tenant_id, client_id, entity_type);
 
-create table if not exists document_ai_questions (
+create table if not exists public.document_ai_questions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
   client_id text,
-  run_id uuid references document_ai_runs(id) on delete set null,
+  run_id uuid references public.document_ai_runs(id) on delete set null,
   document_id text,
   question text not null,
   reason text,
@@ -94,43 +94,55 @@ create table if not exists document_ai_questions (
 );
 
 create index if not exists document_ai_questions_client_idx
-  on document_ai_questions (tenant_id, client_id, status, priority);
+  on public.document_ai_questions (tenant_id, client_id, status, priority);
 
-alter table document_ai_runs enable row level security;
-alter table document_ai_facts enable row level security;
-alter table document_ai_entities enable row level security;
-alter table document_ai_questions enable row level security;
+alter table public.document_ai_runs enable row level security;
+alter table public.document_ai_facts enable row level security;
+alter table public.document_ai_entities enable row level security;
+alter table public.document_ai_questions enable row level security;
 
-drop policy if exists "document_ai_runs_tenant" on document_ai_runs;
-create policy "document_ai_runs_tenant" on document_ai_runs
+drop policy if exists "document_ai_runs_tenant" on public.document_ai_runs;
+create policy "document_ai_runs_tenant" on public.document_ai_runs
   for all using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
-drop policy if exists "document_ai_facts_tenant" on document_ai_facts;
-create policy "document_ai_facts_tenant" on document_ai_facts
+drop policy if exists "document_ai_facts_tenant" on public.document_ai_facts;
+create policy "document_ai_facts_tenant" on public.document_ai_facts
   for all using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
-drop policy if exists "document_ai_entities_tenant" on document_ai_entities;
-create policy "document_ai_entities_tenant" on document_ai_entities
+drop policy if exists "document_ai_entities_tenant" on public.document_ai_entities;
+create policy "document_ai_entities_tenant" on public.document_ai_entities
   for all using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
-drop policy if exists "document_ai_questions_tenant" on document_ai_questions;
-create policy "document_ai_questions_tenant" on document_ai_questions
+drop policy if exists "document_ai_questions_tenant" on public.document_ai_questions;
+create policy "document_ai_questions_tenant" on public.document_ai_questions
   for all using (tenant_id = current_tenant_id())
   with check (tenant_id = current_tenant_id());
 
-create or replace function document_ai_client_overview(p_client_id text)
+
+revoke all on table public.document_ai_runs from anon;
+revoke all on table public.document_ai_facts from anon;
+revoke all on table public.document_ai_entities from anon;
+revoke all on table public.document_ai_questions from anon;
+
+grant select, insert, update, delete on public.document_ai_runs to authenticated;
+grant select, insert, update, delete on public.document_ai_facts to authenticated;
+grant select, insert, update, delete on public.document_ai_entities to authenticated;
+grant select, insert, update, delete on public.document_ai_questions to authenticated;
+
+create or replace function public.document_ai_client_overview(p_client_id text)
 returns jsonb
 language sql
 security invoker
 stable
+set search_path = public, pg_catalog
 as $$
   with latest_runs as (
     select distinct on (document_id)
       id, document_id, status, created_at
-    from document_ai_runs
+    from public.document_ai_runs
     where tenant_id=current_tenant_id() and client_id=p_client_id
     order by document_id, created_at desc
   ),
@@ -146,7 +158,7 @@ as $$
   facts as (
     select count(*)::int total_facts,
            count(*) filter (where f.review_status='verified')::int verified_facts
-    from document_ai_facts f
+    from public.document_ai_facts f
     where f.tenant_id=current_tenant_id()
       and f.client_id=p_client_id
       and f.run_id in (select id from current_complete)
@@ -154,7 +166,7 @@ as $$
   ),
   entities as (
     select count(*)::int total_entities
-    from document_ai_entities e
+    from public.document_ai_entities e
     where e.tenant_id=current_tenant_id()
       and e.client_id=p_client_id
       and e.run_id in (select id from current_complete)
@@ -162,7 +174,7 @@ as $$
   ),
   questions as (
     select count(*)::int open_questions
-    from document_ai_questions q
+    from public.document_ai_questions q
     where q.tenant_id=current_tenant_id()
       and q.client_id=p_client_id
       and q.status='open'
@@ -179,3 +191,6 @@ as $$
   )
   from runs, facts, entities, questions;
 $$;
+
+revoke all on function public.document_ai_client_overview(text) from anon;
+grant execute on function public.document_ai_client_overview(text) to authenticated;
