@@ -37,37 +37,38 @@ export function firmSlug(name) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-// Pre-populate from localStorage synchronously so the first render shows the
-// correct tenant branding with zero flash. The async DB fetch below then
-// confirms/updates it in the background.
-function _loadCached() {
-  try {
-    const cached = localStorage.getItem('tcr_firm_branding')
-    if (cached) return JSON.parse(cached)
-  } catch (_) {}
-  return null
-}
-const _cached = _loadCached()
-
+// Do not hydrate tenant branding from a process-wide/localStorage cache.
+// The app can switch tenants in the same browser session (admin impersonation),
+// and a synchronous cache cannot prove which tenant is current yet. Rendering a
+// neutral shell until current_tenant_id() resolves is safer than flashing or
+// retaining another office's identity.
 export const FIRM = {
-  name:     _cached?.name     || '',
-  slug:     _cached?.slug     || '',
-  tenantId: _cached?.tenantId || '',
-  logoUrl:  _cached?.logoUrl  || '',
-  address:  _cached?.address  || '',
-  phone:    _cached?.phone    || '',
-  email:    _cached?.email    || '',
-  website:  _cached?.website  || '',
-  fax:      _cached?.fax      || '',
-  loaded:         !!_cached,
-  labels:         _cached?.labels         || {},
-  paymentProvider: _cached?.paymentProvider || 'stripe',
+  name: '',
+  slug: '',
+  tenantId: '',
+  logoUrl: '',
+  address: '',
+  phone: '',
+  email: '',
+  website: '',
+  fax: '',
+  loaded: false,
+  labels: {},
+  paymentProvider: 'stripe',
 }
-// Apply cached branding immediately (title only) before any async fetch.
-// The RomyLabs Admin host is a hard browser-branding boundary and must never
-// inherit cached tenant/demo branding.
-if (_cached?.name) {
-  setBrowserTitle(`${_cached.name} — IRS Resolution CRM`)
+
+function resetFirmBranding() {
+  FIRM.name = ''
+  FIRM.slug = ''
+  FIRM.tenantId = ''
+  FIRM.logoUrl = ''
+  FIRM.address = ''
+  FIRM.phone = ''
+  FIRM.email = ''
+  FIRM.website = ''
+  FIRM.fax = ''
+  FIRM.labels = {}
+  FIRM.loaded = false
 }
 
 // Resolve a UI label — falls back to the default if the tenant hasn't overridden it
@@ -77,6 +78,10 @@ export function label(key, defaultVal) {
 
 export async function loadFirmBranding() {
   try {
+    // Clear the previous tenant immediately. If the next lookup fails, a neutral
+    // shell is preferable to showing stale branding from another office.
+    resetFirmBranding()
+
     // During admin impersonation, RLS on settings always returns TCR's row
     // (romy's JWT never changes). Read branding from sessionStorage instead —
     // it was populated by ImpersonateGate when the token was validated.
@@ -127,15 +132,8 @@ export async function loadFirmBranding() {
     FIRM.fax = s.firm_fax_number || ''
     FIRM.labels = s.labels || {}
     FIRM.loaded = true
-    // Cache for instant next-load — eliminates the branding flash on hard refresh
-    try {
-      localStorage.setItem('tcr_firm_branding', JSON.stringify({
-        name: FIRM.name, slug: FIRM.slug, tenantId: FIRM.tenantId,
-        logoUrl: FIRM.logoUrl, address: FIRM.address, phone: FIRM.phone,
-        email: FIRM.email, website: FIRM.website, fax: FIRM.fax, labels: FIRM.labels,
-        paymentProvider: FIRM.paymentProvider
-      }))
-    } catch (_) {}
+    // No cross-tenant localStorage branding cache. current_tenant_id() is the
+    // authority on every app boot/session switch.
   } catch (_) { /* leave whatever we have; templates degrade gracefully */ }
   return FIRM
 }
@@ -146,7 +144,14 @@ export async function loadFirmBranding() {
 // the anon-safe booking_get_public_meta RPC instead. Call this on mount of any
 // page a logged-out client can reach, or it will render the default firm.
 export function clearFirmBrandingCache() {
-  try { localStorage.removeItem('tcr_firm_branding') } catch (_) {}
+  resetFirmBranding()
+  try {
+    localStorage.removeItem('tcr_firm_branding')
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (key?.startsWith('tcr_firm_branding:')) localStorage.removeItem(key)
+    }
+  } catch (_) {}
 }
 
 export async function loadFirmBrandingPublic(tenantHint) {

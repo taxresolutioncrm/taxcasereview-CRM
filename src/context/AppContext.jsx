@@ -258,17 +258,26 @@ export function AppProvider({ children }) {
       setMyEmpId(data.id || null)
       myRealNameRef.current = data.name?.trim() || null
       // Re-run the mute-prefs load now that we may have a corrected name.
-      supabase.from('chat_conv_prefs').select('conv_id, muted').eq('viewer_name', data.name?.trim() || fallbackName)
+      supabase.from('chat_conv_prefs')
+        .select('conv_id, muted')
+        .eq('tenant_id', tenantId)
+        .eq('viewer_name', data.name?.trim() || fallbackName)
         .then(({ data: prefs }) => {
           if (cancelled || !prefs) return
           mutedRef.current = new Set(prefs.filter(r => r.muted).map(r => r.conv_id))
         })
     })()
-    supabase.from('chat_conv_prefs').select('conv_id, muted').eq('viewer_name', fallbackName)
-      .then(({ data }) => {
+    supabase.rpc('current_tenant_id').then(({ data: tenantId }) => {
+      if (!tenantId || cancelled) return
+      supabase.from('chat_conv_prefs')
+        .select('conv_id, muted')
+        .eq('tenant_id', tenantId)
+        .eq('viewer_name', fallbackName)
+        .then(({ data }) => {
         if (cancelled || !data) return
-        mutedRef.current = new Set(data.filter(r => r.muted).map(r => r.conv_id))
-      })
+          mutedRef.current = new Set(data.filter(r => r.muted).map(r => r.conv_id))
+        })
+    })
     return () => { cancelled = true }
   }, [user?.email])
 
@@ -343,7 +352,7 @@ export function AppProvider({ children }) {
   // new subscription, which is worse than doing nothing. Each channel
   // manages its own lifecycle independently.
   useEffect(() => {
-    if (!user) return
+    if (!user || !myTenantId) return
     const channels = []
     let cancelled = false
     const pendingTimeouts = []
@@ -353,8 +362,8 @@ export function AppProvider({ children }) {
       function create() {
         if (cancelled) return
         try {
-          const ch = supabase.channel(`${name}-${Date.now()}`)
-          ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table }, handler)
+          const ch = supabase.channel(`${name}-${myTenantId}-${Date.now()}`)
+          ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: `tenant_id=eq.${myTenantId}` }, handler)
             .subscribe(status => {
               if (cancelled) return
               if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -430,7 +439,7 @@ export function AppProvider({ children }) {
       pendingTimeouts.forEach(t => clearTimeout(t))
       channels.forEach(ch => { try { supabase.removeChannel(ch) } catch (_) {} })
     }
-  }, [user])
+  }, [user, myTenantId])
 
   // Appointment reminders — browser notification + sound ~30 min before a
   // scheduled appointment. notifiedIds lives outside the effect so it
@@ -440,7 +449,7 @@ export function AppProvider({ children }) {
   const snoozedIdsRef  = useRef({}) // id → snooze-until timestamp
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !myTenantId) return
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
@@ -450,7 +459,8 @@ export function AppProvider({ children }) {
       const windowEnd = new Date(now.getTime() + REMINDER_MINUTES_BEFORE * 60000)
       const { data, error } = await supabase
         .from('calevents')
-        .select('id, title, "clientName", date, time, "eventType"')
+        .select('id, title, "clientName", date, time, "eventType", tenant_id')
+        .eq('tenant_id', myTenantId)
         .eq('status', 'scheduled')
         .eq('date', now.toISOString().slice(0, 10))
       if (error || !data) return
@@ -488,7 +498,7 @@ export function AppProvider({ children }) {
     checkUpcoming()
     const poll = setInterval(checkUpcoming, 60000)
     return () => clearInterval(poll)
-  }, [user])
+  }, [user, myTenantId])
 
   // Check if the tenant account is suspended or cancelled — block login if so
   async function checkTenantStatus() {

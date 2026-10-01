@@ -13,14 +13,20 @@ const migration = fs.readFileSync(migrationPath, 'utf8')
 
 // Team Chat must resolve the signed-in employee's tenant and explicitly scope
 // both the initial DM roster and directory refresh to that tenant.
-if (!chat.includes(".select('id, name, role, avatar_url, email, tenant_id')")) {
-  fail('Team Chat no longer resolves tenant_id from the signed-in employee.')
-}
-if (!chat.includes(".eq('tenant_id', me.tenant_id)")) {
-  fail('Initial Team Chat roster is not tenant-scoped.')
+if (!chat.includes("const { user, role, myTenantId } = useApp()")) {
+  fail('Team Chat no longer resolves the active tenant from AppContext.')
 }
 if (!chat.includes(".eq('tenant_id', myTenantId)")) {
-  fail('Team Chat directory refresh is not tenant-scoped.')
+  fail('Team Chat roster/messages are not explicitly tenant-scoped.')
+}
+if (!chat.includes("chat-presence:${myTenantId}")) {
+  fail('Team Chat presence is not isolated by tenant.')
+}
+if (!chat.includes("tenant_id: myTenantId, channel: channelId")) {
+  fail('Team Chat writes do not persist the active tenant id.')
+}
+if (!chat.includes("dedupeEmployeeRoster")) {
+  fail('Team Chat employee roster is not deduplicated.')
 }
 
 // The employee QA visibility policy must remain RESTRICTIVE. A permissive

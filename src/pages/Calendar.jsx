@@ -62,7 +62,7 @@ function scOf(ev) {
 }
 
 export default function Calendar() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const isRomyLabsAdmin = window.location.hostname.toLowerCase() === 'admin.romylabs.com'
   const adminCalendarOwner = 'Romy Cruz'
   const [events,        setEvents]        = useState([])
@@ -98,7 +98,7 @@ export default function Calendar() {
     return () => { el.style.padding = op; el.style.overflow = oo; el.style.height = oh }
   }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (isRomyLabsAdmin || myTenantId) load() }, [myTenantId, isRomyLabsAdmin])
 
   // Realtime sync: when a new appointment is booked via the external Tax Case Review
   // booking widget (cfoservicesnow), it gets inserted into calevents with source='booking_widget'.
@@ -107,8 +107,12 @@ export default function Calendar() {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
-    const ch = supabase.channel('calevents-booking-sync')
-    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calevents' }, ({ new: row }) => {
+    if (!isRomyLabsAdmin && !myTenantId) return
+    const ch = supabase.channel('calevents-booking-sync-' + (isRomyLabsAdmin ? 'admin' : myTenantId))
+    const eventFilter = isRomyLabsAdmin
+      ? { event: 'INSERT', schema: 'public', table: 'calevents' }
+      : { event: 'INSERT', schema: 'public', table: 'calevents', filter: `tenant_id=eq.${myTenantId}` }
+    ch.on('postgres_changes', eventFilter, ({ new: row }) => {
       if (isRomyLabsAdmin) {
         if (String(row.product_id || '').toLowerCase() !== 'romylabs' && row.assignedTo !== adminCalendarOwner) return
         load()
@@ -126,7 +130,8 @@ export default function Calendar() {
           })
           cn.onclick = () => { window.focus(); cn.close() }
         }
-        supabase.from('chat_messages').insert([{
+        if (!isRomyLabsAdmin && myTenantId) supabase.from('chat_messages').insert([{
+          tenant_id: myTenantId,
           channel: 'general', sender: '🔔 System',
           text: `📅 New appointment booked online: **${who}** on ${row.date}${row.time?` at ${fmtTime(row.time)}`:''}${row.eventType?` (${row.eventType})`:''}.`,
           created_at: new Date().toISOString()
@@ -135,7 +140,7 @@ export default function Calendar() {
     })
     ch.subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [myTenantId, isRomyLabsAdmin])
 
   async function load() {
     setLoading(true)
@@ -165,7 +170,7 @@ export default function Calendar() {
         : supabase.from('clients').select('id,name,email,address'),
       isRomyLabsAdmin
         ? Promise.resolve({ data:[{ id:'romy-admin-calendar-owner', name:adminCalendarOwner }] })
-        : supabase.from('employees').select('id,name').order('name'),
+        : supabase.from('employees').select('id,name').eq('tenant_id', myTenantId).order('name'),
       isRomyLabsAdmin
         ? Promise.resolve({ data:[] })
         : supabase.from('deadlines').select('id,title,dueDate,clientName,client_id,status').neq('status', 'Completed'),
@@ -253,26 +258,29 @@ export default function Calendar() {
   async function saveEvent() {
     if (!form.title || !form.date) { showToast('Title and date required'); return }
     setSaving(true)
-    let payload = { ...form, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : form.assignedTo, updated_at: new Date().toISOString() }
+    // Persist only the editable calendar columns. Editing an existing event
+    // may load booking/source/product metadata into form; those fields are
+    // intentionally immutable here and must never be silently stripped.
+    const payload = {
+      title: form.title,
+      clientName: form.clientName || null,
+      client_id: form.client_id || null,
+      assignedTo: isRomyLabsAdmin ? adminCalendarOwner : (form.assignedTo || null),
+      date: form.date,
+      time: form.time || null,
+      endTime: form.endTime || null,
+      eventType: form.eventType || 'Consultation Call',
+      color: form.color || 'bb',
+      notes: form.notes || null,
+      recurring: form.recurring || 'none',
+      status: form.status || 'scheduled',
+      updated_at: new Date().toISOString(),
+    }
     let error
-    // Retry loop: strip unknown columns if PostgREST rejects them (same pattern as Clients.jsx)
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (form.id) {
-        ;({ error } = await supabase.from('calevents').update(payload).eq('id', form.id))
-      } else {
-        const p = { ...payload, created_at: new Date().toISOString() }
-        delete p.id
-        ;({ error } = await supabase.from('calevents').insert([p]))
-      }
-      if (!error) break
-      const match = error.message?.match(/column ['""]?(\w+)['""]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        continue
-      }
-      break
+    if (form.id) {
+      ;({ error } = await supabase.from('calevents').update(payload).eq('id', form.id))
+    } else {
+      ;({ error } = await supabase.from('calevents').insert([{ ...payload, created_at: new Date().toISOString() }]))
     }
     setSaving(false)
     if (error) { showToast('Error: ' + error.message); return }

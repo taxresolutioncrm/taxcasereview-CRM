@@ -19,7 +19,7 @@ function resolveActorName(user, employees) {
 }
 
 export default function Tasks() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const navigate = useNavigate()
 
   // Jump from a task to the client/lead file it belongs to.
@@ -67,12 +67,13 @@ export default function Tasks() {
   const [sortBy, setSortBy] = useState('dueDate') // 'dueDate' | 'priority' | 'created'
 
   useEffect(() => {
+    if (!myTenantId) return
     load()
     // Request notification permission for reminders
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
-  }, [])
+  }, [myTenantId])
 
   // Check for due tasks and show browser notifications
   useEffect(() => {
@@ -91,12 +92,12 @@ export default function Tasks() {
     }
   }, [tasks])
   useEffect(() => {
-    // Check if current user is Super Admin
-    if (user?.email) checkRole(user.email)
-  }, [user])
+    // Check the current user's role only after the tenant is resolved.
+    if (user?.email && myTenantId) checkRole(user.email)
+  }, [user, myTenantId])
 
   async function checkRole(email) {
-    const { data } = await supabase.from('employees').select('access').eq('email', email).maybeSingle()
+    const { data } = await supabase.from('employees').select('access').eq('tenant_id', myTenantId).eq('email', email).maybeSingle()
     if (data?.access === 'Super Admin') setIsSuperAdmin(true)
     // Also check against known super admin email directly
     if (email === 'romy@taxcasereview.org') setIsSuperAdmin(true)
@@ -108,18 +109,18 @@ export default function Tasks() {
       // set is NULL, and eq('deleted', false) hid those from this page entirely
       // — so they could never be deleted from here while still showing on the
       // lead and client tabs.
-      supabase.from('tasks').select('*').not('deleted','is',true).order('created_at',{ascending:false}),
-      supabase.from('tasks').select('*').eq('deleted', true).order('deleted_at',{ascending:false}),
-      supabase.from('clients').select('id,name'),
-      supabase.from('leads').select('id,name'),
-      supabase.from('employees').select('id,name,email,avatar_url'),
-      supabase.from('workflow_status_categories').select('*').order('sort_order'),
-      supabase.from('workflow_statuses').select('*').order('sort_order'),
+      supabase.from('tasks').select('*').eq('tenant_id', myTenantId).not('deleted','is',true).order('created_at',{ascending:false}),
+      supabase.from('tasks').select('*').eq('tenant_id', myTenantId).eq('deleted', true).order('deleted_at',{ascending:false}),
+      supabase.from('clients').select('id,name').eq('tenant_id', myTenantId),
+      supabase.from('leads').select('id,name').eq('tenant_id', myTenantId),
+      supabase.from('employees').select('id,name,email,avatar_url').eq('tenant_id', myTenantId),
+      supabase.from('workflow_status_categories').select('*').eq('tenant_id', myTenantId).order('sort_order'),
+      supabase.from('workflow_statuses').select('*').eq('tenant_id', myTenantId).order('sort_order'),
     ])
     // Handle case where 'deleted' column may not exist yet — fall back gracefully
     if (t) setTasks(t)
     else {
-      const { data: fallback } = await supabase.from('tasks').select('*').order('created_at',{ascending:false})
+      const { data: fallback } = await supabase.from('tasks').select('*').eq('tenant_id', myTenantId).order('created_at',{ascending:false})
       if (fallback) setTasks(fallback)
     }
     if (dt) setDeleted(dt)
@@ -190,7 +191,8 @@ export default function Tasks() {
     // If there are extra sub-tasks but no section name was given, use the
     // main task's own title as the section heading so they still group.
     const effectiveSection = extraTitles.length && !sectionTitle ? data.title.trim() : sectionTitle
-    const base = { clientName:data.clientName, caseNum:data.caseNum, assignedTo:data.assignedTo, dueDate:data.dueDate, priority:data.priority, done:false, deleted:false, created_at:new Date().toISOString() }
+    const linkedClient = clients.find(x => x.name === data.clientName)
+    const base = { clientName:data.clientName, client_id:linkedClient?.id || null, caseNum:data.caseNum, assignedTo:data.assignedTo, dueDate:data.dueDate, priority:data.priority, done:false, deleted:false, created_at:new Date().toISOString() }
     const rows = [
       { ...base, title:data.title, notes:data.notes, section_title:effectiveSection },
       ...extraTitles.map(t => ({ ...base, title:t, notes:'', section_title:effectiveSection })),
@@ -204,18 +206,25 @@ export default function Tasks() {
   }
 
   async function toggleDone(t) {
-    await supabase.from('tasks').update({done:!t.done}).eq('id',t.id)
+    const { error } = await supabase.from('tasks').update({done:!t.done}).eq('id',t.id)
+    if (error) { showToast('❌ ' + error.message); return }
     load()
   }
 
   async function updateTaskStatus(t, value) {
-    if (!value) { await supabase.from('tasks').update({status_category:null, status_label:null}).eq('id',t.id); load(); return }
+    if (!value) {
+      const { error } = await supabase.from('tasks').update({status_category:null, status_label:null}).eq('id',t.id)
+      if (error) { showToast('❌ ' + error.message); return }
+      load()
+      return
+    }
     const [category, label] = value.split('|||')
     // "Completed" category also flips the done flag so existing done-based
     // logic elsewhere (dashboards, counts) stays correct.
     const completed = statusCategories.find(c=>c.name===category)?.name?.toLowerCase() === 'completed'
     const prevLabel = t.status_label || (t.done ? 'Completed' : 'Ready to Start')
-    await supabase.from('tasks').update({status_category:category, status_label:label, done:completed}).eq('id',t.id)
+    const { error: statusErr } = await supabase.from('tasks').update({status_category:category, status_label:label, done:completed}).eq('id',t.id)
+    if (statusErr) { showToast('❌ ' + statusErr.message); return }
 
     // Log a note on whichever entity this task is linked to.
     if (t.clientName) {

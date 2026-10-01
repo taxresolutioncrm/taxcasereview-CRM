@@ -89,8 +89,42 @@ function ChatAttachmentLink({ url, name }) {
   )
 }
 
+function dedupeEmployeeRoster(rows = []) {
+  const chosen = new Map()
+  for (const row of rows) {
+    if (!row?.id || !row?.name) continue
+    const emailKey = String(row.email || '').trim().toLowerCase()
+    const nameKey = String(row.name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+    const keys = [emailKey && 'email:' + emailKey, nameKey && 'name:' + nameKey].filter(Boolean)
+    const existingKey = keys.find(k => chosen.has(k))
+    if (existingKey) {
+      const existing = chosen.get(existingKey)
+      const score = x => (x?.email ? 4 : 0) + (x?.avatar_url ? 2 : 0) + (x?.role ? 1 : 0)
+      if (score(row) > score(existing)) {
+        for (const [k, v] of chosen.entries()) if (v === existing) chosen.set(k, row)
+        keys.forEach(k => chosen.set(k, row))
+      }
+      continue
+    }
+    keys.forEach(k => chosen.set(k, row))
+  }
+  return [...new Set(chosen.values())]
+}
+
+function mapEmployeeRoster(rows = []) {
+  return dedupeEmployeeRoster(rows).map(e => ({
+    id: 'dm_' + e.id,
+    empId: e.id,
+    name: e.name,
+    role: e.role || '',
+    color: colorFor(e.name),
+    avatarUrl: e.avatar_url || null,
+    email: e.email || '',
+  }))
+}
+
 export default function Chat() {
-  const { user, role } = useApp()
+  const { user, role, myTenantId } = useApp()
   const { calling, active: activeCall } = useCall()
   const canManageChannels = ['Super Admin','Admin'].includes(role)
   // Deep link from a chat notification: /chat?c=<channel id>. Falls back to
@@ -219,16 +253,16 @@ export default function Chat() {
     const current = convPrefs[convId] || { starred: false, muted: false, section: null }
     const next = { ...current, section: section.trim() || null }
     setConvPrefs(p => ({ ...p, [convId]: next }))
+    if (!myTenantId) return
     supabase.from('chat_conv_prefs').upsert(
-      { viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
-      { onConflict: 'viewer_name,conv_id' }
+      { tenant_id: myTenantId, viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
+      { onConflict: 'tenant_id,viewer_name,conv_id' }
     )
   }
   const [searchQ, setSearchQ]   = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const [TEAM, setTEAM] = useState([])
   const [myEmpId, setMyEmpId] = useState(null)
-  const [myTenantId, setMyTenantId] = useState(null)
   // Real display name from the employees table — messages were being sent
   // under user.email's local-part (e.g. "romy", "rcruz187") whenever Supabase
   // Auth's user_metadata.name wasn't set, which also broke avatar matching
@@ -283,7 +317,7 @@ export default function Chat() {
   const dmPair = (a, b) => 'dm_' + [String(a), String(b)].sort().join('__')
   const isChannel = !active.id.startsWith('dm_')
   const channelId = (!isChannel && active.empId && myEmpId) ? dmPair(myEmpId, active.empId) : active.id
-  const chatTenantId = messages.find(m=>m?.tenant_id)?.tenant_id || FIRM.tenantId
+  const chatTenantId = myTenantId || messages.find(m=>m?.tenant_id)?.tenant_id || FIRM.tenantId
 
   const customEmojiMap = useMemo(() => Object.fromEntries(customEmojis.map(e=>[':'+e.name+':',e])), [customEmojis])
 
@@ -304,7 +338,10 @@ export default function Chat() {
 
   const loadCustomEmojis = useCallback(async () => {
     if(!chatTenantId) return
-    const { data, error } = await supabase.from('chat_custom_emojis').select('id,name,image_path,created_by,created_at').order('name')
+    const { data, error } = await supabase.from('chat_custom_emojis')
+      .select('id,name,image_path,created_by,created_at,tenant_id')
+      .eq('tenant_id', chatTenantId)
+      .order('name')
     if(error) return
     const rows=await Promise.all((data||[]).map(async e=>{
       const { data:urlData }=await supabase.storage.from('chat-emojis').createSignedUrl(e.image_path,31536000)
@@ -322,7 +359,7 @@ export default function Chat() {
     const path=`${chatTenantId}/${Date.now()}_${name}.${ext}`
     const { error:upErr }=await supabase.storage.from('chat-emojis').upload(path,file,{upsert:false,contentType:file.type||undefined})
     if(upErr){ showToast('Custom emoji upload failed: '+upErr.message); return }
-    const { error:dbErr }=await supabase.from('chat_custom_emojis').insert([{name,image_path:path,created_by:myName}])
+    const { error:dbErr }=await supabase.from('chat_custom_emojis').insert([{tenant_id:chatTenantId,name,image_path:path,created_by:myName}])
     if(dbErr){
       await supabase.storage.from('chat-emojis').remove([path])
       showToast(dbErr.code==='23505' ? ':'+name+': already exists' : 'Custom emoji save failed: '+dbErr.message)
@@ -334,11 +371,16 @@ export default function Chat() {
 
   // ── load channels from DB on mount ── [v3 - cache busted]
   useEffect(() => {
-    console.log('[Chat v3] loading channels from DB'); supabase.from('chat_channels').select('*').order('position').order('label')
-      .then(({ data }) => {
-        if (data?.length) setDbChannels(data.map(c => ({ id: c.id, label: c.label, desc: c.description || '' })))
+    if (!myTenantId) { setDbChannels([]); return }
+    console.log('[Chat] loading tenant-scoped channels from DB')
+    supabase.from('chat_channels').select('*')
+      .eq('tenant_id', myTenantId)
+      .order('position').order('label')
+      .then(({ data, error }) => {
+        if (error) { showToast('Could not load Team Chat channels: ' + error.message); return }
+        setDbChannels((data || []).map(c => ({ id: c.id, label: c.label, desc: c.description || '' })))
       })
-  }, [])
+  }, [myTenantId])
 
   // ── escape page-content padding ──
   useEffect(() => {
@@ -352,7 +394,8 @@ export default function Chat() {
   // ── Presence: online + live call/huddle state (Slack-style) ──
   useEffect(() => {
     if (!myName || myName === 'You') return
-    const presenceCh = supabase.channel(`chat-presence:${FIRM.tenantId || 'default'}`, { config: { presence: { key: myName } } })
+    if (!myTenantId) return
+    const presenceCh = supabase.channel(`chat-presence:${myTenantId}`, { config: { presence: { key: myName } } })
     presenceChRef.current = presenceCh
     const syncPresence = () => {
       const state = presenceCh.presenceState()
@@ -374,7 +417,7 @@ export default function Chat() {
         }
       })
     return () => { presenceChRef.current = null; supabase.removeChannel(presenceCh) }
-  }, [myName])
+  }, [myName, myTenantId])
 
   // Re-track the existing realtime presence whenever this staff member enters
   // a CRM phone call or Team Chat huddle. No extra polling table is needed.
@@ -401,96 +444,72 @@ export default function Chat() {
     if (hit) setActive(hit)
   }, [TEAM, active])
 
-  // ── fetch only this tenant's employees for the DM list ──
-  // Defense in depth: even if an RLS policy is accidentally loosened, the
-  // client never asks for another office's employee rows.
+  // ── fetch ONLY this tenant's active employee roster for DMs ─────────────
+  // RLS remains the server-side boundary; the explicit tenant predicate is a
+  // second client-side boundary so a stale/session-switched query can never
+  // paint another office's people into the CloudCPA sidebar.
   useEffect(() => {
-    if (!user?.email) {
-      setTEAM([])
-      setMyEmpId(null)
-      setMyTenantId(null)
-      setMyRealName(null)
-      return
-    }
-
+    if (!myTenantId) { setTEAM([]); setMyEmpId(null); setMyRealName(null); return }
     let cancelled = false
-    ;(async () => {
-      const { data: me, error: meErr } = await supabase
-        .from('employees')
-        .select('id, name, role, avatar_url, email, tenant_id')
-        .ilike('email', user.email)
-        .limit(1)
-        .maybeSingle()
+    supabase.from('employees')
+      .select('id, name, role, avatar_url, email, status, tenant_id')
+      .eq('tenant_id', myTenantId)
+      .order('name')
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { setTEAM([]); showToast('Could not load Team Chat roster: ' + error.message); return }
+        const activeRows = (data || []).filter(e => !e.status || String(e.status).toLowerCase() === 'active')
+        const scopedRows = activeRows.filter(e => String(e.tenant_id || '') === String(myTenantId))
+        const deduped = dedupeEmployeeRoster(scopedRows)
+        const me = deduped.find(e => e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase())
+        if (me) { setMyEmpId(me.id); setMyRealName(me.name) }
+        let roster = mapEmployeeRoster(deduped)
 
-      if (cancelled) return
-      if (meErr || !me?.tenant_id) {
-        setTEAM([])
-        setMyEmpId(null)
-        setMyTenantId(null)
-        setMyRealName(null)
-        return
-      }
-
-      setMyEmpId(me.id)
-      setMyTenantId(me.tenant_id)
-      setMyRealName(me.name)
-
-      const { data, error } = await supabase
-        .from('employees')
-        .select('id, name, role, avatar_url, email, tenant_id')
-        .eq('tenant_id', me.tenant_id)
-        .order('name')
-
-      if (cancelled || error || !data) return
-
-      let roster = data.map(e => ({
-        id: 'dm_' + e.id,
-        empId: e.id,
-        name: e.name,
-        role: e.role || '',
-        color: colorFor(e.name),
-        avatarUrl: e.avatar_url || null,
-        email: e.email || '',
-      }))
-
-      // When platform admin is impersonating another tenant, inject Romy into
-      // that tenant's roster so their staff can DM him directly.
-      try {
-        const imp = sessionStorage.getItem('admin_impersonation')
-        if (imp && user?.email === 'romy@taxrescrm.net') {
-          const alreadyInRoster = roster.some(r => r.email === 'romy@taxrescrm.net')
-          if (!alreadyInRoster) {
-            const adminEntry = { id: 'dm_taxrescrm-admin', empId: 'taxrescrm-admin', name: 'Romy Cruz', role: 'TaxRes CRM Admin', color: colorFor('Romy Cruz'), avatarUrl: null, email: 'romy@taxrescrm.net' }
-            roster = [adminEntry, ...roster]
+        // When platform admin is impersonating another tenant, inject Romy only
+        // if an equivalent Romy/admin identity is not already present.
+        try {
+          const imp = sessionStorage.getItem('admin_impersonation')
+          if (imp && user?.email === 'romy@taxrescrm.net') {
+            const alreadyInRoster = roster.some(r =>
+              String(r.email || '').toLowerCase() === 'romy@taxrescrm.net' ||
+              String(r.name || '').trim().toLowerCase() === 'romy cruz'
+            )
+            if (!alreadyInRoster) {
+              const adminEntry = { id: 'dm_taxrescrm-admin', empId: 'taxrescrm-admin', name: 'Romy Cruz', role: 'TaxRes CRM Admin', color: colorFor('Romy Cruz'), avatarUrl: null, email: 'romy@taxrescrm.net' }
+              roster = [adminEntry, ...roster]
+              if (!me) { setMyEmpId('taxrescrm-admin'); setMyRealName('Romy Cruz') }
+            }
           }
-        }
-      } catch (_) {}
-
-      setTEAM(roster)
-    })()
-
+        } catch (_) {}
+        setTEAM(roster)
+      })
     return () => { cancelled = true }
-  }, [user?.email])
+  }, [user?.email, myTenantId])
 
   // ── per-viewer rep prefs (hidden / VIP) ──
   useEffect(() => {
     if (!myName) return
-    supabase.from('chat_rep_prefs').select('rep_name, hidden, vip').eq('viewer_name', myName)
+    if (!myTenantId) { setRepPrefs({}); return }
+    supabase.from('chat_rep_prefs')
+      .select('rep_name, hidden, vip')
+      .eq('tenant_id', myTenantId)
+      .eq('viewer_name', myName)
       .then(({ data }) => {
         if (!data) return
         const map = {}
         data.forEach(r => { map[r.rep_name] = { hidden: r.hidden, vip: r.vip } })
         setRepPrefs(map)
       })
-  }, [myName])
+  }, [myName, myTenantId])
 
   async function toggleRepPref(repName, key) {
     const current = repPrefs[repName] || { hidden: false, vip: false }
     const next = { ...current, [key]: !current[key] }
     setRepPrefs(p => ({ ...p, [repName]: next }))
+    if (!myTenantId) return
     await supabase.from('chat_rep_prefs').upsert(
-      { viewer_name: myName, rep_name: repName, hidden: next.hidden, vip: next.vip },
-      { onConflict: 'viewer_name,rep_name' }
+      { tenant_id: myTenantId, viewer_name: myName, rep_name: repName, hidden: next.hidden, vip: next.vip },
+      { onConflict: 'tenant_id,viewer_name,rep_name' }
     )
     setRepMenu(null)
   }
@@ -511,22 +530,27 @@ export default function Chat() {
   // ── per-viewer conversation prefs (star / mute / section) ──
   useEffect(() => {
     if (!myName) return
-    supabase.from('chat_conv_prefs').select('conv_id, starred, muted, section').eq('viewer_name', myName)
+    if (!myTenantId) { setConvPrefs({}); return }
+    supabase.from('chat_conv_prefs')
+      .select('conv_id, starred, muted, section')
+      .eq('tenant_id', myTenantId)
+      .eq('viewer_name', myName)
       .then(({ data }) => {
         if (!data) return
         const map = {}
         data.forEach(r => { map[r.conv_id] = { starred: r.starred, muted: r.muted, section: r.section } })
         setConvPrefs(map)
       })
-  }, [myName])
+  }, [myName, myTenantId])
 
   async function toggleConvPref(convId, convType, key) {
     const current = convPrefs[convId] || { starred: false, muted: false, section: null }
     const next = { ...current, [key]: !current[key] }
     setConvPrefs(p => ({ ...p, [convId]: next }))
+    if (!myTenantId) return
     await supabase.from('chat_conv_prefs').upsert(
-      { viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
-      { onConflict: 'viewer_name,conv_id' }
+      { tenant_id: myTenantId, viewer_name: myName, conv_id: convId, conv_type: convType, starred: next.starred, muted: next.muted, section: next.section },
+      { onConflict: 'tenant_id,viewer_name,conv_id' }
     )
     setChanMenu(null)
   }
@@ -544,6 +568,11 @@ export default function Chat() {
   }, [chanMenu])
 
   const loadMessages = useCallback(async (silent = false) => {
+    if (!myTenantId) {
+      if (!silent) setLoading(false)
+      setMessages([])
+      return
+    }
     if (!silent) setLoading(true)
     let data, error
     if (!isChannel && active.empId) {
@@ -555,7 +584,9 @@ export default function Chat() {
       const dmOther = 'dm_' + active.empId
       const dmMine  = myEmpId ? 'dm_' + myEmpId : null
       const chans   = [...new Set([dmOther, ...(pair ? [pair] : []), ...(dmMine ? [dmMine] : [])])]
-      const res = await supabase.from('chat_messages').select('*').in('channel', chans)
+      const res = await supabase.from('chat_messages').select('*')
+        .eq('tenant_id', myTenantId)
+        .in('channel', chans)
         .order('created_at', { ascending: true }).limit(600)
       error = res.error
       data = (res.data || []).filter(m =>
@@ -564,7 +595,9 @@ export default function Chat() {
         (dmMine && m.channel === dmMine && m.sender === active.name) // legacy: them → me
       )
     } else {
-      const res = await supabase.from('chat_messages').select('*').eq('channel', channelId)
+      const res = await supabase.from('chat_messages').select('*')
+        .eq('tenant_id', myTenantId)
+        .eq('channel', channelId)
         .order('created_at', { ascending: true }).limit(300)
       data = res.data; error = res.error
     }
@@ -578,7 +611,7 @@ export default function Chat() {
       return
     }
     setMessages(data || [])
-  }, [channelId, isChannel, active.empId, active.name, myEmpId, myName])
+  }, [channelId, isChannel, active.empId, active.name, myEmpId, myName, myTenantId])
 
   useEffect(() => {
     loadMessages(); inputRef.current?.focus()
@@ -609,7 +642,9 @@ export default function Chat() {
     let cancelled=false
     const loadReactionState=async()=>{
       const { data, error } = await supabase.from('chat_reactions')
-        .select('message_id,user_name,emoji').in('message_id', ids)
+        .select('message_id,user_name,emoji')
+        .eq('tenant_id', chatTenantId)
+        .in('message_id', ids)
       if (cancelled || error) return
       const counts={}
       const mine=new Set()
@@ -643,7 +678,8 @@ export default function Chat() {
     const text = input.trim()
     if (!text || sending) return
     setSending(true)
-    const payload = { channel: channelId, sender: myName, text, created_at: new Date().toISOString() }
+    if (!myTenantId) { setSending(false); showToast('Team Chat tenant is not resolved yet.'); return }
+    const payload = { tenant_id: myTenantId, channel: channelId, sender: myName, text, created_at: new Date().toISOString() }
     if (thread) payload.reply_to = thread.id
     await supabase.from('chat_messages').insert([payload])
     setSending(false); setInput(''); setThread(null)
@@ -667,7 +703,7 @@ export default function Chat() {
     const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, file, { upsert: false })
     if (upErr) { alert('Upload failed: ' + upErr.message); return }
     const { error: msgErr } = await supabase.from('chat_messages').insert([{
-      channel: channelId, sender: myName, text: '',
+      tenant_id: myTenantId, channel: channelId, sender: myName, text: '',
       attachment_url: 'storage://chat-attachments/' + path, attachment_name: file.name,
       created_at: new Date().toISOString()
     }])
@@ -695,6 +731,7 @@ export default function Chat() {
     const key=msgId+'|'+emoji
     if(myReactions.has(key)){
       await supabase.from('chat_reactions').delete()
+        .eq('tenant_id',chatTenantId)
         .eq('message_id',msgId).eq('user_name',myName).eq('emoji',emoji)
     }else{
       await supabase.from('chat_reactions').upsert({
@@ -893,11 +930,11 @@ export default function Chat() {
     // Persist to DB
     supabase.from('chat_channels').insert([{
       id: newChan.id, label: newChan.label, description: '',
-      position: 99, tenant_id: undefined // DB default fills this via current_tenant_id()
+      position: 99, tenant_id: myTenantId
     }]).then(() => {
       // Reload all channels to pick up the new one with correct tenant scoping
-      supabase.from('chat_channels').select('*').order('position').order('label')
-        .then(({ data }) => { if (data?.length) setDbChannels(data.map(c => ({ id: c.id, label: c.label, desc: c.description || '' }))) })
+      supabase.from('chat_channels').select('*').eq('tenant_id', myTenantId).order('position').order('label')
+        .then(({ data }) => { setDbChannels((data || []).map(c => ({ id: c.id, label: c.label, desc: c.description || '' }))) })
     })
     setDbChannels(c => [...c, newChan])
     setNewChanName(''); setShowNewChan(false)
@@ -1134,12 +1171,12 @@ export default function Chat() {
         <DirectoriesView TEAM={TEAM} myName={myName} myEmail={user?.email} onUpdated={() => {
           if (!myTenantId) return
           supabase.from('employees')
-            .select('id, name, role, avatar_url, email')
+            .select('id, name, role, avatar_url, email, status, tenant_id')
             .eq('tenant_id', myTenantId)
             .order('name')
             .then(({ data }) => {
-              if (!data) return
-              setTEAM(data.map(e => ({ id: 'dm_' + e.id, empId: e.id, name: e.name, role: e.role || '', color: colorFor(e.name), avatarUrl: e.avatar_url || null, email: e.email || '' })))
+              const activeRows = (data || []).filter(e => !e.status || String(e.status).toLowerCase() === 'active')
+              setTEAM(mapEmployeeRoster(activeRows.filter(e => String(e.tenant_id || '') === String(myTenantId))))
             })
         }} />
       ) : (

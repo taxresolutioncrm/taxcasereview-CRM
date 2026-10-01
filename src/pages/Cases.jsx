@@ -29,7 +29,7 @@ function savings(irsBalance, resolutionAmount) {
 export default function Cases() {
   const { id: urlCaseId } = useParams()
   const navigate = useNavigate()
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [cases,       setCases]       = useState([])
   const [confirmDel,  setConfirmDel]  = useState(null)
   const [clients,     setClients]     = useState([])
@@ -58,16 +58,16 @@ export default function Cases() {
   const [showAllCaseNotes, setShowAllCaseNotes] = useState(false)
 
   // Guard: don't load until auth session confirmed — prevents wrong-tenant data on hard refresh
-  useEffect(() => { if (user) load() }, [user?.id])
+  useEffect(() => { if (user && myTenantId) load() }, [user?.id, myTenantId])
 
   useEffect(() => {
-    if (!urlCaseId || detail) return
+    if (!urlCaseId || detail || !myTenantId) return
     let cancelled = false
-    supabase.from('cases').select('*').eq('id', urlCaseId).single().then(({ data }) => {
+    supabase.from('cases').select('*').eq('tenant_id', myTenantId).eq('id', urlCaseId).single().then(({ data }) => {
       if (!cancelled && data) { setDetail(data); loadCaseNotes(data.id) }
     })
     return () => { cancelled = true }
-  }, [urlCaseId])
+  }, [urlCaseId, myTenantId])
 
   useEffect(() => {
     if (urlCaseId && cases.length > 0 && !detail) {
@@ -84,9 +84,9 @@ export default function Cases() {
 
   async function load() {
     const [{ data: cs }, { data: cl }, { data: em }] = await Promise.all([
-      supabase.from('cases').select('*').order('created_at', { ascending: false }),
-      supabase.from('clients').select('id,name,irsBalance,taxYears,issueType'),
-      supabase.from('employees').select('id,name')
+      supabase.from('cases').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
+      supabase.from('clients').select('id,name,irsBalance,taxYears,issueType').eq('tenant_id', myTenantId),
+      supabase.from('employees').select('id,name').eq('tenant_id', myTenantId)
     ])
     if (cs) setCases(cs)
     if (cl) setClients(cl)
@@ -94,7 +94,7 @@ export default function Cases() {
   }
 
   async function loadCaseNotes(caseId) {
-    const { data } = await supabase.from('case_notes').select('*').eq('case_id', caseId).order('created_at', { ascending: false })
+    const { data } = await supabase.from('case_notes').select('*').eq('tenant_id', myTenantId).eq('case_id', caseId).order('created_at', { ascending: false })
     setCaseNotes(data || [])
   }
 
@@ -103,6 +103,7 @@ export default function Cases() {
     setAddingNote(true)
     const actor = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
     await supabase.from('case_notes').insert([{
+      tenant_id: myTenantId,
       case_id: detail.id,
       text: newNote.trim(),
       created_by: actor,
@@ -150,12 +151,8 @@ export default function Cases() {
   async function save() {
     if (!form.clientName.trim()) { showToast('Client name is required'); return }
     setSaving(true)
-    const maxNum = cases.reduce((max, c) => {
-      const n = parseInt((c.caseNum || '').replace(/\D/g, ''), 10)
-      return Number.isFinite(n) && n > max ? n : max
-    }, 0)
-    const caseNum = 'C-' + String(maxNum + 1).padStart(6, '0')
-    const payload = { ...form, caseNum, created_at: new Date().toISOString() }
+    // Case number is assigned atomically by the database per tenant.
+    const payload = { ...form, created_at: new Date().toISOString() }
     const { data, error } = await supabase.from('cases').insert([payload]).select()
     setSaving(false)
     if (error) { showToast('❌ Save error: ' + error.message); return }

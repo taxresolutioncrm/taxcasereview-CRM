@@ -194,12 +194,14 @@ function textToHtml(text) {
 // is the standard (non-url) base64 encoding of the raw file bytes.
 export async function sendGmailEmail(supabase, { to, subject, body, fromName, attachments = [], senderEmployeeEmail }) {
   let token, senderAddress, sig, fromDisplayName
+  const { data: activeTenantId } = await supabase.rpc('current_tenant_id')
+  if (!activeTenantId) throw new Error('Office tenant is not resolved')
 
   if (senderEmployeeEmail) {
     token = await getValidGmailToken(supabase, senderEmployeeEmail)
     const [{ data: acct }, { data: emp }] = await Promise.all([
       supabase.from('employee_gmail_accounts').select('gmail_connected_email').eq('employee_email', senderEmployeeEmail).maybeSingle(),
-      supabase.from('employees').select('name,email_signature,email_signature_logo_url').eq('email', senderEmployeeEmail).maybeSingle(),
+      supabase.from('employees').select('name,email_signature,email_signature_logo_url').eq('tenant_id', activeTenantId).eq('email', senderEmployeeEmail).maybeSingle(),
     ])
     sig = { text: emp?.email_signature, logo: emp?.email_signature_logo_url }
     fromDisplayName = fromName || emp?.name || 'Tax Case Review'
@@ -207,7 +209,8 @@ export async function sendGmailEmail(supabase, { to, subject, body, fromName, at
   } else {
     const { data: settings } = await supabase.from('settings')
       .select('email,name,email_signature,email_signature_logo_url,gmail_refresh_token,gmail_client_id,gmail_client_secret,gmail_access_token,gmail_token_expiry')
-      .limit(1).maybeSingle()
+      .eq('tenant_id', activeTenantId)
+      .maybeSingle()
     if (!settings?.gmail_refresh_token) throw new Error('Gmail not connected (firm-wide account)')
     token = await getValidFirmGmailToken(supabase, settings)
     sig = { text: settings?.email_signature, logo: settings?.email_signature_logo_url }

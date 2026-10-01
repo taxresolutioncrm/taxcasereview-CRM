@@ -22,25 +22,48 @@ export default function AccountsReceivable() {
   }
 
   async function markPaid(p) {
-    await supabase.from('payments').update({
+    const paidDate = new Date().toISOString().slice(0, 10)
+    const { error: payErr } = await supabase.from('payments').update({
       payment_status: 'Paid',
       status: 'Cleared',
-      date: new Date().toISOString().slice(0, 10),
+      date: paidDate,
+      updated_at: new Date().toISOString(),
     }).eq('id', p.id)
-    // Keep the linked invoice in sync (invoice-linked rows only).
-    if (p.invNum) await applyPaymentToInvoice(p.invNum, p.amount)
+    if (payErr) return
+    if (p.invNum) {
+      try {
+        await applyPaymentToInvoice(p.invNum, p.amount)
+      } catch (invoiceErr) {
+        await supabase.from('payments').update({
+          payment_status: p.payment_status,
+          status: p.status,
+          date: p.date,
+          updated_at: new Date().toISOString(),
+        }).eq('id', p.id)
+        return
+      }
+    }
     load()
   }
 
   async function unmarkPaid(p) {
-    await supabase.from('payments').update({
+    if (p.invNum) {
+      try {
+        await reversePaymentFromInvoice(p.invNum, p.amount)
+      } catch {
+        return
+      }
+    }
+    const { error: payErr } = await supabase.from('payments').update({
       payment_status: 'Scheduled',
       status: 'Scheduled',
       date: null,
+      updated_at: new Date().toISOString(),
     }).eq('id', p.id)
-    // Reverse the invoice write-back so a mistaken/bounced payment doesn't
-    // leave the invoice showing collected money it never got.
-    if (p.invNum) await reversePaymentFromInvoice(p.invNum, p.amount)
+    if (payErr) {
+      if (p.invNum) await applyPaymentToInvoice(p.invNum, p.amount).catch(()=>{})
+      return
+    }
     load()
   }
 

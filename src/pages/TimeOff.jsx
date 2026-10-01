@@ -16,25 +16,26 @@ function initials(name) {
 }
 
 export default function TimeOff() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [requests, setRequests]   = useState([])
   const [employees, setEmployees] = useState([])
   const [filter, setFilter]       = useState('pending')
   const [toast, setToast]         = useState('')
   const [working, setWorking]     = useState(null)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (myTenantId) load() }, [myTenantId])
   useEffect(() => {
-    const ch = supabase.channel('timeoff-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'time_off_requests' }, () => load())
+    if (!myTenantId) return
+    const ch = supabase.channel('timeoff-rt-' + myTenantId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'time_off_requests', filter: `tenant_id=eq.${myTenantId}` }, () => load())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [myTenantId])
 
   async function load() {
     const [{ data: reqs }, { data: emps }] = await Promise.all([
-      supabase.from('time_off_requests').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id,name,pto_balance,sick_balance,vacation_balance'),
+      supabase.from('time_off_requests').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
+      supabase.from('employees').select('id,name,pto_balance,sick_balance,vacation_balance').eq('tenant_id', myTenantId),
     ])
     setRequests(reqs || [])
     setEmployees(emps || [])
@@ -47,14 +48,14 @@ export default function TimeOff() {
     const actor = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
     const { error } = await supabase.from('time_off_requests')
       .update({ status, reviewed_by: actor, reviewed_at: new Date().toISOString() })
-      .eq('id', req.id)
+      .eq('tenant_id', myTenantId).eq('id', req.id)
     if (error) { showToast('Error: ' + error.message); setWorking(null); return }
     if (status === 'approved') {
       const col = req.type === 'pto' ? 'pto_balance' : req.type === 'sick' ? 'sick_balance' : 'vacation_balance'
       const emp = employees.find(e => e.id === req.employee_id) || employees.find(e => e.name === req.employee_name)
       if (emp) {
         const updated = Math.max(0, (emp[col] || 0) - req.days)
-        await supabase.from('employees').update({ [col]: updated }).eq('id', emp.id)
+        await supabase.from('employees').update({ [col]: updated }).eq('tenant_id', myTenantId).eq('id', emp.id)
       }
     }
     // Optimistic local update

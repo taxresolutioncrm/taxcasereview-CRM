@@ -2,6 +2,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { formatMoneyInput, parseMoney } from '../lib/money'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useApp } from '../context/AppContext'
 import { sendGmailEmail } from '../lib/gmailUtils'
 
 const BLANK = { clientName:'', client_id:'', service:'', description:'', amount:'', depositAmount:'', validUntil:'', status:'Draft', assignedTo:'', notes:'' }
@@ -9,6 +10,7 @@ const SERVICES = ['OIC — Offer in Compromise','Installment Agreement (IA)','Cu
 const EST_STATUSES = ['Draft','Sent','In Review','Accepted','Rejected','Expired']
 
 export default function Estimates() {
+  const { myTenantId } = useApp()
   const [items,     setItems]    = useState([])
   const [clients,   setClients]  = useState([])
   const [employees, setEmployees]= useState([])
@@ -23,13 +25,13 @@ export default function Estimates() {
   const [suggestions, setSug]    = useState([])
   const [showSug,   setShowSug]  = useState(false)
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (myTenantId) load() }, [myTenantId])
 
   async function load() {
     const [{ data:e },{ data:c },{ data:emp }] = await Promise.all([
-      supabase.from('estimates').select('*').order('created_at',{ascending:false}),
-      supabase.from('clients').select('id,name,email,issueType,assignedTo'),
-      supabase.from('employees').select('name'),
+      supabase.from('estimates').select('*').eq('tenant_id', myTenantId).order('created_at',{ascending:false}),
+      supabase.from('clients').select('id,name,email,issueType,assignedTo').eq('tenant_id', myTenantId),
+      supabase.from('employees').select('name').eq('tenant_id', myTenantId),
     ])
     if (e)   setItems(e)
     if (c)   setClients(c)
@@ -57,13 +59,12 @@ export default function Estimates() {
   async function save() {
     if (!form.clientName || !form.amount) { showToast('Client and amount required'); return }
     setSaving(true)
-    const estNum = editId ? undefined : 'EST-' + Date.now().toString().slice(-6)
     if (editId) {
       const {error} = await supabase.from('estimates').update({...form, updated_at:new Date().toISOString()}).eq('id',editId)
       if (error) { showToast('Error: '+error.message); setSaving(false); return }
       showToast('✅ Estimate updated!')
     } else {
-      const {error} = await supabase.from('estimates').insert([{...form, estNum, created_at:new Date().toISOString()}])
+      const {error} = await supabase.from('estimates').insert([{...form, created_at:new Date().toISOString()}])
       if (error) { showToast('Error: '+error.message); setSaving(false); return }
       showToast('✅ Estimate created!')
     }
@@ -95,15 +96,14 @@ export default function Estimates() {
 
   async function convertToInvoice(est) {
     if (!confirm('Convert this estimate to an invoice?')) return
-    const invNum = 'INV-' + Date.now().toString().slice(-6)
-    const {error} = await supabase.from('invoices').insert([{
+    const { data: createdInvoice, error } = await supabase.from('invoices').insert([{
       clientName: est.clientName, client_id: est.client_id || null, lineItems: est.service + (est.description?'\n'+est.description:''),
-      total: est.amount, paid:'0', status:'Unpaid', invNum,
+      total: est.amount, paid:'0', status:'Unpaid',
       created_at: new Date().toISOString()
-    }])
+    }]).select('id,invNum').single()
     if (error) { showToast('Error: '+error.message); return }
     await supabase.from('estimates').update({status:'Accepted', updated_at:new Date().toISOString()}).eq('id',est.id)
-    showToast('✅ Converted to Invoice '+invNum+'!')
+    showToast('✅ Converted to Invoice '+(createdInvoice?.invNum || '')+'!')
     load()
   }
 

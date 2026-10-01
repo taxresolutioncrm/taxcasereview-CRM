@@ -1014,6 +1014,7 @@ export default function Clients() {
   const [editModal, setEditModal] = useState(false)
   const [form,      setForm]      = useState(BLANK)
   const [saving,    setSaving]    = useState(false)
+  const saveEditLockRef = useRef(false)
   const [toast,     setToast]     = useState('')
   const [detail,    setDetail]    = useState(null)
   const [showFlow,  setShowFlow]  = useState(false)
@@ -1238,9 +1239,10 @@ export default function Clients() {
   // id, clientname, text, author, type, created_at, visible_to_client,
   // note_type, tenant_id. There is no 'content' column and no 'created_by'
   // column — the note text goes in 'text', the creator goes in 'author'.
-  async function insertClientNote({ clientname, content, created_by, created_at, note_type, visible_to_client }) {
+  async function insertClientNote({ clientname, client_id, content, created_by, created_at, note_type, visible_to_client }) {
     if (!myTenantId) return { error: new Error('Office tenant is not resolved') }
     const payload = { tenant_id: myTenantId, clientname, text: content, author: created_by }
+    if (client_id !== undefined) payload.client_id = client_id
     if (created_at !== undefined) payload.created_at = created_at
     if (note_type !== undefined) payload.note_type = note_type
     if (visible_to_client !== undefined) payload.visible_to_client = visible_to_client
@@ -1249,10 +1251,10 @@ export default function Clients() {
     return { error }
   }
 
-  async function logAction(clientName, text) {
+  async function logAction(clientName, text, clientId = null) {
     if (!clientName) return
     const actor = resolveActorName(user, employees)
-    const { error } = await insertClientNote({ clientname: clientName, content: text, note_type: 'System', created_by: actor, created_at: new Date().toISOString() })
+    const { error } = await insertClientNote({ clientname: clientName, client_id: clientId, content: text, note_type: 'System', created_by: actor, created_at: new Date().toISOString() })
     if (error) showToast('Action completed, but failed to log note: ' + error.message)
     return !error
   }
@@ -1414,20 +1416,69 @@ export default function Clients() {
   }
 
   async function saveEdit() {
+    if (!myTenantId || !form.id || saveEditLockRef.current) return
+    saveEditLockRef.current = true
     setSaving(true)
-    const before = clients.find(cl=>cl.id===form.id) || detail
-    const payload = buildPayload(form)
-    const { error } = await supabase.from('clients').update(payload).eq('tenant_id', myTenantId).eq('id',form.id)
-    setSaving(false)
-    if (error){showToast('Error: '+error.message);return}
-    showToast('✅ Saved!')
-    setEditModal(false)
-    const {data}=await supabase.from('clients').select('*').eq('tenant_id', myTenantId).eq('id',form.id).single()
-    if (data){setDetail(data);loadRelated(data.name)}
-    load()
-    if (data) {
+    try {
+      // Always compare complete tenant-scoped records. The clients roster is a
+      // lightweight projection and must never be used as the audit baseline.
+      const { data: before, error: beforeErr } = await supabase.from('clients')
+        .select('*')
+        .eq('tenant_id', myTenantId)
+        .eq('id', form.id)
+        .single()
+      if (beforeErr || !before) {
+        showToast('Could not load the current client record before saving.')
+        return
+      }
+
+      const payload = buildPayload(form)
+      const { error } = await supabase.from('clients')
+        .update(payload)
+        .eq('tenant_id', myTenantId)
+        .eq('id', form.id)
+      if (error){ showToast('Error: '+error.message); return }
+
+      const { data, error: reloadErr } = await supabase.from('clients')
+        .select('*')
+        .eq('tenant_id', myTenantId)
+        .eq('id', form.id)
+        .single()
+      if (reloadErr || !data) {
+        showToast('Saved, but could not reload the client record.')
+        return
+      }
+
+      setDetail(data)
+      setEditModal(false)
+      showToast('✅ Saved!')
+      load()
+      loadRelated(data.name, data.id)
+
       const changes = summarizeFieldChanges(before, data)
-      if (changes.length) { await logAction(data.name, `✏️ Updated: ${changes.join(', ')}`); loadRelated(data.name) }
+      if (!changes.length) return
+
+      const noteText = `✏️ Updated: ${changes.join(', ')}`
+      // Idempotency barrier for accidental replay/double-click/retry. Use the
+      // immutable client id rather than the display name so renames cannot bypass it.
+      const { data: recentSame, error: dupeErr } = await supabase.from('client_notes')
+        .select('id')
+        .eq('tenant_id', myTenantId)
+        .eq('client_id', String(data.id))
+        .eq('text', noteText)
+        .gte('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+        .limit(1)
+      if (dupeErr) {
+        console.error('[client audit dedupe] lookup failed:', dupeErr)
+        return
+      }
+      if (!recentSame?.length) {
+        await logAction(data.name, noteText, String(data.id))
+        loadRelated(data.name, data.id)
+      }
+    } finally {
+      setSaving(false)
+      saveEditLockRef.current = false
     }
   }
 

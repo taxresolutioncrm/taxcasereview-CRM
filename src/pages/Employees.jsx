@@ -320,25 +320,13 @@ export default function Employees() {
     if (!form.name || !form.email) { if (!silent) showToast('Name and email required', 'err'); return false }
     setSaving(true)
     setSaveError('')
-    let payload = toDbPayload(form)
+    const payload = toDbPayload(form)
     let error, data
-    // Retry loop: if PostgREST rejects an unknown column, strip it and retry (same pattern as Clients.jsx)
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (editing) {
-        ;({ error } = await supabase.from('employees').update(payload).eq('id', editing))
-      } else {
-        ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
-        if (!error && data?.id) setEditing(data.id)
-      }
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        continue
-      }
-      break
+    if (editing) {
+      ;({ error } = await supabase.from('employees').update(payload).eq('id', editing))
+    } else {
+      ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
+      if (!error && data?.id) setEditing(data.id)
     }
     setSaving(false)
     if (error) { setSaveError(error.message); if (!silent) showToast('Save error: ' + error.message, 'err'); return false }
@@ -378,10 +366,14 @@ export default function Employees() {
         const { data: inserted, error: insErr } = await supabase.from('documents').insert([{
           name: file.name, employee: form.name, docType: nextDocLabel,
           file_url: urlData?.signedUrl || '', file_name: file.name, file_size: file.size,
+          storage_path: path,
           created_at: new Date().toISOString()
         }]).select().single()
         if (!insErr && inserted) setEmpDocs(prev => [inserted, ...prev])
-        else if (insErr) showToast('Save failed: ' + insErr.message, 'err')
+        else if (insErr) {
+          await supabase.storage.from('documents').remove([path]).catch(()=>{})
+          showToast('Save failed: ' + insErr.message, 'err')
+        }
       } else {
         showToast('Upload failed: ' + upErr.message, 'err')
       }
@@ -452,20 +444,20 @@ export default function Employees() {
           <div style={{ fontSize: 13, marginTop: 4 }}>Add your first team member to get started</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))', gap: 14, alignItems: 'stretch' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(285px, 100%), 1fr))', gap: 10, alignItems: 'start' }}>
           {filtered.map(emp => {
             const roleColor = TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b'
             const displayTitle = emp.title || emp.role || 'Staff'
             const displayAccess = emp.access || 'Staff'
             return (
-              <div key={emp.id} className="card" style={{ padding: 18, minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1fr)', gap: 14, alignItems: 'start' }}>
+              <div key={emp.id} className="card" style={{ padding:'12px 13px', minWidth:0, boxSizing:'border-box' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '38px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
                   {/* Avatar */}
                   <div style={{
-                    width: 48, height: 48, borderRadius: '50%',
+                    width: 38, height: 38, borderRadius: '50%',
                     background: roleColor,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 16, fontWeight: 800, color: '#fff', overflow: 'hidden'
+                    fontSize: 13, fontWeight: 800, color: '#fff', overflow: 'hidden'
                   }}>
                     {emp.avatar_url
                       ? <img src={emp.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
@@ -473,12 +465,12 @@ export default function Employees() {
                   </div>
 
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--tx)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{emp.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 3, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{displayTitle}</div>
-                    <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 2, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{emp.email}</div>
-                    <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5, color: 'var(--tx)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{emp.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--t2)', marginTop: 2, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{displayTitle}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 1, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{emp.email}</div>
+                    <div style={{ marginTop: 5, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span style={{
-                        fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 20,
+                        fontSize: 9.5, fontWeight: 800, padding: '2px 7px', borderRadius: 20,
                         background: roleColor + '22', color: roleColor,
                         border: '1px solid ' + roleColor + '44',
                         whiteSpace: 'nowrap'
@@ -489,10 +481,10 @@ export default function Employees() {
 
                 {/* Employee actions live on their own row so identity text never gets crushed. */}
                 <div style={{
-                  marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--br)',
-                  display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center'
+                  marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--br)',
+                  display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center'
                 }}>
-                  <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑 Reset</button>
+                  <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑</button>
                   {can('edit', 'employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite">✉️ Invite</button>}
                   {can('edit', 'employees') && (
                     <>
@@ -504,7 +496,7 @@ export default function Employees() {
                 </div>
 
                 {/* Permission chips */}
-                <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap', alignContent: 'flex-start' }}>
+                <div style={{ marginTop: 9, display: 'flex', gap: 3, flexWrap: 'wrap', alignContent: 'flex-start' }}>
                   {PERM_SECTIONS.map(s => {
                     const fallback = safeRoleDefaults(emp.access)?.[s.key] ?? 0
                     const level = safePermLevel(emp[s.key], fallback)
@@ -512,7 +504,7 @@ export default function Employees() {
                     const opt = LEVEL_OPTIONS[level] || LEVEL_OPTIONS[0]
                     return (
                       <span key={s.key} title={s.label + ': ' + opt.label} style={{
-                        fontSize: 10, padding: '3px 8px', borderRadius: 12,
+                        fontSize: 9, padding: '1px 6px', borderRadius: 12,
                         background: opt.color + '18', color: opt.color,
                         border: '1px solid ' + opt.color + '3d', fontWeight: 700,
                         lineHeight: 1.2, whiteSpace: 'nowrap'

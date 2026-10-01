@@ -19,7 +19,7 @@ function Stat({ label, value, color, bold, big }) {
 }
 
 export default function Payroll() {
-  const { role, employeeName } = useApp()
+  const { role, employeeName, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin','Manager'].includes(role)
 
   const [runs,       setRuns]       = useState([])
@@ -52,16 +52,18 @@ export default function Payroll() {
   const [teFilterEmp,     setTeFilterEmp]     = useState('All')
 
   useEffect(() => {
+    if (!myTenantId) { setRuns([]); setEmployees([]); setTimeEntries([]); setFirm(null); return }
     load()
     let reloadTimer = null
-    const timeCh = supabase.channel('payroll-timeentries-rt')
-      .on('postgres_changes', { event:'*', schema:'public', table:'timeentries' }, () => {
+    const filter = `tenant_id=eq.${myTenantId}`
+    const timeCh = supabase.channel('payroll-timeentries-rt-' + myTenantId)
+      .on('postgres_changes', { event:'*', schema:'public', table:'timeentries', filter }, () => {
         clearTimeout(reloadTimer)
         reloadTimer = setTimeout(loadTimeEntries, 300)
       })
       .subscribe()
-    const empCh = supabase.channel('payroll-employees-rt')
-      .on('postgres_changes', { event:'*', schema:'public', table:'employees' }, () => {
+    const empCh = supabase.channel('payroll-employees-rt-' + myTenantId)
+      .on('postgres_changes', { event:'*', schema:'public', table:'employees', filter }, () => {
         clearTimeout(reloadTimer)
         reloadTimer = setTimeout(loadEmployees, 300)
       })
@@ -71,29 +73,33 @@ export default function Payroll() {
       supabase.removeChannel(timeCh)
       supabase.removeChannel(empCh)
     }
-  }, [])
+  }, [myTenantId])
 
   async function loadEmployees() {
-    const { data } = await supabase.from('employees').select('*').eq('status','Active').order('name')
-    if (data) setEmployees(data)
+    if (!myTenantId) { setEmployees([]); return }
+    const { data } = await supabase.from('employees').select('*').eq('tenant_id', myTenantId).eq('status','Active').order('name')
+    setEmployees(data || [])
   }
 
   async function loadTimeEntries() {
+    if (!myTenantId) { setTimeEntries([]); return }
     const jan1 = `${new Date().getFullYear()}-01-01`
     const { data } = await supabase.from('timeentries').select('*')
+      .eq('tenant_id', myTenantId)
       .gte('date', jan1)
       .order('date',{ascending:false})
       .limit(30000)
-    if (data) setTimeEntries(data)
+    setTimeEntries(data || [])
   }
 
   async function load() {
+    if (!myTenantId) return
     const [{ data:r },{ data:s }] = await Promise.all([
-      supabase.from('payrollruns').select('*').order('created_at',{ascending:false}).limit(250),
-      supabase.from('settings').select('name,phone,email,address,city,state,zip,logourl').limit(1).maybeSingle(),
+      supabase.from('payrollruns').select('*').eq('tenant_id', myTenantId).order('created_at',{ascending:false}).limit(250),
+      supabase.from('settings').select('name,phone,email,address,city,state,zip,logourl,tenant_id').eq('tenant_id', myTenantId).maybeSingle(),
     ])
-    if (r) setRuns(r)
-    if (s) setFirm(s)
+    setRuns(r || [])
+    setFirm(s || null)
     await Promise.all([loadEmployees(),loadTimeEntries()])
   }
 
@@ -129,14 +135,14 @@ export default function Payroll() {
       employee: editPunchForm.employee, date: editPunchForm.date,
       inTime: editPunchForm.inTime, outTime: editPunchForm.outTime,
       hours: hours ? parseFloat(hours) : null, notes: editPunchForm.notes,
-    }).eq('id', editPunch.id)
+    }).eq('tenant_id', myTenantId).eq('id', editPunch.id)
     setEditPunchSaving(false)
     if (error) { showToast('Error: '+error.message); return }
     showToast('✅ Punch updated!')
     setEditPunch(null); load()
   }
   async function deleteEditPunch(id) {
-    const { error } = await supabase.from('timeentries').delete().eq('id', id)
+    const { error } = await supabase.from('timeentries').delete().eq('tenant_id', myTenantId).eq('id', id)
     if (error) { showToast('Error: ' + error.message); setDeletePunchId(null); return }
     setDeletePunchId(null); showToast('Deleted'); load()
   }
@@ -189,6 +195,7 @@ export default function Payroll() {
     const totalTaxes = lineItems.reduce((s,l)=>s+parseFloat(l.totalTaxes||0),0)
     const netPay     = lineItems.reduce((s,l)=>s+parseFloat(l.net||0),0)
     const { error } = await supabase.from('payrollruns').insert([{
+      tenant_id: myTenantId,
       period: periodLabel, payDate, notes,
       grossPay: grossPay.toFixed(2), totalTaxes: totalTaxes.toFixed(2),
       netPay: netPay.toFixed(2), numEmployees: lineItems.length,
@@ -203,7 +210,7 @@ export default function Payroll() {
 
   async function del(id) { setConfirmDel(id) }
   async function confirmDel2() {
-    const { error } = await supabase.from('payrollruns').delete().eq('id', confirmDel)
+    const { error } = await supabase.from('payrollruns').delete().eq('tenant_id', myTenantId).eq('id', confirmDel)
     if (error) { showToast('Error: ' + error.message); setConfirmDel(null); return }
     setConfirmDel(null); showToast('Deleted'); load()
   }
@@ -234,23 +241,47 @@ export default function Payroll() {
   const { start: curStart, end: curEnd, label: curLabel } = currentPeriod(today)
   const stubLines = buildLineItems(employees, timeEntries, curStart, curEnd)
 
-  // Firm letterhead shared by both pay-stub print paths — logo from the
-  // firm-assets bucket + name/address/phone from Settings. Falls back to the
-  // firm name alone if settings hasn't loaded yet.
+  // Shared branded pay-stub document. Use an absolute logo URL and do not
+  // open the print dialog until its assets are loaded; otherwise Chrome can
+  // capture the blank-window state and drop the tenant logo from the PDF.
   const LH_CSS = `
-    .lh{display:flex;align-items:center;gap:16px;border-bottom:3px solid #1e3a8a;padding-bottom:14px;margin-bottom:18px}
-    .lh img{max-height:52px;max-width:170px;object-fit:contain}
-    .lh-name{font-size:17px;font-weight:800;color:#1e3a8a;letter-spacing:.02em}
-    .lh-line{font-size:11px;color:#64748b;margin-top:2px}`
+    *{box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;color:#172033;background:#fff}
+    .paystub{max-width:820px;margin:0 auto;padding:34px 40px}
+    .lh{display:flex;align-items:center;gap:16px;border-bottom:3px solid #1e3a8a;padding-bottom:14px;margin-bottom:20px}
+    .lh img{max-height:58px;max-width:190px;object-fit:contain}
+    .lh-name{font-size:18px;font-weight:800;color:#1e3a8a;letter-spacing:.01em}
+    .lh-line{font-size:11px;color:#64748b;margin-top:2px}
+    .stub-title{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin-bottom:16px}
+    .stub-title h1{font-size:18px;margin:0;color:#1e3a8a;letter-spacing:.06em;text-transform:uppercase}
+    .stub-title .sub{color:#64748b;font-size:11px;margin-top:4px}
+    .net-box{min-width:170px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:10px 14px;text-align:right}
+    .net-box .label{font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:.07em}
+    .net-box .value{font-size:24px;color:#15803d;font-weight:800;margin-top:2px}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    td,th{padding:9px 10px;border-bottom:1px solid #dbe2ea;text-align:left}
+    th{color:#64748b;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f8fafc}
+    td:last-child,th:last-child{text-align:right}
+    .gross td{font-weight:800;border-top:2px solid #cbd5e1}
+    .deduction{color:#dc2626}
+    .foot{display:flex;justify-content:space-between;gap:20px;margin-top:20px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:10.5px;color:#64748b}
+    @media print{body{margin:0}.paystub{max-width:none;padding:18mm 16mm}@page{size:letter;margin:0}}
+  `
+
+  function absoluteAssetUrl(src) {
+    if (!src) return ''
+    try { return new URL(src, window.location.origin).href } catch { return src }
+  }
+
   function firmLetterhead() {
-    const logoSrc = firm?.logourl || ''
-    const name  = firm?.name || 'Tax Case Review'
+    const logoSrc = absoluteAssetUrl(firm?.logourl || '')
+    const name  = firm?.name || 'Firm'
     const addr1 = firm?.address || ''
     const cityLine = [firm?.city, firm?.state].filter(Boolean).join(', ')
     const addr2 = `${cityLine}${firm?.zip ? ' ' + firm.zip : ''}`.trim()
     const contact = [firm?.phone, firm?.email].filter(Boolean).join(' · ')
     return `<div class="lh">
-      <img src="${logoSrc}" alt="" onerror="this.style.display='none'"/>
+      ${logoSrc ? `<img src="${logoSrc}" alt="${name} logo"/>` : ''}
       <div>
         <div class="lh-name">${name}</div>
         ${addr1 ? `<div class="lh-line">${addr1}</div>` : ''}
@@ -260,40 +291,54 @@ export default function Payroll() {
     </div>`
   }
 
+  function money(v){ return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) }
+
+  function payStubHtml(l, periodLabel=curLabel) {
+    const regularPay = l.payType==='Hourly'
+      ? parseFloat(l.regularHours||0)*parseFloat(l.rate||0)
+      : Math.max(0,parseFloat(l.gross||0)-parseFloat(l.otHours||0)*parseFloat(l.rate||0)*1.5)
+    const overtimePay = parseFloat(l.otHours||0)*parseFloat(l.rate||0)*1.5
+    return `<div class="paystub">
+      ${firmLetterhead()}
+      <div class="stub-title">
+        <div>
+          <h1>Pay Stub</h1>
+          <div class="sub">${l.name} · ${l.payType} · Pay period ${periodLabel}</div>
+        </div>
+        <div class="net-box"><div class="label">Net Pay</div><div class="value">${money(l.net)}</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Item</th><th>Hours</th><th>Amount</th></tr></thead>
+        <tbody>
+          <tr><td>Regular Pay</td><td>${l.regularHours}h</td><td>${money(regularPay)}</td></tr>
+          <tr><td>Overtime Pay (1.5×)</td><td>${l.otHours}h</td><td>${money(overtimePay)}</td></tr>
+          <tr class="gross"><td>Gross Pay</td><td>${l.hours}h</td><td>${money(l.gross)}</td></tr>
+          <tr><td>Federal Tax</td><td></td><td class="deduction">−${money(l.fedTax)}</td></tr>
+          <tr><td>State Tax</td><td></td><td class="deduction">−${money(l.stateTax)}</td></tr>
+          <tr><td>Social Security</td><td></td><td class="deduction">−${money(l.ss)}</td></tr>
+          <tr><td>Medicare</td><td></td><td class="deduction">−${money(l.medicare)}</td></tr>
+        </tbody>
+      </table>
+      <div class="foot"><span>Payment Method: ${l.payMethod||'—'}</span><span>${firm?.name||'Firm'} Payroll</span></div>
+    </div>`
+  }
+
+  function printWindowWhenReady(w) {
+    const fire=()=>setTimeout(()=>{ try { w.focus(); w.print() } catch {} },120)
+    const imgs=[...w.document.images]
+    if(!imgs.length || imgs.every(img=>img.complete)) { fire(); return }
+    let left=imgs.filter(img=>!img.complete).length
+    const done=()=>{ left-=1; if(left<=0) fire() }
+    imgs.forEach(img=>{ if(!img.complete){ img.addEventListener('load',done,{once:true}); img.addEventListener('error',done,{once:true}) } })
+    setTimeout(fire,1200)
+  }
+
   function printStub(l) {
     const w = window.open('', '_blank')
-    w.document.write(`
-      <html><head><title>Pay Stub — ${l.name}</title>
-      <style>
-        body{font-family:Arial,sans-serif;padding:30px;color:#1a1a1a}
-        ${LH_CSS}
-        h1{font-size:16px;margin:0 0 4px;color:#1e3a8a;letter-spacing:.06em;text-transform:uppercase}
-        .sub{color:#666;font-size:12px;margin-bottom:20px}
-        table{width:100%;border-collapse:collapse;font-size:13px;margin-top:14px}
-        td,th{padding:8px 10px;border-bottom:1px solid #ddd;text-align:left}
-        th{color:#666;font-weight:600;font-size:11px;text-transform:uppercase}
-        .net{font-weight:800;font-size:16px;color:#16a34a}
-        .bad{color:#dc2626}
-      </style></head><body>
-        ${firmLetterhead()}
-        <h1>Pay Stub</h1>
-        <div class="sub">${l.name} · ${l.payType} · Period: ${curLabel}</div>
-        <table>
-          <tr><th>Item</th><th>Hours</th><th>Amount</th></tr>
-          <tr><td>Regular Pay</td><td>${l.regularHours}h</td><td>$${(l.payType==='Hourly' ? (parseFloat(l.regularHours)*l.rate) : (parseFloat(l.gross)-parseFloat(l.otHours)*l.rate*1.5)).toFixed(2)}</td></tr>
-          <tr><td>Overtime Pay (1.5x)</td><td>${l.otHours}h</td><td>$${(parseFloat(l.otHours)*l.rate*1.5).toFixed(2)}</td></tr>
-          <tr><td><strong>Gross Pay</strong></td><td>${l.hours}h</td><td><strong>$${parseFloat(l.gross).toLocaleString()}</strong></td></tr>
-          <tr><td>Federal Tax</td><td></td><td class="bad">-$${l.fedTax}</td></tr>
-          <tr><td>State Tax</td><td></td><td class="bad">-$${l.stateTax}</td></tr>
-          <tr><td>Social Security</td><td></td><td class="bad">-$${l.ss}</td></tr>
-          <tr><td>Medicare</td><td></td><td class="bad">-$${l.medicare}</td></tr>
-          <tr><td colspan="2" class="net">Net Pay</td><td class="net">$${parseFloat(l.net).toLocaleString()}</td></tr>
-        </table>
-        <p style="margin-top:30px;font-size:11px;color:#999">Payment Method: ${l.payMethod}</p>
-      </body></html>
-    `)
+    if(!w){ showToast('Allow pop-ups to print pay stubs'); return }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pay Stub — ${l.name}</title><style>${LH_CSS}</style></head><body>${payStubHtml(l)}</body></html>`)
     w.document.close()
-    w.print()
+    printWindowWhenReady(w)
   }
 
   // Anyone below Manager/Admin/Super Admin only ever sees their own pay —
@@ -419,29 +464,11 @@ export default function Payroll() {
     const lines = buildLineItems(employees, timeEntries.filter(e=>e.date>=navPeriod.start&&e.date<=navPeriod.end), navPeriod.start, navPeriod.end)
     if (!lines.length) { showToast('No data for this period'); return }
     const w = window.open('','_blank')
-    const lh = firmLetterhead()
-    w.document.write(`<!DOCTYPE html><html><head><title>Pay Stubs — ${navPeriod.label}</title>
-      <style>body{font-family:Arial,sans-serif;margin:0;padding:0}
-      ${LH_CSS}
-      .stub{border:1px solid #ccc;padding:24px 32px;margin:20px auto;max-width:680px;page-break-after:always}
-      h2{color:#1e3a8a;margin:0 0 4px}h3{margin:0 0 16px;color:#64748b;font-weight:400}
-      table{width:100%;border-collapse:collapse;margin-top:12px}
-      td,th{padding:7px 10px;border:1px solid #e2e8f0;font-size:13px}th{background:#f1f5f9;font-size:11px;text-transform:uppercase}
-      .total{font-weight:700;font-size:15px;color:#16a34a}.net{font-size:18px;font-weight:800;color:#16a34a}
-      @media print{.stub{page-break-after:always;margin:0;border:none}}</style></head><body>
-      ${lines.map(l=>`<div class="stub">
-        ${lh}<h3>Pay Stub — ${navPeriod.label}</h3>
-        <table><tr><th>Employee</th><th>Pay Type</th><th>Hours</th><th>Rate</th><th>Gross</th></tr>
-        <tr><td>${l.name}</td><td>${l.payType}</td><td>${l.hours}</td><td>$${l.rate||'—'}/hr</td><td>$${parseFloat(l.gross||0).toFixed(2)}</td></tr></table>
-        <table style="margin-top:12px"><tr><th>Federal Tax</th><th>State Tax</th><th>SS</th><th>Medicare</th><th>Total Deductions</th></tr>
-        <tr><td>-$${parseFloat(l.fedTax||0).toFixed(2)}</td><td>-$${parseFloat(l.stateTax||0).toFixed(2)}</td>
-        <td>-$${parseFloat(l.ss||0).toFixed(2)}</td><td>-$${parseFloat(l.medicare||0).toFixed(2)}</td>
-        <td>-$${parseFloat(l.totalTaxes||0).toFixed(2)}</td></tr></table>
-        <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:2px solid #1e3a8a">
-          <span class="net">Net Pay: $${parseFloat(l.net||0).toFixed(2)}</span></div>
-      </div>`).join('')}
-      </body></html>`)
-    w.document.close(); setTimeout(()=>w.print(), 300)
+    if(!w){ showToast('Allow pop-ups to print pay stubs'); return }
+    const docs=lines.map(l=>`<section class="sheet">${payStubHtml(l,navPeriod.label)}</section>`).join('')
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pay Stubs — ${navPeriod.label}</title><style>${LH_CSS}.sheet{page-break-after:always}.sheet:last-child{page-break-after:auto}</style></head><body>${docs}</body></html>`)
+    w.document.close()
+    printWindowWhenReady(w)
   }
 
   return (
@@ -760,7 +787,7 @@ export default function Payroll() {
                       <div style={{ display:'flex', gap:5 }}>
                         {e.inTime && e.outTime && !e.hours && (
                           <button className="btn sec" style={{ fontSize:10, padding:'3px 8px', color:'var(--warn)' }}
-                            onClick={async()=>{ const h=calcHoursLocal(e.inTime,e.outTime); if(h){await supabase.from('timeentries').update({hours:parseFloat(h)}).eq('id',e.id);showToast('✅ Recalculated: '+h+'h');load()} }}>
+                            onClick={async()=>{ const h=calcHoursLocal(e.inTime,e.outTime); if(h){const {error}=await supabase.from('timeentries').update({hours:parseFloat(h)}).eq('id',e.id);if(error){showToast('❌ '+error.message);return}showToast('✅ Recalculated: '+h+'h');load()} }}>
                             ↻
                           </button>
                         )}
