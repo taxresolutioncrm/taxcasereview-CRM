@@ -5255,7 +5255,8 @@ function CommandCenter() {
     try {
       const { data: syncResult, error: syncInvokeError } = await supabase.functions.invoke('ga4-sync', { body: { product_id: marketingProduct } })
       const syncProblem = syncInvokeError?.message || (syncResult?.ok === false ? syncResult?.error : '')
-      if (syncProblem) {
+      const accessBlocked = syncResult?.access_blocked === true
+      if (accessBlocked) {
         setGa4LiveProducts(prev => prev.filter(id => id !== marketingProduct))
         setGa4BlockedProducts(prev => prev.includes(marketingProduct) ? prev : [...prev, marketingProduct])
       } else if (syncResult?.ok) {

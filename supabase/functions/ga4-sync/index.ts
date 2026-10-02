@@ -137,15 +137,19 @@ serve(async (req) => {
   } catch (err) {
     console.error('GA4 sync error:', err)
     const errorText = err instanceof Error ? err.message : JSON.stringify(err)
+    const accessBlocked = /PERMISSION_DENIED|permission denied|forbidden|does not have sufficient permissions|property.*not found|NOT_FOUND|invalid property/i.test(errorText)
+    const transientFailure = /UNAVAILABLE|service is currently unavailable|RESOURCE_EXHAUSTED|rate limit|quota|timeout|timed out|5\d\d/i.test(errorText)
     await supabase.from('marketing_sync_log').insert({ product_id:productId, source:'ga4', status:'error', error_msg:errorText, synced_at:new Date().toISOString() })
-    // A configured property that Google currently rejects is not "live".
-    // Keep the property ID, but surface the integration as blocked until a
-    // successful sync proves access again.
-    await supabase.from('product_traffic_channels')
-      .update({ status:'blocked', updated_at:new Date().toISOString() })
-      .eq('product_id', productId)
-      .eq('channel_key','ga4')
-    return Response.json({ ok:false, product_id:productId, error:errorText }, { status:500, headers: corsHeaders })
+    // Only real permission/property failures revoke the live badge. Google 5xx,
+    // quota, and timeout errors are transient and must keep the last verified
+    // connection live while cached data remains available.
+    if (accessBlocked && !transientFailure) {
+      await supabase.from('product_traffic_channels')
+        .update({ status:'blocked', updated_at:new Date().toISOString() })
+        .eq('product_id', productId)
+        .eq('channel_key','ga4')
+    }
+    return Response.json({ ok:false, product_id:productId, error:errorText, access_blocked:accessBlocked && !transientFailure, transient:transientFailure }, { status:500, headers: corsHeaders })
   }
 })
 
