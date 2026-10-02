@@ -24,6 +24,9 @@ export default function PreparedFile() {
   const [tab, setTab] = useState('overview')
   const [clientOptions, setClientOptions] = useState([])
   const [selectedClientId, setSelectedClientId] = useState('')
+  const [askText, setAskText] = useState('')
+  const [askReply, setAskReply] = useState('')
+  const [askBusy, setAskBusy] = useState(false)
 
   useEffect(() => {
     if (clientId) load()
@@ -111,6 +114,15 @@ export default function PreparedFile() {
   const ready = docs.length ? Math.round((analyzedCount / docs.length) * 100) : 0
   const openQuestions = currentQuestions.filter(q => q.status === 'open')
   const taxYears = [...new Set(runs.filter(r=>r.status==='complete').map(r => r.tax_year).filter(Boolean))].sort((a,b)=>b-a)
+  const noticeDeadlineFacts = currentFacts.filter(f => ['notice','deadline'].includes(String(f.category || '').toLowerCase()))
+  const reviewFindings = currentFacts.filter(f => f.review_status === 'unreviewed' || (f.confidence != null && Number(f.confidence) < 0.8))
+  const unreadDocuments = docs.filter(d => latestByDoc.get(String(d.id))?.status !== 'complete')
+  const recommendedActions = [
+    ...unreadDocuments.slice(0,3).map(d => ({ kind:'document', text:`Analyze ${d.file_name || d.name || 'unread document'}` })),
+    ...openQuestions.slice(0,4).map(q => ({ kind:'question', text:`Resolve: ${q.question}` })),
+    ...reviewFindings.slice(0,4).map(f => ({ kind:'review', text:`Verify ${f.field_label || f.field_key}` })),
+    ...noticeDeadlineFacts.slice(0,4).map(f => ({ kind:'deadline', text:`Review ${f.field_label || f.field_key}: ${f.normalized_text || ''}` })),
+  ].slice(0,10)
 
   async function analyzeDocument(doc) {
     if (!doc?.id) return
@@ -140,6 +152,33 @@ export default function PreparedFile() {
     } finally {
       setBusy(false)
       await load()
+    }
+  }
+
+  async function askClientAI() {
+    const message = String(askText || '').trim()
+    if (!message || askBusy) return
+    setAskBusy(true)
+    setAskReply('')
+    setError('')
+    try {
+      const context = [
+        'Client: ' + (client?.name || ''),
+        'Tax years: ' + (taxYears.join(', ') || 'none identified'),
+        'Document summaries: ' + runs.filter(r=>r.status==='complete').slice(0,12).map(r=>r.summary).filter(Boolean).join(' | '),
+        'Verified/current facts: ' + currentFacts.slice(0,30).map(f=>(f.field_label||f.field_key)+': '+(f.normalized_text || JSON.stringify(f.value_json))).join(' | '),
+        'Open questions: ' + openQuestions.slice(0,15).map(q=>q.question).join(' | '),
+        'Notices/deadlines: ' + noticeDeadlineFacts.slice(0,15).map(f=>(f.field_label||f.field_key)+': '+(f.normalized_text||'')).join(' | '),
+      ].join('\n')
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: { message, context, history: [] },
+      })
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'AI request failed')
+      setAskReply(String(data?.reply || data?.message || data?.content || 'No response returned.'))
+    } catch (e) {
+      setError(e?.message || String(e))
+    } finally {
+      setAskBusy(false)
     }
   }
 
@@ -260,10 +299,14 @@ export default function PreparedFile() {
         <div style={{display:'flex',gap:4,padding:'10px 12px',borderBottom:'1px solid var(--bd)'}}>
           {[
             ['overview','Overview'],
+            ['documents','File Review'],
             ['entities','People & Entities'],
-            ['facts','Facts'],
-            ['documents','Documents'],
+            ['facts','Tax Facts'],
+            ['findings','Findings'],
+            ['deadlines','Deadlines & Notices'],
             ['questions','Open Questions'],
+            ['actions','Recommended Actions'],
+            ['ask','Ask AI'],
           ].map(([key,label])=>(
             <button key={key} className={`btn sm ${tab===key?'primary':''}`} onClick={()=>setTab(key)}>{label}</button>
           ))}
@@ -362,6 +405,65 @@ export default function PreparedFile() {
                 )
               })}
               {!docs.length && <div style={{color:'var(--t3)'}}>No client documents are attached yet.</div>}
+            </div>
+          )}
+
+          {tab === 'findings' && (
+            <div>
+              <h3 style={{marginTop:0}}>Findings that need review</h3>
+              {reviewFindings.map(f=>(
+                <div key={f.id} style={{padding:'11px 0',borderBottom:'1px solid var(--bd)'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',gap:12}}>
+                    <strong>{f.field_label || f.field_key}</strong>
+                    <span style={{fontSize:11,color:'var(--t3)'}}>{f.confidence==null?'—':pct(f.confidence)+'% confidence'}</span>
+                  </div>
+                  <div style={{fontSize:13,marginTop:4}}>{f.normalized_text || (f.value_json == null ? '—' : JSON.stringify(f.value_json))}</div>
+                  <div style={{display:'flex',gap:6,marginTop:8}}>
+                    {(f.source_page || f.source_locator) && <button className="btn sm" onClick={()=>openSource(f.document_id,f.source_page)}>Open source</button>}
+                    <button className="btn sm" onClick={()=>reviewFact(f.id,'verified')}>✓ Verify</button>
+                    <button className="btn sm" onClick={()=>reviewFact(f.id,'rejected')}>✕ Reject</button>
+                  </div>
+                </div>
+              ))}
+              {!reviewFindings.length && <div style={{color:'var(--t3)'}}>No unresolved findings currently need review.</div>}
+            </div>
+          )}
+
+          {tab === 'deadlines' && (
+            <div>
+              <h3 style={{marginTop:0}}>Deadlines & notices found in the client file</h3>
+              {noticeDeadlineFacts.map(f=>(
+                <div key={f.id} style={{display:'grid',gridTemplateColumns:'180px 1fr 130px',gap:12,alignItems:'center',padding:'11px 0',borderBottom:'1px solid var(--bd)'}}>
+                  <strong>{f.field_label || f.field_key}</strong>
+                  <div>{f.normalized_text || (f.value_json == null ? '—' : JSON.stringify(f.value_json))}</div>
+                  <button className="btn sm" onClick={()=>openSource(f.document_id,f.source_page)}>Open source</button>
+                </div>
+              ))}
+              {!noticeDeadlineFacts.length && <div style={{color:'var(--t3)'}}>No notices or deadlines have been extracted yet.</div>}
+            </div>
+          )}
+
+          {tab === 'actions' && (
+            <div>
+              <h3 style={{marginTop:0}}>Recommended next actions</h3>
+              <p style={{fontSize:12,color:'var(--t3)',marginTop:-4}}>Suggestions are derived from unread documents, unanswered questions, unverified findings, and extracted deadlines. Staff decides what becomes case work.</p>
+              {recommendedActions.map((action,index)=>(
+                <div key={index} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 0',borderBottom:'1px solid var(--bd)'}}>
+                  <span style={{fontSize:11,textTransform:'uppercase',color:'var(--t3)',minWidth:72}}>{action.kind}</span>
+                  <strong style={{fontSize:13}}>{action.text}</strong>
+                </div>
+              ))}
+              {!recommendedActions.length && <div style={{color:'var(--t3)'}}>No AI-recommended follow-up is currently pending.</div>}
+            </div>
+          )}
+
+          {tab === 'ask' && (
+            <div style={{maxWidth:900}}>
+              <h3 style={{marginTop:0}}>Ask AI about this client</h3>
+              <p style={{fontSize:12,color:'var(--t3)'}}>Uses the current client’s document summaries, extracted facts, questions, notices and deadlines as context. It does not silently change CRM records.</p>
+              <textarea className="textarea" rows={5} value={askText} onChange={e=>setAskText(e.target.value)} placeholder="Ask about the client file, case issues, missing information, deadlines, or next steps…" />
+              <button className="btn primary" style={{marginTop:10}} disabled={askBusy || !askText.trim()} onClick={askClientAI}>{askBusy?'Thinking…':'Ask AI'}</button>
+              {askReply && <div className="card" style={{marginTop:14,whiteSpace:'pre-wrap',lineHeight:1.6}}>{askReply}</div>}
             </div>
           )}
 
