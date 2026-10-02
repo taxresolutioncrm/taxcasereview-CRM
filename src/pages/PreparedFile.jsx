@@ -189,7 +189,7 @@ export default function PreparedFile() {
       <div>
         <div className="page-header">
           <div>
-            <h1>AI File Review</h1>
+            <h1>AI Intelligence</h1>
             <p>Select a client to open their prepared file, analyze documents, and review AI findings.</p>
           </div>
         </div>
@@ -205,8 +205,8 @@ export default function PreparedFile() {
             </select>
           </div>
           <div style={{display:'flex',gap:8}}>
-            <button className="btn primary" disabled={!selectedClientId} onClick={()=>navigate('/ai-file-review/' + selectedClientId)}>
-              Open AI File Review
+            <button className="btn primary" disabled={!selectedClientId} onClick={()=>navigate('/ai-intelligence/' + selectedClientId)}>
+              Open AI Intelligence
             </button>
             <button className="btn" onClick={()=>navigate('/documents')}>Documents</button>
           </div>
@@ -217,15 +217,15 @@ export default function PreparedFile() {
   }
 
   if (!client) {
-    return <div><div className="page-header"><div><h1>AI File Review</h1><p>{error || 'Loading client file…'}</p></div></div></div>
+    return <div><div className="page-header"><div><h1>AI Intelligence</h1><p>{error || 'Loading client file…'}</p></div></div></div>
   }
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <button className="btn sm" onClick={()=>navigate('/ai-file-review')} style={{marginBottom:10}}>← All AI File Reviews</button>
-          <h1>{client.name} — AI File Review</h1>
+          <button className="btn sm" onClick={()=>navigate('/ai-intelligence')} style={{marginBottom:10}}>← AI Intelligence</button>
+          <h1>{client.name} — AI Intelligence</h1>
           <p>AI reads the client file, connects the facts, and surfaces only what still needs human review.</p>
         </div>
         <div style={{display:'flex',gap:10,alignItems:'center'}}>
