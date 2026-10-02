@@ -14,6 +14,7 @@ const routeToManual = {
   '/calendar':'calendar',
   '/tasks':'tasks',
   '/dialer':'calling',
+  '/ai-intelligence':'ai-intelligence',
   '/leads':'leads',
   '/clients':'clients',
   '/cases':'clients',
