@@ -280,8 +280,8 @@ function Shell() {
             <Route path="/sms"         element={<Guard section="sms"><Sms /></Guard>} />
             <Route path="/email"       element={<Guard section="email"><Email /></Guard>} />
             <Route path="/documents"   element={<Guard section="documents"><Documents /></Guard>} />
-            <Route path="/ai-intelligence" element={<Guard section="documents"><PreparedFile /></Guard>} />
-            <Route path="/ai-intelligence/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
+            <Route path="/ai-intelligence" element={<PreparedFile />} />
+            <Route path="/ai-intelligence/:clientId" element={<PreparedFile />} />
             <Route path="/ai-file-review" element={<Navigate to="/ai-intelligence" replace />} />
             <Route path="/ai-file-review/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
             <Route path="/prepared-file/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
