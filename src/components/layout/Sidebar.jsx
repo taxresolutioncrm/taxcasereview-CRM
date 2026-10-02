@@ -21,6 +21,7 @@ const SECTIONS = [
       { path: '/calendar',  icon: CalIcon,     label: 'Calendar',      badge: 'calendar', section: 'calendar' },
       { path: '/tasks',     icon: TaskIcon,    label: 'Tasks',         badge: 'tasks',    section: 'tasks' },
       { path: '/dialer',    icon: DialIcon,    label: 'Dialer',        badge: 'voicemails', section: 'dialer' },
+      { path: '/ai-intelligence', icon: FormIcon, label: 'AI Intelligence', section: 'documents' },
     ]
   },
   {
@@ -31,13 +32,6 @@ const SECTIONS = [
       { path: '/clients',   icon: ClientIcon,  label: 'Clients',       badge: 'clients',   section: 'clients' },
       { path: '/cases',     icon: CaseIcon,    label: 'Cases',         badge: 'cases',     section: 'cases' },
       { path: '/deadlines', icon: ClockIcon,   label: 'Deadlines',     badge: 'deadlines', badgeWarn: true, section: 'deadlines' },
-    ]
-  },
-  {
-    key: 'ai',
-    label: 'AI',
-    items: [
-      { path: '/ai-intelligence', icon: FormIcon, label: 'AI Intelligence', section: 'documents' },
     ]
   },
   {
