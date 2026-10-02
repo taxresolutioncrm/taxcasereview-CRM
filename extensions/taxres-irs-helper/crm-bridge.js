@@ -6,10 +6,16 @@
 const HELPER_SOURCE = 'taxres-irs-helper'
 const CRM_SOURCE = 'taxres-crm'
 
+const INITIAL_NONCE = (() => {
+  try { return new URLSearchParams(location.hash.slice(1)).get('taxres-bind') || null } catch { return null }
+})()
+
 let crmWindow = null
 let tenantId = null
 let requestIds = null
-let nonce = null
+let nonce = INITIAL_NONCE
+let agentName = null
+let clientId = null
 
 // Exported so mailbox.js can use them
 window.__taxresHelper = window.__taxresHelper || {}
@@ -31,19 +37,15 @@ function postToCrm(msg) {
 
 // Expose so mailbox.js can call postToCrm and read shared state
 window.__taxresHelper.postToCrm = postToCrm
-window.__taxresHelper.getState = () => ({ tenantId, requestIds, nonce, crmWindow })
+window.__taxresHelper.getState = () => ({ tenantId, requestIds, nonce, crmWindow, agentName, clientId })
 
 window.addEventListener('message', (event) => {
-  // Only accept messages sent from this same page (window itself via postMessage relay
-  // or from the opener). Guard: reject anything not from this page's own window/origin.
-  if (event.source !== window || event.origin !== window.location.origin) {
-    // Check if it came from our opener CRM instead
-    const opener = findOpener()
-    if (!opener || event.source !== opener) return
-  }
-
   const data = event.data
   if (!data || data.source !== CRM_SOURCE) return
+
+  const fromSelf = event.source === window && event.origin === window.location.origin
+  const fromCrm = crmWindow ? event.source === crmWindow : event.source === findOpener()
+  if (!fromSelf && !fromCrm) return
 
   if (data.type === 'crm-ready' || data.type === 'crm-hello') {
     crmWindow = event.source || findOpener()
@@ -52,13 +54,18 @@ window.addEventListener('message', (event) => {
     window.__taxresHelper.updatePanel?.('Ready — click a transcript to send it to the CRM.')
   }
 
-  if (data.type === 'crm-bind') {
+  if (data.type === 'crm-bind' || data.type === 'crm-ping') {
+    if (INITIAL_NONCE && data.nonce && data.nonce !== INITIAL_NONCE) return
+    if (nonce && data.nonce && data.nonce !== nonce) return
     if (data.tenantId) tenantId = String(data.tenantId)
     if (Array.isArray(data.requestIds)) requestIds = data.requestIds.map(String)
-    if (data.nonce) nonce = data.nonce
+    if (!nonce && data.nonce) nonce = data.nonce
+    if (data.agentName) agentName = String(data.agentName)
+    if (data.clientId) clientId = String(data.clientId)
     crmWindow = event.source || findOpener()
     postToCrm({ type: 'helper-hello', url: window.location.href })
-    window.__taxresHelper.updatePanel?.('Linked to CRM — click a transcript to send it.')
+    const who = agentName ? ` · ${agentName}` : ''
+    window.__taxresHelper.updatePanel?.(`Linked to CRM${who} — click a transcript to send it.`)
   }
 
   if (data.type === 'crm-gone') {
@@ -77,7 +84,7 @@ window.addEventListener('message', (event) => {
   }
 })
 
-// Announce ourselves to the CRM opener on load
+// Initial fast path via opener; proactive crm-ping remains the resilient channel after IRS/ID.me navigation
 ;(function announceToOpener() {
   const w = findOpener()
   if (!w) return
