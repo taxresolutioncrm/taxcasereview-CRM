@@ -61,8 +61,8 @@ async function sendCurrentPageContent(label) {
     const base64 = toBase64(buf)
     const filename = (label || document.title || 'irs-transcript').replace(/[^\w\s.-]/g, '_').trim() + '.html'
     const id = crypto.randomUUID()
-    const { tenantId, requestIds, nonce } = getState()
-    postToCrm({ type: 'transcript-pdf', id, name: filename, base64, tenantId, requestIds, nonce, contentType: 'text/html' })
+    const { tenantId, requestIds, nonce, agentName } = getState()
+    postToCrm({ type: 'transcript-pdf', id, name: filename, base64, tenantId, requestIds, nonce, agentName, agentName, contentType: 'text/html' })
     updatePanel('⏳ Sending to CRM…')
   } catch (e) {
     updatePanel('❌ Could not read page: ' + (e?.message || 'Unknown error'))
