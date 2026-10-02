@@ -34,6 +34,9 @@ assert(prepared.includes('latestCompleteRunIds'), 'prepared file shows current a
 assert(prepared.includes('Open source'), 'AI findings expose source navigation')
 assert(prepared.includes('reviewed_by'), 'fact verification records reviewer identity')
 assert(prepared.includes('answered_by'), 'question answers record staff identity')
+assert(['File Review','Tax Facts','Findings','Deadlines & Notices','Recommended Actions','Ask AI'].every(label=>prepared.includes(label)), 'AI Intelligence includes case-wide intelligence tabs')
+assert(prepared.includes("functions.invoke('ai-chat'"), 'AI Intelligence can ask AI with client-specific context')
+assert(prepared.includes('It does not silently change CRM records.'), 'AI Intelligence preserves human authority over CRM records')
 
 assert(edge.includes("doc.tenant_id"), 'edge function derives tenant from RLS-authorized document')
 assert(!edge.includes("rpc('current_tenant_id')"), 'edge function does not trust a separate tenant RPC')
