@@ -394,13 +394,16 @@ export default function Documents() {
                   <div style={{fontSize:12,fontWeight:800,color:'var(--tx)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{doc.name||docDisplayName(doc)}</div>
                   <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',whiteSpace:'nowrap'}}>{fmtDate(doc.created_at)}</div>
                 </div>
-                <div style={{border:'1px solid var(--br)',borderRadius:4,overflow:'hidden',background:'#fff',boxShadow:'0 1px 2px rgba(0,0,0,.08)'}}>
+                <div
+                  onClick={()=>hasDocumentFile(doc)&&previewDocument(doc)}
+                  style={{border:'1px solid var(--br)',borderRadius:4,overflow:'hidden',background:'#fff',boxShadow:'0 1px 2px rgba(0,0,0,.08)',cursor:hasDocumentFile(doc)?'pointer':'default'}}
+                >
                   <div style={{height:28,display:'flex',alignItems:'center',gap:7,padding:'0 9px',background:'#69b8ee',color:'#fff',fontSize:10,fontWeight:800}}>
                     <span style={{width:9,height:9,border:'1px solid rgba(255,255,255,.75)',display:'inline-block'}}/>
                     <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{doc.docType||'Document'}</span>
                     <span style={{marginLeft:'auto',fontSize:10}}>{docExt(doc).toUpperCase()}</span>
                   </div>
-                  <button type="button" onClick={()=>previewDocument(doc)} disabled={!hasDocumentFile(doc)} style={{display:'block',width:'100%',height:295,padding:0,border:0,background:'#fff',cursor:hasDocumentFile(doc)?'pointer':'default',position:'relative',overflow:'hidden'}}>
+                  <button type="button" onClick={e=>{e.stopPropagation();previewDocument(doc)}} disabled={!hasDocumentFile(doc)} style={{display:'block',width:'100%',height:295,padding:0,border:0,background:'#fff',cursor:hasDocumentFile(doc)?'pointer':'default',position:'relative',overflow:'hidden'}}>
                     {isPdf&&cardUrl ? (
                       <iframe src={cardUrl+'#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH'} title={'Document thumbnail '+doc.id} style={{width:'100%',height:'100%',border:0,pointerEvents:'none',background:'#fff'}}/>
                     ) : isImage&&cardUrl ? (
@@ -419,8 +422,8 @@ export default function Documents() {
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:5,marginTop:7,flexWrap:'wrap'}}>
                   {hasDocumentFile(doc)&&<>
-                    <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewDocument(doc)}>Preview</button>
-                    <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openDocument(doc)}>Open ↗</button>
+                    <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={e=>{e.stopPropagation();previewDocument(doc)}}>Preview</button>
+                    <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={e=>{e.stopPropagation();openDocument(doc)}}>Open ↗</button>
                   </>}
                   <button className="btn sm" onClick={()=>addNote(doc)}>✏️</button>
                   {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(doc)}>🗑</button>}
