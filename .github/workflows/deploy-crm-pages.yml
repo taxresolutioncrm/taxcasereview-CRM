@@ -1,6 +1,17 @@
 name: Deploy TCR CRM
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'scripts/**'
+      - 'index.html'
+      - 'vite.config.*'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-crm-pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -39,4 +50,4 @@ jobs:
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           npx gh-pages -d dist --dotfiles --add -u "GitHub Actions <actions@github.com>"
 
-# Manual recovery only. Normal production deployments are handled by Cloudflare Git integration.
+# deploy trigger: audited universal e-signature flow
