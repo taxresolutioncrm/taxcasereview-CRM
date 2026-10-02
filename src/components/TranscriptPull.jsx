@@ -6,7 +6,7 @@ import {
   parseYearSpec, nameKey, requestCoverageSatisfied,
   parseTranscriptFile, storeTranscriptAnalysis,
   BROWSER_PROVIDER_ID, IRS_TDS_URL, IRS_SOR_URL, isOpenBrowserRequest,
-  openIrsPopup, isIrsPopupOpen, focusIrsPopup, IRS_POPUP_BLOCKED,
+  openIrsPopup, isIrsPopupOpen, isIrsSessionOpen, focusIrsPopup, IRS_POPUP_BLOCKED,
   openPendingIrsTab, startBrowserTdsRequest, sha256File, withHelperPairing,
   analyzeReturnedTranscript, matchBrowserRequest, fileBrowserTranscripts, findFiledTranscriptBySha,
   saveWatchedFolder, loadWatchedFolder, forgetWatchedFolder,
@@ -53,6 +53,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [lastScan, setLastScan] = useState(null)
   const [imported, setImported] = useState([])
   const [unmatched, setUnmatched] = useState([])
+  const [needsReviewMismatch, setNeedsReviewMismatch] = useState([])
   const [savedFolder, setSavedFolder] = useState(null)
   const [returnBusyId, setReturnBusyId] = useState(null)
   const [dropId, setDropId] = useState(null)
@@ -60,12 +61,16 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const [helperLog, setHelperLog] = useState([])
   const [sorBridgeConnected, setSorBridgeConnected] = useState(false)
   const [sorBridgeVersion, setSorBridgeVersion] = useState('')
-  const [popupOpen, setPopupOpen] = useState(false)
+  const [irsSessionIds, setIrsSessionIds] = useState(new Map())
+  const popupOpen = irsSessionIds.size > 0
   const requestsRef = useRef([])
   const intakeRef = useRef(null)
   const scanRef = useRef(null)
   const onImportedRef = useRef(null)
   const tenantRef = useRef(null)
+  // Authoritative per-session routing state:
+  // sessionId -> { w, nonce, tenantId, agentName, clientId, requestIds, url, openedAt, acked, lastPing }
+  const irsBindingsRef = useRef(new Map())
   const fsSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
   // Client combobox state
@@ -359,10 +364,24 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         const out = await fileBrowserTranscripts(target.id, [file])
         const res = out.results[0] || {}
         if (res.status === 'filed') {
-          setImported(im => [...im, { file: file.name, client: target.client_name, year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type }])
+          setImported(im => [...im, { file: file.name, client: target.client_name, year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type, aiValidated: res.aiValidated || false }])
           return { status: 'filed', client: target.client_name }
         }
         if (res.status === 'duplicate') return { status: 'duplicate', client: target.client_name }
+        if (res.status === 'needs-review-mismatch') {
+          setNeedsReviewMismatch(m => [
+            ...m.filter(x => x.key !== key),
+            {
+              key, fileName: file.name, file, analysis: parsed.analysis,
+              conflictReason: res.reason || 'AI detected a possible TIN mismatch',
+              conflicts: res.conflicts || [],
+              boundClientName: target.client_name,
+              boundClientId: target.client_id || null,
+              assignTo: '', queuedAt: Date.now(),
+            },
+          ])
+          return { status: 'needs-review-mismatch', detail: res.reason || 'AI detected a possible TIN mismatch' }
+        }
         setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: parsed.analysis, error: res.reason || null, assignTo: '' }])
         return { status: 'unmatched', detail: res.reason || 'Could not file' }
       }
@@ -457,10 +476,32 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       }
     }
     function onMessage(event) {
-      if (event.source !== window || event.origin !== window.location.origin) return
       const data = event.data
       if (!data || data.source !== HELPER_SOURCE) return
-      if (data.type === 'helper-hello') { setHelperConnected(true); post({ type: 'crm-ready', tenantId: tenantRef.current }) }
+      const fromSelf = event.source === window && event.origin === window.location.origin
+      const fromIrsPopup = event.source !== window && (() => {
+        for (const [, b] of irsBindingsRef.current) {
+          try { if (b.w === event.source) return true } catch { /* noop */ }
+        }
+        return false
+      })()
+      if (!fromSelf && !fromIrsPopup) return
+      if (data.type === 'helper-hello') {
+        setHelperConnected(true)
+        post({ type: 'crm-ready', tenantId: tenantRef.current })
+        if (event.source !== window) {
+          for (const [, b] of irsBindingsRef.current) {
+            try {
+              if (b.w !== event.source) continue
+              b.acked = true
+              const msg = { source: CRM_SOURCE, type: 'crm-bind', tenantId: b.tenantId, agentName: b.agentName, requestIds: b.requestIds, nonce: b.nonce }
+              if (b.clientId) msg.clientId = b.clientId
+              event.source.postMessage(msg, '*')
+            } catch { /* cross-origin, window may have closed */ }
+            break
+          }
+        }
+      }
       else if (data.type === 'transcript-pdf') { setHelperConnected(true); queue = queue.then(() => handle(data)) }
       else if (data.type === 'download-unreadable') {
         // The helper saw a transcript download it could not re-open (for example a PDF the IRS built on the fly).
@@ -551,28 +592,61 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     if (bridgeId) window.postMessage({ source: CRM_SOURCE, type: 'TAXRES_SOR_ACK', bridgeId }, window.location.origin)
   }
 
-  // Keep the "Show IRS window" button in step with the popup.
+  // Prune closed sessions so stale WindowProxy references cannot be reused.
   useEffect(() => {
-    const t = setInterval(() => setPopupOpen(isIrsPopupOpen()), 1500)
+    const t = setInterval(() => {
+      setIrsSessionIds(prev => {
+        const next = new Map(prev)
+        let changed = false
+        for (const [sid] of prev) {
+          if (!isIrsSessionOpen(sid)) {
+            next.delete(sid)
+            irsBindingsRef.current.delete(sid)
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 1500)
     return () => clearInterval(t)
   }, [])
 
-  // Tell the helper which office (and which open requests) the IRS window opened from this tab belongs to.
-  // The helper only ever delivers that window's transcripts back to this tab/office.
-  function bindHelper(extraIds = []) {
-    if (!tenantRef.current) return null
+  // Proactive rebind: WindowProxy + immutable nonce remain authoritative even if IRS/ID.me clears opener.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now()
+      for (const [, b] of irsBindingsRef.current) {
+        try {
+          if (!b.w || b.w.closed) continue
+          const interval = b.acked ? 15000 : 2500
+          if (now - (b.lastPing || 0) < interval) continue
+          b.lastPing = now
+          const msg = { source: CRM_SOURCE, type: 'crm-ping', tenantId: b.tenantId, agentName: b.agentName, requestIds: b.requestIds, nonce: b.nonce }
+          if (b.clientId) msg.clientId = b.clientId
+          b.w.postMessage(msg, '*')
+        } catch { /* pruning interval handles closed/navigated windows */ }
+      }
+    }, 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  function openIrsWithBinding(url, extraIds = [], clientId = null) {
+    if (!tenantRef.current) { flash('❌ Not signed in to an office — cannot open IRS portal.'); return null }
     const nonce = crypto.randomUUID()
-    const ids = [...new Set([...extraIds, ...requestsRef.current.filter(isOpenBrowserRequest).map(r => r.id)].map(String))]
-    const title = String(document.title || '').split(' — ')[0].trim()
-    const label = title && title !== window.location.host ? `${title} (${window.location.host})` : window.location.host
-    window.postMessage({ source: CRM_SOURCE, type: 'crm-bind', tenantId: tenantRef.current, label, requestIds: ids, nonce }, window.location.origin)
-    return nonce
+    const tenantId = tenantRef.current
+    const agentName = employeeName || null
+    const requestIds = [...new Set([...extraIds, ...requestsRef.current.filter(isOpenBrowserRequest).map(r => r.id)].map(String))]
+    const { w, sessionId } = openIrsPopup(withHelperPairing(url, nonce))
+    if (!w) return null
+    const binding = { w, nonce, tenantId, agentName, clientId: clientId ? String(clientId) : null, requestIds, url, openedAt: Date.now(), acked: false, lastPing: 0 }
+    irsBindingsRef.current.set(sessionId, binding)
+    setIrsSessionIds(prev => new Map(prev).set(sessionId, { url, openedAt: binding.openedAt }))
+    return { sessionId, w, nonce }
   }
 
   function openIrs(url) {
-    const w = openIrsPopup(withHelperPairing(url, bindHelper()))
-    if (!w) { flash('❌ ' + IRS_POPUP_BLOCKED); return }
-    setPopupOpen(true)
+    const result = openIrsWithBinding(url)
+    if (!result) flash('❌ ' + IRS_POPUP_BLOCKED)
   }
 
   async function assignUnmatched(item) {
@@ -640,13 +714,19 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     if (!client || !poa || !selectedYearsCovered) return
     // Open the IRS window inside the click so the browser does not block it; it goes to IRS TDS only after the request is saved.
     const rowId = crypto.randomUUID()
-    const pairing = bindHelper([rowId])
-    const irsTab = openPendingIrsTab()
+    if (!tenantRef.current) { flash('❌ Not signed in to an office — cannot open IRS portal.'); return }
+    const nonce = crypto.randomUUID()
+    const tenantId = tenantRef.current
+    const agentName = employeeName || null
+    const requestIds = [...new Set([rowId, ...requestsRef.current.filter(isOpenBrowserRequest).map(r => r.id)].map(String))]
+    const { w: irsTab, sessionId: irsSessionId } = openPendingIrsTab()
     if (!irsTab) {
       flash('❌ ' + IRS_POPUP_BLOCKED + ' No transcript request was saved.')
       return
     }
-    setPopupOpen(true)
+    const binding = { w: irsTab, nonce, tenantId, agentName, clientId: String(client.id), requestIds, url: IRS_TDS_URL, openedAt: Date.now(), acked: false, lastPing: 0 }
+    irsBindingsRef.current.set(irsSessionId, binding)
+    setIrsSessionIds(prev => new Map(prev).set(irsSessionId, { url: IRS_TDS_URL, openedAt: binding.openedAt }))
     setSaving(true)
     try {
       const row = {
@@ -662,7 +742,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         requested_by: employeeName || null,
         notes: nextForm.notes || null,
       }
-      await startBrowserTdsRequest(row, irsTab, withHelperPairing(IRS_TDS_URL, pairing))
+      await startBrowserTdsRequest(row, irsTab, withHelperPairing(IRS_TDS_URL, nonce), irsSessionId)
       setForm(BLANK)
       setClientSearch('')
       await loadRequests()
@@ -716,7 +796,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
               <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
                 <button className="btn" onClick={() => openIrs(IRS_TDS_URL)} data-testid="irs-tds">TDS — Request & Receive</button>
                 <button className="btn sec" onClick={() => openIrs(IRS_SOR_URL)} data-testid="irs-sor">SOR — Receive Only</button>
-                {popupOpen && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) setPopupOpen(false) }} data-testid="irs-show-window">Show IRS window</button>}
+                {popupOpen && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) { setIrsSessionIds(new Map()); irsBindingsRef.current.clear() } }} data-testid="irs-show-window">Show IRS window</button>}
               </div>
             </div>
             <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.45 }} data-testid="irs-helper-status">
@@ -1089,6 +1169,43 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           </div>
         </div>
       </div>
+
+      {needsReviewMismatch.length > 0 && (
+        <div style={{ marginBottom: 14, background: 'var(--s2)', border: '1px solid #dc2626', borderRadius: 10, padding: 14 }} data-testid="transcript-needs-review-mismatch">
+          <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4, color: '#dc2626' }}>
+            ⚠ Needs Review — Client Mismatch ({needsReviewMismatch.length})
+          </div>
+          <div style={{ color: 'var(--t3)', fontSize: 11.5, marginBottom: 6 }}>
+            AI detected that the taxpayer ID may not match the bound client. These documents were not auto-filed.
+          </div>
+          <datalist id="transcript-mismatch-clients">
+            {clients.map(c => <option key={c.id} value={c.name} />)}
+          </datalist>
+          {needsReviewMismatch.map(u => (
+            <div key={u.key} style={{ borderTop: '1px solid var(--line)', paddingTop: 6, marginTop: 6 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                <span style={{ minWidth: 200, fontWeight: 600 }}>{u.fileName}</span>
+                {u.analysis && <span style={{ color: 'var(--t3)', fontSize: 11 }}>{[u.analysis.transcript_type, u.analysis.tax_year].filter(Boolean).join(' · ')}</span>}
+                {u.boundClientName && <span style={{ color: '#dc2626', fontSize: 11 }}>Bound to: {u.boundClientName}</span>}
+              </div>
+              {u.conflicts?.length > 0 && <div style={{ color: '#b45309', fontSize: 11, marginTop: 2 }}>{u.conflicts.map((c, i) => <div key={i}>• {c}</div>)}</div>}
+              {u.conflictReason && <div style={{ color: 'var(--t3)', fontSize: 11, marginTop: 2 }}>{u.conflictReason}</div>}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                <input list="transcript-mismatch-clients" placeholder="Assign to correct client…" value={u.assignTo} style={{ width: 220 }}
+                  onChange={e => setNeedsReviewMismatch(m => m.map(i => i.key === u.key ? { ...i, assignTo: e.target.value } : i))} />
+                <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }} disabled={!u.assignTo.trim()}
+                  onClick={() => {
+                    const entry = { key: u.key, fileName: u.fileName, file: u.file, analysis: u.analysis, assignTo: u.assignTo }
+                    setNeedsReviewMismatch(m => m.filter(i => i.key !== u.key))
+                    setUnmatched(x => [...x.filter(i => i.key !== u.key), entry])
+                  }}>Override &amp; Assign</button>
+                <button className="btn sec" style={{ fontSize: 10, padding: '3px 8px' }}
+                  onClick={() => setNeedsReviewMismatch(m => m.filter(i => i.key !== u.key))}>Dismiss</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {unmatched.length > 0 && (
         <div style={{ marginBottom: 14, background: 'var(--s2)', border: '1px solid #b45309', borderRadius: 10, padding: 14 }} data-testid="transcript-needs-client">
