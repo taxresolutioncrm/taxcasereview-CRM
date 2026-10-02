@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 const money = cents => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(cents||0)/100)
@@ -27,6 +27,8 @@ export default function RomyLabsBilling() {
   const [paymentOpen,setPaymentOpen] = useState(false)
   const [payment,setPayment] = useState(blankPayment)
   const [saving,setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const [paymentKey,setPaymentKey] = useState('')
   const [notice,setNotice] = useState('')
 
   const load = useCallback(async()=>{
@@ -35,8 +37,12 @@ export default function RomyLabsBilling() {
       supabase.rpc('romylabs_billing_dashboard'),
       supabase.rpc('admin_tenant_overview')
     ])
-    if(e){setError(e.message);setData(null)} else setData(payload || {accounts:[],invoices:[],payments:[],events:[]})
+    if(e){setError(e.message);setData(null);return null}
+    const nextData = payload || {accounts:[],invoices:[],payments:[],events:[]}
+    setData(nextData)
+    setSelected(current => current ? (nextData.accounts || []).find(a=>a.id===current.id) || current : current)
     if(!tenantError) setTenants(Array.isArray(tenantPayload)?tenantPayload:[])
+    return nextData
   },[])
   useEffect(()=>{load()},[load])
 
@@ -67,36 +73,55 @@ export default function RomyLabsBilling() {
   }
   const openPayment = account => {
     setNotice('')
+    setError('')
+    savingRef.current = false
+    setPaymentKey(`manual-ui-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`)
     if(account){
       setPayment(recalc({...blankPayment,product_key:account.product_key,external_tenant_id:account.external_tenant_id,account_name:account.account_name,billing_email:account.billing_email||'',seat_count:account.seat_count||'',per_seat_rate:Number(account.per_seat_amount_cents||0)/100}))
-    } else setPayment(blankPayment)
+    } else setPayment({...blankPayment,paid_date:todayLocal()})
     setPaymentOpen(true)
   }
   const savePayment = async e => {
-    e.preventDefault(); setSaving(true); setError(''); setNotice('')
+    e.preventDefault()
+    if(savingRef.current) return
+    savingRef.current = true
+    setSaving(true); setError(''); setNotice('')
     const seats = Number(payment.seat_count)
     const rate = Number(payment.per_seat_rate)
     const amount = Number(payment.amount)
-    if(!payment.external_tenant_id||!payment.account_name||seats<=0||rate<=0||amount<=0){setSaving(false);setError('Account, tenant ID, seats, rate, and payment amount are required.');return}
+    if(!payment.external_tenant_id||!payment.account_name||seats<=0||rate<=0||amount<=0){
+      savingRef.current=false;setSaving(false);setError('Account, tenant ID, seats, rate, and payment amount are required.');return
+    }
     const paidAt = new Date(`${payment.paid_date}T12:00:00`).toISOString()
-    const {data:result,error:e2} = await supabase.rpc('admin_record_manual_subscription_payment',{
-      p_product_key:payment.product_key,
-      p_external_tenant_id:payment.external_tenant_id,
-      p_account_name:payment.account_name,
-      p_billing_email:payment.billing_email||null,
-      p_seat_count:seats,
-      p_per_seat_amount_cents:Math.round(rate*100),
-      p_amount_cents:Math.round(amount*100),
-      p_paid_at:paidAt,
-      p_provider:payment.provider,
-      p_reference:payment.reference||null,
-      p_notes:payment.notes||null
-    })
-    setSaving(false)
-    if(e2){setError(e2.message);return}
-    setPaymentOpen(false)
-    setNotice(`Payment recorded: ${money(result?.amount_cents)} · ${result?.seat_count||seats} seats · ${result?.invoice_number||''}`)
-    await load()
+    const stableReference = payment.reference?.trim() || paymentKey
+    try {
+      const {data:result,error:e2} = await supabase.rpc('admin_record_manual_subscription_payment',{
+        p_product_key:payment.product_key,
+        p_external_tenant_id:payment.external_tenant_id,
+        p_account_name:payment.account_name,
+        p_billing_email:payment.billing_email||null,
+        p_seat_count:seats,
+        p_per_seat_amount_cents:Math.round(rate*100),
+        p_amount_cents:Math.round(amount*100),
+        p_paid_at:paidAt,
+        p_provider:payment.provider,
+        p_reference:stableReference,
+        p_notes:payment.notes||null
+      })
+      if(e2){setError(e2.message);return}
+      const refreshed = await load()
+      const refreshedAccount = (refreshed?.accounts || []).find(a =>
+        a.product_key===payment.product_key &&
+        String(a.external_tenant_id)===String(payment.external_tenant_id)
+      )
+      if(refreshedAccount) setSelected(refreshedAccount)
+      setPaymentOpen(false)
+      const duplicateText = result?.idempotent ? 'Already recorded — no duplicate created.' : 'Saved successfully.'
+      setNotice(`Payment recorded: ${money(result?.amount_cents)} · ${result?.seat_count||seats} seats · ${result?.invoice_number||''}. ${duplicateText}`)
+    } finally {
+      savingRef.current=false
+      setSaving(false)
+    }
   }
 
   return <div style={{padding:'28px 36px',maxWidth:1200}}>
@@ -104,7 +129,7 @@ export default function RomyLabsBilling() {
       <div><div style={{fontSize:22,fontWeight:900,color:'#fff'}}>💳 RomyLabs Billing & Collections</div><div style={{fontSize:13,color:'#64748b',marginTop:5}}>RomyLabs SaaS subscriptions only — separate from each CRM's customer, patient, or client billing.</div></div>
       <div style={{display:'flex',gap:8}}><button onClick={()=>openPayment(null)} style={{padding:'8px 14px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',fontWeight:800,cursor:'pointer'}}>+ Record Manual Payment</button><button onClick={load} style={{padding:'7px 13px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',fontWeight:700,cursor:'pointer'}}>Refresh</button></div>
     </div>
-    {notice && <div style={{padding:13,borderRadius:10,background:'rgba(16,185,129,.1)',border:'1px solid rgba(16,185,129,.25)',color:'#86efac',marginBottom:18,fontWeight:700}}>{notice}</div>}
+    {notice && <div role="status" style={{position:'fixed',top:20,right:20,zIndex:12000,maxWidth:480,padding:13,borderRadius:10,background:'#0f2b22',border:'1px solid rgba(16,185,129,.45)',color:'#86efac',fontWeight:800,boxShadow:'0 16px 45px rgba(0,0,0,.45)'}}>{notice}</div>}
     {error && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:18}}>Billing error: {error}</div>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(150px,1fr))',gap:12,marginBottom:20}}>{kpis.map(([labelText,value,color])=><div key={labelText} style={{...card,padding:'17px 18px'}}><div style={{fontSize:10,color:'#64748b',fontWeight:800,textTransform:'uppercase'}}>{labelText}</div><div style={{fontSize:26,color,fontWeight:900,marginTop:8}}>{data?value:'…'}</div></div>)}</div>
     <div style={{...card,padding:'13px 16px',marginBottom:18,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}><span style={{fontSize:11,fontWeight:800,color:'#64748b',textTransform:'uppercase'}}>Collection policy</span><span style={{fontSize:12,color:'#e2e8f0'}}>Invoice automatically</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#f59e0b'}}>Day 10 notice</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#f97316'}}>Day 15 final notice</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#ef4444'}}>Day 20 suspend</span><span style={{marginLeft:'auto',fontSize:11,color:'#475569'}}>Manual payments are audited and update purchased seats/MRR.</span></div>
