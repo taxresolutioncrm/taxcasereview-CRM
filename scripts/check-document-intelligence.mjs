@@ -24,6 +24,7 @@ assert(app.includes('path="/ai-intelligence"'), 'AI Intelligence has its own top
 assert(app.includes('path="/ai-intelligence/:clientId"'), 'AI Intelligence supports client-specific review')
 assert(app.includes('path="/prepared-file/:clientId"'), 'legacy prepared-file route remains compatible')
 assert(sidebar.includes("path: '/ai-intelligence'") && sidebar.includes("label: 'AI Intelligence'"), 'AI Intelligence has its own sidebar tab')
+assert(!sidebar.includes("path: '/ai-intelligence', icon: FormIcon, label: 'AI Intelligence', section: 'documents'"), 'AI Intelligence is not permission-gated as Documents')
 assert(sidebar.indexOf("path: '/ai-intelligence'") > sidebar.indexOf("path: '/dialer'"), 'AI Intelligence is placed after Dialer')
 assert(docs.includes("navigate('/ai-intelligence/' + selectedClient.id)"), 'Documents routes into AI Intelligence')
 assert(docs.includes('hasDocumentFile') && docs.includes("doc?.storage_path || doc?.file_url"), 'Documents open from private storage paths or stored URLs')
