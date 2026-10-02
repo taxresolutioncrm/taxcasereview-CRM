@@ -76,8 +76,9 @@ for(const n of [
   'TDS — Request & Receive',
   'SOR — Receive Only',
   'types: []',
-  // TaxRes IRS Helper bridge: same-page messages only, PDFs only
-  "event.source !== window || event.origin !== window.location.origin",
+  // TaxRes IRS Helper bridge: same-page relay or known IRS popup WindowProxy only
+  'const fromSelf = event.source === window && event.origin === window.location.origin',
+  'const fromIrsPopup = event.source !== window',
   'data.source !== HELPER_SOURCE',
   "'%PDF-'",
   "'/taxres-irs-helper.zip'",
@@ -91,7 +92,8 @@ for(const n of [
 for(const n of [
   "export const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
   "export const IRS_POPUP_NAME = 'taxres-irs-tds'",
-  'w.opener = null',
+  'const irsPopups = new Map()',
+  'isIrsSessionOpen',
   '<meta name="referrer" content="no-referrer">',
   'freshPopups',
   'browserMatchProblem',
