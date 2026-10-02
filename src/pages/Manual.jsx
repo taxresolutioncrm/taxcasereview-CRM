@@ -103,6 +103,34 @@ const MANUAL_SECTIONS = [
     ]
   },
 
+  {
+    id: 'ai-intelligence', icon: '✦', label: 'AI Intelligence', category: 'Operations',
+    title: 'AI Intelligence',
+    content: [
+      { type: 'lead', text: 'AI Intelligence is the dedicated client intelligence workspace for the TaxRes family. It is separate from the floating AI assistant and is opened from the main sidebar directly below Dialer.' },
+      { type: 'h3', text: 'What AI Intelligence does' },
+      { type: 'cards', items: [
+        { icon: '📂', title: 'File Review', body: 'Reads supported client documents and shows which files have completed AI analysis.' },
+        { icon: '👥', title: 'People & Entities', body: 'Surfaces people, businesses, agencies, employers, dependents, and other relationships found in the client file.' },
+        { icon: '🧾', title: 'Tax Facts', body: 'Shows extracted tax facts with confidence and source references. Staff can verify or reject findings.' },
+        { icon: '🔎', title: 'Findings', body: 'Collects unverified or lower-confidence findings that still need staff review.' },
+        { icon: '⏰', title: 'Deadlines & Notices', body: 'Brings extracted notice and deadline information into one review surface with links back to the source document.' },
+        { icon: '✅', title: 'Recommended Actions', body: 'Suggests follow-up based on unread documents, open questions, unresolved findings, and extracted deadlines. Suggestions do not automatically change CRM records.' },
+        { icon: '💬', title: 'Ask AI', body: 'Lets staff ask questions using the selected client\'s current document summaries, facts, notices, deadlines, and open questions as context.' },
+      ]},
+      { type: 'h3', text: 'Opening a client intelligence workspace' },
+      { type: 'steps', items: [
+        { title: 'Open AI Intelligence from the sidebar', desc: 'Select AI Intelligence directly below Dialer.' },
+        { title: 'Choose a client', desc: 'Select the client whose file you want to review. AI Intelligence is client-specific and does not combine client data.' },
+        { title: 'Review source-backed findings', desc: 'Use source links to open the underlying document before verifying or rejecting extracted facts.' },
+        { title: 'Resolve open questions', desc: 'Answer missing-information questions as staff confirms the client record.' },
+        { title: 'Use Ask AI for file context', desc: 'Ask about case issues, missing information, deadlines, or next steps. AI responses are advisory and do not silently overwrite CRM data.' },
+      ]},
+      { type: 'warn', text: 'AI Intelligence assists staff; it does not replace staff review. Verify important facts against the source document before relying on them for client work, filings, deadlines, or IRS/state actions.' },
+      { type: 'info', text: 'New supported client uploads can be analyzed automatically. Documents without an attached file cannot be analyzed until the actual file is available.' },
+    ]
+  },
+
   // ─── CLIENT PIPELINE ────────────────────────────────────────────────────────
   {
     id: 'leads', icon: '🎯', label: 'Leads', category: 'Client Pipeline',
