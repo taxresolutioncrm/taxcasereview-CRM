@@ -27,9 +27,10 @@ serve(async (req) => {
         'Authorization': `Bearer ${GROQ_KEY}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         max_tokens: 2000,
         temperature: 0,
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
@@ -59,7 +60,11 @@ ${pdfText.substring(0, 12000)}`
     if (!response.ok) {
       const errText = await response.text()
       console.error('Groq error:', response.status, errText)
-      return new Response(JSON.stringify({ error: `Groq ${response.status}: ${errText.substring(0, 200)}`, parsed: {} }), {
+      return new Response(JSON.stringify({
+        error: `Tax document parser provider error (${response.status})`,
+        detail: errText.substring(0, 300),
+        parsed: {}
+      }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
