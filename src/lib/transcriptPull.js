@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { parseIrsTranscript, extractPdfText, extractHtmlText } from './irsTranscriptParser'
+import { aiIngestDocument } from './transcriptAiIngestion'
 
 // Automated IRS API provider: optional, requires approved IRS API Client ID + verified product contract
 // Do not infer that an IRS Web TDS / ID.me browser session is an automated API session.
@@ -368,40 +369,63 @@ export const IRS_SOR_URL = 'https://www.irs.gov/e-services'
 export const IRS_POPUP_NAME = 'taxres-irs-tds'
 export const IRS_POPUP_BLOCKED = 'IRS sign-in popup was blocked. Allow pop-ups for this CRM and try again.'
 
-let irsPopup = null
+// Per-session popup map: keyed by sessionId so concurrent agents never share state.
+const irsPopups = new Map()
 const freshPopups = new WeakSet()
 
-function popupFeatures() {
+function newSessionId() {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+}
+
+function popupFeatures(offset = 0) {
   const sw = window.screen?.availWidth || 1280, sh = window.screen?.availHeight || 900
   const width = Math.max(720, Math.min(1180, sw - 80))
   const height = Math.max(600, Math.min(940, sh - 80))
-  const left = Math.max(0, Math.round((window.screenX || 0) + ((window.outerWidth || sw) - width) / 2))
-  const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || sh) - height) / 2))
+  const left = Math.max(0, Math.round((window.screenX || 0) + ((window.outerWidth || sw) - width) / 2) + offset * 24)
+  const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || sh) - height) / 2) + offset * 24)
   return `popup=yes,width=${width},height=${height},left=${left},top=${top}`
 }
 
 export function isIrsPopupOpen() {
-  try { return Boolean(irsPopup && !irsPopup.closed) } catch { return false }
-}
-
-export function focusIrsPopup() {
-  try { if (isIrsPopupOpen()) { irsPopup.focus(); return true } } catch { /* noop */ }
+  for (const [sid, w] of irsPopups) {
+    try { if (!w.closed) return true } catch { irsPopups.delete(sid) }
+  }
   return false
 }
 
-// Open (or reuse) the one IRS sign-in popup. Must run inside a click so the browser allows it.
-// A new popup starts blank (same origin), its opener link is cut, and it is only then sent to
-// the IRS with no referrer. Returns null if the browser blocked the popup.
+export function isIrsSessionOpen(sessionId) {
+  if (!sessionId) return false
+  const w = irsPopups.get(sessionId)
+  try { return Boolean(w && !w.closed) } catch { return false }
+}
+
+export function focusIrsPopup(sessionId) {
+  if (sessionId) {
+    const w = irsPopups.get(sessionId)
+    try { if (w && !w.closed) { w.focus(); return true } } catch { irsPopups.delete(sessionId) }
+    return false
+  }
+  for (const [sid, w] of irsPopups) {
+    try { if (!w.closed) { w.focus(); return true } } catch { irsPopups.delete(sid) }
+  }
+  return false
+}
+
+// Open a new IRS popup for this agent's session. Each call gets its own window and sessionId.
+// Must run inside a click so the browser allows it.
 function openBlankIrsPopup(message) {
-  if (typeof window === 'undefined') return null
-  if (isIrsPopupOpen()) return irsPopup
-  const w = window.open('about:blank', IRS_POPUP_NAME, popupFeatures())
-  if (!w) return null
-  try { w.opener = null } catch { /* already isolated */ }
+  if (typeof window === 'undefined') return { w: null, sessionId: null }
+  const sessionId = newSessionId()
+  const windowName = `${IRS_POPUP_NAME}_${sessionId}`
+  const offset = irsPopups.size
+  const w = window.open('about:blank', windowName, popupFeatures(offset))
+  if (!w) return { w: null, sessionId: null }
+  // Do NOT null w.opener: crm-bridge.js can use it as a fast initial-contact path.
+  // The proactive CRM ping channel remains authoritative after IRS/ID.me navigation.
   try { w.document.title = 'IRS sign-in'; w.document.body.textContent = message } catch { /* not blank */ }
   freshPopups.add(w)
-  irsPopup = w
-  return w
+  irsPopups.set(sessionId, w)
+  return { w, sessionId }
 }
 
 export function navigateIrsPopup(w, url = IRS_TDS_URL) {
@@ -421,37 +445,38 @@ export function navigateIrsPopup(w, url = IRS_TDS_URL) {
   return true
 }
 
-// TDS / SOR buttons: open or reuse the IRS popup and go straight to the selected IRS system.
+// TDS / SOR buttons: open a new IRS popup for this agent and go straight to the selected IRS system.
 export function openIrsPopup(url = IRS_TDS_URL) {
-  const w = openBlankIrsPopup('Opening the IRS sign-in page…')
-  if (!w) return null
+  const { w, sessionId } = openBlankIrsPopup('Opening the IRS sign-in page…')
+  if (!w) return { w: null, sessionId: null }
   navigateIrsPopup(w, url)
-  return w
+  return { w, sessionId }
 }
 
-// Kept for older callers: same controlled popup.
+// Kept for callers that pass an explicit URL (e.g. SOR button).
 export function openIrsTds(url = IRS_TDS_URL) { return openIrsPopup(url) }
 
 // Request Transcripts: grab the popup inside the click, but only send it to the IRS after the
-// CRM request is saved. If the rep's IRS window is already open it is reused as-is.
+// CRM request is saved.
 export function openPendingIrsTab() {
   return openBlankIrsPopup('Saving your transcript request in the CRM…')
 }
 
 export function navigatePendingIrsTab(w, url = IRS_TDS_URL) { return navigateIrsPopup(w, url) }
 
-// Close only a popup this click just opened — never the rep's signed-in IRS window.
-export function closePendingIrsTab(w) {
-  try { if (w && freshPopups.has(w) && !w.closed) { w.close(); freshPopups.delete(w); if (irsPopup === w) irsPopup = null } } catch { /* noop */ }
+// Close only a popup this click just opened — never another agent's signed-in IRS window.
+export function closePendingIrsTab(w, sessionId) {
+  try { if (w && freshPopups.has(w) && !w.closed) { w.close(); freshPopups.delete(w) } } catch { /* noop */ }
+  if (sessionId) irsPopups.delete(sessionId)
 }
 
 // Save the pending request first; the IRS popup is navigated only after the insert succeeds.
-export async function startBrowserTdsRequest(row, w, url = IRS_TDS_URL) {
+export async function startBrowserTdsRequest(row, w, url = IRS_TDS_URL, sessionId) {
   try {
     const { error } = await supabase.from('transcript_pull_requests').insert([row])
     if (error) throw new Error(error.message)
   } catch (e) {
-    closePendingIrsTab(w)
+    closePendingIrsTab(w, sessionId)
     throw e
   }
   navigateIrsPopup(w, url)
@@ -541,9 +566,30 @@ async function fileBrowserTranscriptsNow(requestId, files) {
       const parsed = await analyzeReturnedTranscript(file)
       const problem = browserMatchProblem(req, clientLast4, parsed)
       if (problem) { results.push({ file: name, status: 'rejected', reason: problem }); continue }
-      const analysisId = await storeTranscriptAnalysis(file, req.client_name, { ...parsed.analysis, file_sha256: key }, { clientId: req.client_id || null })
+
+      // AI validation layer — runs AFTER binding confirmation, NEVER overrides a confirmed binding.
+      // On TIN mismatch the AI flags this transcript for human review ("Needs Review — Client Mismatch").
+      // On AI unavailability we fall through to pattern-only filing.
+      const binding = { clientId: req.client_id, requestIds: (req.result_analysis_ids || []) }
+      const aiResult = await aiIngestDocument(file, {
+        patternResult: parsed.analysis,
+        tinLast4FromPattern: parsed.tinLast4,
+        binding,
+        docTypeKey: 'irs_transcript',
+      })
+
+      if (aiResult.status === 'ai-conflict') {
+        results.push({ file: name, status: 'needs-review-mismatch', reason: aiResult.reason, conflicts: aiResult.conflicts })
+        continue
+      }
+
+      const finalAnalysis = aiResult.status === 'ai-validated'
+        ? { ...aiResult.mergedAnalysis, file_sha256: key }
+        : { ...parsed.analysis, file_sha256: key }
+
+      const analysisId = await storeTranscriptAnalysis(file, req.client_name, finalAnalysis, { clientId: req.client_id || null })
       ids.add(analysisId); filedKeys.add(key)
-      results.push({ file: name, status: 'filed', year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type })
+      results.push({ file: name, status: 'filed', year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type, aiValidated: aiResult.status === 'ai-validated' })
     } catch (e) {
       if (e?.code === 'duplicate') { results.push({ file: name, status: 'duplicate', client: e.prior?.client_name || null }); continue }
       results.push({ file: name, status: 'error', reason: e?.message || 'Could not file this PDF.' })
