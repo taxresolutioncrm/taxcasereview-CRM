@@ -21,6 +21,7 @@ const SECTIONS = [
       { path: '/calendar',  icon: CalIcon,     label: 'Calendar',      badge: 'calendar', section: 'calendar' },
       { path: '/tasks',     icon: TaskIcon,    label: 'Tasks',         badge: 'tasks',    section: 'tasks' },
       { path: '/dialer',    icon: DialIcon,    label: 'Dialer',        badge: 'voicemails', section: 'dialer' },
+      { path: '/ai-intelligence', icon: FormIcon, label: 'AI Intelligence', section: 'documents' },
     ]
   },
   {
