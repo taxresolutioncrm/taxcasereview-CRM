@@ -1,6 +1,8 @@
+# taxrescrm.app is the authenticated application/booking host.
+# The public indexable marketing website is https://taxrescrm.net/.
+# Crawlers may fetch public URLs so they can observe the noindex directive.
 User-agent: *
 Allow: /
-Allow: /book
 Disallow: /portal/
 Disallow: /sign/
 Disallow: /employee/
@@ -8,5 +10,3 @@ Disallow: /kiosk/
 Disallow: /meet/
 Disallow: /crm-admin
 Disallow: /crm-admin/
-
-Sitemap: https://taxrescrm.app/sitemap.xml

@@ -1,7 +1,17 @@
+# Deployment freshness controls — the bootstrap guard and build marker must
+# never be served stale or they cannot evict an old CRM bundle.
+/romylabs-admin-hotfix.js
+  Cache-Control: no-store, max-age=0, must-revalidate
+/taxres-build.json
+  Cache-Control: no-store, max-age=0, must-revalidate
+/index.html
+  Cache-Control: no-store, max-age=0, must-revalidate
+
 # HTML / SPA shell must revalidate so users receive the newest deployment.
 /*
   Cache-Control: no-cache, must-revalidate
   Pragma: no-cache
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
 
 # Vite emits content-hashed JS/CSS assets. These are safe to cache for a year;
 # a new deploy changes the filename, so navigation can reuse already-downloaded
