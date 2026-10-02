@@ -76,8 +76,9 @@ for(const n of [
   'TDS — Request & Receive',
   'SOR — Receive Only',
   'types: []',
-  // TaxRes IRS Helper bridge: same-page messages only, PDFs only
-  "event.source !== window || event.origin !== window.location.origin",
+  // TaxRes IRS Helper bridge: same-page relay or known IRS popup WindowProxy only
+  'const fromSelf = event.source === window && event.origin === window.location.origin',
+  'const fromIrsPopup = event.source !== window',
   'data.source !== HELPER_SOURCE',
   "'%PDF-'",
   "'/taxres-irs-helper.zip'",
@@ -91,7 +92,8 @@ for(const n of [
 for(const n of [
   "export const IRS_TDS_URL = 'https://la.www4.irs.gov/esrv/tds/'",
   "export const IRS_POPUP_NAME = 'taxres-irs-tds'",
-  'w.opener = null',
+  'const irsPopups = new Map()',
+  'isIrsSessionOpen',
   '<meta name="referrer" content="no-referrer">',
   'freshPopups',
   'browserMatchProblem',
@@ -107,7 +109,7 @@ if(fs.existsSync(pullUi) && fs.existsSync(lib)){
   const ui=read(pullUi), l=read(lib)
   // The IRS tab may only be sent to IRS after the pending request is saved
   const submit=ui.slice(ui.indexOf('async function submitCanopyStyleRequest'), ui.indexOf('// Derive the single most-actionable reason'))
-  if(submit.includes('openIrsTds(') || !submit.includes('openPendingIrsTab()') || !submit.includes('startBrowserTdsRequest(row, irsTab, withHelperPairing(IRS_TDS_URL, pairing))')) failures.push('TranscriptPull: Request Transcripts must save the pending request before navigating to IRS TDS')
+  if(submit.includes('openIrsTds(') || !submit.includes('openPendingIrsTab()') || !submit.includes('startBrowserTdsRequest(row, irsTab, withHelperPairing(IRS_TDS_URL, nonce), irsSessionId)')) failures.push('TranscriptPull: Request Transcripts must save the pending request before navigating to IRS TDS')
   if(ui.includes('routeAnalysis(')) failures.push('TranscriptPull: watched folder must not auto-file by name without a positive TIN match')
   if(ui.includes('<TDSSessionPresence')) failures.push('TranscriptPull: IRS API OAuth sign-in must not gate the browser TDS workflow')
   if(/canRequest = Boolean\([^)]*(sessionActive|direct\?\.available)/.test(ui)) failures.push('TranscriptPull: Request Transcripts must not require an IRS API session')
@@ -251,7 +253,9 @@ if(fs.existsSync(extManifest)){
     }
   }
   const bridge=fs.existsSync(extDir+'/crm-bridge.js')?read(extDir+'/crm-bridge.js'):''
-  if(!bridge.includes('event.source !== window || event.origin !== window.location.origin')) failures.push('TaxRes IRS Helper: CRM bridge must only accept messages from its own page')
+  if(!bridge.includes('const fromSelf = event.source === window && event.origin === window.location.origin')) failures.push('TaxRes IRS Helper: CRM bridge must guard same-page messages')
+  if(!bridge.includes('const fromCrm = crmWindow ? event.source === crmWindow : event.source === findOpener()')) failures.push('TaxRes IRS Helper: CRM bridge must pin the CRM WindowProxy')
+  if(!bridge.includes("data.type === 'crm-bind' || data.type === 'crm-ping'")) failures.push('TaxRes IRS Helper: proactive crm-ping rebind is missing')
   const mailbox=fs.existsSync(extDir+'/mailbox.js')?read(extDir+'/mailbox.js'):''
   if(!mailbox.includes("sendBtn.addEventListener('click', () => sendAll(false))")) failures.push('TaxRes IRS Helper: mailbox sending must start only from the rep clicking')
   if(!mailbox.includes("credentials: 'same-origin'") || !mailbox.includes("u.protocol === 'https:' && u.origin === location.origin ? u : null")) failures.push('TaxRes IRS Helper: files may only be opened from the same IRS page origin')
@@ -263,6 +267,35 @@ if(fs.existsSync(extManifest)){
   else {
     const z=fs.readFileSync(zipPath).toString('latin1')
     for(const f of ['manifest.json','background.js','mailbox.js','crm-bridge.js']) if(!z.includes(f)) failures.push(zipPath+': missing root package entry '+f)
+  }
+}
+
+// Transcript AI ingestion layer
+const aiIngestion='src/lib/transcriptAiIngestion.js'
+for(const n of [
+  "supabase.functions.invoke('parse-tax-doc'",
+  'DOC_TYPE_REGISTRY',
+  'aiValidateTranscript',
+  'aiBindingConflict',
+  'aiIngestDocument',
+  "'ai-validated'",
+  "'ai-conflict'",
+  "'ai-unavailable'",
+]) need(aiIngestion,n)
+
+if(fs.existsSync(lib)){
+  const ls=read(lib)
+  if(!ls.includes("import { aiIngestDocument } from './transcriptAiIngestion'")) failures.push(lib+': transcript AI ingestion import missing')
+  const sec=ls.slice(ls.indexOf('async function fileBrowserTranscriptsNow'))
+  const matchIdx=sec.indexOf('browserMatchProblem(')
+  const aiIdx=sec.indexOf('aiIngestDocument(')
+  if(matchIdx<0||aiIdx<0||aiIdx<matchIdx) failures.push(lib+': AI validation must run after binding/TIN matching')
+  if(!sec.includes("status: 'needs-review-mismatch'")) failures.push(lib+': AI mismatch must be held for human review')
+}
+if(fs.existsSync(pullUi)){
+  const ui=read(pullUi)
+  for(const n of ['irsBindingsRef',"type: 'crm-ping'",'b.acked ? 15000 : 2500','transcript-needs-review-mismatch','Needs Review — Client Mismatch']) {
+    if(!ui.includes(n)) failures.push(pullUi+': missing '+n)
   }
 }
 
