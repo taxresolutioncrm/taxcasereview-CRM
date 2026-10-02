@@ -1,0 +1,3 @@
+TCR_AI_INTELLIGENCE_RELEASE_20261002_1225_ET
+source_commit=69c05784f471165da60c5981632c8b4ced110b28
+purpose=deploy AI Intelligence sidebar/workspace and document-opening fix to Cloudflare Pages
