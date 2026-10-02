@@ -258,7 +258,7 @@ export default function IRSPortal() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             className="btn"
-            onClick={() => { if (!openIrsPopup(IRS_TDS_URL)) window.alert(IRS_POPUP_BLOCKED) }}
+            onClick={() => { const { w } = openIrsPopup(IRS_TDS_URL); if (!w) window.alert(IRS_POPUP_BLOCKED) }}
           >
             Sign in to IRS TDS
           </button>
