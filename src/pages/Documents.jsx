@@ -31,6 +31,7 @@ const FILE_ICONS = { pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊
 function fileIcon(name='') { const ext=(String(name || '').split('.').pop()||'').toLowerCase(); return FILE_ICONS[ext]||FILE_ICONS.default }
 function fmtSize(b) { const n=Number(b); if(!Number.isFinite(n)||n<=0)return ''; if(n<1024)return n+'B'; if(n<1048576)return (n/1024).toFixed(1)+'KB'; return (n/1048576).toFixed(1)+'MB' }
 function fmtDate(d) { if(!d)return ''; const date=new Date(d); return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) }
+function hasDocumentFile(doc) { return !!(doc?.storage_path || doc?.file_url) }
 
 export default function Documents() {
   const location = useLocation()
@@ -155,7 +156,7 @@ export default function Documents() {
     return (await getDocumentUrl(supabase, doc.file_url)) || ''
   }
   async function previewDocument(doc) {
-    if (!doc?.file_url) return
+    if (!hasDocumentFile(doc)) { showToast('No file is attached to this document'); return }
     setPreviewDoc(doc)
     setPreviewUrl('')
     setPreviewLoading(true)
@@ -171,7 +172,7 @@ export default function Documents() {
     }
   }
   async function loadCardPreviews(rows) {
-    const candidates=(rows||[]).filter(doc=>doc?.file_url && ['pdf','image'].includes(docPreviewKind(doc))).slice(0,40)
+    const candidates=(rows||[]).filter(doc=>hasDocumentFile(doc) && ['pdf','image'].includes(docPreviewKind(doc))).slice(0,40)
     if(!candidates.length){ setCardPreviewUrls({}); return }
     const pairs=await Promise.all(candidates.map(async doc=>{
       try{return [doc.id,await resolveDocUrl(doc)]}catch{return [doc.id,'']}
@@ -282,7 +283,7 @@ export default function Documents() {
   }
 
   async function openDocument(doc) {
-    if (!doc?.file_url) return
+    if (!hasDocumentFile(doc)) { showToast('No file is attached to this document'); return }
     const tab = window.open('about:blank','_blank')
     if (tab) tab.opener = null
     try {
@@ -313,7 +314,7 @@ export default function Documents() {
         <div><h1>Documents</h1><p>All client files and documents</p></div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {selectedClient && (
-            <button className="btn" onClick={()=>navigate('/prepared-file/' + selectedClient.id)}>✦ AI File Review</button>
+            <button className="btn" onClick={()=>navigate('/ai-intelligence/' + selectedClient.id)}>✦ AI Intelligence</button>
           )}
           <button className="btn primary" onClick={()=>setModal(true)}>＋ Upload Document</button>
         </div>
@@ -367,7 +368,7 @@ export default function Documents() {
             {filtered.map(d=><tr key={d.id}>
               <td><span style={{marginRight:8}}>{fileIcon(d.file_name)}</span><strong>{d.name || 'Untitled document'}</strong></td>
               <td>{d.client||'—'}</td><td>{d.docType||'—'}</td><td>{fmtSize(d.file_size)}</td><td>{fmtDate(d.created_at)}</td>
-              <td><div style={{display:'flex',gap:5}}>{d.file_url&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}<button className="btn sm" onClick={()=>addNote(d)}>✏️</button>{isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}</div></td>
+              <td><div style={{display:'flex',gap:5}}>{hasDocumentFile(d)&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}<button className="btn sm" onClick={()=>addNote(d)}>✏️</button>{isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}</div></td>
             </tr>)}
           </tbody></table>
         </div>
@@ -376,7 +377,7 @@ export default function Documents() {
           {filtered.map(d=><div key={d.id} className="card" style={{padding:'10px 14px',display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:24}}>{fileIcon(d.file_name)}</span>
             <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,color:'var(--tx)'}}>{d.name || 'Untitled document'}</div><div style={{fontSize:11,color:'var(--t3)'}}>{d.client||'General'} · {d.docType||'Unfiled'} · {fmtSize(d.file_size)} · {fmtDate(d.created_at)}</div></div>
-            {d.file_url&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}
+            {hasDocumentFile(d)&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}
             <button className="btn sm" onClick={()=>addNote(d)}>✏️</button>
             {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}
           </div>)}
@@ -399,7 +400,7 @@ export default function Documents() {
                     <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{doc.docType||'Document'}</span>
                     <span style={{marginLeft:'auto',fontSize:10}}>{docExt(doc).toUpperCase()}</span>
                   </div>
-                  <button type="button" onClick={()=>previewDocument(doc)} style={{display:'block',width:'100%',height:295,padding:0,border:0,background:'#fff',cursor:doc.file_url?'pointer':'default',position:'relative',overflow:'hidden'}}>
+                  <button type="button" onClick={()=>previewDocument(doc)} disabled={!hasDocumentFile(doc)} style={{display:'block',width:'100%',height:295,padding:0,border:0,background:'#fff',cursor:hasDocumentFile(doc)?'pointer':'default',position:'relative',overflow:'hidden'}}>
                     {isPdf&&cardUrl ? (
                       <iframe src={cardUrl+'#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH'} title={'Document thumbnail '+doc.id} style={{width:'100%',height:'100%',border:0,pointerEvents:'none',background:'#fff'}}/>
                     ) : isImage&&cardUrl ? (
@@ -407,7 +408,7 @@ export default function Documents() {
                     ) : (
                       <div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,color:'#7b8794'}}>
                         <div style={{fontSize:40}}>{fileIcon(docDisplayName(doc))}</div>
-                        <div style={{fontSize:11,fontWeight:700}}>{doc.file_url?'Document preview':'No file attached'}</div>
+                        <div style={{fontSize:11,fontWeight:700}}>{hasDocumentFile(doc)?'Document preview':'No file attached'}</div>
                       </div>
                     )}
                   </button>
@@ -417,7 +418,7 @@ export default function Documents() {
                   </div>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:5,marginTop:7,flexWrap:'wrap'}}>
-                  {doc.file_url&&<>
+                  {hasDocumentFile(doc)&&<>
                     <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewDocument(doc)}>Preview</button>
                     <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openDocument(doc)}>Open ↗</button>
                   </>}
