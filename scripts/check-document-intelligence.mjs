@@ -26,6 +26,8 @@ assert(app.includes('path="/prepared-file/:clientId"'), 'legacy prepared-file ro
 assert(sidebar.includes("path: '/ai-intelligence'") && sidebar.includes("label: 'AI Intelligence'"), 'AI Intelligence has its own sidebar tab')
 assert(sidebar.indexOf("path: '/ai-intelligence'") > sidebar.indexOf("path: '/dialer'"), 'AI Intelligence is placed after Dialer')
 assert(docs.includes("navigate('/ai-intelligence/' + selectedClient.id)"), 'Documents routes into AI Intelligence')
+assert(docs.includes('hasDocumentFile') && docs.includes("doc?.storage_path || doc?.file_url"), 'Documents open from private storage paths or stored URLs')
+assert(docs.includes("navigate('/ai-intelligence/' + selectedClient.id)"), 'Documents route clients into AI Intelligence')
 assert(docs.includes('document-intelligence'), 'document uploads invoke Document Intelligence')
 assert(docs.includes('hasDocumentFile') && docs.includes('storage_path || doc?.file_url'), 'Documents open from storage_path or file_url')
 assert(prepared.includes('latestCompleteRunIds'), 'prepared file shows current analysis instead of duplicate historical runs')
