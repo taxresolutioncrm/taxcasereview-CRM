@@ -27,6 +27,10 @@ export default function PreparedFile() {
   const [askText, setAskText] = useState('')
   const [askReply, setAskReply] = useState('')
   const [askBusy, setAskBusy] = useState(false)
+  const [uploadFile, setUploadFile] = useState(null)
+  const [uploadType, setUploadType] = useState('Auto-detect')
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState('')
 
   useEffect(() => {
     if (clientId) load()
@@ -37,7 +41,7 @@ export default function PreparedFile() {
     setError('')
     const { data, error } = await supabase
       .from('clients')
-      .select('id,name,email,phone')
+      .select('id,name,email,phone,tenant_id')
       .order('name', { ascending:true })
       .limit(500)
     if (error) {
@@ -52,7 +56,7 @@ export default function PreparedFile() {
     if (!clientId) return
     setError('')
 
-    const cl = await supabase.from('clients').select('id,name,email,phone').eq('id', clientId).maybeSingle()
+    const cl = await supabase.from('clients').select('id,name,email,phone,tenant_id').eq('id', clientId).maybeSingle()
     if (cl.error) {
       setError(cl.error.message)
       setClient(null)
@@ -123,6 +127,64 @@ export default function PreparedFile() {
     ...reviewFindings.slice(0,4).map(f => ({ kind:'review', text:`Verify ${f.field_label || f.field_key}` })),
     ...noticeDeadlineFacts.slice(0,4).map(f => ({ kind:'deadline', text:`Review ${f.field_label || f.field_key}: ${f.normalized_text || ''}` })),
   ].slice(0,10)
+
+  async function uploadAndAnalyze() {
+    if (!client?.id || !client?.tenant_id) { setError('Client tenant context is unavailable.'); return }
+    if (!uploadFile) { setError('Choose a document to upload.'); return }
+    if (uploadFile.size > 20 * 1024 * 1024) { setError('AI analysis supports files up to 20 MB.'); return }
+
+    setUploadBusy(true)
+    setUploadStatus('Uploading…')
+    setError('')
+    let storagePath = ''
+    try {
+      const safeName = String(uploadFile.name || 'document')
+        .replace(/[^a-zA-Z0-9._-]+/g, '-')
+        .replace(/-+/g, '-')
+      storagePath = 'ai-intelligence/' + client.id + '/' + Date.now() + '_' + safeName
+      const { error: uploadErr } = await supabase.storage.from('documents').upload(storagePath, uploadFile, {
+        upsert: false,
+        contentType: uploadFile.type || undefined,
+      })
+      if (uploadErr) throw uploadErr
+
+      const docType = uploadType === 'Auto-detect' ? 'AI Intake' : uploadType
+      const { data: inserted, error: insertErr } = await supabase.from('documents').insert({
+        tenant_id: client.tenant_id,
+        client_id: client.id,
+        client: client.name,
+        name: uploadFile.name,
+        docType,
+        file_name: uploadFile.name,
+        file_size: uploadFile.size,
+        storage_path: storagePath,
+        file_url: 'storage://documents/' + storagePath,
+        created_at: new Date().toISOString(),
+      }).select('*').single()
+      if (insertErr || !inserted) throw insertErr || new Error('Document record could not be created')
+
+      setUploadStatus('Analyzing…')
+      const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
+        body: { documentId: inserted.id, clientId: client.id },
+      })
+      if (invokeError || data?.error) {
+        throw new Error(data?.error || invokeError?.message || 'AI analysis failed')
+      }
+
+      setUploadFile(null)
+      setUploadStatus('Complete')
+      await load()
+      setTab('overview')
+    } catch (e) {
+      if (storagePath && String(e?.message || '').includes('Document record could not be created')) {
+        await supabase.storage.from('documents').remove([storagePath]).catch(()=>{})
+      }
+      setUploadStatus('')
+      setError(e?.message || String(e))
+    } finally {
+      setUploadBusy(false)
+    }
+  }
 
   async function analyzeDocument(doc) {
     if (!doc?.id) return
@@ -234,6 +296,25 @@ export default function PreparedFile() {
         </div>
 
         {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
+
+      <div className="card" style={{marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontWeight:900,fontSize:16}}>Upload & Analyze</div>
+            <div style={{fontSize:12,color:'var(--t3)',marginTop:3}}>Upload a client document here and AI will read it immediately. Use Profit & Loss for P&L statements.</div>
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <select className="select" value={uploadType} onChange={e=>setUploadType(e.target.value)} disabled={uploadBusy}>
+              {['Auto-detect','Profit & Loss (P&L)','Tax Return','IRS / State Notice','W-2','1099','Bank Statement','Financial Statement','Pay Stub','Transcript','Other'].map(x=><option key={x} value={x}>{x}</option>)}
+            </select>
+            <input type="file" disabled={uploadBusy} onChange={e=>setUploadFile(e.target.files?.[0] || null)} accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx" />
+            <button className="btn primary" disabled={uploadBusy || !uploadFile} onClick={uploadAndAnalyze}>
+              {uploadBusy ? (uploadStatus || 'Working…') : uploadType==='Profit & Loss (P&L)' ? '✦ Upload P&L & Analyze' : '✦ Upload & Analyze'}
+            </button>
+          </div>
+        </div>
+        {uploadFile && <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>Selected: {uploadFile.name} · {(uploadFile.size/1024/1024).toFixed(2)} MB</div>}
+      </div>
 
         <div className="card" style={{maxWidth:760}}>
           <div className="form-group" style={{marginBottom:12}}>
