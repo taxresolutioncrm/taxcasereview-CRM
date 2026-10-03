@@ -20,6 +20,7 @@ Analyze the supplied client file and return ONLY valid JSON.
 Goals:
 1. Classify the file. It may be a tax document, spreadsheet, image/logo, correspondence, financial record, or other business file.
 2. Extract material facts, people/entities, tax periods, amounts, notice/deadline information, properties, employers, accounts, relationships, and useful structured spreadsheet facts.
+2a. If the file is a Profit & Loss statement / P&L / income statement, classify it as "Profit & Loss (P&L)" and extract the statement period, business/entity name, total revenue/income, cost of goods sold, gross profit, payroll/labor, rent, taxes/licenses, insurance, interest, depreciation/amortization, major operating-expense categories, total expenses, other income/expense, and net income/loss when present. Preserve comparative columns and monthly/quarterly/year-to-date periods. Never calculate a missing amount unless the statement itself provides enough visible values and the calculation is explicit.
 3. For spreadsheets, preserve useful row/column meaning and include a source_locator such as "Sheet1!B7" or "Sheet1 rows 2-18" when possible.
 4. For images/logos, identify the asset type and visible business/name text when useful. Never infer a person or company identity that is not visible in the file.
 5. Identify questions that still require a human answer.
@@ -36,7 +37,7 @@ JSON shape:
   "confidence": 0.95,
   "facts": [
     {
-      "category": "identity|income|balance|penalty|deadline|filing|property|payment|notice|account|spreadsheet|asset|other",
+      "category": "identity|income|balance|penalty|deadline|filing|property|payment|notice|account|spreadsheet|pnl|expense|asset|other",
       "field_key": "snake_case_key",
       "field_label": "Human label",
       "value": "string|number|boolean|object|array|null",
