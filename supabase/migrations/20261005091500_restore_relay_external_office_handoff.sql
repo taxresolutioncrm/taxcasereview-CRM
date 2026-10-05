@@ -10,7 +10,7 @@ alter table public.romylabs_sales_agreements
   add column if not exists external_product_key text,
   add column if not exists external_office_id text;
 
-create index if not exists idx_prospects_external_office
+create unique index if not exists uq_prospects_external_office
   on public.prospects(external_product_key, external_office_id)
   where external_office_id is not null;
 
@@ -78,6 +78,13 @@ begin
    where id=p_prospect_id;
 
   if p_agreement_id is not null then
+    if not exists (
+      select 1 from public.romylabs_sales_agreements
+       where id=p_agreement_id and prospect_id=p_prospect_id
+    ) then
+      raise exception 'Agreement does not belong to this prospect';
+    end if;
+
     update public.romylabs_sales_agreements
        set external_product_key=v_product,
            external_office_id=v_office,
