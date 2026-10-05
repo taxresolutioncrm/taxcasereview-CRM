@@ -10,6 +10,7 @@ const helper=read('src/lib/documentIntelligenceInput.js')
 const sidebar=read('src/components/layout/Sidebar.jsx')
 const edge=read('supabase/functions/document-intelligence/index.ts')
 const core=read('supabase/functions/tax-document-ai-core/index.ts')
+const aiChat=read('supabase/functions/ai-chat/index.ts')
 const migration=read('supabase/migrations/20261001_document_intelligence.sql')
 
 assert(app.includes("import('./pages/PreparedFile')"),'AI Intelligence route component is loaded')
@@ -55,6 +56,8 @@ assert(core.includes("Deno.env.get('GROQ_API_KEY')"),'provider credential remain
 assert(core.includes("response_format:{type:'json_object'}"),'shared AI core requests structured JSON')
 assert(core.includes('Profit & Loss / P&L'),'shared AI core has dedicated P&L extraction rules')
 assert(core.includes('Image source page'),'scanned-image page provenance is preserved')
+assert(aiChat.includes("model: 'qwen/qwen3.8-27b'"),'TCR Ask AI uses the validated qwen model')
+assert(aiChat.includes("Deno.env.get('GROQ_API_KEY')"),'TCR Ask AI keeps provider credentials server-side')
 
 assert(migration.includes('enable row level security'),'Document Intelligence tables have RLS')
 for(const table of ['document_ai_runs','document_ai_facts','document_ai_entities','document_ai_questions']){
