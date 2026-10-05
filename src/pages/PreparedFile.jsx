@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { prepareFileForDocumentAI, prepareStoredDocumentForAI } from '../lib/documentIntelligenceInput'
 
 const pct = (n) => Math.max(0, Math.min(100, Math.round(Number(n || 0) * 100)))
 const fmtDate = (v) => {
@@ -163,9 +164,11 @@ export default function PreparedFile() {
       }).select('*').single()
       if (insertErr || !inserted) throw insertErr || new Error('Document record could not be created')
 
+      setUploadStatus('Preparing file…')
+      const aiInput = await prepareFileForDocumentAI(uploadFile)
       setUploadStatus('Analyzing…')
       const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
-        body: { documentId: inserted.id, clientId: client.id },
+        body: { documentId: inserted.id, clientId: client.id, ...aiInput },
       })
       if (invokeError || data?.error) {
         throw new Error(data?.error || invokeError?.message || 'AI analysis failed')
@@ -188,13 +191,18 @@ export default function PreparedFile() {
 
   async function analyzeDocument(doc) {
     if (!doc?.id) return
+    if (!doc?.storage_path && !doc?.file_url) throw new Error('This document has no attached file for AI to read.')
     setActiveDoc(doc.id)
     setError('')
-    const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
-      body: { documentId: doc.id, clientId },
-    })
-    setActiveDoc('')
-    if (invokeError || data?.error) throw new Error(data?.error || invokeError?.message || 'Analysis failed')
+    try {
+      const aiInput = await prepareStoredDocumentForAI(doc, supabase)
+      const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
+        body: { documentId: doc.id, clientId, ...aiInput },
+      })
+      if (invokeError || data?.error) throw new Error(data?.error || invokeError?.message || 'Analysis failed')
+    } finally {
+      setActiveDoc('')
+    }
   }
 
   async function analyzeAll() {
@@ -297,26 +305,7 @@ export default function PreparedFile() {
 
         {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
 
-      <div className="card" style={{marginBottom:16}}>
-        <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'center',flexWrap:'wrap'}}>
-          <div>
-            <div style={{fontWeight:900,fontSize:16}}>Upload & Analyze</div>
-            <div style={{fontSize:12,color:'var(--t3)',marginTop:3}}>Upload a client document here and AI will read it immediately. Use Profit & Loss for P&L statements.</div>
-          </div>
-          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-            <select className="select" value={uploadType} onChange={e=>setUploadType(e.target.value)} disabled={uploadBusy}>
-              {['Auto-detect','Profit & Loss (P&L)','Tax Return','IRS / State Notice','W-2','1099','Bank Statement','Financial Statement','Pay Stub','Transcript','Other'].map(x=><option key={x} value={x}>{x}</option>)}
-            </select>
-            <input type="file" disabled={uploadBusy} onChange={e=>setUploadFile(e.target.files?.[0] || null)} accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx" />
-            <button className="btn primary" disabled={uploadBusy || !uploadFile} onClick={uploadAndAnalyze}>
-              {uploadBusy ? (uploadStatus || 'Working…') : uploadType==='Profit & Loss (P&L)' ? '✦ Upload P&L & Analyze' : '✦ Upload & Analyze'}
-            </button>
-          </div>
-        </div>
-        {uploadFile && <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>Selected: {uploadFile.name} · {(uploadFile.size/1024/1024).toFixed(2)} MB</div>}
-      </div>
-
-        <div className="card" style={{maxWidth:760}}>
+      <div className="card" style={{maxWidth:760}}>
           <div className="form-group" style={{marginBottom:12}}>
             <label>Client</label>
             <select className="select" value={selectedClientId} onChange={e=>setSelectedClientId(e.target.value)}>
@@ -360,6 +349,25 @@ export default function PreparedFile() {
       </div>
 
       {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
+
+      <div className="card" style={{marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontWeight:900,fontSize:16}}>Upload & Analyze</div>
+            <div style={{fontSize:12,color:'var(--t3)',marginTop:3}}>Upload a client file here and AI will read it immediately. Profit & Loss (P&L) has a dedicated extraction profile.</div>
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <select className="select" value={uploadType} onChange={e=>setUploadType(e.target.value)} disabled={uploadBusy}>
+              {['Auto-detect','Profit & Loss (P&L)','Tax Return','IRS / State Notice','W-2','1099','Bank Statement','Financial Statement','Pay Stub','Transcript','Other'].map(x=><option key={x} value={x}>{x}</option>)}
+            </select>
+            <input type="file" disabled={uploadBusy} onChange={e=>setUploadFile(e.target.files?.[0] || null)} accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx" />
+            <button className="btn primary" disabled={uploadBusy || !uploadFile} onClick={uploadAndAnalyze}>
+              {uploadBusy ? (uploadStatus || 'Working…') : uploadType==='Profit & Loss (P&L)' ? '✦ Upload P&L & Analyze' : '✦ Upload & Analyze'}
+            </button>
+          </div>
+        </div>
+        {uploadFile && <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>Selected: {uploadFile.name} · {(uploadFile.size/1024/1024).toFixed(2)} MB</div>}
+      </div>
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:12,marginBottom:16}}>
         {[
