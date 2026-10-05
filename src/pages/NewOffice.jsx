@@ -152,12 +152,42 @@ export default function NewOffice() {
   }, [allowed, searchParams])
 
   async function loadOffices() {
-    const { data, error } = await supabase.rpc('list_tenants')
-    if (error) { showToast('❌ ' + error.message); return }
-    setOffices(data || [])
+    const [taxresResult, registryResult] = await Promise.all([
+      supabase.rpc('list_tenants'),
+      supabase.rpc('admin_romylabs_office_registry'),
+    ])
+    if (taxresResult.error) { showToast('❌ ' + taxresResult.error.message); return }
+    const taxres=(taxresResult.data||[]).map(o=>({...o,product_key:'taxres_crm',external:false}))
+    const registry=Array.isArray(registryResult.data)?registryResult.data:[]
+    const external=registry
+      .filter(o=>o.product_key!=='taxres_crm')
+      .map(o=>({
+        id:`external:${o.product_key}:${o.external_office_id}`,
+        external:true,
+        product_key:o.product_key,
+        external_office_id:o.external_office_id,
+        firm_name:o.firm_name,
+        tenant_code:o.external_office_id,
+        admin_email:o.primary_contact_email||o.metadata?.owner_email||'',
+        employee_count:o.seats||0,
+        billing_seats:o.seats||0,
+        effective_monthly:o.monthly_amount,
+        status:o.status||'active',
+        metadata:o.metadata||{},
+      }))
+    setOffices([...taxres,...external].sort((a,b)=>String(a.firm_name||'').localeCompare(String(b.firm_name||''))))
+    if(registryResult.error) showToast('⚠️ External product offices could not be refreshed: '+registryResult.error.message)
   }
 
-  function openDetail(id) { setSelectedId(id); setView('detail') }
+  function openDetail(id) {
+    const office=(offices||[]).find(o=>o.id===id)
+    if(office?.external){
+      const url=office.product_key==='restore_relay'?'https://restorerelay.com/login':'https://admin.romylabs.com'
+      window.open(url,'_blank','noopener,noreferrer')
+      return
+    }
+    setSelectedId(id); setView('detail')
+  }
   function backToList() { setView('list'); setSelectedId(null); loadOffices() }
 
   if (!allowed) return (
@@ -178,7 +208,7 @@ export default function NewOffice() {
         <button className="btn pri" onClick={() => setView('form')}>+ New Office</button>
       </div>
       <div style={{color:'var(--t3)',fontSize:13,marginBottom:24}}>
-        Every office running on this platform, each on its own isolated tenant. Click one for contract info, contacts, phone numbers, and agreement files.
+        Every RomyLabs office across TaxRes CRM and standalone products. TaxRes offices open their platform record; external product offices open the product workspace.
       </div>
 
       <div style={{border:'1px solid var(--br)',borderRadius:10,overflow:'hidden'}}>
@@ -190,7 +220,7 @@ export default function NewOffice() {
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{background:'var(--s2)',textAlign:'left'}}>
-                {['Firm','Code','Admin','Seats / Staff','Billing','Status'].map(h=>(
+                {['Product','Firm','Code / Office ID','Admin','Seats / Staff','Billing','Status'].map(h=>(
                   <th key={h} style={{padding:'10px 14px',fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.04em'}}>{h}</th>
                 ))}
               </tr>
@@ -201,6 +231,7 @@ export default function NewOffice() {
                   style={{borderTop:'1px solid var(--br)',cursor:'pointer'}}
                   onMouseEnter={e=>e.currentTarget.style.background='var(--s2)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  <td style={{padding:'10px 14px',color:'var(--t2)',fontSize:11,fontWeight:700}}>{o.product_key==='restore_relay'?'Restore Relay':'TaxRes CRM'}</td>
                   <td style={{padding:'10px 14px',color:'var(--tx)',fontWeight:600}}>
                     {o.brand_color && <span style={{display:'inline-block',width:9,height:9,borderRadius:'50%',background:o.brand_color,marginRight:8}}/>}
                     {o.firm_name}
