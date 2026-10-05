@@ -881,17 +881,6 @@ function DataImport({ tenantId, onBack, showToast }) {
     </div>
   )
 }
- + p.price + '/user/mo'}</option>)}
-            </select>
-          </div>
-          <button className="btn pri" disabled={saving} onClick={submit} style={{marginTop:8,alignSelf:'flex-start',padding:'10px 24px'}}>
-            {saving ? 'Creating office…' : 'Create Office'}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Office detail: contract/contact info, phone numbers, staff, agreements ──
 function OfficeDetail({ tenantId, onBack, showToast, onImport, onSlackImport }) {
