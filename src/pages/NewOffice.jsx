@@ -254,7 +254,7 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
     if (productKey === 'restore_relay') {
       const nameParts = form.admin_name.trim().split(/\s+/).filter(Boolean)
       const ownerFirstName = nameParts.shift() || form.admin_email.split('@')[0] || 'Owner'
-      const ownerLastName = nameParts.join(' ')
+      const ownerLastName = nameParts.join(' ') || 'Owner'
       const slug = form.tenant_code.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,63)
       const response = await supabase.functions.invoke('hub-proxy', {
         body: {
@@ -301,11 +301,8 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
             p_monthly_amount:Number.isFinite(monthly)&&monthly>0?monthly:null,
             p_metadata:metadata,
           })
-          if (link.error) {
-            showToast('⚠️ Restore Relay office created, but the RomyLabs sale link needs attention: ' + link.error.message)
-          } else {
-            showToast('✅ Restore Relay office created and linked to the sale.')
-          }
+          if (link.error) showToast('⚠️ Restore Relay office created, but the RomyLabs sale link needs attention: ' + link.error.message)
+          else showToast('✅ Restore Relay office created and linked to the sale.')
         }
       }
     } else {
@@ -359,12 +356,12 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
           <div style={{fontSize:15,fontWeight:700,color:'#10b981',marginBottom:12}}>✅ Office created</div>
           <div style={{fontSize:13,lineHeight:2,color:'var(--tx)'}}>
             {result.product_key==='restore_relay'
-              ? <><div><b>Product:</b> Restore Relay</div><div><b>Office ID:</b> {result.office_id}</div><div><b>Admin email:</b> {result.admin_email}</div><div><b>Activation:</b> Secure invite link generated</div></>
+              ? <><div><b>Product:</b> Restore Relay</div><div><b>Office ID:</b> {result.office_id}</div><div><b>Admin email:</b> {result.admin_email}</div><div><b>Activation:</b> {result.invite_delivery==='email'?'Emailed to owner':'Secure link generated'}</div></>
               : <><div><b>Office code:</b> {result.tenant_code}</div><div><b>Admin email:</b> {result.admin_email}</div><div><b>Temporary password:</b> <code style={{background:'var(--s3)',padding:'2px 8px',borderRadius:5}}>{result.temp_password}</code></div></>}
           </div>
           <div style={{fontSize:12,color:'var(--t3)',marginTop:10,lineHeight:1.6}}>
             {result.product_key==='restore_relay'
-              ? 'The Restore Relay owner account and isolated office are created. Copy the secure activation details now and send them to the owner.'
+              ? 'The Restore Relay owner account and isolated office are created. Copy the secure activation details as a backup.'
               : "This password is shown once and isn't stored anywhere retrievable — copy it now and send it to the new admin over a secure channel."}
           </div>
           <div style={{display:'flex',gap:10,marginTop:16}}>
@@ -405,9 +402,7 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
           </div>
           <div className="field"><label>Plan</label>
             <select value={form.plan_tier} onChange={e=>fld('plan_tier',e.target.value)}>
-              {PLAN_OPTIONS.map(p => <option key={p.value} value={p.value}>{form.product_key==='restore_relay' ? p.label : p.label + ' — $' + p.price + '/user/mo'}</option>)}
-            </select>
-          </div>
+              {PLAN_OPTIONS.map(p => <option key={p.value} value={p.value}>{form.product_key==='restore_relay' ? p.label : p.label + ' — 
           <button className="btn pri" disabled={saving} onClick={submit} style={{marginTop:8,alignSelf:'flex-start',padding:'10px 24px'}}>
             {saving ? 'Creating office…' : 'Create Office'}
           </button>
@@ -876,6 +871,17 @@ function DataImport({ tenantId, onBack, showToast }) {
             <button className="btn sec" onClick={onBack}>← Back to office</button>
             <button className="btn pri" onClick={()=>{setStep('upload');setRawRows([]);setCsvHeaders([]);setMapping({});setResult(null)}}>Import Another File</button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+ + p.price + '/user/mo'}</option>)}
+            </select>
+          </div>
+          <button className="btn pri" disabled={saving} onClick={submit} style={{marginTop:8,alignSelf:'flex-start',padding:'10px 24px'}}>
+            {saving ? 'Creating office…' : 'Create Office'}
+          </button>
         </div>
       )}
     </div>
