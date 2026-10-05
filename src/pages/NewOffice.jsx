@@ -442,7 +442,9 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
           </div>
           <div className="field"><label>Plan</label>
             <select value={form.plan_tier} onChange={e=>fld('plan_tier',e.target.value)}>
-              {(form.product_key==='restore_relay' ? RESTORE_RELAY_PLAN_OPTIONS : PLAN_OPTIONS).map(p => <option key={p.value} value={p.value}>{form.product_key==='restore_relay' ? p.label + ' — 
+              {(form.product_key==='restore_relay' ? RESTORE_RELAY_PLAN_OPTIONS : PLAN_OPTIONS).map(p => <option key={p.value} value={p.value}>{form.product_key==='restore_relay' ? p.label + ' — ' + String.fromCharCode(36) + p.price + '/mo' : p.label + ' — ' + String.fromCharCode(36) + p.price + '/user/mo'}</option>)}
+            </select>
+          </div>
           <button className="btn pri" disabled={saving} onClick={submit} style={{marginTop:8,alignSelf:'flex-start',padding:'10px 24px'}}>
             {saving ? 'Creating office…' : 'Create Office'}
           </button>
