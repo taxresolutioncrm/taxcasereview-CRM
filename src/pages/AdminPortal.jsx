@@ -7763,6 +7763,18 @@ export default function AdminPortal() {
     if (location.pathname === '/crm-admin/email') setEmailMounted(true)
   }, [location.pathname])
 
+  // Route changes must never preserve the previous admin page's scroll offset.
+  // Billing in particular has global actions at the top that must be visible on entry.
+  useEffect(() => {
+    const reset = () => {
+      const host = document.querySelector('.rl-admin-main')
+      if (host) host.scrollTo({ top:0, left:0, behavior:'auto' })
+    }
+    reset()
+    const frame = requestAnimationFrame(reset)
+    return () => cancelAnimationFrame(frame)
+  }, [location.pathname])
+
   // Swap favicon + title to RomyLabs brand while in the admin portal
   useEffect(() => {
     const prev = document.title
