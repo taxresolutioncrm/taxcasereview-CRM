@@ -70,6 +70,7 @@ Deno.serve(async(req:Request)=>{
       const media=String(img?.mediaType||'image/jpeg')
       const data=String(img?.data||'')
       if(!/^image\/(jpeg|png|webp)$/.test(media)||!data) continue
+      userParts.push({type:'text',text:'Image source page '+String(img?.page||'unknown')})
       userParts.push({type:'image_url',image_url:{url:'data:'+media+';base64,'+data}})
     }
 
