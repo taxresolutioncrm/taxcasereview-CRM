@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { prepareFileForDocumentAI, prepareStoredDocumentForAI } from '../lib/documentIntelligenceInput'
 
+const hasReadableFile = (doc) => !!(doc?.storage_path || doc?.file_url)
 const pct = (n) => Math.max(0, Math.min(100, Math.round(Number(n || 0) * 100)))
 const fmtDate = (v) => {
   if (!v) return ''
@@ -115,13 +116,14 @@ export default function PreparedFile() {
   const currentFacts = facts.filter(f => latestCompleteRunIds.has(String(f.run_id)) && f.review_status !== 'rejected')
   const currentEntities = entities.filter(e => latestCompleteRunIds.has(String(e.run_id)) && e.review_status !== 'rejected')
   const currentQuestions = questions.filter(q => !q.run_id || latestCompleteRunIds.has(String(q.run_id)))
-  const analyzedCount = docs.filter(d => latestByDoc.get(String(d.id))?.status === 'complete').length
-  const ready = docs.length ? Math.round((analyzedCount / docs.length) * 100) : 0
+  const readableDocs = docs.filter(hasReadableFile)
+  const analyzedCount = readableDocs.filter(d => latestByDoc.get(String(d.id))?.status === 'complete').length
+  const ready = readableDocs.length ? Math.round((analyzedCount / readableDocs.length) * 100) : 0
   const openQuestions = currentQuestions.filter(q => q.status === 'open')
   const taxYears = [...new Set(runs.filter(r=>r.status==='complete').map(r => r.tax_year).filter(Boolean))].sort((a,b)=>b-a)
   const noticeDeadlineFacts = currentFacts.filter(f => ['notice','deadline'].includes(String(f.category || '').toLowerCase()))
   const reviewFindings = currentFacts.filter(f => f.review_status === 'unreviewed' || (f.confidence != null && Number(f.confidence) < 0.8))
-  const unreadDocuments = docs.filter(d => latestByDoc.get(String(d.id))?.status !== 'complete')
+  const unreadDocuments = readableDocs.filter(d => latestByDoc.get(String(d.id))?.status !== 'complete')
   const recommendedActions = [
     ...unreadDocuments.slice(0,3).map(d => ({ kind:'document', text:`Analyze ${d.file_name || d.name || 'unread document'}` })),
     ...openQuestions.slice(0,4).map(q => ({ kind:'question', text:`Resolve: ${q.question}` })),
@@ -206,7 +208,7 @@ export default function PreparedFile() {
   }
 
   async function analyzeAll() {
-    const pending = docs.filter(d => latestByDoc.get(String(d.id))?.status !== 'complete')
+    const pending = readableDocs.filter(d => latestByDoc.get(String(d.id))?.status !== 'complete')
     if (!pending.length) return
     setBusy(true)
     setError('')
@@ -342,7 +344,7 @@ export default function PreparedFile() {
             <div style={{fontSize:30,fontWeight:900,color:'var(--pri,#6957ff)'}}>{ready}%</div>
             <div style={{fontSize:11,color:'var(--t3)'}}>FILE READ</div>
           </div>
-          <button className="btn primary" disabled={busy || !docs.length} onClick={analyzeAll}>
+          <button className="btn primary" disabled={busy || !readableDocs.length} onClick={analyzeAll}>
             {busy ? 'Reading documents…' : '✦ Analyze unread documents'}
           </button>
         </div>
@@ -371,7 +373,7 @@ export default function PreparedFile() {
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:12,marginBottom:16}}>
         {[
-          ['Documents', docs.length],
+          ['Documents', `${readableDocs.length} readable / ${docs.length} records`],
           ['Facts found', currentFacts.length],
           ['People & entities', currentEntities.length],
           ['Tax years', taxYears.length],
@@ -485,11 +487,14 @@ export default function PreparedFile() {
                       <div style={{fontSize:11,color:'var(--t3)'}}>{d.docType || 'Document'} · {fmtDate(d.created_at)}</div>
                     </div>
                     <div style={{fontSize:12,color:run?.status==='complete'?'#16803a':'var(--t3)'}}>
-                      {run ? run.status.replace('_',' ') : 'not analyzed'}
+                      {!hasReadableFile(d) ? 'no file attached' : (run ? run.status.replace('_',' ') : 'not analyzed')}
                     </div>
-                    <button className="btn sm" disabled={activeDoc===d.id} onClick={async()=>{try{await analyzeDocument(d);await load()}catch(e){setError(e.message)}}}>
-                      {activeDoc===d.id?'Reading…':'✦ Analyze'}
-                    </button>
+                    <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+                      {hasReadableFile(d) && <button className="btn sm" onClick={()=>openSource(d.id)}>Open ↗</button>}
+                      <button className="btn sm" disabled={activeDoc===d.id || !hasReadableFile(d)} onClick={async()=>{try{await analyzeDocument(d);await load()}catch(e){setError(e.message)}}}>
+                        {activeDoc===d.id?'Reading…':hasReadableFile(d)?'✦ Analyze':'No file'}
+                      </button>
+                    </div>
                   </div>
                 )
               })}
