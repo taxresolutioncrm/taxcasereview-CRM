@@ -136,6 +136,39 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (body.action === 'onboard_restore_relay') {
+    const supportSecret = Deno.env.get('RESTORE_RELAY_SUPPORT_SECRET')
+    if (!supportSecret) {
+      return new Response(JSON.stringify({ error: 'Restore Relay onboarding is not configured' }), {
+        status: 503, headers: { ...cors, 'Content-Type': 'application/json' }
+      })
+    }
+
+    try {
+      const onboardingRes = await fetch(
+        'https://yuwxzuybzuqnnldvdenx.supabase.co/functions/v1/provision-tenant',
+        {
+          method: 'POST',
+          headers: {
+            'x-romylabs-support-secret': supportSecret,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body.payload ?? {}),
+        },
+      )
+      const onboardingData = await onboardingRes.json().catch(() => ({ error: 'Invalid Restore Relay onboarding response' }))
+      return new Response(JSON.stringify(onboardingData), {
+        status: onboardingRes.status,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    } catch (err) {
+      console.error('hub-proxy: Restore Relay onboarding failed', err)
+      return new Response(JSON.stringify({ error: 'Restore Relay onboarding service unavailable' }), {
+        status: 502, headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
+  }
+
   if (body.action === 'onboard_arcvena') {
     const supportSecret = Deno.env.get('ARCVENA_SUPPORT_SECRET')
     if (!supportSecret) {
