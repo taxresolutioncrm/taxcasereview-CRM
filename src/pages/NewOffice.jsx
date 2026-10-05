@@ -133,7 +133,7 @@ export default function NewOffice() {
     ;(async()=>{
       const {data:prospect,error:pe}=await supabase.from('prospects').select('*').eq('id',prospectId).maybeSingle()
       if (pe || !prospect) { showToast('❌ Could not load the sale'); return }
-      if (prospect.tenant_id) { showToast('This sale is already linked to an office'); return }
+      if (prospect.tenant_id || prospect.external_office_id) { showToast('This sale is already linked to an office'); return }
       let agreement=null
       if (agreementId) {
         const {data:a,error:ae}=await supabase.from('romylabs_sales_agreements').select('*').eq('id',agreementId).eq('prospect_id',prospectId).maybeSingle()
@@ -275,21 +275,37 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
       data = response.data
       error = response.error
 
-      if (!error && !data?.error && data?.office_id && prefill?.prospect?.id) {
-        const seats = Number(prefill.prospect?.seats || prefill.agreement?.seats || 1)
-        const monthly = Number(prefill.prospect?.mrr_potential || prefill.agreement?.monthly_amount || 0)
-        const link = await supabase.rpc('admin_romylabs_link_external_office',{
-          p_prospect_id:prefill.prospect.id,
-          p_agreement_id:prefill.agreement?.id || null,
+      if (!error && !data?.error && data?.office_id) {
+        const seats = Number(prefill?.prospect?.seats || prefill?.agreement?.seats || 1)
+        const monthly = Number(prefill?.prospect?.mrr_potential || prefill?.agreement?.monthly_amount || 0)
+        const metadata={organization_id:data.organization_id,owner_email:form.admin_email.trim().toLowerCase(),source:'admin_provisioning'}
+        const registry = await supabase.rpc('admin_romylabs_upsert_office_registry',{
           p_product_key:'restore_relay',
           p_external_office_id:data.office_id,
           p_firm_name:form.firm_name.trim(),
+          p_status:'active',
           p_seats:Number.isFinite(seats)?seats:null,
-          p_monthly_amount:Number.isFinite(monthly)?monthly:null,
-          p_metadata:{organization_id:data.organization_id,owner_email:form.admin_email.trim().toLowerCase()},
+          p_monthly_amount:Number.isFinite(monthly)&&monthly>0?monthly:null,
+          p_metadata:metadata,
         })
-        if (link.error) {
-          showToast('⚠️ Restore Relay office created, but the RomyLabs sale link needs attention: ' + link.error.message)
+        if (registry.error) showToast('⚠️ Restore Relay office created, but central office registration needs attention: ' + registry.error.message)
+
+        if (prefill?.prospect?.id) {
+          const link = await supabase.rpc('admin_romylabs_link_external_office',{
+            p_prospect_id:prefill.prospect.id,
+            p_agreement_id:prefill.agreement?.id || null,
+            p_product_key:'restore_relay',
+            p_external_office_id:data.office_id,
+            p_firm_name:form.firm_name.trim(),
+            p_seats:Number.isFinite(seats)?seats:null,
+            p_monthly_amount:Number.isFinite(monthly)&&monthly>0?monthly:null,
+            p_metadata:metadata,
+          })
+          if (link.error) {
+            showToast('⚠️ Restore Relay office created, but the RomyLabs sale link needs attention: ' + link.error.message)
+          } else {
+            showToast('✅ Restore Relay office created and linked to the sale.')
+          }
         }
       }
     } else {
