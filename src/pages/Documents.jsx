@@ -3,6 +3,7 @@ import { logActivity, getActor } from '../lib/activityLog'
 import { useState, useEffect, useRef } from 'react'
 import { validateFile, maybeCompressImage } from '../lib/uploadUtils'
 import { supabase } from '../lib/supabase'
+import { prepareFileForDocumentAI } from '../lib/documentIntelligenceInput'
 import { triggerWorkflow } from '../lib/triggerWorkflow'
 import { useLocation, useSearchParams, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
@@ -232,14 +233,20 @@ export default function Documents() {
     }]).select('id').single()
     setSaving(false)
     if (error) { showToast('Error: '+error.message); return }
-    showToast(file && savedDoc?.id && entityClientId ? '✅ Document saved — AI review started' : '✅ Document saved!')
+    showToast('✅ Document saved!')
     if (file && savedDoc?.id && entityClientId) {
-      supabase.functions.invoke('document-intelligence', { body: { documentId: savedDoc.id } })
-        .then(({ error: aiError, data: aiData }) => {
-          if (aiError || aiData?.error) console.error('Document AI analysis failed:', aiData?.error || aiError?.message)
-          else loadDocuments()
+      try {
+        showToast('✦ Document saved — AI is reading it…')
+        const aiInput = await prepareFileForDocumentAI(file)
+        const { error: aiError, data: aiData } = await supabase.functions.invoke('document-intelligence', {
+          body: { documentId: savedDoc.id, clientId: entityClientId, ...aiInput },
         })
-        .catch(aiError => console.error('Document AI analysis failed:', aiError))
+        if (aiError || aiData?.error) throw new Error(aiData?.error || aiError?.message || 'AI analysis failed')
+        showToast('✅ Document saved and AI analysis completed')
+      } catch (aiError) {
+        console.error('Document AI analysis failed:', aiError)
+        showToast('⚠️ Document saved, but AI analysis failed: ' + (aiError?.message || aiError))
+      }
     }
     const actor = getActor(user)
     await triggerWorkflow('document_uploaded', 'client', entityName, actor.name).catch(()=>{})
