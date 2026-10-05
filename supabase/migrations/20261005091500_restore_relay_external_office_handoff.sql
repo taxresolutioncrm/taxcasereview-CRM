@@ -97,3 +97,26 @@ end $$;
 
 revoke all on function public.admin_romylabs_link_external_office(uuid,uuid,text,text,text,integer,numeric,jsonb) from public,anon;
 grant execute on function public.admin_romylabs_link_external_office(uuid,uuid,text,text,text,integer,numeric,jsonb) to authenticated,service_role;
+
+
+-- Keep the Agreement panel shape future-proof: to_jsonb(a) automatically
+-- carries tenant and external-product office linkage columns.
+create or replace function public.admin_romylabs_agreements_for_prospect(p_prospect_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path=public,pg_temp
+as $$
+declare v_rows jsonb;
+begin
+  if not public._is_platform_admin() then raise exception 'Not authorized'; end if;
+  select coalesce(jsonb_agg(to_jsonb(a) order by a.created_at desc),'[]'::jsonb)
+    into v_rows
+    from public.romylabs_sales_agreements a
+   where a.prospect_id=p_prospect_id;
+  return v_rows;
+end $$;
+
+revoke all on function public.admin_romylabs_agreements_for_prospect(uuid) from public,anon;
+grant execute on function public.admin_romylabs_agreements_for_prospect(uuid) to authenticated,service_role;
