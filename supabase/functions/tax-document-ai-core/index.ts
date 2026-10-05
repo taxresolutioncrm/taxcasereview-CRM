@@ -8,7 +8,7 @@ const CORS={
 }
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:CORS})
 const MODEL='qwen/qwen3.8-27b'
-const CHAT_MODEL='openai/gpt-oss-120b'
+const CHAT_MODEL='qwen/qwen3.8-27b'
 const MAX_TEXT=180000
 const MAX_IMAGES=12
 const PROJECTS:Record<string,{url:string,anon:string}>={
