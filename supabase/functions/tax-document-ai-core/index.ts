@@ -8,6 +8,7 @@ const CORS={
 }
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:CORS})
 const MODEL='qwen/qwen3.8-27b'
+const CHAT_MODEL='openai/gpt-oss-120b'
 const MAX_TEXT=180000
 const MAX_IMAGES=12
 const PROJECTS:Record<string,{url:string,anon:string}>={
@@ -57,6 +58,24 @@ Deno.serve(async(req:Request)=>{
     const caller=createClient(cfg.url,cfg.anon,{global:{headers:{Authorization:auth}}})
     const {data:{user},error:userErr}=await caller.auth.getUser()
     if(userErr||!user) return json({error:'invalid_source_session'},401)
+
+    if(body?.mode==='chat'){
+      const message=String(body?.message||'').trim().slice(0,8000)
+      if(!message)return json({error:'message_required'},400)
+      const context=String(body?.context||'').slice(0,12000)
+      const history=Array.isArray(body?.history)?body.history.slice(-12).map((m:any)=>({role:m?.role==='assistant'?'assistant':'user',content:String(m?.content||'').slice(0,4000)})):[]
+      const groq=Deno.env.get('GROQ_API_KEY')||''
+      if(!groq)return json({error:'AI provider not configured'},503)
+      const messages:any[]=[{role:'system',content:'You are a practical AI assistant for a tax resolution CRM. Help with tax resolution, IRS/state notices, case strategy, client communications, document findings, and CRM workflow. Never reveal full SSNs, EINs, TINs, bank or card numbers, credentials, or cross-tenant data. Do not silently change CRM data.'}]
+      if(context)messages.push({role:'user',content:'Client/file context:\n'+context},{role:'assistant',content:'Context received.'})
+      messages.push(...history,{role:'user',content:message})
+      const upstream=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+groq},body:JSON.stringify({model:CHAT_MODEL,messages,max_tokens:1400,temperature:0.2})})
+      const payload=await upstream.json().catch(()=>({}))
+      if(!upstream.ok)return json({error:'AI provider request failed',provider_status:upstream.status},502)
+      const reply=String(payload?.choices?.[0]?.message?.content||'').trim()
+      if(!reply)return json({error:'empty_ai_response'},502)
+      return json({ok:true,reply,model:CHAT_MODEL})
+    }
 
     const text=String(body?.text||'').slice(0,MAX_TEXT)
     const images=Array.isArray(body?.images)?body.images.slice(0,MAX_IMAGES):[]
