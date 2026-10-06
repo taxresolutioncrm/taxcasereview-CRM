@@ -38,7 +38,7 @@ serve(async (req) => {
       .maybeSingle()
     if (employeeError || !employee) return json({ success:false, error:'E-file access is not assigned to this user.' }, 403)
     const role = String(employee.access || employee.role || '')
-    const rank:Record<string,number> = { 'Super Admin':100, 'Admin':80, 'Manager':60, 'Tax Advisor':50, 'Tax Associate':40, 'Associate':40, 'Para':40, 'Sales Rep':30, 'View Only':10 }
+    const rank:Record<string,number> = { 'Super Admin':100, 'Admin':80, 'Manager':60, 'EA':60, 'CPA':60, 'Attorney':60, 'Tax Advisor':50, 'Tax Associate':40, 'Associate':40, 'Para':40, 'Sales Rep':30, 'View Only':10 }
     if ((rank[role] || 0) < 40 || /inactive|disabled|terminated/i.test(String(employee.status || ''))) {
       return json({ success:false, error:'Your role does not have permission to e-file returns.' }, 403)
     }

@@ -48,6 +48,9 @@ export const ACCESS_LEVELS = {
   'Super Admin': { label: 'Super Admin', color: '#ef4444' },
   'Admin':       { label: 'Admin',       color: '#f59e0b' },
   'Tax Associate': { label: 'Tax Associate', color: '#3b82f6' },
+  'EA':            { label: 'EA',            color: '#14b8a6' },
+  'CPA':           { label: 'CPA',           color: '#22c55e' },
+  'Attorney':      { label: 'Attorney',      color: '#a855f7' },
   'View Only':   { label: 'View Only',   color: '#64748b' },
   'Tax Advisor': { label: 'Tax Advisor', color: '#10b981' },
   'Manager':     { label: 'Manager',     color: '#06b6d4' },
@@ -65,6 +68,18 @@ const ROLE_DEFAULTS = {
   'Tax Associate': {
     canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','settings'],
     canEdit: ['tasks','chat','settings'],
+  },
+  'EA': {
+    canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','taxreturns','reports','settings'],
+    canEdit: ['clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','taxreturns','settings'],
+  },
+  'CPA': {
+    canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','taxreturns','reports','settings'],
+    canEdit: ['clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','taxreturns','settings'],
+  },
+  'Attorney': {
+    canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','taxreturns','reports','settings'],
+    canEdit: ['clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','taxreturns','settings'],
   },
   'View Only': {
     canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','irsforms','irsreference'],

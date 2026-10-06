@@ -19,7 +19,7 @@ function safePermLevel(value, fallback = 0) {
 }
 
 // Base access levels — these are the actual permission presets (never change these keys)
-const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Tax Associate', 'Tax Advisor', 'Sales Rep', 'View Only']
+const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Tax Associate', 'EA', 'CPA', 'Attorney', 'Tax Advisor', 'Sales Rep', 'View Only']
 // Display labels for each access level — pulled from FIRM.labels or defaults
 function getRoleLabels() {
   const l = FIRM.labels || {}
@@ -27,13 +27,16 @@ function getRoleLabels() {
     'Super Admin':   'Super Admin',
     'Admin':         l.associateRole || 'Admin',
     'Tax Associate': l.paraRole || 'Tax Associate',
+    'EA':            'EA',
+    'CPA':           'CPA',
+    'Attorney':      'Attorney',
     'Tax Advisor':   l.taxAdvisorRole || 'Tax Advisor',
     'Manager':       'Manager',
     'Sales Rep':     l.salesRepRole || 'Sales',
     'View Only':     'View Only',
   }
 }
-const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Rep': '#8b5cf6' }
+const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'EA': '#14b8a6', 'CPA': '#22c55e', 'Attorney': '#a855f7', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Rep': '#8b5cf6' }
 // Role display colors (for the role badge — role is the title, access is the permission level)
 const TITLE_COLORS = { 'Super Admin': '#ef4444', 'Associate': '#10b981', 'Para': '#0ea5e9', 'Manager': '#06b6d4', 'Staff': '#64748b', 'Sales': '#8b5cf6' }
 
@@ -63,6 +66,9 @@ const ROLE_PERM_DEFAULTS = {
   'Super Admin': { perm_leads:3, perm_clients:3, perm_billing:3, perm_schedule:3, perm_documents:3, perm_irs:3, perm_comms:3, perm_reports:3, perm_hr:3, perm_settings:3 },
   'Admin':       { perm_leads:2, perm_clients:2, perm_billing:2, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:1, perm_settings:1 },
   'Tax Associate':       { perm_leads:1, perm_clients:1, perm_billing:0, perm_schedule:1, perm_documents:1, perm_irs:1, perm_comms:2, perm_reports:0, perm_hr:0, perm_settings:0 },
+  'EA':                  { perm_leads:1, perm_clients:2, perm_billing:1, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:0, perm_settings:1 },
+  'CPA':                 { perm_leads:1, perm_clients:2, perm_billing:1, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:0, perm_settings:1 },
+  'Attorney':            { perm_leads:1, perm_clients:2, perm_billing:1, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:0, perm_settings:1 },
   'View Only':   { perm_leads:1, perm_clients:1, perm_billing:0, perm_schedule:1, perm_documents:1, perm_irs:1, perm_comms:1, perm_reports:0, perm_hr:0, perm_settings:0 },
   // Sales rep — leads only (no Clients/Cases, no Billing/IRS/HR/Reports/Settings).
   // Calendar/Comms/Documents are Edit so a rep can book appointments, call/

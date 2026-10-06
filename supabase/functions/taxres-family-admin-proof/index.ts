@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const TENANT='489ace07-1a6b-4864-833a-4f8420568b40'
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'}
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors})
-const RANK:Record<string,number>={'Super Admin':100,'Admin':80,'Manager':60,'Tax Advisor':50,'Tax Associate':40,'Associate':40,'Para':40,'Sales Rep':30,'View Only':10}
+const RANK:Record<string,number>={'Super Admin':100,'Admin':80,'Manager':60,'EA':60,'CPA':60,'Attorney':60,'Tax Advisor':50,'Tax Associate':40,'Associate':40,'Para':40,'Sales Rep':30,'View Only':10}
 
 Deno.serve(async(req)=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:cors})
