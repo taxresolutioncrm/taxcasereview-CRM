@@ -32,6 +32,7 @@ export default function PreparedFile() {
   const [uploadType, setUploadType] = useState('Auto-detect')
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadStatus, setUploadStatus] = useState('')
+  const [batchProgress, setBatchProgress] = useState({ current:0, total:0, file:'' })
 
   useEffect(() => {
     if (clientId) load()
@@ -207,8 +208,11 @@ export default function PreparedFile() {
     if (!pending.length) return
     setBusy(true)
     setError('')
+    setBatchProgress({ current:0, total:pending.length, file:'' })
     try {
-      for (const doc of pending) {
+      for (let i = 0; i < pending.length; i += 1) {
+        const doc = pending[i]
+        setBatchProgress({ current:i + 1, total:pending.length, file:doc.file_name || doc.name || 'Document' })
         try {
           await analyzeDocument(doc)
           await load()
@@ -218,6 +222,7 @@ export default function PreparedFile() {
       }
     } finally {
       setBusy(false)
+      setBatchProgress({ current:0, total:0, file:'' })
       await load()
     }
   }
@@ -342,12 +347,19 @@ export default function PreparedFile() {
             <div style={{fontSize:11,color:'var(--t3)'}}>FILE READ</div>
           </div>
           <button className="btn primary" disabled={busy || !readableDocs.length} onClick={analyzeAll}>
-            {busy ? 'Reading documents…' : '✦ Analyze unread documents'}
+            {busy ? `Reading ${batchProgress.current} of ${batchProgress.total}…` : '✦ Analyze unread documents'}
           </button>
         </div>
       </div>
 
       {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
+      {busy && batchProgress.total > 0 && <div className="card" style={{marginBottom:16,padding:12}}>
+        <div style={{fontWeight:800}}>Analyzing {batchProgress.current} of {batchProgress.total}</div>
+        <div style={{fontSize:12,color:'var(--t3)',marginTop:4}}>{batchProgress.file}</div>
+        <div style={{height:6,background:'var(--bd)',borderRadius:99,overflow:'hidden',marginTop:8}}>
+          <div style={{height:'100%',width:`${Math.round((batchProgress.current / batchProgress.total) * 100)}%`,background:'var(--pri,#6957ff)'}} />
+        </div>
+      </div>}
 
       <div className="card" style={{marginBottom:16}}>
         <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'center',flexWrap:'wrap'}}>
