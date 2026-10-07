@@ -218,10 +218,11 @@ function toBase64(bytes: Uint8Array) {
 async function authenticate(source: typeof SOURCES[SourceKey], authHeader: string) {
   if (!authHeader.toLowerCase().startsWith('bearer ')) return false
   try {
-    const res = await fetch(source.url + '/auth/v1/user', {
-      headers: { apikey: source.anon, Authorization: authHeader },
-    })
-    return res.ok
+    const token = authHeader.slice(7).trim()
+    if (!token) return false
+    const verifier = createClient(source.url, source.anon)
+    const { data, error } = await verifier.auth.getUser(token)
+    return !error && !!data?.user
   } catch {
     return false
   }
