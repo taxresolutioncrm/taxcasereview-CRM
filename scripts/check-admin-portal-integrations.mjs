@@ -2,7 +2,10 @@ import fs from 'node:fs'
 
 const read=(p)=>fs.readFileSync(p,'utf8')
 const admin=read('src/pages/AdminPortal.jsx')
+const billing=read('src/components/admin/RomyLabsBilling.jsx')
 const hub=read('supabase/functions/hub-proxy/index.ts')
+const metricsSignal=read('supabase/functions/metrics-signal/index.ts')
+const realtimeMetricsMigration=read('supabase/migrations/romylabs_admin_metrics_realtime.sql')
 const content=read('supabase/functions/content-generator/index.ts')
 const publish=read('supabase/functions/linkedin-publish/index.ts')
 const scheduler=read('supabase/functions/linkedin-scheduler/index.ts')
@@ -22,6 +25,13 @@ const checks=[
   ['hub forwards central admin session to BocaSync',hub.includes("productKey === 'bocasync'")&&hub.includes("BocaSync metrics require an authenticated RomyLabs admin session")],
   ['hub uses product support credentials',hub.includes("groundivo: 'GROUNDIVO_SUPPORT_SECRET'")&&hub.includes("oculivo: 'OCULIVO_SUPPORT_SECRET'")&&hub.includes("restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET'")&&hub.includes("x-romylabs-support-secret")],
   ['hub keeps Arcvena server-side credential path',hub.includes("arcvena: 'ARCVENA_SUPPORT_SECRET'")&&hub.includes("x-arcvena-support-secret")],
+  ['Admin Portal subscribes to live metrics cache',admin.includes("channel('romylabs-admin-metrics-live')")&&admin.includes("table:'romylabs_metrics_cache'")&&admin.includes('liveMetricsVersion')],
+  ['Billing subscribes to live metrics cache',billing.includes("channel('romylabs-billing-live')")&&billing.includes("table:'romylabs_metrics_cache'")],
+  ['hub supports generic cache refresh and recovery',hub.includes("refresh_product_metrics")&&hub.includes("refresh_stale_metrics")&&hub.includes('refreshProductCache')&&hub.includes('EdgeRuntime.waitUntil')],
+  ['metrics signal is invalidation-only and rate limited',metricsSignal.includes("claim_romylabs_metrics_refresh")&&metricsSignal.includes("romylabs_metrics_signal_queue")&&!metricsSignal.includes("record")&&!metricsSignal.includes("old_record")],
+  ['realtime metrics migration protects cache and publishes it',realtimeMetricsMigration.includes('romylabs_metrics_cache_platform_admin_read')&&realtimeMetricsMigration.includes('alter publication supabase_realtime add table public.romylabs_metrics_cache')],
+  ['realtime metrics migration uses async pg_net signals',realtimeMetricsMigration.includes("functions/v1/metrics-signal")&&realtimeMetricsMigration.includes('net.http_post')&&realtimeMetricsMigration.includes("for each statement")],
+
   ['product cards never bypass hub proxy',!admin.includes("['camvella', 'arcvena'].includes(product.key)")&&!admin.includes("'apikey':        'eyJ")],
   ['LinkedIn scopes keep TaxRes member publishing and Arcvena organization publishing',admin.includes("selectedPid === 'arcvena'")&&admin.includes("'openid profile w_organization_social'")&&admin.includes("'openid profile w_member_social'")],
   ['LinkedIn UI requires company page only for Arcvena',admin.includes("const companyPageRequired = selectedPid === 'arcvena'")&&admin.includes('companyPageReady')],
