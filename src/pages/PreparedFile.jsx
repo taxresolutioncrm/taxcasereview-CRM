@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
+const hasReadableFile = (doc) => !!(doc?.storage_path || doc?.file_url)
 const pct = (n) => Math.max(0, Math.min(100, Math.round(Number(n || 0) * 100)))
 const fmtDate = (v) => {
   if (!v) return ''
