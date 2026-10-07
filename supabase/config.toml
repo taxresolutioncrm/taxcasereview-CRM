@@ -248,3 +248,7 @@ verify_jwt = true
 # server-side against the one-time irs_tds_sessions authorization record.
 [functions.transcript-pull-callback]
 verify_jwt = false
+
+# Public invalidation-only endpoint; it accepts no row data and performs no reads.
+[functions.metrics-signal]
+verify_jwt = false
