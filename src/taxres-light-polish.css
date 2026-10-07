@@ -1,0 +1,205 @@
+/* TaxRes family light-theme polish.
+   Presentation only: no routing, data, permissions, or dark-theme changes. */
+
+html.light {
+  --bg: #eef3f8;
+  --nav: #f7f9fc;
+  --sf: #ffffff;
+  --s2: #f3f6fa;
+  --s3: #e9eff6;
+  --br: rgba(49, 70, 94, .14);
+  --b2c: rgba(49, 70, 94, .20);
+  --tx: #142033;
+  --t2: #52647a;
+  --t3: #71839a;
+  --shadow: 0 12px 30px rgba(26, 45, 68, .10);
+  --shadow-sm: 0 5px 16px rgba(26, 45, 68, .08);
+}
+
+html.light body,
+html.light #root,
+html.light .main-area,
+html.light .page-content {
+  background: #eef3f8;
+}
+
+html.light .topbar {
+  background: rgba(255,255,255,.98) !important;
+  border-bottom: 1px solid #dbe4ee !important;
+  box-shadow: 0 2px 12px rgba(32,52,76,.06);
+}
+
+html.light .sidebar {
+  background: #f8fafc !important;
+  border-right: 1px solid #d9e3ed !important;
+  box-shadow: 5px 0 18px rgba(31,49,71,.045);
+}
+
+html.light .brand {
+  background: #ffffff;
+  border-bottom-color: #dbe4ee !important;
+}
+
+html.light .nav-group {
+  color: #78a0c8 !important;
+}
+
+html.light .nav-item {
+  color: #40536a !important;
+  border-radius: 9px;
+  margin: 1px 7px;
+  padding-left: 11px;
+  padding-right: 11px;
+}
+
+html.light .nav-item:hover {
+  background: #edf3f9 !important;
+  color: #142033 !important;
+}
+
+html.light .nav-item.active {
+  background: color-mix(in srgb, var(--blue) 13%, white) !important;
+  color: var(--blue) !important;
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+html.light .card,
+html.light .panel,
+html.light .modal,
+html.light .dropdown,
+html.light .menu {
+  background: #ffffff !important;
+  border-color: #dbe4ee !important;
+  box-shadow: 0 8px 22px rgba(33, 51, 74, .065);
+}
+
+html.light .card:hover {
+  border-color: #cbd8e5 !important;
+}
+
+html.light input,
+html.light textarea,
+html.light select,
+html.light .search-input {
+  background: #ffffff !important;
+  border-color: #d1dce8 !important;
+  color: #142033 !important;
+  box-shadow: inset 0 1px 2px rgba(31,49,71,.025);
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #91a0b2 !important;
+}
+
+html.light input:focus,
+html.light textarea:focus,
+html.light select:focus,
+html.light .search-input:focus {
+  border-color: color-mix(in srgb, var(--blue) 58%, white) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent) !important;
+}
+
+html.light .btn:not(.pri) {
+  background: #f8fafc;
+  border-color: #d6e0ea;
+  color: #24364c !important;
+}
+
+html.light .btn:not(.pri):hover {
+  background: #eef4f9;
+  border-color: #c8d5e2;
+}
+
+/* Dashboard KPI cards: restore readable labels/values in light mode and
+   prevent the compressed/clipped appearance seen at desktop widths. */
+html.light .page-content div:has(> [data-card-idx]) {
+  gap: 14px !important;
+}
+
+html.light [data-card-idx] {
+  min-width: 0 !important;
+  min-height: 132px !important;
+  padding: 19px 18px 17px !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
+  border: 1px solid #d9e3ed !important;
+  box-shadow: 0 8px 20px rgba(35,54,77,.075) !important;
+}
+
+html.light [data-card-idx]:hover {
+  border-color: #c7d7e6 !important;
+  box-shadow: 0 12px 28px rgba(35,54,77,.11) !important;
+}
+
+html.light [data-card-idx] > div:nth-child(3) {
+  align-items: center !important;
+}
+
+html.light [data-card-idx] > div:nth-child(3) > div:first-child {
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+
+html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:first-child {
+  color: #60758c !important;
+  font-size: 10.5px !important;
+  line-height: 1.32 !important;
+  min-height: 28px !important;
+  max-width: none !important;
+  -webkit-line-clamp: 2 !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
+html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
+  font-size: clamp(28px, 2vw, 34px) !important;
+  line-height: 1.02 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(3) {
+  color: #7b8ea4 !important;
+}
+
+html.light [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
+  background: #f0f5fa !important;
+  border-color: #dce6ef !important;
+  opacity: .78 !important;
+}
+
+/* Dashboard detail cards and rows. */
+html.light .card-header,
+html.light .ch {
+  border-bottom-color: #e3eaf1 !important;
+}
+
+html.light .card-header strong,
+html.light .ch strong,
+html.light .card h2,
+html.light .card h3 {
+  color: #162338 !important;
+}
+
+html.light .card > div + div[style*="border-top"],
+html.light .card [style*="border-bottom"] {
+  border-color: #e5ebf2 !important;
+}
+
+html.light .bdg,
+html.light .chip,
+html.light .pill {
+  box-shadow: none !important;
+}
+
+/* Reduce the glaring page-to-card contrast while keeping cards clearly distinct. */
+html.light .page-content {
+  background-image: linear-gradient(180deg, #eef3f8 0%, #f3f6fa 46%, #eef3f8 100%);
+}
+
+@media (max-width: 1100px) {
+  html.light [data-card-idx] {
+    min-height: 120px !important;
+  }
+}
