@@ -8,8 +8,8 @@ const publish=read('supabase/functions/linkedin-publish/index.ts')
 const scheduler=read('supabase/functions/linkedin-scheduler/index.ts')
 const replenisher=read('supabase/functions/linkedin-queue-replenisher/index.ts')
 const bing=read('supabase/functions/bing-data/index.ts')
-const migration=read('supabase/migrations/20260929192500_linkedin_company_page_publish_targets.sql')
-const autopilotMigration=read('supabase/migrations/20260929204000_linkedin_autopilot_product_scheduler.sql')
+const migration=read('supabase/migrations/20261007_linkedin_autopilot_regression_repair.sql')
+const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queue_autopilot.sql')
 
 const checks=[
   ['portfolio uses live metrics batch',admin.includes("action:'metrics_batch'")&&admin.includes('portfolioCrmStatus')],
@@ -23,14 +23,14 @@ const checks=[
   ['hub uses product support credentials',hub.includes("groundivo: 'GROUNDIVO_SUPPORT_SECRET'")&&hub.includes("oculivo: 'OCULIVO_SUPPORT_SECRET'")&&hub.includes("restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET'")&&hub.includes("x-romylabs-support-secret")],
   ['hub keeps Arcvena server-side credential path',hub.includes("arcvena: 'ARCVENA_SUPPORT_SECRET'")&&hub.includes("x-arcvena-support-secret")],
   ['product cards never bypass hub proxy',!admin.includes("['camvella', 'arcvena'].includes(product.key)")&&!admin.includes("'apikey':        'eyJ")],
-  ['TaxRes and Arcvena request LinkedIn organization scope',admin.includes("['taxres_crm','arcvena'].includes(selectedPid)")&&admin.includes('w_organization_social r_organization_admin')],
-  ['LinkedIn UI blocks autopilot without company page',admin.includes('companyPageReady')&&admin.includes('Reconnect Company Page')&&admin.includes('Wrong Publish Target')],
-  ['publisher refuses personal fallback',publish.includes('Company-page publishing is required')&&publish.includes('resolveOrganization')],
-  ['scheduler requires company-page target',scheduler.includes('company_page_target_not_verified')&&scheduler.includes('verify_internal_cron_token')&&scheduler.includes("error:'Unauthorized'")],
-  ['legacy replenisher requires autopilot and company page',replenisher.includes('autopilot_disabled')&&replenisher.includes('company_page_not_ready')&&replenisher.includes('product_id:PRODUCT')],
-  ['database publisher is product scoped',migration.includes('product_id = v_post.product_id')&&migration.includes("v_post.product_id in ('taxres_crm','arcvena')")],
-  ['database publisher uses organization author',migration.includes("'urn:li:organization:' || v_conn.linkedin_organization_id")],
-  ['autopilot is database scheduled without Actions',autopilotMigration.includes("'linkedin-autopilot-run'")&&autopilotMigration.includes("'7 * * * *'")&&autopilotMigration.includes("'tcr_internal_cron_token'")],
+  ['LinkedIn scopes keep TaxRes member publishing and Arcvena organization publishing',admin.includes("selectedPid === 'arcvena'")&&admin.includes("'openid profile w_organization_social'")&&admin.includes("'openid profile w_member_social'")],
+  ['LinkedIn UI requires company page only for Arcvena',admin.includes("const companyPageRequired = selectedPid === 'arcvena'")&&admin.includes('companyPageReady')],
+  ['publisher requires organization target only for Arcvena',publish.includes("const ORG_PRODUCTS = new Set(['arcvena'])")&&publish.includes("required_scope: 'w_organization_social'")],
+  ['scheduler preserves TaxRes target and Arcvena company-page gate',scheduler.includes('taxres_publish_target_not_verified')&&scheduler.includes('arcvena_company_page_target_not_verified')&&scheduler.includes('verify_internal_cron_token')],
+  ['legacy TaxRes replenisher accepts member or organization target',replenisher.includes('publishTargetReady')&&replenisher.includes("targetType==='PERSON'")&&replenisher.includes('publish_target_not_ready')],
+  ['database publisher is product scoped',migration.includes("v_post.product_id='arcvena'")&&migration.includes("elsif nullif(v_conn.linkedin_person_id,'') is not null")],
+  ['database publisher supports organization and person authors',migration.includes("'urn:li:organization:'||v_conn.linkedin_organization_id")&&migration.includes("'urn:li:person:'||v_conn.linkedin_person_id")],
+  ['autopilot replenishes TaxRes and Arcvena hourly without Actions',autopilotMigration.includes("'linkedin-taxres-queue-autopilot'")&&autopilotMigration.includes("'linkedin-arcvena-queue-autopilot'")&&autopilotMigration.includes("'tcr_internal_cron_token'")],
   ['Bing state comes from Bing verification',bing.includes('GetUserSites')&&bing.includes('VerifySite')&&bing.includes("status:'configured'")&&bing.includes('last_verified_at')],
 ]
 let failed=0

@@ -127,12 +127,16 @@ Deno.serve(async(req)=>{
       const enabledProducts=(settingsRows||[]).map((r:any)=>r.product_id);
       for(const pid of enabledProducts){
         if(!LIBRARIES[pid]){result.products_skipped.push({product_id:pid,reason:'no_content_library_for_product'});continue}
-        const {data:conn}=await sb.from('linkedin_connections').select('product_id,expires_at,publish_target_type,linkedin_organization_id').eq('tenant_id',ADMIN_TENANT).eq('product_id',pid).maybeSingle();
+        const {data:conn}=await sb.from('linkedin_connections').select('product_id,expires_at,publish_target_type,linkedin_organization_id,linkedin_person_id').eq('tenant_id',ADMIN_TENANT).eq('product_id',pid).maybeSingle();
         if(!conn){result.products_skipped.push({product_id:pid,reason:'no_linkedin_connection'});continue}
         if(new Date(conn.expires_at)<now){result.products_skipped.push({product_id:pid,reason:'linkedin_token_expired'});continue}
-        if([TAXRES_PRODUCT,ARCVENA_PRODUCT].includes(pid)&&String(conn.publish_target_type||'').toUpperCase()!=='ORGANIZATION'){result.products_skipped.push({product_id:pid,reason:'company_page_target_not_verified'});continue}
+        if(pid===ARCVENA_PRODUCT&&String(conn.publish_target_type||'').toUpperCase()!=='ORGANIZATION'){result.products_skipped.push({product_id:pid,reason:'company_page_target_not_verified'});continue}
         if(pid===ARCVENA_PRODUCT&&String(conn.linkedin_organization_id||'')!=='146118085'){result.products_skipped.push({product_id:pid,reason:'arcvena_company_page_target_not_verified'});continue}
-        if(pid===TAXRES_PRODUCT&&!String(conn.linkedin_organization_id||'')){result.products_skipped.push({product_id:pid,reason:'taxres_company_page_target_not_verified'});continue}
+        if(pid===TAXRES_PRODUCT){
+          const target=String(conn.publish_target_type||'').toUpperCase()
+          const hasTarget=(target==='PERSON'&&Boolean(conn.linkedin_person_id))||(target==='ORGANIZATION'&&Boolean(conn.linkedin_organization_id))
+          if(!hasTarget){result.products_skipped.push({product_id:pid,reason:'taxres_publish_target_not_verified'});continue}
+        }
         const x=await generate(sb,now,pid);result.generated+=x.created.length;result.quarantined+=x.quarantined.length;result.skipped+=x.skipped;
         if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${pid}]: validation withheld content`,`<p>${x.quarantined.length} post(s) were safely withheld for ${pid}. No invalid content will publish.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);
       }

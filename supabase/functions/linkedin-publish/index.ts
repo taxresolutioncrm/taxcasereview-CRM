@@ -7,7 +7,7 @@ const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-const ORG_PRODUCTS = new Set(['taxres_crm','arcvena'])
+const ORG_PRODUCTS = new Set(['arcvena'])
 const KNOWN_ORG_IDS: Record<string,string> = { arcvena:'146118085' }
 const ORG_NAME_MATCHERS: Record<string,RegExp> = {
   taxres_crm: /tax\s*res(?:olution)?\s*crm/i,
@@ -106,21 +106,20 @@ Deno.serve(async (req) => {
     const grantedScopes = String(tokenData.scope || '')
     const requiresOrganization = ORG_PRODUCTS.has(productId)
     const scopeSet = new Set(grantedScopes.split(/[ ,]+/).filter(Boolean))
-    if (requiresOrganization && (!scopeSet.has('w_organization_social') || (!scopeSet.has('r_organization_admin') && !scopeSet.has('rw_organization_admin')))) {
+    if (requiresOrganization && !scopeSet.has('w_organization_social')) {
       return json({
         ok: false,
-        error: `${productId} requires LinkedIn company-page posting and organization-admin permission`,
-        required_scopes: ['w_organization_social','r_organization_admin'],
+        error: `${productId} requires LinkedIn organization posting permission`,
+        required_scope: 'w_organization_social',
       }, 403)
     }
 
     let publishTargetType = 'PERSON'
     let linkedinOrganizationId: string | null = null
     if (requiresOrganization) {
-      const resolved = await resolveOrganization(tokenData.access_token, productId)
-      if (!resolved.id) return json({ok:false,error:resolved.error,detail:resolved.detail||null},409)
       publishTargetType = 'ORGANIZATION'
-      linkedinOrganizationId = resolved.id
+      linkedinOrganizationId = KNOWN_ORG_IDS[productId] || null
+      if (!linkedinOrganizationId) return json({ok:false,error:`No configured LinkedIn organization target for ${productId}`},409)
     }
 
     await supabase.from('linkedin_connections').upsert({
@@ -130,7 +129,7 @@ Deno.serve(async (req) => {
       display_name: profile.name || profile.email || 'LinkedIn Account',
       access_token: tokenData.access_token,
       expires_at: new Date(Date.now() + (tokenData.expires_in || 5184000) * 1000).toISOString(),
-      scopes: grantedScopes || (requiresOrganization ? 'openid,profile,w_organization_social,r_organization_admin' : 'openid,profile,w_member_social'),
+      scopes: grantedScopes || (requiresOrganization ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
       publish_target_type: publishTargetType,
       linkedin_organization_id: linkedinOrganizationId,
       updated_at: new Date().toISOString(),
