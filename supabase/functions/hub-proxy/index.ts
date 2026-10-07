@@ -126,6 +126,46 @@ Deno.serve(async (req) => {
     return String(data?.secret || '')
   }
 
+  async function readMetricsCache(productKey: string) {
+    const { data, error } = await serviceClient
+      .from('romylabs_metrics_cache')
+      .select('payload,fetched_at')
+      .eq('product_key', productKey)
+      .limit(1)
+      .maybeSingle()
+    if (error || !data?.payload) return null
+    return { data:data.payload, fetched_at:data.fetched_at }
+  }
+
+  async function refreshNashvilleCache() {
+    const nashvilleToken = await getInternalSecret('nashville_metrics_token')
+    if (!nashvilleToken) return { status:503, data:null, error:'Nashville internal metrics token is not configured' }
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 12000)
+    try {
+      const res = await fetch(PRODUCT_ENDPOINTS.nashville, {
+        method:'GET',
+        headers:{ 'Content-Type':'application/json', 'x-romylabs-internal-token':nashvilleToken },
+        signal:controller.signal,
+      })
+      const data = await res.json().catch(()=>null)
+      if (!res.ok || data?.ok === false) {
+        return { status:res.status, data:null, error:data?.error || `Nashville metrics request failed (${res.status})` }
+      }
+      await serviceClient.from('romylabs_metrics_cache').upsert({
+        product_key:'nashville',
+        payload:data,
+        fetched_at:data?.fetched_at || new Date().toISOString(),
+        updated_at:new Date().toISOString(),
+      }, { onConflict:'product_key' })
+      return { status:200, data, error:null }
+    } catch (err) {
+      return { status:502, data:null, error:err instanceof Error ? err.message : String(err) }
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
   // ── Step 3: Parse product key from request body ──────────────────────────
   let body: { product?: string; products?: string[]; action?: string; payload?: Record<string, unknown> }
   try {
@@ -133,6 +173,19 @@ Deno.serve(async (req) => {
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
+    })
+  }
+
+  if (body.action === 'refresh_nashville_metrics') {
+    if (!internalAuthorized) {
+      return new Response(JSON.stringify({ error:'Internal authorization required' }), {
+        status:403, headers:{ ...cors, 'Content-Type':'application/json' },
+      })
+    }
+    const refreshed = await refreshNashvilleCache()
+    return new Response(JSON.stringify(refreshed.data ?? { ok:false, error:refreshed.error }), {
+      status:refreshed.status,
+      headers:{ ...cors, 'Content-Type':'application/json' },
     })
   }
 
@@ -207,6 +260,15 @@ Deno.serve(async (req) => {
       return { status: 400, data: null, error: `Unknown or unconfigured product: ${productKey}` }
     }
 
+    // Nashville's live endpoint can take several seconds while calculating exact
+    // storage usage. The Admin Portal has a short batch budget, so return the
+    // centrally refreshed cache instantly instead of falling back to stale tenant
+    // directory counts.
+    if (productKey === 'nashville') {
+      const cached = await readMetricsCache('nashville')
+      if (cached?.data) return { status:200, data:cached.data, error:null, cached:true, cached_at:cached.fetched_at }
+    }
+
     try {
       const productHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -269,9 +331,15 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
       })
     }
+    const batchBudgetMs = 3000
     const pairs = await Promise.all(requested.map(async productKey => [
       productKey,
-      await fetchProductMetrics(productKey),
+      await Promise.race([
+        fetchProductMetrics(productKey),
+        new Promise(resolve => setTimeout(() => resolve({
+          status:504,data:null,error:`${productKey} metrics exceeded batch budget`
+        }), batchBudgetMs)),
+      ]),
     ] as const))
     return new Response(JSON.stringify({
       ok: true,
