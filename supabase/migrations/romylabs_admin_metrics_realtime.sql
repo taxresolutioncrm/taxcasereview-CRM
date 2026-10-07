@@ -50,6 +50,49 @@ create table if not exists public.romylabs_metrics_refresh_gate (
   last_claimed_at timestamptz not null default '-infinity'::timestamptz
 );
 
+create table if not exists public.romylabs_metrics_signal_queue (
+  product_key text primary key,
+  source_schema text,
+  source_table text,
+  requested_at timestamptz not null default now()
+);
+
+alter table public.romylabs_metrics_signal_queue enable row level security;
+revoke all on table public.romylabs_metrics_signal_queue from public, anon, authenticated;
+
+create or replace function public.romylabs_dispatch_metrics_signal()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $
+begin
+  perform net.http_post(
+    url := 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy',
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'x-internal-cron-token',
+      (select decrypted_secret
+       from vault.decrypted_secrets
+       where name='tcr_internal_cron_token'
+       limit 1)
+    ),
+    body := jsonb_build_object(
+      'action','refresh_product_metrics',
+      'product',new.product_key
+    ),
+    timeout_milliseconds := 1000
+  );
+  return new;
+end;
+$;
+
+drop trigger if exists romylabs_dispatch_metrics_signal
+  on public.romylabs_metrics_signal_queue;
+create trigger romylabs_dispatch_metrics_signal
+after insert or update on public.romylabs_metrics_signal_queue
+for each row execute function public.romylabs_dispatch_metrics_signal();
+
 alter table public.romylabs_metrics_refresh_gate enable row level security;
 revoke all on table public.romylabs_metrics_refresh_gate from public, anon, authenticated;
 
@@ -112,10 +155,9 @@ begin
   end if;
 
   perform net.http_post(
-    url := 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy',
+    url := 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/metrics-signal',
     headers := jsonb_build_object('Content-Type','application/json'),
     body := jsonb_build_object(
-      'action','product_changed',
       'product','taxres_crm',
       'source_schema',TG_TABLE_SCHEMA,
       'source_table',TG_TABLE_NAME
