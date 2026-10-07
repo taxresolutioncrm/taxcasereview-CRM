@@ -5,7 +5,7 @@ import JSZip from 'https://esm.sh/jszip@3.10.1'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-source-authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -261,7 +261,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return reply({ error: 'method_not_allowed' }, 405)
 
-  const authHeader = req.headers.get('Authorization') || ''
+  const authHeader = req.headers.get('x-source-authorization') || req.headers.get('Authorization') || ''
   let payload: any = null
   try { payload = await req.json() } catch { return reply({ error: 'invalid_json' }, 400) }
 
