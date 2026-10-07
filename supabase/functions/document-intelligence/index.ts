@@ -9,7 +9,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const MODEL = 'gemini-3.8-flash'
+const MODEL = 'gemini-3.5-flash-lite'
 const MAX_FILE_BYTES = 20 * 1024 * 1024
 const MAX_EXTRACTED_CHARS = 180_000
 
@@ -237,30 +237,36 @@ async function authenticate(source: typeof SOURCES[SourceKey], authHeader: strin
 
 async function callGemini(apiKey: string, parts: any[]) {
   let lastError = 'AI provider request failed'
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    const res = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent?key=' + encodeURIComponent(apiKey),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts }],
-          generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' },
-        }),
-      },
-    )
-    const raw = await res.text()
-    if (res.ok) {
-      const body = JSON.parse(raw)
-      const text = (body?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || '').join('\n')
-      if (!text.trim()) throw new Error('AI returned no document analysis')
-      return cleanJson(text)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent?key=' + encodeURIComponent(apiKey),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(45_000),
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts }],
+            generationConfig: { temperature: 0, maxOutputTokens: 5000, responseMimeType: 'application/json' },
+          }),
+        },
+      )
+      const raw = await res.text()
+      if (res.ok) {
+        const body = JSON.parse(raw)
+        const text = (body?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || '').join('\n')
+        if (!text.trim()) throw new Error('AI returned no document analysis')
+        return cleanJson(text)
+      }
+      let msg = 'Gemini error ' + res.status
+      try { msg = JSON.parse(raw)?.error?.message || msg } catch {}
+      lastError = msg
+      if (![429,500,502,503,504].includes(res.status) || attempt === 2) break
+    } catch (err:any) {
+      lastError = err?.name === 'TimeoutError' ? 'AI provider timed out' : String(err?.message || err)
+      if (attempt === 2) break
     }
-    let msg = 'Gemini error ' + res.status
-    try { msg = JSON.parse(raw)?.error?.message || msg } catch {}
-    lastError = msg
-    if (![429,500,502,503,504].includes(res.status) || attempt === 5) break
-    await new Promise(resolve => setTimeout(resolve, 700 * attempt * attempt))
+    await new Promise(resolve => setTimeout(resolve, 700))
   }
   throw new Error(lastError)
 }
