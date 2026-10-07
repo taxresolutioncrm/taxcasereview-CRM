@@ -50,7 +50,9 @@ export default function PreparedFile() {
       setClientOptions([])
       return
     }
-    setClientOptions(data || [])
+    setClientOptions((data || [])
+      .filter(c => c?.id && String(c?.name || '').trim())
+      .sort((a,b) => String(a.name).trim().localeCompare(String(b.name).trim())))
   }
 
   async function load() {
