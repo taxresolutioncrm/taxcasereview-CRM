@@ -482,7 +482,7 @@ export default function PreparedFile() {
                       <div style={{fontSize:11,color:'var(--t3)'}}>{d.docType || 'Document'} · {fmtDate(d.created_at)}</div>
                     </div>
                     <div style={{fontSize:12,color:run?.status==='complete'?'#16803a':'var(--t3)'}}>
-                      {run ? run.status.replace('_',' ') : 'not analyzed'}
+                      {!hasReadableFile(d) ? 'no file attached' : (run ? run.status.replace('_',' ') : 'not analyzed')}
                     </div>
                     <button className="btn sm" disabled={activeDoc===d.id} onClick={async()=>{try{await analyzeDocument(d);await load()}catch(e){setError(e.message)}}}>
                       {activeDoc===d.id?'Reading…':'✦ Analyze'}
