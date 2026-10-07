@@ -46,7 +46,7 @@ serve(async (req) => {
       })
     }
 
-    const documentMode = mode === 'document_intelligence'
+    const documentMode = mode === 'document_intelligence' || String(message || '').startsWith('[DOCUMENT_INTELLIGENCE_V1]')
     const DOCUMENT_SYSTEM_PROMPT = [
       'You are the structured document-intelligence engine for a tax resolution CRM.',
       'Return ONLY valid JSON. Never use markdown fences.',
@@ -59,7 +59,7 @@ serve(async (req) => {
     const messages: any[] = [{ role: 'system', content: documentMode ? DOCUMENT_SYSTEM_PROMPT : SYSTEM_PROMPT }]
 
     if (documentMode) {
-      const text = typeof documentText === 'string' ? documentText.slice(0, 100000) : ''
+      const text = typeof documentText === 'string' ? documentText.slice(0, 100000) : (String(message || '').startsWith('[DOCUMENT_INTELLIGENCE_V1]') ? String(message || '').slice(0, 100000) : '')
       const image = documentImage && typeof documentImage === 'object' ? documentImage : null
       if (!text && !image?.data) {
         return new Response(JSON.stringify({ error: 'document content required' }), {
@@ -75,7 +75,7 @@ serve(async (req) => {
           ],
         })
       } else {
-        messages.push({ role: 'user', content: String(message || 'Analyze this document and return the required JSON.') + '\n\nDOCUMENT CONTENT:\n' + text })
+        messages.push({ role: 'user', content: (String(message || '').startsWith('[DOCUMENT_INTELLIGENCE_V1]') ? text : String(message || 'Analyze this document and return the required JSON.') + '\n\nDOCUMENT CONTENT:\n' + text) })
       }
     } else {
       if (context) {
