@@ -216,15 +216,22 @@ function toBase64(bytes: Uint8Array) {
 }
 
 async function authenticate(source: typeof SOURCES[SourceKey], authHeader: string) {
-  if (!authHeader.toLowerCase().startsWith('bearer ')) return false
+  if (!authHeader.toLowerCase().startsWith('bearer ')) return { ok:false, status:0, reason:'missing_bearer' }
   try {
     const token = authHeader.slice(7).trim()
-    if (!token) return false
-    const verifier = createClient(source.url, source.anon)
-    const { data, error } = await verifier.auth.getUser(token)
-    return !error && !!data?.user
-  } catch {
-    return false
+    if (!token) return { ok:false, status:0, reason:'empty_token' }
+    const res = await fetch(source.url + '/auth/v1/user', {
+      headers: { apikey: source.anon, Authorization: 'Bearer ' + token },
+    })
+    if (res.ok) return { ok:true, status:res.status, reason:'' }
+    let reason = 'auth_rejected'
+    try {
+      const body = await res.json()
+      reason = String(body?.code || body?.msg || body?.message || reason).slice(0,160)
+    } catch {}
+    return { ok:false, status:res.status, reason }
+  } catch (err:any) {
+    return { ok:false, status:0, reason:String(err?.message||err).slice(0,160) }
   }
 }
 
@@ -269,7 +276,8 @@ serve(async (req) => {
   const sourceKey = String(payload?.sourceProject || 'tcr').toLowerCase() as SourceKey
   const source = SOURCES[sourceKey]
   if (!source) return reply({ error: 'unsupported_source_project' }, 400)
-  if (!(await authenticate(source, authHeader))) return reply({ error: 'unauthorized' }, 401)
+  const authCheck = await authenticate(source, authHeader)
+  if (!authCheck.ok) return reply({ error: 'unauthorized', auth_status: authCheck.status, auth_reason: authCheck.reason }, 401)
 
   const documentId = payload?.documentId
   const requestedClientId = payload?.clientId
