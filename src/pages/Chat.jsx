@@ -1113,7 +1113,12 @@ export default function Chat() {
                   <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: onlineUsers.has(dm.name) ? '#22c55e' : '#475569', border: '2px solid #0d1526' }}/>
                 </div>
                 <span style={{ fontSize: 14, flex: 1 }}>{dm.name}</span>
-                {['call','huddle'].includes(presenceMeta[dm.name]?.activity) && <span title={presenceMeta[dm.name]?.label || (presenceMeta[dm.name]?.activity === 'huddle' ? 'In a huddle' : 'On a call')} aria-label={presenceMeta[dm.name]?.label || 'Busy'} style={{fontSize:13,opacity:.82,lineHeight:1,flexShrink:0}}>🎧</span>}
+                {presenceMeta[dm.name]?.activity === 'huddle' && (
+                  <span title="In a huddle" aria-label="In a huddle" style={{fontSize:10,fontWeight:800,lineHeight:1,flexShrink:0,padding:'4px 7px',borderRadius:999,background:'rgba(34,197,94,.14)',border:'1px solid rgba(34,197,94,.35)',color:'#86efac',whiteSpace:'nowrap'}}>🎧 In huddle</span>
+                )}
+                {presenceMeta[dm.name]?.activity === 'call' && (
+                  <span title="On a call" aria-label="On a call" style={{fontSize:10,fontWeight:800,lineHeight:1,flexShrink:0,padding:'4px 7px',borderRadius:999,background:'rgba(59,130,246,.14)',border:'1px solid rgba(59,130,246,.35)',color:'#93c5fd',whiteSpace:'nowrap'}}>☎ On call</span>
+                )}
                 {isVip && <span style={{ fontSize: 11, color: '#f59e0b' }} title="VIP">★</span>}
               </div>
             )
