@@ -42,9 +42,9 @@ export default function PreparedFile() {
     setError('')
     const { data, error } = await supabase
       .from('clients')
-      .select('id,name,email,phone,tenant_id')
+      .select('id,name')
+      .range(0,4999)
       .order('name', { ascending:true })
-      .limit(500)
     if (error) {
       setError(error.message)
       setClientOptions([])
