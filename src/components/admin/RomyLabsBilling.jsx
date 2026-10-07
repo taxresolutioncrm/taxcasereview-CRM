@@ -28,6 +28,7 @@ export default function RomyLabsBilling() {
   const [payment,setPayment] = useState(blankPayment)
   const [saving,setSaving] = useState(false)
   const savingRef = useRef(false)
+  const liveReloadRef = useRef(null)
   const [paymentKey,setPaymentKey] = useState('')
   const [notice,setNotice] = useState('')
 
@@ -45,6 +46,24 @@ export default function RomyLabsBilling() {
     return nextData
   },[])
   useEffect(()=>{load()},[load])
+  useEffect(()=>{
+    const channel = supabase
+      .channel('romylabs-billing-live')
+      .on(
+        'postgres_changes',
+        { event:'*', schema:'public', table:'romylabs_metrics_cache' },
+        () => {
+          if (liveReloadRef.current) clearTimeout(liveReloadRef.current)
+          liveReloadRef.current = setTimeout(() => load(), 150)
+        },
+      )
+      .subscribe()
+    return () => {
+      if (liveReloadRef.current) clearTimeout(liveReloadRef.current)
+      liveReloadRef.current = null
+      supabase.removeChannel(channel)
+    }
+  },[load])
   useEffect(()=>{
     const host = document.querySelector('.rl-admin-main')
     if (host) host.scrollTo({ top:0, left:0, behavior:'auto' })
