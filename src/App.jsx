@@ -287,7 +287,7 @@ function Shell() {
             <Route path="/prepared-file/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
             <Route path="/esign"       element={<Guard section="esign"><Esign /></Guard>} />
             <Route path="/kiosk"       element={<Kiosk />} />
-            <Route path="/employee"    element={<EmployeePortal />} />
+            <Route path="/employee"    element={<EmployeePortal />} />\n            <Route path="/employee-portal" element={<EmployeePortal />} />
             <Route path="/timeclock"   element={<TimeClock />} />
             <Route path="/payroll"     element={<Guard section="payroll"><Payroll /></Guard>} />
             <Route path="/timeoff"     element={<Guard section="timeoff"><TimeOff /></Guard>} />
@@ -405,7 +405,7 @@ function AuthRouter() {
   // Public routes must render immediately — never block them on the auth check.
   // /book, /sign, /portal etc are anonymous; showing a spinner loses prospects.
   const publicPaths = ['/book', '/sign', '/agreement', '/office-sign', '/portal', '/clockin', '/kiosk', '/family-password',
-    '/employee', '/meet', '/screenshare', '/screenshare-host', '/financial-intake', '/organizer']
+    '/employee', '/employee-portal', '/meet', '/screenshare', '/screenshare-host', '/financial-intake', '/organizer']
   const isPublicPath = publicPaths.some(p => path.startsWith(p))
 
   if (checking && !isPublicPath) return (
