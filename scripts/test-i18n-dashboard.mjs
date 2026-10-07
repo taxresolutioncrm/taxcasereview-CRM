@@ -34,6 +34,11 @@ const cases = [
   ['0 total', '0 en total'],
   ['0 overdue', '0 vencidas'],
   ['0 unpaid', '0 sin pagar'],
+  ['Financial Resolution Questionnaire', 'Cuestionario de resolución financiera'],
+  ['Make IRS and State POA', 'Preparar los poderes del IRS y del estado'],
+  ['Tax return history', 'Historial de declaraciones de impuestos'],
+  ['PENALTY ABATEMENT TIMELINE', 'CRONOGRAMA DE REDUCCIÓN DE MULTAS'],
+  ['Obtain Wet Signature from Client', 'Obtener la firma manuscrita del cliente'],
 ]
 
 for (const [english, spanish] of cases) {
