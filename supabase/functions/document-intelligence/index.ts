@@ -17,11 +17,11 @@ const MAX_EXTRACTED_CHARS = 180_000
 const SOURCES = {
   tcr: {
     url: 'https://mpxgxfqdbquzkrvvejkh.supabase.co',
-    anon: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYXNlIiwicmVmIjoibXB4Z3hmcWRicXV6a3J2dmVqa2giLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc3OTI5OTkzOSwiZXhwIjoyMDk0ODc1OTM5fQ.puvhU1MV5nGOykizeTkwCpRR7NKKaGsVpA8oqjVjmu4',
+    anon: 'sb_publishable_nE5-rNsdH9XabAkbPSd9ug_Pf8MWzcm',
   },
   nashville: {
     url: 'https://ydrvncdedgjtcprczwpu.supabase.co',
-    anon: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYXNlIiwicmVmIjoieWRydm5jZGVkZ2p0Y3ByY3p3cHUiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc4NjgwOTM1NCwiZXhwIjoyMTAyMzg1MzU0fQ.k6_dSA6HREDufH_dxGH9KFrdmwx4EnfV1v3pA1VsGag',
+    anon: 'sb_publishable_yQ4YkTr03xJWB-BUHlY-TQ_vqVSKGIM',
   },
 } as const
 
