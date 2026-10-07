@@ -190,6 +190,7 @@ export default function PreparedFile() {
 
   async function analyzeDocument(doc) {
     if (!doc?.id) return
+    if (!hasReadableFile(doc)) throw new Error('This document record has no attached file for AI to read.')
     setActiveDoc(doc.id)
     setError('')
     const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
