@@ -36,7 +36,9 @@ const checks=[
     "client_id: entityClientId",
     "storage_path: storagePath",
     "DOC_PAGE_SIZE = 250",
-    "select('*', { count:'exact' })",
+    "countMode",
+    "'planned'",
+    "'exact'",
     "docTotal > DOC_PAGE_SIZE",
   ]],
   ['supabase/migrations/20260919_nashville_document_client_identity.sql',[
