@@ -50,6 +50,10 @@ export default function PreparedFile() {
     else loadClientOptions()
   }, [clientId])
 
+  useEffect(() => {
+    if (searchParams.get('tab') === 'documents') setTab('documents')
+  }, [clientId, searchParams])
+
   async function loadClientOptions() {
     setError('')
     const { data, error } = await supabase
