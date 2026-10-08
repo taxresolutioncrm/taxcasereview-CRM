@@ -56,7 +56,7 @@ const STATE_FORMS = [
 // Previously these were hardcoded constants -- and `address` was written with
 // SINGLE quotes around a template placeholder, so every State Forms letterhead
 // and POA cover letter printed the literal text ${FIRM.address}.
-const firmName  = () => FIRM.name || 'Tax Case Review'
+const firmName  = () => FIRM.name || 'Firm'
 const firmEmail = () =>
   (FIRM.email || '').trim() ||
   'info@' + firmName().toLowerCase().replace(/[^a-z0-9]+/g, '') + '.com'
