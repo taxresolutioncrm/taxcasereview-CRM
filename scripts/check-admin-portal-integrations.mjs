@@ -32,6 +32,7 @@ const checks=[
   ['metrics signal is invalidation-only and rate limited',metricsSignal.includes("claim_romylabs_metrics_refresh")&&metricsSignal.includes("romylabs_metrics_signal_queue")&&!metricsSignal.includes("record")&&!metricsSignal.includes("old_record")],
   ['realtime metrics migration protects cache and publishes it',realtimeMetricsMigration.includes('romylabs_metrics_cache_platform_admin_read')&&realtimeMetricsMigration.includes('alter publication supabase_realtime add table public.romylabs_metrics_cache')],
   ['realtime metrics migration uses async pg_net signals',realtimeMetricsMigration.includes("functions/v1/metrics-signal")&&realtimeMetricsMigration.includes('net.http_post')&&realtimeMetricsMigration.includes("for each statement")],
+  ['realtime metrics migration uses valid PL/pgSQL delimiters',realtimeMetricsMigration.includes("create or replace function public.romylabs_dispatch_metrics_signal()\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = public, pg_catalog\nas $$")&&!realtimeMetricsMigration.includes("\nas $\nbegin")],
 
   ['product cards never bypass hub proxy',!admin.includes("['camvella', 'arcvena'].includes(product.key)")&&!admin.includes("'apikey':        'eyJ")],
   ['LinkedIn scopes keep TaxRes member publishing and Arcvena organization publishing',admin.includes("selectedPid === 'arcvena'")&&admin.includes("'openid profile w_organization_social'")&&admin.includes("'openid profile w_member_social'")],
