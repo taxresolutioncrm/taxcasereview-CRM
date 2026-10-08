@@ -33,7 +33,7 @@ import { FIRM, label } from '../lib/firmBranding'
 // Tenant-resolved firm name + contact email so the transactional email HTML,
 // SMS bodies, and subject lines below read as whichever firm is signed in,
 // not just the primary tenant. Mirrors docUtils.js:16-19 and SignPage.
-const firmName  = () => FIRM.name || 'Tax Case Review'
+const firmName  = () => FIRM.name || 'Firm'
 const firmEmail = () =>
   (FIRM.email || '').trim() ||
   'info@' + firmName().toLowerCase().replace(/[^a-z0-9]+/g, '') + '.com'
