@@ -109,6 +109,13 @@ must(inviteEmployee.includes("This email already belongs to another office"),'em
 must(migration.includes("firmname = 'CloudCPA Inc'"),'CloudCPA does not inherit Tax Case Review firm name')
 must(migration.includes("firmemail = 'tony@thecloudcpa.net'"),'CloudCPA correspondence identity is tenant-owned')
 must(migration.includes("logourl = '/cloudcpa-logo.png'"),'CloudCPA logo is tenant branding')
+must(contactMigration.includes("phone = '+15612039464'"),'CloudCPA company phone is current')
+must(contactMigration.includes("firm_fax_number = '+15613280029'"),'CloudCPA fax is current')
+must(contactMigration.includes("logourl = '/cloudcpa-logo.png'"),'CloudCPA contact cleanup preserves CloudCPA logo')
+must(kiosk.includes("supabase.rpc('current_tenant_id')"),'CloudCPA kiosk resolves the authenticated tenant')
+must(!kiosk.includes("const LOGO='/logo.png'"),'CloudCPA kiosk cannot fall back to the Tax Case Review logo')
+must(!topbar.includes("(888) 334-5052"),'Shared top bar cannot fall back to TCR toll-free for another tenant')
+must(!topbar.includes("(561) 420-6626"),'Shared top bar cannot fall back to TCR fax for another tenant')
 must(migration.includes("firmaddress = null"),'stale inherited office address is removed')
 for (const perm of ['perm_clients','perm_leads','perm_billing','perm_schedule','perm_documents','perm_reports','perm_hr','perm_settings','perm_irs','perm_comms']) {
   must(migration.includes(`${perm} = case when lower(email)='tony@thecloudcpa.net' then 3`), `Tony Full Admin permission: ${perm}`)
