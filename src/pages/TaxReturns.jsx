@@ -24,8 +24,11 @@ const RETURN_TYPES = [
 ]
 const RETURN_STATUSES = ['Draft','In Review','Client Review','Ready to File','Filed','Accepted','Rejected','Amended']
 
+const CURRENT_TAX_YEAR = String(new Date().getFullYear())
+const DEFAULT_TAX_YEAR = TAX_YEARS.includes(CURRENT_TAX_YEAR) ? CURRENT_TAX_YEAR : TAX_YEARS[0]
+
 const BLANK_RETURN = {
-  clientName: '', taxYear: '2024', returnType: 'Federal 1040',
+  clientName: '', taxYear: DEFAULT_TAX_YEAR, returnType: 'Federal 1040',
   filingStatus: 'Single', status: 'Draft', assignedTo: '',
   // Income
   wages: '', interest: '', dividends: '', capitalGains: '', businessIncome: '',
@@ -233,7 +236,7 @@ function fmt(n) {
 }
 
 export default function TaxReturns() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [returns, setReturns]   = useState([])
   const [clients, setClients]   = useState([])
   const [employees, setEmployees] = useState([])
@@ -253,7 +256,33 @@ export default function TaxReturns() {
   const [preparer, setPreparer] = useState({ name:'', ptin:'', caf:'', efin:'' })
   const [efileStatus, setEfileStatus] = useState({ loading:true, configured:false, providerName:'', efinPresent:false, adapterConfigured:false, message:'' })
 
-  useEffect(() => { if (user) { load(); loadPreparer(); loadEfileStatus() } }, [user?.id])
+  useEffect(() => {
+    if (!user || !myTenantId) {
+      setReturns([])
+      setClients([])
+      setEmployees([])
+      setLoading(Boolean(user))
+      return
+    }
+    load()
+    loadPreparer()
+    loadEfileStatus()
+
+    let timer = null
+    const channel = supabase.channel('tax-returns:' + myTenantId)
+      .on('postgres_changes', {
+        event:'*', schema:'public', table:'tax_returns', filter:`tenant_id=eq.${myTenantId}`
+      }, () => {
+        clearTimeout(timer)
+        timer = setTimeout(load, 200)
+      })
+      .subscribe()
+
+    return () => {
+      clearTimeout(timer)
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, myTenantId])
 
   async function loadEfileStatus() {
     setEfileStatus(s => ({ ...s, loading:true }))
@@ -280,24 +309,29 @@ export default function TaxReturns() {
   }
 
   async function loadPreparer() {
-    const tid = user?.app_metadata?.tenant_id || user?.user_metadata?.tenant_id
-    if (!tid) return
+    if (!myTenantId) return
     const { data } = await supabase.from('settings')
       .select('preparer_name,ptin,caf_number,efin')
-      .eq('tenant_id', tid)
+      .eq('tenant_id', myTenantId)
       .maybeSingle()
     if (data) setPreparer({ name: data.preparer_name || '', ptin: data.ptin || '', caf: data.caf_number || '', efin: data.efin || '' })
   }
 
   async function load() {
+    if (!myTenantId) return
+    setLoading(true)
     const [r, c, e] = await Promise.all([
-      supabase.from('tax_returns').select('*').order('created_at', { ascending: false }),
-      supabase.from('clients').select('id,name,ssn,filingStatus,assignedTo').order('name'),
-      supabase.from('employees').select('name'),
+      supabase.from('tax_returns').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
+      supabase.from('clients').select('id,name,ssn,filingStatus,assignedTo').eq('tenant_id', myTenantId).order('name'),
+      supabase.from('employees').select('id,name,status').eq('tenant_id', myTenantId).eq('status','Active').order('name'),
     ])
-    // Detect missing table
     if (r.error && (r.error.code === '42P01' || r.error.message?.includes('does not exist'))) {
       setSetupNeeded(true)
+      setReturns([])
+    } else if (r.error) {
+      setSetupNeeded(false)
+      setReturns([])
+      showToast('Tax returns could not be loaded: ' + r.error.message)
     } else {
       setSetupNeeded(false)
       setReturns((r.data || []).map(fromDbReturn))
@@ -395,16 +429,15 @@ export default function TaxReturns() {
   // Log a note on the client's file for tax return events
   async function logReturnNote(noteText) {
     if (!form.clientName) return
-    const tid = user?.app_metadata?.tenant_id || user?.user_metadata?.tenant_id
+    if (!myTenantId) return
     const author = user?.user_metadata?.name || user?.email || 'Staff'
-    // Look up client by name within this tenant
     const { data: clientRow } = await supabase.from('clients')
-      .select('id').eq('tenant_id', tid).ilike('name', form.clientName.trim()).maybeSingle()
+      .select('id').eq('tenant_id', myTenantId).ilike('name', form.clientName.trim()).maybeSingle()
     const client_id = clientRow?.id || null
     await supabase.from('client_notes').insert({
       clientname: form.clientName,
       client_id,
-      tenant_id: tid,
+      tenant_id: myTenantId,
       text: noteText,
       author,
       type: 'Tax Return',
@@ -433,29 +466,50 @@ export default function TaxReturns() {
   }
 
   async function save() {
-    if (!form.clientName) { showToast('Client name required'); return }
+    if (!myTenantId) { showToast('Office context is still loading. Try again in a moment.'); return }
+    if (!form.clientName?.trim()) { showToast('Client name required'); return }
     setSaving(true)
-    const payload = toDbReturnPayload(form, { updated_at: new Date().toISOString() })
-    let error
-    if (current?.id) {
-      ;({ error } = await supabase.from('tax_returns').update(payload).eq('id', current.id))
-    } else {
-      payload.created_at = new Date().toISOString()
-      ;({ error } = await supabase.from('tax_returns').insert([payload]))
-    }
-    setSaving(false)
-    if (error) {
-      // If table doesn't exist yet, show helpful message
-      if (error.message?.includes('does not exist') || error.code === '42P01') {
-        showToast('⚠️ tax_returns table not created yet — see setup instructions')
+    try {
+      const selectedClient = clients.find(c => String(c.name || '').trim().toLowerCase() === form.clientName.trim().toLowerCase())
+      const payload = toDbReturnPayload(form, {
+        tenant_id: myTenantId,
+        client_id: selectedClient?.id ? String(selectedClient.id) : null,
+        updated_at: new Date().toISOString()
+      })
+      let data, error
+      if (current?.id) {
+        ;({ data, error } = await supabase.from('tax_returns')
+          .update(payload)
+          .eq('tenant_id', myTenantId)
+          .eq('id', current.id)
+          .select('*')
+          .single())
       } else {
-        showToast('Error: ' + error.message)
+        payload.created_at = new Date().toISOString()
+        ;({ data, error } = await supabase.from('tax_returns')
+          .insert([payload])
+          .select('*')
+          .single())
       }
-      return
+      if (error) {
+        if (error.message?.includes('does not exist') || error.code === '42P01') {
+          showToast('⚠️ Tax Returns setup is incomplete for this office.')
+        } else {
+          showToast('Error: ' + error.message)
+        }
+        return
+      }
+      if (data) {
+        const saved = fromDbReturn(data)
+        setCurrent(saved)
+        setForm(f => ({ ...f, ...saved }))
+      }
+      showToast('✅ Return saved!')
+      await load()
+      setView('list')
+    } finally {
+      setSaving(false)
     }
-    showToast('✅ Return saved!')
-    load()
-    setView('list')
   }
 
   async function generatePdf() {
@@ -475,17 +529,18 @@ export default function TaxReturns() {
 
   async function deleteReturn(id) { setConfirmDel(id) }
   async function confirmDeleteReturn() {
-    const { error } = await supabase.from('tax_returns').delete().eq('id', confirmDel)
+    const { error } = await supabase.from('tax_returns').delete().eq('tenant_id', myTenantId).eq('id', confirmDel)
     if (error) { showToast('Error: ' + error.message); setConfirmDel(null); return }
     setReturns(prev => prev.filter(i => i.id !== confirmDel)); setConfirmDel(null); showToast('Deleted')
   }
 
   async function updateStatus(id, status) {
-    await supabase.from('tax_returns').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
-    load()
+    const { error } = await supabase.from('tax_returns').update({ status, updated_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', id)
+    if (error) { showToast('Status update failed: ' + error.message); return }
+    await load()
   }
 
-  const reps = employees.length > 0 ? employees.map(e => e.name) : ['Romy Cruz', 'Dana Richard', 'Yesenia Gonzalez']
+  const reps = employees.map(e => e.name).filter(Boolean)
 
   const filtered = returns.filter(r => {
     const q = search.toLowerCase()
@@ -623,16 +678,16 @@ export default function TaxReturns() {
             </thead>
             <tbody>
               {[
-                ['Single',                    'Under 65',                   '$14,600'],
-                ['',                          '65 or older',                '$16,550'],
-                ['Married Filing Jointly',    'Under 65 (both spouses)',    '$29,200'],
-                ['',                          '65 or older (one spouse)',   '$30,750'],
-                ['',                          '65 or older (both spouses)', '$32,300'],
+                ['Single',                    'Under 65',                   '$15,750'],
+                ['',                          '65 or older',                '$17,750'],
+                ['Married Filing Jointly',    'Under 65 (both spouses)',    '$31,500'],
+                ['',                          '65 or older (one spouse)',   '$33,100'],
+                ['',                          '65 or older (both spouses)', '$34,700'],
                 ['Married Filing Separately', 'Any age',                    '$5'],
-                ['Head of Household',         'Under 65',                   '$21,900'],
-                ['',                          '65 or older',                '$23,850'],
-                ['Qualifying Widow(er)',       'Under 65',                   '$29,200'],
-                ['',                          '65 or older',                '$30,750'],
+                ['Head of Household',         'Under 65',                   '$23,625'],
+                ['',                          '65 or older',                '$25,625'],
+                ['Qualifying Surviving Spouse','Under 65',                  '$31,500'],
+                ['',                          '65 or older',                '$33,100'],
               ].map(([status, age, threshold], i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? 'var(--s2)' : 'var(--sf)', borderBottom: '1px solid var(--br)' }}>
                   <td style={{ padding: '7px 12px', color: 'var(--tx)', fontWeight: status ? 600 : 400, borderRight: '1px solid var(--br)' }}>{status}</td>
@@ -643,7 +698,7 @@ export default function TaxReturns() {
             </tbody>
           </table>
         </div>
-        <div style={{ padding: '8px 12px', fontSize: 10, color: 'var(--t3)', borderTop: '1px solid var(--br)' }}>* 2024 tax year thresholds. Updated annually by the IRS. Self-employment income ≥ $400 always requires filing regardless of gross income.</div>
+        <div style={{ padding: '8px 12px', fontSize: 10, color: 'var(--t3)', borderTop: '1px solid var(--br)' }}>* 2025 federal filing thresholds for returns generally filed in 2026. Thresholds can differ for dependents and other special situations. Self-employment net earnings of $400 or more generally require filing.</div>
       </div>
 
       {/* Filters */}
