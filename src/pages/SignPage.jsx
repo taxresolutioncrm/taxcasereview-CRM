@@ -8,7 +8,7 @@ import { FIRM, loadFirmBrandingPublic } from '../lib/firmBranding'
 // signing page's agreement body reads for whichever firm the signer is
 // signing with, not just the primary tenant. Prefers the tenant's own
 // settings.email; falls back to a name-derived .com only when unset.
-const firmName  = () => FIRM.name || 'Tax Case Review'
+const firmName  = () => FIRM.name || 'Firm'
 const firmEmail = () =>
   (FIRM.email || '').trim() ||
   'info@' + firmName().toLowerCase().replace(/[^a-z0-9]+/g, '') + '.com'
