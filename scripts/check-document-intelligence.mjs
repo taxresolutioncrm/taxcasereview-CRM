@@ -34,7 +34,7 @@ assert(docs.includes('hasDocumentFile') && docs.includes('storage_path || doc?.f
 assert(prepared.includes('latestCompleteRunIds'), 'prepared file shows current analysis instead of duplicate historical runs')
 
 assert(prepared.includes('Select a client to open their intelligence workspace, analyze documents, and review AI findings.'), 'selector copy matches the TaxRes family experience')
-assert(prepared.includes("onClick={()=>navigate('/documents')}"), 'selector includes direct Documents access')
+assert(prepared.includes('>AI Documents</button>'), 'selector exposes AI Documents')
 assert(prepared.includes('Resolve from CRM'), 'open questions can be re-checked against CRM data')
 assert(prepared.includes('Reading ${batchProgress.current} of ${batchProgress.total}'), 'batch analysis exposes live X-of-Y progress')
 assert(prepared.includes(".endsWith('.taxcasereview-crm.pages.dev')") && prepared.includes(".endsWith('.nashville-tax-crm.pages.dev')"), 'Cloudflare branch previews use sandbox AI functions')
@@ -74,3 +74,12 @@ assert(docs.includes("countMode") && docs.includes("'planned'") && docs.includes
 assert(docs.includes("navigate('/ai-intelligence')"), 'Documents can open AI Intelligence even before a client is selected')
 
 assert(docs.includes(".eq('tenant_id', myTenantId)"), 'shared TaxRes document queries are tenant-filtered')
+
+
+assert(prepared.includes('>AI Documents</button>'), 'AI selector exposes AI Documents, not normal Documents')
+assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')"), 'AI Documents opens the selected client File Review workspace')
+assert(prepared.includes("location.pathname.startsWith('/ai-documents/')"), 'legacy AI Documents client links open File Review')
+assert(!prepared.includes("onClick={()=>navigate('/documents')}>Documents</button>"), 'AI selector does not leave AI for the normal Documents library')
+assert(app.includes('path="/ai-documents/:clientId"'), 'client-specific AI Documents compatibility route exists')
+
+assert(prepared.includes("searchParams.get('tab') === 'documents' || location.pathname.startsWith('/ai-documents/')"), 'AI Documents deep link forces File Review after route change')
