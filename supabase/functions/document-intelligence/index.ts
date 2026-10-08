@@ -543,6 +543,18 @@ serve(async (req) => {
       }).eq('id', run.id)
       if (finishErr) throw finishErr
 
+      let autoResolution = { resolved:0, remaining:0, resolutions:[] as any[] }
+      try {
+        const { count: openCount } = await userClient.from('document_ai_questions')
+          .select('id', { count:'exact', head:true })
+          .eq('client_id',effectiveClientId).eq('status','open')
+        if (Number(openCount || 0) > 0) {
+          autoResolution = await resolveOpenQuestions(userClient,geminiKey,String(effectiveClientId))
+        }
+      } catch (resolveErr:any) {
+        console.error('[document-intelligence:auto-resolve]',redactText(resolveErr?.message||resolveErr))
+      }
+
       return reply({
         ok: true,
         runId: run.id,
@@ -550,6 +562,7 @@ serve(async (req) => {
         taxYear: Number.isInteger(parsed.tax_year) ? parsed.tax_year : null,
         summary: safeSummary,
         counts: { facts: facts.length, entities: entities.length, questions: questions.length },
+        questionResolution: { resolved:autoResolution.resolved, remaining:autoResolution.remaining },
         model: MODEL,
         sourceProject: sourceKey,
       })
