@@ -5,8 +5,6 @@
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
-const FALLBACK_ADDRESS = '631 US Highway One Ste 304, North Palm Beach, FL 33408'
-
 function bytesToBase64(bytes) {
   let binary = ''
   const chunk = 0x8000
@@ -52,9 +50,9 @@ export async function generateInvoicePdfBase64(inv, firm = {}) {
   const marginX = 50
   let y = height - 56
 
-  const name    = firm.name    || 'Tax Case Review'
-  const tagline = firm.tagline || 'IRS Resolution Services'
-  const address = firm.address || FALLBACK_ADDRESS
+  const name    = firm.name || 'Firm'
+  const tagline = firm.tagline || ''
+  const address = firm.address || ''
 
   // Try to embed the firm's real logo. If it can't be fetched/decoded for
   // any reason, fall back to a plain text header — never block the PDF.
