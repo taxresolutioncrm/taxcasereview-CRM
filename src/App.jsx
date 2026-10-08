@@ -283,6 +283,7 @@ function Shell() {
             <Route path="/ai-intelligence" element={<PreparedFile />} />
             <Route path="/ai-intelligence/:clientId" element={<PreparedFile />} />
             <Route path="/ai-documents" element={<PreparedFile />} />
+            <Route path="/ai-documents/:clientId" element={<PreparedFile />} />
             <Route path="/ai-file-review" element={<Navigate to="/ai-intelligence" replace />} />
             <Route path="/ai-file-review/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
             <Route path="/prepared-file/:clientId" element={<Guard section="documents"><PreparedFile /></Guard>} />
