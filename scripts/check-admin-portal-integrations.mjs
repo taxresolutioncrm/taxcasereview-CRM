@@ -13,6 +13,7 @@ const replenisher=read('supabase/functions/linkedin-queue-replenisher/index.ts')
 const bing=read('supabase/functions/bing-data/index.ts')
 const migration=read('supabase/migrations/20261007_linkedin_autopilot_regression_repair.sql')
 const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queue_autopilot.sql')
+const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
   ['portfolio uses live metrics batch',admin.includes("action:'metrics_batch'")&&admin.includes('portfolioCrmStatus')],
@@ -21,8 +22,8 @@ const checks=[
   ['stale metrics deploy instructions removed',!admin.includes('metrics deploy pending')&&!admin.includes('push-platform-metrics')&&!admin.includes('Deploy the platform-metrics edge function')],
   ['stale historical blockers removed',!admin.includes('arcvena.com DNS cutover not complete')&&!admin.includes('GH Actions minutes exhausted')],
   ['content center supports browser preflight',content.includes("req.method==='OPTIONS'")&&content.includes('x-force-regenerate')],
-  ['hub forwards central admin session to Camvella',hub.includes("productKey === 'camvella'")&&hub.includes("productHeaders['Authorization'] = \`Bearer \${jwt}\`")],
-  ['hub forwards central admin session to BocaSync',hub.includes("productKey === 'bocasync'")&&hub.includes("BocaSync metrics require an authenticated RomyLabs admin session")],
+  ['hub refreshes Camvella server-to-server',hub.includes("camvella: 'CAMVELLA_SUPPORT_SECRET'")&&hub.includes("x-romylabs-support-secret")],
+  ['hub refreshes BocaSync server-to-server',!hub.includes("BocaSync metrics require an authenticated RomyLabs admin session")&&hub.includes("productHeaders['x-hub-secret'] = hubSecret")],
   ['hub uses product support credentials',hub.includes("groundivo: 'GROUNDIVO_SUPPORT_SECRET'")&&hub.includes("oculivo: 'OCULIVO_SUPPORT_SECRET'")&&hub.includes("restore_relay: 'RESTORE_RELAY_SUPPORT_SECRET'")&&hub.includes("x-romylabs-support-secret")],
   ['hub keeps Arcvena server-side credential path',hub.includes("arcvena: 'ARCVENA_SUPPORT_SECRET'")&&hub.includes("x-arcvena-support-secret")],
   ['Admin Portal subscribes to live metrics cache',admin.includes("channel('romylabs-admin-metrics-live')")&&admin.includes("table:'romylabs_metrics_cache'")&&admin.includes('liveMetricsVersion')],
@@ -40,7 +41,9 @@ const checks=[
   ['legacy TaxRes replenisher accepts member or organization target',replenisher.includes('publishTargetReady')&&replenisher.includes("targetType==='PERSON'")&&replenisher.includes('publish_target_not_ready')],
   ['database publisher is product scoped',migration.includes("v_post.product_id='arcvena'")&&migration.includes("elsif nullif(v_conn.linkedin_person_id,'') is not null")],
   ['database publisher supports organization and person authors',migration.includes("'urn:li:organization:'||v_conn.linkedin_organization_id")&&migration.includes("'urn:li:person:'||v_conn.linkedin_person_id")],
-  ['autopilot replenishes TaxRes and Arcvena hourly without Actions',autopilotMigration.includes("'linkedin-taxres-queue-autopilot'")&&autopilotMigration.includes("'linkedin-arcvena-queue-autopilot'")&&autopilotMigration.includes("'tcr_internal_cron_token'")],
+  ['TaxRes LinkedIn queue no longer has duplicate hourly/daily generators',taxresCadenceMigration.includes("'linkedin-taxres-queue-autopilot'")&&taxresCadenceMigration.includes("'linkedin-queue-replenishment-supabase'")],
+  ['TaxRes LinkedIn publishes only Tue/Thu 9 AM ET with no stale catch-up',taxresCadenceMigration.includes("extract(isodow from scheduled_at at time zone 'America/New_York') in (2,4)")&&taxresCadenceMigration.includes("extract(hour from scheduled_at at time zone 'America/New_York') = 9")&&taxresCadenceMigration.includes("scheduled_at >= now() - interval '2 hours'")],
+  ['Monday scheduler remains the sole TaxRes generator path',scheduler.includes("clock.day==='Mon'&&clock.hour===7")&&scheduler.includes("action==='generate_monday_drafts'||action==='generate_content'")],
   ['Bing state comes from Bing verification',bing.includes('GetUserSites')&&bing.includes('VerifySite')&&bing.includes("status:'configured'")&&bing.includes('last_verified_at')],
 ]
 let failed=0
