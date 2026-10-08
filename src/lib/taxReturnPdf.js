@@ -24,6 +24,16 @@ export async function generateTaxReturnPdf(form, totals, preparer = {}) {
   const pdfDoc = await PDFDocument.create()
   const boldFont   = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  let firmLogo = null, firmLogoW = 0, firmLogoH = 0
+  if (FIRM.logoUrl) {
+    try {
+      const res = await fetch(FIRM.logoUrl)
+      const bytes = await res.arrayBuffer()
+      try { firmLogo = await pdfDoc.embedPng(bytes) } catch { firmLogo = await pdfDoc.embedJpg(bytes) }
+      firmLogoH = 30
+      firmLogoW = Math.min(110, (firmLogo.width / firmLogo.height) * firmLogoH)
+    } catch (_) {}
+  }
 
   const W = 612, H = 792
   const ML = 48, MR = 564, MT = 750
@@ -44,8 +54,13 @@ export async function generateTaxReturnPdf(form, totals, preparer = {}) {
   function drawHeader() {
     // Top bar
     page.drawRectangle({ x: 0, y: H - 52, width: W, height: 52, color: COLORS.blue })
-    page.drawText((FIRM.name || 'Firm').toUpperCase(), { x: ML, y: H - 28, size: 14, font: boldFont, color: COLORS.white })
-    page.drawText([FIRM.phone, FIRM.fax && ('Fax: '+FIRM.fax)].filter(Boolean).join('  |  '), { x: ML, y: H - 43, size: 8, font: regularFont, color: rgb(0.7, 0.8, 1) })
+    let headerX = ML
+    if (firmLogo) {
+      page.drawImage(firmLogo, { x:ML, y:H-43, width:firmLogoW, height:firmLogoH })
+      headerX = ML + firmLogoW + 12
+    }
+    page.drawText((FIRM.name || 'Firm').toUpperCase(), { x: headerX, y: H - 28, size: 14, font: boldFont, color: COLORS.white })
+    page.drawText([FIRM.phone, FIRM.fax && ('Fax: '+FIRM.fax)].filter(Boolean).join('  |  '), { x: headerX, y: H - 43, size: 8, font: regularFont, color: rgb(0.7, 0.8, 1) })
 
     const returnLabel = form.returnType || 'Tax Return'
     const labelW = boldFont.widthOfTextAtSize(returnLabel, 10)
