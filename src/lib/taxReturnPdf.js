@@ -44,7 +44,7 @@ export async function generateTaxReturnPdf(form, totals, preparer = {}) {
   function drawHeader() {
     // Top bar
     page.drawRectangle({ x: 0, y: H - 52, width: W, height: 52, color: COLORS.blue })
-    page.drawText((FIRM.name || 'Tax Case Review').toUpperCase(), { x: ML, y: H - 28, size: 14, font: boldFont, color: COLORS.white })
+    page.drawText((FIRM.name || 'Firm').toUpperCase(), { x: ML, y: H - 28, size: 14, font: boldFont, color: COLORS.white })
     page.drawText([FIRM.phone, FIRM.fax && ('Fax: '+FIRM.fax)].filter(Boolean).join('  |  '), { x: ML, y: H - 43, size: 8, font: regularFont, color: rgb(0.7, 0.8, 1) })
 
     const returnLabel = form.returnType || 'Tax Return'
@@ -117,7 +117,7 @@ export async function generateTaxReturnPdf(form, totals, preparer = {}) {
   page.drawText(`Filing Status: ${form.filingStatus || '—'}`, { x: ML + 10, y: y - 36, size: 9, font: regularFont, color: COLORS.gray })
   page.drawText(`Return Type: ${form.returnType || '—'}`, { x: ML + 10, y: y - 48, size: 9, font: regularFont, color: COLORS.gray })
 
-  const prepName = preparer.name || FIRM.name || 'Tax Case Review'
+  const prepName = preparer.name || FIRM.name || 'Firm'
   const prepStr = `Prepared by: ${prepName}  |  PTIN: ${preparer.ptin || '—'}  |  Date: ${new Date().toLocaleDateString()}`
   page.drawText(prepStr, { x: MR - regularFont.widthOfTextAtSize(prepStr, 8) - 10, y: y - 20, size: 8, font: regularFont, color: COLORS.gray })
   page.drawText(`Return #: ${form.returnNum || 'DRAFT'}`, { x: MR - regularFont.widthOfTextAtSize(`Return #: ${form.returnNum || 'DRAFT'}`, 8) - 10, y: y - 36, size: 8, font: regularFont, color: COLORS.gray })
