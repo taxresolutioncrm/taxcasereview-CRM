@@ -84,3 +84,9 @@ assert(!prepared.includes("onClick={()=>navigate('/documents')}>Documents</butto
 assert(!prepared.includes('disabled={!selectedClientId}'), 'AI selector actions remain clickable before client selection')
 assert(prepared.includes("setError('Select a client first.'); return"), 'AI selector gives explicit guidance when no client is selected')
 assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')"), 'AI Documents still opens selected client File Review')
+
+assert(prepared.includes('placeholder="Search client files…"'), 'AI selector can search client files')
+assert(prepared.includes('Upload document to selected client'), 'AI selector exposes direct document upload')
+assert(prepared.includes('async function uploadFromLanding()'), 'AI selector landing upload is implemented')
+assert(prepared.includes("functions.invoke(documentIntelligenceFunction"), 'landing upload invokes Document Intelligence')
+assert(prepared.includes("navigate('/ai-intelligence/' + selected.id + '?tab=documents')"), 'landing upload opens client File Review after analysis')
