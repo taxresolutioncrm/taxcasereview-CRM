@@ -81,3 +81,5 @@ assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?ta
 assert(prepared.includes("searchParams.get('tab') === 'documents' ? 'documents' : 'overview'"), 'AI document deep links open on File Review')
 assert(!prepared.includes("onClick={()=>navigate('/documents')}>Documents</button>"), 'AI selector does not leave AI for the normal Documents library')
 assert(app.includes('path="/ai-documents/:clientId"'), 'client-specific AI Documents compatibility route exists')
+
+assert(prepared.includes("if (searchParams.get('tab') === 'documents') setTab('documents')"), 'AI Documents deep link forces File Review after route change')
