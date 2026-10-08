@@ -250,6 +250,8 @@ Deno.serve(async (req) => {
         productHeaders['x-hub-secret'] = hubSecret
       }
 
+      if (jwt && !productHeaders['Authorization']) productHeaders['Authorization'] = `Bearer ${jwt}`
+
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 10000)
       const productRes = await fetch(targetUrl, {
