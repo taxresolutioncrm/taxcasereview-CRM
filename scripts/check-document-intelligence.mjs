@@ -90,3 +90,8 @@ assert(prepared.includes('Upload document to selected client'), 'AI selector exp
 assert(prepared.includes('async function uploadFromLanding()'), 'AI selector landing upload is implemented')
 assert(prepared.includes("functions.invoke(documentIntelligenceFunction"), 'landing upload invokes Document Intelligence')
 assert(prepared.includes("navigate('/ai-intelligence/' + selected.id + '?tab=documents')"), 'landing upload opens client File Review after analysis')
+
+assert(prepared.includes('placeholder="Search this client\'s files…"'), 'File Review can search within the selected client\'s documents')
+assert(prepared.includes('const visibleDocuments = docs.filter'), 'File Review filters client documents locally')
+assert(prepared.includes("onClick={()=>openSource(d.id)}"), 'File Review can open an attached client document')
+assert(prepared.includes('No client files match that search.'), 'File Review exposes a no-match search state')
