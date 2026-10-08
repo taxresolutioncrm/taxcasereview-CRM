@@ -330,23 +330,27 @@ export default function PreparedFile() {
         <div className="page-header">
           <div>
             <h1>AI Intelligence</h1>
-            <p>Select a client to open their prepared file, analyze documents, and review AI findings.</p>
+            <p>Select a client to open their intelligence workspace, analyze documents, and review AI findings.</p>
           </div>
         </div>
 
         {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
 
-
-
-        <div className="card" style={{maxWidth:760}}>
-          <div className="form-group" style={{marginBottom:12}}>
-            <label>Client</label>
-            <select className="select" value={selectedClientId} onChange={e=>setSelectedClientId(e.target.value)}>
-              <option value="">Select a client…</option>
-              {clientOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+        <div className="card" style={{maxWidth:760,padding:20}}>
+          <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>Client</div>
+          <div style={{fontSize:12,color:'var(--t3)',marginBottom:12}}>
+            Choose the client first. Upload and analysis run inside that client's workspace so every document and AI finding stays linked correctly.
           </div>
-          <div style={{display:'flex',gap:8}}>
+          <select
+            className="select"
+            value={selectedClientId}
+            onChange={e=>setSelectedClientId(e.target.value)}
+            style={{width:'100%',marginBottom:12}}
+          >
+            <option value="">Select a client…</option>
+            {clientOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <button className="btn primary" disabled={!selectedClientId} onClick={()=>navigate('/ai-intelligence/' + selectedClientId)}>
               Open AI Intelligence
             </button>
