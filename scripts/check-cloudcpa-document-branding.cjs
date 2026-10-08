@@ -26,6 +26,7 @@ const files = [
 ]
 
 const failures = []
+const firmBranding = fs.readFileSync('src/lib/firmBranding.js','utf8')
 const stripComments = s => s
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .split('\n')
@@ -63,11 +64,16 @@ need('src/pages/Payroll.jsx', 'firm?.logourl', 'pay stubs do not use tenant logo
 need('src/pages/Payments.jsx', 'FIRM.logoUrl', 'payment receipts do not use tenant logo')
 need('src/lib/exportUtils.js', 'FIRM.logoUrl', 'PDF exports do not use tenant logo')
 need('src/lib/emailTemplate.js', 'FIRM.logoUrl', 'outgoing branded email wrapper does not use tenant logo')
+need('src/lib/firmBranding.js', "supabase.rpc('current_tenant_id')", 'firm branding must resolve authoritative tenant')
+need('src/lib/firmBranding.js', "if (!tenantHint)", 'public branding must reject ambiguous no-tenant lookup')
+
 
 const contactMigration = fs.readFileSync('supabase/migrations/20261008173500_cloudcpa_contact_branding_cleanup.sql','utf8')
 if (!contactMigration.includes("logourl = '/cloudcpa-logo.png'")) failures.push('CloudCPA logo migration missing')
 if (!contactMigration.includes("phone = '+15612039464'")) failures.push('CloudCPA company phone migration missing')
 if (!contactMigration.includes("firm_fax_number = '+15613280029'")) failures.push('CloudCPA fax migration missing')
+if (firmBranding.includes("localStorage.setItem('tcr_firm_branding'")) failures.push('Global tenant branding cache can bleed another office into CloudCPA')
+if (/booking_get_public_meta',\s*args/.test(firmBranding)) failures.push('Public firm branding still has ambiguous no-tenant RPC path')
 
 if (failures.length) {
   console.error('CloudCPA document branding check FAILED:')
