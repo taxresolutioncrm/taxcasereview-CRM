@@ -257,7 +257,7 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
           ${rows.map(([act, d]) => `<tr><td>${act}</td><td>${d.count}</td><td>${Number(d.hours).toFixed(2)}h</td><td>$${Number(d.amount).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#92400e">$${Number(d.wip).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#15803d">$${Number(d.billed).toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>`).join('')}
           <tr class="total"><td>TOTAL</td><td>${entries.length}</td><td>${totH.toFixed(2)}h</td><td>$${totA.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#92400e">$${totW.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#15803d">$${totB.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>
           </tbody></table>
-          <div class="footer">${FIRM.name || 'Tax Case Review'} · Confidential</div>
+          <div class="footer">${FIRM.name || 'Firm'} · Confidential</div>
           </body></html>`)
           w.document.close(); setTimeout(() => w.print(), 400)
         }
