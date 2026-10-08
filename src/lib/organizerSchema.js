@@ -33,7 +33,7 @@ We may not begin preparing your return until all questions are answered and all 
     id: 'personal',
     title: 'Personal Information',
     questions: [
-      { id: 'filed_before', label: 'Have you previously filed with Tax Case Review?', type: 'yesno' },
+      { id: 'filed_before', label: 'Have you previously filed with our office?', type: 'yesno' },
       { id: 'claimed_dependent', label: 'Can you and/or your spouse be claimed as a dependent by another taxpayer?', type: 'yesno' },
       { id: 'claimed_dependent_explain', label: 'Please explain.', type: 'textarea', showIf: { claimed_dependent: 'Yes' } },
       { id: 'refund_pref', label: 'In case of an overpayment, would you like it refunded or applied to next year\'s estimated tax payments?', type: 'select', options: ['Refunded','Apply Next Year'] },
