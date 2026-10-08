@@ -296,331 +296,107 @@ export default function TaxReturns() {
     let timer = null
 
     const scanSources = async () => {
-      const selectedClient = clients.find(c => String(c.name || '').trim().toLowerCase() === form.clientName.trim().toLowerCase())
-      let q = supabase.from('tax_doc_uploads')
-        .select('id,client_id,client_name,tax_year,doc_type,file_name,parsed_data,created_at')
-        .eq('tenant_id', myTenantId)
-        .eq('tax_year', String(form.taxYear))
-        .order('created_at',{ascending:false})
-      q = selectedClient?.id
-        ? q.or(`client_id.eq.${selectedClient.id},client_name.ilike.${form.clientName.trim()}`)
-        : q.ilike('client_name', form.clientName.trim())
-      const { data, error } = await q
-      if (cancelled) return
-      if (error) {
-        console.error('Tax return source scan failed:', error)
-        return
-      }
-      setSourceDocs(data || [])
-      setSourceScanAt(new Date())
-    }
-
-    scanSources()
-    const channel = supabase.channel(`tax-doc-scan:${myTenantId}:${form.taxYear}`)
-      .on('postgres_changes', {
-        event:'*', schema:'public', table:'tax_doc_uploads', filter:`tenant_id=eq.${myTenantId}`
-      }, () => {
-        clearTimeout(timer)
-        timer = setTimeout(scanSources, 150)
-      })
-      .subscribe()
-
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-      supabase.removeChannel(channel)
-    }
-  }, [myTenantId, form.clientName, form.taxYear, clients])
-
-  async function loadEfileStatus() {
-    setEfileStatus(s => ({ ...s, loading:true }))
-    const { data, error } = await supabase.functions.invoke('submit-to-irs', { body: { action:'status' } })
-    if (error || !data?.success) {
-      setEfileStatus({
-        loading:false,
-        configured:false,
-        providerName:'',
-        efinPresent:false,
-        adapterConfigured:false,
-        message:data?.error || error?.message || 'E-file configuration could not be verified.'
-      })
-      return
-    }
-    setEfileStatus({
-      loading:false,
-      configured:Boolean(data.configured),
-      providerName:data.providerName || '',
-      efinPresent:Boolean(data.efinPresent),
-      adapterConfigured:Boolean(data.adapterConfigured),
-      message:data.message || ''
-    })
-  }
-
-  async function loadPreparer() {
-    if (!myTenantId) return
-    const { data } = await supabase.from('settings')
-      .select('preparer_name,ptin,caf_number,efin')
-      .eq('tenant_id', myTenantId)
-      .maybeSingle()
-    if (data) setPreparer({ name: data.preparer_name || '', ptin: data.ptin || '', caf: data.caf_number || '', efin: data.efin || '' })
-  }
-
-  async function load() {
-    if (!myTenantId) return
-    setLoading(true)
-    const [r, c, e] = await Promise.all([
-      supabase.from('tax_returns').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
-      supabase.from('clients').select('id,name,ssn,filingStatus,assignedTo').eq('tenant_id', myTenantId).order('name'),
-      supabase.from('employees').select('id,name,status').eq('tenant_id', myTenantId).eq('status','Active').order('name'),
-    ])
-    if (r.error && (r.error.code === '42P01' || r.error.message?.includes('does not exist'))) {
-      setSetupNeeded(true)
-      setReturns([])
-    } else if (r.error) {
-      setSetupNeeded(false)
-      setReturns([])
-      showToast('Tax returns could not be loaded: ' + r.error.message)
-    } else {
-      setSetupNeeded(false)
-      setReturns((r.data || []).map(fromDbReturn))
-    }
-    setClients(c.data || [])
-    setEmployees(e.data || [])
-    setLoading(false)
-  }
-
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
-  function openNew() {
-    setForm({ ...BLANK_RETURN })
-    setCurrent(null)
-    setTab('income')
-    setView('upload')
-  }
-
-  function handleDocsParsed(parsedDocs, options = {}) {
-    console.log('handleDocsParsed received:', JSON.stringify(parsedDocs))
-    // Auto-detect return type from uploaded docs
-    const docTypes = parsedDocs.map(p => p.docType)
-    let autoReturnType = null
-    if (docTypes.some(d => d === 'K-1 (1065)'))       autoReturnType = '1065 Partnership'
-    else if (docTypes.some(d => d === 'K-1 (1120-S)')) autoReturnType = '1120S S-Corp'
-    else if (docTypes.some(d => d === 'Schedule C (prior)')) autoReturnType = 'Federal 1040'
-    else if (docTypes.some(d => ['W-2','1099-NEC','1099-INT','1099-DIV','1099-R','1099-G'].includes(d))) autoReturnType = 'Federal 1040'
-
-    // Helper to safely parse any numeric value Claude might return
-    const n = (v) => { const f = parseFloat(String(v || '').replace(/[^0-9.-]/g,'')); return isNaN(f) ? 0 : f }
-
-    // Map parsed doc data into the return form fields
-    const updates = {}
-    if (autoReturnType) updates.returnType = autoReturnType
-    parsedDocs.forEach(({ docType, data }) => {
-      if (!data) return
-      console.log('Processing docType:', docType, 'data keys:', Object.keys(data))
-      if (docType === 'W-2') {
-        const w2Wages = data.wages ?? data.box1_wages ?? 0
-        const w2Fed   = data.federalWithheld ?? data.box2_federal_withheld ?? 0
-        updates.wages       = (n(updates.wages) + n(w2Wages)).toFixed(2)
-        updates.withholding = (n(updates.withholding) + n(w2Fed)).toFixed(2)
-        // Grab employer/employee info from first W-2
-        if (!updates.w2_employer_name) updates.w2_employer_name = data.employer_name || ''
-        if (!updates.w2_employer_ein)  updates.w2_employer_ein  = data.employer_ein  || ''
-        if (!updates.w2_employee_ssn)  updates.w2_employee_ssn  = data.employee_ssn  || ''
-        // Client name from W-2 employee name
-        if (!updates.clientName && data.employee_name) updates.clientName = data.employee_name
-      }
-      if (docType === '1099-NEC') {
-        const necComp = data.nonEmployeeCompensation ?? data.box1_nonemployee_comp ?? data.box1NonemployeeComp ?? 0
-        const necFed = data.federalWithheld ?? data.box4_federal_withheld ?? 0
-        updates.businessIncome = (n(updates.businessIncome) + n(necComp)).toFixed(2)
-        updates.withholding = (n(updates.withholding) + n(necFed)).toFixed(2)
-      }
-      if (docType === '1099-INT') {
-        updates.interest = (n(updates.interest) + n(data.box1_interest_income)).toFixed(2)
-      }
-      if (docType === '1099-DIV') {
-        updates.dividends = (n(updates.dividends) + n(data.box1a_total_dividends)).toFixed(2)
-        updates.capitalGains = (n(updates.capitalGains) + n(data.box2a_capital_gain_distrib)).toFixed(2)
-      }
-      if (docType === '1099-R') {
-        updates.retirementIncome = (n(updates.retirementIncome) + n(data.box2a_taxable_amount)).toFixed(2)
-        updates.withholding = (n(updates.withholding) + n(data.box4_federal_withheld)).toFixed(2)
-      }
-      if (docType === '1099-G') {
-        updates.otherIncome = (n(updates.otherIncome) + n(data.box1_unemployment_comp)).toFixed(2)
-      }
-      if (docType === 'K-1 (1065)' || docType === 'K-1 (1120-S)') {
-        updates.businessIncome = (parseFloat(updates.businessIncome || 0) + parseFloat(data.box1_ordinary_income || 0)).toFixed(2)
-        updates.interest = (parseFloat(updates.interest || 0) + parseFloat(data.box5_interest || 0)).toFixed(2)
-        updates.dividends = (parseFloat(updates.dividends || 0) + parseFloat(data.box6a_dividends || 0)).toFixed(2)
-        updates.capitalGains = (parseFloat(updates.capitalGains || 0) + parseFloat(data.box9a_capital_gain || data.box9_capital_gain || 0)).toFixed(2)
-      }
-      if (docType === 'Schedule C (prior)') {
-        updates.businessIncome = (parseFloat(updates.businessIncome || 0) + parseFloat(data.net_profit || 0)).toFixed(2)
-      }
-      // Try to grab client name from first doc if not set
-      if (!updates.clientName && (data.employee_name || data.recipient_name)) {
-        updates.clientName = data.employee_name || data.recipient_name
-      }
-    })
-    console.log('handleDocsParsed updates to apply:', JSON.stringify(updates))
-    setForm(f => {
-      const merged = options.mode === 'review-edit' ? { ...f, ...updates } : { ...f, ...updates }
-      console.log('form after merge wages:', merged.wages, 'withholding:', merged.withholding)
-      return merged
-    })
-    setTab('income')
-    setView('edit')
-    showToast(`✅ ${parsedDocs.length} document${parsedDocs.length > 1 ? 's' : ''} parsed — fields pre-filled!`)
-  }
-
-  // Log a note on the client's file for tax return events
-  async function logReturnNote(noteText) {
-    if (!form.clientName) return
-    if (!myTenantId) return
-    const author = user?.user_metadata?.name || user?.email || 'Staff'
-    const { data: clientRow } = await supabase.from('clients')
-      .select('id').eq('tenant_id', myTenantId).ilike('name', form.clientName.trim()).maybeSingle()
-    const client_id = clientRow?.id || null
-    await supabase.from('client_notes').insert({
-      clientname: form.clientName,
-      client_id,
-      tenant_id: myTenantId,
-      text: noteText,
-      author,
-      type: 'Tax Return',
-      note_type: 'Tax Return',
-      visible_to_client: false,
-      created_at: new Date().toISOString()
-    })
-  }
-
-  function openEdit(ret) {
-    setForm({ ...BLANK_RETURN, ...ret })
-    setCurrent(ret)
-    setTab('income')
-    setView('edit')
-  }
-
-  function fld(k, v) { setForm(f => ({ ...f, [k]: v })) }
-
-  function onClientChange(name) {
-    fld('clientName', name)
-    const c = clients.find(c => c.name === name)
-    if (c) {
-      if (c.filingStatus) fld('filingStatus', c.filingStatus)
-      if (c.assignedTo) fld('assignedTo', c.assignedTo)
-    }
-  }
-
-  async function save() {
-    if (!myTenantId) { showToast('Office context is still loading. Try again in a moment.'); return }
-    if (!form.clientName?.trim()) { showToast('Client name required'); return }
-    setSaving(true)
-    try {
-      const selectedClient = clients.find(c => String(c.name || '').trim().toLowerCase() === form.clientName.trim().toLowerCase())
-      const payload = toDbReturnPayload(form, {
-        tenant_id: myTenantId,
-        client_id: selectedClient?.id ? String(selectedClient.id) : null,
-        updated_at: new Date().toISOString()
-      })
-      let data, error
-      if (current?.id) {
-        ;({ data, error } = await supabase.from('tax_returns')
-          .update(payload)
-          .eq('tenant_id', myTenantId)
-          .eq('id', current.id)
-          .select('*')
-          .single())
-      } else {
-        payload.created_at = new Date().toISOString()
-        ;({ data, error } = await supabase.from('tax_returns')
-          .insert([payload])
-          .select('*')
-          .single())
-      }
-      if (error) {
-        if (error.message?.includes('does not exist') || error.code === '42P01') {
-          showToast('⚠️ Tax Returns setup is incomplete for this office.')
-        } else {
-          showToast('Error: ' + error.message)
-        }
-        return
-      }
-      if (data) {
-        const saved = fromDbReturn(data)
-        setCurrent(saved)
-        setForm(f => ({ ...f, ...saved }))
-      }
-      showToast('✅ Return saved!')
-      await load()
-      setView('list')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function generatePdf() {
-    setGenPdf(true)
-    try {
-      const { generateTaxReturnPdf: gen, downloadTaxReturnPdf: dl } = await import('../lib/taxReturnPdf')
-      const bytes = await gen(form, totals, preparer)
-      dl(bytes, form)
-      showToast('✅ PDF downloaded!')
-    } catch(e) {
-      showToast('PDF error: ' + e.message)
-      console.error(e)
-    } finally {
-      setGenPdf(false)
-    }
-  }
-
-  async function deleteReturn(id) { setConfirmDel(id) }
-  async function confirmDeleteReturn() {
-    const { error } = await supabase.from('tax_returns').delete().eq('tenant_id', myTenantId).eq('id', confirmDel)
-    if (error) { showToast('Error: ' + error.message); setConfirmDel(null); return }
-    setReturns(prev => prev.filter(i => i.id !== confirmDel)); setConfirmDel(null); showToast('Deleted')
-  }
-
-  async function updateStatus(id, status) {
-    const { error } = await supabase.from('tax_returns').update({ status, updated_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', id)
-    if (error) { showToast('Status update failed: ' + error.message); return }
-    await load()
-  }
-
-  const reps = employees.map(e => e.name).filter(Boolean)
-
-  const filtered = returns.filter(r => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || r.clientName?.toLowerCase().includes(q) || r.returnNum?.includes(q)
-    const matchYear = filterYear === 'All' || r.taxYear === filterYear
-    const matchStatus = filterStatus === 'All' || r.status === filterStatus
-    return matchSearch && matchYear && matchStatus
-  })
-
-  const totals = calcTotals(form)
-  const stdDed = { 'Single': 14600, 'Married Filing Jointly': 29200, 'Married Filing Separately': 14600, 'Head of Household': 21900, 'Qualifying Surviving Spouse': 29200 }
-
-  const is1040    = form.returnType?.includes('1040') || form.returnType === 'Federal 1040'
-  const is1120S   = form.returnType === '1120S S-Corp'
-  const is1120C   = form.returnType === '1120 C-Corp'
-  const is1065    = form.returnType === '1065 Partnership'
-  const is941     = form.returnType === '941 Quarterly Payroll'
-  const is940     = form.returnType === '940 FUTA Annual'
-  const isState   = form.returnType === 'State Return'
-  const isSchedC  = form.returnType === 'Federal 1040'
-  const isBusiness = is1120S || is1065 || is1120C
-  const isPayroll  = is941 || is940
-
-  const statusColors = { Draft:'bn', 'In Review':'ba', 'Client Review':'ba', 'Ready to File':'bb', Filed:'bg', Accepted:'bg', Rejected:'br', Amended:'bw' }
-
-  const selectedClient = clients.find(c => String(c.name || '').trim().toLowerCase() === String(form.clientName || '').trim().toLowerCase()) || null
+      const selectedClient = clients.find(c => String(c.name || '').trim().toLowerCase() === String(form.clientName || '').trim().toLowerCase()) || null
   const sourceDocTypes = sourceDocs.reduce((acc,d) => {
     const k = d.doc_type || 'Other'
     acc[k] = (acc[k] || 0) + 1
     return acc
   }, {})
-  const money = v => ' = ({ label, field, help }) => (
+  const money = v => '$' + Number(v || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+  const num = k => Number(form[k] || 0)
+
+  function buildReturnFacts() {
+    const facts = []
+    const add = (label, value, tone='normal') => {
+      if (value === undefined || value === null || value === '') return
+      facts.push({ label, value:String(value), tone })
+    }
+
+    add('Client', form.clientName || 'Not selected')
+    add('Tax Year', form.taxYear)
+    add('Return Type', form.returnType)
+    add('Filing Status', form.filingStatus)
+    add('Assigned Rep', form.assignedTo || selectedClient?.assignedTo || 'Unassigned')
+    add('Source Documents', sourceDocs.length)
+    if (Object.keys(sourceDocTypes).length) add('Documents Found', Object.entries(sourceDocTypes).map(([k,v]) => v + '× ' + k).join(' · '))
+
+    if (is1040) {
+      add('Gross Income', money(totals.grossIncome))
+      add('Adjustments', money(totals.adjustments))
+      add('AGI', money(totals.agi), 'strong')
+      add('Deduction', totals.deductions == null ? 'Unsupported tax year estimate' : money(totals.deductions))
+      add('Taxable Income', totals.taxableIncome == null ? 'Unsupported tax year estimate' : money(totals.taxableIncome), 'strong')
+      add('Estimated Federal Tax', totals.tax == null ? 'Unsupported tax year estimate' : money(totals.tax))
+      add('Credits', totals.credits == null ? '—' : money(totals.credits))
+      add('Federal Payments / Withholding', totals.payments == null ? '—' : money(totals.payments))
+      if (totals.refundOrOwed != null) add(totals.refundOrOwed >= 0 ? 'Estimated Refund' : 'Estimated Amount Owed', money(Math.abs(totals.refundOrOwed)), totals.refundOrOwed >= 0 ? 'good' : 'warn')
+      if (num('businessIncome') !== 0) add('Schedule C / Business Income', money(num('businessIncome')))
+      if (num('rentalIncome') !== 0) add('Rental / Royalty Income', money(num('rentalIncome')))
+      if (num('retirementIncome') !== 0) add('Retirement Income', money(num('retirementIncome')))
+      if (num('socialSecurity') !== 0) add('Social Security', money(num('socialSecurity')))
+    } else if (is1120C) {
+      const gross = num('c_grossReceipts')-num('c_returns')-num('c_cogs')+num('c_dividends')+num('c_interest')+num('c_grossRents')+num('c_grossRoyalties')+num('c_capitalGains')+num('c_otherIncome')
+      const deductions = ['c_comp_officers','c_salaries','c_repairs','c_badDebts','c_rents','c_taxes','c_interest_ded','c_charitable','c_depreciation','c_depletion','c_advertising','c_pension','c_empBenefits','c_domesticProd','c_otherDed'].reduce((a,k)=>a+num(k),0)
+      add('EIN', form.c_ein || 'Not entered')
+      add('Gross Receipts', money(num('c_grossReceipts')))
+      add('Cost of Goods Sold', money(num('c_cogs')))
+      add('Total Income', money(gross), 'strong')
+      add('Total Deductions', money(deductions))
+      add('Taxable Income Before Special Deductions', money(gross-deductions), 'strong')
+      add('Tax / Credits Entered', money(num('c_tax')) + ' tax · ' + money(num('c_credits')) + ' credits')
+      add('Deposits', money(num('c_deposits')))
+    } else if (is1120S || is1065) {
+      const gross = num('biz_grossReceipts') - num('biz_returns') - num('biz_cogs') + num('biz_otherIncome')
+      add('Entity Type', is1120S ? 'S Corporation' : 'Partnership')
+      add('Gross Receipts', money(num('biz_grossReceipts')))
+      add('Cost of Goods Sold', money(num('biz_cogs')))
+      add('Gross Income', money(gross), 'strong')
+      add('Ordinary Business Income', money(num('k1_ordinaryIncome') || num('biz_netIncome')))
+      add('Rental Income', money(num('k1_rentalIncome')))
+      add('Interest Income', money(num('k1_interest')))
+      if (is1065) add('Self-Employment Income', money(num('k1_selfEmpIncome')))
+    } else if (is941) {
+      const ssTax = num('q941_ss_wages') * 0.124
+      const medTax = num('q941_medicare_wages') * 0.029
+      const totalTax = num('q941_federalIncomeTax') + ssTax + medTax + num('q941_additional_medicare')
+      add('Quarter', form.q941_quarter || 'Q1')
+      add('Employees', form.q941_numEmployees || 0)
+      add('Wages', money(num('q941_wages')))
+      add('Federal Income Tax Withheld', money(num('q941_federalIncomeTax')))
+      add('Social Security Wages', money(num('q941_ss_wages')))
+      add('Medicare Wages', money(num('q941_medicare_wages')))
+      add('Calculated Total Tax', money(totalTax), 'strong')
+      add('Deposits', money(num('q941_deposits')))
+      add('Balance / Overpayment', money(Math.abs(totalTax - num('q941_deposits'))), totalTax > num('q941_deposits') ? 'warn' : 'good')
+    } else if (is940) {
+      const futaWages = Math.max(0,num('q940_totalWages')-num('q940_exemptWages')-num('q940_over7k'))
+      const netFuta = futaWages * 0.006
+      add('State', form.q940_state || '—')
+      add('Total Wages', money(num('q940_totalWages')))
+      add('FUTA Taxable Wages', money(futaWages), 'strong')
+      add('Net FUTA at 0.6%', money(netFuta))
+      add('Deposits', money(num('q940_deposits')))
+      add('Balance / Overpayment', money(Math.abs(netFuta-num('q940_deposits'))), netFuta > num('q940_deposits') ? 'warn' : 'good')
+    } else if (isState) {
+      add('State', form.st_state || '—')
+      add('Filing Type', form.st_filingType || '—')
+      add('Federal AGI Carryover', money(num('st_agi')))
+      add('State Additions', money(num('st_stateAdditions')))
+      add('State Subtractions', money(num('st_stateSubtractions')))
+      add('State Deduction', money(num('st_stateDeduction')))
+      add('State Tax', money(num('st_stateTax')))
+      add('State Withholding', money(num('st_stateWithholding')))
+      add('State Credits', money(num('st_stateCredits')))
+      add('State Refund', money(num('st_stateRefund')), num('st_stateRefund') > 0 ? 'good' : 'normal')
+    } else {
+      add('Worksheet Status', 'Return-specific worksheet facts are shown from the fields entered for this return.')
+    }
+
+    return facts
+  }
+  const returnFacts = buildReturnFacts()
+
+  const MoneyField = ({ label, field, help }) => (
     <div className="field">
       <label style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span>{label}</span>
@@ -638,7 +414,6 @@ export default function TaxReturns() {
       </div>
     </div>
   )
-
   if (loading) return <div style={{ color: 'var(--t3)', padding: 20 }}>Loading…</div>
 
   // ── LIST VIEW ──
