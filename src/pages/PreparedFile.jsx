@@ -291,14 +291,20 @@ export default function PreparedFile() {
   async function answerQuestion(q) {
     const answer = prompt(q.question, q.answer || '')
     if (answer === null) return
+    const trimmed = String(answer).trim()
+    if (!trimmed) return
     const { data: authData } = await supabase.auth.getUser()
-    await supabase.from('document_ai_questions').update({
-      answer: String(answer),
+    const { error: updateError } = await supabase.from('document_ai_questions').update({
+      answer: trimmed,
       status: 'answered',
       answered_by: authData?.user?.id || null,
       answered_at: new Date().toISOString(),
     }).eq('id', q.id)
-    load()
+    if (updateError) {
+      setError(updateError.message)
+      return
+    }
+    await load()
   }
 
   async function resolveQuestionsFromCRM() {
