@@ -37,7 +37,7 @@ Goals:
 3. If the file is a Profit & Loss statement / P&L / income statement, classify it as "Profit & Loss (P&L)" and extract statement period, business/entity name, total revenue/income, COGS, gross profit, payroll/labor, rent, taxes/licenses, insurance, interest, depreciation/amortization, major operating expense categories, total expenses, other income/expense, and net income/loss when visible. Preserve comparative, monthly, quarterly, and year-to-date columns.
 4. For spreadsheets, preserve row/column meaning and use source_locator values such as "Sheet1!B7" or "Sheet1 rows 2-18" when possible.
 5. For PDFs/images/scans, inspect visible content directly. Use source_page for paged documents when available.
-6. Identify precise questions that still require a human answer.
+6. You will also receive CRM_CONTEXT. Before returning any question, check the document AND CRM_CONTEXT. Do not ask a question if trusted CRM data, prior extracted facts, payments, notes, case data, document metadata, or staff/representative records already answer it. Only return genuinely unresolved questions that still require human input.
 7. Never invent values. Use null or omit an item if it is not visible.
 8. Never expose full SSNs, EINs, TINs, routing numbers, or bank/account numbers. Mask all but the last four digits.
 9. confidence must be between 0 and 1.
@@ -235,6 +235,89 @@ async function authenticate(source: typeof SOURCES[SourceKey], authHeader: strin
   }
 }
 
+
+function compactRows(rows: any[], limit = 80) {
+  return (rows || []).slice(0, limit).map((row:any) => sanitizeValue(row))
+}
+
+async function loadCrmContext(userClient:any, clientId:string) {
+  const clientRes = await userClient.from('clients').select(
+    'id,name,email,phone,street,city,state,zip,business_name,taxYears,assignedTo,taxAssociate,filingStatus,irsBalance,stateBalance,issueType,contractFee,payment_method_type,payment_method_brand,payment_method_last4,autopay_enabled,autopay_amount,autopay_frequency,autopay_next_charge,autopay_last_result,autopay_last_charged_at,tenant_id'
+  ).eq('id', clientId).maybeSingle()
+  if (clientRes.error || !clientRes.data) throw new Error(clientRes.error?.message || 'Client context was not found')
+  const client:any = clientRes.data
+  const clientName = String(client.name || '').trim()
+
+  const [notesById, notesByName, paymentsById, paymentsByName, casesById, casesByName, docsById, docsByName, facts, reps] = await Promise.all([
+    userClient.from('client_notes').select('text,author,type,note_type,created_at').eq('client_id',clientId).order('created_at',{ascending:false}).limit(100),
+    clientName ? userClient.from('client_notes').select('text,author,type,note_type,created_at').eq('clientname',clientName).order('created_at',{ascending:false}).limit(100) : Promise.resolve({data:[],error:null}),
+    userClient.from('payments').select('amount,method,date,status,payment_status,scheduled_date,notes,source,trade_type,created_at').eq('client_id',clientId).order('created_at',{ascending:false}).limit(100),
+    clientName ? userClient.from('payments').select('amount,method,date,status,payment_status,scheduled_date,notes,source,trade_type,created_at').eq('clientName',clientName).order('created_at',{ascending:false}).limit(100) : Promise.resolve({data:[],error:null}),
+    userClient.from('cases').select('caseNum,caseType,status,assignedTo,taxAssociate,deadline,taxYears,irsBalance,resolutionAmount,notes,created_at').eq('clientid',clientId).order('created_at',{ascending:false}).limit(30),
+    clientName ? userClient.from('cases').select('caseNum,caseType,status,assignedTo,taxAssociate,deadline,taxYears,irsBalance,resolutionAmount,notes,created_at').eq('clientName',clientName).order('created_at',{ascending:false}).limit(30) : Promise.resolve({data:[],error:null}),
+    userClient.from('documents').select('id,file_name,name,docType,notes,source,caseNum,created_at').eq('client_id',clientId).order('created_at',{ascending:false}).limit(150),
+    clientName ? userClient.from('documents').select('id,file_name,name,docType,notes,source,caseNum,created_at').is('client_id',null).eq('client',clientName).order('created_at',{ascending:false}).limit(150) : Promise.resolve({data:[],error:null}),
+    userClient.from('document_ai_facts').select('category,field_key,field_label,normalized_text,value_json,source_locator,source_page,confidence,review_status,created_at').eq('client_id',clientId).neq('review_status','rejected').order('created_at',{ascending:false}).limit(200),
+    userClient.from('employees').select('name,role,title,caf,caf_number,ptin,status').eq('tenant_id',client.tenant_id).eq('status','Active').limit(100),
+  ])
+
+  const merge = (a:any,b:any,keyFn:(x:any)=>string) => {
+    const out:any[]=[]; const seen=new Set<string>()
+    for(const row of [...(a?.data||[]),...(b?.data||[])]){ const k=keyFn(row); if(!seen.has(k)){seen.add(k);out.push(row)} }
+    return out
+  }
+  const notes=merge(notesById,notesByName,(x)=>String(x.created_at||'')+'|'+String(x.text||''))
+  const payments=merge(paymentsById,paymentsByName,(x)=>String(x.created_at||'')+'|'+String(x.amount||'')+'|'+String(x.method||''))
+  const cases=merge(casesById,casesByName,(x)=>String(x.caseNum||x.created_at||'')+'|'+String(x.caseType||''))
+  const documents=merge(docsById,docsByName,(x)=>String(x.id||x.file_name||x.name||''))
+
+  return sanitizeValue({
+    client,
+    notes: compactRows(notes,100),
+    payments: compactRows(payments,100),
+    cases: compactRows(cases,30),
+    documents: compactRows(documents,150),
+    prior_facts: compactRows(facts.data||[],200),
+    representatives: compactRows(reps.data||[],100),
+  })
+}
+
+async function resolveOpenQuestions(userClient:any, geminiKey:string, clientId:string) {
+  const context=await loadCrmContext(userClient,clientId)
+  const {data:open,error}=await userClient.from('document_ai_questions')
+    .select('id,question,reason,priority,document_id,created_at')
+    .eq('client_id',clientId).eq('status','open').order('created_at',{ascending:true}).limit(200)
+  if(error) throw error
+  if(!open?.length) return {resolved:0,remaining:0,resolutions:[]}
+
+  const prompt='You resolve open questions in a professional tax-resolution CRM using ONLY trusted CRM_CONTEXT below.\\n'
+    +'Do not guess, infer legal strategy, or appoint representatives merely because they are employees.\\n'
+    +'Answer a question only when the context explicitly supports the answer.\\n'
+    +'Payments may answer payment-status/payment-method questions. Client profile may answer contact/address/tax-year questions. Notes/cases/prior facts may answer case-specific questions. Representative records may support identity/credential details only when the client/case/notes establish that person as the representative.\\n'
+    +'Return ONLY JSON: {"resolutions":[{"id":"uuid","answer":"concise answer","confidence":0.0,"source":"client profile|payment record|client note|case|prior document fact|representative record"}]}\\n'
+    +'Include only answers with confidence >= 0.80. Leave genuinely unresolved questions out.\\n\\nOPEN_QUESTIONS:\\n'
+    +JSON.stringify(open)+'\\n\\nCRM_CONTEXT:\\n'+JSON.stringify(context)
+
+  const parsed=await callGemini(geminiKey,[{text:prompt}])
+  const resolutions=Array.isArray(parsed?.resolutions)?parsed.resolutions:[]
+  let resolved=0
+  const allowedIds=new Set(open.map((q:any)=>String(q.id)))
+  for(const item of resolutions){
+    const id=String(item?.id||'')
+    const confidence=clamp(item?.confidence)
+    const answer=redactText(item?.answer||'').trim().slice(0,1800)
+    const source=redactText(item?.source||'CRM record').trim().slice(0,240)
+    if(!allowedIds.has(id)||!answer||confidence==null||confidence<0.8) continue
+    const {error:updateErr}=await userClient.from('document_ai_questions').update({
+      answer: answer + (source ? ' [Source: '+source+']' : ''),
+      status:'answered',
+      answered_at:new Date().toISOString(),
+    }).eq('id',id).eq('status','open')
+    if(!updateErr) resolved++
+  }
+  return {resolved,remaining:Math.max(0,open.length-resolved),resolutions}
+}
+
 async function callGemini(apiKey: string, parts: any[]) {
   let lastError = 'AI provider request failed'
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -287,7 +370,6 @@ serve(async (req) => {
 
   const documentId = payload?.documentId
   const requestedClientId = payload?.clientId
-  if (!documentId) return reply({ error: 'documentId required' }, 400)
 
   const geminiKey = Deno.env.get('GEMINI_API_KEY') || ''
   if (!geminiKey) return reply({ ok: false, error: 'AI provider is not configured', code: 'AI_PROVIDER_MISSING' })
@@ -295,6 +377,18 @@ serve(async (req) => {
   const userClient = createClient(source.url, source.anon, {
     global: { headers: { Authorization: authHeader } },
   })
+
+  if (String(payload?.action || '').toLowerCase() === 'resolve_questions') {
+    if (!requestedClientId) return reply({ ok:false,error:'clientId required',code:'CLIENT_REQUIRED' },400)
+    try {
+      const result=await resolveOpenQuestions(userClient,geminiKey,String(requestedClientId))
+      return reply({ok:true,action:'resolve_questions',...result,sourceProject:sourceKey})
+    } catch(err:any) {
+      return reply({ok:false,error:redactText(err?.message||err).slice(0,1000),code:'QUESTION_RESOLUTION_FAILED'})
+    }
+  }
+
+  if (!documentId) return reply({ error: 'documentId required' }, 400)
 
   try {
     const { data: doc, error: docErr } = await userClient
@@ -366,11 +460,13 @@ serve(async (req) => {
         throw new Error('Unsupported AI file type. Use PDF, JPG, PNG, WebP, CSV, TXT, JSON, XML, RTF, XLS/XLSX/XLSM, DOCX, or PPTX.')
       }
 
+      const crmContext = await loadCrmContext(userClient,String(effectiveClientId))
       parts.push({
         text: TAX_PROMPT
-          + '\n\nCRM context: client=' + redactText(doc.client || doc.clientname || requestedClient?.name || 'unknown')
+          + '\n\nCURRENT_DOCUMENT: client=' + redactText(doc.client || doc.clientname || requestedClient?.name || 'unknown')
           + ', existing folder=' + redactText(doc.docType || 'unknown')
-          + ', filename=' + redactText(doc.file_name || doc.name || 'unknown'),
+          + ', filename=' + redactText(doc.file_name || doc.name || 'unknown')
+          + '\n\nCRM_CONTEXT (trusted CRM data to use before creating questions):\n' + JSON.stringify(crmContext),
       })
 
       const parsed = await callGemini(geminiKey, parts)
