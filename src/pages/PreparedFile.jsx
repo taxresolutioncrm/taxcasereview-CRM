@@ -33,6 +33,8 @@ export default function PreparedFile() {
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadStatus, setUploadStatus] = useState('')
   const [batchProgress, setBatchProgress] = useState({ current:0, total:0, file:'' })
+  const [resolvingQuestions, setResolvingQuestions] = useState(false)
+  const [questionResolutionStatus, setQuestionResolutionStatus] = useState('')
 
   useEffect(() => {
     if (clientId) load()
@@ -293,6 +295,29 @@ export default function PreparedFile() {
       answered_at: new Date().toISOString(),
     }).eq('id', q.id)
     load()
+  }
+
+  async function resolveQuestionsFromCRM() {
+    if (!clientId || resolvingQuestions) return
+    setResolvingQuestions(true)
+    setQuestionResolutionStatus('')
+    setError('')
+    try {
+      const { data, error } = await supabase.functions.invoke('document-intelligence', {
+        body: { action:'resolve_questions', clientId },
+      })
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Question resolution failed')
+      const resolved = Number(data?.resolved || 0)
+      const remaining = Number(data?.remaining || 0)
+      setQuestionResolutionStatus(resolved
+        ? 'Resolved ' + resolved + ' question' + (resolved === 1 ? '' : 's') + ' from CRM records. ' + remaining + ' still need staff input.'
+        : 'No additional questions could be answered safely from CRM records. ' + remaining + ' still need staff input.')
+      await load()
+    } catch (e) {
+      setError(e?.message || String(e))
+    } finally {
+      setResolvingQuestions(false)
+    }
   }
 
   if (!clientId) {
@@ -569,6 +594,16 @@ export default function PreparedFile() {
 
           {tab === 'questions' && (
             <div>
+              <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
+                <div>
+                  <strong>Open Questions</strong>
+                  <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>AI checks the client profile, prior document facts, payments, notes, cases and representative records before leaving anything for staff.</div>
+                </div>
+                <button className="btn primary" disabled={resolvingQuestions || !openQuestions.length} onClick={resolveQuestionsFromCRM}>
+                  {resolvingQuestions ? 'Checking CRM…' : '✦ Resolve from CRM'}
+                </button>
+              </div>
+              {questionResolutionStatus && <div className="card" style={{padding:10,marginBottom:10,fontSize:12}}>{questionResolutionStatus}</div>}
               {currentQuestions.map(q=>(
                 <div key={q.id} style={{padding:'12px 0',borderBottom:'1px solid var(--bd)',opacity:q.status==='open'?1:.65}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12}}>
@@ -577,7 +612,7 @@ export default function PreparedFile() {
                   </div>
                   {q.reason && <div style={{fontSize:12,color:'var(--t3)',marginTop:5}}>{q.reason}</div>}
                   {q.answer && <div style={{fontSize:12,marginTop:7}}><strong>Answer:</strong> {q.answer}</div>}
-                  {q.status==='open' && <button className="btn sm" style={{marginTop:8}} onClick={()=>answerQuestion(q)}>Answer</button>}
+                  {q.status==='open' && <button className="btn sm" style={{marginTop:8}} onClick={()=>answerQuestion(q)}>Answer manually</button>}
                 </div>
               ))}
               {!currentQuestions.length && <div style={{color:'var(--t3)'}}>No open questions detected.</div>}
