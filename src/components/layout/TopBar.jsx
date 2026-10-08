@@ -43,6 +43,13 @@ const NEW_ITEMS = [
   { icon: '📝', label: 'New Transcript', sub: 'Pull or add transcript', path: '/irsportal',   color: '#14b8a6' },
 ]
 
+function formatUsPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '')
+  const d = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits
+  if (d.length !== 10) return value || ''
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+}
+
 export default function TopBar({ onNew }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -216,12 +223,12 @@ export default function TopBar({ onNew }) {
       <div style={{display:'flex',alignItems:'center',gap:14,flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:5,fontSize:12,color:'var(--t2)',whiteSpace:'nowrap'}}>
           <span style={{fontSize:13}}>📞</span>
-          <span style={{fontWeight:700,letterSpacing:'.02em'}}>{firm?.phone || '(888) 334-5052'}</span>
+          <span style={{fontWeight:700,letterSpacing:'.02em'}}>{formatUsPhone(firm?.phone || firm?.firmphone || '') || '—'}</span>
         </div>
         <div style={{width:1,height:14,background:'var(--br)'}}/>
         <div style={{display:'flex',alignItems:'center',gap:5,fontSize:12,color:'var(--t2)',whiteSpace:'nowrap'}}>
           <span style={{fontSize:13}}>📠</span>
-          <span style={{fontWeight:700,letterSpacing:'.02em'}}>{firm?.firm_fax_number || '(561) 420-6626'}</span>
+          <span style={{fontWeight:700,letterSpacing:'.02em'}}>{formatUsPhone(firm?.firm_fax_number || firm?.fax_number || '') || '—'}</span>
         </div>
       </div>
       <div role="group" aria-label="Language" style={{display:'flex',gap:2,padding:2,border:'1px solid var(--br)',borderRadius:7,background:'var(--s2)'}}>
