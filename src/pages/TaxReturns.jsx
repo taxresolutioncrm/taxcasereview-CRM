@@ -255,6 +255,8 @@ export default function TaxReturns() {
   const [setupNeeded, setSetupNeeded] = useState(false)
   const [preparer, setPreparer] = useState({ name:'', ptin:'', caf:'', efin:'' })
   const [efileStatus, setEfileStatus] = useState({ loading:true, configured:false, providerName:'', efinPresent:false, adapterConfigured:false, message:'' })
+  const [sourceDocs, setSourceDocs] = useState([])
+  const [sourceScanAt, setSourceScanAt] = useState(null)
 
   useEffect(() => {
     if (!user || !myTenantId) {
@@ -284,6 +286,23 @@ export default function TaxReturns() {
     }
   }, [user?.id, myTenantId])
 
+  useEffect(() => {
+    if (!myTenantId || !form.clientName?.trim() || !form.taxYear) { setSourceDocs([]); setSourceScanAt(null); return }
+    let cancelled = false
+    let timer = null
+    const scan = async () => {
+      const selected = clients.find(c => String(c.name||'').trim().toLowerCase() === String(form.clientName||'').trim().toLowerCase())
+      let q = supabase.from('tax_doc_uploads').select('id,client_id,client_name,tax_year,doc_type,file_name,parsed_data,created_at').eq('tenant_id',myTenantId).eq('tax_year',String(form.taxYear)).order('created_at',{ascending:false})
+      q = selected?.id ? q.or('client_id.eq.'+selected.id+',client_name.ilike.'+form.clientName.trim()) : q.ilike('client_name',form.clientName.trim())
+      const { data, error } = await q
+      if (cancelled || error) return
+      setSourceDocs(data||[])
+      setSourceScanAt(new Date())
+    }
+    scan()
+    const ch = supabase.channel('tax-doc-scan:'+myTenantId+':'+form.taxYear).on('postgres_changes',{event:'*',schema:'public',table:'tax_doc_uploads',filter:'tenant_id=eq.'+myTenantId},()=>{ clearTimeout(timer); timer=setTimeout(scan,150) }).subscribe()
+    return () => { cancelled=true; clearTimeout(timer); supabase.removeChannel(ch) }
+  }, [myTenantId, form.clientName, form.taxYear, clients])
   async function loadEfileStatus() {
     setEfileStatus(s => ({ ...s, loading:true }))
     const { data, error } = await supabase.functions.invoke('submit-to-irs', { body: { action:'status' } })
@@ -566,6 +585,22 @@ export default function TaxReturns() {
 
   const statusColors = { Draft:'bn', 'In Review':'ba', 'Client Review':'ba', 'Ready to File':'bb', Filed:'bg', Accepted:'bg', Rejected:'br', Amended:'bw' }
 
+  const selectedClient = clients.find(c => String(c.name||'').trim().toLowerCase() === String(form.clientName||'').trim().toLowerCase()) || null
+  const sourceDocTypes = sourceDocs.reduce((a,d)=>{ const k=d.doc_type||'Other'; a[k]=(a[k]||0)+1; return a },{})
+  const moneyFact = v => '$' + Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+  const numFact = k => Number(form[k]||0)
+  const returnFacts = (() => {
+    const out=[]; const add=(label,value,tone='normal')=>out.push({label,value:String(value),tone})
+    add('Client',form.clientName||'Not selected'); add('Tax Year',form.taxYear); add('Return Type',form.returnType); add('Filing Status',form.filingStatus); add('Assigned Rep',form.assignedTo||selectedClient?.assignedTo||'Unassigned'); add('Source Documents',sourceDocs.length)
+    if(Object.keys(sourceDocTypes).length) add('Documents Found',Object.entries(sourceDocTypes).map(([k,v])=>v+'× '+k).join(' · '))
+    if(is1040){ add('Gross Income',moneyFact(totals.grossIncome)); add('AGI',moneyFact(totals.agi),'strong'); add('Taxable Income',totals.taxableIncome==null?'Unsupported tax year':moneyFact(totals.taxableIncome),'strong'); add('Estimated Federal Tax',totals.tax==null?'Unsupported tax year':moneyFact(totals.tax)); add('Payments / Withholding',totals.payments==null?'—':moneyFact(totals.payments)); if(totals.refundOrOwed!=null) add(totals.refundOrOwed>=0?'Estimated Refund':'Estimated Amount Owed',moneyFact(Math.abs(totals.refundOrOwed)),totals.refundOrOwed>=0?'good':'warn') }
+    else if(is1120C){ const gross=numFact('c_grossReceipts')-numFact('c_returns')-numFact('c_cogs')+numFact('c_dividends')+numFact('c_interest')+numFact('c_grossRents')+numFact('c_grossRoyalties')+numFact('c_capitalGains')+numFact('c_otherIncome'); add('EIN',form.c_ein||'Not entered'); add('Gross Receipts',moneyFact(numFact('c_grossReceipts'))); add('Total Income',moneyFact(gross),'strong'); add('Tax',moneyFact(numFact('c_tax'))); add('Deposits',moneyFact(numFact('c_deposits'))) }
+    else if(is1120S||is1065){ const gross=numFact('biz_grossReceipts')-numFact('biz_returns')-numFact('biz_cogs')+numFact('biz_otherIncome'); add('Entity Type',is1120S?'S Corporation':'Partnership'); add('Gross Receipts',moneyFact(numFact('biz_grossReceipts'))); add('Gross Income',moneyFact(gross),'strong'); add('Ordinary Business Income',moneyFact(numFact('k1_ordinaryIncome')||numFact('biz_netIncome'))); if(is1065)add('Self-Employment Income',moneyFact(numFact('k1_selfEmpIncome'))) }
+    else if(is941){ const total=numFact('q941_federalIncomeTax')+numFact('q941_ss_wages')*.124+numFact('q941_medicare_wages')*.029+numFact('q941_additional_medicare'); add('Quarter',form.q941_quarter||'Q1'); add('Employees',form.q941_numEmployees||0); add('Wages',moneyFact(numFact('q941_wages'))); add('Calculated Total Tax',moneyFact(total),'strong'); add('Deposits',moneyFact(numFact('q941_deposits'))) }
+    else if(is940){ const wages=Math.max(0,numFact('q940_totalWages')-numFact('q940_exemptWages')-numFact('q940_over7k')); add('State',form.q940_state||'—'); add('FUTA Taxable Wages',moneyFact(wages),'strong'); add('Net FUTA at 0.6%',moneyFact(wages*.006)); add('Deposits',moneyFact(numFact('q940_deposits'))) }
+    else if(isState){ add('State',form.st_state||'—'); add('Filing Type',form.st_filingType||'—'); add('Federal AGI Carryover',moneyFact(numFact('st_agi'))); add('State Tax',moneyFact(numFact('st_stateTax'))); add('State Withholding',moneyFact(numFact('st_stateWithholding'))); add('State Refund',moneyFact(numFact('st_stateRefund')),numFact('st_stateRefund')>0?'good':'normal') }
+    return out
+  })()
   const MoneyField = ({ label, field, help }) => (
     <div className="field">
       <label style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -862,6 +897,15 @@ export default function TaxReturns() {
         </div>
       </div>
 
+      <div className="card" style={{marginBottom:12,padding:'14px 16px',border:'1px solid rgba(59,130,246,.3)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+          <div><div style={{fontWeight:800,fontSize:13}}>⚡ Live Return Intelligence</div><div style={{fontSize:10.5,color:'var(--t3)',marginTop:2}}>Updates from the worksheet, client record, and parsed tax documents as data changes.</div></div>
+          <div style={{fontSize:10,color:'var(--t3)'}}>{sourceScanAt ? 'Last scan '+sourceScanAt.toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}) : 'Waiting for source scan'}</div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(205px,1fr))',gap:7}}>
+          {returnFacts.map((fact,i)=><div key={fact.label+i} style={{padding:'8px 10px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)'}}><div style={{fontSize:9.5,color:'var(--t3)',fontWeight:700,textTransform:'uppercase'}}>{fact.label}</div><div style={{fontSize:12.5,fontWeight:fact.tone==='strong'?800:650,marginTop:3,color:fact.tone==='good'?'var(--ok)':fact.tone==='warn'?'var(--warn)':'var(--tx)'}}>{fact.value}</div></div>)}
+        </div>
+      </div>
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--br)', marginBottom: 12, overflowX: 'auto' }}>
         {TABS.filter(t => t.show !== false).map(t => (
