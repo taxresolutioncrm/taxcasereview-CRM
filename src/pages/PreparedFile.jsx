@@ -367,10 +367,16 @@ export default function PreparedFile() {
             {clientOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            <button className="btn primary" disabled={!selectedClientId} onClick={()=>navigate('/ai-intelligence/' + selectedClientId)}>
+            <button className="btn primary" onClick={()=>{
+              if (!selectedClientId) { setError('Select a client first.'); return }
+              navigate('/ai-intelligence/' + selectedClientId)
+            }}>
               Open AI Intelligence
             </button>
-            <button className="btn" disabled={!selectedClientId} onClick={()=>navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')}>AI Documents</button>
+            <button className="btn" onClick={()=>{
+              if (!selectedClientId) { setError('Select a client first.'); return }
+              navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')
+            }}>AI Documents</button>
           </div>
           {!clientOptions.length && !error && <div style={{marginTop:14,fontSize:12,color:'var(--t3)'}}>No clients available.</div>}
         </div>
