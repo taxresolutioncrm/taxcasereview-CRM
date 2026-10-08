@@ -35,6 +35,9 @@ export default function PreparedFile() {
   const [tab, setTab] = useState(() => (searchParams.get('tab') === 'documents' || location.pathname.startsWith('/ai-documents/')) ? 'documents' : 'overview')
   const [clientOptions, setClientOptions] = useState([])
   const [selectedClientId, setSelectedClientId] = useState('')
+  const [clientSearch, setClientSearch] = useState('')
+  const [landingUploadFile, setLandingUploadFile] = useState(null)
+  const [landingUploadBusy, setLandingUploadBusy] = useState(false)
   const [askText, setAskText] = useState('')
   const [askReply, setAskReply] = useState('')
   const [askBusy, setAskBusy] = useState(false)
@@ -59,7 +62,7 @@ export default function PreparedFile() {
     setError('')
     const { data, error } = await supabase
       .from('clients')
-      .select('id,name')
+      .select('id,name,tenant_id')
       .range(0,4999)
       .order('name', { ascending:true })
     if (error) {
@@ -148,6 +151,58 @@ export default function PreparedFile() {
     ...reviewFindings.slice(0,4).map(f => ({ kind:'review', text:`Verify ${f.field_label || f.field_key}` })),
     ...noticeDeadlineFacts.slice(0,4).map(f => ({ kind:'deadline', text:`Review ${f.field_label || f.field_key}: ${f.normalized_text || ''}` })),
   ].slice(0,10)
+
+  async function uploadFromLanding() {
+    if (!selectedClientId) { setError('Select a client first.'); return }
+    if (!landingUploadFile) { setError('Choose a document to upload.'); return }
+    if (landingUploadFile.size > 20 * 1024 * 1024) { setError('AI analysis supports files up to 20 MB.'); return }
+
+    const selected = clientOptions.find(c => String(c.id) === String(selectedClientId))
+    if (!selected?.tenant_id) { setError('Client tenant context is unavailable.'); return }
+
+    setLandingUploadBusy(true)
+    setError('')
+    let storagePath = ''
+    try {
+      const safeName = String(landingUploadFile.name || 'document')
+        .replace(/[^a-zA-Z0-9._-]+/g, '-')
+        .replace(/-+/g, '-')
+      storagePath = 'ai-intelligence/' + selected.id + '/' + Date.now() + '_' + safeName
+      const { error: uploadErr } = await supabase.storage.from('documents').upload(storagePath, landingUploadFile, {
+        upsert: false,
+        contentType: landingUploadFile.type || undefined,
+      })
+      if (uploadErr) throw uploadErr
+
+      const { data: inserted, error: insertErr } = await supabase.from('documents').insert({
+        tenant_id: selected.tenant_id,
+        client_id: selected.id,
+        client: selected.name,
+        name: landingUploadFile.name,
+        docType: 'AI Intake',
+        file_name: landingUploadFile.name,
+        file_size: landingUploadFile.size,
+        storage_path: storagePath,
+        file_url: 'storage://documents/' + storagePath,
+        created_at: new Date().toISOString(),
+      }).select('id').single()
+      if (insertErr || !inserted?.id) throw insertErr || new Error('Document record could not be created')
+
+      const { data, error: invokeError } = await supabase.functions.invoke(documentIntelligenceFunction, {
+        body: { documentId: inserted.id, clientId: selected.id },
+      })
+      if (invokeError || data?.error) throw new Error(data?.error || invokeError?.message || 'AI analysis failed')
+
+      navigate('/ai-intelligence/' + selected.id + '?tab=documents')
+    } catch (e) {
+      if (storagePath && String(e?.message || '').includes('Document record could not be created')) {
+        await supabase.storage.from('documents').remove([storagePath]).catch(()=>{})
+      }
+      setError(e?.message || String(e))
+    } finally {
+      setLandingUploadBusy(false)
+    }
+  }
 
   async function uploadAndAnalyze() {
     if (!client?.id || !client?.tenant_id) { setError('Client tenant context is unavailable.'); return }
@@ -357,6 +412,13 @@ export default function PreparedFile() {
           <div style={{fontSize:12,color:'var(--t3)',marginBottom:12}}>
             Choose the client first. Upload and analysis run inside that client's workspace so every document and AI finding stays linked correctly.
           </div>
+          <input
+            className="input"
+            value={clientSearch}
+            onChange={e=>setClientSearch(e.target.value)}
+            placeholder="Search client files…"
+            style={{width:'100%',marginBottom:10}}
+          />
           <select
             className="select"
             value={selectedClientId}
@@ -364,8 +426,25 @@ export default function PreparedFile() {
             style={{width:'100%',marginBottom:12}}
           >
             <option value="">Select a client…</option>
-            {clientOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            {clientOptions
+              .filter(c => !clientSearch.trim() || String(c.name || '').toLowerCase().includes(clientSearch.trim().toLowerCase()))
+              .map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          <div style={{display:'grid',gridTemplateColumns:'1fr',gap:10,marginBottom:12}}>
+            <label className="card" style={{padding:12,cursor:'pointer',margin:0}}>
+              <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>Upload document to selected client</div>
+              <div style={{fontSize:11,color:'var(--t3)',marginBottom:8}}>PDF, image, spreadsheet, Word or PowerPoint · up to 20 MB</div>
+              <input
+                type="file"
+                disabled={landingUploadBusy}
+                onChange={e=>setLandingUploadFile(e.target.files?.[0] || null)}
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx"
+              />
+            </label>
+            <button className="btn primary" disabled={landingUploadBusy} onClick={uploadFromLanding}>
+              {landingUploadBusy ? 'Uploading & analyzing…' : '✦ Upload & Analyze'}
+            </button>
+          </div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <button className="btn primary" onClick={()=>{
               if (!selectedClientId) { setError('Select a client first.'); return }
