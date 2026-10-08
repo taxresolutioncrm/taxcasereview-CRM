@@ -4812,9 +4812,37 @@ function CommandCenter() {
   const [taxresScopeError, setTaxresScopeError] = useState('')
   const [activity, setActivity] = useState([])
   const [activityPoll, setActivityPoll] = useState(0)
+  const [liveMetricsVersion, setLiveMetricsVersion] = useState(0)
+  const liveMetricsReloadTimer = React.useRef(null)
 
   // ── Data load ──────────────────────────────────────────────────────────────
   const [loadError, setLoadError] = useState(null)
+
+  // Aggregate CRM state is mirrored into romylabs_metrics_cache by the product
+  // invalidation bus. Debounce cache bursts (TaxRes family fans out to several
+  // rows) into one Command Center refresh.
+  useEffect(() => {
+    const channel = supabase
+      .channel('romylabs-admin-metrics-live')
+      .on(
+        'postgres_changes',
+        { event:'*', schema:'public', table:'romylabs_metrics_cache' },
+        () => {
+          if (liveMetricsReloadTimer.current) clearTimeout(liveMetricsReloadTimer.current)
+          liveMetricsReloadTimer.current = setTimeout(
+            () => setLiveMetricsVersion(v => v + 1),
+            150,
+          )
+        },
+      )
+      .subscribe()
+
+    return () => {
+      if (liveMetricsReloadTimer.current) clearTimeout(liveMetricsReloadTimer.current)
+      liveMetricsReloadTimer.current = null
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -4968,7 +4996,7 @@ function CommandCenter() {
       }
     }
     load()
-  }, [])
+  }, [liveMetricsVersion])
 
   // ── Reporting registry — dynamic product list from romylabs_products ──
   React.useEffect(() => {
@@ -5047,7 +5075,7 @@ function CommandCenter() {
       }
     })()
     return () => { cancelled = true }
-  }, [reportingProducts])
+  }, [reportingProducts, liveMetricsVersion])
 
   const fetchCrmProductMetrics = React.useCallback(async (productKey) => {
     if (!productKey) return null
@@ -5090,7 +5118,7 @@ function CommandCenter() {
       .catch(err => { if (!cancelled) { setCrmRemoteData(null); setCrmRemoteError(String(err?.message || err)) } })
       .finally(() => { if (!cancelled) setCrmRemoteLoading(false) })
     return () => { cancelled = true }
-  }, [crmProduct, fetchCrmProductMetrics, reportingProducts])
+  }, [crmProduct, fetchCrmProductMetrics, reportingProducts, liveMetricsVersion])
 
   React.useEffect(() => {
     setCrmAccountMetrics(null)
@@ -7821,7 +7849,7 @@ export default function AdminPortal() {
       <style>{`
         .rl-admin-mobile-bar,.rl-admin-mobile-overlay{display:none}
         .rl-admin-desktop-sidebar{display:flex;flex-shrink:0}
-        .rl-admin-main{min-width:0;width:100%}
+        .rl-admin-main{min-width:0;width:auto;flex:1 1 0%;max-width:calc(100vw - 220px)}
         @media (max-width:768px){
           .rl-admin-shell{display:block!important;min-height:100dvh!important}
           .rl-admin-desktop-sidebar{display:none!important}
@@ -7830,7 +7858,7 @@ export default function AdminPortal() {
           .rl-admin-mobile-overlay{display:flex!important;position:fixed;inset:0;z-index:9500;background:rgba(2,6,23,.72);backdrop-filter:blur(3px)}
           .rl-admin-mobile-drawer{height:100%;overflow-y:auto;box-shadow:16px 0 40px rgba(0,0,0,.45);background:#0f0e1a}
           .rl-admin-mobile-scrim{flex:1;height:100%}
-          .rl-admin-main{height:calc(100dvh - 58px)!important;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch}
+          .rl-admin-main{height:calc(100dvh - 58px)!important;width:100%!important;max-width:100vw!important;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch}
           .rl-admin-main>div:not([style*="position: absolute"]){max-width:100%;box-sizing:border-box}
           .rl-admin-main table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
           .rl-admin-main input,.rl-admin-main select,.rl-admin-main textarea{max-width:100%;box-sizing:border-box}

@@ -126,6 +126,17 @@ Deno.serve(async (req) => {
     return String(data?.secret || '')
   }
 
+  async function readMetricsCache(productKey: string) {
+    const { data, error } = await serviceClient
+      .from('romylabs_metrics_cache')
+      .select('payload,fetched_at')
+      .eq('product_key', productKey)
+      .limit(1)
+      .maybeSingle()
+    if (error || !data?.payload) return null
+    return { data:data.payload, fetched_at:data.fetched_at }
+  }
+
   // ── Step 3: Parse product key from request body ──────────────────────────
   let body: { product?: string; products?: string[]; action?: string; payload?: Record<string, unknown> }
   try {
@@ -200,7 +211,7 @@ Deno.serve(async (req) => {
     return { url: `${base}/functions/v1/platform-metrics`, standardExternal: true }
   }
 
-  async function fetchProductMetrics(productKey: string) {
+  async function fetchProductMetricsFresh(productKey: string) {
     const resolved = await resolveProductEndpoint(productKey)
     const targetUrl = resolved.url
     if (!targetUrl) {
@@ -212,6 +223,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       }
       const supportEnv: Record<string,string> = {
+        camvella: 'CAMVELLA_SUPPORT_SECRET',
         arcvena: 'ARCVENA_SUPPORT_SECRET',
         groundivo: 'GROUNDIVO_SUPPORT_SECRET',
         oculivo: 'OCULIVO_SUPPORT_SECRET',
@@ -224,12 +236,6 @@ Deno.serve(async (req) => {
         }
         productHeaders['x-romylabs-internal-token'] = nashvilleToken
         if (jwt) productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (productKey === 'camvella') {
-        if (!jwt) return { status: 401, data: null, error: 'Camvella metrics require an authenticated RomyLabs admin session' }
-        productHeaders['Authorization'] = `Bearer ${jwt}`
-      } else if (productKey === 'bocasync') {
-        if (!jwt) return { status: 401, data: null, error: 'BocaSync metrics require an authenticated RomyLabs admin session' }
-        productHeaders['Authorization'] = `Bearer ${jwt}`
       } else if (supportEnv[productKey]) {
         const supportSecret = Deno.env.get(supportEnv[productKey]) || ''
         const fallbackSecret = hubSecret
@@ -243,6 +249,8 @@ Deno.serve(async (req) => {
       } else {
         productHeaders['x-hub-secret'] = hubSecret
       }
+
+      if (jwt && !productHeaders['Authorization']) productHeaders['Authorization'] = `Bearer ${jwt}`
 
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 10000)
@@ -262,6 +270,108 @@ Deno.serve(async (req) => {
     }
   }
 
+  async function refreshProductCache(productKey: string) {
+    const fresh = await fetchProductMetricsFresh(productKey)
+    if (fresh.status >= 200 && fresh.status < 300 && fresh.data && fresh.data?.ok !== false) {
+      const fetchedAt = fresh.data?.fetched_at || new Date().toISOString()
+      const { error: cacheError } = await serviceClient
+        .from('romylabs_metrics_cache')
+        .upsert({
+          product_key:productKey,
+          payload:fresh.data,
+          fetched_at:fetchedAt,
+          updated_at:new Date().toISOString(),
+        }, { onConflict:'product_key' })
+      if (cacheError) console.error('hub-proxy: metrics cache write failed', productKey, cacheError.message)
+    }
+    return fresh
+  }
+
+  async function fetchProductMetrics(productKey: string) {
+    const cached = await readMetricsCache(productKey)
+    const fetchedMs = cached?.fetched_at ? new Date(cached.fetched_at).getTime() : 0
+    const cacheAgeMs = fetchedMs ? Date.now() - fetchedMs : Number.POSITIVE_INFINITY
+    if (cached?.data && cacheAgeMs <= 120000) {
+      return {
+        status:200,
+        data:cached.data,
+        error:null,
+        cached:true,
+        cached_at:cached.fetched_at,
+      }
+    }
+
+    const fresh = await refreshProductCache(productKey)
+    if ((fresh.status < 200 || fresh.status >= 300 || fresh.error) && cached?.data) {
+      return {
+        status:200,
+        data:cached.data,
+        error:null,
+        cached:true,
+        stale:true,
+        cached_at:cached.fetched_at,
+      }
+    }
+    return fresh
+  }
+
+  if (body.action === 'refresh_product_metrics' || body.action === 'refresh_nashville_metrics') {
+    if (!internalAuthorized) {
+      return new Response(JSON.stringify({ error:'Internal authorization required' }), {
+        status:403, headers:{ ...cors, 'Content-Type':'application/json' },
+      })
+    }
+    const requested = body.action === 'refresh_nashville_metrics'
+      ? 'nashville'
+      : String(body.product || '')
+    if (!requested) {
+      return new Response(JSON.stringify({ error:'Missing product key' }), {
+        status:400, headers:{ ...cors, 'Content-Type':'application/json' },
+      })
+    }
+    const targets = requested === 'taxres_crm'
+      ? ['taxres_crm','tax_case_review','cloudcpa','demo']
+      : [requested]
+    EdgeRuntime.waitUntil(Promise.all(targets.map(productKey => refreshProductCache(productKey))))
+    return new Response(JSON.stringify({ ok:true, accepted:true, products:targets }), {
+      status:202, headers:{ ...cors, 'Content-Type':'application/json' },
+    })
+  }
+
+  if (body.action === 'refresh_stale_metrics') {
+    if (!internalAuthorized) {
+      return new Response(JSON.stringify({ error:'Internal authorization required' }), {
+        status:403, headers:{ ...cors, 'Content-Type':'application/json' },
+      })
+    }
+
+    const { data: registryRows } = await serviceClient
+      .from('romylabs_products')
+      .select('product_id,lifecycle,active')
+      .eq('active', true)
+    const productKeys = new Set(Object.keys(PRODUCT_ENDPOINTS))
+    for (const row of registryRows || []) {
+      if (String(row.lifecycle || '').toLowerCase() !== 'internal' && row.product_id) {
+        productKeys.add(String(row.product_id))
+      }
+    }
+
+    const { data: cacheRows } = await serviceClient
+      .from('romylabs_metrics_cache')
+      .select('product_key,fetched_at')
+    const cacheByProduct = new Map((cacheRows || []).map((row:any) => [String(row.product_key), row.fetched_at]))
+    const stale = Array.from(productKeys).filter(productKey => {
+      const fetchedAt = cacheByProduct.get(productKey)
+      if (!fetchedAt) return true
+      return Date.now() - new Date(String(fetchedAt)).getTime() > 120000
+    })
+
+    EdgeRuntime.waitUntil(Promise.all(stale.map(productKey => refreshProductCache(productKey))))
+    return new Response(JSON.stringify({ ok:true, accepted:true, products:stale }), {
+      status:202, headers:{ ...cors, 'Content-Type':'application/json' },
+    })
+  }
+
   if (body.action === 'metrics_batch') {
     const requested = Array.from(new Set(Array.isArray(body.products) ? body.products : []))
     if (!requested.length || requested.length > 20) {
@@ -269,9 +379,15 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
       })
     }
+    const batchBudgetMs = 3000
     const pairs = await Promise.all(requested.map(async productKey => [
       productKey,
-      await fetchProductMetrics(productKey),
+      await Promise.race([
+        fetchProductMetrics(productKey),
+        new Promise(resolve => setTimeout(() => resolve({
+          status:504,data:null,error:`${productKey} metrics exceeded batch budget`
+        }), batchBudgetMs)),
+      ]),
     ] as const))
     return new Response(JSON.stringify({
       ok: true,
