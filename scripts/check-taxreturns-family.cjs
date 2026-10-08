@@ -23,7 +23,7 @@ need(src,"* 2025 federal filing thresholds for returns generally filed in 2026."
 need(src,"⚡ Live Return Intelligence",'Live return intelligence panel missing')
 need(src,"tax_doc_uploads",'Tax Returns must scan parsed tax documents')
 need(src,"tax-doc-scan:",'Tax document realtime subscription missing')
-need(src,"buildReturnFacts()",'Return-type fact engine missing')
+need(src,"const returnFacts = (() => {",'Return-type fact engine missing')
 need(src,"is941",'941 facts missing')
 need(src,"is940",'940 facts missing')
 need(src,"is1120C",'1120 C facts missing')
