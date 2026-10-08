@@ -10,6 +10,10 @@ const fmtDate = (v) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
 }
 
+const documentIntelligenceFunction = (typeof window !== 'undefined' && window.location.hostname.includes('sandbox-ai-analysis-progress'))
+  ? 'document-intelligence-sandbox'
+  : 'document-intelligence'
+
 export default function PreparedFile() {
   const { clientId } = useParams()
   const navigate = useNavigate()
@@ -171,7 +175,7 @@ export default function PreparedFile() {
       if (insertErr || !inserted) throw insertErr || new Error('Document record could not be created')
 
       setUploadStatus('Analyzing…')
-      const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
+      const { data, error: invokeError } = await supabase.functions.invoke(documentIntelligenceFunction, {
         body: { documentId: inserted.id, clientId: client.id },
       })
       if (invokeError || data?.error) {
@@ -198,7 +202,7 @@ export default function PreparedFile() {
     if (!hasReadableFile(doc)) throw new Error('This document record has no attached file for AI to read.')
     setActiveDoc(doc.id)
     setError('')
-    const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
+    const { data, error: invokeError } = await supabase.functions.invoke(documentIntelligenceFunction, {
       body: { documentId: doc.id, clientId },
     })
     setActiveDoc('')
@@ -303,7 +307,7 @@ export default function PreparedFile() {
     setQuestionResolutionStatus('')
     setError('')
     try {
-      const { data, error } = await supabase.functions.invoke('document-intelligence', {
+      const { data, error } = await supabase.functions.invoke(documentIntelligenceFunction, {
         body: { action:'resolve_questions', clientId },
       })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Question resolution failed')
