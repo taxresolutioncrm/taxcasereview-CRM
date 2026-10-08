@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const hasReadableFile = (doc) => !!(doc?.storage_path || doc?.file_url)
@@ -21,6 +21,7 @@ const aiChatFunction = isAiSandboxPreview ? 'ai-chat-sandbox' : 'ai-chat'
 export default function PreparedFile() {
   const { clientId } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [client, setClient] = useState(null)
   const [docs, setDocs] = useState([])
   const [runs, setRuns] = useState([])
@@ -30,7 +31,7 @@ export default function PreparedFile() {
   const [busy, setBusy] = useState(false)
   const [activeDoc, setActiveDoc] = useState('')
   const [error, setError] = useState('')
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState(() => searchParams.get('tab') === 'documents' ? 'documents' : 'overview')
   const [clientOptions, setClientOptions] = useState([])
   const [selectedClientId, setSelectedClientId] = useState('')
   const [askText, setAskText] = useState('')
@@ -364,7 +365,7 @@ export default function PreparedFile() {
             <button className="btn primary" disabled={!selectedClientId} onClick={()=>navigate('/ai-intelligence/' + selectedClientId)}>
               Open AI Intelligence
             </button>
-            <button className="btn" onClick={()=>navigate('/documents')}>Documents</button>
+            <button className="btn" disabled={!selectedClientId} onClick={()=>navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')}>AI Documents</button>
           </div>
           {!clientOptions.length && !error && <div style={{marginTop:14,fontSize:12,color:'var(--t3)'}}>No clients available.</div>}
         </div>
