@@ -52,10 +52,20 @@ function wrap(text, font, size, maxWidth) {
  * @param {Uint8Array|ArrayBuffer} [opts.repSignature]  PNG bytes for the rep line
  * @returns {Promise<Uint8Array>}
  */
-export async function buildAgreementPdf({ bodyText, firmName, firmAddress, clientName, repSignature }) {
+export async function buildAgreementPdf({ bodyText, firmName, firmAddress, firmLogoUrl, clientName, repSignature }) {
   const pdf = await PDFDocument.create()
   const reg = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  let logoImg = null, logoW = 0, logoH = 0
+  if (firmLogoUrl) {
+    try {
+      const res = await fetch(firmLogoUrl)
+      const bytes = await res.arrayBuffer()
+      try { logoImg = await pdf.embedPng(bytes) } catch { logoImg = await pdf.embedJpg(bytes) }
+      logoH = 34
+      logoW = Math.min(120, (logoImg.width / logoImg.height) * logoH)
+    } catch (_) {}
+  }
 
   const ink = rgb(0.09, 0.11, 0.15)
   const muted = rgb(0.55, 0.58, 0.63)
@@ -68,9 +78,14 @@ export async function buildAgreementPdf({ bodyText, firmName, firmAddress, clien
   const newPage = () => {
     page = pdf.addPage([PAGE_W, PAGE_H])
     pages.push(page)
-    // Letterhead
-    page.drawText(firmName, { x: MARGIN, y: PAGE_H - 52, size: 13, font: bold, color: ink })
-    page.drawText(firmAddress, { x: MARGIN, y: PAGE_H - 66, size: 8, font: reg, color: muted })
+    // Tenant letterhead
+    let textX = MARGIN
+    if (logoImg) {
+      page.drawImage(logoImg, { x:MARGIN, y:PAGE_H-70, width:logoW, height:logoH })
+      textX = MARGIN + logoW + 12
+    }
+    page.drawText(firmName || 'Firm', { x: textX, y: PAGE_H - 52, size: 13, font: bold, color: ink })
+    page.drawText(firmAddress || '', { x: textX, y: PAGE_H - 66, size: 8, font: reg, color: muted })
     page.drawLine({
       start: { x: MARGIN, y: PAGE_H - 76 }, end: { x: PAGE_W - MARGIN, y: PAGE_H - 76 },
       thickness: 0.75, color: rule,
