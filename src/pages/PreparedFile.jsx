@@ -10,6 +10,10 @@ const fmtDate = (v) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
 }
 
+const documentIntelligenceFunction = (typeof window !== 'undefined' && window.location.hostname.includes('sandbox-ai-analysis-progress'))
+  ? 'document-intelligence-sandbox'
+  : 'document-intelligence'
+
 export default function PreparedFile() {
   const { clientId } = useParams()
   const navigate = useNavigate()
@@ -32,6 +36,9 @@ export default function PreparedFile() {
   const [uploadType, setUploadType] = useState('Auto-detect')
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadStatus, setUploadStatus] = useState('')
+  const [batchProgress, setBatchProgress] = useState({ current:0, total:0, file:'' })
+  const [resolvingQuestions, setResolvingQuestions] = useState(false)
+  const [questionResolutionStatus, setQuestionResolutionStatus] = useState('')
 
   useEffect(() => {
     if (clientId) load()
@@ -168,7 +175,7 @@ export default function PreparedFile() {
       if (insertErr || !inserted) throw insertErr || new Error('Document record could not be created')
 
       setUploadStatus('Analyzing…')
-      const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
+      const { data, error: invokeError } = await supabase.functions.invoke(documentIntelligenceFunction, {
         body: { documentId: inserted.id, clientId: client.id },
       })
       if (invokeError || data?.error) {
@@ -195,7 +202,7 @@ export default function PreparedFile() {
     if (!hasReadableFile(doc)) throw new Error('This document record has no attached file for AI to read.')
     setActiveDoc(doc.id)
     setError('')
-    const { data, error: invokeError } = await supabase.functions.invoke('document-intelligence', {
+    const { data, error: invokeError } = await supabase.functions.invoke(documentIntelligenceFunction, {
       body: { documentId: doc.id, clientId },
     })
     setActiveDoc('')
@@ -207,8 +214,11 @@ export default function PreparedFile() {
     if (!pending.length) return
     setBusy(true)
     setError('')
+    setBatchProgress({ current:0, total:pending.length, file:'' })
     try {
-      for (const doc of pending) {
+      for (let i = 0; i < pending.length; i += 1) {
+        const doc = pending[i]
+        setBatchProgress({ current:i + 1, total:pending.length, file:doc.file_name || doc.name || 'Document' })
         try {
           await analyzeDocument(doc)
           await load()
@@ -218,6 +228,7 @@ export default function PreparedFile() {
       }
     } finally {
       setBusy(false)
+      setBatchProgress({ current:0, total:0, file:'' })
       await load()
     }
   }
@@ -290,6 +301,29 @@ export default function PreparedFile() {
     load()
   }
 
+  async function resolveQuestionsFromCRM() {
+    if (!clientId || resolvingQuestions) return
+    setResolvingQuestions(true)
+    setQuestionResolutionStatus('')
+    setError('')
+    try {
+      const { data, error } = await supabase.functions.invoke(documentIntelligenceFunction, {
+        body: { action:'resolve_questions', clientId },
+      })
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Question resolution failed')
+      const resolved = Number(data?.resolved || 0)
+      const remaining = Number(data?.remaining || 0)
+      setQuestionResolutionStatus(resolved
+        ? 'Resolved ' + resolved + ' question' + (resolved === 1 ? '' : 's') + ' from CRM records. ' + remaining + ' still need staff input.'
+        : 'No additional questions could be answered safely from CRM records. ' + remaining + ' still need staff input.')
+      await load()
+    } catch (e) {
+      setError(e?.message || String(e))
+    } finally {
+      setResolvingQuestions(false)
+    }
+  }
+
   if (!clientId) {
     return (
       <div>
@@ -342,12 +376,19 @@ export default function PreparedFile() {
             <div style={{fontSize:11,color:'var(--t3)'}}>FILE READ</div>
           </div>
           <button className="btn primary" disabled={busy || !readableDocs.length} onClick={analyzeAll}>
-            {busy ? 'Reading documents…' : '✦ Analyze unread documents'}
+            {busy ? `Reading ${batchProgress.current} of ${batchProgress.total}…` : '✦ Analyze unread documents'}
           </button>
         </div>
       </div>
 
       {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
+      {busy && batchProgress.total > 0 && <div className="card" style={{marginBottom:16,padding:12}}>
+        <div style={{fontWeight:800}}>Analyzing {batchProgress.current} of {batchProgress.total}</div>
+        <div style={{fontSize:12,color:'var(--t3)',marginTop:4}}>{batchProgress.file}</div>
+        <div style={{height:6,background:'var(--bd)',borderRadius:99,overflow:'hidden',marginTop:8}}>
+          <div style={{height:'100%',width:`${Math.round((batchProgress.current / batchProgress.total) * 100)}%`,background:'var(--pri,#6957ff)'}} />
+        </div>
+      </div>}
 
       <div className="card" style={{marginBottom:16}}>
         <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'center',flexWrap:'wrap'}}>
@@ -557,6 +598,16 @@ export default function PreparedFile() {
 
           {tab === 'questions' && (
             <div>
+              <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
+                <div>
+                  <strong>Open Questions</strong>
+                  <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>AI checks the client profile, prior document facts, payments, notes, cases and representative records before leaving anything for staff.</div>
+                </div>
+                <button className="btn primary" disabled={resolvingQuestions || !openQuestions.length} onClick={resolveQuestionsFromCRM}>
+                  {resolvingQuestions ? 'Checking CRM…' : '✦ Resolve from CRM'}
+                </button>
+              </div>
+              {questionResolutionStatus && <div className="card" style={{padding:10,marginBottom:10,fontSize:12}}>{questionResolutionStatus}</div>}
               {currentQuestions.map(q=>(
                 <div key={q.id} style={{padding:'12px 0',borderBottom:'1px solid var(--bd)',opacity:q.status==='open'?1:.65}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12}}>
@@ -565,7 +616,7 @@ export default function PreparedFile() {
                   </div>
                   {q.reason && <div style={{fontSize:12,color:'var(--t3)',marginTop:5}}>{q.reason}</div>}
                   {q.answer && <div style={{fontSize:12,marginTop:7}}><strong>Answer:</strong> {q.answer}</div>}
-                  {q.status==='open' && <button className="btn sm" style={{marginTop:8}} onClick={()=>answerQuestion(q)}>Answer</button>}
+                  {q.status==='open' && <button className="btn sm" style={{marginTop:8}} onClick={()=>answerQuestion(q)}>Answer manually</button>}
                 </div>
               ))}
               {!currentQuestions.length && <div style={{color:'var(--t3)'}}>No open questions detected.</div>}
