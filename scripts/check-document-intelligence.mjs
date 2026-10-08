@@ -74,3 +74,10 @@ assert(docs.includes("countMode") && docs.includes("'planned'") && docs.includes
 assert(docs.includes("navigate('/ai-intelligence')"), 'Documents can open AI Intelligence even before a client is selected')
 
 assert(docs.includes(".eq('tenant_id', myTenantId)"), 'shared TaxRes document queries are tenant-filtered')
+
+
+assert(prepared.includes('>AI Documents</button>'), 'AI selector exposes AI Documents, not normal Documents')
+assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')"), 'AI Documents opens the selected client File Review workspace')
+assert(prepared.includes("searchParams.get('tab') === 'documents' ? 'documents' : 'overview'"), 'AI document deep links open on File Review')
+assert(!prepared.includes("onClick={()=>navigate('/documents')}>Documents</button>"), 'AI selector does not leave AI for the normal Documents library')
+assert(app.includes('path="/ai-documents/:clientId"'), 'client-specific AI Documents compatibility route exists')
