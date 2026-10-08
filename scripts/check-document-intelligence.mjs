@@ -80,3 +80,7 @@ assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?ta
 assert(prepared.includes("location.pathname.startsWith('/ai-documents/')"), 'legacy AI Documents client links open File Review')
 assert(prepared.includes("searchParams.get('tab') === 'documents' || location.pathname.startsWith('/ai-documents/')"), 'AI Documents deep link forces File Review after route change')
 assert(!prepared.includes("onClick={()=>navigate('/documents')}>Documents</button>"), 'AI selector does not route to normal Documents')
+
+assert(!prepared.includes('disabled={!selectedClientId}'), 'AI selector actions remain clickable before client selection')
+assert(prepared.includes("setError('Select a client first.'); return"), 'AI selector gives explicit guidance when no client is selected')
+assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')"), 'AI Documents still opens selected client File Review')
