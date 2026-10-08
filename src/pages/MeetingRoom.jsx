@@ -98,9 +98,9 @@ function StandardMeetingRoom() {
       <div style={S.page}>
         <div style={S.card}>
           <div style={{ textAlign: 'center', marginBottom: 20 }}>
-            <img src={FIRM.logoUrl || '/logo.png'} alt={FIRM.name || 'Tax Case Review'} style={{ height: 48, objectFit: 'contain', marginBottom: 14 }} onError={e => e.target.style.display='none'} />
+            <img src={FIRM.logoUrl || ''} alt={FIRM.name || 'Firm'} style={{ height: 48, objectFit: 'contain', marginBottom: 14 }} onError={e => e.target.style.display='none'} />
             <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>Join your meeting</div>
-            <div style={{ fontSize: 13, color: '#94a3b8' }}>{FIRM.name || 'Tax Case Review'} — secure video meeting</div>
+            <div style={{ fontSize: 13, color: '#94a3b8' }}>{FIRM.name || 'Firm'} — secure video meeting</div>
           </div>
           <label style={S.label}>Your name</label>
           <input style={S.textInput} value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleJoin() }} placeholder="Enter your name" autoFocus />
@@ -115,7 +115,7 @@ function StandardMeetingRoom() {
   return (
     <div style={{ minHeight: '100vh', background: '#0a0f1a', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>{FIRM.name || 'Tax Case Review'} — Meeting</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>{FIRM.name || 'Firm'} — Meeting</div>
         <div style={{ fontSize: 12, color: '#86efac' }}>{webrtc.members.length} in the call</div>
       </div>
       {webrtc.error && <div style={{ background: '#451a03', color: '#fdba74', fontSize: 12, padding: '8px 20px' }}>{webrtc.error}</div>}
