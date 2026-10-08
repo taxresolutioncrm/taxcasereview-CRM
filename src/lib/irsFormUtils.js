@@ -6,11 +6,11 @@ import { FIRM } from './firmBranding';
 // Firm identity for generated documents. FIRM is populated per signed-in tenant
 // at load; the fallbacks only apply if branding hasn't resolved yet, so a
 // settings hiccup never leaves a document with a blank letterhead.
-const fName = () => FIRM.name || 'Tax Case Review';
-const fAddr = () => FIRM.address || '631 US Highway One Ste 304, North Palm Beach, FL 33408';
-const fMail = () => FIRM.email || 'info@taxcasereview.org';
-const fPhone = () => FIRM.phone || '(888) 334-5052';
-const fFax = () => FIRM.fax || '(561) 420-6999';
+const fName = () => FIRM.name || 'Firm';
+const fAddr = () => FIRM.address || '';
+const fMail = () => FIRM.email || '';
+const fPhone = () => FIRM.phone || '';
+const fFax = () => FIRM.fax || '';
 const fContactLine = () => [fMail(), fPhone(), fFax() ? `Fax ${fFax()}` : null].filter(Boolean).join('  ·  ');
 const fFooterLine = () => [fAddr(), fMail(), fPhone(), fFax() ? `Fax ${fFax()}` : null].filter(Boolean).join(' · ');
 
@@ -933,21 +933,25 @@ export function getPackageFormTypes(clientType) {
 
 // ─── Credit Card Authorization — built from scratch for the e-sign package ───
 export async function generateCcAuthPdf(client) {
-  // Firm branding for the authorization line + footer — falls back to the
-  // TCR defaults on any error so a settings hiccup never blocks the doc.
-  let firmName = 'Tax Case Review';
-  let firmFooterLine1 = 'Tax Case Review · 631 US Highway One Ste 304, North Palm Beach, FL 33408';
-  let firmFooterLine2 = 'info@taxcasereview.org · (888) 334-5052 · Fax (561) 420-6999';
+  // Firm branding for the authorization line + footer. Never borrow another
+  // office's identity if settings are unavailable.
+  let firmName = fName();
+  let firmFooterLine1 = [firmName, fAddr()].filter(Boolean).join(' · ');
+  let firmFooterLine2 = [fMail(), fPhone(), fFax() ? `Fax ${fFax()}` : null].filter(Boolean).join(' · ');
   try {
-    const { data: s } = await supabase.from('settings').select('name,address,city,state,zip,phone,email,firm_fax_number').maybeSingle();
-    if (s?.name) {
-      firmName = s.name;
+    const { data: tenantId } = await supabase.rpc('current_tenant_id');
+    const { data: s } = tenantId
+      ? await supabase.from('settings').select('name,firmname,address,city,state,zip,phone,firmphone,email,firmemail,firm_fax_number').eq('tenant_id', tenantId).maybeSingle()
+      : { data: null };
+    if (s) {
+      firmName = s.name || s.firmname || firmName;
       const addr = [s.address, [s.city, s.state].filter(Boolean).join(', '), s.zip].filter(Boolean).join(', ');
-      firmFooterLine1 = addr ? `${firmName} · ${addr}` : firmName;
-      const parts = [s.email, s.phone, s.firm_fax_number ? `Fax ${s.firm_fax_number}` : null].filter(Boolean);
-      if (parts.length) firmFooterLine2 = parts.join(' · ');
+      firmFooterLine1 = [firmName, addr].filter(Boolean).join(' · ');
+      const email = s.email || s.firmemail || '';
+      const phone = s.phone || s.firmphone || '';
+      firmFooterLine2 = [email, phone, s.firm_fax_number ? `Fax ${s.firm_fax_number}` : null].filter(Boolean).join(' · ');
     }
-  } catch (_) { /* keep defaults */ }
+  } catch (_) { /* keep current tenant branding from FIRM */ }
 
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([612, 792]);
@@ -2244,7 +2248,7 @@ export async function buildCertificatePage({ docType, clientName, signedBy, ip, 
   page.drawRectangle({ x:0, y:height-80, width, height:80, color: rgb(0.07, 0.17, 0.35) })
 
   // Header text
-  page.drawText('TAX CASE REVIEW', {
+  page.drawText(fName().toUpperCase(), {
     x: 40, y: height-36, size: 10, font: fontBold, color: rgb(0.58, 0.76, 0.98),
     characterSpacing: 2,
   })
