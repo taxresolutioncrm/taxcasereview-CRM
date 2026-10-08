@@ -251,8 +251,9 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
           td{padding:7px 10px;border:1px solid #e2e8f0}tr:nth-child(even) td{background:#f8fafc}
           .total{font-weight:800;background:#f1f5f9}.footer{margin-top:24px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}</style>
           </head><body>
+          ${FIRM.logoUrl ? `<img src="${FIRM.logoUrl}" alt="${FIRM.name || 'Firm'}" style="max-height:52px;max-width:190px;object-fit:contain;margin-bottom:10px" onerror="this.style.display='none'"/>` : ''}
           <h1>Billing Report${filterClient ? ' — ' + filterClient : ''}</h1>
-          <div class="meta">Generated ${now} · ${entries.length} entries</div>
+          <div class="meta">${FIRM.name || 'Firm'} · Generated ${now} · ${entries.length} entries</div>
           <table><thead><tr><th>Activity Type</th><th>Entries</th><th>Hours</th><th>Total</th><th>WIP</th><th>Billed</th></tr></thead><tbody>
           ${rows.map(([act, d]) => `<tr><td>${act}</td><td>${d.count}</td><td>${Number(d.hours).toFixed(2)}h</td><td>$${Number(d.amount).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#92400e">$${Number(d.wip).toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#15803d">$${Number(d.billed).toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>`).join('')}
           <tr class="total"><td>TOTAL</td><td>${entries.length}</td><td>${totH.toFixed(2)}h</td><td>$${totA.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#92400e">$${totW.toLocaleString('en-US',{minimumFractionDigits:2})}</td><td style="color:#15803d">$${totB.toLocaleString('en-US',{minimumFractionDigits:2})}</td></tr>
