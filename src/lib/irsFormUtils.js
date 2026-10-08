@@ -957,6 +957,16 @@ export async function generateCcAuthPdf(client) {
   const page = pdfDoc.addPage([612, 792]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  let brandLogo = null, brandLogoW = 0, brandLogoH = 0;
+  if (FIRM.logoUrl) {
+    try {
+      const res = await fetch(FIRM.logoUrl);
+      const bytes = await res.arrayBuffer();
+      try { brandLogo = await pdfDoc.embedPng(bytes); } catch { brandLogo = await pdfDoc.embedJpg(bytes); }
+      brandLogoH = 32;
+      brandLogoW = Math.min(120, (brandLogo.width / brandLogo.height) * brandLogoH);
+    } catch (_) {}
+  }
 
   const margin = 56;
   let y = 730;
@@ -985,7 +995,13 @@ export async function generateCcAuthPdf(client) {
     page.drawText(label, { x, y: yPos - 12, size: 9, font, color: rgb(0.4,0.4,0.4) });
   };
 
-  // Title
+  // Tenant-branded title
+  if (brandLogo) {
+    page.drawImage(brandLogo, { x:margin, y:y-8, width:brandLogoW, height:brandLogoH });
+    y -= 42;
+  }
+  page.drawText(firmName, { x: margin, y, size: 11, font: bold, color: rgb(0.10,0.25,0.55) });
+  y -= 18;
   page.drawText('Credit Card / Payment Method Authorization', { x: margin, y, size: 15, font: bold });
   y -= 26;
   page.drawText(`Client: ${client?.name || ''}`, { x: margin, y, size: 11, font });
