@@ -65,7 +65,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public, pg_catalog
-as $
+as $$
 begin
   perform net.http_post(
     url := 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy',
@@ -85,7 +85,7 @@ begin
   );
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists romylabs_dispatch_metrics_signal
   on public.romylabs_metrics_signal_queue;
