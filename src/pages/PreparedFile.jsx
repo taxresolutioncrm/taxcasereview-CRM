@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const hasReadableFile = (doc) => !!(doc?.storage_path || doc?.file_url)
@@ -21,6 +21,7 @@ const aiChatFunction = isAiSandboxPreview ? 'ai-chat-sandbox' : 'ai-chat'
 export default function PreparedFile() {
   const { clientId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const [client, setClient] = useState(null)
   const [docs, setDocs] = useState([])
@@ -31,7 +32,7 @@ export default function PreparedFile() {
   const [busy, setBusy] = useState(false)
   const [activeDoc, setActiveDoc] = useState('')
   const [error, setError] = useState('')
-  const [tab, setTab] = useState(() => searchParams.get('tab') === 'documents' ? 'documents' : 'overview')
+  const [tab, setTab] = useState(() => (searchParams.get('tab') === 'documents' || location.pathname.startsWith('/ai-documents/')) ? 'documents' : 'overview')
   const [clientOptions, setClientOptions] = useState([])
   const [selectedClientId, setSelectedClientId] = useState('')
   const [askText, setAskText] = useState('')
@@ -51,8 +52,8 @@ export default function PreparedFile() {
   }, [clientId])
 
   useEffect(() => {
-    if (searchParams.get('tab') === 'documents') setTab('documents')
-  }, [clientId, searchParams])
+    if (searchParams.get('tab') === 'documents' || location.pathname.startsWith('/ai-documents/')) setTab('documents')
+  }, [clientId, location.pathname, searchParams])
 
   async function loadClientOptions() {
     setError('')
