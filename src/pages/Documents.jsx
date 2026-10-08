@@ -36,7 +36,7 @@ function hasDocumentFile(doc) { return !!(doc?.storage_path || doc?.file_url) }
 export default function Documents() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { role, user } = useApp()
+  const { role, user, myTenantId } = useApp()
   const isAdmin = role === 'Admin' || role === 'Super Admin' || role === 'Manager'
   const clientParam = new URLSearchParams(location.search).get('client') || ''
 
@@ -90,7 +90,12 @@ export default function Documents() {
   useEffect(() => { loadDocuments() }, [clientFilter, folder, search, sortCol, sortDir, docPage, people.length])
 
   async function loadDocuments() {
-    let q = supabase.from('documents').select('*', { count:'exact' })
+    const countMode = (!clientFilter && folder === 'All' && !String(search || '').trim()) ? 'planned' : 'exact'
+    let q = supabase.from('documents').select(
+      'id,tenant_id,name,client,client_id,docType,notes,file_url,file_name,file_size,storage_path,created_at',
+      { count: countMode }
+    )
+    if (myTenantId) q = q.eq('tenant_id', myTenantId)
     if (clientFilter) {
       if (clientFilter.startsWith('client:')) q = q.eq('client_id', clientFilter.slice(7))
       else if (clientFilter.startsWith('lead:')) {
@@ -313,9 +318,7 @@ export default function Documents() {
       <div className="page-header">
         <div><h1>Documents</h1><p>All client files and documents</p></div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          {selectedClient && (
-            <button className="btn" onClick={()=>navigate('/ai-intelligence/' + selectedClient.id)}>✦ AI Intelligence</button>
-          )}
+          <button className="btn" onClick={()=>selectedClient ? navigate('/ai-intelligence/' + selectedClient.id) : navigate('/ai-intelligence')}>✦ AI Intelligence</button>
           <button className="btn primary" onClick={()=>setModal(true)}>＋ Upload Document</button>
         </div>
       </div>
