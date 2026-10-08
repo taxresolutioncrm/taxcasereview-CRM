@@ -38,6 +38,7 @@ export default function PreparedFile() {
   const [clientSearch, setClientSearch] = useState('')
   const [landingUploadFile, setLandingUploadFile] = useState(null)
   const [landingUploadBusy, setLandingUploadBusy] = useState(false)
+  const [documentSearch, setDocumentSearch] = useState('')
   const [askText, setAskText] = useState('')
   const [askReply, setAskReply] = useState('')
   const [askBusy, setAskBusy] = useState(false)
@@ -145,6 +146,13 @@ export default function PreparedFile() {
   const noticeDeadlineFacts = currentFacts.filter(f => ['notice','deadline'].includes(String(f.category || '').toLowerCase()))
   const reviewFindings = currentFacts.filter(f => f.review_status === 'unreviewed' || (f.confidence != null && Number(f.confidence) < 0.8))
   const unreadDocuments = readableDocs.filter(d => latestByDoc.get(String(d.id))?.status !== 'complete')
+  const visibleDocuments = docs.filter(d => {
+    const term = documentSearch.trim().toLowerCase()
+    if (!term) return true
+    const run = latestByDoc.get(String(d.id))
+    return [d.file_name, d.name, d.docType, run?.status]
+      .some(v => String(v || '').toLowerCase().includes(term))
+  })
   const recommendedActions = [
     ...unreadDocuments.slice(0,3).map(d => ({ kind:'document', text:`Analyze ${d.file_name || d.name || 'unread document'}` })),
     ...openQuestions.slice(0,4).map(q => ({ kind:'question', text:`Resolve: ${q.question}` })),
@@ -621,10 +629,20 @@ export default function PreparedFile() {
 
           {tab === 'documents' && (
             <div>
-              {docs.map(d=>{
+              <div style={{display:'flex',gap:10,alignItems:'center',marginBottom:12,flexWrap:'wrap'}}>
+                <input
+                  className="input"
+                  value={documentSearch}
+                  onChange={e=>setDocumentSearch(e.target.value)}
+                  placeholder="Search this client's files…"
+                  style={{flex:'1 1 320px',minWidth:220}}
+                />
+                <div style={{fontSize:11,color:'var(--t3)'}}>{visibleDocuments.length} of {docs.length} files</div>
+              </div>
+              {visibleDocuments.map(d=>{
                 const run=latestByDoc.get(String(d.id))
                 return (
-                  <div key={d.id} style={{display:'grid',gridTemplateColumns:'1fr 180px 130px',gap:12,alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--bd)'}}>
+                  <div key={d.id} style={{display:'grid',gridTemplateColumns:'1fr 180px 210px',gap:12,alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--bd)'}}>
                     <div>
                       <div style={{fontWeight:700,fontSize:13}}>{d.file_name || d.name}</div>
                       <div style={{fontSize:11,color:'var(--t3)'}}>{d.docType || 'Document'} · {fmtDate(d.created_at)}</div>
@@ -632,13 +650,17 @@ export default function PreparedFile() {
                     <div style={{fontSize:12,color:run?.status==='complete'?'#16803a':'var(--t3)'}}>
                       {!hasReadableFile(d) ? 'no file attached' : (run ? run.status.replace('_',' ') : 'not analyzed')}
                     </div>
-                    <button className="btn sm" disabled={activeDoc===d.id} onClick={async()=>{try{await analyzeDocument(d);await load()}catch(e){setError(e.message)}}}>
-                      {activeDoc===d.id?'Reading…':'✦ Analyze'}
-                    </button>
+                    <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+                      <button className="btn sm" disabled={!hasReadableFile(d)} onClick={()=>openSource(d.id)}>Open</button>
+                      <button className="btn sm" disabled={activeDoc===d.id || !hasReadableFile(d)} onClick={async()=>{try{await analyzeDocument(d);await load()}catch(e){setError(e.message)}}}>
+                        {activeDoc===d.id?'Reading…':'✦ Analyze'}
+                      </button>
+                    </div>
                   </div>
                 )
               })}
               {!docs.length && <div style={{color:'var(--t3)'}}>No client documents are attached yet.</div>}
+              {!!docs.length && !visibleDocuments.length && <div style={{color:'var(--t3)'}}>No client files match that search.</div>}
             </div>
           )}
 
