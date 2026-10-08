@@ -67,3 +67,10 @@ for (const table of ['document_ai_runs','document_ai_facts','document_ai_entitie
 
 if (process.exitCode) process.exit(process.exitCode)
 console.log('Document Intelligence contract checks passed.')
+
+
+assert(app.includes('path="/ai-documents"') && app.includes('<PreparedFile />'), 'legacy AI Documents route lands in AI Intelligence, not Documents')
+assert(docs.includes("countMode") && docs.includes("'planned'") && docs.includes("'exact'"), 'large unfiltered document loads avoid exact-count timeout')
+assert(docs.includes("navigate('/ai-intelligence')"), 'Documents can open AI Intelligence even before a client is selected')
+
+assert(docs.includes(".eq('tenant_id', myTenantId)"), 'shared TaxRes document queries are tenant-filtered')
