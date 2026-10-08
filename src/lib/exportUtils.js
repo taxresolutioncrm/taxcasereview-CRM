@@ -1,3 +1,4 @@
+import { FIRM } from './firmBranding'
 // ── Shared export utilities ────────────────────────────────────────────────
 
 export function exportCSV(rows, filename) {
@@ -27,7 +28,7 @@ export function exportPDF(title, sections) {
     @media print { body { padding: 16px; } }
   </style></head><body>
   <h1>${title}</h1>
-  <div class="meta">Tax Case Review · Generated ${now}</div>
+  <div class="meta">${FIRM.name || 'Firm'} · Generated ${now}</div>
   ${sections.map(s => `
     <h2>${s.heading}</h2>
     <table>
@@ -35,7 +36,7 @@ export function exportPDF(title, sections) {
       <tbody>${s.rows.map(r => `<tr>${r.map(c => `<td>${c ?? '—'}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>
   `).join('')}
-  <div class="footer">Tax Case Review &amp; Resolution Services · North Palm Beach, FL 33408 · taxcasereview.org</div>
+  <div class="footer">${[FIRM.name,FIRM.address,FIRM.phone,FIRM.email].filter(Boolean).join(' · ')}</div>
   </body></html>`)
   w.document.close()
   setTimeout(() => w.print(), 400)
