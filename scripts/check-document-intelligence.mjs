@@ -78,8 +78,8 @@ assert(docs.includes(".eq('tenant_id', myTenantId)"), 'shared TaxRes document qu
 
 assert(prepared.includes('>AI Documents</button>'), 'AI selector exposes AI Documents, not normal Documents')
 assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')"), 'AI Documents opens the selected client File Review workspace')
-assert(prepared.includes("searchParams.get('tab') === 'documents' ? 'documents' : 'overview'"), 'AI document deep links open on File Review')
+assert(prepared.includes("location.pathname.startsWith('/ai-documents/')"), 'legacy AI Documents client links open File Review')
 assert(!prepared.includes("onClick={()=>navigate('/documents')}>Documents</button>"), 'AI selector does not leave AI for the normal Documents library')
 assert(app.includes('path="/ai-documents/:clientId"'), 'client-specific AI Documents compatibility route exists')
 
-assert(prepared.includes("if (searchParams.get('tab') === 'documents') setTab('documents')"), 'AI Documents deep link forces File Review after route change')
+assert(prepared.includes("searchParams.get('tab') === 'documents' || location.pathname.startsWith('/ai-documents/')"), 'AI Documents deep link forces File Review after route change')
