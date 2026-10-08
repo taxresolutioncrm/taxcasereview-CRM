@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { useApp } from '../context/AppContext'
 
 const DOC_TYPES = {
   'W-2': ['box1_wages','box2_federal_withheld','box3_ss_wages','box4_ss_withheld','box5_medicare_wages','box6_medicare_withheld','box12a_code','box12a_amount','box16_state_wages','box17_state_tax','employer_name','employer_ein','employee_ssn'],
@@ -115,7 +116,8 @@ async function parseDocWithAI(file, docType) {
   return fnData?.parsed || {}
 }
 
-export default function TaxDocParser({ clientName = '', taxYear = '2024', onParsed }) {
+export default function TaxDocParser({ clientName = '', clientId = null, taxYear = '2024', onParsed }) {
+  const { myTenantId } = useApp()
   const [files, setFiles] = useState([])
   const [parsing, setParsing] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -156,7 +158,15 @@ export default function TaxDocParser({ clientName = '', taxYear = '2024', onPars
   }
 
   function updateParsedField(id, key, value) {
-    setFiles(prev => prev.map(f => f.id === id ? { ...f, parsed: { ...f.parsed, [key]: value } } : f))
+    let changed = null
+    setFiles(prev => prev.map(f => {
+      if (f.id !== id) return f
+      changed = { ...f, parsed: { ...f.parsed, [key]: value } }
+      return changed
+    }))
+    if (changed?.parsed && onParsed) {
+      queueMicrotask(() => onParsed([{ docType: changed.docType, data: changed.parsed }], { mode:'review-edit', replace:false }))
+    }
   }
 
   async function parseAll() {
@@ -181,6 +191,8 @@ export default function TaxDocParser({ clientName = '', taxYear = '2024', onPars
     if (results.length > 0 && onParsed) {
       // Save to DB in background
       const inserts = results.map(({ item, parsed }) => ({
+        tenant_id: myTenantId,
+        client_id: clientId ? String(clientId) : null,
         client_name: clientName,
         tax_year: taxYear,
         doc_type: item.docType,
@@ -195,7 +207,7 @@ export default function TaxDocParser({ clientName = '', taxYear = '2024', onPars
         console.error('Failed to persist parsed tax-document metadata:', saveError)
       }
 
-      onParsed(results.map(({ item, parsed }) => ({ docType: item.docType, data: parsed })))
+      onParsed(results.map(({ item, parsed }) => ({ docType: item.docType, data: parsed })), { mode:'parse', replace:false })
     }
   }
 

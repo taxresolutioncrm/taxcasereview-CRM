@@ -6,7 +6,7 @@ import { FIRM } from '../lib/firmBranding'
 
 // Tenant-resolved firm name so payment-link email + SMS read for whichever
 // firm is signed in, not just the primary tenant.
-const firmName = () => FIRM.name || 'Tax Case Review'
+const firmName = () => FIRM.name || 'Firm'
 
 export default function SendPaymentLinkModal({ record, recordType, onClose, showToast, purpose, defaultAmount, defaultDescription }) {
   const [amount, setAmount] = useState(defaultAmount ? String(defaultAmount) : '')

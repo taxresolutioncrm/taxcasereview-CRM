@@ -35,7 +35,7 @@ import { FIRM, label } from '../lib/firmBranding'
 
 // Tenant-resolved firm name so onboarding email + POA/addendum SMS bodies
 // read for whichever firm is signed in. Mirrors Leads.jsx and docUtils.
-const firmName  = () => FIRM.name || 'Tax Case Review'
+const firmName  = () => FIRM.name || 'Firm'
 const firmEmail = () => (FIRM.email || '').trim() || 'info@' + firmName().toLowerCase().replace(/[^a-z0-9]+/g, '') + '.com'
 
 const STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
@@ -652,7 +652,7 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
         const { error } = await supabase.functions.invoke('send-email', {
           body: { tenant_id: FIRM.tenantId || undefined,
             to: client.email,
-            subject: `Your ${year.trim()} Tax Organizer — ${FIRM.name || 'Tax Case Review'}`,
+            subject: `Your ${year.trim()} Tax Organizer — ${FIRM.name || 'Firm'}`,
             html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Please complete your ${year.trim()} tax organizer so we can begin preparing your return. It only takes a few minutes, and you can save your progress and come back anytime.</p><p style="text-align:center;margin:24px 0"><a href="${url}" style="background:#9333ea;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Start My Tax Organizer</a></p><p style="font-size:12px;color:#64748b">Link: ${url}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
           }
         })
@@ -1694,7 +1694,7 @@ export default function Clients() {
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
         doc_type: `State POA — ${formDef.state} (${formDef.num})`,
         client_name: client.name, client_email: client.email||'', client_phone: client.phone||'',
-        message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${FIRM.name || 'Tax Case Review'} to represent you before the ${formDef.state} tax authority.`,
+        message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${FIRM.name || 'Firm'} to represent you before the ${formDef.state} tax authority.`,
         pdf_attachments: [{ formType:'state_poa', label:`${formDef.state} POA — ${formDef.label}`, url:urlData.signedUrl, storage_path:path }],
         priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
         tenant_id: FIRM.tenantId || undefined,
@@ -1766,7 +1766,7 @@ export default function Clients() {
     if ((via==='email'||via==='both') && c.email) {
       const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined,
         to: c.email,
-        subject: `Action Required: Sign Your Service Addendum — ${FIRM.name || 'Tax Case Review'}`,
+        subject: `Action Required: Sign Your Service Addendum — ${FIRM.name || 'Firm'}`,
         html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px">
 <tr><td align="center">
@@ -1778,7 +1778,7 @@ export default function Clients() {
   </td></tr>
   <tr><td style="padding:40px 40px 32px">
     <p style="margin:0 0 16px;font-size:16px;color:#0f172a">Dear <strong>${c.name}</strong>,</p>
-    <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7">Your <strong>Service Addendum</strong> is ready for your review and signature. This document authorizes ${FIRM.name || 'Tax Case Review'} to proceed with the resolution services we've outlined for your case and confirms the associated service fee.</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7">Your <strong>Service Addendum</strong> is ready for your review and signature. This document authorizes ${FIRM.name || 'Firm'} to proceed with the resolution services we've outlined for your case and confirms the associated service fee.</p>
     <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#0f172a;text-transform:uppercase;letter-spacing:.06em">✍️ Step 1 — Review &amp; Sign</p>
     <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 20px">
       <a href="${url}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:#ffffff;padding:16px 40px;border-radius:10px;text-decoration:none;font-weight:700;font-size:17px;box-shadow:0 4px 14px rgba(22,163,74,.35)">Review &amp; Sign Addendum →</a>

@@ -7,15 +7,19 @@ import { FIRM } from './firmBranding'
 // existing caller keeps working exactly as before.
 
 const LOGO_URL = ''  // replaced by FIRM.logoUrl
-const FIRM_NAME = 'Tax Case Review'
+const FIRM_NAME = 'Firm'
 const FIRM_ADDRESS = FIRM.address || ''
 const FIRM_PHONE   = FIRM.phone   || ''
-const FIRM_EMAIL = 'info@taxcasereview.org'
+const FIRM_EMAIL = ''
 
 export function emailHtml({ body, headerBg = 'linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 100%)', firmName, logoUrl, address, phone, email }) {
   // Explicit override → this tenant's live settings (FIRM) → legacy default.
   const fName = firmName || FIRM.name || FIRM_NAME
-  const fLogo = logoUrl || FIRM.logoUrl || LOGO_URL
+  const rawLogo = logoUrl || FIRM.logoUrl || LOGO_URL
+  let fLogo = rawLogo
+  try {
+    if (rawLogo && typeof window !== 'undefined') fLogo = new URL(rawLogo, window.location.origin).href
+  } catch (_) {}
   const fAddr = address || FIRM.address || FIRM_ADDRESS
   const fPhone = phone || FIRM.phone || FIRM_PHONE
   const fEmail = email || FIRM.email || FIRM_EMAIL

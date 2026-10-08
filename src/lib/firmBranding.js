@@ -37,37 +37,38 @@ export function firmSlug(name) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-// Pre-populate from localStorage synchronously so the first render shows the
-// correct tenant branding with zero flash. The async DB fetch below then
-// confirms/updates it in the background.
-function _loadCached() {
-  try {
-    const cached = localStorage.getItem('tcr_firm_branding')
-    if (cached) return JSON.parse(cached)
-  } catch (_) {}
-  return null
-}
-const _cached = _loadCached()
-
+// Branding starts neutral and is resolved from the authoritative tenant on
+// every app/session load. A process-wide localStorage cache can retain another
+// office's logo/contact data after tenant switching, so it is intentionally not
+// used here.
 export const FIRM = {
-  name:     _cached?.name     || '',
-  slug:     _cached?.slug     || '',
-  tenantId: _cached?.tenantId || '',
-  logoUrl:  _cached?.logoUrl  || '',
-  address:  _cached?.address  || '',
-  phone:    _cached?.phone    || '',
-  email:    _cached?.email    || '',
-  website:  _cached?.website  || '',
-  fax:      _cached?.fax      || '',
-  loaded:         !!_cached,
-  labels:         _cached?.labels         || {},
-  paymentProvider: _cached?.paymentProvider || 'stripe',
+  name: '',
+  slug: '',
+  tenantId: '',
+  logoUrl: '',
+  address: '',
+  phone: '',
+  email: '',
+  website: '',
+  fax: '',
+  loaded: false,
+  labels: {},
+  paymentProvider: 'stripe',
 }
-// Apply cached branding immediately (title only) before any async fetch.
-// The RomyLabs Admin host is a hard browser-branding boundary and must never
-// inherit cached tenant/demo branding.
-if (_cached?.name) {
-  setBrowserTitle(`${_cached.name} — IRS Resolution CRM`)
+
+function resetFirmBranding() {
+  FIRM.name = ''
+  FIRM.slug = ''
+  FIRM.tenantId = ''
+  FIRM.logoUrl = ''
+  FIRM.address = ''
+  FIRM.phone = ''
+  FIRM.email = ''
+  FIRM.website = ''
+  FIRM.fax = ''
+  FIRM.labels = {}
+  FIRM.paymentProvider = 'stripe'
+  FIRM.loaded = false
 }
 
 // Resolve a UI label — falls back to the default if the tenant hasn't overridden it
@@ -77,6 +78,7 @@ export function label(key, defaultVal) {
 
 export async function loadFirmBranding() {
   try {
+    resetFirmBranding()
     // During admin impersonation, RLS on settings always returns TCR's row
     // (romy's JWT never changes). Read branding from sessionStorage instead —
     // it was populated by ImpersonateGate when the token was validated.
@@ -127,15 +129,7 @@ export async function loadFirmBranding() {
     FIRM.fax = s.firm_fax_number || ''
     FIRM.labels = s.labels || {}
     FIRM.loaded = true
-    // Cache for instant next-load — eliminates the branding flash on hard refresh
-    try {
-      localStorage.setItem('tcr_firm_branding', JSON.stringify({
-        name: FIRM.name, slug: FIRM.slug, tenantId: FIRM.tenantId,
-        logoUrl: FIRM.logoUrl, address: FIRM.address, phone: FIRM.phone,
-        email: FIRM.email, website: FIRM.website, fax: FIRM.fax, labels: FIRM.labels,
-        paymentProvider: FIRM.paymentProvider
-      }))
-    } catch (_) {}
+    // No global tenant-branding cache: current_tenant_id() is authoritative.
   } catch (_) { /* leave whatever we have; templates degrade gracefully */ }
   return FIRM
 }
@@ -146,15 +140,20 @@ export async function loadFirmBranding() {
 // the anon-safe booking_get_public_meta RPC instead. Call this on mount of any
 // page a logged-out client can reach, or it will render the default firm.
 export function clearFirmBrandingCache() {
+  resetFirmBranding()
   try { localStorage.removeItem('tcr_firm_branding') } catch (_) {}
 }
 
 export async function loadFirmBrandingPublic(tenantHint) {
   try {
-    // Optional tenant hint (uuid as text) → RPC resolves this tenant's row.
-    // Without it the RPC falls back to the legacy first-row (TCR) branding.
-    const args = tenantHint ? { p_tenant: String(tenantHint) } : {}
-    const { data } = await supabase.rpc('booking_get_public_meta', args)
+    // Public branding must have an explicit tenant. Never invoke the legacy
+    // no-argument RPC path because it selects the first settings row and can
+    // display another office's logo/name on a CloudCPA document.
+    if (!tenantHint) {
+      if (!FIRM.loaded) resetFirmBranding()
+      return FIRM
+    }
+    const { data } = await supabase.rpc('booking_get_public_meta', { p_tenant: String(tenantHint) })
     if (data) {
       if (data.tenant_id) FIRM.tenantId = data.tenant_id
       if (data.firm_name) FIRM.name = data.firm_name

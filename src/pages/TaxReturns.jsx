@@ -24,8 +24,11 @@ const RETURN_TYPES = [
 ]
 const RETURN_STATUSES = ['Draft','In Review','Client Review','Ready to File','Filed','Accepted','Rejected','Amended']
 
+const CURRENT_TAX_YEAR = String(new Date().getFullYear())
+const DEFAULT_TAX_YEAR = TAX_YEARS.includes(CURRENT_TAX_YEAR) ? CURRENT_TAX_YEAR : TAX_YEARS[0]
+
 const BLANK_RETURN = {
-  clientName: '', taxYear: '2024', returnType: 'Federal 1040',
+  clientName: '', taxYear: DEFAULT_TAX_YEAR, returnType: 'Federal 1040',
   filingStatus: 'Single', status: 'Draft', assignedTo: '',
   // Income
   wages: '', interest: '', dividends: '', capitalGains: '', businessIncome: '',
@@ -233,7 +236,7 @@ function fmt(n) {
 }
 
 export default function TaxReturns() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [returns, setReturns]   = useState([])
   const [clients, setClients]   = useState([])
   const [employees, setEmployees] = useState([])
@@ -252,9 +255,54 @@ export default function TaxReturns() {
   const [setupNeeded, setSetupNeeded] = useState(false)
   const [preparer, setPreparer] = useState({ name:'', ptin:'', caf:'', efin:'' })
   const [efileStatus, setEfileStatus] = useState({ loading:true, configured:false, providerName:'', efinPresent:false, adapterConfigured:false, message:'' })
+  const [sourceDocs, setSourceDocs] = useState([])
+  const [sourceScanAt, setSourceScanAt] = useState(null)
 
-  useEffect(() => { if (user) { load(); loadPreparer(); loadEfileStatus() } }, [user?.id])
+  useEffect(() => {
+    if (!user || !myTenantId) {
+      setReturns([])
+      setClients([])
+      setEmployees([])
+      setLoading(Boolean(user))
+      return
+    }
+    load()
+    loadPreparer()
+    loadEfileStatus()
 
+    let timer = null
+    const channel = supabase.channel('tax-returns:' + myTenantId)
+      .on('postgres_changes', {
+        event:'*', schema:'public', table:'tax_returns', filter:`tenant_id=eq.${myTenantId}`
+      }, () => {
+        clearTimeout(timer)
+        timer = setTimeout(load, 200)
+      })
+      .subscribe()
+
+    return () => {
+      clearTimeout(timer)
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, myTenantId])
+
+  useEffect(() => {
+    if (!myTenantId || !form.clientName?.trim() || !form.taxYear) { setSourceDocs([]); setSourceScanAt(null); return }
+    let cancelled = false
+    let timer = null
+    const scan = async () => {
+      const selected = clients.find(c => String(c.name||'').trim().toLowerCase() === String(form.clientName||'').trim().toLowerCase())
+      let q = supabase.from('tax_doc_uploads').select('id,client_id,client_name,tax_year,doc_type,file_name,parsed_data,created_at').eq('tenant_id',myTenantId).eq('tax_year',String(form.taxYear)).order('created_at',{ascending:false})
+      q = selected?.id ? q.or('client_id.eq.'+selected.id+',client_name.ilike.'+form.clientName.trim()) : q.ilike('client_name',form.clientName.trim())
+      const { data, error } = await q
+      if (cancelled || error) return
+      setSourceDocs(data||[])
+      setSourceScanAt(new Date())
+    }
+    scan()
+    const ch = supabase.channel('tax-doc-scan:'+myTenantId+':'+form.taxYear).on('postgres_changes',{event:'*',schema:'public',table:'tax_doc_uploads',filter:'tenant_id=eq.'+myTenantId},()=>{ clearTimeout(timer); timer=setTimeout(scan,150) }).subscribe()
+    return () => { cancelled=true; clearTimeout(timer); supabase.removeChannel(ch) }
+  }, [myTenantId, form.clientName, form.taxYear, clients])
   async function loadEfileStatus() {
     setEfileStatus(s => ({ ...s, loading:true }))
     const { data, error } = await supabase.functions.invoke('submit-to-irs', { body: { action:'status' } })
@@ -280,24 +328,29 @@ export default function TaxReturns() {
   }
 
   async function loadPreparer() {
-    const tid = user?.app_metadata?.tenant_id || user?.user_metadata?.tenant_id
-    if (!tid) return
+    if (!myTenantId) return
     const { data } = await supabase.from('settings')
       .select('preparer_name,ptin,caf_number,efin')
-      .eq('tenant_id', tid)
+      .eq('tenant_id', myTenantId)
       .maybeSingle()
     if (data) setPreparer({ name: data.preparer_name || '', ptin: data.ptin || '', caf: data.caf_number || '', efin: data.efin || '' })
   }
 
   async function load() {
+    if (!myTenantId) return
+    setLoading(true)
     const [r, c, e] = await Promise.all([
-      supabase.from('tax_returns').select('*').order('created_at', { ascending: false }),
-      supabase.from('clients').select('id,name,ssn,filingStatus,assignedTo').order('name'),
-      supabase.from('employees').select('name'),
+      supabase.from('tax_returns').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
+      supabase.from('clients').select('id,name,ssn,filingStatus,assignedTo').eq('tenant_id', myTenantId).order('name'),
+      supabase.from('employees').select('id,name,status').eq('tenant_id', myTenantId).eq('status','Active').order('name'),
     ])
-    // Detect missing table
     if (r.error && (r.error.code === '42P01' || r.error.message?.includes('does not exist'))) {
       setSetupNeeded(true)
+      setReturns([])
+    } else if (r.error) {
+      setSetupNeeded(false)
+      setReturns([])
+      showToast('Tax returns could not be loaded: ' + r.error.message)
     } else {
       setSetupNeeded(false)
       setReturns((r.data || []).map(fromDbReturn))
@@ -395,16 +448,15 @@ export default function TaxReturns() {
   // Log a note on the client's file for tax return events
   async function logReturnNote(noteText) {
     if (!form.clientName) return
-    const tid = user?.app_metadata?.tenant_id || user?.user_metadata?.tenant_id
+    if (!myTenantId) return
     const author = user?.user_metadata?.name || user?.email || 'Staff'
-    // Look up client by name within this tenant
     const { data: clientRow } = await supabase.from('clients')
-      .select('id').eq('tenant_id', tid).ilike('name', form.clientName.trim()).maybeSingle()
+      .select('id').eq('tenant_id', myTenantId).ilike('name', form.clientName.trim()).maybeSingle()
     const client_id = clientRow?.id || null
     await supabase.from('client_notes').insert({
       clientname: form.clientName,
       client_id,
-      tenant_id: tid,
+      tenant_id: myTenantId,
       text: noteText,
       author,
       type: 'Tax Return',
@@ -433,29 +485,50 @@ export default function TaxReturns() {
   }
 
   async function save() {
-    if (!form.clientName) { showToast('Client name required'); return }
+    if (!myTenantId) { showToast('Office context is still loading. Try again in a moment.'); return }
+    if (!form.clientName?.trim()) { showToast('Client name required'); return }
     setSaving(true)
-    const payload = toDbReturnPayload(form, { updated_at: new Date().toISOString() })
-    let error
-    if (current?.id) {
-      ;({ error } = await supabase.from('tax_returns').update(payload).eq('id', current.id))
-    } else {
-      payload.created_at = new Date().toISOString()
-      ;({ error } = await supabase.from('tax_returns').insert([payload]))
-    }
-    setSaving(false)
-    if (error) {
-      // If table doesn't exist yet, show helpful message
-      if (error.message?.includes('does not exist') || error.code === '42P01') {
-        showToast('⚠️ tax_returns table not created yet — see setup instructions')
+    try {
+      const selectedClient = clients.find(c => String(c.name || '').trim().toLowerCase() === form.clientName.trim().toLowerCase())
+      const payload = toDbReturnPayload(form, {
+        tenant_id: myTenantId,
+        client_id: selectedClient?.id ? String(selectedClient.id) : null,
+        updated_at: new Date().toISOString()
+      })
+      let data, error
+      if (current?.id) {
+        ;({ data, error } = await supabase.from('tax_returns')
+          .update(payload)
+          .eq('tenant_id', myTenantId)
+          .eq('id', current.id)
+          .select('*')
+          .single())
       } else {
-        showToast('Error: ' + error.message)
+        payload.created_at = new Date().toISOString()
+        ;({ data, error } = await supabase.from('tax_returns')
+          .insert([payload])
+          .select('*')
+          .single())
       }
-      return
+      if (error) {
+        if (error.message?.includes('does not exist') || error.code === '42P01') {
+          showToast('⚠️ Tax Returns setup is incomplete for this office.')
+        } else {
+          showToast('Error: ' + error.message)
+        }
+        return
+      }
+      if (data) {
+        const saved = fromDbReturn(data)
+        setCurrent(saved)
+        setForm(f => ({ ...f, ...saved }))
+      }
+      showToast('✅ Return saved!')
+      await load()
+      setView('list')
+    } finally {
+      setSaving(false)
     }
-    showToast('✅ Return saved!')
-    load()
-    setView('list')
   }
 
   async function generatePdf() {
@@ -475,17 +548,18 @@ export default function TaxReturns() {
 
   async function deleteReturn(id) { setConfirmDel(id) }
   async function confirmDeleteReturn() {
-    const { error } = await supabase.from('tax_returns').delete().eq('id', confirmDel)
+    const { error } = await supabase.from('tax_returns').delete().eq('tenant_id', myTenantId).eq('id', confirmDel)
     if (error) { showToast('Error: ' + error.message); setConfirmDel(null); return }
     setReturns(prev => prev.filter(i => i.id !== confirmDel)); setConfirmDel(null); showToast('Deleted')
   }
 
   async function updateStatus(id, status) {
-    await supabase.from('tax_returns').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
-    load()
+    const { error } = await supabase.from('tax_returns').update({ status, updated_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', id)
+    if (error) { showToast('Status update failed: ' + error.message); return }
+    await load()
   }
 
-  const reps = employees.length > 0 ? employees.map(e => e.name) : ['Romy Cruz', 'Dana Richard', 'Yesenia Gonzalez']
+  const reps = employees.map(e => e.name).filter(Boolean)
 
   const filtered = returns.filter(r => {
     const q = search.toLowerCase()
@@ -511,6 +585,22 @@ export default function TaxReturns() {
 
   const statusColors = { Draft:'bn', 'In Review':'ba', 'Client Review':'ba', 'Ready to File':'bb', Filed:'bg', Accepted:'bg', Rejected:'br', Amended:'bw' }
 
+  const selectedClient = clients.find(c => String(c.name||'').trim().toLowerCase() === String(form.clientName||'').trim().toLowerCase()) || null
+  const sourceDocTypes = sourceDocs.reduce((a,d)=>{ const k=d.doc_type||'Other'; a[k]=(a[k]||0)+1; return a },{})
+  const moneyFact = v => '$' + Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+  const numFact = k => Number(form[k]||0)
+  const returnFacts = (() => {
+    const out=[]; const add=(label,value,tone='normal')=>out.push({label,value:String(value),tone})
+    add('Client',form.clientName||'Not selected'); add('Tax Year',form.taxYear); add('Return Type',form.returnType); add('Filing Status',form.filingStatus); add('Assigned Rep',form.assignedTo||selectedClient?.assignedTo||'Unassigned'); add('Source Documents',sourceDocs.length)
+    if(Object.keys(sourceDocTypes).length) add('Documents Found',Object.entries(sourceDocTypes).map(([k,v])=>v+'× '+k).join(' · '))
+    if(is1040){ add('Gross Income',moneyFact(totals.grossIncome)); add('AGI',moneyFact(totals.agi),'strong'); add('Taxable Income',totals.taxableIncome==null?'Unsupported tax year':moneyFact(totals.taxableIncome),'strong'); add('Estimated Federal Tax',totals.tax==null?'Unsupported tax year':moneyFact(totals.tax)); add('Payments / Withholding',totals.payments==null?'—':moneyFact(totals.payments)); if(totals.refundOrOwed!=null) add(totals.refundOrOwed>=0?'Estimated Refund':'Estimated Amount Owed',moneyFact(Math.abs(totals.refundOrOwed)),totals.refundOrOwed>=0?'good':'warn') }
+    else if(is1120C){ const gross=numFact('c_grossReceipts')-numFact('c_returns')-numFact('c_cogs')+numFact('c_dividends')+numFact('c_interest')+numFact('c_grossRents')+numFact('c_grossRoyalties')+numFact('c_capitalGains')+numFact('c_otherIncome'); add('EIN',form.c_ein||'Not entered'); add('Gross Receipts',moneyFact(numFact('c_grossReceipts'))); add('Total Income',moneyFact(gross),'strong'); add('Tax',moneyFact(numFact('c_tax'))); add('Deposits',moneyFact(numFact('c_deposits'))) }
+    else if(is1120S||is1065){ const gross=numFact('biz_grossReceipts')-numFact('biz_returns')-numFact('biz_cogs')+numFact('biz_otherIncome'); add('Entity Type',is1120S?'S Corporation':'Partnership'); add('Gross Receipts',moneyFact(numFact('biz_grossReceipts'))); add('Gross Income',moneyFact(gross),'strong'); add('Ordinary Business Income',moneyFact(numFact('k1_ordinaryIncome')||numFact('biz_netIncome'))); if(is1065)add('Self-Employment Income',moneyFact(numFact('k1_selfEmpIncome'))) }
+    else if(is941){ const total=numFact('q941_federalIncomeTax')+numFact('q941_ss_wages')*.124+numFact('q941_medicare_wages')*.029+numFact('q941_additional_medicare'); add('Quarter',form.q941_quarter||'Q1'); add('Employees',form.q941_numEmployees||0); add('Wages',moneyFact(numFact('q941_wages'))); add('Calculated Total Tax',moneyFact(total),'strong'); add('Deposits',moneyFact(numFact('q941_deposits'))) }
+    else if(is940){ const wages=Math.max(0,numFact('q940_totalWages')-numFact('q940_exemptWages')-numFact('q940_over7k')); add('State',form.q940_state||'—'); add('FUTA Taxable Wages',moneyFact(wages),'strong'); add('Net FUTA at 0.6%',moneyFact(wages*.006)); add('Deposits',moneyFact(numFact('q940_deposits'))) }
+    else if(isState){ add('State',form.st_state||'—'); add('Filing Type',form.st_filingType||'—'); add('Federal AGI Carryover',moneyFact(numFact('st_agi'))); add('State Tax',moneyFact(numFact('st_stateTax'))); add('State Withholding',moneyFact(numFact('st_stateWithholding'))); add('State Refund',moneyFact(numFact('st_stateRefund')),numFact('st_stateRefund')>0?'good':'normal') }
+    return out
+  })()
   const MoneyField = ({ label, field, help }) => (
     <div className="field">
       <label style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -623,16 +713,16 @@ export default function TaxReturns() {
             </thead>
             <tbody>
               {[
-                ['Single',                    'Under 65',                   '$14,600'],
-                ['',                          '65 or older',                '$16,550'],
-                ['Married Filing Jointly',    'Under 65 (both spouses)',    '$29,200'],
-                ['',                          '65 or older (one spouse)',   '$30,750'],
-                ['',                          '65 or older (both spouses)', '$32,300'],
+                ['Single',                    'Under 65',                   '$15,750'],
+                ['',                          '65 or older',                '$17,750'],
+                ['Married Filing Jointly',    'Under 65 (both spouses)',    '$31,500'],
+                ['',                          '65 or older (one spouse)',   '$33,100'],
+                ['',                          '65 or older (both spouses)', '$34,700'],
                 ['Married Filing Separately', 'Any age',                    '$5'],
-                ['Head of Household',         'Under 65',                   '$21,900'],
-                ['',                          '65 or older',                '$23,850'],
-                ['Qualifying Widow(er)',       'Under 65',                   '$29,200'],
-                ['',                          '65 or older',                '$30,750'],
+                ['Head of Household',         'Under 65',                   '$23,625'],
+                ['',                          '65 or older',                '$25,625'],
+                ['Qualifying Surviving Spouse','Under 65',                  '$31,500'],
+                ['',                          '65 or older',                '$33,100'],
               ].map(([status, age, threshold], i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? 'var(--s2)' : 'var(--sf)', borderBottom: '1px solid var(--br)' }}>
                   <td style={{ padding: '7px 12px', color: 'var(--tx)', fontWeight: status ? 600 : 400, borderRight: '1px solid var(--br)' }}>{status}</td>
@@ -643,7 +733,7 @@ export default function TaxReturns() {
             </tbody>
           </table>
         </div>
-        <div style={{ padding: '8px 12px', fontSize: 10, color: 'var(--t3)', borderTop: '1px solid var(--br)' }}>* 2024 tax year thresholds. Updated annually by the IRS. Self-employment income ≥ $400 always requires filing regardless of gross income.</div>
+        <div style={{ padding: '8px 12px', fontSize: 10, color: 'var(--t3)', borderTop: '1px solid var(--br)' }}>* 2025 federal filing thresholds for returns generally filed in 2026. Thresholds can differ for dependents and other special situations. Self-employment net earnings of $400 or more generally require filing.</div>
       </div>
 
       {/* Filters */}
@@ -807,6 +897,15 @@ export default function TaxReturns() {
         </div>
       </div>
 
+      <div className="card" style={{marginBottom:12,padding:'14px 16px',border:'1px solid rgba(59,130,246,.3)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+          <div><div style={{fontWeight:800,fontSize:13}}>⚡ Live Return Intelligence</div><div style={{fontSize:10.5,color:'var(--t3)',marginTop:2}}>Updates from the worksheet, client record, and parsed tax documents as data changes.</div></div>
+          <div style={{fontSize:10,color:'var(--t3)'}}>{sourceScanAt ? 'Last scan '+sourceScanAt.toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}) : 'Waiting for source scan'}</div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(205px,1fr))',gap:7}}>
+          {returnFacts.map((fact,i)=><div key={fact.label+i} style={{padding:'8px 10px',borderRadius:7,background:'var(--s2)',border:'1px solid var(--br)'}}><div style={{fontSize:9.5,color:'var(--t3)',fontWeight:700,textTransform:'uppercase'}}>{fact.label}</div><div style={{fontSize:12.5,fontWeight:fact.tone==='strong'?800:650,marginTop:3,color:fact.tone==='good'?'var(--ok)':fact.tone==='warn'?'var(--warn)':'var(--tx)'}}>{fact.value}</div></div>)}
+        </div>
+      </div>
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--br)', marginBottom: 12, overflowX: 'auto' }}>
         {TABS.filter(t => t.show !== false).map(t => (
@@ -1840,11 +1939,15 @@ export default function TaxReturns() {
                   <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.5 }}>Manually mark this return as filed after submission.</div>
                   <button className="btn ok" style={{ width: '100%', justifyContent: 'center' }} onClick={async () => {
                     fld('status', 'Filed')
-                    await supabase.from('tax_returns').update({ status: 'Filed', updated_at: new Date().toISOString() }).eq('id', current?.id)
+                    const { error: filedError } = await supabase.from('tax_returns')
+                      .update({ status: 'Filed', updated_at: new Date().toISOString() })
+                      .eq('tenant_id', myTenantId)
+                      .eq('id', current?.id)
+                    if (filedError) { showToast('Could not mark return filed: ' + filedError.message); return }
                     showToast('✅ Return marked as Filed!')
                     await logReturnNote(`📄 ${form.taxYear} ${form.returnType} marked as filed. Preparer: ${preparer.name || 'Staff'}.`)
-                    await triggerWorkflow('tax_return_filed', 'client', ret?.clientName || '', user?.user_metadata?.name || 'Staff').catch(()=>{})
-                    load()
+                    await triggerWorkflow('tax_return_filed', 'client', form.clientName || '', user?.user_metadata?.name || 'Staff').catch(()=>{})
+                    await load()
                   }} disabled={!current?.id}>Mark as Filed</button>
                 </div>
 

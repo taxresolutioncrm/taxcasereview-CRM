@@ -152,7 +152,7 @@ let emailSent = false, smsSent = false;
           const { data: smsData, error: smsErr } = await supabase.functions.invoke('send-sms', {
             body: {
               to: client.phone,
-              body: `${FIRM.name || 'Tax Case Review'}: please sign your ${label}: ${sigUrl}`,
+              body: `${FIRM.name || 'Firm'}: please sign your ${label}: ${sigUrl}`,
               client_id: client.id || null,
             }
           });

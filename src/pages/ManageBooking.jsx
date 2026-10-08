@@ -79,7 +79,7 @@ export default function ManageBooking() {
     <div style={{minHeight:'100vh',background:C.bg,color:C.text,fontFamily:'system-ui, -apple-system, sans-serif',padding:'32px 16px'}}>
       <div style={{maxWidth:560,margin:'0 auto'}}>
         <div style={{textAlign:'center',marginBottom:24}}>
-          <div style={{fontSize:24,fontWeight:800}}>{FIRM.name || 'Tax Case Review'}</div>
+          <div style={{fontSize:24,fontWeight:800}}>{FIRM.name || 'Firm'}</div>
           <div style={{color:C.dim,fontSize:14,marginTop:4}}>Manage your appointment</div>
         </div>
 

@@ -148,8 +148,8 @@ export default function Sms() {
     // display name, {phone}=firm phone (unformatted → keep the placeholder
     // exactly as typed in the template constant).
     const name  = form.clientName || '{name}'
-    const firm  = FIRM.name  || 'Tax Case Review'
-    const phone = FIRM.phone || '(888) 334-5052'
+    const firm  = FIRM.name || 'Firm'
+    const phone = FIRM.phone || ''
     const body = t.body
       .replace(/\{name\}/g,  name)
       .replace(/\{firm\}/g,  firm)
@@ -256,7 +256,7 @@ export default function Sms() {
               {sug.length>0&&(
                 <div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--sf)',border:'1px solid var(--br)',borderRadius:8,zIndex:500,boxShadow:'0 4px 20px rgba(0,0,0,.3)'}}>
                   {sug.map(c=>(
-                    <div key={c.id} onClick={()=>{ fld('clientName',c.name); fld('phone',c.phone||''); setSug([]); setForm(f => ({ ...f, clientName: c.name, phone: c.phone||'', body: f.body.replace(/\{name\}/g, c.name).replace(/\{firm\}/g, FIRM.name || 'Tax Case Review').replace(/\{phone\}/g, FIRM.phone || '(888) 334-5052') })) }}
+                    <div key={c.id} onClick={()=>{ fld('clientName',c.name); fld('phone',c.phone||''); setSug([]); setForm(f => ({ ...f, clientName: c.name, phone: c.phone||'', body: f.body.replace(/\{name\}/g, c.name).replace(/\{firm\}/g, FIRM.name || 'Firm').replace(/\{phone\}/g, FIRM.phone || '') })) }}
                       style={{padding:'10px 14px',cursor:'pointer',fontSize:14}}
                       onMouseEnter={e=>e.currentTarget.style.background='var(--s2)'}
                       onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
