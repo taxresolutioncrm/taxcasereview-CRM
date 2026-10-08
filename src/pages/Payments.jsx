@@ -228,6 +228,7 @@ export default function Payments() {
     <button onclick="window.print()" style="padding:8px 24px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🖨️ Print Receipt</button>
   </div>
   <div class="center">
+    ${FIRM.logoUrl ? `<img src="${FIRM.logoUrl}" alt="${FIRM.name || 'Firm'}" style="max-height:58px;max-width:200px;object-fit:contain;margin:0 auto 10px;display:block" onerror="this.style.display='none'"/>` : ''}
     <div class="firm">${FIRM.name || 'Firm'}</div>
     <div class="sub">${FIRM.tagline || 'IRS Resolution Services'}</div>
     <div class="check">✅</div>
