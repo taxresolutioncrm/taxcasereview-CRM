@@ -10,9 +10,13 @@ const fmtDate = (v) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
 }
 
-const documentIntelligenceFunction = (typeof window !== 'undefined' && window.location.hostname.includes('sandbox-ai-analysis-progress'))
-  ? 'document-intelligence-sandbox'
-  : 'document-intelligence'
+const aiHostname = typeof window !== 'undefined' ? window.location.hostname : ''
+const isAiSandboxPreview =
+  aiHostname.includes('sandbox-ai-analysis-progress') ||
+  aiHostname.endsWith('.taxcasereview-crm.pages.dev') ||
+  aiHostname.endsWith('.nashville-tax-crm.pages.dev')
+const documentIntelligenceFunction = isAiSandboxPreview ? 'document-intelligence-sandbox' : 'document-intelligence'
+const aiChatFunction = isAiSandboxPreview ? 'ai-chat-sandbox' : 'ai-chat'
 
 export default function PreparedFile() {
   const { clientId } = useParams()
@@ -248,7 +252,7 @@ export default function PreparedFile() {
         'Open questions: ' + openQuestions.slice(0,15).map(q=>q.question).join(' | '),
         'Notices/deadlines: ' + noticeDeadlineFacts.slice(0,15).map(f=>(f.field_label||f.field_key)+': '+(f.normalized_text||'')).join(' | '),
       ].join('\n')
-      const { data, error } = await supabase.functions.invoke('ai-chat', {
+      const { data, error } = await supabase.functions.invoke(aiChatFunction, {
         body: { message, context, history: [] },
       })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'AI request failed')
