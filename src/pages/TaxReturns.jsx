@@ -1895,11 +1895,15 @@ export default function TaxReturns() {
                   <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12, lineHeight: 1.5 }}>Manually mark this return as filed after submission.</div>
                   <button className="btn ok" style={{ width: '100%', justifyContent: 'center' }} onClick={async () => {
                     fld('status', 'Filed')
-                    await supabase.from('tax_returns').update({ status: 'Filed', updated_at: new Date().toISOString() }).eq('id', current?.id)
+                    const { error: filedError } = await supabase.from('tax_returns')
+                      .update({ status: 'Filed', updated_at: new Date().toISOString() })
+                      .eq('tenant_id', myTenantId)
+                      .eq('id', current?.id)
+                    if (filedError) { showToast('Could not mark return filed: ' + filedError.message); return }
                     showToast('✅ Return marked as Filed!')
                     await logReturnNote(`📄 ${form.taxYear} ${form.returnType} marked as filed. Preparer: ${preparer.name || 'Staff'}.`)
-                    await triggerWorkflow('tax_return_filed', 'client', ret?.clientName || '', user?.user_metadata?.name || 'Staff').catch(()=>{})
-                    load()
+                    await triggerWorkflow('tax_return_filed', 'client', form.clientName || '', user?.user_metadata?.name || 'Staff').catch(()=>{})
+                    await load()
                   }} disabled={!current?.id}>Mark as Filed</button>
                 </div>
 
