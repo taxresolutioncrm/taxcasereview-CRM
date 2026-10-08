@@ -333,7 +333,7 @@ export default function Reports() {
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>📊 Reports & Analytics</h2>
         <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
           <button className="btn sec" style={{fontSize:11,padding:'5px 12px'}}
-            onClick={()=>exportPDF(`Reports — ${FIRM.name || 'Tax Case Review'}`,[{heading:'Revenue Summary',headers:['Month','Revenue'],rows:monthBuckets.map((b,i)=>[b.label,'$'+Math.round(revByMonth[i])])}])}>
+            onClick={()=>exportPDF(`Reports — ${FIRM.name || 'Firm'}`,[{heading:'Revenue Summary',headers:['Month','Revenue'],rows:monthBuckets.map((b,i)=>[b.label,'$'+Math.round(revByMonth[i])])}])}>
             🖨️ PDF
           </button>
           <button className="btn sec" style={{fontSize:11,padding:'5px 12px'}}
