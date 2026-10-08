@@ -32,6 +32,11 @@ assert(docs.includes("navigate('/ai-intelligence/' + selectedClient.id)"), 'Docu
 assert(docs.includes('document-intelligence'), 'document uploads invoke Document Intelligence')
 assert(docs.includes('hasDocumentFile') && docs.includes('storage_path || doc?.file_url'), 'Documents open from storage_path or file_url')
 assert(prepared.includes('latestCompleteRunIds'), 'prepared file shows current analysis instead of duplicate historical runs')
+
+assert(prepared.includes('Select a client to open their intelligence workspace, analyze documents, and review AI findings.'), 'selector copy matches the TaxRes family experience')
+assert(prepared.includes("onClick={()=>navigate('/documents')}"), 'selector includes direct Documents access')
+assert(prepared.includes('Resolve from CRM'), 'open questions can be re-checked against CRM data')
+assert(prepared.includes('Reading ${batchProgress.current} of ${batchProgress.total}'), 'batch analysis exposes live X-of-Y progress')
 assert(prepared.includes('Open source'), 'AI findings expose source navigation')
 assert(prepared.includes('reviewed_by'), 'fact verification records reviewer identity')
 assert(prepared.includes('answered_by'), 'question answers record staff identity')
