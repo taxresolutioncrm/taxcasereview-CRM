@@ -835,7 +835,7 @@ export default function EmployeePortal() {
             .div{font-size:13px;color:#16a34a;font-weight:600;margin-top:6px;}
             @media print{button{display:none!important}}</style></head><body>
             <div class="badge">
-              <img src="${brand.logoUrl || '/logo.png'}" style="width:100%;max-width:220px;height:auto;object-fit:contain;margin-bottom:8px;" onerror="this.style.display='none'" />
+              <img src="${brand.logoUrl || ''}" style="width:100%;max-width:220px;height:auto;object-fit:contain;margin-bottom:8px;" onerror="this.style.display='none'" />
               <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(emp.employee_id)}&color=0a2540&bgcolor=ffffff&margin=2" style="width:200px;height:200px;border-radius:8px;" />
               <div class="name">${emp.name}</div>
               <div class="id">${emp.employee_id}</div>
