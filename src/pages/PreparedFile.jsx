@@ -10,9 +10,13 @@ const fmtDate = (v) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
 }
 
-const documentIntelligenceFunction = (typeof window !== 'undefined' && window.location.hostname.includes('sandbox-ai-analysis-progress'))
-  ? 'document-intelligence-sandbox'
-  : 'document-intelligence'
+const aiHostname = typeof window !== 'undefined' ? window.location.hostname : ''
+const isAiSandboxPreview =
+  aiHostname.includes('sandbox-ai-analysis-progress') ||
+  aiHostname.endsWith('.taxcasereview-crm.pages.dev') ||
+  aiHostname.endsWith('.nashville-tax-crm.pages.dev')
+const documentIntelligenceFunction = isAiSandboxPreview ? 'document-intelligence-sandbox' : 'document-intelligence'
+const aiChatFunction = isAiSandboxPreview ? 'ai-chat-sandbox' : 'ai-chat'
 
 export default function PreparedFile() {
   const { clientId } = useParams()
@@ -248,7 +252,7 @@ export default function PreparedFile() {
         'Open questions: ' + openQuestions.slice(0,15).map(q=>q.question).join(' | '),
         'Notices/deadlines: ' + noticeDeadlineFacts.slice(0,15).map(f=>(f.field_label||f.field_key)+': '+(f.normalized_text||'')).join(' | '),
       ].join('\n')
-      const { data, error } = await supabase.functions.invoke('ai-chat', {
+      const { data, error } = await supabase.functions.invoke(aiChatFunction, {
         body: { message, context, history: [] },
       })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'AI request failed')
@@ -291,14 +295,20 @@ export default function PreparedFile() {
   async function answerQuestion(q) {
     const answer = prompt(q.question, q.answer || '')
     if (answer === null) return
+    const trimmed = String(answer).trim()
+    if (!trimmed) return
     const { data: authData } = await supabase.auth.getUser()
-    await supabase.from('document_ai_questions').update({
-      answer: String(answer),
+    const { error: updateError } = await supabase.from('document_ai_questions').update({
+      answer: trimmed,
       status: 'answered',
       answered_by: authData?.user?.id || null,
       answered_at: new Date().toISOString(),
     }).eq('id', q.id)
-    load()
+    if (updateError) {
+      setError(updateError.message)
+      return
+    }
+    await load()
   }
 
   async function resolveQuestionsFromCRM() {
@@ -330,23 +340,27 @@ export default function PreparedFile() {
         <div className="page-header">
           <div>
             <h1>AI Intelligence</h1>
-            <p>Select a client to open their prepared file, analyze documents, and review AI findings.</p>
+            <p>Select a client to open their intelligence workspace, analyze documents, and review AI findings.</p>
           </div>
         </div>
 
         {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
 
-
-
-        <div className="card" style={{maxWidth:760}}>
-          <div className="form-group" style={{marginBottom:12}}>
-            <label>Client</label>
-            <select className="select" value={selectedClientId} onChange={e=>setSelectedClientId(e.target.value)}>
-              <option value="">Select a client…</option>
-              {clientOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+        <div className="card" style={{maxWidth:760,padding:20}}>
+          <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>Client</div>
+          <div style={{fontSize:12,color:'var(--t3)',marginBottom:12}}>
+            Choose the client first. Upload and analysis run inside that client's workspace so every document and AI finding stays linked correctly.
           </div>
-          <div style={{display:'flex',gap:8}}>
+          <select
+            className="select"
+            value={selectedClientId}
+            onChange={e=>setSelectedClientId(e.target.value)}
+            style={{width:'100%',marginBottom:12}}
+          >
+            <option value="">Select a client…</option>
+            {clientOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <button className="btn primary" disabled={!selectedClientId} onClick={()=>navigate('/ai-intelligence/' + selectedClientId)}>
               Open AI Intelligence
             </button>
