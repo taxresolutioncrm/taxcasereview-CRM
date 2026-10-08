@@ -27,6 +27,9 @@ const settings = read('src/pages/Settings.jsx')
 const inviteEmployee = read('supabase/functions/invite-employee/index.ts')
 const migration = read('supabase/migrations/20260918121000_cloudcpa_prospect_readiness.sql')
 const bookingMigration = read('supabase/migrations/20260918122000_tenant_booking_branding.sql')
+const contactMigration = read('supabase/migrations/20261008173500_cloudcpa_contact_branding_cleanup.sql')
+const kiosk = read('src/pages/Kiosk.jsx')
+const topbar = read('src/components/layout/TopBar.jsx')
 
 const CLOUD_ID='ecd3d3ce-016a-4bb4-800e-f090f51e4cae'
 const TCR_RELAY_ID='61a89aef-0e7e-4ea2-b222-44ab2024655a'
