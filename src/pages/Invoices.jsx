@@ -288,7 +288,7 @@ Please contact our office with any questions.`
       <div>
         <div class="firm-name">${firm.name}</div>
         <div class="firm-sub">${firm.tagline}</div>
-        <div class="firm-sub">${firm.address || '631 US Highway One Ste 304, North Palm Beach, FL 33408'}</div>
+        <div class="firm-sub">${firm.address || ''}</div>
       </div>
     </div>
     <div style="text-align:right">

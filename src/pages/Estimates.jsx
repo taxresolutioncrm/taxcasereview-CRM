@@ -83,8 +83,8 @@ export default function Estimates() {
     const { data: leadRows } = client ? { data: [] } : await supabase.from('leads').select('email').eq('name', est.clientName).limit(1)
     const to = client?.email || leadRows?.[0]?.email
     if (!to) { showToast('No email on file for this client'); return }
-    const subject = `Estimate #${est.estNum||''} — Tax Case Review`
-    const body = `Dear ${est.clientName},\n\nPlease review the following estimate from Tax Case Review.\n\nEstimate #: ${est.estNum||''}\nAmount: $${parseFloat(est.amount||0).toLocaleString()}\nValid Until: ${est.validUntil||'30 days'}\n\nServices:\n${est.description||''}\n\nTo accept this estimate, please reply to this email or call our office.`
+    const subject = `Estimate #${est.estNum||''} — ${FIRM.name || 'Firm'}`
+    const body = `Dear ${est.clientName},\n\nPlease review the following estimate from ${FIRM.name || 'our office'}.\n\nEstimate #: ${est.estNum||''}\nAmount: $${parseFloat(est.amount||0).toLocaleString()}\nValid Until: ${est.validUntil||'30 days'}\n\nServices:\n${est.description||''}\n\nTo accept this estimate, please reply to this email or call our office.`
     try {
       await sendGmailEmail(supabase, { to, subject, body })
       await supabase.from('estimates').update({ status: 'Sent', updated_at: new Date().toISOString() }).eq('id', est.id)

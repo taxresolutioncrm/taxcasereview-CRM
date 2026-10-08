@@ -244,7 +244,7 @@ export default function Payroll() {
     .lh-line{font-size:11px;color:#64748b;margin-top:2px}`
   function firmLetterhead() {
     const logoSrc = firm?.logourl || ''
-    const name  = firm?.name || 'Tax Case Review'
+    const name  = firm?.name || firm?.firmname || 'Firm'
     const addr1 = firm?.address || ''
     const cityLine = [firm?.city, firm?.state].filter(Boolean).join(', ')
     const addr2 = `${cityLine}${firm?.zip ? ' ' + firm.zip : ''}`.trim()

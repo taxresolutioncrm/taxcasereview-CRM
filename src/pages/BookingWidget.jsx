@@ -43,8 +43,8 @@ export default function BookingWidget({ contact, onClose, mode = 'lead' }) {
     const { error } = await supabase.functions.invoke('send-email', { body: {
       tenant_id: FIRM.tenantId || undefined,
       to: contact.email,
-      subject: `Schedule Your Appointment — ${FIRM.name || 'Tax Case Review'}`,
-      html: emailHtml({ body: `<p>Hi <strong>${first}</strong>,</p><p>Pick whichever time works best for you — it takes less than a minute:</p><p style="text-align:center;margin:24px 0"><a href="${BOOK_URL}" style="background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block">📅 Choose a Time</a></p><p>You'll see our live availability and get an instant confirmation. If nothing there works, just reply to this email or give us a call.</p><p style="margin-top:20px">Talk soon,<br><strong>${FIRM.name || 'Tax Case Review'}</strong></p>` }),
+      subject: `Schedule Your Appointment — ${FIRM.name || 'Firm'}`,
+      html: emailHtml({ body: `<p>Hi <strong>${first}</strong>,</p><p>Pick whichever time works best for you — it takes less than a minute:</p><p style="text-align:center;margin:24px 0"><a href="${BOOK_URL}" style="background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block">📅 Choose a Time</a></p><p>You'll see our live availability and get an instant confirmation. If nothing there works, just reply to this email or give us a call.</p><p style="margin-top:20px">Talk soon,<br><strong>${FIRM.name || 'Firm'}</strong></p>` }),
     }})
     if (!error && mode === 'lead' && contact?.id) {
       await supabase.from('lead_notes').insert({ lead_id: contact.id, lead_name: contact.name, text: `✉️ Booking link emailed to ${contact.email}`, type: 'Appointment', author: 'System', created_at: new Date().toISOString() }).catch(() => {})
@@ -142,7 +142,7 @@ export default function BookingWidget({ contact, onClose, mode = 'lead' }) {
             </div>
             <div>
               <div style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>{contact?.name || 'Client'}</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.8)' }}>{FIRM.name || 'Tax Case Review'}</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.8)' }}>{FIRM.name || 'Firm'}</div>
             </div>
           </div>
         </div>

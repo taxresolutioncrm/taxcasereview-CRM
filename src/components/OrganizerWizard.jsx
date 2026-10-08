@@ -117,7 +117,7 @@ export default function OrganizerWizard({ organizerId, embedded = false, onCompl
         <div style={{fontSize:48, marginBottom:12}}>✅</div>
         <div style={{fontSize:19, fontWeight:800, color:'#4ade80', marginBottom:8}}>Organizer Submitted!</div>
         <div style={{color:'#94a3b8', fontSize:13.5, lineHeight:1.7}}>
-          Thank you{record?.client_name ? `, ${record.client_name}` : ''}. Your responses for tax year {record?.tax_year} have been sent to {FIRM.name || 'Tax Case Review'}.
+          Thank you{record?.client_name ? `, ${record.client_name}` : ''}. Your responses for tax year {record?.tax_year} have been sent to {FIRM.name || 'Firm'}.
           {!embedded && ' You may close this window.'}
         </div>
       </div>
@@ -136,7 +136,7 @@ export default function OrganizerWizard({ organizerId, embedded = false, onCompl
       {!embedded && (
         <div style={{textAlign:'center', marginBottom:18}}>
           <img src={FIRM.logoUrl} style={{height:42, marginBottom:8}} onError={e=>e.target.style.display='none'}/>
-          <div style={{fontSize:11, fontWeight:800, color:'#60a5fa', letterSpacing:'.1em', textTransform:'uppercase'}}>{FIRM.name || 'Tax Case Review'}</div>
+          <div style={{fontSize:11, fontWeight:800, color:'#60a5fa', letterSpacing:'.1em', textTransform:'uppercase'}}>{FIRM.name || 'Firm'}</div>
           <div style={{fontSize:11, color:'#64748b'}}>Tax Year {record?.tax_year} Organizer</div>
         </div>
       )}
