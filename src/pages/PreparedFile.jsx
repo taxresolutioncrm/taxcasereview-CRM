@@ -294,35 +294,55 @@ export default function PreparedFile() {
     }
   }
 
-  async function analyzeDocument(doc) {
+  async function invokeDocumentAnalysis(doc) {
     if (!doc?.id) return
     if (!hasReadableFile(doc)) throw new Error('This document record has no attached file for AI to read.')
-    setActiveDoc(doc.id)
-    setError('')
     const { data, error: invokeError } = await supabase.functions.invoke(documentIntelligenceFunction, {
       body: { documentId: doc.id, clientId },
     })
-    setActiveDoc('')
     if (invokeError || data?.error) throw new Error(data?.error || invokeError?.message || 'Analysis failed')
+  }
+
+  async function analyzeDocument(doc) {
+    setActiveDoc(doc.id)
+    setError('')
+    try {
+      await invokeDocumentAnalysis(doc)
+    } finally {
+      setActiveDoc('')
+    }
   }
 
   async function analyzeAll() {
     const pending = readableDocs.filter(d => latestByDoc.get(String(d.id))?.status !== 'complete')
     if (!pending.length) return
+    const concurrency = 3
+    let nextIndex = 0
+    let completed = 0
     setBusy(true)
     setError('')
-    setBatchProgress({ current:0, total:pending.length, file:'' })
-    try {
-      for (let i = 0; i < pending.length; i += 1) {
-        const doc = pending[i]
-        setBatchProgress({ current:i + 1, total:pending.length, file:doc.file_name || doc.name || 'Document' })
+    setBatchProgress({ current:0, total:pending.length, file:'Processing up to 3 documents at a time' })
+    async function worker() {
+      while (true) {
+        const index = nextIndex++
+        if (index >= pending.length) return
+        const doc = pending[index]
         try {
-          await analyzeDocument(doc)
-          await load()
+          await invokeDocumentAnalysis(doc)
         } catch (e) {
           setError((prev) => prev || (e?.message || String(e)))
+        } finally {
+          completed += 1
+          setBatchProgress({
+            current:completed,
+            total:pending.length,
+            file:completed < pending.length ? 'Processing up to 3 documents at a time' : 'Finalizing client file…',
+          })
         }
       }
+    }
+    try {
+      await Promise.all(Array.from({ length:Math.min(concurrency, pending.length) }, () => worker()))
     } finally {
       setBusy(false)
       setBatchProgress({ current:0, total:0, file:'' })
