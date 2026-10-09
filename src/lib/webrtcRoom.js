@@ -328,7 +328,14 @@ export function useWebRTCRoom(channelPrefix) {
       localStreamRef.current.getTracks().forEach(t => t.stop())
       localStreamRef.current = null
     }
-    setMembers([]); setRemoteStreams({}); setLocalStream(null); setJoined(false)
+    remoteStreamsRef.current = {}
+    setMembers([])
+    setRemoteStreams({})
+    setRemoteScreenStreams({})
+    setLocalStream(null)
+    setMicOn(true)
+    setCameraOn(true)
+    setJoined(false)
   }, [])
 
   function toggleMic() {
