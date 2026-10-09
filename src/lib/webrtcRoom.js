@@ -171,7 +171,10 @@ export function useWebRTCRoom(channelPrefix) {
       })
     } else if (type === 'answer') {
       const pc = peerConnsRef.current[from]
-      if (pc) await pc.setRemoteDescription({ type: 'answer', sdp })
+      // Delayed responses to superseded offers must not break healthy calls.
+      if (pc && pc.signalingState === 'have-local-offer') {
+        await pc.setRemoteDescription({ type: 'answer', sdp })
+      }
     } else if (type === 'ice') {
       const pc = peerConnsRef.current[from]
       if (pc && candidate) await pc.addIceCandidate(candidate)
