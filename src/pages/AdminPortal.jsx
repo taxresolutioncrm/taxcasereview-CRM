@@ -903,6 +903,158 @@ function Overview() {
     return()=>{cancelled=true}
   }, [user])
 
+  // Keep TaxRes-family office usage live without rerunning the expensive portfolio
+  // loader or writing anything back to Supabase. The already-bounded metrics cache
+  // is the realtime bus. Central directory/billing values are read only when the
+  // TaxRes aggregate cache changes, at most once per coalesced refresh window.
+  useEffect(() => {
+    if (!user) return
+
+    const taxResOfficeByProduct = {
+      tax_case_review:'Tax Case Review',
+      nashville:'Nashville Tax Solutions',
+      cloudcpa:'CloudCPA Inc',
+      demo:'Tax Res CRM Demo',
+    }
+    const finiteOr = (value, fallback) => {
+      if (value === null || value === undefined || value === '') return fallback
+      const n = Number(value)
+      return Number.isFinite(n) ? n : fallback
+    }
+    let directoryTimer = null
+    let directoryRun = 0
+
+    const refreshTaxResDirectory = () => {
+      if (directoryTimer) clearTimeout(directoryTimer)
+      directoryTimer = setTimeout(async () => {
+        const run = ++directoryRun
+        const [overviewRes, billingRes] = await Promise.all([
+          supabase.rpc('admin_tenant_overview'),
+          supabase.rpc('admin_romylabs_billing_totals'),
+        ])
+        if (run !== directoryRun) return
+
+        const overviewById = new Map(
+          (Array.isArray(overviewRes.data) ? overviewRes.data : []).map(row => [String(row.id), row])
+        )
+        const billingById = new Map(
+          (Array.isArray(billingRes.data) ? billingRes.data : [])
+            .filter(row => row.product_key === 'taxres_crm' && row.external_tenant_id)
+            .map(row => [String(row.external_tenant_id), row])
+        )
+
+        setStats(current => Array.isArray(current) ? current.map(item => {
+          if ((item.product || 'taxres_crm') !== 'taxres_crm' || item.counts_as_office === false) return item
+          const directory = overviewById.get(String(item.id))
+          const billing = billingById.get(String(item.id))
+          if (!directory && !billing) return item
+          const isNashville = String(item.firm_name || '').trim().toLowerCase() === 'nashville tax solutions'
+          return {
+            ...item,
+            status:directory?.status ?? item.status,
+            plan_tier:directory?.plan_tier ?? item.plan_tier,
+            // Nashville staff comes from its separate live CRM project; never
+            // overwrite that authoritative remote count with the central directory.
+            employee_count:isNashville
+              ? item.employee_count
+              : finiteOr(directory?.employee_count, item.employee_count),
+            client_count:isNashville
+              ? item.client_count
+              : finiteOr(directory?.client_count, item.client_count),
+            lead_count:isNashville
+              ? item.lead_count
+              : finiteOr(directory?.lead_count, item.lead_count),
+            billing_seats:finiteOr(
+              billing?.seat_count ?? directory?.billing_seats,
+              item.billing_seats
+            ),
+            effective_monthly:billing?.monthly_amount_cents == null
+              ? item.effective_monthly
+              : Number(billing.monthly_amount_cents || 0) / 100,
+            total_collected:billing?.collected_cents == null
+              ? item.total_collected
+              : Number(billing.collected_cents || 0) / 100,
+            transaction_count:billing?.payment_count == null
+              ? item.transaction_count
+              : Number(billing.payment_count || 0),
+          }
+        }) : current)
+      }, 500)
+    }
+
+    const metricsChannel = supabase
+      .channel('romylabs-overview-taxres-live')
+      .on(
+        'postgres_changes',
+        { event:'*', schema:'public', table:'romylabs_metrics_cache' },
+        (change) => {
+          const row = change?.new || {}
+          const productKey = String(row.product_key || '')
+          const payload = row.payload || {}
+
+          if (productKey === 'taxres_crm') {
+            refreshTaxResDirectory()
+            return
+          }
+
+          const officeName = taxResOfficeByProduct[productKey]
+          if (!officeName || payload?.ok === false) return
+          const metrics = payload.metrics || {}
+          const office = Array.isArray(payload.offices) ? (payload.offices[0] || {}) : {}
+
+          setStats(current => Array.isArray(current) ? current.map(item => {
+            if (String(item.firm_name || '').trim().toLowerCase() !== officeName.toLowerCase()) return item
+            return {
+              ...item,
+              employee_count:finiteOr(
+                office.employee_count ?? office.active_staff ?? office.staff_count ??
+                metrics.active_staff ?? metrics.active_users,
+                item.employee_count
+              ),
+              client_count:finiteOr(
+                office.client_count ?? office.total_clients ?? office.active_clients ??
+                metrics.total_clients ?? metrics.active_clients,
+                item.client_count
+              ),
+              lead_count:finiteOr(
+                office.lead_count ?? office.total_leads ?? office.active_leads ??
+                metrics.total_leads ?? metrics.active_leads,
+                item.lead_count
+              ),
+              cases_count:finiteOr(
+                office.open_jobs ?? office.job_count ?? office.active_cases ??
+                metrics.open_jobs ?? metrics.active_cases,
+                item.cases_count
+              ),
+              tasks_count:finiteOr(
+                office.pending_tasks ?? metrics.pending_tasks,
+                item.tasks_count
+              ),
+              storage_bytes:finiteOr(
+                office.storage_bytes ?? metrics.storage_bytes,
+                item.storage_bytes
+              ),
+              status:office.is_active === false ? 'inactive' : item.status,
+              last_activity:
+                office.last_activity ??
+                metrics.last_activity ??
+                payload.recent_activity?.[0]?.at ??
+                payload.recent_activity?.[0]?.ts ??
+                item.last_activity ??
+                null,
+            }
+          }) : current)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      if (directoryTimer) clearTimeout(directoryTimer)
+      directoryRun += 1
+      supabase.removeChannel(metricsChannel)
+    }
+  }, [user])
+
   const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)
   const totalMRR     = operatingStats.reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = operatingStats.filter(r => r.status==='active').length
