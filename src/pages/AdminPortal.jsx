@@ -4813,6 +4813,7 @@ function CommandCenter() {
   const [activity, setActivity] = useState([])
   const [activityPoll, setActivityPoll] = useState(0)
   const [liveMetricsVersion, setLiveMetricsVersion] = useState(0)
+  const [liveMetricsProduct, setLiveMetricsProduct] = useState('')
   const liveMetricsReloadTimer = React.useRef(null)
 
   // ── Data load ──────────────────────────────────────────────────────────────
@@ -4827,12 +4828,14 @@ function CommandCenter() {
       .on(
         'postgres_changes',
         { event:'*', schema:'public', table:'romylabs_metrics_cache' },
-        () => {
+        (payload) => {
+          const productKey = String(payload?.new?.product_key || payload?.old?.product_key || '')
+          if (!productKey) return
           if (liveMetricsReloadTimer.current) clearTimeout(liveMetricsReloadTimer.current)
-          liveMetricsReloadTimer.current = setTimeout(
-            () => setLiveMetricsVersion(v => v + 1),
-            150,
-          )
+          liveMetricsReloadTimer.current = setTimeout(() => {
+            setLiveMetricsProduct(productKey)
+            setLiveMetricsVersion(v => v + 1)
+          }, 1000)
         },
       )
       .subscribe()
@@ -4996,7 +4999,7 @@ function CommandCenter() {
       }
     }
     load()
-  }, [liveMetricsVersion])
+  }, [])
 
   // ── Reporting registry — dynamic product list from romylabs_products ──
   React.useEffect(() => {
@@ -5075,7 +5078,7 @@ function CommandCenter() {
       }
     })()
     return () => { cancelled = true }
-  }, [reportingProducts, liveMetricsVersion])
+  }, [reportingProducts])
 
   const fetchCrmProductMetrics = React.useCallback(async (productKey) => {
     if (!productKey) return null
@@ -5104,6 +5107,7 @@ function CommandCenter() {
   }, [])
 
   React.useEffect(() => {
+    if (liveMetricsVersion > 0 && liveMetricsProduct && liveMetricsProduct !== crmProduct) return
     setCrmAccount('all')
     setCrmAccountMetrics(null)
     setCrmRemoteError('')
@@ -5118,7 +5122,7 @@ function CommandCenter() {
       .catch(err => { if (!cancelled) { setCrmRemoteData(null); setCrmRemoteError(String(err?.message || err)) } })
       .finally(() => { if (!cancelled) setCrmRemoteLoading(false) })
     return () => { cancelled = true }
-  }, [crmProduct, fetchCrmProductMetrics, reportingProducts, liveMetricsVersion])
+  }, [crmProduct, fetchCrmProductMetrics, reportingProducts, liveMetricsVersion, liveMetricsProduct])
 
   React.useEffect(() => {
     setCrmAccountMetrics(null)
