@@ -4,6 +4,21 @@ import { supabase } from '../lib/supabase'
 
 const hasReadableFile = (doc) => !!(doc?.storage_path || doc?.file_url)
 const pct = (n) => Math.max(0, Math.min(100, Math.round(Number(n || 0) * 100)))
+function normalizeClientSearch(value='') {
+  return String(value || '').trim().toLowerCase()
+}
+function rankClientMatch(name, rawSearch) {
+  const search = normalizeClientSearch(rawSearch)
+  if (!search) return 999
+  const normalized = String(name || '').trim().toLowerCase()
+  if (!normalized) return 999
+  if (normalized === search) return 0
+  if (normalized.startsWith(search)) return 1
+  const parts = normalized.split(/[^a-z0-9]+/).filter(Boolean)
+  if (parts.some(part => part.startsWith(search))) return 2
+  if (search.length >= 2 && normalized.includes(search)) return 3
+  return 999
+}
 const fmtDate = (v) => {
   if (!v) return ''
   const d = new Date(v)
@@ -432,10 +447,12 @@ export default function PreparedFile() {
               style={{width:'100%'}}
             />
             {clientSearchOpen && clientSearch.trim() && (
-              <div style={{position:'absolute',left:0,right:0,top:'calc(100% + 6px)',zIndex:20,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:10,boxShadow:'0 14px 36px rgba(0,0,0,.28)',maxHeight:280,overflowY:'auto'}}>
+              <div style={{position:'absolute',left:0,right:0,top:'calc(100% + 6px)',zIndex:20,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:10,boxShadow:'0 14px 36px rgba(0,0,0,.28)',maxHeight:420,overflowY:'auto'}}>
                 {clientOptions
-                  .filter(c => String(c.name || '').toLowerCase().includes(clientSearch.trim().toLowerCase()))
-                  .slice(0,12)
+                  .map(c => ({...c, _rank: rankClientMatch(c.name, clientSearch)}))
+                  .filter(c => c._rank < 999)
+                  .sort((a,b) => a._rank - b._rank || String(a.name || '').localeCompare(String(b.name || '')))
+                  .slice(0,50)
                   .map(c=>(
                     <button
                       key={c.id}
@@ -447,7 +464,7 @@ export default function PreparedFile() {
                       <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>Open client AI file</div>
                     </button>
                   ))}
-                {!clientOptions.some(c => String(c.name || '').toLowerCase().includes(clientSearch.trim().toLowerCase())) && (
+                {!clientOptions.some(c => rankClientMatch(c.name, clientSearch) < 999) && (
                   <div style={{padding:'12px',fontSize:12,color:'var(--t3)'}}>No matching client files.</div>
                 )}
               </div>
