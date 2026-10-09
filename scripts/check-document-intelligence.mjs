@@ -101,3 +101,11 @@ assert(prepared.includes("slice(0,12)"), 'AI client autocomplete limits the visi
 assert(prepared.includes("No matching client files."), 'AI client autocomplete exposes a no-match state')
 assert(prepared.includes("setSelectedClientId(c.id);setClientSearch(c.name);setClientSearchOpen(false)"), 'AI client autocomplete selects a client directly from results')
 assert(prepared.includes("Selected:"), 'AI client autocomplete shows the selected client')
+
+assert(prepared.includes('function rankClientMatch'), 'AI client search has relevance ranking')
+assert(prepared.includes("if (normalized.startsWith(search)) return 1"), 'AI client search prioritizes name prefixes')
+assert(prepared.includes("if (parts.some(part => part.startsWith(search))) return 2"), 'AI client search supports surname/name-part prefixes')
+assert(prepared.includes("if (search.length >= 2 && normalized.includes(search)) return 3"), 'single-letter client search matches prefixes instead of arbitrary contains')
+assert(prepared.includes('const clientSearchResults = useMemo'), 'AI client search computes ranked results')
+assert(prepared.includes(".slice(0,100)"), 'AI client search can show up to 100 matches')
+assert(prepared.includes("matching client file"), 'AI client search shows match count')
