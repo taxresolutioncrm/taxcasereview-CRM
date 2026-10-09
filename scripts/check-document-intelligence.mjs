@@ -114,4 +114,4 @@ assert(prepared.includes('const concurrency = 3'), 'AI batch scanning uses bound
 assert(prepared.includes('Promise.all(Array.from({ length:Math.min(concurrency, pending.length) }, () => worker()))'), 'AI batch scanning runs a bounded worker pool')
 assert(prepared.includes("file:'Processing up to 3 documents at a time'"), 'AI batch scanning exposes concurrent progress')
 assert(!prepared.includes('await analyzeDocument(doc)\n          await load()'), 'AI batch scanning no longer reloads the full client workspace after every document')
-assert(prepared.includes('await load()') && prepared.includes("file:'Finalizing client file…'"), 'AI batch scanning refreshes the client workspace after the batch')
+assert(prepared.includes("file:completed < pending.length ? 'Processing up to 3 documents at a time' : 'Finalizing client file…'") && prepared.includes('await load()'), 'AI batch scanning refreshes the client workspace after the batch')
