@@ -161,7 +161,12 @@ export function useWebRTCRoom(channelPrefix) {
   async function handleSignal({ from, to, type, sdp, candidate }) {
     if (to !== myNameRef.current) return
     if (type === 'offer') {
-      const pc = createPC(from)
+      // Preserve established microphone/camera transport during a subsequent offer.
+      let pc = peerConnsRef.current[from]
+      if (!pc || pc.signalingState === 'closed') pc = createPC(from)
+      if (pc.signalingState === 'have-local-offer') {
+        await pc.setLocalDescription({ type: 'rollback' })
+      }
       await pc.setRemoteDescription({ type: 'offer', sdp })
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
