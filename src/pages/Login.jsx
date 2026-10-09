@@ -5,6 +5,46 @@ import { supabase } from '../lib/supabase'
 const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxrescrm.net', 'romy@taxcasereview.org']
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
 
+const AUTH_RETRY_DELAYS_MS = [0, 700, 1500, 2500]
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+function authErrorText(err) {
+  if (!err) return ''
+  if (typeof err === 'string') return err
+  const message = typeof err.message === 'string' ? err.message.trim() : ''
+  if (message && message !== '{}' && message !== '[object Object]') return message
+  const code = typeof err.code === 'string' ? err.code.trim() : ''
+  if (code) return code.replaceAll('_',' ')
+  try {
+    const serialized = JSON.stringify(err)
+    if (serialized && serialized !== '{}') return serialized
+  } catch (_) {}
+  return 'Authentication service did not return a valid response.'
+}
+function isTransientAuthError(err) {
+  const status = Number(err?.status || err?.statusCode || 0)
+  const code = String(err?.code || '').toLowerCase()
+  const msg = authErrorText(err).toLowerCase()
+  return [500,502,503,504].includes(status)
+    || ['request_timeout','unexpected_failure','temporarily_unavailable'].includes(code)
+    || /timeout|timed out|context deadline|unexpected failure|failed to fetch|network|upstream|service unavailable/.test(msg)
+}
+async function signInWithRecovery(email, password, onRetry) {
+  let lastError = null
+  for (let attempt = 0; attempt < AUTH_RETRY_DELAYS_MS.length; attempt++) {
+    const delay = AUTH_RETRY_DELAYS_MS[attempt]
+    if (delay) {
+      onRetry?.(attempt + 1)
+      await sleep(delay)
+    }
+    const result = await supabase.auth.signInWithPassword({ email, password })
+    if (!result.error) return result
+    lastError = result.error
+    if (!isTransientAuthError(result.error)) return result
+  }
+  return { data:null, error:lastError }
+}
+
+
 const COPY = {
   en: {
     eyebrow: 'TAX RESOLUTION MANAGEMENT',
@@ -86,6 +126,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loginStatus, setLoginStatus] = useState('')
   const [resetting, setResetting] = useState(false)
   const [resetSent, setResetSent] = useState(false)
   const [branding, setBranding] = useState(null)
@@ -154,9 +195,14 @@ export default function Login() {
     e.preventDefault()
     if (!email || !password) return setError(t.required)
     setLoading(true)
+    setLoginStatus('')
     setError('')
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error } = await signInWithRecovery(email.trim(), password, attempt => {
+        setLoginStatus(lang === 'es'
+          ? `El servicio de acceso tardó demasiado. Reintentando automáticamente… (${attempt}/4)`
+          : `Sign-in service timed out. Retrying automatically… (${attempt}/4)`)
+      })
       if (error) throw error
 
       const signedInEmail = data.user?.email?.toLowerCase() || ''
@@ -190,8 +236,14 @@ export default function Login() {
         window.location.href = '/crm-admin'
       }
     } catch (err) {
-      setError(err.message)
+      const transient = isTransientAuthError(err)
+      setError(transient
+        ? (lang === 'es'
+          ? 'El servicio de acceso está tardando demasiado. No se cambió su contraseña. Intente nuevamente en unos segundos.'
+          : 'The sign-in service is timing out. Your password was not changed. Please try again in a few seconds.')
+        : authErrorText(err))
     } finally {
+      setLoginStatus('')
       setLoading(false)
     }
   }
@@ -248,6 +300,7 @@ export default function Login() {
                   {resetting ? (lang==='es'?'Enviando…':'Sending…') : (lang==='es'?'¿Olvidó su contraseña?':'Forgot password?')}
                 </button>
               </div>
+              {loginStatus && <div style={{fontSize:12,color:'#92400e',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'9px 12px',marginBottom:12}}>{loginStatus}</div>}
               {resetSent && <div style={{fontSize:12,color:'#047857',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:8,padding:'9px 12px',marginBottom:12}}>
                 {lang==='es'?'Enlace de restablecimiento enviado. Revise su correo.':'Password reset link sent. Check your email.'}
               </div>}
