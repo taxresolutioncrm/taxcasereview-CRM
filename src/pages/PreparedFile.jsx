@@ -36,6 +36,7 @@ export default function PreparedFile() {
   const [clientOptions, setClientOptions] = useState([])
   const [selectedClientId, setSelectedClientId] = useState('')
   const [clientSearch, setClientSearch] = useState('')
+  const [clientSearchOpen, setClientSearchOpen] = useState(false)
   const [landingUploadFile, setLandingUploadFile] = useState(null)
   const [landingUploadBusy, setLandingUploadBusy] = useState(false)
   const [documentSearch, setDocumentSearch] = useState('')
@@ -420,24 +421,44 @@ export default function PreparedFile() {
           <div style={{fontSize:12,color:'var(--t3)',marginBottom:12}}>
             Choose the client first. Upload and analysis run inside that client's workspace so every document and AI finding stays linked correctly.
           </div>
-          <input
-            className="input"
-            value={clientSearch}
-            onChange={e=>setClientSearch(e.target.value)}
-            placeholder="Search client files…"
-            style={{width:'100%',marginBottom:10}}
-          />
-          <select
-            className="select"
-            value={selectedClientId}
-            onChange={e=>setSelectedClientId(e.target.value)}
-            style={{width:'100%',marginBottom:12}}
-          >
-            <option value="">Select a client…</option>
-            {clientOptions
-              .filter(c => !clientSearch.trim() || String(c.name || '').toLowerCase().includes(clientSearch.trim().toLowerCase()))
-              .map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div style={{position:'relative',marginBottom:12}}>
+            <input
+              className="input"
+              value={clientSearch}
+              onFocus={()=>setClientSearchOpen(true)}
+              onChange={e=>{setClientSearch(e.target.value);setClientSearchOpen(true)}}
+              placeholder="Search client files…"
+              autoComplete="off"
+              style={{width:'100%'}}
+            />
+            {clientSearchOpen && clientSearch.trim() && (
+              <div style={{position:'absolute',left:0,right:0,top:'calc(100% + 6px)',zIndex:20,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:10,boxShadow:'0 14px 36px rgba(0,0,0,.28)',maxHeight:280,overflowY:'auto'}}>
+                {clientOptions
+                  .filter(c => String(c.name || '').toLowerCase().includes(clientSearch.trim().toLowerCase()))
+                  .slice(0,12)
+                  .map(c=>(
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={()=>{setSelectedClientId(c.id);setClientSearch(c.name);setClientSearchOpen(false);setError('')}}
+                      style={{width:'100%',textAlign:'left',padding:'10px 12px',background:String(c.id)===String(selectedClientId)?'rgba(59,130,246,.14)':'transparent',border:0,borderBottom:'1px solid var(--bd)',color:'var(--tx)',cursor:'pointer'}}
+                    >
+                      <div style={{fontWeight:800,fontSize:13}}>{c.name}</div>
+                      <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>Open client AI file</div>
+                    </button>
+                  ))}
+                {!clientOptions.some(c => String(c.name || '').toLowerCase().includes(clientSearch.trim().toLowerCase())) && (
+                  <div style={{padding:'12px',fontSize:12,color:'var(--t3)'}}>No matching client files.</div>
+                )}
+              </div>
+            )}
+            {selectedClientId && (
+              <div style={{marginTop:8,fontSize:11,color:'var(--t3)'}}>
+                Selected: <strong style={{color:'var(--tx)'}}>{clientOptions.find(c=>String(c.id)===String(selectedClientId))?.name || clientSearch}</strong>
+                <button type="button" className="btn sm" style={{marginLeft:8}} onClick={()=>{setSelectedClientId('');setClientSearch('');setClientSearchOpen(false)}}>Clear</button>
+              </div>
+            )}
+          </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr',gap:10,marginBottom:12}}>
             <label className="card" style={{padding:12,cursor:'pointer',margin:0}}>
               <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>Upload document to selected client</div>
