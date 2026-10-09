@@ -557,12 +557,22 @@ export function AppProvider({ children }) {
     }
     const { data } = await supabase
       .from('employees')
-      .select('name, access, perm_leads, perm_clients, perm_billing, perm_schedule, perm_documents, perm_reports, perm_hr, perm_settings, perm_comms, perm_irs')
+      .select('name, access, status, perm_leads, perm_clients, perm_billing, perm_schedule, perm_documents, perm_reports, perm_hr, perm_settings, perm_comms, perm_irs')
       .eq('tenant_id', tenantId)
       .eq('email', email)
       .maybeSingle()
 
     if (data) {
+      if (String(data.status || 'Active').toLowerCase() !== 'active') {
+        await supabase.auth.signOut()
+        setUser(null)
+        setRole('Tax Associate')
+        setEmployeeName('')
+        setPerms(null)
+        alert('Your employee profile is inactive. Please contact your office administrator.')
+        window.location.href = '/login'
+        return
+      }
       setRole(data.access || 'Tax Associate')
       setEmployeeName(data.name || '')
       const hasCustomPerms = Object.keys(data).some(k => k.startsWith('perm_') && data[k] !== null)
