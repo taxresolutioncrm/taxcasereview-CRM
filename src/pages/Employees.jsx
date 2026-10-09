@@ -197,6 +197,7 @@ export default function Employees() {
   const [inviteVia, setInviteVia] = useState('email')
   const [inviteSending, setInviteSending] = useState(false)
   const [search, setSearch]       = useState('')
+  const [statusFilter, setStatusFilter] = useState('Active')
   const [empDocs, setEmpDocs]     = useState([])
   const [docUploading, setDocUploading] = useState(false)
   const [nextDocLabel, setNextDocLabel] = useState('W-4')
@@ -273,12 +274,20 @@ export default function Employees() {
   }
 
   function openInviteModal(emp) {
+    if (String(emp?.status || 'Active').toLowerCase() !== 'active') {
+      showToast('Reactivate this employee before sending a CRM login invite.', 'err')
+      return
+    }
     setInviteTarget(emp)
     setInviteVia('email')
   }
 
   async function inviteEmployeeLogin(empLike, via = 'email') {
     const email = String(empLike?.email || '').trim().toLowerCase()
+    if (String(empLike?.status || 'Active').toLowerCase() !== 'active') {
+      showToast('Reactivate this employee before sending login access.', 'err')
+      return { ok:false }
+    }
     if (!email) { showToast('Employee email is required before sending a login invite.', 'err'); return { ok:false } }
 
     // Nashville is on its own Supabase project and must bridge to the shared
@@ -362,14 +371,26 @@ export default function Employees() {
     return true
   }
 
-  async function remove(id) {
-    if (confirmDel !== id) { setConfirmDel(id); return }
+  async function deactivateEmployee(emp) {
+    if (!emp?.id) return
+    if (confirmDel !== emp.id) { setConfirmDel(emp.id); return }
     setConfirmDel(null)
-    const { error } = await supabase.from('employees').delete().eq('id', id)
-    if (error) { showToast('Error: ' + error.message, 'err'); return }
-    setEmployees(prev => prev.filter(e => e.id !== id))
-    showToast('Employee removed')
-    load()
+    const { error } = await supabase.from('employees')
+      .update({ status: 'Inactive' })
+      .eq('id', emp.id)
+    if (error) { showToast('Could not deactivate employee: ' + error.message, 'err'); return }
+    setEmployees(prev => prev.map(row => row.id === emp.id ? { ...row, status:'Inactive' } : row))
+    showToast(emp.name + ' is now inactive. Their profile and history were preserved.')
+  }
+
+  async function reactivateEmployee(emp) {
+    if (!emp?.id) return
+    const { error } = await supabase.from('employees')
+      .update({ status: 'Active' })
+      .eq('id', emp.id)
+    if (error) { showToast('Could not reactivate employee: ' + error.message, 'err'); return }
+    setEmployees(prev => prev.map(row => row.id === emp.id ? { ...row, status:'Active' } : row))
+    showToast(emp.name + ' is active again.')
   }
 
   async function handleDocFiles(files) {
@@ -409,6 +430,7 @@ export default function Employees() {
     if (!resetEmail) return
     const emp = employees.find(e => String(e.email || '').trim().toLowerCase() === String(resetEmail).trim().toLowerCase())
     if (!emp) return showToast('Employee record not found for this office.', 'err')
+    if (String(emp.status || 'Active').toLowerCase() !== 'active') return showToast('Reactivate this employee before resetting CRM access.', 'err')
     setResetSending(true)
     const result = await inviteEmployeeLogin(emp)
     setResetSending(false)
@@ -417,9 +439,20 @@ export default function Employees() {
     setResetEmail('')
   }
 
-  const filtered = employees.filter(e =>
-    !search || e.name?.toLowerCase().includes(search.toLowerCase()) || e.email?.toLowerCase().includes(search.toLowerCase())
-  )
+  const activeCount = employees.filter(emp => String(emp.status || 'Active').toLowerCase() === 'active').length
+  const inactiveCount = employees.length - activeCount
+  const filtered = employees.filter(emp => {
+    const isActive = String(emp.status || 'Active').toLowerCase() === 'active'
+    const matchesStatus = statusFilter === 'All'
+      || (statusFilter === 'Active' && isActive)
+      || (statusFilter === 'Inactive' && !isActive)
+    const q = search.trim().toLowerCase()
+    const matchesSearch = !q
+      || String(emp.name || '').toLowerCase().includes(q)
+      || String(emp.email || '').toLowerCase().includes(q)
+      || String(emp.title || '').toLowerCase().includes(q)
+    return matchesStatus && matchesSearch
+  })
 
   return (
     <div style={{padding:'20px 24px',maxWidth:1100,margin:'0 auto'}}>
@@ -427,7 +460,7 @@ export default function Employees() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 20, color: 'var(--tx)' }}>Employees</div>
-          <div style={{ fontSize: 13, color: 'var(--t3)' }}>{employees.length} team member{employees.length !== 1 ? 's' : ''}</div>
+          <div style={{ fontSize: 13, color: 'var(--t3)' }}>{activeCount} active · {inactiveCount} inactive</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
@@ -448,6 +481,21 @@ export default function Employees() {
         </div>
       </div>
 
+      <div style={{
+        display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap'
+      }}>
+        {['Active','Inactive','All'].map(option => (
+          <button key={option}
+            className={statusFilter === option ? 'btn pri sm' : 'btn sm'}
+            onClick={() => setStatusFilter(option)}>
+            {option}{option === 'Active' ? ` (${activeCount})` : option === 'Inactive' ? ` (${inactiveCount})` : ` (${employees.length})`}
+          </button>
+        ))}
+        <div style={{fontSize:11.5,color:'var(--t3)',marginLeft:4}}>
+          Inactive profiles stay stored and can be reactivated at any time.
+        </div>
+      </div>
+
       {/* Employee cards */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--t3)' }}>Loading…</div>
@@ -458,80 +506,124 @@ export default function Employees() {
           <div style={{ fontSize: 13, marginTop: 4 }}>Add your first team member to get started</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))', gap: 14, alignItems: 'stretch' }}>
+        <div style={{
+          display:'grid',
+          gridTemplateColumns:'repeat(auto-fit, minmax(min(420px, 100%), 1fr))',
+          gap:18,
+          alignItems:'stretch'
+        }}>
           {filtered.map(emp => {
             const roleColor = TITLE_COLORS[emp.role] || ROLE_COLORS[emp.access] || '#64748b'
             const displayTitle = emp.title || emp.role || 'Staff'
             const displayAccess = emp.access || 'Staff'
+            const isActive = String(emp.status || 'Active').toLowerCase() === 'active'
+            const enabledSections = PERM_SECTIONS.filter(section => {
+              const fallback = safeRoleDefaults(emp.access)?.[section.key] ?? 0
+              return safePermLevel(emp[section.key], fallback) > 0
+            }).length
+
             return (
-              <div key={emp.id} className="card" style={{ padding: 18, minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1fr)', gap: 14, alignItems: 'start' }}>
-                  {/* Avatar */}
+              <div key={emp.id} className="card" style={{
+                padding:0, minWidth:0, overflow:'hidden',
+                border:'1px solid var(--br)',
+                opacity:isActive ? 1 : .76
+              }}>
+                <div style={{
+                  display:'grid',
+                  gridTemplateColumns:'56px minmax(0,1fr)',
+                  gap:14,
+                  padding:'18px 18px 14px'
+                }}>
                   <div style={{
-                    width: 48, height: 48, borderRadius: '50%',
-                    background: roleColor,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 16, fontWeight: 800, color: '#fff', overflow: 'hidden'
+                    width:56, height:56, borderRadius:14,
+                    background:roleColor,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:17, fontWeight:800, color:'#fff', overflow:'hidden'
                   }}>
                     {emp.avatar_url
-                      ? <img src={emp.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                      : (emp.name || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
+                      ? <img src={emp.avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                      : (emp.name || '?').split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase()}
                   </div>
 
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--tx)', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{emp.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--t2)', marginTop: 3, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{displayTitle}</div>
-                    <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 2, lineHeight: 1.4, overflowWrap: 'anywhere' }}>{emp.email}</div>
-                    <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                      <div title={emp.name || ''} style={{
+                        flex:1,minWidth:0,fontWeight:800,fontSize:16,color:'var(--tx)',
+                        whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'
+                      }}>{emp.name}</div>
                       <span style={{
-                        fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 20,
-                        background: roleColor + '22', color: roleColor,
-                        border: '1px solid ' + roleColor + '44',
-                        whiteSpace: 'nowrap'
+                        flexShrink:0,fontSize:10.5,fontWeight:800,padding:'3px 9px',borderRadius:999,
+                        background:isActive ? 'rgba(37,162,90,.12)' : 'rgba(100,116,139,.14)',
+                        color:isActive ? '#25A25A' : '#64748b',
+                        border:isActive ? '1px solid rgba(37,162,90,.25)' : '1px solid rgba(100,116,139,.28)'
+                      }}>{isActive ? 'ACTIVE' : 'INACTIVE'}</span>
+                    </div>
+
+                    <div style={{
+                      fontSize:12.5,color:'var(--t3)',marginTop:6,
+                      whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'
+                    }} title={emp.email || ''}>
+                      {emp.email || 'No email'}
+                    </div>
+
+                    <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:9}}>
+                      <span style={{
+                        fontSize:10.5,fontWeight:800,padding:'3px 9px',borderRadius:999,
+                        background:roleColor+'18',color:roleColor,border:'1px solid '+roleColor+'40'
                       }}>{displayAccess}</span>
+                      {displayTitle && displayTitle !== displayAccess && (
+                        <span style={{fontSize:11.5,color:'var(--t2)'}}>{displayTitle}</span>
+                      )}
+                      {emp.team && <span style={{fontSize:11.5,color:'var(--t2)'}}>Team: {emp.team}</span>}
+                      {emp.direct_number && <span style={{fontSize:11.5,color:'var(--t2)',fontFamily:'monospace'}}>{emp.direct_number}</span>}
                     </div>
                   </div>
                 </div>
 
-                {/* Employee actions live on their own row so identity text never gets crushed. */}
                 <div style={{
-                  marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--br)',
-                  display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center'
+                  display:'flex',alignItems:'center',justifyContent:'space-between',
+                  gap:12,padding:'11px 18px',borderTop:'1px solid var(--br)',background:'var(--s2)',
+                  flexWrap:'wrap'
                 }}>
-                  <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑 Reset</button>
-                  {can('edit', 'employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite">✉️ Invite</button>}
-                  {can('edit', 'employees') && (
-                    <>
-                      <button className="btn sm" onClick={() => openEdit(emp)}>Edit</button>
-                      <button className="btn sm" onClick={() => remove(emp.id)}
-                        style={{ color: 'var(--bad)', marginLeft: 'auto' }} title="Remove employee">✕</button>
-                    </>
-                  )}
-                </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,fontWeight:800,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em'}}>
+                      Access
+                    </div>
+                    <div style={{fontSize:12,color:'var(--t2)',marginTop:2}}>
+                      {enabledSections} section{enabledSections === 1 ? '' : 's'} enabled
+                    </div>
+                  </div>
 
-                {/* Permission chips */}
-                <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap', alignContent: 'flex-start' }}>
-                  {PERM_SECTIONS.map(s => {
-                    const fallback = safeRoleDefaults(emp.access)?.[s.key] ?? 0
-                    const level = safePermLevel(emp[s.key], fallback)
-                    if (level === 0) return null
-                    const opt = LEVEL_OPTIONS[level] || LEVEL_OPTIONS[0]
-                    return (
-                      <span key={s.key} title={s.label + ': ' + opt.label} style={{
-                        fontSize: 10, padding: '3px 8px', borderRadius: 12,
-                        background: opt.color + '18', color: opt.color,
-                        border: '1px solid ' + opt.color + '3d', fontWeight: 700,
-                        lineHeight: 1.2, whiteSpace: 'nowrap'
-                      }}>
-                        {s.icon} {s.label.split(' ')[0]}
-                      </span>
-                    )
-                  })}
+                  <div style={{display:'flex',gap:7,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
+                    {isActive && (
+                      <>
+                        <button className="btn sm" onClick={() => { setShowReset(true); setResetEmail(emp.email || '') }} title="Reset password">🔑 Reset</button>
+                        {can('edit','employees') && <button className="btn sm" onClick={() => openInviteModal(emp)} title="Send CRM login invite">✉️ Invite</button>}
+                      </>
+                    )}
+                    {can('edit','employees') && (
+                      <>
+                        <button className="btn sm" onClick={() => openEdit(emp)}>Edit</button>
+                        {isActive ? (
+                          <button className="btn sm"
+                            onClick={() => deactivateEmployee(emp)}
+                            title={confirmDel === emp.id ? 'Click again to confirm deactivation' : 'Deactivate employee'}
+                            style={{color:confirmDel === emp.id ? '#fff' : 'var(--bad)',background:confirmDel === emp.id ? 'var(--bad)' : undefined}}>
+                            {confirmDel === emp.id ? 'Confirm Deactivate' : 'Deactivate'}
+                          </button>
+                        ) : (
+                          <button className="btn sm pri" onClick={() => reactivateEmployee(emp)} title="Reactivate employee">
+                            Reactivate
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             )
           })}
-        </div>
+        </div>        </div>
       )}
 
       {/* Add/Edit modal */}
