@@ -47,16 +47,14 @@ export default function RomyLabsBilling() {
   },[])
   useEffect(()=>{load()},[load])
   useEffect(()=>{
+    const reload = () => {
+      if (liveReloadRef.current) clearTimeout(liveReloadRef.current)
+      liveReloadRef.current = setTimeout(() => load(), 500)
+    }
     const channel = supabase
       .channel('romylabs-billing-live')
-      .on(
-        'postgres_changes',
-        { event:'*', schema:'public', table:'romylabs_metrics_cache' },
-        () => {
-          if (liveReloadRef.current) clearTimeout(liveReloadRef.current)
-          liveReloadRef.current = setTimeout(() => load(), 150)
-        },
-      )
+      .on('postgres_changes', { event:'*', schema:'public', table:'romylabs_subscription_payments' }, reload)
+      .on('postgres_changes', { event:'*', schema:'public', table:'romylabs_billing_accounts' }, reload)
       .subscribe()
     return () => {
       if (liveReloadRef.current) clearTimeout(liveReloadRef.current)

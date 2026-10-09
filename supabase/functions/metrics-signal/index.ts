@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   // claim; accepted signals only request a trusted server-side aggregate refresh.
   const { data: claimed, error: claimError } = await serviceClient.rpc(
     'claim_romylabs_metrics_refresh',
-    { p_product_key: product, p_min_interval_ms: 1000 },
+    { p_product_key: product, p_min_interval_ms: 30000 },
   )
   if (claimError) {
     console.error('metrics-signal claim failed', claimError.message)
