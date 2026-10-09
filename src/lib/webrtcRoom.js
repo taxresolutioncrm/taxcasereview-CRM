@@ -338,13 +338,89 @@ export function useWebRTCRoom(channelPrefix) {
     setJoined(false)
   }, [])
 
-  function toggleMic() {
-    const track = localStreamRef.current?.getAudioTracks()[0]
-    if (track) { track.enabled = !track.enabled; setMicOn(track.enabled) }
+  async function renegotiatePeer(peerId) {
+    const pc = peerConnsRef.current[peerId]
+    if (!pc || pc.signalingState !== 'stable') return false
+    try {
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      await channelRef.current?.send({
+        type: 'broadcast', event: 'signal',
+        payload: { from: myNameRef.current, to: peerId, type: 'offer', sdp: offer.sdp }
+      })
+      return true
+    } catch {
+      return false
+    }
   }
-  function toggleCamera() {
-    const track = localStreamRef.current?.getVideoTracks()[0]
-    if (track) { track.enabled = !track.enabled; setCameraOn(track.enabled) }
+
+  async function toggleMic() {
+    let stream = localStreamRef.current
+    let track = stream?.getAudioTracks()[0]
+    if (!track) {
+      try {
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+        track = mic.getAudioTracks()[0]
+        if (!track) return
+        if (!stream) { stream = new MediaStream(); localStreamRef.current = stream }
+        stream.addTrack(track)
+        localStreamRef.current = stream
+        if (typeof setLocalStream === 'function') setLocalStream(new MediaStream(stream.getTracks()))
+        setMicOn(true)
+        setError('')
+        for (const [peerId, pc] of Object.entries(peerConnsRef.current)) {
+          const transceiver = pc.getTransceivers?.().find(t => t.sender?.track?.kind === 'audio' || t.receiver?.track?.kind === 'audio')
+          if (transceiver) {
+            await transceiver.sender.replaceTrack(track)
+            try { transceiver.direction = 'sendrecv' } catch {}
+          } else {
+            pc.addTrack(track, stream)
+          }
+          await renegotiatePeer(peerId)
+        }
+        track.onended = () => setMicOn(false)
+      } catch {
+        setError('Microphone unavailable — check browser permission and device access')
+        setMicOn(false)
+      }
+      return
+    }
+    track.enabled = !track.enabled
+    setMicOn(track.enabled)
+  }
+  async function toggleCamera() {
+    let stream = localStreamRef.current
+    let track = stream?.getVideoTracks()[0]
+    if (!track) {
+      try {
+        const camera = await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
+        track = camera.getVideoTracks()[0]
+        if (!track) return
+        if (!stream) { stream = new MediaStream(); localStreamRef.current = stream }
+        stream.addTrack(track)
+        localStreamRef.current = stream
+        if (typeof setLocalStream === 'function') setLocalStream(new MediaStream(stream.getTracks()))
+        setCameraOn(true)
+        setError('')
+        for (const [peerId, pc] of Object.entries(peerConnsRef.current)) {
+          const transceiver = pc.getTransceivers?.().find(t => t.sender?.track?.kind === 'video' || t.receiver?.track?.kind === 'video')
+          if (transceiver) {
+            await transceiver.sender.replaceTrack(track)
+            try { transceiver.direction = 'sendrecv' } catch {}
+          } else {
+            pc.addTrack(track, stream)
+          }
+          await renegotiatePeer(peerId)
+        }
+        track.onended = () => setCameraOn(false)
+      } catch {
+        setError('Camera unavailable — check browser permission and device access')
+        setCameraOn(false)
+      }
+      return
+    }
+    track.enabled = !track.enabled
+    setCameraOn(track.enabled)
   }
 
   function broadcastEnd() {
