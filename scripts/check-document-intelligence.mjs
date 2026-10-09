@@ -95,3 +95,9 @@ assert(prepared.includes('placeholder="Search this client\'s files…"'), 'File 
 assert(prepared.includes('const visibleDocuments = docs.filter'), 'File Review filters client documents locally')
 assert(prepared.includes("onClick={()=>openSource(d.id)}"), 'File Review can open an attached client document')
 assert(prepared.includes('No client files match that search.'), 'File Review exposes a no-match search state')
+
+assert(prepared.includes("setClientSearchOpen(true)"), 'AI client search shows live autocomplete results')
+assert(prepared.includes("slice(0,12)"), 'AI client autocomplete limits the visible result list')
+assert(prepared.includes("No matching client files."), 'AI client autocomplete exposes a no-match state')
+assert(prepared.includes("setSelectedClientId(c.id);setClientSearch(c.name);setClientSearchOpen(false)"), 'AI client autocomplete selects a client directly from results')
+assert(prepared.includes("Selected:"), 'AI client autocomplete shows the selected client')
