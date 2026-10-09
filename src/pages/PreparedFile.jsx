@@ -66,6 +66,14 @@ export default function PreparedFile() {
   const [resolvingQuestions, setResolvingQuestions] = useState(false)
   const [questionResolutionStatus, setQuestionResolutionStatus] = useState('')
 
+  const clientSearchResults = useMemo(() => {
+    if (!clientSearch.trim()) return []
+    return clientOptions
+      .map(c => ({...c, _rank: rankClientMatch(c.name, clientSearch)}))
+      .filter(c => c._rank < 999)
+      .sort((a,b) => a._rank - b._rank || String(a.name || '').localeCompare(String(b.name || '')))
+  }, [clientOptions, clientSearch])
+
   useEffect(() => {
     if (clientId) load()
     else loadClientOptions()
@@ -448,11 +456,11 @@ export default function PreparedFile() {
             />
             {clientSearchOpen && clientSearch.trim() && (
               <div style={{position:'absolute',left:0,right:0,top:'calc(100% + 6px)',zIndex:20,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:10,boxShadow:'0 14px 36px rgba(0,0,0,.28)',maxHeight:420,overflowY:'auto'}}>
-                {clientOptions
-                  .map(c => ({...c, _rank: rankClientMatch(c.name, clientSearch)}))
-                  .filter(c => c._rank < 999)
-                  .sort((a,b) => a._rank - b._rank || String(a.name || '').localeCompare(String(b.name || '')))
-                  .slice(0,50)
+                <div style={{padding:'7px 12px',fontSize:10,color:'var(--t3)',borderBottom:'1px solid var(--bd)'}}>
+                  {clientSearchResults.length.toLocaleString()} matching client file{clientSearchResults.length===1?'':'s'}{clientSearchResults.length > 100 ? ' · showing first 100' : ''}
+                </div>
+                {clientSearchResults
+                  .slice(0,100)
                   .map(c=>(
                     <button
                       key={c.id}
@@ -464,7 +472,7 @@ export default function PreparedFile() {
                       <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>Open client AI file</div>
                     </button>
                   ))}
-                {!clientOptions.some(c => rankClientMatch(c.name, clientSearch) < 999) && (
+                {!clientSearchResults.length && (
                   <div style={{padding:'12px',fontSize:12,color:'var(--t3)'}}>No matching client files.</div>
                 )}
               </div>
