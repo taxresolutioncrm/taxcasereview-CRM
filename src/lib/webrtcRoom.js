@@ -124,7 +124,14 @@ export function useWebRTCRoom(channelPrefix) {
         setRemoteScreenStreams(prev => ({ ...prev, [peerName]: screenStream }))
       } else {
         // First video track for this peer = camera
-        setRemoteStreams(prev => ({ ...prev, [peerName]: e.streams[0] || new MediaStream([track]) }))
+        setRemoteStreams(prev => {
+          const existing = prev[peerName]
+          const incoming = e.streams[0] || new MediaStream([track])
+          if (!existing) return { ...prev, [peerName]: incoming }
+          const tracks = [...existing.getTracks()]
+          incoming.getTracks().forEach(t => { if (!tracks.some(x => x.id === t.id)) tracks.push(t) })
+          return { ...prev, [peerName]: new MediaStream(tracks) }
+        })
         remoteStreamsRef.current = { ...remoteStreamsRef.current, [peerName]: true }
       }
     }
