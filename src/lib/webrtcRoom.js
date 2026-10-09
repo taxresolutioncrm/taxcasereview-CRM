@@ -94,7 +94,18 @@ export function useWebRTCRoom(channelPrefix) {
     }
     pc.ontrack = (e) => {
       const track = e.track
-      if (track.kind !== 'video') return  // audio is handled by streams[0] automatically
+      // Audio-only callers may not deliver a video ontrack event. Attach the
+      // microphone track to the participant's media stream immediately.
+      if (track.kind === 'audio') {
+        setRemoteStreams(prev => {
+          const existing = prev[peerName]
+          if (!existing) return { ...prev, [peerName]: e.streams[0] || new MediaStream([track]) }
+          if (existing.getTracks().some(t => t.id === track.id)) return prev
+          return { ...prev, [peerName]: new MediaStream([...existing.getTracks(), track]) }
+        })
+        return
+      }
+      if (track.kind !== 'video') return
 
       // Primary: contentHint='detail' set by sender on the screen track
       const isScreenByHint  = track.contentHint === 'detail'
