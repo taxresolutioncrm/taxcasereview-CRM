@@ -1,0 +1,27 @@
+name: Sandbox TaxRes media build gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/webrtcRoom.js'
+      - 'src/context/ScreenShareContext.jsx'
+      - 'src/pages/Training.jsx'
+      - 'src/pages/ScreenShareHost.jsx'
+      - 'src/pages/ScreenShareJoin.jsx'
+      - 'src/pages/MeetingRoom.jsx'
+      - '.github/workflows/sandbox-media-gate.yml'
+permissions:
+  contents: read
+jobs:
+  sandbox-build:
+    if: ${{ startsWith(github.head_ref, 'sandbox/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
