@@ -94,7 +94,18 @@ export function useWebRTCRoom(channelPrefix) {
     }
     pc.ontrack = (e) => {
       const track = e.track
-      if (track.kind !== 'video') return  // audio is handled by streams[0] automatically
+      // Audio-only callers may not deliver a video ontrack event. Attach the
+      // microphone track to the participant's media stream immediately.
+      if (track.kind === 'audio') {
+        setRemoteStreams(prev => {
+          const existing = prev[peerName]
+          if (!existing) return { ...prev, [peerName]: e.streams[0] || new MediaStream([track]) }
+          if (existing.getTracks().some(t => t.id === track.id)) return prev
+          return { ...prev, [peerName]: new MediaStream([...existing.getTracks(), track]) }
+        })
+        return
+      }
+      if (track.kind !== 'video') return
 
       // Primary: contentHint='detail' set by sender on the screen track
       const isScreenByHint  = track.contentHint === 'detail'
@@ -113,7 +124,14 @@ export function useWebRTCRoom(channelPrefix) {
         setRemoteScreenStreams(prev => ({ ...prev, [peerName]: screenStream }))
       } else {
         // First video track for this peer = camera
-        setRemoteStreams(prev => ({ ...prev, [peerName]: e.streams[0] || new MediaStream([track]) }))
+        setRemoteStreams(prev => {
+          const existing = prev[peerName]
+          const incoming = e.streams[0] || new MediaStream([track])
+          if (!existing) return { ...prev, [peerName]: incoming }
+          const tracks = [...existing.getTracks()]
+          incoming.getTracks().forEach(t => { if (!tracks.some(x => x.id === t.id)) tracks.push(t) })
+          return { ...prev, [peerName]: new MediaStream(tracks) }
+        })
         remoteStreamsRef.current = { ...remoteStreamsRef.current, [peerName]: true }
       }
     }
@@ -143,7 +161,12 @@ export function useWebRTCRoom(channelPrefix) {
   async function handleSignal({ from, to, type, sdp, candidate }) {
     if (to !== myNameRef.current) return
     if (type === 'offer') {
-      const pc = createPC(from)
+      // Preserve established microphone/camera transport during a subsequent offer.
+      let pc = peerConnsRef.current[from]
+      if (!pc || pc.signalingState === 'closed') pc = createPC(from)
+      if (pc.signalingState === 'have-local-offer') {
+        await pc.setLocalDescription({ type: 'rollback' })
+      }
       await pc.setRemoteDescription({ type: 'offer', sdp })
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
@@ -153,7 +176,10 @@ export function useWebRTCRoom(channelPrefix) {
       })
     } else if (type === 'answer') {
       const pc = peerConnsRef.current[from]
-      if (pc) await pc.setRemoteDescription({ type: 'answer', sdp })
+      // Delayed responses to superseded offers must not break healthy calls.
+      if (pc && pc.signalingState === 'have-local-offer') {
+        await pc.setRemoteDescription({ type: 'answer', sdp })
+      }
     } else if (type === 'ice') {
       const pc = peerConnsRef.current[from]
       if (pc && candidate) await pc.addIceCandidate(candidate)
@@ -162,7 +188,9 @@ export function useWebRTCRoom(channelPrefix) {
 
   function closePeer(name) {
     if (peerConnsRef.current[name]) { peerConnsRef.current[name].close(); delete peerConnsRef.current[name] }
+    delete remoteStreamsRef.current[name]
     setRemoteStreams(prev => (name in prev ? (() => { const n = { ...prev }; delete n[name]; return n })() : prev))
+    setRemoteScreenStreams(prev => (name in prev ? (() => { const n = { ...prev }; delete n[name]; return n })() : prev))
   }
 
   const join = useCallback(async (roomId, myName, withVideo = true) => {
@@ -300,7 +328,14 @@ export function useWebRTCRoom(channelPrefix) {
       localStreamRef.current.getTracks().forEach(t => t.stop())
       localStreamRef.current = null
     }
-    setMembers([]); setRemoteStreams({}); setLocalStream(null); setJoined(false)
+    remoteStreamsRef.current = {}
+    setMembers([])
+    setRemoteStreams({})
+    setRemoteScreenStreams({})
+    setLocalStream(null)
+    setMicOn(true)
+    setCameraOn(true)
+    setJoined(false)
   }, [])
 
   function toggleMic() {
