@@ -94,7 +94,11 @@ export function useWebRTCRoom(channelPrefix) {
     }
     pc.ontrack = (e) => {
       const track = e.track
-      if (track.kind !== 'video') return  // audio is handled by streams[0] automatically
+      if (track.kind === 'audio') {
+        const audioStream = e.streams[0] || new MediaStream([track])
+        setRemoteStreams(prev => ({ ...prev, [peerName]: audioStream }))
+        return
+      }
 
       // Primary: contentHint='detail' set by sender on the screen track
       const isScreenByHint  = track.contentHint === 'detail'
