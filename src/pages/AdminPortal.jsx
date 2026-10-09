@@ -904,8 +904,9 @@ function Overview() {
   }, [user])
 
   // Keep TaxRes-family office usage live without rerunning the expensive portfolio
-  // loader or writing anything back to Supabase. Cache updates carry the already-
-  // aggregated CRM counts; billing/tenant updates carry their row values directly.
+  // loader or writing anything back to Supabase. The already-bounded metrics cache
+  // is the realtime bus. Central directory/billing values are read only when the
+  // TaxRes aggregate cache changes, at most once per coalesced refresh window.
   useEffect(() => {
     if (!user) return
 
@@ -920,17 +921,83 @@ function Overview() {
       const n = Number(value)
       return Number.isFinite(n) ? n : fallback
     }
+    let directoryTimer = null
+    let directoryRun = 0
+
+    const refreshTaxResDirectory = () => {
+      if (directoryTimer) clearTimeout(directoryTimer)
+      directoryTimer = setTimeout(async () => {
+        const run = ++directoryRun
+        const [overviewRes, billingRes] = await Promise.all([
+          supabase.rpc('admin_tenant_overview'),
+          supabase.rpc('admin_romylabs_billing_totals'),
+        ])
+        if (run !== directoryRun) return
+
+        const overviewById = new Map(
+          (Array.isArray(overviewRes.data) ? overviewRes.data : []).map(row => [String(row.id), row])
+        )
+        const billingById = new Map(
+          (Array.isArray(billingRes.data) ? billingRes.data : [])
+            .filter(row => row.product_key === 'taxres_crm' && row.external_tenant_id)
+            .map(row => [String(row.external_tenant_id), row])
+        )
+
+        setStats(current => Array.isArray(current) ? current.map(item => {
+          if ((item.product || 'taxres_crm') !== 'taxres_crm' || item.counts_as_office === false) return item
+          const directory = overviewById.get(String(item.id))
+          const billing = billingById.get(String(item.id))
+          if (!directory && !billing) return item
+          const isNashville = String(item.firm_name || '').trim().toLowerCase() === 'nashville tax solutions'
+          return {
+            ...item,
+            status:directory?.status ?? item.status,
+            plan_tier:directory?.plan_tier ?? item.plan_tier,
+            // Nashville staff comes from its separate live CRM project; never
+            // overwrite that authoritative remote count with the central directory.
+            employee_count:isNashville
+              ? item.employee_count
+              : finiteOr(directory?.employee_count, item.employee_count),
+            client_count:isNashville
+              ? item.client_count
+              : finiteOr(directory?.client_count, item.client_count),
+            lead_count:isNashville
+              ? item.lead_count
+              : finiteOr(directory?.lead_count, item.lead_count),
+            billing_seats:finiteOr(
+              billing?.seat_count ?? directory?.billing_seats,
+              item.billing_seats
+            ),
+            effective_monthly:billing?.monthly_amount_cents == null
+              ? item.effective_monthly
+              : Number(billing.monthly_amount_cents || 0) / 100,
+            total_collected:billing?.collected_cents == null
+              ? item.total_collected
+              : Number(billing.collected_cents || 0) / 100,
+            transaction_count:billing?.payment_count == null
+              ? item.transaction_count
+              : Number(billing.payment_count || 0),
+          }
+        }) : current)
+      }, 500)
+    }
 
     const metricsChannel = supabase
-      .channel('romylabs-overview-taxres-metrics-live')
+      .channel('romylabs-overview-taxres-live')
       .on(
         'postgres_changes',
         { event:'*', schema:'public', table:'romylabs_metrics_cache' },
         (change) => {
           const row = change?.new || {}
           const productKey = String(row.product_key || '')
-          const officeName = taxResOfficeByProduct[productKey]
           const payload = row.payload || {}
+
+          if (productKey === 'taxres_crm') {
+            refreshTaxResDirectory()
+            return
+          }
+
+          const officeName = taxResOfficeByProduct[productKey]
           if (!officeName || payload?.ok === false) return
           const metrics = payload.metrics || {}
           const office = Array.isArray(payload.offices) ? (payload.offices[0] || {}) : {}
@@ -967,6 +1034,7 @@ function Overview() {
                 office.storage_bytes ?? metrics.storage_bytes,
                 item.storage_bytes
               ),
+              status:office.is_active === false ? 'inactive' : item.status,
               last_activity:
                 office.last_activity ??
                 metrics.last_activity ??
@@ -980,72 +1048,10 @@ function Overview() {
       )
       .subscribe()
 
-    const billingChannel = supabase
-      .channel('romylabs-overview-taxres-billing-live')
-      .on(
-        'postgres_changes',
-        { event:'INSERT', schema:'public', table:'romylabs_billing_accounts' },
-        (change) => {
-          const row = change?.new || {}
-          if (row.product_key !== 'taxres_crm' || !row.external_tenant_id) return
-          setStats(current => Array.isArray(current) ? current.map(item =>
-            String(item.id) === String(row.external_tenant_id)
-              ? {
-                  ...item,
-                  billing_seats:finiteOr(row.seat_count, item.billing_seats),
-                  effective_monthly:finiteOr(row.monthly_amount_cents, item.effective_monthly == null ? null : Number(item.effective_monthly) * 100) == null
-                    ? item.effective_monthly
-                    : finiteOr(row.monthly_amount_cents, Number(item.effective_monthly || 0) * 100) / 100,
-                }
-              : item
-          ) : current)
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event:'UPDATE', schema:'public', table:'romylabs_billing_accounts' },
-        (change) => {
-          const row = change?.new || {}
-          if (row.product_key !== 'taxres_crm' || !row.external_tenant_id) return
-          setStats(current => Array.isArray(current) ? current.map(item =>
-            String(item.id) === String(row.external_tenant_id)
-              ? {
-                  ...item,
-                  billing_seats:finiteOr(row.seat_count, item.billing_seats),
-                  effective_monthly:finiteOr(row.monthly_amount_cents, Number(item.effective_monthly || 0) * 100) / 100,
-                }
-              : item
-          ) : current)
-        },
-      )
-      .subscribe()
-
-    const tenantChannel = supabase
-      .channel('romylabs-overview-taxres-tenant-live')
-      .on(
-        'postgres_changes',
-        { event:'UPDATE', schema:'public', table:'tenants' },
-        (change) => {
-          const row = change?.new || {}
-          if (!row.id) return
-          setStats(current => Array.isArray(current) ? current.map(item =>
-            String(item.id) === String(row.id)
-              ? {
-                  ...item,
-                  status:row.status ?? item.status,
-                  plan_tier:row.plan_tier ?? item.plan_tier,
-                  billing_seats:finiteOr(row.billing_seats, item.billing_seats),
-                }
-              : item
-          ) : current)
-        },
-      )
-      .subscribe()
-
     return () => {
+      if (directoryTimer) clearTimeout(directoryTimer)
+      directoryRun += 1
       supabase.removeChannel(metricsChannel)
-      supabase.removeChannel(billingChannel)
-      supabase.removeChannel(tenantChannel)
     }
   }, [user])
 
