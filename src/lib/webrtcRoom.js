@@ -180,7 +180,9 @@ export function useWebRTCRoom(channelPrefix) {
 
   function closePeer(name) {
     if (peerConnsRef.current[name]) { peerConnsRef.current[name].close(); delete peerConnsRef.current[name] }
+    delete remoteStreamsRef.current[name]
     setRemoteStreams(prev => (name in prev ? (() => { const n = { ...prev }; delete n[name]; return n })() : prev))
+    setRemoteScreenStreams(prev => (name in prev ? (() => { const n = { ...prev }; delete n[name]; return n })() : prev))
   }
 
   const join = useCallback(async (roomId, myName, withVideo = true) => {
