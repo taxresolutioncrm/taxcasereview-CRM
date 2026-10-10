@@ -19,8 +19,8 @@ jobs:
           node-version: '24'
           cache: npm
       - name: Install
-        shell: pwsh
+        shell: powershell
         run: npm ci
       - name: Production build
-        shell: pwsh
+        shell: powershell
         run: npm run build
