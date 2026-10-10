@@ -1,8 +1,5 @@
 name: Team Chat Sandbox Certification
 on:
-  push:
-    branches:
-      - sandbox/huddle-live-status-20261007
   workflow_dispatch:
 
 permissions:
