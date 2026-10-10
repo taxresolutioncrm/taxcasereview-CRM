@@ -147,6 +147,7 @@ const AccountsReceivable = lazyWithRecovery('AccountsReceivable', () => import('
 const Transactions = lazyWithRecovery('Transactions', () => import('./pages/Transactions'))
 const Sms           = lazyWithRecovery('Sms', () => import('./pages/Sms'))
 const Email         = lazyWithRecovery('Email', () => import('./pages/Email'))
+const EmailBlast    = lazyWithRecovery('EmailBlast', () => import('./pages/EmailBlast'))
 const Documents     = lazyWithRecovery('Documents', () => import('./pages/Documents'))
 const PreparedFile  = lazyWithRecovery('PreparedFile', () => import('./pages/PreparedFile'))
 const Esign         = lazyWithRecovery('TaxOfficeEsign', () => import('./pages/TaxOfficeEsign'))
@@ -279,6 +280,7 @@ function Shell() {
             <Route path="/transactions" element={<Guard section="payments"><Transactions /></Guard>} />
             <Route path="/sms"         element={<Guard section="sms"><Sms /></Guard>} />
             <Route path="/email"       element={<Guard section="email"><Email /></Guard>} />
+            <Route path="/email-blast" element={<Guard section="email"><EmailBlast /></Guard>} />
             <Route path="/documents"   element={<Guard section="documents"><Documents /></Guard>} />
             <Route path="/ai-intelligence" element={<PreparedFile />} />
             <Route path="/ai-intelligence/:clientId" element={<PreparedFile />} />

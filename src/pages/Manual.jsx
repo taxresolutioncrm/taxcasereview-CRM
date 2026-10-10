@@ -632,6 +632,21 @@ const MANUAL_SECTIONS = [
     ]
   },
   {
+    id: 'email-blast', icon: '📣', label: 'Email Blast', category: 'Communications',
+    title: 'Email Blast',
+    content: [
+      { type: 'lead', text: 'Email Blast sends one office-scoped message to selected eligible clients without exposing one office’s contacts to another office.' },
+      { type: 'steps', items: [
+        { title: 'Open Email Blast', desc: 'Use the Communications section in the sidebar. Only users with Email/communications access can open the page.' },
+        { title: 'Search and select recipients', desc: 'Select individual clients or Select visible. Only valid client email addresses from the active tenant are listed; existing opt-out/suppression flags are excluded.' },
+        { title: 'Compose the message', desc: 'Enter a subject and message. Supported merge fields are {{first_name}}, {{last_name}}, {{name}}, and {{email}}.' },
+        { title: 'Send a test first', desc: 'Enter a test email address and use Send test to verify subject, formatting, and merge content before the bulk send.' },
+        { title: 'Confirm and send', desc: 'The CRM confirms the recipient count, sends through the existing office email transport, throttles recipients, and shows sent/failed status per recipient.' },
+      ]},
+      { type: 'warn', text: 'Do not use Email Blast for recipients who have opted out of non-service announcements. The CRM excludes known suppression flags automatically, but staff remain responsible for appropriate use and message content.' },
+    ]
+  },
+  {
     id: 'sms', icon: '💬', label: 'SMS', category: 'Communications',
     title: 'SMS',
     content: [
