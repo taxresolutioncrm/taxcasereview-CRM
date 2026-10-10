@@ -138,7 +138,7 @@ export default function EmailBlast() {
       <section className="card" style={{padding:16}}>
         <label style={{display:'grid',gap:6,marginBottom:12}}><span style={{fontWeight:700}}>Subject</span><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Subject — supports {{first_name}}"/></label>
         <label style={{display:'grid',gap:6,marginBottom:12}}><span style={{fontWeight:700}}>Message</span><textarea rows={14} value={body} onChange={e=>setBody(e.target.value)} placeholder={'Hi {{first_name}},\n\nYour message here…'}/></label>
-        <div style={{fontSize:12,color:'var(--t3)',marginBottom:14}}>Merge fields: {{'{{first_name}}'}}, {{'{{last_name}}'}}, {{'{{name}}'}}, {{'{{email}}'}}</div>
+        <div style={{fontSize:12,color:'var(--t3)',marginBottom:14}}>{'Merge fields: {{first_name}}, {{last_name}}, {{name}}, {{email}}'}</div>
         <div style={{display:'flex',gap:8,marginBottom:14}}><input style={{flex:1}} value={testEmail} onChange={e=>setTestEmail(e.target.value)} placeholder="Test email address"/><button className="btn" disabled={sending} onClick={sendTest}>Send test</button></div>
         <button className="btn pri full" disabled={sending||!selected.size} onClick={sendBlast}>{sending?'Sending…':'Send Email Blast'}</button>
       </section>
