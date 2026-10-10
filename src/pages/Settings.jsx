@@ -1346,211 +1346,159 @@ export default function Settings() {
 
 // ── Storage Tab ────────────────────────────────────────────────────────────
 function StorageTab({ tenantId }) {
-  const [docs,    setDocs]    = useState([])
-  const [esigns,  setEsigns]  = useState([])
-  const [loading, setLoading] = useState(true)
-  const [usage,   setUsage]   = useState(null)
-  const [usageLoading, setUsageLoading] = useState(true)
+  const [docs, setDocs] = useState([])
+  const [usage, setUsage] = useState(null)
   const [projectStorage, setProjectStorage] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [loadedAt, setLoadedAt] = useState(null)
 
-  useEffect(() => {
-    const tid = tenantId
-    if (!tid) return  // Wait for tenantId prop
-    async function load() {
-      const [{ data: d, error: docsErr }, { data: e }] = await Promise.all([
-        supabase.from('documents').select('file_size, "docType", client, created_at').eq('tenant_id', tid).order('file_size', { ascending: false }),
-        supabase.from('esigns').select('created_at').eq('tenant_id', tid).limit(200),
-      ])
-      if (docsErr) console.error('Storage Usage: failed to load documents —', docsErr.message)
-      setDocs(d || [])
-      setEsigns(e || [])
-      setLoading(false)
-    }
-    load()
-
-    async function loadUsage() {
-      // Real, self-contained usage tracking — computed from the CRM's own
-      // tables instead of Supabase's billing API. This is what makes it
-      // work for any future tenant in the multi-tenant SaaS build too:
-      // each firm's usage comes from their own rows, no external account
-      // access required, nothing that breaks if Supabase changes their API.
+  async function loadStorageData() {
+    if (!tenantId || loading) return
+    setLoading(true)
+    setError('')
+    try {
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-
-      const tid = tenantId
-      if (!tid) { setUsageLoading(false); return }
-      const [{ count: callCount }, { count: smsCount }, { count: faxCount }, { count: emailCount }, storageRes] = await Promise.all([
-        supabase.from('calllog').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
-        supabase.from('sms_messages').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
-        supabase.from('fax_logs').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
-        supabase.from('emails').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
+      const [
+        { data: d, error: docsErr },
+        { count: callCount },
+        { count: smsCount },
+        { count: faxCount },
+        { count: emailCount },
+        storageRes,
+      ] = await Promise.all([
+        supabase.from('documents')
+          .select('file_size, "docType", client, created_at')
+          .eq('tenant_id', tenantId)
+          .order('file_size', { ascending: false }),
+        supabase.from('calllog').select('id', { count:'exact', head:true }).eq('tenant_id', tenantId).gte('created_at', monthStart),
+        supabase.from('sms_messages').select('id', { count:'exact', head:true }).eq('tenant_id', tenantId).gte('created_at', monthStart),
+        supabase.from('fax_logs').select('id', { count:'exact', head:true }).eq('tenant_id', tenantId).gte('created_at', monthStart),
+        supabase.from('emails').select('id', { count:'exact', head:true }).eq('tenant_id', tenantId).gte('created_at', monthStart),
         supabase.rpc('get_project_storage_usage'),
       ])
-      if (storageRes.error) console.error('Storage Usage: exact project usage RPC failed —', storageRes.error.message)
-      else setProjectStorage(storageRes.data)
+      if (docsErr) throw docsErr
+      if (storageRes.error) throw storageRes.error
 
+      setDocs(d || [])
+      setProjectStorage(storageRes.data || null)
       setUsage({
-        period: now.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+        period: now.toLocaleString('en-US', { month:'long', year:'numeric' }),
         calls: callCount || 0,
         sms: smsCount || 0,
         faxes: faxCount || 0,
         emails: emailCount || 0,
       })
-      setUsageLoading(false)
+      setLoadedAt(new Date())
+    } catch (e) {
+      setError(e?.message || 'Could not load storage usage')
+    } finally {
+      setLoading(false)
     }
-    loadUsage()
-  }, [tenantId])
-
-  // Exact project storage comes from storage.objects metadata via a protected RPC.
-  // documents.file_size remains useful for tenant/document-type detail, but it is
-  // not complete enough to represent actual disk usage (generated e-sign/package
-  // files and other buckets are not guaranteed to have matching documents rows).
-  const trackedDocumentBytes = docs.reduce((sum, d) => sum + (Number(d.file_size) || 0), 0)
-  const projectBytes = Number(projectStorage?.total_bytes || 0)
-  const totalBytes = projectBytes || trackedDocumentBytes
-
-  function fmt(bytes) {
-    if (!bytes) return '—'
-    if (bytes < 1024)        return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
   }
 
-  // Group by docType
+  const trackedDocumentBytes = docs.reduce((s,d) => s + (Number(d.file_size) || 0), 0)
+  const totalBytes = Number(projectStorage?.total_bytes || 0)
+
+  function fmt(bytes) {
+    const n = Number(bytes || 0)
+    if (!n) return '—'
+    if (n < 1000) return `${n} B`
+    if (n < 1000000) return `${(n / 1000).toFixed(1)} KB`
+    if (n < 1000000000) return `${(n / 1000000).toFixed(2)} MB`
+    return `${(n / 1000000000).toFixed(2)} GB`
+  }
+
   const byType = {}
   docs.forEach(d => {
     const t = d.docType || 'Other'
-    if (!byType[t]) byType[t] = { count: 0, bytes: 0 }
+    if (!byType[t]) byType[t] = {count:0,bytes:0}
     byType[t].count++
-    byType[t].bytes += (d.file_size || 0)
+    byType[t].bytes += Number(d.file_size) || 0
   })
   const typeRows = Object.entries(byType).sort((a,b) => b[1].bytes - a[1].bytes)
 
-  // Top 10 largest files
-  const largest = [...docs].filter(d => d.file_size > 0).slice(0, 10)
-
-  if (loading) return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--t3)' }}>Loading storage data…</div>
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Supabase project usage (Cached Egress + real Storage) — pulled
-          daily via Management API by the fetch-usage-metrics edge
-          function. Separate from the "Storage Usage" card below, which
-          only tracks our own documents table, not the actual Supabase
-          project limits. */}
-      {!usageLoading && (
-        <div className="card">
-          <div className="card-header"><span className="card-title">📊 Activity This Month</span></div>
-          <div style={{ padding: '0 20px 20px' }}>
-            {!usage ? (
-              <div style={{ fontSize: 13, color: 'var(--t3)' }}>Couldn't load activity counts.</div>
-            ) : (
-              <>
-                <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12 }}>{usage.period}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                  <div style={{ background: 'var(--s2)', borderRadius: 8, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 20, fontWeight: 900 }}>{usage.calls}</div>
-                    <div style={{ fontSize: 11, color: 'var(--t3)' }}>Calls</div>
-                  </div>
-                  <div style={{ background: 'var(--s2)', borderRadius: 8, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 20, fontWeight: 900 }}>{usage.sms}</div>
-                    <div style={{ fontSize: 11, color: 'var(--t3)' }}>Texts</div>
-                  </div>
-                  <div style={{ background: 'var(--s2)', borderRadius: 8, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 20, fontWeight: 900 }}>{usage.faxes}</div>
-                    <div style={{ fontSize: 11, color: 'var(--t3)' }}>Faxes</div>
-                  </div>
-                  <div style={{ background: 'var(--s2)', borderRadius: 8, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 20, fontWeight: 900 }}>{usage.emails}</div>
-                    <div style={{ fontSize: 11, color: 'var(--t3)' }}>Emails</div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 12, fontSize: 11, color: 'var(--t3)' }}>
-                  This is activity volume, not a billing dollar figure — it's an early-warning signal: a sudden spike here (especially in calls) is usually what drives a Supabase usage overage, so a jump worth noticing shows up here first.
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Exact Supabase project storage */}
+    <div style={{display:'flex',flexDirection:'column',gap:14}}>
       <div className="card">
-        <div className="card-header"><span className="card-title">💾 Storage Usage</span></div>
-        <div style={{ padding: '0 20px 20px' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,minmax(0,1fr))', gap:10, marginBottom:14 }}>
+        <div className="card-header" style={{display:'flex',alignItems:'center',gap:10}}>
+          <span className="card-title" style={{flex:1}}>💾 Storage Usage</span>
+          <button className="btn sec" type="button" onClick={loadStorageData} disabled={loading}>
+            {loading ? 'Loading…' : projectStorage ? '↻ Refresh' : 'Load Exact Usage'}
+          </button>
+        </div>
+
+        <div style={{padding:'0 20px 20px'}}>
+          {!projectStorage && !loading && !error && (
+            <div style={{fontSize:12,color:'var(--t3)',padding:'4px 0 14px'}}>
+              No storage/database request has run. Click <strong>Load Exact Usage</strong> to query Supabase.
+            </div>
+          )}
+          {error && <div style={{fontSize:12,color:'var(--bad)',padding:'4px 0 14px'}}>{error}</div>}
+
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:10,marginBottom:14}}>
             <div style={{background:'var(--s2)',borderRadius:10,padding:'12px 14px'}}>
-              <div style={{fontSize:25,fontWeight:900,color:'var(--tx)'}}>{fmt(totalBytes)}</div>
+              <div style={{fontSize:25,fontWeight:900}}>{fmt(totalBytes)}</div>
               <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>Actual project storage used</div>
             </div>
             <div style={{background:'var(--s2)',borderRadius:10,padding:'12px 14px'}}>
-              <div style={{fontSize:25,fontWeight:900,color:'var(--tx)'}}>{projectStorage?.total_objects ?? '—'}</div>
+              <div style={{fontSize:25,fontWeight:900}}>{projectStorage?.total_objects ?? '—'}</div>
               <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>Stored objects</div>
             </div>
             <div style={{background:'var(--s2)',borderRadius:10,padding:'12px 14px'}}>
-              <div style={{fontSize:25,fontWeight:900,color:'var(--tx)'}}>{fmt(trackedDocumentBytes)}</div>
-              <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>Tenant document rows with size metadata</div>
+              <div style={{fontSize:25,fontWeight:900}}>{fmt(trackedDocumentBytes)}</div>
+              <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>Tracked document metadata</div>
             </div>
           </div>
-          <div style={{background:'rgba(26,127,212,.08)',border:'1px solid rgba(26,127,212,.22)',borderRadius:9,padding:'10px 13px',fontSize:12,color:'var(--t2)',lineHeight:1.65,marginBottom:14}}>
-            <strong style={{color:'var(--tx)'}}>Measured from Supabase Storage itself.</strong> This includes generated packages, signed copies, firm assets, avatars and every storage bucket — not only rows in the CRM documents table. Your plan quota is intentionally not hardcoded because it changes with the Supabase plan.
-          </div>
+
           {(projectStorage?.buckets || []).map(b => (
             <div key={b.bucket_id} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--br)'}}>
               <div style={{flex:1,fontSize:13,fontWeight:650}}>{b.bucket_id}</div>
-              <div style={{fontSize:11,color:'var(--t3)'}}>{b.objects} object{Number(b.objects)===1?'':'s'}</div>
-              <div style={{width:90,textAlign:'right',fontSize:12,fontWeight:700,color:'var(--t2)'}}>{fmt(Number(b.bytes)||0)}</div>
+              <div style={{fontSize:11,color:'var(--t3)'}}>{b.objects} objects</div>
+              <div style={{width:100,textAlign:'right',fontSize:12,fontWeight:700}}>{fmt(b.bytes)}</div>
             </div>
           ))}
-          {!projectStorage && <div style={{fontSize:12,color:'var(--warn)',marginTop:10}}>Exact project usage is unavailable for this login; showing tracked document metadata only.</div>}
+
+          {loadedAt && (
+            <div style={{marginTop:10,fontSize:11,color:'var(--t3)'}}>
+              Loaded on request at {loadedAt.toLocaleTimeString()}. Nothing refreshes automatically.
+            </div>
+          )}
         </div>
       </div>
 
-      {/* By type */}
+      {usage && (
+        <div className="card">
+          <div className="card-header"><span className="card-title">📊 Activity This Month</span></div>
+          <div style={{padding:'0 20px 20px'}}>
+            <div style={{fontSize:12,color:'var(--t3)',marginBottom:12}}>{usage.period}</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
+              {[
+                ['Calls',usage.calls],['Texts',usage.sms],['Faxes',usage.faxes],['Emails',usage.emails],
+              ].map(([label,value]) => (
+                <div key={label} style={{background:'var(--s2)',borderRadius:8,padding:'10px 12px'}}>
+                  <div style={{fontSize:20,fontWeight:900}}>{value}</div>
+                  <div style={{fontSize:11,color:'var(--t3)'}}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {typeRows.length > 0 && (
         <div className="card">
           <div className="card-header"><span className="card-title">By Document Type</span></div>
-          <div style={{ padding: '0 20px 16px' }}>
-            {typeRows.map(([type, { count, bytes }]) => {
-              const typePct = totalBytes > 0 ? (bytes / totalBytes) * 100 : 0
-              return (
-                <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--br)' }}>
-                  <div style={{ width: 120, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{type}</div>
-                  <div style={{ flex: 1, height: 6, background: 'var(--s2)', borderRadius: 99, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: typePct + '%', background: 'var(--blue)', borderRadius: 99 }} />
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--t2)', flexShrink: 0, width: 80, textAlign: 'right' }}>{fmt(bytes)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0, width: 50, textAlign: 'right' }}>{count} file{count !== 1 ? 's' : ''}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Largest files */}
-      {largest.length > 0 && (
-        <div className="card">
-          <div className="card-header"><span className="card-title">Largest Files</span></div>
-          <div style={{ padding: '0 20px 16px' }}>
-            {largest.map((d, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--br)', fontSize: 13 }}>
-                <span style={{ color: 'var(--t3)', width: 20, flexShrink: 0 }}>#{i+1}</span>
-                <span style={{ flex: 1, fontWeight: 600 }}>{d.docType || 'Document'}</span>
-                <span style={{ color: 'var(--t2)', fontSize: 12 }}>{d.client || '—'}</span>
-                <span style={{ color: d.file_size > 5*1024*1024 ? 'var(--warn)' : 'var(--t2)', fontWeight: 600, flexShrink: 0 }}>{fmt(d.file_size)}</span>
+          <div style={{padding:'0 20px 16px'}}>
+            {typeRows.map(([type,{count,bytes}]) => (
+              <div key={type} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--br)'}}>
+                <div style={{flex:1,fontSize:13,fontWeight:600}}>{type}</div>
+                <div style={{fontSize:12,color:'var(--t2)'}}>{fmt(bytes)}</div>
+                <div style={{fontSize:11,color:'var(--t3)',width:60,textAlign:'right'}}>{count} files</div>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {docs.length === 0 && (
-        <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--t3)' }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>📂</div>
-          <div style={{ fontWeight: 700, color: 'var(--tx)', marginBottom: 4 }}>No documents tracked yet</div>
-          <div style={{ fontSize: 13 }}>Storage usage will appear here once files are uploaded.</div>
         </div>
       )}
     </div>
