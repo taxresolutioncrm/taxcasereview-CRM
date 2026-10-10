@@ -10,6 +10,7 @@ const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 // When an existing workflow changes, update its manual section in the same release.
 const routeToManual = {
   '/email':'email',
+  '/email-blast':'email-blast',
   '/chat':'chat',
   '/calendar':'calendar',
   '/tasks':'tasks',
