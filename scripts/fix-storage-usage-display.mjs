@@ -5,6 +5,25 @@ let s = fs.readFileSync(path, 'utf8')
 let changed = false
 let skipped = 0
 
+// Current TaxRes-family Storage implementation is authoritative. The historical
+// repair script must never rewrite it during prebuild, especially by restoring
+// the old automatic storage RPC that the manual Refresh flow intentionally removed.
+const currentRefreshFlow =
+  s.includes('async function refreshProjectStorage()') &&
+  s.includes("supabase.rpc('get_project_storage_usage')") &&
+  s.includes("'↻ Refresh'") &&
+  !s.includes("storageRes] = await Promise.all")
+
+if (currentRefreshFlow) {
+  const rpcCount = (s.match(/get_project_storage_usage/g) || []).length
+  if (rpcCount !== 1) {
+    console.error(`Storage usage display invariant failed: expected exactly 1 get_project_storage_usage call, found ${rpcCount}.`)
+    process.exit(1)
+  }
+  console.log('Storage usage display already current (manual Refresh flow preserved).')
+  process.exit(0)
+}
+
 function once(from, to) {
   if (s.includes(to)) return
   if (!s.includes(from)) {
