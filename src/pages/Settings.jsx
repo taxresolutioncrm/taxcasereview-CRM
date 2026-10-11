@@ -1352,6 +1352,8 @@ function StorageTab({ tenantId }) {
   const [usage,   setUsage]   = useState(null)
   const [usageLoading, setUsageLoading] = useState(true)
   const [projectStorage, setProjectStorage] = useState(null)
+  const [storageLoading, setStorageLoading] = useState(false)
+  const [storageError, setStorageError] = useState('')
 
   useEffect(() => {
     const tid = tenantId
@@ -1379,15 +1381,12 @@ function StorageTab({ tenantId }) {
 
       const tid = tenantId
       if (!tid) { setUsageLoading(false); return }
-      const [{ count: callCount }, { count: smsCount }, { count: faxCount }, { count: emailCount }, storageRes] = await Promise.all([
+      const [{ count: callCount }, { count: smsCount }, { count: faxCount }, { count: emailCount }] = await Promise.all([
         supabase.from('calllog').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
         supabase.from('sms_messages').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
         supabase.from('fax_logs').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
         supabase.from('emails').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', monthStart),
-        supabase.rpc('get_project_storage_usage'),
       ])
-      if (storageRes.error) console.error('Storage Usage: exact project usage RPC failed —', storageRes.error.message)
-      else setProjectStorage(storageRes.data)
 
       setUsage({
         period: now.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
@@ -1400,6 +1399,21 @@ function StorageTab({ tenantId }) {
     }
     loadUsage()
   }, [tenantId])
+
+  async function refreshProjectStorage() {
+    if (storageLoading) return
+    setStorageLoading(true)
+    setStorageError('')
+    const { data, error } = await supabase.rpc('get_project_storage_usage')
+    if (error) {
+      console.error('Storage Usage: exact project usage RPC failed —', error.message)
+      setProjectStorage(null)
+      setStorageError(error.message || 'Could not load exact project storage usage.')
+    } else {
+      setProjectStorage(data || null)
+    }
+    setStorageLoading(false)
+  }
 
   // Exact project storage comes from storage.objects metadata via a protected RPC.
   // documents.file_size remains useful for tenant/document-type detail, but it is
@@ -1477,7 +1491,12 @@ function StorageTab({ tenantId }) {
 
       {/* Exact Supabase project storage */}
       <div className="card">
-        <div className="card-header"><span className="card-title">💾 Storage Usage</span></div>
+        <div className="card-header" style={{display:'flex',alignItems:'center',gap:10}}>
+          <span className="card-title" style={{flex:1}}>💾 Storage Usage</span>
+          <button className="btn sec" type="button" onClick={refreshProjectStorage} disabled={storageLoading} style={{fontSize:11}}>
+            {storageLoading ? 'Refreshing…' : '↻ Refresh'}
+          </button>
+        </div>
         <div style={{ padding: '0 20px 20px' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,minmax(0,1fr))', gap:10, marginBottom:14 }}>
             <div style={{background:'var(--s2)',borderRadius:10,padding:'12px 14px'}}>
@@ -1503,7 +1522,7 @@ function StorageTab({ tenantId }) {
               <div style={{width:90,textAlign:'right',fontSize:12,fontWeight:700,color:'var(--t2)'}}>{fmt(Number(b.bytes)||0)}</div>
             </div>
           ))}
-          {!projectStorage && <div style={{fontSize:12,color:'var(--warn)',marginTop:10}}>Exact project usage is unavailable for this login; showing tracked document metadata only.</div>}
+          {storageError && <div style={{fontSize:12,color:'var(--warn)',marginTop:10}}>{storageError}</div>}
         </div>
       </div>
 
