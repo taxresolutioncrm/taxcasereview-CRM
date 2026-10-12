@@ -3937,11 +3937,29 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
     : portfolioFilter === 'not_connected' ? products.filter(p => connectionFor(p) === 'not_connected')
     : null
 
-  const filtered = portfolioFiltered ? [...portfolioFiltered].sort(sortByLifecycle)
-                 : filter === 'tenants' ? [...tenants].sort(sortByLifecycle)
-                 : filter === 'planned'  ? products.filter(p => p.lifecycleStage === 'research')
-                 : filter === 'products' ? products.filter(p => p.lifecycleStage !== 'research').sort(sortByLifecycle)
-                 : [...products, ...tenants].sort(sortByLifecycle)
+  const movePartialProductsDirectlyUnderRestore = (items) => {
+    const list = [...items]
+    const restoreIndex = list.findIndex(p => p.key === 'restore_relay')
+    if (restoreIndex < 0) return list
+    const trailingPartial = list
+      .slice(restoreIndex + 1)
+      .filter(p => !p.isTenant && connectionFor(p) === 'partial')
+    if (!trailingPartial.length) return list
+    const movingKeys = new Set(trailingPartial.map(p => p.key))
+    const withoutMoving = list.filter(p => !movingKeys.has(p.key))
+    const nextRestoreIndex = withoutMoving.findIndex(p => p.key === 'restore_relay')
+    withoutMoving.splice(nextRestoreIndex + 1, 0, ...trailingPartial)
+    return withoutMoving
+  }
+
+  const filteredBase = portfolioFiltered ? [...portfolioFiltered].sort(sortByLifecycle)
+                     : filter === 'tenants' ? [...tenants].sort(sortByLifecycle)
+                     : filter === 'planned'  ? products.filter(p => p.lifecycleStage === 'research')
+                     : filter === 'products' ? products.filter(p => p.lifecycleStage !== 'research').sort(sortByLifecycle)
+                     : [...products, ...tenants].sort(sortByLifecycle)
+  const filtered = filter === 'tenants' || filter === 'planned'
+    ? filteredBase
+    : movePartialProductsDirectlyUnderRestore(filteredBase)
 
   const BADGE = (txt, color) => (
     <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:20,
