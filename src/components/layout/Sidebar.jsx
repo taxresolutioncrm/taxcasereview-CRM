@@ -17,7 +17,6 @@ const SECTIONS = [
     items: [
       { path: '/',          icon: GridIcon,    label: 'Home',     section: null },
       { path: '/email',     icon: EmailIcon,   label: 'Email',         badge: 'email',    section: 'email' },
-      { path: '/email-blast', icon: EmailIcon, label: 'Email Blast', section: 'email' },
       { path: '/chat',      icon: ChatIcon,    label: 'Team Chat',     badge: 'chat',     section: 'chat' },
       { path: '/calendar',  icon: CalIcon,     label: 'Calendar',      badge: 'calendar', section: 'calendar' },
       { path: '/tasks',     icon: TaskIcon,    label: 'Tasks',         badge: 'tasks',    section: 'tasks' },
@@ -31,6 +30,7 @@ const SECTIONS = [
     items: [
       { path: '/leads',     icon: LeadIcon,    label: 'Leads',         badge: 'leads',     section: 'leads' },
       { path: '/clients',   icon: ClientIcon,  label: 'Clients',       badge: 'clients',   section: 'clients' },
+      { path: '/email-blast', icon: EmailIcon, label: 'Email Blast', section: 'email' },
       { path: '/cases',     icon: CaseIcon,    label: 'Cases',         badge: 'cases',     section: 'cases' },
       { path: '/deadlines', icon: ClockIcon,   label: 'Deadlines',     badge: 'deadlines', badgeWarn: true, section: 'deadlines' },
     ]
