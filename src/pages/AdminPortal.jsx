@@ -495,7 +495,7 @@ async function loadPlatformOfficeRowsFresh() {
       id:`product-main:${product.product_id}`,
       source_id:null,
       product:product.product_id,
-      firm_name:product.name || cfg.label,
+      firm_name:product.product_id === 'pool_crm' ? 'PoolVerge' : (product.name || cfg.label),
       brand_color:cfg.color,
       app_url:product.app_url || cfg.appUrl || null,
       is_product_main:true,
@@ -878,6 +878,7 @@ function Overview() {
   const [loadError, setLoadError] = useState('')
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
   const [sortConfig, setSortConfig] = useState({ key:'portfolio_order', direction:'asc' })
+  const [collapsedProducts, setCollapsedProducts] = useState(() => new Set())
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -1111,6 +1112,15 @@ function Overview() {
     return sortConfig.direction === 'asc' ? comparison : -comparison
   }) : null
 
+  const toggleProduct = product => {
+    setCollapsedProducts(current => {
+      const next = new Set(current)
+      if (next.has(product)) next.delete(product)
+      else next.add(product)
+      return next
+    })
+  }
+
   const toggleSort = key => {
     setSortConfig(current => ({
       key,
@@ -1120,7 +1130,7 @@ function Overview() {
 
   const openOverviewRow = row => {
     if (row.is_product_main) {
-      if (row.app_url) window.open(row.app_url, '_blank', 'noopener,noreferrer')
+      toggleProduct(row.product)
       return
     }
     navigate(`/crm-admin/offices/${row.id}`)
@@ -1195,12 +1205,12 @@ function Overview() {
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            sortedStats.map(r => (
-              <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => openOverviewRow(r)}>
+            sortedStats.filter(r => r.is_product_main || !collapsedProducts.has(r.product)).map(r => (
+              <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => { if (!r.is_product_main) openOverviewRow(r) }}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
                   <span style={{ marginLeft:r.is_product_main?0:14 }}>
-                    {r.is_product_main ? r.firm_name : `↳ ${r.firm_name}`}
+                    {r.is_product_main ? <button type="button" aria-expanded={!collapsedProducts.has(r.product)} aria-label={`${collapsedProducts.has(r.product) ? 'Expand' : 'Collapse'} ${r.firm_name} offices`} onClick={() => toggleProduct(r.product)} style={{border:0,background:'transparent',color:'inherit',font:'inherit',fontWeight:'inherit',cursor:'pointer',padding:'6px 0',textAlign:'left'}}><span aria-hidden="true" style={{display:'inline-block',width:16,color:'#94a3b8',fontSize:12}}>{collapsedProducts.has(r.product) ? '▸' : '▾'}</span>{r.firm_name}</button> : `↳ ${r.firm_name}`}
                   </span>
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
@@ -3285,16 +3295,16 @@ const PRODUCT_REGISTRY = [
   },
   {
     key:        'pool_crm',
-    label:      'Pool CRM',
+    label:      'PoolVerge',
     icon:       '🏊',
     color:      '#0EA5E9',
     industry:   'Pool Service & Field Service',
     url:        null,
     appUrl:     null,
-    websiteUrl: null,
+    websiteUrl: 'https://poolverge.com',
     lifecycleStage: 'building',
     connection:     'not_connected',
-    brandStatus:    'working_name',
+    brandStatus:    'approved',
     publicOnRomyLabs: false,
     commerciallyAvailable: false,
     desc:      'Mobile-first CRM for pool service companies — customers, routes, scheduling, field work, billing, communications, and team operations.',
