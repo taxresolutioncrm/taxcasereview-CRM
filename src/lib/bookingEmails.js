@@ -20,10 +20,16 @@ async function getFirmMeta(tenantId) {
   const key = tenantId || 'default'
   if (_firmMetaCache[key]) return _firmMetaCache[key]
   try {
-    if (!tenantId && FIRM.loaded && FIRM.name) return { firmName: FIRM.name, logoUrl: FIRM.logoUrl || '' }
-    const args = tenantId ? { p_tenant: String(tenantId) } : {}
-    const { data } = await supabase.rpc('booking_get_public_meta', args)
-    _firmMetaCache[key] = data && data.firm_name ? { firmName: data.firm_name, logoUrl: data.logo_url } : {}
+    if (!tenantId) {
+      _firmMetaCache[key] = FIRM.loaded && FIRM.name
+        ? { firmName: FIRM.name, logoUrl: FIRM.logoUrl || '', email: FIRM.email || '' }
+        : {}
+      return _firmMetaCache[key]
+    }
+    const { data } = await supabase.rpc('booking_get_public_meta', { p_tenant: String(tenantId) })
+    _firmMetaCache[key] = data && data.firm_name
+      ? { firmName: data.firm_name, logoUrl: data.logo_url || '', email: data.email || '' }
+      : {}
   } catch (_) {
     _firmMetaCache[key] = {}
   }
@@ -67,9 +73,12 @@ function resolveNotifyEmail(notifyEmail, tenantId, productCfg) {
   return FIRM.email || DEFAULT_CFG.notifyEmail
 }
 
-function resolveReplyTo(tenantId, productCfg) {
+async function resolveReplyTo(tenantId, productCfg) {
   const cfg = productCfg || DEFAULT_CFG
-  if (tenantId) return FIRM.email || cfg.replyTo || DEFAULT_CFG.replyTo
+  if (tenantId) {
+    const firm = await getFirmMeta(tenantId)
+    return firm.email || cfg.replyTo || DEFAULT_CFG.replyTo
+  }
   return cfg.replyTo || DEFAULT_CFG.replyTo
 }
 
@@ -87,7 +96,7 @@ export function sendClientConfirmation({ name, email, type, date, time, token, t
     const brand = await resolveEmailBranding(tenantId, productCfg)
     const fromName = resolveFromName(productCfg)
     await supabase.functions.invoke('send-email', { body: {
-      tenant_id: FIRM.tenantId || undefined,
+      tenant_id: tenantId || FIRM.tenantId || undefined,
       to: email,
       from_name: fromName,
       subject: `Appointment Confirmed — ${type}, ${whenShort(date, time)}`,
@@ -115,18 +124,18 @@ export function sendCancelEmails({ name, email, type, date, time, notifyEmail, t
     const fromName = resolveFromName(productCfg)
     const toNotify = resolveNotifyEmail(notifyEmail, tenantId, productCfg)
     if (email) await supabase.functions.invoke('send-email', { body: {
-      tenant_id: FIRM.tenantId || undefined,
+      tenant_id: tenantId || FIRM.tenantId || undefined,
       to: email, from_name: fromName,
       subject: `Appointment Canceled — ${type}, ${whenShort(date, time)}`,
       html: emailHtml({ firmName: brand.firmName, logoUrl: brand.logoUrl, body: `
         <p>Hi <strong>${name}</strong>,</p>
         <p>Your <strong>${type}</strong> on ${whenLong(date, time)} has been canceled.</p>
         <p>Changed your mind? You can grab a new time any time:</p>
-        <p style="text-align:center;margin:20px 0"><a href="${bookUrl()}" style="background:#1d4ed8;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;display:inline-block">📅 Book Again</a></p>
+        <p style="text-align:center;margin:20px 0"><a href="${bookUrl(tenantId)}" style="background:#1d4ed8;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;display:inline-block">📅 Book Again</a></p>
         <p style="margin-top:20px"><strong>${brand.firmName}</strong></p>` }),
     }})
     await supabase.functions.invoke('send-email', { body: {
-      tenant_id: FIRM.tenantId || undefined,
+      tenant_id: tenantId || FIRM.tenantId || undefined,
       to: toNotify, from_name: fromName,
       subject: `❌ Booking canceled: ${name} — ${whenShort(date, time)}`,
       html: emailHtml({ firmName: brand.firmName, logoUrl: brand.logoUrl, body: `<p><strong>${name}</strong> canceled their <strong>${type}</strong> on ${whenLong(date, time)}. The slot is open again.</p>` }),
@@ -141,7 +150,7 @@ export function sendRescheduleNotice({ name, type, oldDate, oldTime, date, time,
     const fromName = resolveFromName(productCfg)
     const toNotify = resolveNotifyEmail(notifyEmail, tenantId, productCfg)
     await supabase.functions.invoke('send-email', { body: {
-      tenant_id: FIRM.tenantId || undefined,
+      tenant_id: tenantId || FIRM.tenantId || undefined,
       to: toNotify, from_name: fromName,
       subject: `🔁 Rescheduled: ${name} — now ${whenShort(date, time)}`,
       html: emailHtml({ firmName: brand.firmName, logoUrl: brand.logoUrl, body: `<p><strong>${name}</strong> moved their <strong>${type}</strong>:</p><p style="line-height:1.9">Was: ${whenLong(oldDate, oldTime)}<br>Now: <strong>${whenLong(date, time)}</strong></p><p>The calendar is already updated.</p>` }),
@@ -156,9 +165,9 @@ export function sendFirmNotification({ name, email, phone, notes, type, date, ti
     const brand = await resolveEmailBranding(tenantId, productCfg)
     const fromName = resolveFromName(productCfg)
     const toNotify = resolveNotifyEmail(notifyEmail, tenantId, productCfg)
-    const replyTo = resolveReplyTo(tenantId, productCfg)
+    const replyTo = await resolveReplyTo(tenantId, productCfg)
     await supabase.functions.invoke('send-email', { body: {
-      tenant_id: FIRM.tenantId || undefined,
+      tenant_id: tenantId || FIRM.tenantId || undefined,
       to: toNotify, from_name: fromName, from_email: replyTo,
       subject: `📅 New booking: ${name} — ${whenShort(date, time)}`,
       html: emailHtml({ firmName: brand.firmName, logoUrl: brand.logoUrl, body: `
@@ -173,8 +182,8 @@ export function sendFirmNotification({ name, email, phone, notes, type, date, ti
 // ── Booking link helpers (TaxRes internal, unchanged) ──────────────────────
 export const BOOK_URL = `${window.location.origin}${import.meta.env.BASE_URL}book`
 
-export function bookUrl() {
-  return FIRM.tenantId ? `${BOOK_URL}?t=${FIRM.tenantId}` : BOOK_URL
+export function bookUrl(tenantId = FIRM.tenantId) {
+  return tenantId ? `${BOOK_URL}?t=${tenantId}` : BOOK_URL
 }
 
 export async function sendBookingInvite({ name, email, phone }) {
@@ -189,7 +198,7 @@ export async function sendBookingInvite({ name, email, phone }) {
     const firm = await getFirmMeta(FIRM.tenantId)
     const fName = firm.firmName || FIRM.name || 'TaxRes CRM'
     const { error } = await supabase.functions.invoke('send-email', { body: {
-      tenant_id: FIRM.tenantId || undefined,
+      tenant_id: tenantId || FIRM.tenantId || undefined,
       to: email,
       subject: `Schedule Your Appointment — ${fName}`,
       html: emailHtml({ firmName: firm.firmName, logoUrl: firm.logoUrl, body: `<p>Hi <strong>${first}</strong>,</p><p>Pick whichever time works best for you — it takes less than a minute:</p><p style="text-align:center;margin:24px 0"><a href="${link}" style="background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block">📅 Choose a Time</a></p><p>You'll see our live availability and get an instant confirmation. If nothing there works, just reply to this email or give us a call.</p><p style="margin-top:20px">Talk soon,<br><strong>${fName}</strong></p>` }),
