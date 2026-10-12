@@ -11,7 +11,7 @@ import { DOC_FOLDERS } from './Clients'
 
 const TRIAGE = ['Inbox','Action Needed','Waiting','Sent','Spam','Archive']
 const TRIAGE_COLORS = { 'Action Needed':'var(--bad)', 'Waiting':'var(--warn)', 'Inbox':'var(--blue)', 'Sent':'var(--ok)', 'Spam':'#f59e0b', 'Archive':'var(--t3)' }
-const BLANK = { recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'' }
+const BLANK = { recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'', m365MessageId:'' }
 const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
 
 export default function Email() {
@@ -101,7 +101,7 @@ export default function Email() {
     const onFocus = () => loadGmailConfig()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [user?.email, myTenantId])
+  }, [user?.email])
 
   // Global Delete/Backspace — archive; Shift+Delete — permanently delete (Archive folder only)
   useEffect(() => {
@@ -196,24 +196,15 @@ export default function Email() {
         setGmailConnected(!!acct?.gmail_refresh_token)
         setGmailConnectedEmail(acct?.gmail_connected_email || '')
       }
-      if (isNashville) {
-        const { data: m365Acct } = await supabase.from('employee_m365_accounts')
-          .select('m365_refresh_token,m365_email').eq('employee_email', user.email).maybeSingle()
-        setM365Connected(!!m365Acct?.m365_refresh_token)
-        setM365ConnectedEmail(m365Acct?.m365_email || '')
-      } else {
-        setM365Connected(false)
-        setM365ConnectedEmail('')
-        setM365ClientId('')
-      }
+      // Check M365 connection
+      const { data: m365Acct } = await supabase.from('employee_m365_accounts')
+        .select('m365_refresh_token,m365_email').eq('employee_email', user.email).maybeSingle()
+      setM365Connected(!!m365Acct?.m365_refresh_token)
+      setM365ConnectedEmail(m365Acct?.m365_email || '')
     }
-    if (isNashville) {
-      const { data: m365Settings } = await supabase.from('settings')
-        .select('m365_client_id,m365_tenant_id')
-        .eq('tenant_id', NASHVILLE_TENANT_ID)
-        .maybeSingle()
-      setM365ClientId(m365Settings?.m365_client_id || '')
-    }
+    // Get M365 client ID for the connect button
+    const { data: m365Settings } = await supabase.from('settings').select('m365_client_id,m365_tenant_id').not('m365_client_id', 'is', null).limit(1).maybeSingle()
+    if (m365Settings?.m365_client_id) setM365ClientId(m365Settings.m365_client_id)
 
     // Each employee has their own signature now — fall back to the firm
     // default only if they haven't set a personal one yet.
@@ -477,7 +468,7 @@ export default function Email() {
     }
 
     if (!alreadyStored) {
-      const { routeId, replyFrom, threadId, inReplyTo, references, productId, m365MessageId, ...loggableForm } = form
+      const { routeId, replyFrom, threadId, inReplyTo, references, productId, ...loggableForm } = form
       const emailRow = { ...loggableForm, status, created_at: new Date().toISOString(), mailbox_owner: centralMailboxOwner || user?.email || null }
       if (isDemoMailbox) {
         emailRow.tenant_id = DEMO_TENANT_ID
@@ -818,8 +809,8 @@ export default function Email() {
           </div>
         )}
 
-        {/* Microsoft 365 is Nashville-only; TCR remains Gmail-only. */}
-        {isNashville && (m365Connected ? (
+        {/* Microsoft 365 connect */}
+        {m365Connected ? (
           <div style={{ margin: '0 10px 10px', padding: '8px 12px', background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 8, fontSize: 10, color: 'var(--ok)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>✅</span><span>Microsoft 365 connected{m365ConnectedEmail ? ` (${m365ConnectedEmail})` : ''}</span>
           </div>
@@ -854,7 +845,7 @@ export default function Email() {
               </button>
             )}
           </div>
-        ))}
+        )}
 
         {/* Triage folders */}
         <div style={{ padding: '4px 0' }}>
@@ -1046,7 +1037,7 @@ export default function Email() {
                       {TRIAGE.filter(t => t !== (selected.triage || 'Inbox') && t !== 'Sent').map(t => (
                         <button key={t} className="btn sec" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => moveTriage(selected.id, t)}>→ {t}</button>
                       ))}
-                      <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => { const replyRecipient = selected.from_address || selected.sender || selected.recipient; const replySubject = String(selected.subject || '').toLowerCase().startsWith('re:') ? selected.subject : 'Re: ' + (selected.subject || ''); setForm({ ...BLANK, clientName: selected.clientName || selected.clientname || replyRecipient, recipient: replyRecipient || '', subject: replySubject, routeId: selected.route_id || '', replyFrom: selected.reply_from || selected.received_mailbox || '', threadId: selected.thread_id || '', inReplyTo: selected.message_id || '', references: selected.references_header || '', productId: selected.product_id || '', ...(isNashville ? { m365MessageId: selected.m365_message_id || '' } : {}) }); setView('compose') }}>↩ Reply</button>
+                      <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => { const replyRecipient = selected.from_address || selected.sender || selected.recipient; const replySubject = String(selected.subject || '').toLowerCase().startsWith('re:') ? selected.subject : 'Re: ' + (selected.subject || ''); setForm({ ...BLANK, clientName: selected.clientName || selected.clientname || replyRecipient, recipient: replyRecipient || '', subject: replySubject, routeId: selected.route_id || '', replyFrom: selected.reply_from || selected.received_mailbox || '', threadId: selected.thread_id || '', inReplyTo: selected.message_id || '', references: selected.references_header || '', productId: selected.product_id || '', m365MessageId: selected.m365_message_id || '' }); setView('compose') }}>↩ Reply</button>
                       <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600, background: 'var(--blue)', color: '#fff', border: 'none' }} onClick={() => markUnread(selected)}>● Mark as New</button>
                       {triageFilter === 'Archive'
                         ? <button className="btn del" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => permanentlyDeleteEmail(selected.id)}>🗑 Delete</button>
