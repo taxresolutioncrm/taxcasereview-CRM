@@ -5,7 +5,6 @@ import { useApp } from '../context/AppContext'
 import { loadFirmBranding } from '../lib/firmBranding'
 
 const BUCKET = 'firm-assets'
-const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
 
 async function resolveSettingsTenantId() {
   const { data, error } = await supabase.rpc('current_tenant_id')
@@ -16,7 +15,6 @@ async function resolveSettingsTenantId() {
 export default function Settings() {
   const { showToast, user, role, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin'].includes(role)
-  const isNashville = myTenantId === NASHVILLE_TENANT_ID
   const [tab, setTab] = useState(isPrivileged ? 'firm' : 'mysignature')
   const [saving, setSaving] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
@@ -229,15 +227,11 @@ export default function Settings() {
       gmailCount = count || 0
     }
     setConnectedGmailCount(gmailCount)
-    if (tid === NASHVILLE_TENANT_ID) {
-      const { count: m365Count } = await supabase.from('employee_m365_accounts')
-        .select('employee_email', { count: 'exact', head: true })
-        .eq('tenant_id', tid)
-        .not('m365_refresh_token', 'is', null)
-      setConnectedM365Count(m365Count || 0)
-    } else {
-      setConnectedM365Count(0)
-    }
+    const { count: m365Count } = await supabase.from('employee_m365_accounts')
+      .select('employee_email', { count: 'exact', head: true })
+      .eq('tenant_id', tid)
+      .not('m365_refresh_token', 'is', null)
+    setConnectedM365Count(m365Count || 0)
   }
 
   async function loadLogo() {
@@ -301,14 +295,8 @@ export default function Settings() {
       // Empty-string values blow up non-text columns (date, numeric) with
       // "invalid input syntax" — Postgres wants null for "no value", not ''.
       Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null })
+
       const tid = myTenantId || await resolveSettingsTenantId()
-      if (tid !== NASHVILLE_TENANT_ID) {
-        delete payload.m365_client_id
-        delete payload.m365_client_secret
-        delete payload.m365_tenant_id
-      }
-
-
       if (!tid) throw new Error('Could not resolve this office')
       const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').eq('tenant_id', tid).maybeSingle()
       if (fetchErr) throw fetchErr
@@ -591,8 +579,8 @@ export default function Settings() {
 
 
 
-              {/* Microsoft 365 is Nashville-only. */}
-              {isNashville && <div style={{ border: '1px solid var(--br)', borderRadius: 12, overflow: 'hidden', background: 'var(--s1)' }}>
+              {/* Microsoft 365 */}
+              <div style={{ border: '1px solid var(--br)', borderRadius: 12, overflow: 'hidden', background: 'var(--s1)' }}>
                 <div onClick={() => toggleInt('m365')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <svg viewBox="0 0 48 48" width="24" height="24"><path fill="#0078D4" d="M6 6h17v17H6z"/><path fill="#50D9FF" d="M25 6h17v17H25z"/><path fill="#FFB900" d="M6 25h17v17H6z"/><path fill="#EB3C00" d="M25 25h17v17H25z"/></svg>
@@ -636,7 +624,7 @@ export default function Settings() {
                     <button className="btn pri" onClick={saveFirm} disabled={saving} style={{width:'100%',justifyContent:'center',marginTop:4}}>{saving ? 'Saving…' : 'Save M365 Config'}</button>
                   </div>
                 )}
-              </div>}
+              </div>
 
             </div>{/* end email grid */}
           </div>{/* end email section */}
@@ -764,8 +752,8 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Verizon Business Calling is Nashville-only. TCR stays on SignalWire. */}
-          {isNashville && <div className="card">
+          {/* Verizon Business Calling */}
+          <div className="card">
             <div className="card-header"><span className="card-title">📞 Verizon Business Calling</span></div>
             <div style={{ padding: '0 20px 20px' }}>
               <div style={{ fontSize: 13, color: 'var(--t3)', marginBottom: 14, lineHeight: 1.6 }}>
@@ -798,7 +786,7 @@ export default function Settings() {
                 <button className="btn pri" onClick={saveFirm} disabled={saving}>{saving ? 'Saving…' : 'Save Verizon'}</button>
               </div>
             </div>
-          </div>}
+          </div>
 
           {/* Video Calling (TURN server) */}
           <div className="card">
@@ -1350,7 +1338,7 @@ export default function Settings() {
       {tab === 'storage' && isPrivileged && <StorageTab tenantId={myTenantId} />}
       {tab === 'statuses' && isPrivileged && <StatusesTab />}
       {tab === 'billing' && isPrivileged && <BillingRatesTab />}
-      {tab === 'uptime' && <UptimeTab tenantId={myTenantId} />}
+      {tab === 'uptime' && <UptimeTab />}
     </div>
   )
 }
@@ -1662,11 +1650,8 @@ function indicatorToStatus(indicator) {
   return { label: 'Unknown', color: 'var(--t3)', dot: '#64748b' }
 }
 
-function UptimeTab({ tenantId }) {
+function UptimeTab() {
   const [statuses, setStatuses] = useState({})
-  const visibleServices = tenantId === NASHVILLE_TENANT_ID
-    ? SERVICES
-    : SERVICES.filter(service => service.name !== 'Microsoft 365')
   const [loading,  setLoading]  = useState(true)
   const [lastChecked, setLastChecked] = useState(null)
 
@@ -1729,7 +1714,7 @@ function UptimeTab({ tenantId }) {
       </div>
 
       {/* Service cards */}
-      {visibleServices.map(svc => {
+      {SERVICES.map(svc => {
         const result = statuses[svc.name]
         const isLinkOnly = svc.apiUrl === null
         const status = isLinkOnly ? null : (result?.error ? { label: 'Check failed', color: 'var(--t3)', dot: '#94a3b8' } : indicatorToStatus(result?.indicator))
