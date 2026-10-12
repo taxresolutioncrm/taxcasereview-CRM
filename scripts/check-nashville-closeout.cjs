@@ -194,6 +194,30 @@ for(const [file,tokens] of checks){
   }
 }
 
+// Cross-office isolation: Nashville integrations may exist in the shared TaxRes
+// source tree, but TCR must never execute or render them without an exact
+// Nashville tenant gate.
+const emailSrc=fs.readFileSync('src/pages/Email.jsx','utf8')
+const settingsSrc=fs.readFileSync('src/pages/Settings.jsx','utf8')
+const quickBooksCallbackSrc=fs.readFileSync('src/pages/QuickBooksCallback.jsx','utf8')
+
+const isolationChecks=[
+  ['TCR generic email form does not carry an M365 field',!emailSrc.includes("productId:'', m365MessageId:''")],
+  ['generic email logging strips Nashville-only M365 metadata',emailSrc.includes('productId, m365MessageId, ...loggableForm')],
+  ['M365 mailbox lookup is gated to Nashville',emailSrc.includes("if (isNashville) {\n        const { data: m365Acct }")],
+  ['M365 Email sidebar UI is gated to Nashville',emailSrc.includes('isNashville && (m365Connected ? (')],
+  ['M365 Settings card is gated to Nashville',settingsSrc.includes('{isNashville && <div style={{ border: \'1px solid var(--br)\'')],
+  ['Verizon Settings card is gated to Nashville',settingsSrc.includes('{isNashville && <div className="card">')],
+  ['non-Nashville settings saves cannot write M365 config',settingsSrc.includes('if (tid !== NASHVILLE_TENANT_ID)')&&settingsSrc.includes('delete payload.m365_client_id')],
+  ['shared QuickBooks callback has no Nashville fallback branding',!quickBooksCallbackSrc.includes('Nashville QuickBooks')],
+]
+for(const [label,ok] of isolationChecks){
+  if(!ok){
+    console.error(`TaxRes provider isolation invariant failed: ${label}`)
+    failed=true
+  }
+}
+
 const payrollSrc=fs.readFileSync('src/pages/Payroll.jsx','utf8')
 if((payrollSrc.match(/activeTab==='punch'/g)||[]).length!==1){
   console.error('Nashville closeout invariant: Payroll must render exactly one punch-history tab block')
