@@ -34,15 +34,46 @@ Deno.serve(async(req)=>{
       proof={success:true,target_email:targetEmail,target_name:String(body?.name||'')}
     }else{
       if(!nashAuth.toLowerCase().startsWith('bearer ')) return json({error:'Nashville Admin authentication required'},401)
+      const proofPayload=action==='sync_email'
+        ? {action:'email_change',target_id:String(body?.employee_id||''),expected_email:String(body?.old_email||'').trim().toLowerCase(),new_email:String(body?.new_email||'').trim().toLowerCase()}
+        : {target_email:targetEmail}
       const proofRes=await fetch(NASHVILLE_PROOF_URL,{
         method:'POST',
         headers:{Authorization:nashAuth,'Content-Type':'application/json'},
-        body:JSON.stringify({target_email:targetEmail})
+        body:JSON.stringify(proofPayload)
       })
       proof=await proofRes.json().catch(()=>({}))
-      if(!proofRes.ok||!proof?.success||String(proof?.target_email||'').toLowerCase()!==targetEmail){
+      if(!proofRes.ok||!proof?.success){
         return json({error:proof?.error||'Nashville Admin verification failed'},proofRes.status||403)
       }
+      if(action!=='sync_email' && String(proof?.target_email||'').toLowerCase()!==targetEmail){
+        return json({error:'Nashville employee verification mismatch'},403)
+      }
+    }
+
+    if(action==='sync_email'){
+      const oldEmail=String(body?.old_email||'').trim().toLowerCase()
+      const newEmail=String(body?.new_email||'').trim().toLowerCase()
+      if(!/^\S+@\S+\.\S+$/.test(oldEmail)||!/^\S+@\S+\.\S+$/.test(newEmail)) return json({error:'Valid current and new email are required'},400)
+      if(String(proof?.target_email||'').toLowerCase()!==oldEmail||String(proof?.new_email||'').toLowerCase()!==newEmail){
+        return json({error:'Employee email verification mismatch'},403)
+      }
+      const oldUser=await findUser(admin,oldEmail)
+      const newUser=await findUser(admin,newEmail)
+      if(oldUser&&newUser&&oldUser.id!==newUser.id){
+        const oldUnused=!oldUser.email_confirmed_at&&!oldUser.last_sign_in_at
+        if(!oldUnused) return json({error:'Both email addresses already belong to active TaxRes family identities. No automatic merge was performed.'},409)
+        const {error:deleteErr}=await admin.auth.admin.deleteUser(oldUser.id)
+        if(deleteErr) throw deleteErr
+        return json({success:true,mode:'linked_existing',auth_user_id:newUser.id,email:newEmail,removed_unused_duplicate:true})
+      }
+      if(newUser) return json({success:true,mode:'linked_existing',auth_user_id:newUser.id,email:newEmail})
+      if(oldUser){
+        const {data:updated,error:updateErr}=await admin.auth.admin.updateUserById(oldUser.id,{email:newEmail,email_confirm:!!oldUser.email_confirmed_at})
+        if(updateErr) throw updateErr
+        return json({success:true,mode:'updated_existing',auth_user_id:updated?.user?.id||oldUser.id,email:newEmail})
+      }
+      return json({success:true,mode:'no_family_identity',auth_user_id:null,email:newEmail})
     }
 
     const existing=await findUser(admin,targetEmail)
