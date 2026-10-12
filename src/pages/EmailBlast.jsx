@@ -116,18 +116,22 @@ export default function EmailBlast() {
     setNotice('Blast complete: ' + sent + ' sent' + (failed ? ', ' + failed + ' failed.' : '.'))
   }
 
-  return <div style={{padding:24,maxWidth:1180,margin:'0 auto'}}>
-    <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'flex-start',marginBottom:18}}>
-      <div><h1 style={{margin:0}}>Email Blast</h1><p style={{color:'var(--t2)',marginTop:6}}>Send one office-scoped email to selected clients. Existing email opt-out flags are excluded automatically.</p></div>
-      <div style={{fontSize:13,color:'var(--t2)'}}>{selected.size} selected</div>
+  return <div style={{padding:24,maxWidth:1220,margin:'0 auto'}}>
+    <div style={{display:'flex',justifyContent:'space-between',gap:18,alignItems:'center',marginBottom:22,padding:'18px 20px',background:'linear-gradient(135deg,var(--s2),var(--sf))',border:'1px solid var(--br)',borderRadius:14,boxShadow:'0 10px 30px rgba(0,0,0,.10)'}}>
+      <div>
+        <h1 style={{margin:0,fontSize:24,letterSpacing:'-.02em'}}>Email Blast</h1>
+        <p style={{color:'var(--t2)',margin:'7px 0 0',fontSize:13,lineHeight:1.55}}>Send one office-scoped email to selected clients. Existing email opt-out flags are excluded automatically.</p>
+      </div>
+      <div style={{fontSize:12,fontWeight:800,color:selected.size?'var(--blue)':'var(--t2)',background:selected.size?'var(--blt)':'var(--s2)',border:'1px solid var(--br)',borderRadius:999,padding:'7px 11px',whiteSpace:'nowrap'}}>{selected.size} selected</div>
     </div>
     {error && <div className="form-error" style={{marginBottom:12}}>{error}</div>}
     {notice && <div className="form-notice" style={{marginBottom:12}}>{notice}</div>}
-    <div style={{display:'grid',gridTemplateColumns:'minmax(320px,1fr) minmax(360px,1.15fr)',gap:18}}>
-      <section className="card" style={{padding:16}}>
-        <div style={{display:'flex',gap:8,marginBottom:12}}><input style={{flex:1}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients…"/><button className="btn" onClick={toggleAll}>{allVisibleSelected?'Clear visible':'Select visible'}</button></div>
-        <div style={{maxHeight:560,overflow:'auto',border:'1px solid var(--bdr)',borderRadius:10}}>
-          {filtered.map(row => <label key={row.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--bdr)',cursor:'pointer'}}>
+    <div style={{display:'grid',gridTemplateColumns:'minmax(320px,1fr) minmax(360px,1.15fr)',gap:18,alignItems:'start'}}>
+      <section className="card" style={{padding:18,borderRadius:14,boxShadow:'0 10px 28px rgba(0,0,0,.08)'}}>
+        <div style={{fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--t3)',marginBottom:10}}>Recipients</div>
+        <div style={{display:'flex',gap:8,marginBottom:12}}><input style={{flex:1,minHeight:40}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients…"/><button className="btn" onClick={toggleAll} style={{minHeight:40}}>{allVisibleSelected?'Clear visible':'Select visible'}</button></div>
+        <div style={{maxHeight:560,overflow:'auto',border:'1px solid var(--br)',borderRadius:11,background:'var(--s2)'}}>
+          {filtered.map(row => <label key={row.id} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 12px',borderBottom:'1px solid var(--br)',cursor:'pointer',background:selected.has(row.id)?'var(--blt)':'transparent',transition:'background .15s ease'}}>
             <input type="checkbox" checked={selected.has(row.id)} onChange={()=>setSelected(current=>{const next=new Set(current);next.has(row.id)?next.delete(row.id):next.add(row.id);return next})}/>
             <div style={{minWidth:0,flex:1}}><strong style={{display:'block'}}>{displayName(row)}</strong><span style={{fontSize:12,color:'var(--t2)'}}>{row.email}</span></div>
             <span style={{fontSize:11,color:status[row.id]==='failed'?'var(--bad)':status[row.id]==='sent'?'var(--ok)':'var(--t3)'}}>{status[row.id]||''}</span>
@@ -135,12 +139,13 @@ export default function EmailBlast() {
           {!filtered.length && <div style={{padding:24,color:'var(--t3)',textAlign:'center'}}>No eligible email recipients.</div>}
         </div>
       </section>
-      <section className="card" style={{padding:16}}>
-        <label style={{display:'grid',gap:6,marginBottom:12}}><span style={{fontWeight:700}}>Subject</span><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Subject — supports {{first_name}}"/></label>
-        <label style={{display:'grid',gap:6,marginBottom:12}}><span style={{fontWeight:700}}>Message</span><textarea rows={14} value={body} onChange={e=>setBody(e.target.value)} placeholder={'Hi {{first_name}},\n\nYour message here…'}/></label>
-        <div style={{fontSize:12,color:'var(--t3)',marginBottom:14}}>{'Merge fields: {{first_name}}, {{last_name}}, {{name}}, {{email}}'}</div>
-        <div style={{display:'flex',gap:8,marginBottom:14}}><input style={{flex:1}} value={testEmail} onChange={e=>setTestEmail(e.target.value)} placeholder="Test email address"/><button className="btn" disabled={sending} onClick={sendTest}>Send test</button></div>
-        <button className="btn pri full" disabled={sending||!selected.size} onClick={sendBlast}>{sending?'Sending…':'Send Email Blast'}</button>
+      <section className="card" style={{padding:18,borderRadius:14,boxShadow:'0 10px 28px rgba(0,0,0,.08)'}}>
+        <div style={{fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--t3)',marginBottom:12}}>Compose message</div>
+        <label style={{display:'grid',gap:7,marginBottom:14}}><span style={{fontWeight:700,fontSize:12}}>Subject</span><input style={{minHeight:40}} value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Subject — supports {{first_name}}"/></label>
+        <label style={{display:'grid',gap:7,marginBottom:12}}><span style={{fontWeight:700,fontSize:12}}>Message</span><textarea style={{resize:'vertical',minHeight:300,lineHeight:1.55}} rows={14} value={body} onChange={e=>setBody(e.target.value)} placeholder={'Hi {{first_name}},\n\nYour message here…'}/></label>
+        <div style={{fontSize:11.5,color:'var(--t3)',marginBottom:16,padding:'9px 10px',borderRadius:8,background:'var(--s2)',border:'1px solid var(--br)'}}>{'Merge fields: {{first_name}}, {{last_name}}, {{name}}, {{email}}'}</div>
+        <div style={{display:'flex',gap:8,marginBottom:14}}><input style={{flex:1,minHeight:40}} value={testEmail} onChange={e=>setTestEmail(e.target.value)} placeholder="Test email address"/><button className="btn" style={{minHeight:40}} disabled={sending} onClick={sendTest}>Send test</button></div>
+        <button className="btn pri full" style={{minHeight:42,fontWeight:800}} disabled={sending||!selected.size} onClick={sendBlast}>{sending?'Sending…':'Send Email Blast'}</button>
       </section>
     </div>
   </div>
