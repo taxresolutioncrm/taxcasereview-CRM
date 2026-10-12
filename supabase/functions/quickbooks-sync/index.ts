@@ -92,7 +92,7 @@ serve(async(req)=>{
     const health=await qboFetch(`${base}/companyinfo/${encodeURIComponent(realmId)}?minorversion=75`,accessToken)
     if(!health.res.ok){
       await admin.from('accounting_connections').update({status:'reconnect_required',last_sync_result:{ok:false,stage:'company_health',status:health.res.status}}).eq('id',conn.id)
-      return json({error:'QuickBooks company access is not authorized. Reconnect QuickBooks and select the Nashville company.',reconnect_required:true,company_status:health.res.status},400)
+      return json({error:'QuickBooks company access is not authorized. Reconnect QuickBooks and select the correct company.',reconnect_required:true,company_status:health.res.status},400)
     }
     const companyName=health.data?.CompanyInfo?.CompanyName||conn.external_company_name||null
 
