@@ -7,7 +7,7 @@ const MANUAL_SECTIONS = [
     id: 'overview', icon: '🏠', label: 'Overview', category: 'Getting Started',
     title: 'What TaxRes CRM does',
     content: [
-      { type: 'lead', text: 'TaxRes CRM is the shared operating platform for the TaxRes family of tax-resolution offices. The same core workflows, controls, release standards, and CRM Manual apply across Tax Case Review, Nashville Tax Solutions, CloudCPA, Demo, and future TaxRes-family offices, with office-specific branding, providers, permissions, and integrations documented where they differ.' },
+      { type: 'lead', text: 'TaxRes CRM is the shared operating platform for Tax Case Review and other central TaxRes-family offices. Core workflows, controls, release standards, branding, providers, permissions, and integrations remain tenant-isolated.' },
       { type: 'flow', items: ['New Lead', 'Financial Intake', 'Send Full Package', 'Client Signs ⭐', 'Tasks Auto-Created', 'Active Client', 'Resolution ✓'] },
       { type: 'h3', text: 'Core features' },
       { type: 'cards', items: [
@@ -25,7 +25,6 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'TaxRes family office model' },
       { type: 'table', headers: ['Office type', 'Manual behavior', 'Office-specific configuration'], rows: [
         ['Tax Case Review (TCR)', 'Uses this shared TaxRes CRM Manual', 'TCR branding, tenant data, and configured communications/payments'],
-        ['Nashville Tax Solutions', 'Uses this shared TaxRes CRM Manual', 'Nashville branding, per-rep mailbox configuration, Verizon Business calling where mapped, office fax/accounting configuration'],
         ['CloudCPA', 'Uses this shared TaxRes CRM Manual', 'CloudCPA branding, tenant-scoped employee access, communications, booking, payments, and office integrations'],
         ['Demo Office', 'Uses this shared TaxRes CRM Manual', 'Demo branding and safe/demo provider behavior where applicable'],
         ['Future TaxRes-family offices', 'Inherit the shared manual and release gates', 'Their tenant branding, providers, staff, permissions, and integrations must be documented when they differ from the shared workflow'],
@@ -38,7 +37,7 @@ const MANUAL_SECTIONS = [
     id: 'roles', icon: '👥', label: 'Roles & Access', category: 'Getting Started',
     title: 'Roles & access levels',
     content: [
-      { type: 'lead', text: 'Every employee has one of six access levels. The CRM shows or hides features based on role. Nashville uses the labels Associate (Tax Advisor) and Para (Tax Associate) for their role naming.' },
+      { type: 'lead', text: 'Every employee has one of six access levels. The CRM shows or hides features based on the role and permissions configured for that office.' },
       { type: 'table', headers: ['Role', 'Who it\'s for', 'What they can do'], rows: [
         ['Super Admin', 'Firm owner, lead EA', 'Everything — all settings, all clients, all billing, employee management, all reports, multi-office admin'],
         ['Admin', 'Office manager', 'All clients and leads, tasks, payments, calendar, most reports — no firm settings or employee pay'],
@@ -47,30 +46,17 @@ const MANUAL_SECTIONS = [
         ['Sales', 'Sales reps', 'Leads and communications — no billing, no client documents, no IRS forms'],
         ['Read Only', 'Observers', 'View everything in their scope — no edits, no payments, no sending'],
       ]},
-      { type: 'h3', text: 'Nashville phone extensions' },
-      { type: 'table', headers: ['Extension', 'Employee', 'Role'], rows: [
-        ['101', 'Christopher Bennett', 'Super Admin'],
-        ['102', 'Adam Barr', 'Associate'],
-        ['103', 'Amber Fischer', 'Associate'],
-        ['104', 'Camille Loose', 'Associate'],
-        ['105', 'Lucille Thomas-Menard', 'Associate'],
-        ['106', 'Isabela Fuentes-Pettingill', 'Associate'],
-        ['107', 'Art Sapunar', 'Associate'],
-        ['108', 'Virginia Jiwa', 'Associate'],
-        ['109', 'Averie Austin', 'Para'],
-        ['110', 'Amanda Barrows', 'Para'],
-      ]},
       { type: 'h3', text: 'Adding a new employee' },
       { type: 'steps', items: [
         { title: 'Firm → Employees → + Add Employee', desc: 'Enter name, email, role, phone, and extension. Extension must be unique within your office.' },
         { title: 'Set CAF number and PTIN (if applicable)', desc: 'These auto-populate on every 2848 and 8821 when this employee is the assigned rep.' },
         { title: 'Upload a profile photo', desc: 'Shows on the kiosk, employee directory, and client file assignments.' },
         { title: 'Set a portal PIN', desc: '4-digit PIN for the employee portal — separate from the main CRM login.' },
-        { title: 'Send the CRM invitation', desc: 'From the employee card, click ✉️ Invite. TCR, CloudCPA, Demo, and other central TaxRes-family offices use the authenticated invite-employee service; Nashville automatically uses its employee-access-link bridge into the same TaxRes family identity. The employee receives a branded setup/reset email and creates one TaxRes family password.' },
+        { title: 'Send the CRM invitation', desc: 'From the employee card, click ✉️ Invite. The authenticated employee invitation service sends a branded setup/reset email so the employee can create or recover their TaxRes family password.' },
         { title: 'Existing employee accounts use recovery, not duplicate users', desc: 'If the employee already has an Auth login, Invite generates a secure recovery/setup link for that same account. It does not create a second employee or second Auth identity.' },
         { title: 'Resend access when needed', desc: 'Click Invite again or use the password/reset control. Both now use the same TaxRes family access flow rather than a separate Supabase reset-email path.' },
         { title: 'Email transport fallback', desc: 'If the office mail transport is temporarily unavailable, the CRM prepares the secure setup link and copies it for authorized staff instead of losing the invite. Do not create another employee record.' },
-        { title: 'Test the actual employee login', desc: 'Confirm email + newly created password opens the correct office and the employee only sees the permissions assigned on their profile. Nashville must land in Nashville; TCR/CloudCPA/Demo remain tenant-isolated.' },
+        { title: 'Test the actual employee login', desc: 'Confirm the email and newly created password open the correct office and the employee only sees the permissions assigned on their profile.' },
       ]},
       { type: 'warn', text: 'Deleting an employee does not delete their clients or notes. It marks them inactive and unassigns them from future tasks. Always reassign their open tasks before deactivating.' },
     ]
@@ -141,7 +127,6 @@ const MANUAL_SECTIONS = [
       { type: 'steps', items: [
         { title: 'Leads → + New Lead', desc: 'Fill in name, phone, email, and client type: Individual, Business, or Individual & Business. For Individual & Business, both the person\'s name AND the business name are stored separately.' },
         { title: 'Set the tax issue and investigation fee', desc: 'Enter the issue type (IRS balance, payroll tax, state, unfiled returns, etc.), estimated tax owed, and the investigation fee. This fee populates MTD 1st Trades on the dashboard when the lead converts.' },
-        { title: 'Nashville: service checkboxes and contract details', desc: 'Nashville leads include 12 service checkboxes (IA, OIC, Penalty Abatement, CNC, CDP, Compliance, etc.), Sales Rep, Contract Fee, and a 3-trade payment schedule. These pre-fill the Fee Agreement Addendum.' },
         { title: 'Assign Tax Advisor and Tax Associate', desc: 'Assigned To = Tax Advisor who owns this lead. Tax Associate = the support person. Workflow tasks auto-assign to these roles when the Full Package is signed.' },
         { title: 'Set the source', desc: 'Track where the lead came from: Referral, Google, Facebook, Cold Call, Walk-In, Website, etc. Feeds the Source report.' },
         { title: 'Save — lead enters the pipeline', desc: 'Appears on the Leads page, dashboard, and the assigned rep\'s view. A note is logged automatically with who created the lead and when.' },
@@ -286,7 +271,7 @@ const MANUAL_SECTIONS = [
     title: 'FormaCorp — A-to-Z business formation',
     content: [
       { type: 'lead', text: 'FormaCorp keeps the formation workflow in the CRM from intake through state approval, EIN, governing documents, banking, compliance, company services, and permanent document storage. For supported Florida formations, staff can prepare the filing, collect the government filing amount inside the CRM, submit through the supported Sunbiz workflow, and track every state milestone on one record.' },
-      { type: 'info', text: 'FormaCorp is a shared TaxRes-family module. The same current workflow and filing/payment/lifecycle steps apply in Tax Case Review, Nashville Tax Solutions, CloudCPA, Demo, and future TaxRes-family offices; each office remains tenant-isolated and sees only its own formation records.' },
+      { type: 'info', text: 'FormaCorp is a shared TaxRes-family module. The same current workflow and filing/payment/lifecycle steps apply across supported offices; each office remains tenant-isolated and sees only its own formation records.' },
       { type: 'flow', items: ['Draft', 'Ready to Submit', 'Filing Queue', 'Submitted to Florida', 'Under State Review', 'Action Required', 'Approved / Active'] },
       { type: 'h3', text: 'Supported Florida formation types' },
       { type: 'table', headers: ['Entity type', 'Formation document', 'Governing document'], rows: [
@@ -488,7 +473,7 @@ const MANUAL_SECTIONS = [
         { title: 'Review financial intake & build resolution plan', desc: 'Advisor reviews 433-F data, CSED dates, and collection status. Determines resolution path: OIC, IA, CNC, Penalty Abatement, CDP hearing, Compliance, etc. Due: Day 7.' },
       ]},
       { type: 'h3', text: 'Role assignment rules' },
-      { type: 'table', headers: ['Role in template', 'Who gets the task at Nashville'], rows: [
+      { type: 'table', headers: ['Role in template', 'Who gets the task'], rows: [
         ['ADVISOR', 'The Associate listed in the "Assigned To" field on the client/lead'],
         ['ASSOCIATE', 'The Para listed on the client/lead. If none set, auto round-robins to the next available Para.'],
       ]},
@@ -576,7 +561,7 @@ const MANUAL_SECTIONS = [
       { type: 'info', text: 'After every recorded call, Groq Whisper transcribes the audio and LLaMA analyzes it. The Calls tab shows: full transcript, AI-generated summary of key points and client concerns, and action items — which are auto-created as tasks on the file.' },
       { type: 'h3', text: 'Voicemail' },
       { type: 'info', text: 'If no rep answers after 4 rings, the call rolls to voicemail. Recordings appear in the Dialer → Voicemails tab. Voicemail transcripts are generated automatically. A notification fires to the assigned rep.' },
-      { type: 'warn', text: 'Nashville\'s SignalWire calling credentials must be configured in Settings → Calling & Communications before calling goes live. Until credentials are set, outbound calls will not place and inbound calls will not route.' },
+      { type: 'warn', text: 'Your office\'s calling credentials must be configured in Settings → Calling & Communications before calling goes live. Until the configured provider is ready, outbound calls will not place and inbound calls will not route.' },
     ]
   },
   {
@@ -587,7 +572,6 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'Email systems by office' },
       { type: 'table', headers: ['Office', 'Email system', 'Connection method'], rows: [
         ['Tax Case Review', 'Gmail', 'Google OAuth per employee — Settings → Email → Connect Gmail'],
-        ['Nashville Tax Solutions', 'Microsoft 365', 'Azure + M365 OAuth per employee — Settings → Email → Connect M365'],
         ['TaxRes CRM (admin)', 'SnappyMail', 'Built-in webmail — webmail.taxrescrm.net:7443'],
       ]},
       { type: 'h3', text: 'Connecting Gmail (TCR)' },
@@ -597,21 +581,14 @@ const MANUAL_SECTIONS = [
         { title: 'Grant permissions', desc: 'The CRM requests read, send, and label permissions — required for two-way sync and auto-logging.' },
         { title: 'If token expires', desc: 'The Email tab shows a "Reconnect" button when the token is dead. Click and re-authorize. Gmail tokens expire periodically — this is a Google security requirement.' },
       ]},
-      { type: 'h3', text: 'Connecting Microsoft 365 (Nashville)' },
-      { type: 'steps', items: [
-        { title: 'Settings → Email & Calendar → Connect Microsoft 365', desc: 'Microsoft OAuth consent screen opens.' },
-        { title: 'Sign in with your M365 work account', desc: 'Use the @nashvilletaxsolutions.com address.' },
-        { title: 'Grant permissions', desc: 'The CRM requests Mail.ReadWrite, Mail.Send, and Calendars.ReadWrite.' },
-        { title: 'Chris connects first as admin', desc: 'The admin account (Chris) establishes M365 app consent for the tenant. Other reps then connect individually.' },
-      ]},
       { type: 'h3', text: 'Employee invite and password email delivery' },
       { type: 'info', text: 'Employee CRM invite and password-reset emails are system messages. Across the TaxRes family they are delivered through the TaxRes Stalwart system-mail transport, not through the recipient employee\'s own connected Gmail mailbox. This prevents same-address Gmail tests from appearing only in Sent and gives the employee a normal inbound message in Inbox or Spam/Junk.' },
       { type: 'tip', text: 'For a real delivery test, send the employee invite/reset from Employees and confirm the recipient receives the TaxRes family password link in Inbox or Spam/Junk. The CRM should not require the recipient\'s mailbox to be the sender.' },
       { type: 'h3', text: 'Spam / Junk folder' },
       { type: 'steps', items: [
-        { title: 'Open Email → Spam', desc: 'The CRM shows provider-classified junk mail in a dedicated Spam folder instead of hiding it. Gmail SPAM, Microsoft 365 Junk Email, and connected IMAP Junk/Spam folders are synchronized into this view.' },
+        { title: 'Open Email → Spam', desc: 'The CRM shows provider-classified junk mail in a dedicated Spam folder instead of hiding it. Gmail SPAM and other supported provider Junk/Spam folders are synchronized into this view.' },
         { title: 'Check Spam when an expected message is missing', desc: 'If an employee invite, password reset, client reply, provider notice, or other expected email is not in Inbox, check Spam before assuming it was not delivered.' },
-        { title: 'Move a legitimate message back to Inbox', desc: 'Drag the message to Inbox. For Gmail and Microsoft 365 connections the CRM also moves the provider-side message out of Spam/Junk so the mailbox stays synchronized.' },
+        { title: 'Move a legitimate message back to Inbox', desc: 'Drag the message to Inbox. For supported mailbox connections the CRM also moves the provider-side message out of Spam/Junk so the mailbox stays synchronized.' },
         { title: 'Unread badge stays visible', desc: 'Spam has its own unread count so newly synchronized junk messages are visible without opening the folder first.' },
       ]},
       { type: 'warn', text: 'Spam/Junk is mailbox-specific. Each employee only sees the Spam/Junk messages from their own connected mailbox; tenant isolation and per-employee mailbox isolation still apply.' },
@@ -669,7 +646,7 @@ const MANUAL_SECTIONS = [
       ]},
       { type: 'h3', text: 'Inbound SMS' },
       { type: 'info', text: 'When a client replies, the reply appears in the SMS thread on their file and triggers a notification. The CRM matches inbound messages to client records by phone number. If the phone number isn\'t in the system, the message lands in the Unmatched SMS queue in the Dialer page.' },
-      { type: 'warn', text: 'Nashville SMS requires SignalWire credentials to be configured. Until credentials are set, SMS sending is blocked.' },
+      { type: 'warn', text: 'SMS requires the office\'s configured messaging provider to be connected. Until that provider is ready, SMS sending is blocked.' },
     ]
   },
   {
@@ -741,12 +718,11 @@ const MANUAL_SECTIONS = [
       ]},
       { type: 'h3', text: 'Installment plans from the Fee Agreement Addendum' },
       { type: 'info', text: 'When the Fee Agreement Addendum is signed, the system reads the contract fee and 3-trade payment schedule from the lead record and creates 3 scheduled installment records automatically — no manual data entry.' },
-      { type: 'h3', text: 'Nashville: Two merchant accounts' },
-      { type: 'info', text: 'Nashville has two Stripe accounts: one for Nashville Tax Solutions clients and one for Nationwide Professionals clients. Select the correct merchant account from the dropdown before charging — selecting the wrong account routes funds to the wrong entity.' },
+      { type: 'info', text: 'Only use the payment processor connected to the current office. Never route a client payment through another tenant\'s merchant account.' },
       { type: 'h3', text: 'Send Payment Link' },
       { type: 'info', text: 'Quick Actions → Send Payment Link sends a secure Stripe checkout link via email or SMS. Client pays on their device. Payment captured in Stripe and logged automatically as a note.' },
       { type: 'h3', text: 'QuickBooks sync' },
-      { type: 'info', text: 'When QuickBooks is connected (Settings → Accounting), payments sync bi-directionally. Nashville\'s $9.47M historical payment data was imported from QuickBooks — 4,031 transactions, 2,642 matched to clients, displayed in the Transactions tab.' },
+      { type: 'info', text: 'When QuickBooks is connected in Settings → Accounting, supported payment and accounting data sync to the current office only.' },
     ]
   },
   {
@@ -860,7 +836,7 @@ const MANUAL_SECTIONS = [
         ['Max advance booking', 'How far out clients can book', '30 days'],
       ]},
       { type: 'h3', text: 'Public booking URLs' },
-      { type: 'info', text: 'Nashville: taxrescrm.app/book?t=489ace07-1a6b-4864-833a-4f8420568b40. TCR: taxrescrm.app/book?t=61a89aef-0e7e-4ea2-b222-44ab2024655a. Share in your website, email signature, and social media.' },
+      { type: 'info', text: 'TCR booking URL: taxrescrm.app/book?t=61a89aef-0e7e-4ea2-b222-44ab2024655a. Share it on the TCR website, email signature, and approved client communications.' },
     ]
   },
   {
@@ -915,7 +891,7 @@ const MANUAL_SECTIONS = [
       { type: 'lead', text: 'The kiosk lets employees clock in and out from a shared office tablet or computer — no individual login required.' },
       { type: 'h3', text: 'Setting up the kiosk' },
       { type: 'steps', items: [
-        { title: 'Open the kiosk URL on the office device', desc: 'Nashville: taxrescrm.app/kiosk?t=489ace07-1a6b-4864-833a-4f8420568b40. The ?t= parameter loads Nashville\'s branding and staff list automatically.' },
+        { title: 'Open the kiosk URL on the office device', desc: 'TCR kiosk URL: taxrescrm.app/kiosk?t=61a89aef-0e7e-4ea2-b222-44ab2024655a. The tenant parameter loads the correct TCR branding and staff list.' },
         { title: 'Bookmark or pin the URL', desc: 'Set as the home page or pin the tab. The page requires no login and auto-refreshes.' },
         { title: 'Employees tap their name', desc: 'All active employees appear with their photo and current clock-in status.' },
         { title: 'Tap Clock In or Clock Out', desc: 'Timestamp logged in the timeclock system. Hours visible in Firm → Reports → Timeclock.' },
@@ -1069,7 +1045,7 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'Settings tabs' },
       { type: 'table', headers: ['Tab', 'What you configure', 'Who can edit'], rows: [
         ['Firm Profile', 'Firm name, logo, phone, email, address, brand color', 'Super Admin'],
-        ['Email & Calendar', 'Connect Gmail (TCR) or Microsoft 365 (Nashville) — per employee', 'Each employee connects their own'],
+        ['Email & Calendar', 'Connect Gmail per employee', 'Each employee connects their own Gmail account'],
         ['Calling & Communications', 'SignalWire credentials, phone numbers, IVR recording, voicemail settings', 'Super Admin'],
         ['Team Chat', 'Slack workspace connection for two-way bridging', 'Super Admin'],
         ['Payments', 'Stripe Connect — link your firm\'s Stripe account', 'Super Admin'],
@@ -1087,12 +1063,11 @@ const MANUAL_SECTIONS = [
         ['Email server', 'Admin webmail down — use Gmail/M365 directly'],
         ['Cloudflare', 'Site may load slowly or not at all'],
         ['Stripe', 'Card charges will fail — do not attempt payments'],
-        ['M365', 'Nashville email sync paused — M365 outage'],
         ['Groq', 'AI button will error — rest of CRM unaffected'],
         ['SignalWire', 'Calling and SMS down — use personal phones temporarily'],
       ]},
       { type: 'h3', text: 'Office-specific communications providers' },
-      { type: 'info', text: 'Do not assume every TaxRes office uses the same phone, fax, or mailbox provider. The CRM routes communications according to that office’s configured provider/mapping. Nashville calling is mapped to Verizon Business One Talk where configured; fax may use the office-configured fax integration/import path; other TaxRes offices may use different providers.' },
+      { type: 'info', text: 'Communication providers are tenant-specific. TCR uses only the providers configured for TCR, and the CRM must never fall back to another office\'s phone, fax, email, or accounting provider.' },
       { type: 'warn', text: 'Carrier application activation and CRM routing are different things. A mapped Verizon One Talk number can be launched/routed by the CRM only after the underlying Verizon user/line is activated and the required carrier-side capability is available.' },
       { type: 'h3', text: 'QuickBooks Online connection' },
       { type: 'steps', items: [
@@ -1224,7 +1199,7 @@ const MANUAL_SECTIONS = [
     id: 'tcr-reference', icon: '🏛️', label: 'TCR Quick Reference', category: 'Training',
     title: 'Tax Case Review — Quick Reference',
     content: [
-      { type: 'lead', text: 'Office-specific details for Tax Case Review (TCR). These apply only to the TCR tenant — not Nashville.' },
+      { type: 'lead', text: 'Office-specific details for Tax Case Review (TCR). These apply only to the TCR tenant.' },
       { type: 'h3', text: 'TCR office details' },
       { type: 'table', headers: ['Item', 'Value'], rows: [
         ['CRM URL', 'taxrescrm.app'],
@@ -1249,7 +1224,7 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'Gmail reconnect — TCR' },
       { type: 'info', text: 'Gmail OAuth tokens expire periodically. When the Email tab shows "Reconnect," click it and re-authorize with your Google account. This is a Google security requirement — the token must be refreshed every few months. Takes about 30 seconds.' },
       { type: 'h3', text: 'TCR Stripe' },
-      { type: 'info', text: 'TCR uses its own Stripe account separate from Nashville\'s. All payments from TCR clients go to TCR\'s Stripe. The Stripe account is connected in Settings → Payments. If Stripe shows disconnected, reconnect via Stripe OAuth in Settings.' },
+      { type: 'info', text: 'TCR uses its own Stripe account. All TCR client payments must go only to the TCR Stripe connection in Settings → Payments. If Stripe shows disconnected, reconnect the TCR account in Settings.' },
       { type: 'h3', text: 'QuickBooks — TCR' },
       { type: 'info', text: 'TCR\'s QuickBooks integration is pending Intuit Production approval. Once approved, invoices and payments will sync bi-directionally. No action needed until Intuit completes their review.' },
       { type: 'h3', text: 'TCR Metered TURN (video relay)' },
@@ -1260,7 +1235,7 @@ const MANUAL_SECTIONS = [
     id: 'manual-about', icon: '📖', label: 'About This Manual', category: 'Training',
     title: 'About This Manual',
     content: [
-      { type: 'lead', text: 'This is the shared operating manual for the entire TaxRes family — Tax Case Review, Nashville Tax Solutions, CloudCPA, Demo, and future TaxRes-family offices. Core workflows apply across the family; when a tenant has different branding, providers, permissions, or integrations, the office-specific behavior is called out in the relevant section.' },
+      { type: 'lead', text: 'This manual documents the central TaxRes CRM experience used by Tax Case Review and supported central-family tenants. Each tenant keeps its own branding, providers, permissions, integrations, and data.' },
       { type: 'h3', text: 'Quick reference: most common tasks' },
       { type: 'table', headers: ['Task', 'Where to do it', 'Time'], rows: [
         ['Create a new lead', 'Leads → + New Lead', '2 min'],
@@ -1298,7 +1273,7 @@ const MANUAL_SECTIONS = [
         ['Living outside US', '6+ months absence', 'Tolls entire CSED while abroad'],
       ]},
       { type: 'h3', text: 'Manual synchronization rule' },
-      { type: 'warn', text: 'The CRM Manual is part of the release scope across the entire TaxRes family. Any user-facing workflow, button, integration, status, role/access rule, document path, payment behavior, provider behavior, or operational procedure changed for TCR, Nashville, CloudCPA, Demo, or any future TaxRes-family office must have the corresponding shared or office-specific manual instructions updated in the same release. A feature change is not considered release-complete when its manual is stale.' },
+      { type: 'warn', text: 'The CRM Manual is part of the release scope. Any user-facing workflow, button, integration, status, role/access rule, document path, payment behavior, provider behavior, or operational procedure changed for TCR or another supported central tenant must have the corresponding instructions updated in the same release.' },
       { type: 'tip', text: 'The CRM manual is searchable — use the search bar in the left sidebar to find any topic instantly. Navigation arrows at the bottom of each page move through sections in order.' },
     ]
   },
