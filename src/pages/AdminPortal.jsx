@@ -5020,7 +5020,6 @@ function CommandCenter() {
   const [taxresScopeLoading, setTaxresScopeLoading] = useState(false)
   const [taxresScopeError, setTaxresScopeError] = useState('')
   const [activity, setActivity] = useState([])
-  const [activityPoll, setActivityPoll] = useState(0)
   const [liveMetricsVersion, setLiveMetricsVersion] = useState(0)
   const [liveMetricsProduct, setLiveMetricsProduct] = useState('')
   const liveMetricsReloadTimer = React.useRef(null)
@@ -5032,6 +5031,7 @@ function CommandCenter() {
   // invalidation bus. Debounce cache bursts (TaxRes family fans out to several
   // rows) into one Command Center refresh.
   useEffect(() => {
+    if (tab !== 'crm') return
     const channel = supabase
       .channel('romylabs-admin-metrics-live')
       .on(
@@ -5039,7 +5039,7 @@ function CommandCenter() {
         { event:'*', schema:'public', table:'romylabs_metrics_cache' },
         (payload) => {
           const productKey = String(payload?.new?.product_key || payload?.old?.product_key || '')
-          if (!productKey) return
+          if (!productKey || productKey !== crmProduct) return
           if (liveMetricsReloadTimer.current) clearTimeout(liveMetricsReloadTimer.current)
           liveMetricsReloadTimer.current = setTimeout(() => {
             setLiveMetricsProduct(productKey)
@@ -5054,7 +5054,7 @@ function CommandCenter() {
       liveMetricsReloadTimer.current = null
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [tab, crmProduct])
 
   useEffect(() => {
     async function load() {
@@ -5252,8 +5252,14 @@ function CommandCenter() {
   }, [])
 
   React.useEffect(() => {
+    if (tab !== 'overview') return
     const keys = reportingProducts
-      .filter(p => p.product_id && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
+      .filter(p => {
+        const lifecycle = String(p.lifecycle || '').toLowerCase()
+        return p.product_id &&
+          p.product_id !== 'romylabs' &&
+          ['live','available'].includes(lifecycle)
+      })
       .map(p => p.product_id)
     if (!keys.length) return
     let cancelled = false
@@ -5287,7 +5293,7 @@ function CommandCenter() {
       }
     })()
     return () => { cancelled = true }
-  }, [reportingProducts])
+  }, [reportingProducts, tab])
 
   const fetchCrmProductMetrics = React.useCallback(async (productKey) => {
     if (!productKey) return null
@@ -5395,6 +5401,7 @@ function CommandCenter() {
   // ── System live status ──
   const [sysStatus, setSysStatus] = useState(null)
   useEffect(()=>{
+    if (tab !== 'system') return
     let cancelled=false
     async function reachable(url){
       try { await fetch(url,{mode:'no-cors',signal:AbortSignal.timeout(5000),cache:'no-store'}); return true } catch(_) { return false }
@@ -5420,10 +5427,11 @@ function CommandCenter() {
     }
     checkSys()
     return()=>{cancelled=true}
-  },[reportingProducts])
+  },[reportingProducts, tab])
 
   useEffect(() => {
-    // Handle GSC OAuth callback (?code= in URL after redirect)
+    // Handle GSC OAuth callback (?code= in URL after redirect). Otherwise,
+    // defer the provider call until the SEO tab is actually opened.
     const urlParams = new URLSearchParams(window.location.search)
     const gscCode = urlParams.get('code')
     if (gscCode) {
@@ -5434,10 +5442,10 @@ function CommandCenter() {
       }).then(({ data: r }) => {
         if (r?.success) fetchGSC()
       }).catch(e => console.error('GSC connect:', e))
-    } else {
-      fetchGSC()
+      return
     }
-  }, [])
+    if (tab === 'search') fetchGSC()
+  }, [tab])
 
   async function fetchBing(productKey = 'taxres_crm') {
     setBingData(null)
@@ -5596,12 +5604,6 @@ function CommandCenter() {
     if (tab==='marketing' && ga4EnabledProducts.includes(marketingProduct)) loadGA4()
   }, [tab, marketingProduct, ga4EnabledProducts])
 
-  // Poll activity every 30s
-  useEffect(() => {
-    const t = setInterval(() => setActivityPoll(p=>p+1), 30000)
-    return () => clearInterval(t)
-  }, [])
-
   if (loadError) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'80vh' }}>
       <div style={{ textAlign:'center', maxWidth:500 }}>
@@ -5684,7 +5686,13 @@ function CommandCenter() {
             const buildN     = products.filter(p => p.lifecycleStage === 'building').length
             const researchN  = products.filter(p => p.lifecycleStage === 'research').length
             const internalN  = products.filter(p => p.lifecycleStage === 'internal').length
-            const statusFor = p => portfolioCrmStatus[p.key]?.status || (reportingProducts.some(r=>r.product_id===p.key) ? 'checking' : p.connection)
+            const statusFor = p => {
+              const liveStatus = portfolioCrmStatus[p.key]?.status
+              if (liveStatus) return liveStatus
+              const registryRow = reportingProducts.find(r => r.product_id === p.key)
+              const lifecycle = String(registryRow?.lifecycle || p.lifecycleStage || '').toLowerCase()
+              return registryRow && ['live','available'].includes(lifecycle) ? 'checking' : p.connection
+            }
             const connectedN = products.filter(p => statusFor(p) === 'connected').length
             const partialN   = products.filter(p => statusFor(p) === 'partial').length
             const noConnN    = products.filter(p => statusFor(p) === 'not_connected').length
@@ -5772,7 +5780,8 @@ function CommandCenter() {
                       ? '🟢 Connected'
                       : (isPublic ? '🟡 Pending' : 'N/A')
                     const liveCrm = portfolioCrmStatus[p.key]
-                    const effectiveConnection = liveCrm?.status || (registryRow ? 'checking' : p.connection)
+                    const effectiveConnection = liveCrm?.status ||
+                      (registryRow && ['live','available'].includes(registryLifecycle) ? 'checking' : p.connection)
                     const milestone = effectiveConnection === 'connected'
                       ? '—'
                       : effectiveConnection === 'checking'
