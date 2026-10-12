@@ -203,6 +203,8 @@ const settingsSrc=fs.readFileSync('src/pages/Settings.jsx','utf8')
 const quickBooksCallbackSrc=fs.readFileSync('src/pages/QuickBooksCallback.jsx','utf8')
 const quickBooksStartSrc=fs.readFileSync('supabase/functions/quickbooks-oauth-start/index.ts','utf8')
 const quickBooksOAuthCallbackSrc=fs.readFileSync('supabase/functions/quickbooks-oauth-callback/index.ts','utf8')
+const quickBooksSyncSrc=fs.readFileSync('supabase/functions/quickbooks-sync/index.ts','utf8')
+const manualSrc=fs.readFileSync('src/pages/Manual.jsx','utf8')
 
 const isolationChecks=[
   ['TCR generic email form does not carry an M365 field',!emailSrc.includes("productId:'', m365MessageId:''")],
@@ -216,6 +218,8 @@ const isolationChecks=[
   ['QuickBooks OAuth start allows TCR and Nashville without a Nashville default',quickBooksStartSrc.includes("'https://taxrescrm.app'")&&quickBooksStartSrc.includes("'https://nashville.taxrescrm.app'")&&!quickBooksStartSrc.includes("const APP_URL = 'https://nashville.taxrescrm.app'")],
   ['QuickBooks OAuth callback uses the approved caller origin',quickBooksOAuthCallbackSrc.includes("${origin}/auth/quickbooks-callback")&&!quickBooksOAuthCallbackSrc.includes("const APP_URL='https://nashville.taxrescrm.app'")],
   ['QuickBooks callback copy does not tell TCR to choose Nashville',!quickBooksOAuthCallbackSrc.includes('choose the Nashville company')],
+  ['shared QuickBooks sync copy is office-neutral',!quickBooksSyncSrc.includes('Nashville company')],
+  ['TCR Manual contains no Nashville-only instructions',!manualSrc.includes('Nashville')],
 ]
 for(const [label,ok] of isolationChecks){
   if(!ok){
