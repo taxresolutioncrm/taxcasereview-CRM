@@ -1,6 +1,17 @@
 const fs=require('fs')
 
 const checks=[
+  ['src/pages/Login.jsx',[
+    "const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'",
+    "isNashvilleIdentity",
+    "isCentralTaxResHost",
+    "window.location.replace(NASHVILLE_LOGIN)",
+  ]],
+  ['src/App.jsx',[
+    "NashvilleCentralHostBoundary",
+    "const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'",
+    "window.location.replace(NASHVILLE_LOGIN_URL)",
+  ]],
   ['src/pages/Reports.jsx',[
     "const BOOK_WHIP_PAGE_SIZE = 100",
     "pagedBookWhip.map",
@@ -204,4 +215,4 @@ if(payrollSrc.includes('+ Add Entry via Time Clock')){
   failed=true
 }
 if(failed) process.exit(1)
-console.log('✓ Nashville closeout invariants: Book Whip, QuickBooks, Employee Portal, Documents, E-Sign, 100-user scale')
+console.log('✓ Nashville closeout invariants: dedicated-host routing, Book Whip, QuickBooks, Employee Portal, Documents, E-Sign, 100-user scale')

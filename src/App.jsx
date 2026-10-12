@@ -340,6 +340,45 @@ function Shell() {
 
 const ADMIN_EMAILS = new Set(['info@romylabs.com','romy@romylabs.com','romy@taxrescrm.net','romy@taxcasereview.org'])
 const isPlatformOwner = (email) => ADMIN_EMAILS.has((email || '').toLowerCase())
+const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
+const NASHVILLE_LOGIN_URL = 'https://nashville.taxrescrm.app/login?switch=1'
+
+function NashvilleCentralHostBoundary({ children }) {
+  const { user } = useApp()
+  const [checkingNashvilleBoundary, setCheckingNashvilleBoundary] = React.useState(true)
+  const host = window.location.hostname.toLowerCase()
+  const centralHost = host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
+
+  useEffect(() => {
+    let cancelled = false
+    if (!centralHost || !user?.email) {
+      setCheckingNashvilleBoundary(false)
+      return () => { cancelled = true }
+    }
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('tenant_id', NASHVILLE_TENANT_ID)
+          .eq('status', 'Active')
+          .ilike('email', user.email)
+          .limit(1)
+        if (!cancelled && !error && Array.isArray(data) && data.length > 0) {
+          try { await supabase.auth.signOut() } catch (_) {}
+          window.location.replace(NASHVILLE_LOGIN_URL)
+          return
+        }
+      } finally {
+        if (!cancelled) setCheckingNashvilleBoundary(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [centralHost, user?.email])
+
+  if (checkingNashvilleBoundary) return null
+  return children
+}
 
 // Renders the admin portal for the product owner, regular CRM for everyone else.
 // When ?imp=1 is in the URL, we're in an impersonation session — skip the
@@ -383,8 +422,8 @@ function AdminGate() {
     }
   }, [user, isAdminHost, hasExplicitImpersonationIntent, storedImpersonation, navigate])
 
-  // Product hosts always render their CRM, including for RomyLabs owners.
-  if (!isAdminHost) return <Shell />
+  // Nashville is no longer allowed to run from the central TaxRes host.
+  if (!isAdminHost) return <NashvilleCentralHostBoundary><Shell /></NashvilleCentralHostBoundary>
   if (isImpersonating) return <Shell />
   if (isPlatformOwner(user?.email)) return null
   // Never expose a tenant/demo shell on the RomyLabs admin hostname.
