@@ -37,7 +37,7 @@ export default function QuickBooksCallback() {
         const res = await fetch(url)
         const body = await res.json().catch(() => ({}))
         if (res.ok && body?.ok) {
-          const connectedName = body.company_name || 'QuickBooks'
+          const connectedName = body.company_name || 'Nashville QuickBooks'
           setStatus('success')
           setMessage(`Connected to ${connectedName}. Redirecting to Settings…`)
           setTimeout(() => {
