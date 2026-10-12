@@ -878,6 +878,7 @@ function Overview() {
   const [loadError, setLoadError] = useState('')
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
   const [sortConfig, setSortConfig] = useState({ key:'portfolio_order', direction:'asc' })
+  const [collapsedProducts, setCollapsedProducts] = useState(() => new Set())
   const navigate = useNavigate()
   const { user } = useApp()
 
@@ -1111,6 +1112,15 @@ function Overview() {
     return sortConfig.direction === 'asc' ? comparison : -comparison
   }) : null
 
+  const toggleProduct = product => {
+    setCollapsedProducts(current => {
+      const next = new Set(current)
+      if (next.has(product)) next.delete(product)
+      else next.add(product)
+      return next
+    })
+  }
+
   const toggleSort = key => {
     setSortConfig(current => ({
       key,
@@ -1120,7 +1130,7 @@ function Overview() {
 
   const openOverviewRow = row => {
     if (row.is_product_main) {
-      if (row.app_url) window.open(row.app_url, '_blank', 'noopener,noreferrer')
+      toggleProduct(row.product)
       return
     }
     navigate(`/crm-admin/offices/${row.id}`)
@@ -1195,11 +1205,12 @@ function Overview() {
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            sortedStats.map(r => (
-              <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => openOverviewRow(r)}>
+            sortedStats.filter(r => r.is_product_main || !collapsedProducts.has(r.product)).map(r => (
+              <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => openOverviewRow(r)} aria-expanded={r.is_product_main ? !collapsedProducts.has(r.product) : undefined}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
                   <span style={{ marginLeft:r.is_product_main?0:14 }}>
+                    {r.is_product_main && <span aria-hidden="true" style={{display:'inline-block',width:16,color:'#94a3b8',fontSize:12}}>{collapsedProducts.has(r.product) ? '▸' : '▾'}</span>}
                     {r.is_product_main ? r.firm_name : `↳ ${r.firm_name}`}
                   </span>
                 </td>
