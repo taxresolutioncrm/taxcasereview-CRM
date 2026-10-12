@@ -173,7 +173,7 @@ returns json
 language plpgsql
 security definer
 set search_path='public','pg_temp'
-as $
+as $$
 declare result json;
 begin
   select json_build_object(
@@ -190,7 +190,7 @@ begin
   limit 1;
   return result;
 end;
-$;
+$$;
 
 create or replace function public.emp_login_branding(p_email text)
 returns json
@@ -370,7 +370,7 @@ returns void
 language plpgsql
 security definer
 set search_path='pg_catalog','public'
-as $
+as $$
 declare v_tenant uuid;
 begin
   select f.tenant_id into v_tenant
@@ -384,7 +384,7 @@ begin
 
   perform public.financial_intake_save_unchecked(p_id,p_answers);
 end;
-$;
+$$;
 
 create or replace function public.booking_create(
   p_name text,p_email text,p_phone text,p_event_type text,p_date date,p_time text,p_notes text,p_tenant text default null
@@ -393,7 +393,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path='public','pg_temp'
-as $
+as $$
 declare v_tenant uuid;
 begin
   begin v_tenant:=nullif(trim(p_tenant),'')::uuid; exception when others then v_tenant:=null; end;
@@ -406,14 +406,14 @@ begin
   end if;
   return public.booking_create_unchecked(p_name,p_email,p_phone,p_event_type,p_date,p_time,p_notes,v_tenant::text);
 end;
-$;
+$$;
 
 create or replace function public.booking_get_config(p_tenant text default ''::text)
 returns jsonb
 language plpgsql
 security definer
 set search_path='public','pg_temp'
-as $
+as $$
 declare v_tenant uuid;
 begin
   begin v_tenant:=nullif(trim(p_tenant),'')::uuid; exception when others then v_tenant:=null; end;
@@ -424,14 +424,14 @@ begin
   if not public.tenant_is_available(v_tenant) then return null; end if;
   return public.booking_get_config_unchecked(v_tenant::text);
 end;
-$;
+$$;
 
 create or replace function public.booking_get_slots(p_date date,p_tenant text default null)
 returns setof text
 language plpgsql
 security definer
 set search_path='public','pg_temp'
-as $
+as $$
 declare v_tenant uuid; v_slot text;
 begin
   begin v_tenant:=nullif(trim(p_tenant),'')::uuid; exception when others then v_tenant:=null; end;
@@ -443,14 +443,14 @@ begin
   for v_slot in select * from public.booking_get_slots_unchecked(p_date,v_tenant::text)
   loop return next v_slot; end loop;
 end;
-$;
+$$;
 
 create or replace function public.emp_login(p_email text,p_pin text)
 returns json
 language plpgsql
 security definer
 set search_path='pg_catalog','public'
-as $
+as $$
 declare v_tenant uuid;
 begin
   select e.tenant_id into v_tenant
@@ -466,14 +466,14 @@ begin
   end if;
   return public.emp_login_unchecked(p_email,p_pin);
 end;
-$;
+$$;
 
 create or replace function public.kiosk_login(p_employee_id text,p_pin text,p_tenant text default null)
 returns json
 language plpgsql
 security definer
 set search_path='pg_catalog','public'
-as $
+as $$
 declare v_tenant uuid;
 begin
   begin
@@ -486,7 +486,7 @@ begin
   end if;
   return public.kiosk_login_unchecked(p_employee_id,p_pin,v_tenant::text);
 end;
-$;
+$$;
 
 create or replace function public.financial_intake_submit(
   p_id text,p_answers jsonb,p_lead_patch jsonb,p_profile jsonb
