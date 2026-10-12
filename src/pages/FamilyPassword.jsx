@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function FamilyPassword(){
@@ -10,6 +10,8 @@ export default function FamilyPassword(){
   const [saving,setSaving]=useState(false)
   const [message,setMessage]=useState('Checking your secure TaxRes family link…')
   const [error,setError]=useState('')
+  const [verifiedEmail,setVerifiedEmail]=useState('')
+  const redeemedUserIdRef=useRef('')
   const params=new URLSearchParams(window.location.search)
   const office=params.get('office')||''
   const returnUrl=office==='nashville'?'https://nashville.taxrescrm.app/login?family=ready':'/login'
@@ -57,10 +59,13 @@ export default function FamilyPassword(){
         }
 
         if(!mounted)return
+        redeemedUserIdRef.current=verified.user.id
+        setVerifiedEmail(String(verified.user.email||'').toLowerCase())
         setReady(true);setMessage('')
       }catch(e){
         await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
         if(!mounted)return
+        redeemedUserIdRef.current='';setVerifiedEmail('')
         setReady(false);setMessage('');setError(e?.message||'Could not verify this setup link.')
       }
     })()
@@ -75,14 +80,16 @@ export default function FamilyPassword(){
     // Re-check the active identity immediately before changing credentials.
     // A stale or replaced session can never update another employee's password.
     const {data:verified,error:identityError}=await supabase.auth.getUser()
-    if(identityError||!verified?.user?.id){
+    if(identityError||!verified?.user?.id||!redeemedUserIdRef.current||verified.user.id!==redeemedUserIdRef.current){
       setSaving(false);setReady(false)
+      redeemedUserIdRef.current='';setVerifiedEmail('')
       await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
-      return setError('Your secure employee session is no longer valid. Request a new password link.')
+      return setError('The active TaxRes identity no longer matches this employee reset link. Request a new password link.')
     }
     const {error}=await supabase.auth.updateUser({password})
     if(error){setSaving(false);setError(error.message);return}
     await supabase.auth.signOut({ scope:'local' })
+    redeemedUserIdRef.current='';setVerifiedEmail('')
     setReady(false);setSaving(false)
     setMessage('Your TaxRes family password is ready. Redirecting to your CRM…')
     setTimeout(()=>{window.location.href=returnUrl},900)
@@ -94,6 +101,11 @@ export default function FamilyPassword(){
       <div style={{textAlign:'center',fontSize:13,color:'#64748b',lineHeight:1.6,marginBottom:24}}>One secure password for the TaxRes CRM family. Office access remains separate and permission-based.</div>
       {message&&<div style={{fontSize:13,color:'#475569',lineHeight:1.6,textAlign:'center'}}>{message}</div>}
       {error&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',color:'#b91c1c',borderRadius:8,padding:'10px 12px',fontSize:12,lineHeight:1.5,marginBottom:16}}>{error}</div>}
+      {ready&&verifiedEmail&&<div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'11px 12px',marginBottom:16,textAlign:'center'}}>
+        <div style={{fontSize:10,fontWeight:800,color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>Verified TaxRes Identity</div>
+        <div style={{fontSize:13,fontWeight:800,color:'#0f172a'}}>{verifiedEmail}</div>
+        <div style={{fontSize:11,color:'#64748b',marginTop:4,lineHeight:1.45}}>This password change applies only to the verified TaxRes account shown above. Your Chrome/Google browser profile does not control this identity.</div>
+      </div>}
       {ready&&<form onSubmit={save}>
         <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748b',marginBottom:6,textTransform:'uppercase'}}>New Password</label>
         <div style={{position:'relative',marginBottom:14}}>
