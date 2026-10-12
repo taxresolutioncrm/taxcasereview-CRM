@@ -495,7 +495,7 @@ async function loadPlatformOfficeRowsFresh() {
       id:`product-main:${product.product_id}`,
       source_id:null,
       product:product.product_id,
-      firm_name:product.name || cfg.label,
+      firm_name:product.product_id === 'pool_crm' ? 'PoolVerge' : (product.name || cfg.label),
       brand_color:cfg.color,
       app_url:product.app_url || cfg.appUrl || null,
       is_product_main:true,
@@ -1206,12 +1206,11 @@ function Overview() {
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
             sortedStats.filter(r => r.is_product_main || !collapsedProducts.has(r.product)).map(r => (
-              <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => openOverviewRow(r)} aria-expanded={r.is_product_main ? !collapsedProducts.has(r.product) : undefined}>
+              <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => { if (!r.is_product_main) openOverviewRow(r) }}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
                   <span style={{ marginLeft:r.is_product_main?0:14 }}>
-                    {r.is_product_main && <span aria-hidden="true" style={{display:'inline-block',width:16,color:'#94a3b8',fontSize:12}}>{collapsedProducts.has(r.product) ? '▸' : '▾'}</span>}
-                    {r.is_product_main ? r.firm_name : `↳ ${r.firm_name}`}
+                    {r.is_product_main ? <button type="button" aria-expanded={!collapsedProducts.has(r.product)} aria-label={`${collapsedProducts.has(r.product) ? 'Expand' : 'Collapse'} ${r.firm_name} offices`} onClick={() => toggleProduct(r.product)} style={{border:0,background:'transparent',color:'inherit',font:'inherit',fontWeight:'inherit',cursor:'pointer',padding:'6px 0',textAlign:'left'}}><span aria-hidden="true" style={{display:'inline-block',width:16,color:'#94a3b8',fontSize:12}}>{collapsedProducts.has(r.product) ? '▸' : '▾'}</span>{r.firm_name}</button> : `↳ ${r.firm_name}`}
                   </span>
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
