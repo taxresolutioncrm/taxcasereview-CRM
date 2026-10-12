@@ -56,7 +56,7 @@ grant execute on function public.tenant_is_available(uuid) to service_role;
 
 -- Second wall: even if a future UI query forgets the tenant predicate, the legacy
 -- Nashville tenant cannot be read or written through the central Data API.
-do $
+do $$
 declare r record;
 begin
   for r in
@@ -77,7 +77,7 @@ begin
       '489ace07-1a6b-4864-833a-4f8420568b40'
     );
   end loop;
-end $;
+end $$;
 
 create or replace function public.current_tenant_id()
 returns uuid
