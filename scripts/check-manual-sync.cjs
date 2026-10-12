@@ -61,21 +61,19 @@ for (const route of routes) {
 }
 
 const familyScopeSignals = [
-  ['TaxRes family scope', /entire TaxRes family/],
+  ['central TaxRes scope', /central TaxRes CRM experience|central TaxRes-family offices/],
   ['TCR scope', /Tax Case Review/],
-  ['Nashville scope', /Nashville Tax Solutions/],
   ['CloudCPA scope', /CloudCPA/],
   ['Demo scope', /Demo/],
-  ['future office scope', /future TaxRes-family offices/],
 ]
-for (const [name,re] of familyScopeSignals) assert(re.test(manual), `CRM Manual is not scoped across the full TaxRes family: ${name}`)
-assert(!/complete TaxRes CRM platform as configured for Tax Case Review and Nashville Tax Solutions/.test(manual), 'CRM Manual still contains the obsolete TCR/Nashville-only scope statement')
+for (const [name,re] of familyScopeSignals) assert(re.test(manual), `CRM Manual is missing central-family scope: ${name}`)
+assert(!/Nashville/.test(manual), 'TCR Manual must not expose Nashville-only instructions')
 
 const requiredWorkflowSignals = [
   ['employee CRM invitation', /Send the CRM invitation/],
   ['employee password setup/recovery', /same TaxRes family identity|same TaxRes family access flow|TaxRes family password/],
   ['email Spam/Junk folder', /Open Email → Spam/],
-  ['provider Spam/Junk synchronization', /Gmail SPAM, Microsoft 365 Junk Email, and connected IMAP Junk\/Spam folders/],
+  ['provider Spam/Junk synchronization', /Gmail SPAM and other supported provider Junk\/Spam folders/],
   ['e-sign progress audit', /Last Viewed \/ Progress/],
   ['ID-authoritative document filing', /authoritative client ID/],
   ['Book Whip', /Book Whip is the monthly client\/associate\/para production review/],
@@ -83,7 +81,7 @@ const requiredWorkflowSignals = [
   ['FormaCorp embedded state-fee payment', /Pay Government Filing Amount/],
   ['FormaCorp Sunbiz submission', /Submit via Prepaid Sunbiz Fax/],
   ['FormaCorp EIN lifecycle', /Company Lifecycle → EIN/],
-  ['manual release rule', /feature change is not considered release-complete when its manual is stale/],
+  ['manual release rule', /CRM Manual is part of the release scope/],
 ]
 for (const [name,re] of requiredWorkflowSignals) assert(re.test(manual), `CRM Manual is missing current workflow documentation: ${name}`)
 
