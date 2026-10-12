@@ -1205,7 +1205,7 @@ function Overview() {
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            sortedStats.filter(r => r.is_product_main || !collapsedProducts.has(r.product)).map(r => (
+            sortedStats.map(r => (r.is_product_main || !collapsedProducts.has(r.product) ? (
               <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => { if (!r.is_product_main) openOverviewRow(r) }}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
@@ -1242,7 +1242,7 @@ function Overview() {
                     style={{ ...S.btn('ghost'), padding:'5px 12px', fontSize:11 }}>View →</button>
                 </td>
               </tr>
-            ))}
+            ) : null))}
           </tbody>
         </table>
       </div>
