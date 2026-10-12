@@ -305,6 +305,19 @@ export function useWebRTCRoom(channelPrefix) {
     }
     localStreamRef.current = stream
     setLocalStream(stream)
+    const audioTrack = stream?.getAudioTracks?.()[0] || null
+    const videoTrack = stream?.getVideoTracks?.()[0] || null
+    setMicOn(Boolean(audioTrack && audioTrack.readyState === 'live' && audioTrack.enabled))
+    setCameraOn(Boolean(videoTrack && videoTrack.readyState === 'live' && videoTrack.enabled))
+    if (audioTrack) {
+      audioTrack.onended = () => setMicOn(false)
+    }
+    if (videoTrack) {
+      videoTrack.onended = () => {
+        setCameraOn(false)
+        setError(prev => prev || 'Camera disconnected — select Camera On after reconnecting the device')
+      }
+    }
     await iceServersPromise // guarantee real ICE servers are set before anyone can offer to us
 
     await ch.track({ name: myName }) // this IS the announcement now -- triggers presence 'join' for everyone already in the room, who then offer to us
@@ -340,11 +353,25 @@ export function useWebRTCRoom(channelPrefix) {
 
   function toggleMic() {
     const track = localStreamRef.current?.getAudioTracks()[0]
-    if (track) { track.enabled = !track.enabled; setMicOn(track.enabled) }
+    if (!track || track.readyState !== 'live') {
+      setMicOn(false)
+      setError('Microphone is not available — check browser/site permissions and the selected input device')
+      return
+    }
+    track.enabled = !track.enabled
+    setMicOn(track.enabled)
+    setError('')
   }
   function toggleCamera() {
     const track = localStreamRef.current?.getVideoTracks()[0]
-    if (track) { track.enabled = !track.enabled; setCameraOn(track.enabled) }
+    if (!track || track.readyState !== 'live') {
+      setCameraOn(false)
+      setError('Camera is not available — check browser/site permissions and the selected camera')
+      return
+    }
+    track.enabled = !track.enabled
+    setCameraOn(track.enabled)
+    setError('')
   }
 
   function broadcastEnd() {

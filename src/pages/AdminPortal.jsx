@@ -903,6 +903,158 @@ function Overview() {
     return()=>{cancelled=true}
   }, [user])
 
+  // Keep TaxRes-family office usage live without rerunning the expensive portfolio
+  // loader or writing anything back to Supabase. The already-bounded metrics cache
+  // is the realtime bus. Central directory/billing values are read only when the
+  // TaxRes aggregate cache changes, at most once per coalesced refresh window.
+  useEffect(() => {
+    if (!user) return
+
+    const taxResOfficeByProduct = {
+      tax_case_review:'Tax Case Review',
+      nashville:'Nashville Tax Solutions',
+      cloudcpa:'CloudCPA Inc',
+      demo:'Tax Res CRM Demo',
+    }
+    const finiteOr = (value, fallback) => {
+      if (value === null || value === undefined || value === '') return fallback
+      const n = Number(value)
+      return Number.isFinite(n) ? n : fallback
+    }
+    let directoryTimer = null
+    let directoryRun = 0
+
+    const refreshTaxResDirectory = () => {
+      if (directoryTimer) clearTimeout(directoryTimer)
+      directoryTimer = setTimeout(async () => {
+        const run = ++directoryRun
+        const [overviewRes, billingRes] = await Promise.all([
+          supabase.rpc('admin_tenant_overview'),
+          supabase.rpc('admin_romylabs_billing_totals'),
+        ])
+        if (run !== directoryRun) return
+
+        const overviewById = new Map(
+          (Array.isArray(overviewRes.data) ? overviewRes.data : []).map(row => [String(row.id), row])
+        )
+        const billingById = new Map(
+          (Array.isArray(billingRes.data) ? billingRes.data : [])
+            .filter(row => row.product_key === 'taxres_crm' && row.external_tenant_id)
+            .map(row => [String(row.external_tenant_id), row])
+        )
+
+        setStats(current => Array.isArray(current) ? current.map(item => {
+          if ((item.product || 'taxres_crm') !== 'taxres_crm' || item.counts_as_office === false) return item
+          const directory = overviewById.get(String(item.id))
+          const billing = billingById.get(String(item.id))
+          if (!directory && !billing) return item
+          const isNashville = String(item.firm_name || '').trim().toLowerCase() === 'nashville tax solutions'
+          return {
+            ...item,
+            status:directory?.status ?? item.status,
+            plan_tier:directory?.plan_tier ?? item.plan_tier,
+            // Nashville staff comes from its separate live CRM project; never
+            // overwrite that authoritative remote count with the central directory.
+            employee_count:isNashville
+              ? item.employee_count
+              : finiteOr(directory?.employee_count, item.employee_count),
+            client_count:isNashville
+              ? item.client_count
+              : finiteOr(directory?.client_count, item.client_count),
+            lead_count:isNashville
+              ? item.lead_count
+              : finiteOr(directory?.lead_count, item.lead_count),
+            billing_seats:finiteOr(
+              billing?.seat_count ?? directory?.billing_seats,
+              item.billing_seats
+            ),
+            effective_monthly:billing?.monthly_amount_cents == null
+              ? item.effective_monthly
+              : Number(billing.monthly_amount_cents || 0) / 100,
+            total_collected:billing?.collected_cents == null
+              ? item.total_collected
+              : Number(billing.collected_cents || 0) / 100,
+            transaction_count:billing?.payment_count == null
+              ? item.transaction_count
+              : Number(billing.payment_count || 0),
+          }
+        }) : current)
+      }, 500)
+    }
+
+    const metricsChannel = supabase
+      .channel('romylabs-overview-taxres-live')
+      .on(
+        'postgres_changes',
+        { event:'*', schema:'public', table:'romylabs_metrics_cache' },
+        (change) => {
+          const row = change?.new || {}
+          const productKey = String(row.product_key || '')
+          const payload = row.payload || {}
+
+          if (productKey === 'taxres_crm') {
+            refreshTaxResDirectory()
+            return
+          }
+
+          const officeName = taxResOfficeByProduct[productKey]
+          if (!officeName || payload?.ok === false) return
+          const metrics = payload.metrics || {}
+          const office = Array.isArray(payload.offices) ? (payload.offices[0] || {}) : {}
+
+          setStats(current => Array.isArray(current) ? current.map(item => {
+            if (String(item.firm_name || '').trim().toLowerCase() !== officeName.toLowerCase()) return item
+            return {
+              ...item,
+              employee_count:finiteOr(
+                office.employee_count ?? office.active_staff ?? office.staff_count ??
+                metrics.active_staff ?? metrics.active_users,
+                item.employee_count
+              ),
+              client_count:finiteOr(
+                office.client_count ?? office.total_clients ?? office.active_clients ??
+                metrics.total_clients ?? metrics.active_clients,
+                item.client_count
+              ),
+              lead_count:finiteOr(
+                office.lead_count ?? office.total_leads ?? office.active_leads ??
+                metrics.total_leads ?? metrics.active_leads,
+                item.lead_count
+              ),
+              cases_count:finiteOr(
+                office.open_jobs ?? office.job_count ?? office.active_cases ??
+                metrics.open_jobs ?? metrics.active_cases,
+                item.cases_count
+              ),
+              tasks_count:finiteOr(
+                office.pending_tasks ?? metrics.pending_tasks,
+                item.tasks_count
+              ),
+              storage_bytes:finiteOr(
+                office.storage_bytes ?? metrics.storage_bytes,
+                item.storage_bytes
+              ),
+              status:office.is_active === false ? 'inactive' : item.status,
+              last_activity:
+                office.last_activity ??
+                metrics.last_activity ??
+                payload.recent_activity?.[0]?.at ??
+                payload.recent_activity?.[0]?.ts ??
+                item.last_activity ??
+                null,
+            }
+          }) : current)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      if (directoryTimer) clearTimeout(directoryTimer)
+      directoryRun += 1
+      supabase.removeChannel(metricsChannel)
+    }
+  }, [user])
+
   const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)
   const totalMRR     = operatingStats.reduce((s,r) => s+Number(r.effective_monthly||0), 0)
   const activeOff    = operatingStats.filter(r => r.status==='active').length
@@ -3131,6 +3283,44 @@ const PRODUCT_REGISTRY = [
     metricsUrl: null,
     nextMilestone: 'Connect the Restore Relay platform-metrics feed to complete Command Center reporting',
   },
+  {
+    key:        'pool_crm',
+    label:      'Pool CRM',
+    icon:       '🏊',
+    color:      '#0EA5E9',
+    industry:   'Pool Service & Field Service',
+    url:        null,
+    appUrl:     null,
+    websiteUrl: null,
+    lifecycleStage: 'building',
+    connection:     'not_connected',
+    brandStatus:    'working_name',
+    publicOnRomyLabs: false,
+    commerciallyAvailable: false,
+    desc:      'Mobile-first CRM for pool service companies — customers, routes, scheduling, field work, billing, communications, and team operations.',
+    metricsUrl: null,
+    nextMilestone: 'Finish product build, connect Supabase, then enable live platform metrics',
+    priorityRank:   3,
+  },
+  {
+    key:        'barbers_salons',
+    label:      'Barbers & Salons CRM',
+    icon:       '✂️',
+    color:      '#EC4899',
+    industry:   'Barbers & Salons',
+    url:        null,
+    appUrl:     null,
+    websiteUrl: null,
+    lifecycleStage: 'building',
+    connection:     'not_connected',
+    brandStatus:    'working_name',
+    publicOnRomyLabs: false,
+    commerciallyAvailable: false,
+    desc:      'CRM and operations platform for barber shops, salons, stylists and multi-location beauty businesses.',
+    metricsUrl: null,
+    nextMilestone: 'Finish product build, connect Supabase, then enable live platform metrics',
+    priorityRank:   5,
+  },
   // ── TENANTS (not products — operational data, not product counts) ─────────
   {
     key:       'tax_case_review',
@@ -3252,17 +3442,18 @@ const PRODUCT_REGISTRY = [
     key:       'health_insurance',
     label:     'Health Insurance Agency CRM',
     icon:      '🏥',
-    color:     '#64748b',
-    industry:  'Health Insurance',
+    color:     '#14B8A6',
+    industry:  'Health Insurance · ACA & Medicare',
     url:       null,
-    lifecycleStage: 'research',
+    lifecycleStage: 'building',
     connection:     'not_connected',
-    brandStatus:    'unnamed',
+    brandStatus:    'working_name',
     publicOnRomyLabs: false,
     commerciallyAvailable: false,
-    desc:      'Policy and client management for health insurance agents',
+    desc:      'ACA and Medicare CRM for sales, enrollment, compliance, client management, follow-up, communications, and agent workflows.',
     metricsUrl: null,
-    nextMilestone: 'Define product architecture / brand / build phase',
+    nextMilestone: 'Finish product build, connect Supabase, then enable live platform metrics',
+    priorityRank:   4,
   },
   {
     key:       'real_estate',
@@ -3746,11 +3937,29 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
     : portfolioFilter === 'not_connected' ? products.filter(p => connectionFor(p) === 'not_connected')
     : null
 
-  const filtered = portfolioFiltered ? [...portfolioFiltered].sort(sortByLifecycle)
-                 : filter === 'tenants' ? [...tenants].sort(sortByLifecycle)
-                 : filter === 'planned'  ? products.filter(p => p.lifecycleStage === 'research')
-                 : filter === 'products' ? products.filter(p => p.lifecycleStage !== 'research').sort(sortByLifecycle)
-                 : [...products, ...tenants].sort(sortByLifecycle)
+  const movePartialProductsDirectlyUnderRestore = (items) => {
+    const list = [...items]
+    const restoreIndex = list.findIndex(p => p.key === 'restore_relay')
+    if (restoreIndex < 0) return list
+    const trailingPartial = list
+      .slice(restoreIndex + 1)
+      .filter(p => !p.isTenant && connectionFor(p) === 'partial')
+    if (!trailingPartial.length) return list
+    const movingKeys = new Set(trailingPartial.map(p => p.key))
+    const withoutMoving = list.filter(p => !movingKeys.has(p.key))
+    const nextRestoreIndex = withoutMoving.findIndex(p => p.key === 'restore_relay')
+    withoutMoving.splice(nextRestoreIndex + 1, 0, ...trailingPartial)
+    return withoutMoving
+  }
+
+  const filteredBase = portfolioFiltered ? [...portfolioFiltered].sort(sortByLifecycle)
+                     : filter === 'tenants' ? [...tenants].sort(sortByLifecycle)
+                     : filter === 'planned'  ? products.filter(p => p.lifecycleStage === 'research')
+                     : filter === 'products' ? products.filter(p => p.lifecycleStage !== 'research').sort(sortByLifecycle)
+                     : [...products, ...tenants].sort(sortByLifecycle)
+  const filtered = filter === 'tenants' || filter === 'planned'
+    ? filteredBase
+    : movePartialProductsDirectlyUnderRestore(filteredBase)
 
   const BADGE = (txt, color) => (
     <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:20,
