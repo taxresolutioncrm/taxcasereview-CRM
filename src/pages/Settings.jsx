@@ -308,6 +308,10 @@ export default function Settings() {
         delete payload.m365_client_id
         delete payload.m365_client_secret
         delete payload.m365_tenant_id
+        delete payload.verizon_api_key
+        delete payload.verizon_account_id
+        delete payload.verizon_phone_number
+        delete payload.verizon_api_url
       }
       const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').eq('tenant_id', tid).maybeSingle()
       if (fetchErr) throw fetchErr
