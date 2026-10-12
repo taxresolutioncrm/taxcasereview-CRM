@@ -5253,7 +5253,12 @@ function CommandCenter() {
 
   React.useEffect(() => {
     const keys = reportingProducts
-      .filter(p => p.product_id && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
+      .filter(p => {
+        const lifecycle = String(p.lifecycle || '').toLowerCase()
+        return p.product_id &&
+          p.product_id !== 'romylabs' &&
+          ['live','available'].includes(lifecycle)
+      })
       .map(p => p.product_id)
     if (!keys.length) return
     let cancelled = false
@@ -5684,7 +5689,13 @@ function CommandCenter() {
             const buildN     = products.filter(p => p.lifecycleStage === 'building').length
             const researchN  = products.filter(p => p.lifecycleStage === 'research').length
             const internalN  = products.filter(p => p.lifecycleStage === 'internal').length
-            const statusFor = p => portfolioCrmStatus[p.key]?.status || (reportingProducts.some(r=>r.product_id===p.key) ? 'checking' : p.connection)
+            const statusFor = p => {
+              const liveStatus = portfolioCrmStatus[p.key]?.status
+              if (liveStatus) return liveStatus
+              const registryRow = reportingProducts.find(r => r.product_id === p.key)
+              const lifecycle = String(registryRow?.lifecycle || p.lifecycleStage || '').toLowerCase()
+              return registryRow && ['live','available'].includes(lifecycle) ? 'checking' : p.connection
+            }
             const connectedN = products.filter(p => statusFor(p) === 'connected').length
             const partialN   = products.filter(p => statusFor(p) === 'partial').length
             const noConnN    = products.filter(p => statusFor(p) === 'not_connected').length
@@ -5772,7 +5783,8 @@ function CommandCenter() {
                       ? '🟢 Connected'
                       : (isPublic ? '🟡 Pending' : 'N/A')
                     const liveCrm = portfolioCrmStatus[p.key]
-                    const effectiveConnection = liveCrm?.status || (registryRow ? 'checking' : p.connection)
+                    const effectiveConnection = liveCrm?.status ||
+                      (registryRow && ['live','available'].includes(registryLifecycle) ? 'checking' : p.connection)
                     const milestone = effectiveConnection === 'connected'
                       ? '—'
                       : effectiveConnection === 'checking'
