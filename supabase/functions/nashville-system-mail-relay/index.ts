@@ -2,10 +2,38 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SECRET_KEY='nashville_system_mail_relay_v1'
 const NASHVILLE_HOST='ydrvncdedgjtcprczwpu.supabase.co'
+const NASHVILLE_LOGO='https://mpxgxfqdbquzkrvvejkh.supabase.co/storage/v1/object/public/firm-assets/logo-489ace07-1a6b-4864-833a-4f8420568b40.png'
 const ALLOWED_KINDS=new Set(['esign_request','esign_reminder','esign_signed_copy','esign_internal_notification','employee_access'])
 const safe=(v:any)=>String(v??'').replace(/[\r\n]+/g,' ').trim()
 const enc=(s:string)=>!s||/^[\x00-\x7F]*$/.test(s)?s:(()=>{const u=new TextEncoder().encode(s);let b='';u.forEach(x=>b+=String.fromCharCode(x));return '=?UTF-8?B?'+btoa(b)+'?='})()
 const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}})
+
+function brandNashvilleHtml(subject:string,html:string){
+  if(/<!doctype html/i.test(html) || /data-nashville-branded=["']1["']/i.test(html)) return html
+  const safeSubject=String(subject||'Nashville Tax Solutions').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch))
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f3f6fa;font-family:Arial,Helvetica,sans-serif;color:#172033">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fa;padding:32px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #dce6ef;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(7,18,31,.10)">
+        <tr><td style="background:#0b2136;padding:24px 32px;text-align:center">
+          <img src="${NASHVILLE_LOGO}" alt="Nashville Tax Solutions" style="display:inline-block;max-width:230px;max-height:72px;width:auto;height:auto">
+        </td></tr>
+        <tr><td style="padding:30px 36px 8px">
+          <div style="font-size:22px;font-weight:800;line-height:1.3;color:#10243a;margin:0 0 18px">${safeSubject}</div>
+        </td></tr>
+        <tr><td style="padding:0 36px 30px;font-size:15px;line-height:1.65;color:#40546a">
+          ${html}
+        </td></tr>
+        <tr><td style="border-top:1px solid #e7edf3;background:#f8fafc;padding:18px 36px;text-align:center">
+          <div style="font-size:12px;font-weight:700;color:#43576b">Nashville Tax Solutions</div>
+          <div style="font-size:11px;color:#8a99a8;margin-top:5px">Secure communication sent through the Nashville Tax Solutions CRM.</div>
+          <div style="font-size:11px;color:#a3afbb;margin-top:4px">This is an automated message. Please do not forward secure signing or account-access links.</div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+  </body></html>`
+}
 
 async function sendSmtp(opts:any){
   const host=safe(opts.host),port=Number(opts.port||465),ssl=port===465||opts.ssl===true
@@ -67,7 +95,7 @@ Deno.serve(async(req)=>{
     const body=await req.json().catch(()=>({}))
     const kind=safe(body.kind)
     if(!ALLOWED_KINDS.has(kind))return json({error:'Unsupported Nashville mail kind'},400)
-    const to=safe(body.to).toLowerCase(),subject=safe(body.subject).slice(0,300),html=String(body.html||'')
+    const to=safe(body.to).toLowerCase(),subject=safe(body.subject).slice(0,300),rawHtml=String(body.html||''),html=brandNashvilleHtml(subject,rawHtml)
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)||!subject||!html)return json({error:'Recipient, subject, and html required'},400)
     if(new TextEncoder().encode(html).byteLength>1024*1024)return json({error:'Email body too large'},413)
     const attachments:any[]=[]
