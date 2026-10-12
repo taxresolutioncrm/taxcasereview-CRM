@@ -18,6 +18,11 @@ const sendEmail=read('supabase/functions/send-email/index.ts')
 const checks=[
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
   ['family password page verifies invite/recovery token',page.includes('verifyOtp({token_hash:tokenHash,type})')],
+  ['family password clears any existing browser session before redeeming employee link',page.includes("signOut({ scope:'local' })")&&page.indexOf("signOut({ scope:'local' })")<page.indexOf('verifyOtp({token_hash:tokenHash,type})')],
+  ['family password never falls back to a pre-existing getSession',!page.includes('auth.getSession()')],
+  ['family password requires an employee token or code',page.includes("missing its employee authentication token")],
+  ['family password revalidates redeemed identity with Auth server',page.includes('auth.getUser()')&&page.includes('verified.user.id!==linkUser.id')],
+  ['family password revalidates identity immediately before credential update',page.includes('A stale or replaced session can never update another employee')],
   ['family password requires 10 characters',page.includes('password.length<10')],
   ['password recovery stays on family page',ctx.includes("window.location.pathname === '/family-password'")],
   ['SSO codes are private and RLS protected',migration.includes('taxres_family_sso_codes')&&migration.includes('enable row level security')&&migration.includes('revoke all')],
