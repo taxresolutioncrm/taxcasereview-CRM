@@ -5020,7 +5020,6 @@ function CommandCenter() {
   const [taxresScopeLoading, setTaxresScopeLoading] = useState(false)
   const [taxresScopeError, setTaxresScopeError] = useState('')
   const [activity, setActivity] = useState([])
-  const [activityPoll, setActivityPoll] = useState(0)
   const [liveMetricsVersion, setLiveMetricsVersion] = useState(0)
   const [liveMetricsProduct, setLiveMetricsProduct] = useState('')
   const liveMetricsReloadTimer = React.useRef(null)
@@ -5032,6 +5031,7 @@ function CommandCenter() {
   // invalidation bus. Debounce cache bursts (TaxRes family fans out to several
   // rows) into one Command Center refresh.
   useEffect(() => {
+    if (tab !== 'crm') return
     const channel = supabase
       .channel('romylabs-admin-metrics-live')
       .on(
@@ -5039,7 +5039,7 @@ function CommandCenter() {
         { event:'*', schema:'public', table:'romylabs_metrics_cache' },
         (payload) => {
           const productKey = String(payload?.new?.product_key || payload?.old?.product_key || '')
-          if (!productKey) return
+          if (!productKey || productKey !== crmProduct) return
           if (liveMetricsReloadTimer.current) clearTimeout(liveMetricsReloadTimer.current)
           liveMetricsReloadTimer.current = setTimeout(() => {
             setLiveMetricsProduct(productKey)
@@ -5054,7 +5054,7 @@ function CommandCenter() {
       liveMetricsReloadTimer.current = null
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [tab, crmProduct])
 
   useEffect(() => {
     async function load() {
@@ -5252,6 +5252,7 @@ function CommandCenter() {
   }, [])
 
   React.useEffect(() => {
+    if (tab !== 'overview') return
     const keys = reportingProducts
       .filter(p => p.product_id && p.product_id !== 'romylabs' && String(p.lifecycle || '').toLowerCase() !== 'internal')
       .map(p => p.product_id)
@@ -5287,7 +5288,7 @@ function CommandCenter() {
       }
     })()
     return () => { cancelled = true }
-  }, [reportingProducts])
+  }, [reportingProducts, tab])
 
   const fetchCrmProductMetrics = React.useCallback(async (productKey) => {
     if (!productKey) return null
@@ -5395,6 +5396,7 @@ function CommandCenter() {
   // ── System live status ──
   const [sysStatus, setSysStatus] = useState(null)
   useEffect(()=>{
+    if (tab !== 'system') return
     let cancelled=false
     async function reachable(url){
       try { await fetch(url,{mode:'no-cors',signal:AbortSignal.timeout(5000),cache:'no-store'}); return true } catch(_) { return false }
@@ -5420,10 +5422,11 @@ function CommandCenter() {
     }
     checkSys()
     return()=>{cancelled=true}
-  },[reportingProducts])
+  },[reportingProducts, tab])
 
   useEffect(() => {
-    // Handle GSC OAuth callback (?code= in URL after redirect)
+    // Handle GSC OAuth callback (?code= in URL after redirect). Otherwise,
+    // defer the provider call until the SEO tab is actually opened.
     const urlParams = new URLSearchParams(window.location.search)
     const gscCode = urlParams.get('code')
     if (gscCode) {
@@ -5434,10 +5437,10 @@ function CommandCenter() {
       }).then(({ data: r }) => {
         if (r?.success) fetchGSC()
       }).catch(e => console.error('GSC connect:', e))
-    } else {
-      fetchGSC()
+      return
     }
-  }, [])
+    if (tab === 'search') fetchGSC()
+  }, [tab])
 
   async function fetchBing(productKey = 'taxres_crm') {
     setBingData(null)
@@ -5595,12 +5598,6 @@ function CommandCenter() {
     setGa4Data(null)
     if (tab==='marketing' && ga4EnabledProducts.includes(marketingProduct)) loadGA4()
   }, [tab, marketingProduct, ga4EnabledProducts])
-
-  // Poll activity every 30s
-  useEffect(() => {
-    const t = setInterval(() => setActivityPoll(p=>p+1), 30000)
-    return () => clearInterval(t)
-  }, [])
 
   if (loadError) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'80vh' }}>
