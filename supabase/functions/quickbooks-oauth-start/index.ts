@@ -1,16 +1,34 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const APP_URL = 'https://nashville.taxrescrm.app'
-const cors = {
-  'Access-Control-Allow-Origin': APP_URL,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+const ALLOWED_APP_ORIGINS = new Set([
+  'https://taxrescrm.app',
+  'https://www.taxrescrm.app',
+  'https://nashville.taxrescrm.app',
+])
+
+function appOrigin(req: Request) {
+  const origin = (req.headers.get('origin') || '').replace(/\/$/, '')
+  return ALLOWED_APP_ORIGINS.has(origin) ? origin : ''
+}
+
+function cors(origin: string) {
+  return {
+    'Access-Control-Allow-Origin': origin || 'https://taxrescrm.app',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  }
 }
 
 Deno.serve(async req => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
-  const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } })
+  const origin = appOrigin(req)
+  if (req.method === 'OPTIONS') {
+    if (!origin) return new Response('Forbidden', { status: 403 })
+    return new Response('ok', { headers: cors(origin) })
+  }
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors(origin), 'content-type': 'application/json' } })
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
+  if (!origin) return json({ error: 'Unapproved CRM origin.' }, 403)
 
   try {
     const url = Deno.env.get('SUPABASE_URL') || ''
@@ -34,13 +52,14 @@ Deno.serve(async req => {
 
     const { data: state, error: stateErr } = await caller.rpc('create_accounting_oauth_state', { p_provider: 'quickbooks' })
     if (stateErr || !state) return json({ error: 'Could not start a secure QuickBooks connection.' }, 500)
-    const redirectUri = `${APP_URL}/auth/quickbooks-callback`
+
+    const redirectUri = `${origin}/auth/quickbooks-callback`
     const qs = new URLSearchParams({
       client_id: settings.qb_client_id,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'com.intuit.quickbooks.accounting',
-      state
+      state,
     })
     return json({ authorize_url: `https://appcenter.intuit.com/connect/oauth2?${qs.toString()}` })
   } catch (e) {
