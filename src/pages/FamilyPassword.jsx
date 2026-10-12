@@ -22,24 +22,46 @@ export default function FamilyPassword(){
         const tokenHash=p.get('token_hash')
         const type=p.get('type')||'recovery'
         const code=p.get('code')
+
+        // Identity lock: a password/invite page must never inherit whoever was
+        // already signed into TaxRes in this browser. Clear only this browser's
+        // current session before redeeming the employee-specific secure link.
+        await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+
+        let linkUser=null
         if(tokenHash){
-          const {error}=await supabase.auth.verifyOtp({token_hash:tokenHash,type})
+          const {data,error}=await supabase.auth.verifyOtp({token_hash:tokenHash,type})
           if(error) throw error
+          linkUser=data?.user||data?.session?.user||null
         }else if(code){
-          const {error}=await supabase.auth.exchangeCodeForSession(code)
+          const {data,error}=await supabase.auth.exchangeCodeForSession(code)
           if(error) throw error
+          linkUser=data?.user||data?.session?.user||null
+        }else{
+          throw new Error('This secure setup link is missing its employee authentication token.')
         }
-        const {data}=await supabase.auth.getSession()
-        if(!mounted) return
-        if(!data?.session){
-          setMessage('')
-          setError('This TaxRes family setup link is invalid or expired. Ask your administrator to send a new invite.')
-          return
+
+        // Never fall back to getSession() from a previously-open account.
+        // The user must be the one established by this exact link redemption.
+        if(!linkUser?.id||!linkUser?.email){
+          await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+          throw new Error('This secure setup link could not establish the employee identity.')
         }
+
+        // Revalidate the just-created session against Supabase Auth before
+        // allowing a password change. This is server-verified identity data.
+        const {data:verified,error:verifyUserError}=await supabase.auth.getUser()
+        if(verifyUserError||!verified?.user?.id||verified.user.id!==linkUser.id){
+          await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+          throw new Error('Employee identity verification failed. Ask your administrator for a new link.')
+        }
+
+        if(!mounted)return
         setReady(true);setMessage('')
       }catch(e){
-        if(!mounted) return
-        setMessage('');setError(e?.message||'Could not verify this setup link.')
+        await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+        if(!mounted)return
+        setReady(false);setMessage('');setError(e?.message||'Could not verify this setup link.')
       }
     })()
     return()=>{mounted=false}
@@ -50,9 +72,17 @@ export default function FamilyPassword(){
     if(password.length<10) return setError('Password must be at least 10 characters.')
     if(password!==confirm) return setError('Passwords do not match.')
     setSaving(true)
+    // Re-check the active identity immediately before changing credentials.
+    // A stale or replaced session can never update another employee's password.
+    const {data:verified,error:identityError}=await supabase.auth.getUser()
+    if(identityError||!verified?.user?.id){
+      setSaving(false);setReady(false)
+      await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+      return setError('Your secure employee session is no longer valid. Request a new password link.')
+    }
     const {error}=await supabase.auth.updateUser({password})
     if(error){setSaving(false);setError(error.message);return}
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope:'local' })
     setReady(false);setSaving(false)
     setMessage('Your TaxRes family password is ready. Redirecting to your CRM…')
     setTimeout(()=>{window.location.href=returnUrl},900)
