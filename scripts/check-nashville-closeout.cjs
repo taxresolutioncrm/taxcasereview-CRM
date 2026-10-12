@@ -23,8 +23,9 @@ const checks=[
   ]],
   ['supabase/functions/quickbooks-oauth-start/index.ts',[
     "com.intuit.quickbooks.accounting",
-    "const APP_URL = 'https://nashville.taxrescrm.app'",
-    "${APP_URL}/auth/quickbooks-callback",
+    "https://taxrescrm.app",
+    "https://nashville.taxrescrm.app",
+    "${origin}/auth/quickbooks-callback",
   ]],
   ['src/pages/Clients.jsx',[
     "q.eq('client_id', String(clientId))",
@@ -200,6 +201,8 @@ for(const [file,tokens] of checks){
 const emailSrc=fs.readFileSync('src/pages/Email.jsx','utf8')
 const settingsSrc=fs.readFileSync('src/pages/Settings.jsx','utf8')
 const quickBooksCallbackSrc=fs.readFileSync('src/pages/QuickBooksCallback.jsx','utf8')
+const quickBooksStartSrc=fs.readFileSync('supabase/functions/quickbooks-oauth-start/index.ts','utf8')
+const quickBooksOAuthCallbackSrc=fs.readFileSync('supabase/functions/quickbooks-oauth-callback/index.ts','utf8')
 
 const isolationChecks=[
   ['TCR generic email form does not carry an M365 field',!emailSrc.includes("productId:'', m365MessageId:''")],
@@ -210,6 +213,9 @@ const isolationChecks=[
   ['Verizon Settings card is gated to Nashville',settingsSrc.includes('{isNashville && <div className="card">')],
   ['non-Nashville settings saves cannot write M365 config',settingsSrc.includes('if (tid !== NASHVILLE_TENANT_ID)')&&settingsSrc.includes('delete payload.m365_client_id')],
   ['shared QuickBooks callback has no Nashville fallback branding',!quickBooksCallbackSrc.includes('Nashville QuickBooks')],
+  ['QuickBooks OAuth start allows TCR and Nashville without a Nashville default',quickBooksStartSrc.includes("'https://taxrescrm.app'")&&quickBooksStartSrc.includes("'https://nashville.taxrescrm.app'")&&!quickBooksStartSrc.includes("const APP_URL = 'https://nashville.taxrescrm.app'")],
+  ['QuickBooks OAuth callback uses the approved caller origin',quickBooksOAuthCallbackSrc.includes("${origin}/auth/quickbooks-callback")&&!quickBooksOAuthCallbackSrc.includes("const APP_URL='https://nashville.taxrescrm.app'")],
+  ['QuickBooks callback copy does not tell TCR to choose Nashville',!quickBooksOAuthCallbackSrc.includes('choose the Nashville company')],
 ]
 for(const [label,ok] of isolationChecks){
   if(!ok){
