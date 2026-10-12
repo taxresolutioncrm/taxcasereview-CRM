@@ -1,12 +1,36 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const APP_URL='https://nashville.taxrescrm.app'
-const cors={'Access-Control-Allow-Origin':APP_URL,'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'GET, OPTIONS','content-type':'application/json'}
-const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:cors})
+const ALLOWED_APP_ORIGINS = new Set([
+  'https://taxrescrm.app',
+  'https://www.taxrescrm.app',
+  'https://nashville.taxrescrm.app',
+])
+
+function appOrigin(req: Request) {
+  const origin = (req.headers.get('origin') || '').replace(/\/$/, '')
+  return ALLOWED_APP_ORIGINS.has(origin) ? origin : ''
+}
+
+function cors(origin: string) {
+  return {
+    'Access-Control-Allow-Origin': origin || 'https://taxrescrm.app',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'content-type': 'application/json',
+    'Vary': 'Origin',
+  }
+}
 
 Deno.serve(async(req)=>{
-  if(req.method==='OPTIONS') return new Response('ok',{headers:cors})
+  const origin=appOrigin(req)
+  const json=(b:unknown,s=200)=>new Response(JSON.stringify(b),{status:s,headers:cors(origin)})
+  if(req.method==='OPTIONS'){
+    if(!origin)return new Response('Forbidden',{status:403})
+    return new Response('ok',{headers:cors(origin)})
+  }
   if(req.method!=='GET') return json({ok:false,message:'GET only'},405)
+  if(!origin) return json({ok:false,message:'Unapproved CRM origin.'},403)
+
   try{
     const ru=new URL(req.url)
     const code=ru.searchParams.get('code')||''
@@ -27,7 +51,7 @@ Deno.serve(async(req)=>{
     const {data:settings}=await admin.from('settings').select('qb_client_id,qb_client_secret').eq('tenant_id',tenantId).maybeSingle()
     if(!settings?.qb_client_id||!settings?.qb_client_secret) return json({ok:false,message:'QuickBooks app credentials are not configured.'},400)
 
-    const redirectUri=`${APP_URL}/auth/quickbooks-callback`
+    const redirectUri=`${origin}/auth/quickbooks-callback`
     const tokenRes=await fetch('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',{
       method:'POST',
       headers:{Authorization:`Basic ${btoa(`${settings.qb_client_id}:${settings.qb_client_secret}`)}`,'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},
@@ -43,7 +67,7 @@ Deno.serve(async(req)=>{
     })
     const companyData=await companyRes.json().catch(()=>({}))
     if(!companyRes.ok){
-      return json({ok:false,message:'QuickBooks authorized the app, but the selected company could not be read. Please choose the Nashville company and try again.'},400)
+      return json({ok:false,message:'QuickBooks authorized the app, but the selected company could not be read. Please choose the correct company and try again.'},400)
     }
     const companyName=companyData?.CompanyInfo?.CompanyName||null
 
