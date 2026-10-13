@@ -8,6 +8,7 @@ export default function FamilyPassword(){
   const [showConfirm,setShowConfirm]=useState(false)
   const [ready,setReady]=useState(false)
   const [saving,setSaving]=useState(false)
+  const [redeeming,setRedeeming]=useState(false)
   const [message,setMessage]=useState('Checking your secure TaxRes family link…')
   const [error,setError]=useState('')
   const [verifiedEmail,setVerifiedEmail]=useState('')
@@ -19,60 +20,76 @@ export default function FamilyPassword(){
   const brandLogo=isNashville?'https://nashville.taxrescrm.app/nashville-logo.png':''
 
   useEffect(()=>{
-    let mounted=true
-    ;(async()=>{
-      try{
-        const p=new URLSearchParams(window.location.search)
-        const tokenHash=p.get('token_hash')
-        const type=p.get('type')||'recovery'
-        const code=p.get('code')
+    const p=new URLSearchParams(window.location.search)
+    const tokenHash=p.get('token_hash')
+    const code=p.get('code')
+    if(!tokenHash&&!code){
+      setMessage('')
+      setError('This secure setup link is missing its employee authentication token.')
+      return
+    }
+    // IMPORTANT: Do not redeem one-time Auth tokens during page load.
+    // Enterprise email security scanners (including Microsoft Safe Links)
+    // can open links before the employee does. Redemption only happens after
+    // the human explicitly clicks Continue below.
+    setMessage(isNashville
+      ? 'Your secure Nashville Tax Solutions password link is ready. Click Continue to verify your identity.'
+      : 'Your secure TaxRes CRM password link is ready. Click Continue to verify your identity.')
+  },[isNashville])
 
-        // Identity lock: a password/invite page must never inherit whoever was
-        // already signed into TaxRes in this browser. Clear only this browser's
-        // current session before redeeming the employee-specific secure link.
-        await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+  async function redeemLink(){
+    setError('')
+    setRedeeming(true)
+    try{
+      const p=new URLSearchParams(window.location.search)
+      const tokenHash=p.get('token_hash')
+      const type=p.get('type')||'recovery'
+      const code=p.get('code')
 
-        let linkUser=null
-        if(tokenHash){
-          const {data,error}=await supabase.auth.verifyOtp({token_hash:tokenHash,type})
-          if(error) throw error
-          linkUser=data?.user||data?.session?.user||null
-        }else if(code){
-          const {data,error}=await supabase.auth.exchangeCodeForSession(code)
-          if(error) throw error
-          linkUser=data?.user||data?.session?.user||null
-        }else{
-          throw new Error('This secure setup link is missing its employee authentication token.')
-        }
+      await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
 
-        // Never fall back to getSession() from a previously-open account.
-        // The user must be the one established by this exact link redemption.
-        if(!linkUser?.id||!linkUser?.email){
-          await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
-          throw new Error('This secure setup link could not establish the employee identity.')
-        }
-
-        // Revalidate the just-created session against Supabase Auth before
-        // allowing a password change. This is server-verified identity data.
-        const {data:verified,error:verifyUserError}=await supabase.auth.getUser()
-        if(verifyUserError||!verified?.user?.id||verified.user.id!==linkUser.id){
-          await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
-          throw new Error('Employee identity verification failed. Ask your administrator for a new link.')
-        }
-
-        if(!mounted)return
-        redeemedUserIdRef.current=verified.user.id
-        setVerifiedEmail(String(verified.user.email||'').toLowerCase())
-        setReady(true);setMessage('')
-      }catch(e){
-        await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
-        if(!mounted)return
-        redeemedUserIdRef.current='';setVerifiedEmail('')
-        setReady(false);setMessage('');setError(e?.message||'Could not verify this setup link.')
+      let linkUser=null
+      if(tokenHash){
+        const {data,error}=await supabase.auth.verifyOtp({token_hash:tokenHash,type})
+        if(error) throw error
+        linkUser=data?.user||data?.session?.user||null
+      }else if(code){
+        const {data,error}=await supabase.auth.exchangeCodeForSession(code)
+        if(error) throw error
+        linkUser=data?.user||data?.session?.user||null
+      }else{
+        throw new Error('This secure setup link is missing its employee authentication token.')
       }
-    })()
-    return()=>{mounted=false}
-  },[])
+
+      if(!linkUser?.id||!linkUser?.email){
+        await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+        throw new Error('This secure setup link could not establish the employee identity.')
+      }
+
+      const {data:verified,error:verifyUserError}=await supabase.auth.getUser()
+      if(verifyUserError||!verified?.user?.id||verified.user.id!==linkUser.id){
+        await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+        throw new Error('Employee identity verification failed. Ask your administrator for a new link.')
+      }
+
+      redeemedUserIdRef.current=verified.user.id
+      setVerifiedEmail(String(verified.user.email||'').toLowerCase())
+      setReady(true)
+      setMessage('')
+      // Remove the one-time token from the visible address bar after successful
+      // redemption so refreshes/scanners cannot try to reuse it.
+      window.history.replaceState({},'',window.location.pathname+(isNashville?'?office=nashville':''))
+    }catch(e){
+      await supabase.auth.signOut({ scope:'local' }).catch(()=>{})
+      redeemedUserIdRef.current=''
+      setVerifiedEmail('')
+      setReady(false)
+      setMessage('')
+      setError(e?.message||'Could not verify this setup link.')
+    }finally{
+      setRedeeming(false)
+    }
+  }
 
   async function save(e){
     e.preventDefault();setError('')
@@ -104,6 +121,7 @@ export default function FamilyPassword(){
       <div style={{textAlign:'center',fontSize:13,color:'#64748b',lineHeight:1.6,marginBottom:24}}>{isNashville?'Secure access to Nashville Tax Solutions CRM, powered by TaxResCRM.':'One secure password for the TaxRes CRM family. Office access remains separate and permission-based.'}</div>
       {message&&<div style={{fontSize:13,color:'#475569',lineHeight:1.6,textAlign:'center'}}>{message}</div>}
       {error&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',color:'#b91c1c',borderRadius:8,padding:'10px 12px',fontSize:12,lineHeight:1.5,marginBottom:16}}>{error}</div>}
+      {!ready&&!error&&message&&<button type="button" onClick={redeemLink} disabled={redeeming} style={{width:'100%',marginTop:16,marginBottom:20,padding:'12px 14px',border:0,borderRadius:8,background:'#1A7FD4',color:'#fff',fontWeight:800,cursor:'pointer',opacity:redeeming?.7:1}}>{redeeming?'Verifying…':isNashville?'Continue to Nashville CRM Password Setup':'Continue to Password Setup'}</button>}
       {ready&&verifiedEmail&&<div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'11px 12px',marginBottom:16,textAlign:'center'}}>
         <div style={{fontSize:10,fontWeight:800,color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>{isNashville?'Verified Nashville CRM Identity':'Verified TaxRes Identity'}</div>
         <div style={{fontSize:13,fontWeight:800,color:'#0f172a'}}>{verifiedEmail}</div>
