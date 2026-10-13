@@ -29,7 +29,6 @@ const retiredCentralFns=[
   'supabase/functions/m365-oauth-start/index.ts',
   'supabase/functions/m365-oauth-callback/index.ts',
   'supabase/functions/m365-mail-gateway/index.ts',
-  'supabase/functions/nashville-system-mail-relay/index.ts',
   'supabase/functions/nashville-esign-mail/index.ts',
   'supabase/functions/nashville-esign-reminders/index.ts',
   'supabase/functions/nash-metrics-check/index.ts',
@@ -143,6 +142,14 @@ for(const fn of retiredCentralFns){
   must(fn.includes("status: 410"),'Retired Nashville-only central Edge Function must fail closed')
   must(!fn.includes('SUPABASE_SERVICE_ROLE_KEY'),'Retired Nashville-only central Edge Function must not retain service-role runtime code')
 }
+
+
+const nashvilleSystemMail=read('supabase/functions/nashville-system-mail-relay/index.ts')
+must(nashvilleSystemMail.includes("SECRET_KEY='nashville_system_mail_relay_v1'"),'Nashville system sender must require the dedicated bridge secret')
+must(nashvilleSystemMail.includes("romylabs_stalwart_transport_for_product")&&nashvilleSystemMail.includes("p_product_key:'taxres_crm'"),'Nashville system sender may use only the TaxResCRM mail transport')
+must(nashvilleSystemMail.includes("kind==='employee_access'")||nashvilleSystemMail.includes("kind==='employee_access'"),'Nashville system sender must explicitly gate employee access mail')
+must(nashvilleSystemMail.includes("Nashville branding required")&&nashvilleSystemMail.includes("Foreign brand blocked"),'Nashville system sender must enforce Nashville-only message content')
+must(!nashvilleSystemMail.includes("from('clients')")&&!nashvilleSystemMail.includes("from('employees')"),'TaxResCRM sender must not read Nashville client or employee data')
 
 if(failures.length){
   failures.forEach(x=>console.error('CENTRAL FAMILY AUDIT FAIL:',x))

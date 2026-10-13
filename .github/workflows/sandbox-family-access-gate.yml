@@ -1,0 +1,26 @@
+name: Sandbox TaxResCRM family access gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/pages/FamilyPassword.jsx'
+      - 'supabase/functions/nashville-system-mail-relay/index.ts'
+      - 'scripts/check-central-family-isolation.cjs'
+      - 'scripts/check-nashville-closeout.cjs'
+      - 'scripts/check-taxres-family-auth.mjs'
+      - '.github/workflows/sandbox-family-access-gate.yml'
+permissions:
+  contents: read
+jobs:
+  family-access-build:
+    if: ${{ startsWith(github.head_ref, 'sandbox/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build

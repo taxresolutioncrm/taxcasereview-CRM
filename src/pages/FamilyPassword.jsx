@@ -14,7 +14,9 @@ export default function FamilyPassword(){
   const redeemedUserIdRef=useRef('')
   const params=new URLSearchParams(window.location.search)
   const office=params.get('office')||''
-  const returnUrl=office==='nashville'?'https://nashville.taxrescrm.app/login?family=ready':'/login'
+  const isNashville=office==='nashville'
+  const returnUrl=isNashville?'https://nashville.taxrescrm.app/login?family=ready':'/login'
+  const brandLogo=isNashville?'https://nashville.taxrescrm.app/nashville-logo.png':''
 
   useEffect(()=>{
     let mounted=true
@@ -91,20 +93,21 @@ export default function FamilyPassword(){
     await supabase.auth.signOut({ scope:'local' })
     redeemedUserIdRef.current='';setVerifiedEmail('')
     setReady(false);setSaving(false)
-    setMessage('Your TaxRes family password is ready. Redirecting to your CRM…')
+    setMessage(isNashville?'Your password is ready. Redirecting to Nashville Tax Solutions CRM…':'Your TaxRes family password is ready. Redirecting to your CRM…')
     setTimeout(()=>{window.location.href=returnUrl},900)
   }
 
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#06101d',padding:20,fontFamily:'Inter,system-ui,sans-serif'}}>
     <div style={{width:'100%',maxWidth:430,background:'#fff',borderRadius:18,padding:'30px',boxShadow:'0 24px 70px rgba(0,0,0,.4)'}}>
-      <div style={{textAlign:'center',fontSize:22,fontWeight:800,color:'#0f172a',marginBottom:7}}>Set Up Your TaxRes CRM Password</div>
-      <div style={{textAlign:'center',fontSize:13,color:'#64748b',lineHeight:1.6,marginBottom:24}}>One secure password for the TaxRes CRM family. Office access remains separate and permission-based.</div>
+      {isNashville&&<div style={{textAlign:'center',marginBottom:18}}><img src={brandLogo} alt="Nashville Tax Solutions" style={{maxWidth:240,maxHeight:80,objectFit:'contain'}}/></div>}
+      <div style={{textAlign:'center',fontSize:22,fontWeight:800,color:'#0f172a',marginBottom:7}}>{isNashville?'Set Up Your Nashville Tax Solutions CRM Password':'Set Up Your TaxRes CRM Password'}</div>
+      <div style={{textAlign:'center',fontSize:13,color:'#64748b',lineHeight:1.6,marginBottom:24}}>{isNashville?'Secure access to Nashville Tax Solutions CRM, powered by TaxResCRM.':'One secure password for the TaxRes CRM family. Office access remains separate and permission-based.'}</div>
       {message&&<div style={{fontSize:13,color:'#475569',lineHeight:1.6,textAlign:'center'}}>{message}</div>}
       {error&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',color:'#b91c1c',borderRadius:8,padding:'10px 12px',fontSize:12,lineHeight:1.5,marginBottom:16}}>{error}</div>}
       {ready&&verifiedEmail&&<div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:10,padding:'11px 12px',marginBottom:16,textAlign:'center'}}>
-        <div style={{fontSize:10,fontWeight:800,color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>Verified TaxRes Identity</div>
+        <div style={{fontSize:10,fontWeight:800,color:'#1d4ed8',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>{isNashville?'Verified Nashville CRM Identity':'Verified TaxRes Identity'}</div>
         <div style={{fontSize:13,fontWeight:800,color:'#0f172a'}}>{verifiedEmail}</div>
-        <div style={{fontSize:11,color:'#64748b',marginTop:4,lineHeight:1.45}}>This password change applies only to the verified TaxRes account shown above. Your Chrome/Google browser profile does not control this identity.</div>
+        <div style={{fontSize:11,color:'#64748b',marginTop:4,lineHeight:1.45}}>{isNashville?'This password change applies to the verified Nashville Tax Solutions CRM account shown above.':'This password change applies only to the verified TaxRes account shown above. Your Chrome/Google browser profile does not control this identity.'}</div>
       </div>}
       {ready&&<form onSubmit={save}>
         <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748b',marginBottom:6,textTransform:'uppercase'}}>New Password</label>
@@ -125,7 +128,7 @@ export default function FamilyPassword(){
             <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 12S6.5 6 12 6s9.5 6 9.5 6-4 6-9.5 6S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
           )}</button>
         </div>
-        <button type="submit" disabled={saving} style={{width:'100%',padding:'12px 14px',border:0,borderRadius:8,background:'#1A7FD4',color:'#fff',fontWeight:800,cursor:'pointer',opacity:saving?.7:1}}>{saving?'Saving…':'Create TaxRes Family Password'}</button>
+        <button type="submit" disabled={saving} style={{width:'100%',padding:'12px 14px',border:0,borderRadius:8,background:'#1A7FD4',color:'#fff',fontWeight:800,cursor:'pointer',opacity:saving?.7:1}}>{saving?'Saving…':isNashville?'Create Nashville CRM Password':'Create TaxRes Family Password'}</button>
       </form>}
     </div>
   </div>

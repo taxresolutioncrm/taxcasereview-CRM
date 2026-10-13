@@ -138,7 +138,7 @@ const checks=[
   ['supabase/functions/nashville-system-mail-relay/index.ts',[
     "nashville_system_mail_relay_v1",
     "romylabs_stalwart_transport_for_product",
-    "taxres_stalwart_relay",
+    "taxrescrm_system_mail",
     "employee_access",
   ]],
   ['supabase/functions/nashville-esign-mail/index.ts',[
