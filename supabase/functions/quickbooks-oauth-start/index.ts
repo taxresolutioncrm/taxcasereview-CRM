@@ -3,7 +3,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const ALLOWED_APP_ORIGINS = new Set([
   'https://taxrescrm.app',
   'https://www.taxrescrm.app',
-  'https://nashville.taxrescrm.app',
 ])
 
 function appOrigin(req: Request) {
