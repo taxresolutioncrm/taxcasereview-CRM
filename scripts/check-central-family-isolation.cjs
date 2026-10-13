@@ -13,6 +13,11 @@ const signPage=read('src/pages/SignPage.jsx')
 const intake=read('src/components/FinancialIntakeWizard.jsx')
 const kiosk=read('src/pages/Kiosk.jsx')
 const clockIn=read('src/pages/ClockIn.jsx')
+const appContext=read('src/context/AppContext.jsx')
+const esign=read('src/pages/Esign.jsx')
+const i18n=read('src/lib/i18n.js')
+const manageBooking=read('src/pages/ManageBooking.jsx')
+const quarantine=read('supabase/quarantine/central_legacy_nashville.sql')
 
 const failures=[]
 const must=(ok,msg)=>{ if(!ok) failures.push(msg) }
@@ -57,6 +62,46 @@ must(settings.includes("calling_provider: 'signalwire'"),'Central calling provid
 must(email.includes('isCloudCpaPlatformRelay'),'CloudCPA email relay path must remain explicit')
 must(email.includes('myTenantId === CLOUDCPA_TENANT_ID && !gmailConnected'),'CloudCPA relay must be tenant-scoped')
 must(email.includes('isNashville && (m365Connected ? ('),'M365 UI must remain behind an exact Nashville guard if shared code is present')
+
+must(appContext.includes('This account does not have an active TaxRes-family office in this CRM.'),'Authenticated users with no active central tenant must fail closed')
+must(!esign.includes('nashville-esign-mail'),'Central e-sign must never invoke Nashville mail')
+must(!i18n.includes('Nashville Tax Solutions'),'Central translation bundle must not carry Nashville UI copy')
+must(manageBooking.includes('loadFirmBrandingPublic(rec?.tenant_id)'),'Manage Booking must brand from the booking tenant')
+
+for(const asset of [
+  'public/cloudcpa-logo.png',
+  'public/taxrescrm-logo.png',
+  'public/taxrescrm-favicon.png',
+  'public/templates/2848_Pers_RC.pdf',
+  'public/templates/2848_RC_Biz.pdf',
+  'public/templates/8821_Pers_RC.pdf',
+  'public/templates/8821_Biz_RC.pdf',
+  'public/templates/433A_Blank.pdf',
+  'public/templates/433B_Blank.pdf',
+  'public/templates/433D_Blank.pdf',
+  'public/templates/433F_Blank.pdf',
+  'public/templates/433H_Blank.pdf',
+  'public/templates/656L_Blank.pdf'
+]){
+  must(fs.existsSync(asset),`Required central-family asset missing: ${asset}`)
+}
+
+must(quarantine.includes("status='cancelled'"),'Legacy Nashville central tenant must be disabled without deleting history')
+must(quarantine.includes('as restrictive for all to anon, authenticated'),'Legacy tenant must have a restrictive RLS quarantine wall')
+must(quarantine.includes('central_legacy_nashville_quarantine'),'Legacy quarantine policy must be installed on tenant tables')
+must(quarantine.includes('financial_intake_save_unchecked'),'Financial-intake draft save must be guarded')
+must(quarantine.includes('booking_create_unchecked'),'Public booking creation must be guarded')
+must(quarantine.includes('booking_get_config_unchecked'),'Public booking config must be guarded')
+must(quarantine.includes('booking_get_slots_unchecked'),'Public booking slots must be guarded')
+must(quarantine.includes('emp_login_unchecked'),'Employee portal login must be guarded')
+must(quarantine.includes('kiosk_login_unchecked'),'Kiosk login must be guarded')
+must(quarantine.includes("'tenant_id',c.tenant_id::text"),'Manage-booking RPC must return tenant identity')
+must(quarantine.includes('booking_note_and_rep(')&&quarantine.includes('r.tenant_id'),'Booking cancellation notification must keep tenant scope')
+must(quarantine.includes('Tenant is not available for impersonation'),'Platform admin cannot jump into a cancelled/quarantined tenant')
+must(quarantine.includes('get_branding_by_email_domain'),'Pre-login branding must be tenant-status guarded')
+must(!quarantine.includes('delete from public.clients'),'Quarantine must preserve legacy client history')
+must(!quarantine.includes('delete from public.payments'),'Quarantine must preserve legacy payment history')
+must(!quarantine.includes('delete from public.cases'),'Quarantine must preserve legacy case history')
 
 if(failures.length){
   failures.forEach(x=>console.error('CENTRAL FAMILY AUDIT FAIL:',x))
