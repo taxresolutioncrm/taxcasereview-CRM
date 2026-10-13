@@ -18,6 +18,7 @@ const esign=read('src/pages/Esign.jsx')
 const i18n=read('src/lib/i18n.js')
 const manageBooking=read('src/pages/ManageBooking.jsx')
 const quarantine=read('supabase/quarantine/central_legacy_nashville.sql')
+const centralMetrics=read('supabase/quarantine/central_family_metrics_no_nashville.sql')
 const retiredCentralFns=[
   'supabase/functions/m365-sync/index.ts',
   'supabase/functions/m365-oauth-start/index.ts',
@@ -114,6 +115,10 @@ must(quarantine.includes('get_branding_by_email_domain'),'Pre-login branding mus
 must(!quarantine.includes('delete from public.clients'),'Quarantine must preserve legacy client history')
 must(!quarantine.includes('delete from public.payments'),'Quarantine must preserve legacy payment history')
 must(!quarantine.includes('delete from public.cases'),'Quarantine must preserve legacy case history')
+must(centralMetrics.includes('products":["tax_case_review","cloudcpa"]'),'Central family metrics must request TCR + CloudCPA only')
+must(!centralMetrics.includes('products":["tax_case_review","nashville"'),'Central family metrics must not request Nashville')
+must(!centralMetrics.includes('c_nash'),'Central family metrics must not define a Nashville tenant constant')
+must(centralMetrics.includes('from public, anon'),'Central family metrics must revoke anonymous execution')
 
 for(const fn of retiredCentralFns){
   must(fn.includes('CENTRAL_TAXRES_NASHVILLE_RETIRED'),'Nashville-only central Edge Function source must stay retired')
