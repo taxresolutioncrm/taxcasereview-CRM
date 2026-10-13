@@ -115,6 +115,10 @@ export function AppProvider({ children }) {
   const [perms, setPerms]       = useState(null)   // per-section perm object from DB
   const [employeeName, setEmployeeName] = useState('')   // employees.name for the logged-in user — used to scope "my own leads" for Tax Advisor
   const [checking, setChecking] = useState(true)
+  const [realtimeOk, setRealtimeOk] = useState(true)
+  const wakeInFlightRef = useRef(false)
+  const lastWakeAtRef = useRef(0)
+  const hiddenAtRef = useRef(0)
   const [toast, setToast]       = useState({ msg: '', type: 'ok', show: false })
   const [modal, setModal]       = useState({ open: false, title: '', body: null })
   const [searchQ, setSearchQ]   = useState('')
@@ -229,6 +233,104 @@ export function AppProvider({ children }) {
     })
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  // Recover cleanly when Chrome wakes a backgrounded/idle tab. Browser timer
+  // throttling can leave Auth looking signed-in while the underlying token or
+  // Realtime websocket is stale. Revalidate the existing session and tenant,
+  // then wake the shared Realtime client without reloading the current page.
+  useEffect(() => {
+    let cancelled = false
+
+    async function recoverFromIdle(reason = 'focus') {
+      if (!user?.email || cancelled || wakeInFlightRef.current) return
+
+      const now = Date.now()
+      // focus + visibilitychange commonly fire together; coalesce them.
+      if (now - lastWakeAtRef.current < 1500) return
+      lastWakeAtRef.current = now
+      wakeInFlightRef.current = true
+
+      try {
+        const { data: sessionData, error: sessionErr } = await supabase.auth.getSession()
+        if (sessionErr) throw sessionErr
+        let session = sessionData?.session || null
+
+        if (!session) {
+          setUser(null)
+          setRealtimeOk(false)
+          return
+        }
+
+        // If the access token is already expired or close to expiry, refresh it
+        // explicitly. Auto-refresh timers can be throttled while a tab sleeps.
+        const expiresAtMs = Number(session.expires_at || 0) * 1000
+        if (!expiresAtMs || expiresAtMs - Date.now() < 2 * 60 * 1000) {
+          const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession()
+          if (refreshErr) throw refreshErr
+          session = refreshed?.session || session
+        }
+
+        if (!session?.user) {
+          setUser(null)
+          setRealtimeOk(false)
+          return
+        }
+
+        setUser(session.user)
+
+        // Re-establish the tenant-dependent state before page queries resume.
+        await Promise.allSettled([
+          loadRole(session.user.email),
+          loadBrandColor(),
+          loadFirmBranding(),
+          checkTenantStatus(),
+        ])
+
+        // A silently-stale socket does not emit CLOSED/CHANNEL_ERROR. Force a
+        // clean reconnect only after the tab was genuinely backgrounded long
+        // enough to be throttled; a normal focus just ensures the socket is up.
+        const backgroundedMs = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0
+        if (backgroundedMs > 30_000) {
+          try { supabase.realtime.disconnect() } catch (_) {}
+        }
+        try { supabase.realtime.connect() } catch (_) {}
+
+        setRealtimeOk(true)
+        window.dispatchEvent(new CustomEvent('taxres:wake', {
+          detail: { reason, backgroundedMs }
+        }))
+      } catch (e) {
+        console.error('[idle-wake] recovery failed:', e?.message || e)
+        setRealtimeOk(false)
+        // Do not destroy a still-valid visible session because of a temporary
+        // network failure. The next focus/visibility event retries recovery.
+      } finally {
+        wakeInFlightRef.current = false
+        hiddenAtRef.current = 0
+      }
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now()
+        return
+      }
+      recoverFromIdle('visibility')
+    }
+    const onFocus = () => recoverFromIdle('focus')
+    const onOnline = () => recoverFromIdle('online')
+
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('online', onOnline)
+
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [user?.email])
 
   // ── Team Chat visual notifications ────────────────────────────────────
   // A DM's channel is 'dm_<recipient employee id>', so a direct message is
@@ -373,10 +475,12 @@ export function AppProvider({ children }) {
             .subscribe(status => {
               if (cancelled) return
               if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setRealtimeOk(false)
                 supabase.removeChannel(ch)
                 attempt = 0 // successful subscribe happened before this drop — reset backoff
                 pendingTimeouts.push(setTimeout(create, 1500))
               } else if (status === 'SUBSCRIBED') {
+                setRealtimeOk(true)
                 attempt = 0
               }
             })
@@ -384,6 +488,7 @@ export function AppProvider({ children }) {
         } catch (e) {
           attempt += 1
           if (attempt > 10) {
+            setRealtimeOk(false)
             console.error(`[realtime] ${name} failed ${attempt} times in a row, giving up until next page load:`, e.message)
             return
           }
@@ -632,8 +737,6 @@ export function AppProvider({ children }) {
     setPerms(null)
     setEmployeeName('')
   }, [])
-
-  const realtimeOk = true
 
   return (
     <AppContext.Provider value={{
