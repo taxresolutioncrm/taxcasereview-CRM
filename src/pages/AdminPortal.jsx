@@ -483,6 +483,29 @@ async function loadPlatformOfficeRowsFresh() {
     }
   }
 
+  // Aggregate existing office data into the collapsible product header.
+  // Unknown values remain null; revenue is sourced only from the central billing overlay.
+  const productOfficeTotals = productKey => {
+    const offices = rows.filter(row => row.product === productKey && row.counts_as_office !== false)
+    const sumKnown = key => {
+      const known = offices.map(row => row[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)))
+      return known.length ? known.reduce((sum,v) => sum + Number(v), 0) : null
+    }
+    const recent = offices.map(row => row.last_activity).filter(Boolean)
+      .map(value => new Date(value).getTime()).filter(Number.isFinite)
+    return {
+      employee_count:sumKnown('employee_count'),
+      billing_seats:sumKnown('billing_seats'),
+      client_count:sumKnown('client_count'),
+      cases_count:sumKnown('cases_count'),
+      transaction_count:sumKnown('transaction_count'),
+      storage_bytes:sumKnown('storage_bytes'),
+      total_collected:sumKnown('total_collected'),
+      effective_monthly:sumKnown('effective_monthly'),
+      last_activity:recent.length ? new Date(Math.max(...recent)).toISOString() : null,
+    }
+  }
+
   for (const product of portfolioProducts) {
     const cfg = product.product_id === 'taxres_crm'
       ? { label:product.name || 'TaxRes CRM', color:'#2563EB', appUrl:product.app_url || 'https://taxrescrm.app' }
@@ -499,24 +522,25 @@ async function loadPlatformOfficeRowsFresh() {
       brand_color:cfg.color,
       app_url:product.app_url || cfg.appUrl || null,
       is_product_main:true,
+      ...productOfficeTotals(product.product_id),
       is_demo:false,
       row_kind:'main',
       counts_as_office:false,
       product_sort:productSortByKey.get(product.product_id) ?? 9999,
       row_sort:0,
-      employee_count:null,
-      billing_seats:null,
+
+
       registry_seat_hint:null,
-      client_count:null,
+
       lead_count:null,
-      cases_count:null,
-      storage_bytes:null,
-      total_collected:null,
-      transaction_count:null,
+
+
+
+
       status:'active',
       plan_tier:'Main CRM',
-      effective_monthly:null,
-      last_activity:null,
+
+
     })
   }
 
@@ -1228,9 +1252,9 @@ function Overview() {
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:600 }}>{r.total_collected == null ? '—' : `$${Number(r.total_collected).toLocaleString('en-US',{maximumFractionDigits:0})}`}</td>
                 <td style={{ ...S.td, color:'#10b981', fontWeight:700 }}>
-                  {r.is_product_main ? '—' : (r.effective_monthly!=null ? `$${Number(r.effective_monthly).toFixed(0)}/mo` : '—')}
+                  {r.effective_monthly!=null ? `${Number(r.effective_monthly).toFixed(0)}/mo` : '—'}
                 </td>
-                <td style={{ ...S.td, color:'#475569' }}>{r.is_product_main ? '—' : fmtAgo(r.last_activity)}</td>
+                <td style={{ ...S.td, color:'#475569' }}>{fmtAgo(r.last_activity)}</td>
                 <td style={{
                   ...S.td,
                   position:'sticky', right:0, zIndex:2,
