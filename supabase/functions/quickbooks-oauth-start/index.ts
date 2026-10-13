@@ -5,7 +5,6 @@ const NASHVILLE_DEDICATED_TENANT = '489ace07-1a6b-4864-833a-4f8420568b40'
 const ALLOWED_APP_ORIGINS = new Set([
   'https://taxrescrm.app',
   'https://www.taxrescrm.app',
-  'https://nashville.taxrescrm.app',
 ])
 
 function appOrigin(req: Request) {
