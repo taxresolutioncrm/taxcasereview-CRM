@@ -531,6 +531,9 @@ async function loadPlatformOfficeRowsFresh() {
 
 
       registry_seat_hint:null,
+      // Main CRM rows are structural group headers, not billable offices.
+      // Never synthesize product-level MRR here.
+      effective_monthly:null,
 
       lead_count:null,
 
