@@ -174,7 +174,6 @@ async function loadPlatformOfficeRowsFresh() {
   // billing source, while platform-metrics owns usage counts and tenant storage.
   const taxResTenantFeeds = [
     { key:'tax_case_review', name:'Tax Case Review' },
-    { key:'nashville', name:'Nashville Tax Solutions' },
     { key:'cloudcpa', name:'CloudCPA Inc' },
     { key:'demo', name:'Tax Res CRM Demo' },
   ]
