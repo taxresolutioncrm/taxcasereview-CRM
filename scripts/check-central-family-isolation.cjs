@@ -1,4 +1,3 @@
-const fs = require('fs')
 const fs=require('fs')
 
 const read=p=>fs.readFileSync(p,'utf8')
@@ -20,6 +19,10 @@ const i18n=read('src/lib/i18n.js')
 const manageBooking=read('src/pages/ManageBooking.jsx')
 const quarantine=read('supabase/quarantine/central_legacy_nashville.sql')
 const centralMetrics=read('supabase/quarantine/central_family_metrics_no_nashville.sql')
+const storageIsolation=read('supabase/quarantine/central_storage_tenant_isolation.sql')
+const documentsPage=read('src/pages/Documents.jsx')
+const clientsPage=read('src/pages/Clients.jsx')
+const screenShare=read('src/context/ScreenShareContext.jsx')
 const retiredCentralFns=[
   'supabase/functions/m365-sync/index.ts',
   'supabase/functions/m365-oauth-start/index.ts',
@@ -120,6 +123,14 @@ must(centralMetrics.includes('products":["tax_case_review","cloudcpa"]'),'Centra
 must(!centralMetrics.includes('products":["tax_case_review","nashville"'),'Central family metrics must not request Nashville')
 must(!centralMetrics.includes('c_nash'),'Central family metrics must not define a Nashville tenant constant')
 must(centralMetrics.includes('from public, anon'),'Central family metrics must revoke anonymous execution')
+must(storageIsolation.includes('storage_object_tenants'),'Legacy storage objects must be mapped to tenant ownership')
+must(storageIsolation.includes("split_part(name,'/',1) = public.current_tenant_id()::text"),'New storage objects must be tenant-prefixed')
+must(storageIsolation.includes('documents_tenant_select'),'Documents bucket must use tenant-scoped policies')
+must(storageIsolation.includes('training_recordings_tenant_select'),'Training recordings bucket must use tenant-scoped policies')
+must(storageIsolation.includes('firm_assets_tenant_update'),'Firm asset writes must be tenant-scoped')
+must(documentsPage.includes('${myTenantId}/docs/${ownerKey}'),'Documents page must tenant-prefix uploads')
+must(clientsPage.includes('${myTenantId}/docs/${ownerKey}'),'Client page must tenant-prefix uploads')
+must(screenShare.includes('${tenantId}/${filename}'),'Training recorder must tenant-prefix uploads')
 
 for(const fn of retiredCentralFns){
   must(fn.includes('CENTRAL_TAXRES_NASHVILLE_RETIRED'),'Nashville-only central Edge Function source must stay retired')
