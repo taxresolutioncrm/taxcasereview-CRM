@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const NASHVILLE_PROOF_URL='https://ydrvncdedgjtcprczwpu.supabase.co/functions/v1/taxres-family-admin-proof'
-const PASSWORD_PAGE='https://taxrescrm.app/family-password'
+const PASSWORD_PAGE='https://nashville.taxrescrm.app/reset-password'
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'}
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors})
 
