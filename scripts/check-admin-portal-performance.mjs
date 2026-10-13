@@ -42,7 +42,7 @@ requireMarker("const totalSeats   = operatingStats.reduce((s,r) => s + effective
 requireMarker("p_seats:null", 'Live staff counts must not be written back into registry seats')
 requireMarker("is_product_main:true", 'Every active CRM product must receive a main CRM row')
 requireMarker("row_kind:'main'", 'Main CRM hierarchy classification is missing')
-requireMarker("effective_monthly:null", 'Main CRM structural rows must not fabricate zero-dollar MRR')
+requireMarker("effective_monthly:sumKnown('effective_monthly')", 'Main CRM totals must aggregate only known child-office MRR and preserve unknown as null')
 requireMarker("row_kind:row.is_demo ? 'demo' : 'customer'", 'Demo/customer hierarchy classification is missing')
 requireMarker("counts_as_office:false", 'Synthetic main CRM rows must stay out of office KPIs')
 requireMarker("const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)", 'Overview KPI scope must exclude synthetic main CRM rows')

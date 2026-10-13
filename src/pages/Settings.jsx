@@ -123,7 +123,9 @@ export default function Settings() {
     const file = e.target.files?.[0]
     if (!file || !user?.email) return
     setMySigLogoUploading(true)
-    const path = `signatures/${user.email.replace(/[^a-zA-Z0-9]/g,'-')}-${Date.now()}-${file.name}`
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) { setMySigLogoUploading(false); showToast('Could not resolve this office', 'err'); return }
+    const path = `${tid}/signatures/${user.email.replace(/[^a-zA-Z0-9]/g,'-')}-${Date.now()}-${file.name}`
     const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true })
     if (!error) {
       const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
@@ -308,6 +310,10 @@ export default function Settings() {
         delete payload.m365_client_id
         delete payload.m365_client_secret
         delete payload.m365_tenant_id
+        delete payload.verizon_api_key
+        delete payload.verizon_account_id
+        delete payload.verizon_phone_number
+        delete payload.verizon_api_url
       }
       const { data: existing, error: fetchErr } = await supabase.from('settings').select('id').eq('tenant_id', tid).maybeSingle()
       if (fetchErr) throw fetchErr

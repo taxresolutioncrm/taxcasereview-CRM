@@ -782,7 +782,9 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
     if (file) {
       const folderKey = String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')
       const ownerKey = clientId ? String(clientId) : clientName.replace(/\s+/g,'-')
-      const path = `docs/${ownerKey}/${folderKey}/${Date.now()}_${file.name}`
+      if (!myTenantId) { showToast('Could not resolve this office'); setSaving(false); return }
+      const safeFileName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
+      const path = `${myTenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${safeFileName}`
       storagePath = path
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }

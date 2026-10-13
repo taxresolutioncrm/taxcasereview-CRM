@@ -215,7 +215,8 @@ export default function Documents() {
       const ownerKey = entityClientId || entityName.replace(/[^a-zA-Z0-9._-]+/g,'-') || 'general'
       const folderKey = docType.replace(/[^a-zA-Z0-9._-]+/g,'-') || 'Documents'
       const originalName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const path = `docs/${ownerKey}/${folderKey}/${Date.now()}_${originalName}`
+      if (!myTenantId) { showToast('Could not resolve this office'); setSaving(false); return }
+      const path = `${myTenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${originalName}`
       storagePath = path
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }

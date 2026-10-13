@@ -5,8 +5,8 @@ import { supabase } from '../lib/supabase'
 import { FIRM, loadFirmBranding } from '../lib/firmBranding'
 import EsignManagerAuditBridge from '../components/EsignManagerAuditBridge'
 
-// Shared by Tax Case Review, Nashville, demo tenants, current TaxRes offices,
-// and future TaxRes offices. The original tax-specific signing workflow stays
+// Shared by Tax Case Review, CloudCPA, demo tenants, and central TaxRes-family offices.
+// The original tax-specific signing workflow stays
 // untouched; the universal PDF contract flow is exposed as a second option.
 export default function TaxOfficeEsign(){
   const [mode,setMode]=useState('tax')

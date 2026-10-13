@@ -550,9 +550,13 @@ export function AppProvider({ children }) {
     }
     const { data: tenantId } = await supabase.rpc('current_tenant_id')
     if (!tenantId) {
+      await supabase.auth.signOut()
+      setUser(null)
       setRole('Tax Associate')
       setEmployeeName('')
       setPerms(null)
+      alert('This account does not have an active TaxRes-family office in this CRM.')
+      window.location.href = '/login'
       return
     }
     const { data } = await supabase
