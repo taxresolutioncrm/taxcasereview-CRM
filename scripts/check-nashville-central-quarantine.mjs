@@ -28,7 +28,7 @@ for(const fn of ['booking_get_config','booking_get_public_meta','booking_get_slo
   need(migration.includes('create or replace function public.'+fn),'public surface '+fn+' is wrapped by Nashville quarantine')
 }
 need(m365.includes('status: 410') && !m365.includes(NASH),'central M365 worker is retired and has no Nashville data path')
-need(qb.includes('NASHVILLE_DEDICATED_TENANT') && qb.includes("status || '').toLowerCase() !== 'active'") && qb.includes('Nashville QuickBooks is managed in the dedicated Nashville CRM.'),'central QuickBooks OAuth rejects stale Nashville employee context')
+need(qb.includes("admin.rpc('central_nashville_quarantined'") && qb.includes("status || '').toLowerCase() !== 'active'") && qb.includes('Nashville QuickBooks is managed in the dedicated Nashville CRM.'),'central QuickBooks OAuth rejects stale Nashville employee context')
 need(!formaIntent.includes(NASH) && !formaConfirm.includes(NASH),'central FormaCorp Stripe tenant set excludes Nashville')
 need(!migration.includes('storage.objects') && !migration.includes('office_agreements') && !migration.includes('romylabs_office_signing_documents'),'quarantine preserves legal/control-plane storage history')
 
