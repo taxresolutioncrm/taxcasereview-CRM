@@ -1,6 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const NASHVILLE_PROOF_URL='https://ydrvncdedgjtcprczwpu.supabase.co/functions/v1/taxres-family-admin-proof'
 const PASSWORD_PAGE='https://taxrescrm.app/family-password'
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'}
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors})
@@ -9,6 +8,24 @@ async function findUser(admin:any,email:string){
   const {data,error}=await admin.rpc('taxres_auth_user_by_email',{target_email:email})
   if(error) throw error
   return Array.isArray(data)&&data.length ? data[0] : null
+}
+
+async function dedicatedProofUrl(admin:any){
+  const {data:office}=await admin.from('romylabs_office_registry')
+    .select('external_office_id')
+    .contains('metadata',{runtime_key:'nashville'})
+    .eq('status','active')
+    .limit(1)
+    .maybeSingle()
+  if(!office?.external_office_id) throw new Error('Dedicated office registry is unavailable')
+  const {data:cfg}=await admin.from('tenant_supabase_config')
+    .select('supabase_url')
+    .eq('tenant_id',office.external_office_id)
+    .limit(1)
+    .maybeSingle()
+  const base=String(cfg?.supabase_url||'').replace(/\/$/,'')
+  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(base)) throw new Error('Dedicated office runtime is unavailable')
+  return base+'/functions/v1/taxres-family-admin-proof'
 }
 
 Deno.serve(async(req)=>{
@@ -37,7 +54,7 @@ Deno.serve(async(req)=>{
       const proofPayload=action==='sync_email'
         ? {action:'email_change',target_id:String(body?.employee_id||''),expected_email:String(body?.old_email||'').trim().toLowerCase(),new_email:String(body?.new_email||'').trim().toLowerCase()}
         : {target_email:targetEmail}
-      const proofRes=await fetch(NASHVILLE_PROOF_URL,{
+      const proofRes=await fetch(await dedicatedProofUrl(admin),{
         method:'POST',
         headers:{Authorization:nashAuth,'Content-Type':'application/json'},
         body:JSON.stringify(proofPayload)
