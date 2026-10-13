@@ -1,22 +1,20 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SECRET_KEY='nashville_system_mail_relay_v1'
-const NASHVILLE_HOST='ydrvncdedgjtcprczwpu.supabase.co'
-const NASHVILLE_LOGO='https://mpxgxfqdbquzkrvvejkh.supabase.co/storage/v1/object/public/firm-assets/logo-489ace07-1a6b-4864-833a-4f8420568b40.png'
 const ALLOWED_KINDS=new Set(['esign_request','esign_reminder','esign_signed_copy','esign_internal_notification','employee_access'])
 const safe=(v:any)=>String(v??'').replace(/[\r\n]+/g,' ').trim()
 const enc=(s:string)=>!s||/^[\x00-\x7F]*$/.test(s)?s:(()=>{const u=new TextEncoder().encode(s);let b='';u.forEach(x=>b+=String.fromCharCode(x));return '=?UTF-8?B?'+btoa(b)+'?='})()
 const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}})
 
-function brandNashvilleHtml(subject:string,html:string){
+function brandNashvilleHtml(subject:string,html:string,firmName:string,logoUrl:string){
   if(/<!doctype html/i.test(html) || /data-nashville-branded=["']1["']/i.test(html)) return html
-  const safeSubject=String(subject||'Nashville Tax Solutions').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch))
+  const safeSubject=String(subject||firmName||'Nashville Tax Solutions').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch))
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f3f6fa;font-family:Arial,Helvetica,sans-serif;color:#172033">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fa;padding:32px 12px">
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #dce6ef;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(7,18,31,.10)">
         <tr><td style="background:#0b2136;padding:24px 32px;text-align:center">
-          <img src="${NASHVILLE_LOGO}" alt="Nashville Tax Solutions" style="display:inline-block;max-width:230px;max-height:72px;width:auto;height:auto">
+          <img src="${logoUrl}" alt="${firmName}" style="display:inline-block;max-width:230px;max-height:72px;width:auto;height:auto">
         </td></tr>
         <tr><td style="padding:30px 36px 8px">
           <div style="font-size:22px;font-weight:800;line-height:1.3;color:#10243a;margin:0 0 18px">${safeSubject}</div>
@@ -25,7 +23,7 @@ function brandNashvilleHtml(subject:string,html:string){
           ${html}
         </td></tr>
         <tr><td style="border-top:1px solid #e7edf3;background:#f8fafc;padding:18px 36px;text-align:center">
-          <div style="font-size:12px;font-weight:700;color:#43576b">Nashville Tax Solutions</div>
+          <div style="font-size:12px;font-weight:700;color:#43576b">${firmName}</div>
           <div style="font-size:11px;color:#8a99a8;margin-top:5px">Secure communication sent through the Nashville Tax Solutions CRM.</div>
           <div style="font-size:11px;color:#a3afbb;margin-top:4px">This is an automated message. Please do not forward secure signing or account-access links.</div>
         </td></tr>
@@ -84,6 +82,31 @@ async function sendSmtp(opts:any){
   await write('QUIT');conn.close()
 }
 
+async function dedicatedOfficeRuntime(admin:any){
+  const {data:office}=await admin.from('romylabs_office_registry')
+    .select('external_office_id,firm_name,primary_contact_email')
+    .contains('metadata',{runtime_key:'nashville'})
+    .eq('status','active')
+    .limit(1)
+    .maybeSingle()
+  if(!office?.external_office_id) throw new Error('Dedicated Nashville registry unavailable')
+  const {data:cfg}=await admin.from('tenant_supabase_config')
+    .select('supabase_url,app_url')
+    .eq('tenant_id',office.external_office_id)
+    .limit(1)
+    .maybeSingle()
+  const supabaseBase=String(cfg?.supabase_url||'').replace(/\/$/,'')
+  const appBase=String(cfg?.app_url||'').replace(/\/$/,'')
+  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseBase)) throw new Error('Dedicated Nashville storage host unavailable')
+  if(!/^https:\/\//i.test(appBase)) throw new Error('Dedicated Nashville app host unavailable')
+  return {
+    storageHost:new URL(supabaseBase).hostname,
+    firmName:String(office.firm_name||'Nashville Tax Solutions'),
+    replyTo:String(office.primary_contact_email||'admin@nashvilletaxsolutions.com'),
+    logoUrl:appBase+'/logo.png',
+  }
+}
+
 Deno.serve(async(req)=>{
   if(req.method!=='POST')return json({error:'POST only'},405)
   try{
@@ -92,10 +115,11 @@ Deno.serve(async(req)=>{
     const supplied=req.headers.get('x-nashville-relay-secret')||''
     const {data:secretRow}=await admin.from('platform_internal_secrets').select('secret').eq('key',SECRET_KEY).maybeSingle()
     if(!secretRow?.secret||supplied!==secretRow.secret)return json({error:'Unauthorized'},401)
+    const runtime=await dedicatedOfficeRuntime(admin)
     const body=await req.json().catch(()=>({}))
     const kind=safe(body.kind)
     if(!ALLOWED_KINDS.has(kind))return json({error:'Unsupported Nashville mail kind'},400)
-    const to=safe(body.to).toLowerCase(),subject=safe(body.subject).slice(0,300),rawHtml=String(body.html||''),html=brandNashvilleHtml(subject,rawHtml)
+    const to=safe(body.to).toLowerCase(),subject=safe(body.subject).slice(0,300),rawHtml=String(body.html||''),html=brandNashvilleHtml(subject,rawHtml,runtime.firmName,runtime.logoUrl)
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)||!subject||!html)return json({error:'Recipient, subject, and html required'},400)
     if(new TextEncoder().encode(html).byteLength>1024*1024)return json({error:'Email body too large'},413)
     const attachments:any[]=[]
@@ -103,7 +127,7 @@ Deno.serve(async(req)=>{
     for(const a of (Array.isArray(body.attachments)?body.attachments:[]).slice(0,10)){
       const raw=safe(a?.url);if(!raw)continue
       let u:URL;try{u=new URL(raw)}catch{return json({error:'Invalid attachment URL'},400)}
-      if(u.protocol!=='https:'||u.hostname!==NASHVILLE_HOST||!u.pathname.startsWith('/storage/v1/object/'))return json({error:'Attachment host not allowed'},400)
+      if(u.protocol!=='https:'||u.hostname!==runtime.storageHost||!u.pathname.startsWith('/storage/v1/object/'))return json({error:'Attachment host not allowed'},400)
       const rr=await fetch(u.toString());if(!rr.ok)return json({error:'Could not load attachment'},400)
       const bytes=new Uint8Array(await rr.arrayBuffer());total+=bytes.length
       if(total>20*1024*1024)return json({error:'Attachments exceed 20 MB'},413)
@@ -116,7 +140,7 @@ Deno.serve(async(req)=>{
     await sendSmtp({
       host:t.host||'mail.taxrescrm.net',port:Number(t.port||465),ssl:true,
       username:t.username,password:t.password,fromAddress:t.from_address||t.username,
-      fromName:'Nashville Tax Solutions via TaxRes CRM',replyTo:'admin@nashvilletaxsolutions.com',
+      fromName:runtime.firmName+' via TaxRes CRM',replyTo:runtime.replyTo,
       to,subject,html,attachments
     })
     return json({success:true,via:'taxres_stalwart_relay',kind})
