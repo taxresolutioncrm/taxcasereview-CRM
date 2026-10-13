@@ -119,9 +119,9 @@ export async function loadFirmBranding() {
     // their demo should not see another firm's name above their own CRM. The
     // static index.html title remains the pre-login fallback. Admin Portal is
     // explicitly excluded from tenant browser branding.
+    FIRM.logoUrl = s.logourl || ''
     setBrowserTitle(`${name} — IRS Resolution CRM`)
     setFavicon(s.tenant_id, name)
-    FIRM.logoUrl = s.logourl || ''
     FIRM.address = address
     FIRM.phone = s.phone || s.firmphone || ''
     FIRM.email = s.email || s.firmemail || ''
