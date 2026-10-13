@@ -1,7 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const NASHVILLE_DEDICATED_TENANT = '489ace07-1a6b-4864-833a-4f8420568b40'
-
 const ALLOWED_APP_ORIGINS = new Set([
   'https://taxrescrm.app',
   'https://www.taxrescrm.app',
@@ -45,7 +43,8 @@ Deno.serve(async req => {
     const admin = createClient(url, service)
     const { data: emp } = await admin.from('employees').select('tenant_id,role,access,status').eq('email', user.email).maybeSingle()
     if (!emp?.tenant_id || String(emp.status || '').toLowerCase() !== 'active') return json({ error: 'No active office access.' }, 403)
-    if (String(emp.tenant_id) === NASHVILLE_DEDICATED_TENANT) return json({ error: 'Nashville QuickBooks is managed in the dedicated Nashville CRM.' }, 410)
+    const { data: isDedicatedNashville } = await admin.rpc('central_nashville_quarantined', { p_tenant: emp.tenant_id })
+    if (isDedicatedNashville) return json({ error: 'Nashville QuickBooks is managed in the dedicated Nashville CRM.' }, 410)
     const privileged = ['super admin','admin'].includes(String(emp.role || emp.access || '').toLowerCase())
     if (!privileged) return json({ error: 'Admin access required.' }, 403)
 
