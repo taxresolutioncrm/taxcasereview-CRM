@@ -42,7 +42,7 @@ const checks=[
   ['Nashville invite validates Nashville admin',invite.includes('taxres-family-admin-proof')&&invite.includes('Nashville Admin verification failed')],
   ['Nashville access validates the exact bearer token',nashAccess.includes('auth.getUser(token)')],
   ['Nashville admin proof validates the exact bearer token',nashProof.includes('auth.getUser(token)')],
-  ['Nashville invite points to family password page',invite.includes("PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
+  ['Nashville invite points only to Nashville password page',invite.includes("PASSWORD_PAGE='https://nashville.taxrescrm.app/reset-password'")&&!invite.includes("PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
   ['config enables JWT on issue',config.includes('[functions.taxres-family-sso-issue]\nverify_jwt = true')],
   ['custom-code endpoints keep gateway JWT off',config.includes('[functions.taxres-family-sso-redeem]\nverify_jwt = false')&&config.includes('[functions.taxres-family-admin-invite]')],
   ['central employee invite requires authenticated caller',config.includes('[functions.invite-employee]\nverify_jwt = true')&&inviteEmployee.includes('Employee invite permission denied')],
