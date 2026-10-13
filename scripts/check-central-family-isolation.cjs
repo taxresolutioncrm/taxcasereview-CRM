@@ -148,6 +148,7 @@ const nashvilleSystemMail=read('supabase/functions/nashville-system-mail-relay/i
 must(nashvilleSystemMail.includes("SECRET_KEY='nashville_system_mail_relay_v1'"),'Nashville system sender must require the dedicated bridge secret')
 must(nashvilleSystemMail.includes("romylabs_stalwart_transport_for_product")&&nashvilleSystemMail.includes("p_product_key:'taxres_crm'"),'Nashville system sender may use only the TaxResCRM mail transport')
 must(nashvilleSystemMail.includes("kind==='employee_access'")||nashvilleSystemMail.includes("kind==='employee_access'"),'Nashville system sender must explicitly gate employee access mail')
+must(nashvilleSystemMail.includes('https://nashville.taxrescrm.app/reset-password')&&!nashvilleSystemMail.includes('https://taxrescrm.app/family-password'),'Nashville system sender must only allow Nashville employee-facing password URLs')
 must(nashvilleSystemMail.includes("Nashville branding required")&&nashvilleSystemMail.includes("Foreign brand blocked"),'Nashville system sender must enforce Nashville-only message content')
 must(!nashvilleSystemMail.includes("from('clients')")&&!nashvilleSystemMail.includes("from('employees')"),'TaxResCRM sender must not read Nashville client or employee data')
 

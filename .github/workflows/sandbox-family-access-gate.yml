@@ -5,6 +5,8 @@ on:
     paths:
       - 'src/pages/FamilyPassword.jsx'
       - 'supabase/functions/nashville-system-mail-relay/index.ts'
+      - 'supabase/functions/taxres-family-admin-invite/index.ts'
+      - 'supabase/functions/taxres-family-password-reset/index.ts'
       - 'scripts/check-central-family-isolation.cjs'
       - 'scripts/check-nashville-closeout.cjs'
       - 'scripts/check-taxres-family-auth.mjs'

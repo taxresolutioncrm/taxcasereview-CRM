@@ -7,6 +7,7 @@ const page=read('src/pages/FamilyPassword.jsx')
 const issue=read('supabase/functions/taxres-family-sso-issue/index.ts')
 const redeem=read('supabase/functions/taxres-family-sso-redeem/index.ts')
 const invite=read('supabase/functions/taxres-family-admin-invite/index.ts')
+const reset=read('supabase/functions/taxres-family-password-reset/index.ts')
 const nashProof=read('supabase/functions/taxres-family-admin-proof/index.ts')
 const nashAccess=read('supabase/functions/employee-access-link/index.ts')
 const migration=read('supabase/migrations/20260918221000_taxres_family_sso.sql')
@@ -29,6 +30,8 @@ const checks=[
   ['family password visibly shows the verified account email',page.includes('Verified TaxRes Identity')&&page.includes('verifiedEmail')],
   ['Nashville family password page uses Nashville branding',page.includes('isNashville')&&page.includes('nashville-logo.png')&&page.includes('Nashville Tax Solutions CRM')&&page.includes('powered by TaxResCRM')],
   ['Nashville family password returns to Nashville CRM',page.includes("https://nashville.taxrescrm.app/login?family=ready")],
+  ['Nashville invite broker never exposes central CRM UI',invite.includes("const PASSWORD_PAGE='https://nashville.taxrescrm.app/reset-password'")&&!invite.includes("const PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
+  ['Nashville forgot-password redirect is Nashville-only',reset.includes("const NASHVILLE_REDIRECT='https://nashville.taxrescrm.app/reset-password'")],
   ['family password explains browser profile is separate from TaxRes identity',page.includes('Chrome/Google browser profile does not control this identity')],
   ['family password requires 10 characters',page.includes('password.length<10')],
   ['password recovery stays on family page',ctx.includes("window.location.pathname === '/family-password'")],
@@ -39,7 +42,7 @@ const checks=[
   ['Nashville invite validates Nashville admin',invite.includes('taxres-family-admin-proof')&&invite.includes('Nashville Admin verification failed')],
   ['Nashville access validates the exact bearer token',nashAccess.includes('auth.getUser(token)')],
   ['Nashville admin proof validates the exact bearer token',nashProof.includes('auth.getUser(token)')],
-  ['Nashville invite points to family password page',invite.includes("PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
+  ['Nashville invite points only to Nashville password page',invite.includes("PASSWORD_PAGE='https://nashville.taxrescrm.app/reset-password'")&&!invite.includes("PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
   ['config enables JWT on issue',config.includes('[functions.taxres-family-sso-issue]\nverify_jwt = true')],
   ['custom-code endpoints keep gateway JWT off',config.includes('[functions.taxres-family-sso-redeem]\nverify_jwt = false')&&config.includes('[functions.taxres-family-admin-invite]')],
   ['central employee invite requires authenticated caller',config.includes('[functions.invite-employee]\nverify_jwt = true')&&inviteEmployee.includes('Employee invite permission denied')],
