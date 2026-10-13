@@ -51,6 +51,8 @@ serve(async(req)=>{
     const admin=createClient(supaUrl,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}})
     const {data:emp}=await admin.from('employees').select('tenant_id,role,access,status').ilike('email',user.email).maybeSingle()
     if(!emp?.tenant_id||String(emp.status||'').toLowerCase()!=='active') return json({error:'No active office access for this user'},403)
+    const {data:externalRuntime}=await admin.from('tenant_supabase_config').select('tenant_id').eq('tenant_id',emp.tenant_id).maybeSingle()
+    if(externalRuntime?.tenant_id) return json({error:'This office uses its dedicated CRM for QuickBooks.'},409)
     if(!['super admin','admin'].includes(String(emp.access||emp.role||'').toLowerCase())) return json({error:'Admin access required'},403)
     const tenantId=emp.tenant_id
 
