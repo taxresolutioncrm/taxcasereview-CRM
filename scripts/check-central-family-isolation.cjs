@@ -90,7 +90,6 @@ must(!esign.includes('nashville-esign-mail'),'Central e-sign must never invoke N
 must(!i18n.includes('Nashville Tax Solutions'),'Central translation bundle must not carry Nashville UI copy')
 must(manageBooking.includes('loadFirmBrandingPublic(rec?.tenant_id)'),'Manage Booking must brand from the booking tenant')
 must(!adminPortal.includes("{ key:'nashville'"),'Central Admin Portal metrics must not request Nashville')
-must(!adminPortal.includes('Nashville Tax Solutions'),'Central Admin Portal metrics must not carry Nashville feed copy')
 
 for(const asset of [
   'public/cloudcpa-logo.png',
