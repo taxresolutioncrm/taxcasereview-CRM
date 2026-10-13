@@ -123,7 +123,9 @@ export default function Settings() {
     const file = e.target.files?.[0]
     if (!file || !user?.email) return
     setMySigLogoUploading(true)
-    const path = `signatures/${user.email.replace(/[^a-zA-Z0-9]/g,'-')}-${Date.now()}-${file.name}`
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) { setMySigLogoUploading(false); showToast('Could not resolve this office', 'err'); return }
+    const path = `${tid}/signatures/${user.email.replace(/[^a-zA-Z0-9]/g,'-')}-${Date.now()}-${file.name}`
     const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true })
     if (!error) {
       const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
