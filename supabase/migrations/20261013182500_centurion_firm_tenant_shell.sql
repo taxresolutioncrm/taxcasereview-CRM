@@ -41,33 +41,37 @@ begin
     -- Contact/provider fields are intentionally not overwritten here.
     notes = excluded.notes;
 
-  insert into public.settings (
-    id, tenant_id,
-    name, firmname, website, tagline,
-    firmaddress, address,
-    firmphone, phone,
-    firm_fax_number, fax_number,
-    firmemail, email,
-    logourl, primary_color
-  )
-  values (
-    'tenant_' || replace(v_tenant::text,'-',''),
-    v_tenant,
-    'Centurion Firm',
-    'Centurion Firm',
-    'https://centurionfirm.com/',
-    'Strategic Tax Solutions for the Innovators and Operators of Tomorrow',
-    null, null,
-    null, null,
-    null, null,
-    null, null,
-    null, null
-  )
-  on conflict (tenant_id) do update set
-    name = excluded.name,
-    firmname = excluded.firmname,
-    website = excluded.website,
-    tagline = excluded.tagline;
+  if exists (select 1 from public.settings where tenant_id=v_tenant) then
+    update public.settings
+    set name='Centurion Firm',
+        firmname='Centurion Firm',
+        website='https://centurionfirm.com/',
+        tagline='Strategic Tax Solutions for the Innovators and Operators of Tomorrow'
+    where tenant_id=v_tenant;
+  else
+    insert into public.settings (
+      id, tenant_id,
+      name, firmname, website, tagline,
+      firmaddress, address,
+      firmphone, phone,
+      firm_fax_number, fax_number,
+      firmemail, email,
+      logourl, primary_color
+    )
+    values (
+      'tenant_' || replace(v_tenant::text,'-',''),
+      v_tenant,
+      'Centurion Firm',
+      'Centurion Firm',
+      'https://centurionfirm.com/',
+      'Strategic Tax Solutions for the Innovators and Operators of Tomorrow',
+      null, null,
+      null, null,
+      null, null,
+      null, null,
+      null, null
+    );
+  end if;
 end $$;
 
 -- Guardrail evidence: the new tenant is separate from CloudCPA and TCR.
