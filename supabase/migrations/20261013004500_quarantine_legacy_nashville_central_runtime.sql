@@ -65,6 +65,25 @@ begin
   end if;
 end $$;
 
+-- Defense in depth: the stale operational mirror is retained for history/migration
+-- evidence, but is no longer active in the central runtime.
+update public.tenants
+set status='cancelled', deactivated_at=coalesce(deactivated_at,now())
+where id='489ace07-1a6b-4864-833a-4f8420568b40'::uuid
+  and status<>'cancelled';
+
+update public.employees
+set status='Inactive'
+where tenant_id='489ace07-1a6b-4864-833a-4f8420568b40'::uuid
+  and lower(coalesce(status,''))='active';
+
+update public.settings
+set booking_config=jsonb_set(coalesce(booking_config,'{}'::jsonb),'{enabled}','false'::jsonb,true)
+where tenant_id='489ace07-1a6b-4864-833a-4f8420568b40'::uuid;
+
+delete from public.admin_tenant_overrides
+where tenant_id='489ace07-1a6b-4864-833a-4f8420568b40'::uuid;
+
 create or replace function public.central_nashville_quarantined(p_tenant uuid)
 returns boolean language sql immutable
 as $$ select p_tenant='489ace07-1a6b-4864-833a-4f8420568b40'::uuid $$;
