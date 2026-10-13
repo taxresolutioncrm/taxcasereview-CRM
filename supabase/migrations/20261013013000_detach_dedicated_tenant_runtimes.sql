@@ -518,3 +518,32 @@ where app_private.is_external_tenant(es.tenant_id);
 
 delete from public.admin_tenant_overrides ao
 where app_private.is_external_tenant(ao.tenant_id);
+
+
+-- Provider credentials for dedicated tenants must not remain usable in central.
+update public.accounting_connections a
+set status='disconnected',
+    access_token=null,
+    refresh_token=null,
+    token_expires_at=null,
+    last_sync_result=jsonb_build_object('ok',false,'stage','detached_runtime')
+where app_private.is_external_tenant(a.tenant_id);
+
+update public.settings s
+set
+  qb_client_secret=null,
+  qb_merchant_password=null,
+  qb_merchant_2_password=null,
+  m365_client_secret=null,
+  gmail_client_secret=null,
+  gmail_access_token=null,
+  gmail_refresh_token=null,
+  gmail_token_expiry=null,
+  gmail_last_error=null,
+  logourl=coalesce(
+    (select nullif(trim(c.app_url),'')||'/logo.png'
+     from public.tenant_supabase_config c
+     where c.tenant_id=s.tenant_id),
+    s.logourl
+  )
+where app_private.is_external_tenant(s.tenant_id);
