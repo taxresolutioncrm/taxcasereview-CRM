@@ -44,6 +44,8 @@ Deno.serve(async req => {
     const admin = createClient(url, service)
     const { data: emp } = await admin.from('employees').select('tenant_id,role,access,status').eq('email', user.email).maybeSingle()
     if (!emp?.tenant_id || String(emp.status || '').toLowerCase() !== 'active') return json({ error: 'No active office access.' }, 403)
+    const { data: externalRuntime } = await admin.from('tenant_supabase_config').select('tenant_id').eq('tenant_id', emp.tenant_id).maybeSingle()
+    if (externalRuntime?.tenant_id) return json({ error: 'This office uses its dedicated CRM for QuickBooks.' }, 409)
     const privileged = ['super admin','admin'].includes(String(emp.role || emp.access || '').toLowerCase())
     if (!privileged) return json({ error: 'Admin access required.' }, 403)
 
