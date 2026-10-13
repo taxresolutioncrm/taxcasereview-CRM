@@ -101,8 +101,8 @@ Deno.serve(async(req)=>{
     if(forbidden.some(x=>html.includes(x)||subject.includes(x))) return json({error:'Foreign brand blocked'},400)
     if(kind==='employee_access'){
       if(!html.includes('https://nashville.taxrescrm.app/nashville-logo.png')) return json({error:'Nashville logo required'},400)
-      if(!html.includes('https://taxrescrm.app/family-password')) return json({error:'TaxResCRM family password link required'},400)
-      if(!html.includes('office=nashville')) return json({error:'Nashville office context required'},400)
+      if(!html.includes('https://nashville.taxrescrm.app/reset-password')) return json({error:'Nashville password link required'},400)
+      
     }
 
     const {data:transport,error:transportErr}=await admin.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'taxres_crm'})
