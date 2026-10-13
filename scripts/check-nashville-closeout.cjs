@@ -35,7 +35,7 @@ const checks=[
   ['supabase/functions/quickbooks-oauth-start/index.ts',[
     "com.intuit.quickbooks.accounting",
     "https://taxrescrm.app",
-    "NASHVILLE_DEDICATED_TENANT",
+    "central_nashville_quarantined",
     "Nashville QuickBooks is managed in the dedicated Nashville CRM.",
     "${origin}/auth/quickbooks-callback",
   ]],
@@ -220,7 +220,7 @@ const isolationChecks=[
   ['central M365 email branch is disabled',emailSrc.includes('const isNashville = false // Nashville mailbox runtime is dedicated')],
   ['central M365/Verizon Settings branches are disabled',settingsSrc.includes('const isNashville = false // Nashville runs only in its dedicated CRM')],
   ['shared QuickBooks callback has no Nashville fallback branding',!quickBooksCallbackSrc.includes('Nashville QuickBooks')],
-  ['central QuickBooks OAuth start rejects the dedicated Nashville tenant',quickBooksStartSrc.includes('NASHVILLE_DEDICATED_TENANT')&&quickBooksStartSrc.includes('Nashville QuickBooks is managed in the dedicated Nashville CRM.')],
+  ['central QuickBooks OAuth start rejects the dedicated Nashville tenant',quickBooksStartSrc.includes("admin.rpc('central_nashville_quarantined'")&&quickBooksStartSrc.includes('Nashville QuickBooks is managed in the dedicated Nashville CRM.')],
   ['central QuickBooks OAuth start does not allow Nashville browser origin',!quickBooksStartSrc.includes("'https://nashville.taxrescrm.app'")],
   ['central QuickBooks OAuth callback does not allow Nashville browser origin',!quickBooksOAuthCallbackSrc.includes("'https://nashville.taxrescrm.app'")],
   ['shared QuickBooks sync copy is office-neutral',!quickBooksSyncSrc.includes('Nashville company')],
