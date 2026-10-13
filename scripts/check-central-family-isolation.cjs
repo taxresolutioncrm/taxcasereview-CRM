@@ -18,6 +18,15 @@ const esign=read('src/pages/Esign.jsx')
 const i18n=read('src/lib/i18n.js')
 const manageBooking=read('src/pages/ManageBooking.jsx')
 const quarantine=read('supabase/quarantine/central_legacy_nashville.sql')
+const retiredCentralFns=[
+  'supabase/functions/m365-sync/index.ts',
+  'supabase/functions/m365-oauth-start/index.ts',
+  'supabase/functions/m365-oauth-callback/index.ts',
+  'supabase/functions/m365-mail-gateway/index.ts',
+  'supabase/functions/nashville-system-mail-relay/index.ts',
+  'supabase/functions/nashville-esign-mail/index.ts',
+  'supabase/functions/nashville-esign-reminders/index.ts',
+].map(read)
 
 const failures=[]
 const must=(ok,msg)=>{ if(!ok) failures.push(msg) }
@@ -105,6 +114,12 @@ must(quarantine.includes('get_branding_by_email_domain'),'Pre-login branding mus
 must(!quarantine.includes('delete from public.clients'),'Quarantine must preserve legacy client history')
 must(!quarantine.includes('delete from public.payments'),'Quarantine must preserve legacy payment history')
 must(!quarantine.includes('delete from public.cases'),'Quarantine must preserve legacy case history')
+
+for(const fn of retiredCentralFns){
+  must(fn.includes('CENTRAL_TAXRES_NASHVILLE_RETIRED'),'Nashville-only central Edge Function source must stay retired')
+  must(fn.includes("status: 410"),'Retired Nashville-only central Edge Function must fail closed')
+  must(!fn.includes('SUPABASE_SERVICE_ROLE_KEY'),'Retired Nashville-only central Edge Function must not retain service-role runtime code')
+}
 
 if(failures.length){
   failures.forEach(x=>console.error('CENTRAL FAMILY AUDIT FAIL:',x))
