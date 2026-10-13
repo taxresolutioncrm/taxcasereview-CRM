@@ -19,10 +19,6 @@ const SOURCES = {
     url: 'https://mpxgxfqdbquzkrvvejkh.supabase.co',
     anon: 'sb_publishable_nE5-rNsdH9XabAkbPSd9ug_Pf8MWzcm',
   },
-  nashville: {
-    url: 'https://ydrvncdedgjtcprczwpu.supabase.co',
-    anon: 'sb_publishable_yQ4YkTr03xJWB-BUHlY-TQ_vqVSKGIM',
-  },
 } as const
 
 type SourceKey = keyof typeof SOURCES
