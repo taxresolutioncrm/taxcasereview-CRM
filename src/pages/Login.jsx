@@ -4,16 +4,6 @@ import { supabase } from '../lib/supabase'
 
 const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxrescrm.net', 'romy@taxcasereview.org']
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
-const NASHVILLE_HOST = 'nashville.taxrescrm.app'
-const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'
-const NASHVILLE_EXACT_EMAILS = new Set([
-  'art@nationwideprofessionals.com',
-  'tomas@nationwideprofessionals.com',
-])
-function isNashvilleIdentity(value) {
-  const email = String(value || '').trim().toLowerCase()
-  return email.endsWith('@nashvilletaxsolutions.com') || NASHVILLE_EXACT_EMAILS.has(email)
-}
 function isCentralTaxResHost() {
   const host = window.location.hostname.toLowerCase()
   return host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
@@ -42,6 +32,17 @@ function isTransientAuthError(err) {
     || ['request_timeout','unexpected_failure','temporarily_unavailable'].includes(code)
     || /timeout|timed out|context deadline|unexpected failure|failed to fetch|network|upstream|service unavailable/.test(msg)
 }
+async function dedicatedRuntimeLoginFor(email) {
+  if (!isCentralTaxResHost()) return ''
+  try {
+    const { data } = await supabase.rpc('external_runtime_for_email', { p_email: String(email || '').trim() })
+    const base = String(data?.app_url || '').replace(/\/$/,'')
+    return /^https:\/\//i.test(base) ? `${base}/login?switch=1` : ''
+  } catch (_) {
+    return ''
+  }
+}
+
 async function signInWithRecovery(email, password, onRetry) {
   let lastError = null
   for (let attempt = 0; attempt < AUTH_RETRY_DELAYS_MS.length; attempt++) {
@@ -196,9 +197,12 @@ export default function Login() {
   async function sendPasswordReset() {
     const target = email.trim()
     if (!target) { setError(lang === 'es' ? 'Ingrese su correo electrónico primero' : 'Enter your email address first'); return }
-    if (!isAdminHost && isCentralTaxResHost() && isNashvilleIdentity(target)) {
-      window.location.replace(NASHVILLE_LOGIN)
-      return
+    if (!isAdminHost) {
+      const externalLogin = await dedicatedRuntimeLoginFor(target)
+      if (externalLogin) {
+        window.location.replace(externalLogin)
+        return
+      }
     }
     setResetting(true); setError(''); setResetSent(false)
     const { error } = await supabase.auth.resetPasswordForEmail(target, {
@@ -212,9 +216,12 @@ export default function Login() {
   async function submit(e) {
     e.preventDefault()
     if (!email || !password) return setError(t.required)
-    if (!isAdminHost && isCentralTaxResHost() && isNashvilleIdentity(email)) {
-      window.location.replace(NASHVILLE_LOGIN)
-      return
+    if (!isAdminHost) {
+      const externalLogin = await dedicatedRuntimeLoginFor(email)
+      if (externalLogin) {
+        window.location.replace(externalLogin)
+        return
+      }
     }
     setLoading(true)
     setLoginStatus('')
