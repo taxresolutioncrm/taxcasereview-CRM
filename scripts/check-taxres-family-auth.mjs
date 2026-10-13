@@ -25,6 +25,8 @@ const checks=[
   ['family password revalidates identity immediately before credential update',page.includes('A stale or replaced session can never update another employee')],
   ['family password pins save to the redeemed user id',page.includes('redeemedUserIdRef.current')&&page.includes('verified.user.id!==redeemedUserIdRef.current')],
   ['family password visibly shows the verified account email',page.includes('Verified TaxRes Identity')&&page.includes('verifiedEmail')],
+  ['Nashville family password page uses Nashville branding',page.includes('isNashville')&&page.includes('nashville-logo.png')&&page.includes('Nashville Tax Solutions CRM')&&page.includes('powered by TaxResCRM')],
+  ['Nashville family password returns to Nashville CRM',page.includes("https://nashville.taxrescrm.app/login?family=ready")],
   ['family password explains browser profile is separate from TaxRes identity',page.includes('Chrome/Google browser profile does not control this identity')],
   ['family password requires 10 characters',page.includes('password.length<10')],
   ['password recovery stays on family page',ctx.includes("window.location.pathname === '/family-password'")],
