@@ -31,6 +31,10 @@ const retiredCentralFns=[
   'supabase/functions/nashville-system-mail-relay/index.ts',
   'supabase/functions/nashville-esign-mail/index.ts',
   'supabase/functions/nashville-esign-reminders/index.ts',
+  'supabase/functions/nash-metrics-check/index.ts',
+  'supabase/functions/nashville-system-mail-relay-sandbox/index.ts',
+  'supabase/functions/nashville-mail-auth-probe/index.ts',
+  'supabase/functions/nashville-cloudflare-inspect-temp/index.ts',
 ].map(read)
 
 const failures=[]
