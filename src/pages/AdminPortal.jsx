@@ -526,6 +526,7 @@ async function loadPlatformOfficeRowsFresh() {
       is_demo:false,
       row_kind:'main',
       counts_as_office:false,
+      effective_monthly:null,
       product_sort:productSortByKey.get(product.product_id) ?? 9999,
       row_sort:0,
 
