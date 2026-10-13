@@ -340,43 +340,35 @@ function Shell() {
 
 const ADMIN_EMAILS = new Set(['info@romylabs.com','romy@romylabs.com','romy@taxrescrm.net','romy@taxcasereview.org'])
 const isPlatformOwner = (email) => ADMIN_EMAILS.has((email || '').toLowerCase())
-const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
-const NASHVILLE_LOGIN_URL = 'https://nashville.taxrescrm.app/login?switch=1'
-
-function NashvilleCentralHostBoundary({ children }) {
+function DedicatedRuntimeBoundary({ children }) {
   const { user } = useApp()
-  const [checkingNashvilleBoundary, setCheckingNashvilleBoundary] = React.useState(true)
+  const [checkingBoundary, setCheckingBoundary] = React.useState(true)
   const host = window.location.hostname.toLowerCase()
   const centralHost = host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
 
   useEffect(() => {
     let cancelled = false
     if (!centralHost || !user?.email) {
-      setCheckingNashvilleBoundary(false)
+      setCheckingBoundary(false)
       return () => { cancelled = true }
     }
     ;(async () => {
       try {
-        const { data, error } = await supabase
-          .from('employees')
-          .select('id')
-          .eq('tenant_id', NASHVILLE_TENANT_ID)
-          .eq('status', 'Active')
-          .ilike('email', user.email)
-          .limit(1)
-        if (!cancelled && !error && Array.isArray(data) && data.length > 0) {
+        const { data, error } = await supabase.rpc('external_runtime_for_current_user')
+        const target = !error && data?.app_url ? String(data.app_url).replace(/\/$/,'') : ''
+        if (!cancelled && target) {
           try { await supabase.auth.signOut() } catch (_) {}
-          window.location.replace(NASHVILLE_LOGIN_URL)
+          window.location.replace(`${target}/login?switch=1`)
           return
         }
       } finally {
-        if (!cancelled) setCheckingNashvilleBoundary(false)
+        if (!cancelled) setCheckingBoundary(false)
       }
     })()
     return () => { cancelled = true }
   }, [centralHost, user?.email])
 
-  if (checkingNashvilleBoundary) return null
+  if (checkingBoundary) return null
   return children
 }
 
@@ -423,7 +415,7 @@ function AdminGate() {
   }, [user, isAdminHost, hasExplicitImpersonationIntent, storedImpersonation, navigate])
 
   // Nashville is no longer allowed to run from the central TaxRes host.
-  if (!isAdminHost) return <NashvilleCentralHostBoundary><Shell /></NashvilleCentralHostBoundary>
+  if (!isAdminHost) return <DedicatedRuntimeBoundary><Shell /></DedicatedRuntimeBoundary>
   if (isImpersonating) return <Shell />
   if (isPlatformOwner(user?.email)) return null
   // Never expose a tenant/demo shell on the RomyLabs admin hostname.
