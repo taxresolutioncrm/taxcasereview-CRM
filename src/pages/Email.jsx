@@ -12,8 +12,6 @@ import { DOC_FOLDERS } from './Clients'
 const TRIAGE = ['Inbox','Action Needed','Waiting','Sent','Spam','Archive']
 const TRIAGE_COLORS = { 'Action Needed':'var(--bad)', 'Waiting':'var(--warn)', 'Inbox':'var(--blue)', 'Sent':'var(--ok)', 'Spam':'#f59e0b', 'Archive':'var(--t3)' }
 const BLANK = { recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'' }
-const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
-
 export default function Email() {
   const [emails, setEmails]     = useState([])
   // Authoritative unread counts are loaded separately from the visible 300-row
@@ -65,7 +63,7 @@ export default function Email() {
   const userEmailLower = user?.email?.toLowerCase() || ''
   const isDemoMailbox = userEmailLower === 'demo@taxrescrm.net'
   const CLOUDCPA_TENANT_ID = 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae'
-  const isNashville = myTenantId === NASHVILLE_TENANT_ID
+  const isNashville = false // Nashville mailbox runtime is dedicated
   const isCloudCpaPlatformRelay = myTenantId === CLOUDCPA_TENANT_ID && !gmailConnected
   const isRomyLabsMailboxAdmin = ['info@romylabs.com','romy@romylabs.com'].includes(userEmailLower)
   const centralMailboxOwner = isRomyLabsMailboxAdmin ? 'info@romylabs.com' : (user?.email || '')
@@ -212,7 +210,7 @@ export default function Email() {
     if (isNashville) {
       const { data: m365Settings } = await supabase.from('settings')
         .select('m365_client_id,m365_tenant_id')
-        .eq('tenant_id', NASHVILLE_TENANT_ID)
+        .eq('tenant_id', myTenantId || '')
         .maybeSingle()
       setM365ClientId(m365Settings?.m365_client_id || '')
     }
