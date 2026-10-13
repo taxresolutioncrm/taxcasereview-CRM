@@ -54,6 +54,31 @@ revoke all on function public.tenant_is_available(uuid) from public, anon, authe
 grant execute on function public.tenant_is_available(uuid) to service_role;
 
 
+-- Storage wall for the legacy Nashville identity.
+-- This deliberately does NOT assume tenant-prefixed historical object paths.
+-- It only prevents a quarantined/tenantless authenticated identity from using
+-- broad legacy bucket policies while preserving existing TCR/CloudCPA objects.
+drop policy if exists central_legacy_nashville_storage_wall on storage.objects;
+create policy central_legacy_nashville_storage_wall
+on storage.objects
+as restrictive
+for all
+to authenticated
+using (
+  bucket_id not in ('documents','training-recordings','firm-assets')
+  or (
+    public.current_tenant_id() is not null
+    and public.current_tenant_id()::text <> '489ace07-1a6b-4864-833a-4f8420568b40'
+  )
+)
+with check (
+  bucket_id not in ('documents','training-recordings','firm-assets')
+  or (
+    public.current_tenant_id() is not null
+    and public.current_tenant_id()::text <> '489ace07-1a6b-4864-833a-4f8420568b40'
+  )
+);
+
 -- Second wall: even if a future UI query forgets the tenant predicate, the legacy
 -- Nashville tenant cannot be read or written through the central Data API.
 do $$
