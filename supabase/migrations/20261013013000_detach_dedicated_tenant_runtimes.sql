@@ -552,3 +552,43 @@ where app_private.is_external_tenant(s.tenant_id);
 update public.romylabs_office_registry r
 set metadata=coalesce(r.metadata,'{}'::jsonb)||jsonb_build_object('runtime_key','nashville')
 where r.external_office_id='489ace07-1a6b-4864-833a-4f8420568b40'::uuid;
+
+
+create or replace function public.external_runtime_for_email(p_email text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path=public,pg_temp
+as $$
+  select jsonb_build_object(
+    'app_url',nullif(trim(c.app_url),'')
+  )
+  from public.employees e
+  join public.tenant_supabase_config c on c.tenant_id=e.tenant_id
+  where lower(e.email)=lower(trim(coalesce(p_email,'')))
+    and lower(coalesce(e.status,'active'))='active'
+    and nullif(trim(c.app_url),'') is not null
+  order by e.created_at desc
+  limit 1
+$$;
+revoke all on function public.external_runtime_for_email(text) from public;
+grant execute on function public.external_runtime_for_email(text) to anon, authenticated;
+
+create or replace function public.external_runtime_by_key(p_runtime_key text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path=public,pg_temp
+as $$
+  select jsonb_build_object('app_url',nullif(trim(c.app_url),''))
+  from public.romylabs_office_registry r
+  join public.tenant_supabase_config c on c.tenant_id=r.external_office_id
+  where r.status='active'
+    and lower(coalesce(r.metadata->>'runtime_key',''))=lower(trim(coalesce(p_runtime_key,'')))
+    and nullif(trim(c.app_url),'') is not null
+  limit 1
+$$;
+revoke all on function public.external_runtime_by_key(text) from public;
+grant execute on function public.external_runtime_by_key(text) to anon, authenticated;
