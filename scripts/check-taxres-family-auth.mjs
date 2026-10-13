@@ -18,6 +18,8 @@ const sendEmail=read('supabase/functions/send-email/index.ts')
 const checks=[
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
   ['family password page verifies invite/recovery token',page.includes('verifyOtp({token_hash:tokenHash,type})')],
+  ['family password does not auto-redeem one-time token on page load',page.includes('Do not redeem one-time Auth tokens during page load')&&page.includes('async function redeemLink()')&&page.includes('onClick={redeemLink}')],
+  ['family password strips consumed token from address bar',page.includes("window.history.replaceState")],
   ['family password clears any existing browser session before redeeming employee link',page.includes("signOut({ scope:'local' })")&&page.indexOf("signOut({ scope:'local' })")<page.indexOf('verifyOtp({token_hash:tokenHash,type})')],
   ['family password never falls back to a pre-existing getSession',!page.includes('auth.getSession()')],
   ['family password requires an employee token or code',page.includes("missing its employee authentication token")],
