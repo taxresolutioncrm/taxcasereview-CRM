@@ -2,6 +2,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const FAMILY_PASSWORD_PAGE='https://taxrescrm.app/family-password'
+const TCR_BRAND_NAME='Tax Case Review'
+const TCR_LOGO_URL='https://taxrescrm.app/taxrescrm-logo.png'
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
   'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
@@ -16,22 +18,23 @@ async function findAuthUser(admin:any,email:string){
   return Array.isArray(data)&&data.length ? data[0] : null
 }
 
-function accessEmailHtml(opts:{name:string,firmName:string,link:string,kind:'invite'|'recovery'}){
-  const heading=opts.kind==='invite'?'Set up your TaxRes CRM password':'Reset your TaxRes CRM password'
+function accessEmailHtml(opts:{name:string,link:string,kind:'invite'|'recovery'}){
+  const heading=opts.kind==='invite'?'Set up your Tax Case Review password':'Reset your Tax Case Review password'
   const intro=opts.kind==='invite'
-    ? `Your ${esc(opts.firmName)} CRM access is ready. Use the secure button below to create your TaxRes family password.`
-    : `Use the secure button below to reset your TaxRes family password for ${esc(opts.firmName)}.`
+    ? 'Your Tax Case Review CRM access is ready. Use the secure button below to create your password.'
+    : 'Use the secure button below to reset your Tax Case Review CRM password.'
   const button=opts.kind==='invite'?'Set Up Password':'Reset Password'
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#162235">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:32px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff;border:1px solid #e4eaf1;border-radius:14px;overflow:hidden">
-<tr><td style="background:#0b2136;padding:26px 32px;text-align:center;color:#fff;font-size:20px;font-weight:800">${esc(opts.firmName)}</td></tr>
+<tr><td style="background:#0b2136;padding:26px 32px;text-align:center"><img src="${TCR_LOGO_URL}" alt="Tax Case Review" style="max-width:220px;max-height:72px;width:auto;height:auto;display:inline-block"></td></tr>
 <tr><td style="padding:34px 36px 10px"><div style="font-size:22px;font-weight:700;color:#10243a;margin-bottom:14px">${heading}</div>
 <div style="font-size:15px;line-height:1.65;color:#4b5f73">Hi ${esc(opts.name||'there')},</div>
 <div style="font-size:15px;line-height:1.65;color:#4b5f73;margin-top:8px">${intro}</div></td></tr>
 <tr><td style="padding:20px 36px 24px;text-align:center"><a href="${esc(opts.link)}" style="display:inline-block;background:#1A7FD4;color:#fff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 24px;border-radius:8px">${button}</a></td></tr>
-<tr><td style="padding:0 36px 28px"><div style="font-size:13px;line-height:1.6;color:#718096">The same password works anywhere in the TaxRes CRM family where your employee account is authorized. Office data and permissions remain separate.</div>
+<tr><td style="padding:0 36px 28px"><div style="font-size:13px;line-height:1.6;color:#718096">For your security, use the button above to choose your password. Office access remains permission-based and isolated.</div>
 <div style="font-size:12px;line-height:1.55;color:#94a3b8;margin-top:18px">If the button does not open, copy and paste this link into your browser:<br><span style="word-break:break-all;color:#5c6f82">${esc(opts.link)}</span></div></td></tr>
+<tr><td style="border-top:1px solid #e9eef4;padding:18px 36px 22px;text-align:center"><div style="font-size:12px;color:#8795a5">Tax Case Review</div><div style="font-size:11px;color:#a4afbb;margin-top:5px">This is an automated security email. Please do not forward it.</div></td></tr>
 </table></td></tr></table></body></html>`
 }
 
@@ -117,7 +120,7 @@ serve(async(req)=>{
 
     const office=tenant?.tenant_code==='TRC-003'?'cloudcpa':tenant?.tenant_code==='DEMO'?'demo':'tcr'
     const accessLink=`${FAMILY_PASSWORD_PAGE}?token_hash=${encodeURIComponent(tokenHash)}&type=${kind}&office=${encodeURIComponent(office)}`
-    const html=accessEmailHtml({name:requestedName||employee.name||'',firmName,link:accessLink,kind})
+    const html=accessEmailHtml({name:requestedName||employee.name||'',link:accessLink,kind})
     let emailOk=false, textOk=false
     let emailError='', textError=''
 
@@ -127,8 +130,8 @@ serve(async(req)=>{
         headers:{Authorization:authHeader,apikey:anon,'Content-Type':'application/json'},
         body:JSON.stringify({
           to:email,
-          subject:kind==='invite'?`Set up your ${firmName} CRM password`:`Reset your ${firmName} CRM password`,
-          from_name:firmName,
+          subject:kind==='invite'?'Set up your Tax Case Review password':'Reset your Tax Case Review password',
+          from_name:TCR_BRAND_NAME,
           from_email:officeReplyTo||undefined,
           kind:'employee_access',
           html
