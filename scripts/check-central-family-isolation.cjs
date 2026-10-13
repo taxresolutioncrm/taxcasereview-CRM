@@ -1,3 +1,4 @@
+const fs = require('fs')
 const fs=require('fs')
 
 const read=p=>fs.readFileSync(p,'utf8')
