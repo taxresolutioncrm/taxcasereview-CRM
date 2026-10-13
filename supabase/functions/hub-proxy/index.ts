@@ -39,7 +39,6 @@ const PRODUCT_ENDPOINTS: Record<string, string> = {
   // Keys must match PRODUCT_REGISTRY key values in AdminPortal.jsx
   taxres_crm:        'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=saas',
   tax_case_review:   'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=tcr',
-  nashville:         'https://ydrvncdedgjtcprczwpu.supabase.co/functions/v1/platform-metrics',
   cloudcpa:          'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=cloudcpa',
   demo:              'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=demo',
   camvella:          'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/platform-metrics',
@@ -190,8 +189,28 @@ Deno.serve(async (req) => {
   }
 
   async function resolveProductEndpoint(productKey: string) {
+    if (productKey === 'nashville') {
+      const { data: office } = await serviceClient
+        .from('romylabs_office_registry')
+        .select('external_office_id')
+        .contains('metadata', { runtime_key:'nashville' })
+        .eq('status','active')
+        .limit(1)
+        .maybeSingle()
+      if (!office?.external_office_id) return { url:'', standardExternal:false }
+      const { data: cfg } = await serviceClient
+        .from('tenant_supabase_config')
+        .select('supabase_url')
+        .eq('tenant_id', office.external_office_id)
+        .limit(1)
+        .maybeSingle()
+      const base=String(cfg?.supabase_url||'').replace(/\/$/,'')
+      if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(base)) return { url:'', standardExternal:false }
+      return { url:`${base}/functions/v1/platform-metrics`, standardExternal:false }
+    }
+
     const fixed = PRODUCT_ENDPOINTS[productKey]
-    if (fixed) return { url: fixed, standardExternal: !['taxres_crm','tax_case_review','nashville','cloudcpa','demo','arcvena'].includes(productKey) }
+    if (fixed) return { url: fixed, standardExternal: !['taxres_crm','tax_case_review','cloudcpa','demo','arcvena'].includes(productKey) }
 
     const { data: product, error } = await serviceClient
       .from('romylabs_products')
