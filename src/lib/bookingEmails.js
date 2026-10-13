@@ -198,7 +198,7 @@ export async function sendBookingInvite({ name, email, phone }) {
     const firm = await getFirmMeta(FIRM.tenantId)
     const fName = firm.firmName || FIRM.name || 'TaxRes CRM'
     const { error } = await supabase.functions.invoke('send-email', { body: {
-      tenant_id: tenantId || FIRM.tenantId || undefined,
+      tenant_id: FIRM.tenantId || undefined,
       to: email,
       subject: `Schedule Your Appointment — ${fName}`,
       html: emailHtml({ firmName: firm.firmName, logoUrl: firm.logoUrl, body: `<p>Hi <strong>${first}</strong>,</p><p>Pick whichever time works best for you — it takes less than a minute:</p><p style="text-align:center;margin:24px 0"><a href="${link}" style="background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block">📅 Choose a Time</a></p><p>You'll see our live availability and get an instant confirmation. If nothing there works, just reply to this email or give us a call.</p><p style="margin-top:20px">Talk soon,<br><strong>${fName}</strong></p>` }),
