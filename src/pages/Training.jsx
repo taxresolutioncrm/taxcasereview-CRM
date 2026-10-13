@@ -90,9 +90,11 @@ export default function Training() {
   async function loadRecordings() {
     setRecLoading(true)
     try {
+      const tid = FIRM.tenantId || firmTenantId
+      if (!tid) { setRecordings([]); setRecLoading(false); return }
       const { data, error } = await supabase.storage
         .from('training-recordings')
-        .list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
+        .list(tid, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
       if (!error && data) setRecordings(data.filter(f => f.name.endsWith('.webm') || f.name.endsWith('.mp4')))
     } catch {}
     setRecLoading(false)
@@ -101,12 +103,18 @@ export default function Training() {
   useEffect(() => { if (activeTab === 'recordings') loadRecordings() }, [activeTab])
 
   async function getPlayUrl(name) {
-    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(name, 3600)
+    const tid = FIRM.tenantId || firmTenantId
+    if (!tid) return
+    const path = `${tid}/${name}`
+    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(path, 3600)
     if (data?.signedUrl) setPlayingUrl({ url: data.signedUrl, name })
   }
 
   async function downloadRec(name) {
-    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(name, 60)
+    const tid = FIRM.tenantId || firmTenantId
+    if (!tid) return
+    const path = `${tid}/${name}`
+    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(path, 60)
     if (data?.signedUrl) {
       const a = Object.assign(document.createElement('a'), { href: data.signedUrl, download: name })
       a.click()
@@ -115,7 +123,9 @@ export default function Training() {
 
   async function deleteRec(name) {
     if (!window.confirm(`Delete ${name}?`)) return
-    await supabase.storage.from('training-recordings').remove([name])
+    const tid = FIRM.tenantId || firmTenantId
+    if (!tid) return
+    await supabase.storage.from('training-recordings').remove([`${tid}/${name}`])
     setRecordings(r => r.filter(f => f.name !== name))
     if (playingUrl?.name === name) setPlayingUrl(null)
   }
