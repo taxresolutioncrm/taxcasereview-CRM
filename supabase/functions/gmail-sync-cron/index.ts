@@ -136,6 +136,51 @@ serve(async req => {
     let payload: any = {}; if ((req.headers.get('content-type') || '').includes('application/json')) payload = await req.json().catch(() => ({}))
     if (payload?.mode === 'message_action') return await messageAction(req, db, payload)
 
+    if (payload?.mode === 'manual_sync') {
+      const auth = req.headers.get('authorization') || ''
+      if (!auth.toLowerCase().startsWith('bearer ')) return json({ ok:false, error:'Unauthorized' }, 401)
+      const userDb = createClient(URL, ANON, { global:{ headers:{ Authorization:auth } }, auth:{ persistSession:false, autoRefreshToken:false } })
+      const { data:{ user }, error:userErr } = await userDb.auth.getUser()
+      if (userErr || !user?.email) return json({ ok:false, error:'Unauthorized' }, 401)
+
+      const owner = String(user.email).toLowerCase()
+      const { data:emp } = await db.from('employees')
+        .select('tenant_id,status')
+        .ilike('email', owner)
+        .limit(1)
+        .maybeSingle()
+      if (!emp?.tenant_id || String(emp.status || '').toLowerCase() !== 'active') {
+        return json({ ok:false, error:'Active employee tenant not found' })
+      }
+
+      const [{ data:acct }, { data:creds }] = await Promise.all([
+        db.from('employee_gmail_accounts')
+          .select('employee_email,gmail_refresh_token,gmail_access_token,gmail_token_expiry,gmail_backfill_phase')
+          .ilike('employee_email', owner)
+          .limit(1)
+          .maybeSingle(),
+        db.from('settings')
+          .select('tenant_id,gmail_client_id,gmail_client_secret')
+          .eq('tenant_id', emp.tenant_id)
+          .limit(1)
+          .maybeSingle(),
+      ])
+
+      if (!acct?.gmail_refresh_token) return json({ ok:false, error:'Gmail is not connected for this employee' })
+      if (!creds?.gmail_client_id || !creds?.gmail_client_secret) return json({ ok:false, error:'Gmail OAuth settings missing for this office' })
+
+      try {
+        const result = await syncAccount(db, acct, emp.tenant_id, creds)
+        return json({ ok:true, synced:1, inserted:result.inserted, unreadChanged:result.changed })
+      } catch (e) {
+        const msg = String((e as Error)?.message || e)
+        await db.from('employee_gmail_accounts')
+          .update({ gmail_last_error:msg })
+          .ilike('employee_email', owner)
+        return json({ ok:false, error:msg })
+      }
+    }
+
     // Background service-role sync is never public. Browser message actions
     // retain their normal user-JWT authorization path above.
     const cronToken = req.headers.get('x-internal-cron-token') || ''

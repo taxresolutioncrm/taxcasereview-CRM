@@ -778,9 +778,13 @@ export default function Email() {
                 className="btn"
                 disabled={syncing}
                 onClick={async () => {
-                  await syncNow()
+                  const result = await syncNow()
+                  if (!result?.ok) {
+                    showToast('Email sync error: ' + (result?.error || 'Unknown error'))
+                    return
+                  }
                   await load()
-                  showToast(lastError ? 'Email sync error: ' + lastError : '✅ Email refreshed')
+                  showToast('✅ Email refreshed')
                 }}
                 style={{ padding:'4px 8px', fontSize:10, fontWeight:700, whiteSpace:'nowrap' }}
               >

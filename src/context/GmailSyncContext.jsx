@@ -55,11 +55,27 @@ export function GmailSyncProvider({ children }) {
   // up this employee's own row once that pass finishes.
   async function syncNow() {
     setSyncing(true)
+    setLastError(null)
     try {
-      const { error } = await supabase.functions.invoke('gmail-sync-cron')
-      if (error) setLastError(error.message || String(error))
+      const { data, error } = await supabase.functions.invoke('gmail-sync-cron', {
+        body: { mode:'manual_sync' },
+      })
+      if (error) {
+        setLastError(error.message || String(error))
+        return { ok:false, error:error.message || String(error) }
+      }
+      if (!data?.ok) {
+        const message = data?.error || 'Email sync failed'
+        setLastError(message)
+        return { ok:false, error:message }
+      }
+      setLastError(null)
+      setLastSyncAt(new Date())
+      return { ok:true, ...data }
     } catch (e) {
-      setLastError(e.message || String(e))
+      const message = e?.message || String(e)
+      setLastError(message)
+      return { ok:false, error:message }
     } finally {
       setSyncing(false)
     }
