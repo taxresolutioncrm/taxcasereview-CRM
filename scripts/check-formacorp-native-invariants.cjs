@@ -45,7 +45,7 @@ assert(/eq\('tenant_id',tenantId\)/.test(content), 'State-fee Stripe settings ar
 assert(/stripe_account/.test(content), 'Connected Stripe account routing is missing')
 assert(!/from\('settings'\).*stripe_publishable_key/.test(files.map(p => p.includes('FormaCorpStateFeeModal') ? fs.readFileSync(p,'utf8') : '').join('\n')), 'State-fee browser UI must not depend on direct settings-table access')
 assert(/platformPublishableKey/.test(content), 'Connected Stripe accounts must use the platform publishable key with Stripe-Account routing')
-assert(/489ace07-1a6b-4864-833a-4f8420568b40/.test(content), 'Nashville is missing from FormaCorp platform payment routing')
+assert(!/489ace07-1a6b-4864-833a-4f8420568b40/.test(content), 'Dedicated Nashville must not remain in central FormaCorp payment routing')
 assert(/Idempotency-Key/.test(content), 'State-fee PaymentIntent creation must be idempotent')
 assert(/state_fee_payment_intent_id/.test(content), 'State-fee PaymentIntent recovery reference is missing')
 assert(/already_succeeded/.test(content), 'Completed state-fee payment recovery path is missing')
