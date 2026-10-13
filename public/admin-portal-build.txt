@@ -29,3 +29,4 @@ admin-calendar-owner-scope=20260915-v1
 taxres-live-kpi-rootfix=20260919-v1
 taxres-live-kpi-seat-source=20260919-v1
 production-release-verification=20260919-v1
+restore-relay-crm-link-acceptance=20260919-v1
