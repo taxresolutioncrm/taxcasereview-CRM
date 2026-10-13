@@ -29,6 +29,8 @@ const checks=[
   ['family password visibly shows the verified account email',page.includes('Verified TaxRes Identity')&&page.includes('verifiedEmail')],
   ['Nashville family password page uses Nashville branding',page.includes('isNashville')&&page.includes('nashville-logo.png')&&page.includes('Nashville Tax Solutions CRM')&&page.includes('powered by TaxResCRM')],
   ['Nashville family password returns to Nashville CRM',page.includes("https://nashville.taxrescrm.app/login?family=ready")],
+  ['Nashville invite broker never exposes central CRM UI',invite.includes("const PASSWORD_PAGE='https://nashville.taxrescrm.app/reset-password'")&&!invite.includes("const PASSWORD_PAGE='https://taxrescrm.app/family-password'")],
+  ['Nashville forgot-password redirect is Nashville-only',reset.includes("const NASHVILLE_REDIRECT='https://nashville.taxrescrm.app/reset-password'")],
   ['family password explains browser profile is separate from TaxRes identity',page.includes('Chrome/Google browser profile does not control this identity')],
   ['family password requires 10 characters',page.includes('password.length<10')],
   ['password recovery stays on family page',ctx.includes("window.location.pathname === '/family-password'")],
