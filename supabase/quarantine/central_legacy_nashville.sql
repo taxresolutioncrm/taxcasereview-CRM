@@ -259,6 +259,91 @@ begin
 end;
 $$;
 
+create or replace function public.set_admin_tenant_override(p_tenant_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path='public','pg_temp'
+as $
+declare v_email text:=lower(coalesce(auth.jwt()->>'email',auth.email(),''));
+begin
+  if not public._is_platform_admin() then raise exception 'Not authorized'; end if;
+  if v_email='' then raise exception 'Authenticated admin email required'; end if;
+
+  if p_tenant_id is null then
+    delete from public.admin_tenant_overrides where admin_email=v_email;
+    return;
+  end if;
+
+  if not public.tenant_is_available(p_tenant_id) then
+    raise exception 'Tenant is not available for impersonation';
+  end if;
+
+  insert into public.admin_tenant_overrides(admin_email,tenant_id,updated_at)
+  values(v_email,p_tenant_id,now())
+  on conflict(admin_email) do update
+    set tenant_id=excluded.tenant_id,updated_at=now();
+end;
+$;
+
+create or replace function public.booking_get(p_token text)
+returns jsonb
+language sql
+security definer
+set search_path='public','pg_temp'
+as $
+  select jsonb_build_object(
+    'client_name',c."clientName",
+    'event_type',c."eventType",
+    'date',c.date,
+    'time',c.time,
+    'status',coalesce(c.status,'scheduled'),
+    'contact_email',c.contact_email,
+    'tenant_id',c.tenant_id::text
+  )
+  from public.calevents c
+  where coalesce(p_token,'')<>''
+    and c.booking_token=p_token
+    and public.tenant_is_available(c.tenant_id)
+  limit 1;
+$;
+
+create or replace function public.booking_cancel(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path='public','pg_temp'
+as $
+declare r record; v_notify text;
+begin
+  select * into r
+  from public.calevents
+  where coalesce(p_token,'')<>''
+    and booking_token=p_token
+  limit 1;
+
+  if r.id is null or not public.tenant_is_available(r.tenant_id) then
+    return jsonb_build_object('ok',false,'message','Booking not found.');
+  end if;
+  if coalesce(r.status,'') in ('canceled','cancelled') then
+    return jsonb_build_object('ok',true,'notify_email',null);
+  end if;
+
+  update public.calevents
+  set status='canceled'
+  where id=r.id and tenant_id=r.tenant_id;
+
+  v_notify:=public.booking_note_and_rep(
+    r."clientName",
+    r.contact_email,
+    null,
+    '❌ Canceled online: '||r."eventType"||' — '||r.date||' '||r.time,
+    r.tenant_id
+  );
+  return jsonb_build_object('ok',true,'notify_email',v_notify);
+end;
+$;
+
 -- Wrap public token/id entrypoints so historical rows remain but cancelled tenants cannot resolve.
 do $$
 begin
@@ -574,6 +659,35 @@ begin
 end;
 $$;
 
+create or replace function public.booking_reschedule(p_token text,p_date date,p_time text)
+returns jsonb
+language plpgsql
+security definer
+set search_path='pg_catalog','public'
+as $
+declare r record; cfg jsonb; slot int; endt text; v_notify text;
+begin
+  select * into r from public.calevents
+  where coalesce(p_token,'')<>'' and booking_token=p_token
+  limit 1;
+  if r.id is null then return jsonb_build_object('ok',false,'message','Booking not found.'); end if;
+  if not public.tenant_is_available(r.tenant_id) then return jsonb_build_object('ok',false,'message','Booking office unavailable.'); end if;
+  if coalesce(r.status,'') in ('canceled','cancelled') then return jsonb_build_object('ok',false,'message','This booking was canceled — book a new time instead.'); end if;
+  select booking_config into cfg from public.settings where tenant_id=r.tenant_id and booking_config is not null limit 1;
+  if cfg is null then return jsonb_build_object('ok',false,'message','Online booking is unavailable.'); end if;
+  perform pg_advisory_xact_lock(hashtext(r.tenant_id::text||' '||p_date::text||' '||p_time));
+  if not exists(select 1 from public.booking_get_slots(p_date,r.tenant_id::text) s where s=p_time) then
+    return jsonb_build_object('ok',false,'message','That time was just taken — please pick another slot.');
+  end if;
+  slot:=coalesce((cfg->>'slotMinutes')::int,30);
+  endt:=to_char(p_time::time+(slot||' minutes')::interval,'HH24:MI');
+  update public.calevents set date=to_char(p_date,'YYYY-MM-DD'),time=p_time,"endTime"=endt,reminder_24_sent=false,reminder_1_sent=false
+  where id=r.id and tenant_id=r.tenant_id;
+  v_notify:=public.booking_note_and_rep(r."clientName",r.contact_email,null,'🔁 Rescheduled online: '||r."eventType"||' — '||r.date||' '||r.time||' → '||to_char(p_date,'YYYY-MM-DD')||' '||p_time,r.tenant_id);
+  return jsonb_build_object('ok',true,'notify_email',v_notify);
+end;
+$;
+
 grant execute on function public.portal_login(text,text,text) to anon, authenticated, service_role;
 grant execute on function public.financial_intake_load(text) to anon, authenticated, service_role;
 grant execute on function public.financial_intake_submit(text,jsonb,jsonb,jsonb) to anon, authenticated, service_role;
@@ -583,6 +697,9 @@ grant execute on function public.booking_get_config(text) to anon, authenticated
 grant execute on function public.booking_get_slots(date,text) to anon, authenticated, service_role;
 grant execute on function public.emp_login(text,text) to anon, authenticated, service_role;
 grant execute on function public.kiosk_login(text,text,text) to anon, authenticated, service_role;
+grant execute on function public.booking_get(text) to anon, authenticated, service_role;
+grant execute on function public.booking_cancel(text) to anon, authenticated, service_role;
+grant execute on function public.booking_reschedule(text,date,text) to anon, authenticated, service_role;
 grant execute on function public.organizer_get(text) to anon, authenticated, service_role;
 grant execute on function public.organizer_save_answers(text,jsonb) to anon, authenticated, service_role;
 grant execute on function public.organizer_submit(text,jsonb) to anon, authenticated, service_role;
