@@ -5,8 +5,6 @@ import { useApp } from '../context/AppContext'
 import { loadFirmBranding } from '../lib/firmBranding'
 
 const BUCKET = 'firm-assets'
-const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
-
 async function resolveSettingsTenantId() {
   const { data, error } = await supabase.rpc('current_tenant_id')
   if (error || !data) return null
@@ -16,7 +14,7 @@ async function resolveSettingsTenantId() {
 export default function Settings() {
   const { showToast, user, role, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin'].includes(role)
-  const isNashville = myTenantId === NASHVILLE_TENANT_ID
+  const isNashville = false
   const [tab, setTab] = useState(isPrivileged ? 'firm' : 'mysignature')
   const [saving, setSaving] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
@@ -229,7 +227,7 @@ export default function Settings() {
       gmailCount = count || 0
     }
     setConnectedGmailCount(gmailCount)
-    if (tid === NASHVILLE_TENANT_ID) {
+    if (false) {
       const { count: m365Count } = await supabase.from('employee_m365_accounts')
         .select('employee_email', { count: 'exact', head: true })
         .eq('tenant_id', tid)
@@ -304,7 +302,7 @@ export default function Settings() {
 
       const tid = myTenantId || await resolveSettingsTenantId()
       if (!tid) throw new Error('Could not resolve this office')
-      if (tid !== NASHVILLE_TENANT_ID) {
+      {
         delete payload.m365_client_id
         delete payload.m365_client_secret
         delete payload.m365_tenant_id
@@ -1663,9 +1661,7 @@ function indicatorToStatus(indicator) {
 
 function UptimeTab({ tenantId }) {
   const [statuses, setStatuses] = useState({})
-  const visibleServices = tenantId === NASHVILLE_TENANT_ID
-    ? SERVICES
-    : SERVICES.filter(service => service.name !== 'Microsoft 365')
+  const visibleServices = SERVICES.filter(service => service.name !== 'Microsoft 365')
   const [loading,  setLoading]  = useState(true)
   const [lastChecked, setLastChecked] = useState(null)
 
