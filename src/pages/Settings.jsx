@@ -123,7 +123,9 @@ export default function Settings() {
     const file = e.target.files?.[0]
     if (!file || !user?.email) return
     setMySigLogoUploading(true)
-    const path = `signatures/${user.email.replace(/[^a-zA-Z0-9]/g,'-')}-${Date.now()}-${file.name}`
+    const tid = myTenantId || await resolveSettingsTenantId()
+    if (!tid) { setMySigLogoUploading(false); showToast('Could not resolve this office', 'err'); return }
+    const path = `signatures/${tid}/${user.email.replace(/[^a-zA-Z0-9]/g,'-')}-${Date.now()}-${file.name}`
     const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true })
     if (!error) {
       const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
@@ -363,14 +365,14 @@ export default function Settings() {
       // Per-tenant path + saved to settings.logourl so each firm's logo is
       // its own — and every document/pay stub reads it via settings, not a
       // single shared file.
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
       const ext = (file.name.split('.').pop() || 'png').toLowerCase()
-      const path = `logo-${firm.tenant_id || firm.id || 'default'}.${ext}`
+      const path = `logo-${tid}.${ext}`
       const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true, contentType: file.type })
       if (error) throw error
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
       const bustedUrl = `${pub.publicUrl}?t=${Date.now()}`
-      const tid = myTenantId || await resolveSettingsTenantId()
-      if (!tid) throw new Error('Could not resolve this office')
       await supabase.from('settings').update({ logourl: bustedUrl }).eq('tenant_id', tid).eq('id', firm.id)
       setFirm(f => ({ ...f, logourl: bustedUrl }))
       setLogoUrl(bustedUrl)
@@ -387,11 +389,11 @@ export default function Settings() {
     if (!file) return
     setSigLogoUploading(true)
     try {
+      const tid = myTenantId || await resolveSettingsTenantId()
+      if (!tid) throw new Error('Could not resolve this office')
       const ext = (file.name.split('.').pop() || 'png').toLowerCase()
-      // Per-tenant path — matching the main logo handler above. A flat
-      // 'signature-logo.ext' let every tenant's upload overwrite the same
-      // shared file, bleeding one firm's signature logo onto all others.
-      const path = `signature-logo-${firm.tenant_id || firm.id || 'default'}.${ext}`
+      // Per-tenant path — never a shared/default filename.
+      const path = `signature-logo-${tid}.${ext}`
       const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true, contentType: file.type })
       if (error) throw error
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
@@ -399,8 +401,6 @@ export default function Settings() {
       // browser-cached copy of the old file at the same URL.
       const bustedUrl = `${pub.publicUrl}?t=${Date.now()}`
       setFirm(f => ({ ...f, email_signature_logo_url: bustedUrl }))
-      const tid = myTenantId || await resolveSettingsTenantId()
-      if (!tid) throw new Error('Could not resolve this office')
       await supabase.from('settings').update({ email_signature_logo_url: bustedUrl }).eq('tenant_id', tid).eq('id', firm.id)
       showToast('Signature logo uploaded!')
     } catch (err) { showToast(err.message, 'err') } finally { setSigLogoUploading(false) }
