@@ -17,6 +17,7 @@ const appContext=read('src/context/AppContext.jsx')
 const esign=read('src/pages/Esign.jsx')
 const i18n=read('src/lib/i18n.js')
 const manageBooking=read('src/pages/ManageBooking.jsx')
+const adminPortal=read('src/pages/AdminPortal.jsx')
 const quarantine=read('supabase/quarantine/central_legacy_nashville.sql')
 const centralMetrics=read('supabase/quarantine/central_family_metrics_no_nashville.sql')
 const storageIsolation=read('supabase/quarantine/central_storage_tenant_isolation.sql')
@@ -88,6 +89,8 @@ must(appContext.includes('This account does not have an active TaxRes-family off
 must(!esign.includes('nashville-esign-mail'),'Central e-sign must never invoke Nashville mail')
 must(!i18n.includes('Nashville Tax Solutions'),'Central translation bundle must not carry Nashville UI copy')
 must(manageBooking.includes('loadFirmBrandingPublic(rec?.tenant_id)'),'Manage Booking must brand from the booking tenant')
+must(!adminPortal.includes("{ key:'nashville'"),'Central Admin Portal metrics must not request Nashville')
+must(!adminPortal.includes('Nashville Tax Solutions'),'Central Admin Portal metrics must not carry Nashville feed copy')
 
 for(const asset of [
   'public/cloudcpa-logo.png',
