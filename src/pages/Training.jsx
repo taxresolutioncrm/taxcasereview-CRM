@@ -34,7 +34,7 @@ function ScreenPreview({ stream }) {
 
 export default function Training() {
   const ss  = useScreenShare()
-  const { employeeName, showToast } = useApp()
+  const { employeeName, showToast, myTenantId } = useApp()
   const myName = employeeName || 'Me'
 
   const [starting, setStarting] = useState(false)
@@ -90,9 +90,10 @@ export default function Training() {
   async function loadRecordings() {
     setRecLoading(true)
     try {
+      if (!myTenantId) { setRecordings([]); setRecLoading(false); return }
       const { data, error } = await supabase.storage
         .from('training-recordings')
-        .list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
+        .list(String(myTenantId), { limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
       if (!error && data) setRecordings(data.filter(f => f.name.endsWith('.webm') || f.name.endsWith('.mp4')))
     } catch {}
     setRecLoading(false)
@@ -101,12 +102,16 @@ export default function Training() {
   useEffect(() => { if (activeTab === 'recordings') loadRecordings() }, [activeTab])
 
   async function getPlayUrl(name) {
-    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(name, 3600)
+    if (!myTenantId) return
+    const path = `${myTenantId}/${name}`
+    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(path, 3600)
     if (data?.signedUrl) setPlayingUrl({ url: data.signedUrl, name })
   }
 
   async function downloadRec(name) {
-    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(name, 60)
+    if (!myTenantId) return
+    const path = `${myTenantId}/${name}`
+    const { data } = await supabase.storage.from('training-recordings').createSignedUrl(path, 60)
     if (data?.signedUrl) {
       const a = Object.assign(document.createElement('a'), { href: data.signedUrl, download: name })
       a.click()
@@ -115,7 +120,8 @@ export default function Training() {
 
   async function deleteRec(name) {
     if (!window.confirm(`Delete ${name}?`)) return
-    await supabase.storage.from('training-recordings').remove([name])
+    if (!myTenantId) return
+    await supabase.storage.from('training-recordings').remove([`${myTenantId}/${name}`])
     setRecordings(r => r.filter(f => f.name !== name))
     if (playingUrl?.name === name) setPlayingUrl(null)
   }

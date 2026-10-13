@@ -437,7 +437,6 @@ const EN_ES = {
   'Audit Reconsideration': 'Reconsideración de auditoría',
   'Other': 'Otro',
   'Phone numbers, addresses, and tips — shared by the whole team': 'Números de teléfono, direcciones y consejos — compartidos por todo el equipo',
-  'Federal contacts, procedures, and state tax authority information for Nashville Tax Solutions': 'Contactos federales, procedimientos e información de las autoridades tributarias estatales para Nashville Tax Solutions',
   'Federal / General': 'Federal / General',
   'By State': 'Por estado',
   'All States': 'Todos los estados',

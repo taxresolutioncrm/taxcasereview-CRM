@@ -1060,7 +1060,7 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'Uptime page — what each service does' },
       { type: 'table', headers: ['Service', 'If it shows red'], rows: [
         ['Supabase', 'CRM will not load — check Supabase status page'],
-        ['Email server', 'Admin webmail down — use Gmail/M365 directly'],
+        ['Email server', 'Admin webmail down — use the mailbox provider configured for your office directly'],
         ['Cloudflare', 'Site may load slowly or not at all'],
         ['Stripe', 'Card charges will fail — do not attempt payments'],
         ['Groq', 'AI button will error — rest of CRM unaffected'],
@@ -1068,7 +1068,7 @@ const MANUAL_SECTIONS = [
       ]},
       { type: 'h3', text: 'Office-specific communications providers' },
       { type: 'info', text: 'Communication providers are tenant-specific. TCR uses only the providers configured for TCR, and the CRM must never fall back to another office\'s phone, fax, email, or accounting provider.' },
-      { type: 'warn', text: 'Carrier application activation and CRM routing are different things. A mapped Verizon One Talk number can be launched/routed by the CRM only after the underlying Verizon user/line is activated and the required carrier-side capability is available.' },
+      { type: 'warn', text: 'Communication providers are configured per office. TCR and central TaxRes-family tenants must use only the phone, email, fax, and accounting providers assigned to their own tenant.' },
       { type: 'h3', text: 'QuickBooks Online connection' },
       { type: 'steps', items: [
         { title: 'Settings → Accounting → QuickBooks', desc: 'Start the authenticated QuickBooks connection for the current office.' },

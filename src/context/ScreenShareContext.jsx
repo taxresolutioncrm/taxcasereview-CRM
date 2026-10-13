@@ -59,9 +59,12 @@ export function ScreenShareProvider({ children }) {
       // so it delegates the storage upload to the authenticated parent window.
       uploadRecording: async (blob, filename) => {
         const { supabase } = await import('../lib/supabase')
+        const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
+        if (tenantErr || !tenantId) return { data: null, error: tenantErr || new Error('Could not resolve this office') }
+        const path = `${tenantId}/${filename}`
         return supabase.storage
           .from('training-recordings')
-          .upload(filename, new File([blob], filename, { type: 'video/webm' }), { upsert: true })
+          .upload(path, new File([blob], filename, { type: 'video/webm' }), { upsert: true })
       },
     }
   }, [sharingScreen, screenStream, webrtc.members, webrtc.remoteStreams, webrtc.micOn, webrtc.cameraOn, webrtc.joined])
