@@ -547,3 +547,8 @@ set
     s.logourl
   )
 where app_private.is_external_tenant(s.tenant_id);
+
+
+update public.romylabs_office_registry r
+set metadata=coalesce(r.metadata,'{}'::jsonb)||jsonb_build_object('runtime_key','nashville')
+where r.external_office_id='489ace07-1a6b-4864-833a-4f8420568b40'::uuid;
