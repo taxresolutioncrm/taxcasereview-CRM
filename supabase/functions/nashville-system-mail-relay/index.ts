@@ -97,7 +97,8 @@ Deno.serve(async(req)=>{
     if(!/^\S+@\S+\.\S+$/.test(to)||!subject||!html) return json({error:'Recipient, subject, and html are required'},400)
 
     if(!html.includes('Nashville Tax Solutions')) return json({error:'Nashville branding required'},400)
-    const forbidden=['Tax Case Review','CloudCPA','Cloud CPA']
+    if(!html.includes('https://nashville.taxrescrm.app/nashville-logo.png')) return json({error:'Nashville logo required'},400)
+    const forbidden=['Tax Case Review','CloudCPA','Cloud CPA','TaxRes CRM Family Access','TaxRes family password','TaxRes family']
     if(forbidden.some(x=>html.includes(x)||subject.includes(x))) return json({error:'Foreign brand blocked'},400)
     if(kind==='employee_access'){
       if(!html.includes('https://nashville.taxrescrm.app/nashville-logo.png')) return json({error:'Nashville logo required'},400)
