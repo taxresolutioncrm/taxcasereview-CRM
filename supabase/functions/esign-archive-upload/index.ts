@@ -105,7 +105,7 @@ Deno.serve(async(req:Request)=>{
     }
 
     if(e.status!=='Signed')return json({error:'Signing request is not signed'},409)
-    const prefix=`docs/${clean(e.client_name||'client')}/signed/${id}`
+    const prefix=`tenant/${e.tenant_id}/esign/${clean(e.client_name||'client')}/signed/${id}`
     const expected=new Map<string,string>()
     for(const a of Array.isArray(e.pdf_attachments)?e.pdf_attachments:[]){
       const ft=String(a?.formType||'')
