@@ -153,6 +153,17 @@ serve(async (req) => {
   const admin = createClient(url, serviceKey)
 
   try {
+    // Central-project kill switch: once the legacy Nashville tenant is cancelled/
+    // quarantined, neither browser calls nor scheduler-secret calls may run here.
+    const { data: tenantState, error: tenantStateError } = await admin.from('tenants')
+      .select('status')
+      .eq('id', NASHVILLE_TENANT)
+      .maybeSingle()
+    if (tenantStateError) throw tenantStateError
+    if (!tenantState || !['active','trial'].includes(String(tenantState.status || '').toLowerCase())) {
+      return new Response(JSON.stringify({ error: 'Microsoft 365 sync is retired from the central TaxRes project.' }), { status: 410, headers: cors })
+    }
+
     // Browser calls authenticate with the employee JWT. The database scheduler
     // uses a separate random secret stored in scheduler_credentials so inbound
     // Nextiva faxes still import even when nobody is logged into the CRM.
