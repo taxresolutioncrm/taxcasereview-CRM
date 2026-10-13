@@ -264,7 +264,7 @@ returns void
 language plpgsql
 security definer
 set search_path='public','pg_temp'
-as $
+as $$
 declare v_email text:=lower(coalesce(auth.jwt()->>'email',auth.email(),''));
 begin
   if not public._is_platform_admin() then raise exception 'Not authorized'; end if;
@@ -284,14 +284,14 @@ begin
   on conflict(admin_email) do update
     set tenant_id=excluded.tenant_id,updated_at=now();
 end;
-$;
+$$;
 
 create or replace function public.booking_get(p_token text)
 returns jsonb
 language sql
 security definer
 set search_path='public','pg_temp'
-as $
+as $$
   select jsonb_build_object(
     'client_name',c."clientName",
     'event_type',c."eventType",
@@ -306,14 +306,14 @@ as $
     and c.booking_token=p_token
     and public.tenant_is_available(c.tenant_id)
   limit 1;
-$;
+$$;
 
 create or replace function public.booking_cancel(p_token text)
 returns jsonb
 language plpgsql
 security definer
 set search_path='public','pg_temp'
-as $
+as $$
 declare r record; v_notify text;
 begin
   select * into r
@@ -342,7 +342,7 @@ begin
   );
   return jsonb_build_object('ok',true,'notify_email',v_notify);
 end;
-$;
+$$;
 
 -- Wrap public token/id entrypoints so historical rows remain but cancelled tenants cannot resolve.
 do $$
@@ -664,7 +664,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path='pg_catalog','public'
-as $
+as $$
 declare r record; cfg jsonb; slot int; endt text; v_notify text;
 begin
   select * into r from public.calevents
@@ -686,7 +686,7 @@ begin
   v_notify:=public.booking_note_and_rep(r."clientName",r.contact_email,null,'🔁 Rescheduled online: '||r."eventType"||' — '||r.date||' '||r.time||' → '||to_char(p_date,'YYYY-MM-DD')||' '||p_time,r.tenant_id);
   return jsonb_build_object('ok',true,'notify_email',v_notify);
 end;
-$;
+$$;
 
 grant execute on function public.portal_login(text,text,text) to anon, authenticated, service_role;
 grant execute on function public.financial_intake_load(text) to anon, authenticated, service_role;
