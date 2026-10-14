@@ -179,9 +179,58 @@ function fromDbRow(emp) {
   }
 }
 
+const LOGIN_TIME_ZONE = 'America/Chicago'
+
+function ctDateKey(value) {
+  if (!value) return ''
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: LOGIN_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(value))
+    const get = type => parts.find(part => part.type === type)?.value || ''
+    return `${get('year')}-${get('month')}-${get('day')}`
+  } catch (_) {
+    return ''
+  }
+}
+
+function employeeLoginLabel(value) {
+  if (!value) return { text: '◷ Never logged in', today: false }
+  try {
+    const login = new Date(value)
+    if (Number.isNaN(login.getTime())) return { text: '◷ Never logged in', today: false }
+
+    const todayKey = ctDateKey(new Date())
+    const loginKey = ctDateKey(login)
+    const time = new Intl.DateTimeFormat('en-US', {
+      timeZone: LOGIN_TIME_ZONE,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(login)
+
+    if (loginKey === todayKey) {
+      return { text: `● Logged in today · ${time} CT`, today: true }
+    }
+
+    const date = new Intl.DateTimeFormat('en-US', {
+      timeZone: LOGIN_TIME_ZONE,
+      month: 'short',
+      day: 'numeric',
+    }).format(login)
+    return { text: `◷ Last login · ${date}, ${time} CT`, today: false }
+  } catch (_) {
+    return { text: '◷ Never logged in', today: false }
+  }
+}
+
 export default function Employees() {
   const { showToast, can, user, planTier } = useApp()
   const [employees, setEmployees] = useState([])
+  const [lastLoginByEmail, setLastLoginByEmail] = useState({})
   const [confirmDel, setConfirmDel] = useState(null)
   const [loading, setLoading]     = useState(true)
   const [showForm, setShowForm]   = useState(false)
@@ -223,16 +272,35 @@ export default function Employees() {
         showToast('Could not resolve this office. Please sign in again.', 'err')
         return
       }
-      const { data, error } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .order('name')
+      const [{ data, error }, { data: loginRows, error: loginErr }] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('name'),
+        supabase
+          .from('activity_log')
+          .select('employee_email,created_at')
+          .eq('tenant_id', tenantId)
+          .eq('action', 'session_login')
+          .order('created_at', { ascending: false })
+          .limit(5000),
+      ])
       if (error) {
         setEmployees([])
         showToast('Employees failed to load: ' + error.message, 'err')
         return
       }
+
+      const latest = {}
+      if (!loginErr) {
+        for (const row of (loginRows || [])) {
+          const email = String(row.employee_email || '').trim().toLowerCase()
+          if (email && !latest[email]) latest[email] = row.created_at
+        }
+      }
+      setLastLoginByEmail(latest)
+
       // Exclude platform admin account — romy@taxrescrm.net is the TaxRes CRM
       // product owner account and must never appear in any office's employee list.
       setEmployees((data || []).filter(e => e.email !== 'romy@taxrescrm.net'))
@@ -565,6 +633,18 @@ export default function Employees() {
                     }} title={emp.email || ''}>
                       {emp.email || 'No email'}
                     </div>
+
+                    {(() => {
+                      const login = employeeLoginLabel(lastLoginByEmail[String(emp.email || '').trim().toLowerCase()])
+                      return (
+                        <div style={{
+                          marginTop:7,fontSize:11.5,fontWeight:700,
+                          color:login.today ? 'var(--ok)' : 'var(--t3)'
+                        }}>
+                          {login.text}
+                        </div>
+                      )
+                    })()}
 
                     <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:9}}>
                       <span style={{
