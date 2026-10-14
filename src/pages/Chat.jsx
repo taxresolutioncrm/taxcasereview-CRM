@@ -863,17 +863,27 @@ export default function Chat() {
     } catch (_) {}
   }
 
-  // Listen for incoming huddle invites via chat messages
+  // Incoming huddle invites: central TaxRes receives the DB event once in
+  // AppContext and fans it out locally; Nashville keeps its existing DB listener.
   useEffect(() => {
-    const ch = supabase.channel('huddle-notify')
-    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, ({ new: msg }) => {
-      if (!msg.huddle_id || msg.sender !== '🔔 System' || huddle) return
-      // Direct ring: invite_to must match my name (or be absent for legacy broadcasts)
+    const host = window.location.hostname.toLowerCase()
+    const isCentralNotificationRuntime = host !== 'nashville.taxrescrm.app'
+
+    function handleInvite(msg) {
+      if (!msg?.huddle_id || msg.sender !== '🔔 System' || huddle) return
       if (msg.invite_to && msg.invite_to !== myName) return
-      // Extract caller name from "📞 X is calling you" or legacy "📞 X invited Y..."
       const caller = msg.text?.replace(/^📞\s*/, '').replace(/ is calling you.*/, '').replace(/ invited .*/, '') || 'Someone'
       setIncomingHuddle({ from: caller, huddleId: msg.huddle_id })
-    }).subscribe()
+    }
+
+    if (isCentralNotificationRuntime) {
+      const onCentralInvite = event => handleInvite(event.detail?.msg)
+      window.addEventListener('taxres:huddle-invite', onCentralInvite)
+      return () => window.removeEventListener('taxres:huddle-invite', onCentralInvite)
+    }
+
+    const ch = supabase.channel('huddle-notify')
+    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, ({ new: msg }) => handleInvite(msg)).subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [huddle, myName])
 
