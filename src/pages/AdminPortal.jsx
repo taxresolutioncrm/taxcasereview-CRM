@@ -433,11 +433,11 @@ async function loadPlatformOfficeRowsFresh() {
 
     // Add only aggregate metrics that are not already represented by office rows.
     // This preserves accurate portfolio totals without double-counting.
-    const productRows = rows.filter(row => row.product === result.productKey)
-    const representedStaff = productRows.reduce((sum,row)=>sum+Number(row.employee_count ?? 0),0)
-    const representedClients = productRows.reduce((sum,row)=>sum+Number(row.client_count ?? 0),0)
-    const representedLeads = productRows.reduce((sum,row)=>sum+Number(row.lead_count ?? 0),0)
-    const representedStorage = productRows.reduce((sum,row)=>sum+Number(row.storage_bytes ?? 0),0)
+    const officeRowsForProduct = rows.filter(row => row.product === result.productKey)
+    const representedStaff = officeRowsForProduct.reduce((sum,row)=>sum+Number(row.employee_count ?? 0),0)
+    const representedClients = officeRowsForProduct.reduce((sum,row)=>sum+Number(row.client_count ?? 0),0)
+    const representedLeads = officeRowsForProduct.reduce((sum,row)=>sum+Number(row.lead_count ?? 0),0)
+    const representedStorage = officeRowsForProduct.reduce((sum,row)=>sum+Number(row.storage_bytes ?? 0),0)
     const aggregateStaff = Number(metrics.active_staff ?? metrics.active_users ?? 0)
     const aggregateClients = Number(metrics.total_clients ?? metrics.active_clients ?? 0)
     const aggregateLeads = Number(metrics.total_leads ?? metrics.active_leads ?? 0)
