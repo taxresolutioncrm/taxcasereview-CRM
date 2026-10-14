@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { getStoredLanguage } from '../lib/i18n'
 
 const SUGGESTED = [
   'What resolution options work best for this client?',
@@ -20,6 +21,50 @@ const ADMIN_SUGGESTED = [
   'What emails need my attention right now?',
   'Draft a reply to the last email on screen',
 ]
+
+const AI_ES = {
+  'Ready': 'Listo',
+  'New chat': 'Nuevo chat',
+  'Close AI Assistant': 'Cerrar asistente de IA',
+  'Open AI Assistant': 'Abrir asistente de IA',
+  'Platform AI assistant': 'Asistente de IA de la plataforma',
+  'TaxRes AI assistant': 'Asistente de IA de TaxRes',
+  'Platform AI': 'IA de la plataforma',
+  'TaxRes AI': 'IA de TaxRes',
+  'Operations and platform copilot': 'Copiloto de operaciones y plataforma',
+  'Resolution copilot · aware of this screen': 'Copiloto de resolución · conoce esta pantalla',
+  'AI COPILOT': 'COPILOTO DE IA',
+  'What do you want to run?': '¿Qué quieres ejecutar?',
+  'What do you want to solve?': '¿Qué quieres resolver?',
+  'Use the current screen as context or ask about operations, onboarding, pricing, calendar, and communications.': 'Usa la pantalla actual como contexto o pregunta sobre operaciones, incorporación, precios, calendario y comunicaciones.',
+  'Use the current client and screen as context for case strategy, IRS procedures, forms, deadlines, and client communications.': 'Usa el cliente y la pantalla actuales como contexto para la estrategia del caso, procedimientos del IRS, formularios, fechas límite y comunicaciones con el cliente.',
+  'What resolution options work best for this client?': '¿Qué opciones de resolución funcionan mejor para este cliente?',
+  'What IRS forms do I need for this case?': '¿Qué formularios del IRS necesito para este caso?',
+  'How do I calculate the CSED for this taxpayer?': '¿Cómo calculo la CSED para este contribuyente?',
+  'Draft a client update email for this case': 'Redacta un correo de actualización para el cliente sobre este caso',
+  'What are the OIC acceptance criteria?': '¿Cuáles son los criterios de aceptación de una OIC?',
+  'How do I request a Collection Due Process hearing?': '¿Cómo solicito una audiencia de Collection Due Process?',
+  'Summarize the platform stats on this page': 'Resume las estadísticas de la plataforma en esta página',
+  'Which offices are closest to renewal or at risk of churn?': '¿Qué oficinas están más cerca de renovar o tienen riesgo de cancelación?',
+  'Draft a follow-up email to a prospect after a demo': 'Redacta un correo de seguimiento para un prospecto después de una demostración',
+  'What should I price a 30-seat firm at?': '¿Qué precio debo cobrar a una firma de 30 usuarios?',
+  'Help me write onboarding instructions for a new office': 'Ayúdame a redactar instrucciones de incorporación para una oficina nueva',
+  'Summarize my calendar today and flag anything urgent': 'Resume mi calendario de hoy y señala cualquier asunto urgente',
+  'What emails need my attention right now?': '¿Qué correos necesitan mi atención ahora mismo?',
+  'Draft a reply to the last email on screen': 'Redacta una respuesta al último correo que aparece en pantalla',
+  'Working on it': 'Trabajando en ello',
+  'Last request failed. Edit your prompt or retry.': 'La última solicitud falló. Edita tu mensaje o vuelve a intentarlo.',
+  'Ask TaxRes AI…': 'Pregunta a TaxRes AI…',
+  'Send message': 'Enviar mensaje',
+  'Enter to send · Shift+Enter for a new line': 'Enter para enviar · Shift+Enter para una línea nueva',
+  'Secure office context': 'Contexto seguro de la oficina',
+  'Your session expired or is not authorized. Please sign in again and retry.': 'Tu sesión venció o no está autorizada. Inicia sesión nuevamente y vuelve a intentarlo.',
+  'The AI service is busy right now. Please wait a moment and retry.': 'El servicio de IA está ocupado en este momento. Espera un momento y vuelve a intentarlo.',
+  'The AI service is temporarily unavailable. Please retry.': 'El servicio de IA no está disponible temporalmente. Vuelve a intentarlo.',
+  'Your session is no longer active. Please sign in again.': 'Tu sesión ya no está activa. Inicia sesión nuevamente.',
+  'The AI service returned an empty response. Please retry.': 'El servicio de IA devolvió una respuesta vacía. Vuelve a intentarlo.',
+  'Connection error. Please try again.': 'Error de conexión. Inténtalo de nuevo.',
+}
 
 function getPageContext() {
   const main = document.querySelector('.page-content') || document.querySelector('main') || document.body
@@ -54,8 +99,16 @@ export default function AIAssistant({ adminMode = false }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [lastError, setLastError] = useState('')
+  const [language, setLanguage] = useState(() => getStoredLanguage())
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  const t = value => language === 'es' ? (AI_ES[value] || value) : value
+
+  useEffect(() => {
+    const onLanguageChange = event => setLanguage(event?.detail?.language === 'es' ? 'es' : 'en')
+    window.addEventListener('taxres-language-change', onLanguageChange)
+    return () => window.removeEventListener('taxres-language-change', onLanguageChange)
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -89,7 +142,7 @@ export default function AIAssistant({ adminMode = false }) {
             'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({
-            message: msg,
+            message: language === 'es' ? `Responde completamente en español profesional. Mantén sin traducir los nombres propios, números de formularios del IRS, secciones del código y siglas tributarias cuando corresponda.\n\n${msg}` : msg,
             context: getPageContext(),
             history: nextMessages.slice(-10, -1),
           }),
@@ -105,7 +158,7 @@ export default function AIAssistant({ adminMode = false }) {
 
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply.trim() }])
     } catch (err) {
-      const message = err?.message || 'Connection error. Please try again.'
+      const message = t(err?.message || 'Connection error. Please try again.')
       setLastError(message)
       setMessages(prev => [...prev, { role: 'assistant', content: message, error: true }])
     } finally {
@@ -127,25 +180,25 @@ export default function AIAssistant({ adminMode = false }) {
       <button
         className="taxres-ai-fab"
         onClick={() => setOpen(v => !v)}
-        title={open ? 'Close AI Assistant' : 'Open AI Assistant'}
-        aria-label={open ? 'Close AI Assistant' : 'Open AI Assistant'}
+        title={t(open ? 'Close AI Assistant' : 'Open AI Assistant')}
+        aria-label={t(open ? 'Close AI Assistant' : 'Open AI Assistant')}
       >
         {open ? '×' : '✦'}
       </button>
 
       {open && (
-        <section className="taxres-ai-panel" aria-label={adminMode ? 'Platform AI assistant' : 'TaxRes AI assistant'}>
+        <section className="taxres-ai-panel" aria-label={t(adminMode ? 'Platform AI assistant' : 'TaxRes AI assistant')}>
           <header className="taxres-ai-header">
             <div className="taxres-ai-mark">✦</div>
             <div className="taxres-ai-heading">
               <div className="taxres-ai-title-row">
-                <strong>{adminMode ? 'Platform AI' : 'TaxRes AI'}</strong>
-                <span className="taxres-ai-status"><i />Ready</span>
+                <strong>{t(adminMode ? 'Platform AI' : 'TaxRes AI')}</strong>
+                <span className="taxres-ai-status"><i />{t('Ready')}</span>
               </div>
-              <span>{adminMode ? 'Operations and platform copilot' : 'Resolution copilot · aware of this screen'}</span>
+              <span>{t(adminMode ? 'Operations and platform copilot' : 'Resolution copilot · aware of this screen')}</span>
             </div>
             {messages.length > 0 && (
-              <button className="taxres-ai-clear" onClick={() => { setMessages([]); setLastError('') }}>New chat</button>
+              <button className="taxres-ai-clear" onClick={() => { setMessages([]); setLastError('') }}>{t('New chat')}</button>
             )}
           </header>
 
@@ -153,19 +206,19 @@ export default function AIAssistant({ adminMode = false }) {
             {messages.length === 0 && (
               <div className="taxres-ai-welcome">
                 <div className="taxres-ai-welcome-copy">
-                  <span className="taxres-ai-eyebrow">AI COPILOT</span>
-                  <h3>{adminMode ? 'What do you want to run?' : 'What do you want to solve?'}</h3>
+                  <span className="taxres-ai-eyebrow">{t('AI COPILOT')}</span>
+                  <h3>{t(adminMode ? 'What do you want to run?' : 'What do you want to solve?')}</h3>
                   <p>
                     {adminMode
-                      ? 'Use the current screen as context or ask about operations, onboarding, pricing, calendar, and communications.'
-                      : 'Use the current client and screen as context for case strategy, IRS procedures, forms, deadlines, and client communications.'}
+                      ? t('Use the current screen as context or ask about operations, onboarding, pricing, calendar, and communications.')
+                      : t('Use the current client and screen as context for case strategy, IRS procedures, forms, deadlines, and client communications.')}
                   </p>
                 </div>
                 <div className="taxres-ai-suggestions">
                   {suggestions.slice(0, 6).map((s, i) => (
-                    <button key={i} onClick={() => send(s)}>
+                    <button key={i} onClick={() => send(t(s))}>
                       <span>✦</span>
-                      <span>{s}</span>
+                      <span>{t(s)}</span>
                     </button>
                   ))}
                 </div>
@@ -182,28 +235,28 @@ export default function AIAssistant({ adminMode = false }) {
             {loading && (
               <div className="taxres-ai-thinking">
                 <div className="taxres-ai-avatar">✦</div>
-                <span>Working on it<span className="taxres-ai-dots">•••</span></span>
+                <span>{t('Working on it')}<span className="taxres-ai-dots">•••</span></span>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
 
           <footer className="taxres-ai-composer-wrap">
-            {lastError && <div className="taxres-ai-error-note">Last request failed. Edit your prompt or retry.</div>}
+            {lastError && <div className="taxres-ai-error-note">{t('Last request failed. Edit your prompt or retry.')}</div>}
             <div className="taxres-ai-composer">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Ask TaxRes AI…"
+                placeholder={t('Ask TaxRes AI…')}
                 rows={1}
               />
-              <button onClick={() => send()} disabled={loading || !input.trim()} aria-label="Send message">↑</button>
+              <button onClick={() => send()} disabled={loading || !input.trim()} aria-label={t('Send message')}>↑</button>
             </div>
             <div className="taxres-ai-footer-meta">
-              <span>Enter to send · Shift+Enter for a new line</span>
-              <span>Secure office context</span>
+              <span>{t('Enter to send · Shift+Enter for a new line')}</span>
+              <span>{t('Secure office context')}</span>
             </div>
           </footer>
         </section>
