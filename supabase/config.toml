@@ -252,3 +252,9 @@ verify_jwt = false
 # Public invalidation-only endpoint; it accepts no row data and performs no reads.
 [functions.metrics-signal]
 verify_jwt = false
+
+
+# Arcvena server-to-server auth/access email relay. Authenticates the shared
+# ARCVENA_SUPPORT_SECRET before resolving the Arcvena Stalwart Vault route.
+[functions.arcvena-auth-mail-relay]
+verify_jwt = false
