@@ -398,7 +398,115 @@ async function resolveOpenQuestions(userClient:any, geminiKey:string, clientId:s
   return {resolved,remaining:Math.max(0,open.length-resolved),resolutions}
 }
 
-async function callGemini(apiKey: string, parts: any[]) {
+
+async function runResolutionAnalysis(userClient:any, geminiKey:string, clientId:string) {
+  const context:any = await loadCrmContext(userClient,clientId)
+  const tenantId = String(context?.client?.tenant_id || '')
+  if (!tenantId) throw new Error('Client tenant context was not found')
+
+  const {data:run,error:runErr}=await userClient.from('document_ai_resolution_runs').insert({
+    tenant_id: tenantId,
+    client_id: clientId,
+    status: 'processing',
+    model: MODEL,
+  }).select('id').single()
+  if(runErr || !run) throw new Error(runErr?.message || 'Resolution analysis could not be started')
+
+  try {
+    const prompt = RESOLUTION_PROMPT
+      + '\n\nRESOLUTION_CATALOG:\n' + JSON.stringify(RESOLUTION_CATALOG)
+      + '\n\nCRM_CONTEXT:\n' + JSON.stringify(context)
+
+    const parsed = await callGemini(geminiKey,[{text:prompt}],12000)
+    const rawCandidates = Array.isArray(parsed?.candidates) ? parsed.candidates : []
+    const byKey = new Map<string,any>()
+    for (const raw of rawCandidates) {
+      const key = String(raw?.program_key || '')
+      if (!RESOLUTION_CATALOG.some(p => p.key === key) || byKey.has(key)) continue
+      byKey.set(key,raw)
+    }
+
+    const allowedStatuses = new Set(['strong_candidate','possible_candidate','insufficient_data','not_indicated'])
+    const rows = RESOLUTION_CATALOG.map((program,index) => {
+      const item = byKey.get(program.key) || {}
+      const status = allowedStatuses.has(String(item?.candidate_status))
+        ? String(item.candidate_status)
+        : 'insufficient_data'
+      const list = (value:any, limit=20) => Array.isArray(value)
+        ? value.map(v => redactText(v).trim()).filter(Boolean).slice(0,limit)
+        : []
+      return {
+        tenant_id: tenantId,
+        resolution_run_id: run.id,
+        client_id: clientId,
+        program_key: program.key,
+        program_name: program.name,
+        family: program.family,
+        candidate_status: status,
+        confidence: clamp(item?.confidence),
+        summary: redactText(item?.summary || (byKey.has(program.key) ? '' : 'AI did not return enough information to assess this program.')).slice(0,1800),
+        why_supported: list(item?.why_supported),
+        concerns: list(item?.concerns),
+        missing_information: list(item?.missing_information),
+        likely_forms: list(item?.likely_forms,12),
+        next_steps: list(item?.next_steps,12),
+        practitioner_note: redactText(item?.practitioner_note || '').slice(0,1800),
+        rank: index + 1,
+      }
+    })
+
+    // Rank strong/possible candidates first while keeping the full catalog.
+    const statusRank:any = { strong_candidate:0, possible_candidate:1, insufficient_data:2, not_indicated:3 }
+    rows.sort((a:any,b:any) => {
+      const byStatus = statusRank[a.candidate_status] - statusRank[b.candidate_status]
+      if (byStatus) return byStatus
+      const ac = a.confidence == null ? -1 : Number(a.confidence)
+      const bc = b.confidence == null ? -1 : Number(b.confidence)
+      return bc - ac || a.rank - b.rank
+    })
+    rows.forEach((row:any,index:number)=>{ row.rank=index+1 })
+
+    const {error:insertErr}=await userClient.from('document_ai_resolution_candidates').insert(rows)
+    if(insertErr) throw insertErr
+
+    const allowedTop = new Set(RESOLUTION_CATALOG.map(p=>p.key))
+    const topCandidateKeys = Array.isArray(parsed?.top_candidate_keys)
+      ? [...new Set(parsed.top_candidate_keys.map((v:any)=>String(v)).filter((v:string)=>allowedTop.has(v)))].slice(0,8)
+      : rows.filter((r:any)=>['strong_candidate','possible_candidate'].includes(r.candidate_status)).slice(0,5).map((r:any)=>r.program_key)
+
+    const overallSummary = redactText(parsed?.overall_summary || '').slice(0,3000)
+    const {error:finishErr}=await userClient.from('document_ai_resolution_runs').update({
+      status:'complete',
+      overall_summary:overallSummary,
+      top_candidate_keys:topCandidateKeys,
+      completed_at:new Date().toISOString(),
+    }).eq('id',run.id)
+    if(finishErr) throw finishErr
+
+    return {
+      runId:run.id,
+      overallSummary,
+      topCandidateKeys,
+      counts:{
+        strong:rows.filter((r:any)=>r.candidate_status==='strong_candidate').length,
+        possible:rows.filter((r:any)=>r.candidate_status==='possible_candidate').length,
+        insufficient:rows.filter((r:any)=>r.candidate_status==='insufficient_data').length,
+        notIndicated:rows.filter((r:any)=>r.candidate_status==='not_indicated').length,
+      },
+      model:MODEL,
+    }
+  } catch(err:any) {
+    const safeError=redactText(err?.message||err).slice(0,1000)
+    await userClient.from('document_ai_resolution_runs').update({
+      status:'failed',
+      error_message:safeError,
+      completed_at:new Date().toISOString(),
+    }).eq('id',run.id)
+    throw new Error(safeError)
+  }
+}
+
+async function callGemini(apiKey: string, parts: any[], maxOutputTokens = 5000) {
   let lastError = 'AI provider request failed'
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
@@ -410,7 +518,7 @@ async function callGemini(apiKey: string, parts: any[]) {
           signal: AbortSignal.timeout(45_000),
           body: JSON.stringify({
             contents: [{ role: 'user', parts }],
-            generationConfig: { temperature: 0, maxOutputTokens: 5000, responseMimeType: 'application/json' },
+            generationConfig: { temperature: 0, maxOutputTokens, responseMimeType: 'application/json' },
           }),
         },
       )
