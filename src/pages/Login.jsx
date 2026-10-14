@@ -19,6 +19,41 @@ function isCentralTaxResHost() {
   return host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
 }
 
+
+function applyLoginBrowserBranding(branding, isAdminHost) {
+  try {
+    const favicon = document.getElementById('app-favicon') || document.querySelector('link[rel="icon"]')
+    const apple = document.getElementById('app-apple-touch-icon') || document.querySelector('link[rel="apple-touch-icon"]')
+    if (isAdminHost) {
+      document.title = 'RomyLabs Admin'
+      if (favicon) {
+        favicon.setAttribute('type', 'image/svg+xml')
+        favicon.setAttribute('href', '/romylabs-favicon.svg?v=20260830-3')
+      }
+      if (apple) apple.setAttribute('href', '/romylabs-favicon.svg?v=20260830-3')
+      return
+    }
+
+    if (branding?.firm_name) {
+      document.title = branding.firm_name + ' CRM'
+      const href = branding.favicon_url || branding.logo_url || '/taxrescrm-favicon.png'
+      if (favicon) {
+        favicon.removeAttribute('type')
+        favicon.setAttribute('href', href)
+      }
+      if (apple) apple.setAttribute('href', href)
+      return
+    }
+
+    document.title = 'TaxRes CRM'
+    if (favicon) {
+      favicon.setAttribute('type', 'image/png')
+      favicon.setAttribute('href', '/taxrescrm-favicon.png')
+    }
+    if (apple) apple.setAttribute('href', '/taxrescrm-favicon.png')
+  } catch (_) {}
+}
+
 const AUTH_RETRY_DELAYS_MS = [0, 700, 1500, 2500]
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 function authErrorText(err) {
@@ -173,22 +208,48 @@ export default function Login() {
 
   useEffect(() => {
     // Branding follows the host/tenant, not the privilege level of the email.
-    // Owner credentials such as romy@taxcasereview.org remain TCR-branded on
-    // the TCR login; only admin.romylabs.com is allowed to show RomyLabs.
+    // Resolve tenant identity before authentication so an office login never
+    // presents another firm's logo, browser title, or favicon.
     if (isAdminHost) {
-      setBranding({ firm_name: 'RomyLabs', logo_url: '/romylabs-logo.png', sub: 'Platform Administration' })
+      const adminBranding = {
+        firm_name: 'RomyLabs',
+        logo_url: '/romylabs-logo.png',
+        favicon_url: '/romylabs-favicon.svg?v=20260830-3',
+        sub: 'Platform Administration'
+      }
+      setBranding(adminBranding)
+      applyLoginBrowserBranding(adminBranding, true)
       return
     }
-    const domain = email.split('@')[1]?.toLowerCase()
-    if (!domain || !domain.includes('.')) { setBranding(null); return }
+
+    const domain = email.split('@')[1]?.trim().toLowerCase()
+    if (!domain || !domain.includes('.')) {
+      setBranding(null)
+      applyLoginBrowserBranding(null, false)
+      return
+    }
+
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       try {
         const { data } = await supabase.rpc('get_branding_by_email_domain', { p_domain: domain })
         if (data && data.firm_name) {
-          setBranding({ firm_name: data.firm_name, logo_url: data.logo_url || null, sub: data.sub || 'IRS Resolution Platform' })
-        } else setBranding(null)
-      } catch (_) { setBranding(null) }
+          const resolved = {
+            firm_name: data.firm_name,
+            logo_url: data.logo_url || data.favicon_url || null,
+            favicon_url: data.favicon_url || data.logo_url || null,
+            sub: data.sub || 'IRS Resolution Platform'
+          }
+          setBranding(resolved)
+          applyLoginBrowserBranding(resolved, false)
+        } else {
+          setBranding(null)
+          applyLoginBrowserBranding(null, false)
+        }
+      } catch (_) {
+        setBranding(null)
+        applyLoginBrowserBranding(null, false)
+      }
     }, 400)
     return () => clearTimeout(debounceRef.current)
   }, [email, isAdminHost])
