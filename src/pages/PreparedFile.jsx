@@ -523,14 +523,14 @@ export default function PreparedFile() {
                       <div style={{fontSize:10,fontWeight:900,color:'#22c55e',textTransform:'uppercase',letterSpacing:'.05em'}}>Selected client</div>
                       <div style={{fontSize:13,fontWeight:900,color:'var(--tx)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{selectedLandingClient?.name || clientSearch}</div>
                     </div>
-                    <button type="button" className="btn sm" onClick={()=>{setSelectedClientId('');setClientSearch('');setClientSearchOpen(false);setLandingUploadFile(null)}}>Change</button>
+                    <button type="button" className="btn sm" onClick={()=>{setSelectedClientId('');setClientSearch('');setClientSearchOpen(false)}}>Change</button>
                   </div>
                 ) : (
-                  <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>Select a client before uploading or opening an intelligence workspace.</div>
+                  <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>You can choose a document now or select the client first. Analysis starts only after both are ready.</div>
                 )}
               </section>
 
-              <section style={{opacity:selectedClientId?1:.68,transition:'opacity .15s ease'}}>
+              <section>
                 <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:9}}>
                   <div style={{width:24,height:24,borderRadius:999,display:'grid',placeItems:'center',fontSize:11,fontWeight:900,background:selectedClientId?'var(--pri,#6957ff)':'var(--bd)',color:'#fff'}}>2</div>
                   <div>
@@ -547,11 +547,11 @@ export default function PreparedFile() {
                         {landingUploadFile ? `${(landingUploadFile.size/1024/1024).toFixed(2)} MB · ready to upload` : 'The original stays in this client’s private document storage.'}
                       </div>
                     </div>
-                    <label className="btn" style={{cursor:selectedClientId&&!landingUploadBusy?'pointer':'default',margin:0,whiteSpace:'nowrap'}}>
+                    <label className="btn" style={{cursor:!landingUploadBusy?'pointer':'default',margin:0,whiteSpace:'nowrap'}}>
                       Choose File
                       <input
                         type="file"
-                        disabled={!selectedClientId || landingUploadBusy}
+                        disabled={landingUploadBusy}
                         onChange={e=>setLandingUploadFile(e.target.files?.[0] || null)}
                         accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx"
                         style={{display:'none'}}
@@ -561,11 +561,11 @@ export default function PreparedFile() {
 
                   <button
                     className="btn primary"
-                    disabled={landingUploadBusy}
+                    disabled={landingUploadBusy || !selectedClientId || !landingUploadFile}
                     onClick={uploadFromLanding}
                     style={{width:'100%',justifyContent:'center',marginTop:12,minHeight:38,fontWeight:900}}
                   >
-                    {landingUploadBusy ? 'Uploading & analyzing…' : '✦ Upload & Analyze'}
+                    {landingUploadBusy ? 'Uploading & analyzing…' : !selectedClientId ? 'Select a client to analyze' : !landingUploadFile ? 'Choose a file to analyze' : '✦ Upload & Analyze'}
                   </button>
                 </div>
               </section>
