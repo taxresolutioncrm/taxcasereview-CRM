@@ -552,9 +552,9 @@ async function loadPlatformOfficeRowsFresh() {
   return { rows, warnings:[...new Set(warnings)], externalMetrics }
 }
 
-async function loadPlatformOfficeRows() {
+async function loadPlatformOfficeRows(forceRefresh = false) {
   const now = Date.now()
-  if (platformOfficeRowsCache && now - platformOfficeRowsCacheAt < PLATFORM_OFFICE_CACHE_MS) {
+  if (!forceRefresh && platformOfficeRowsCache && now - platformOfficeRowsCacheAt < PLATFORM_OFFICE_CACHE_MS) {
     return platformOfficeRowsCache
   }
   if (platformOfficeRowsInflight) return platformOfficeRowsInflight
@@ -899,6 +899,9 @@ function AdminDialer() {
 function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
+  const [refreshingMetrics, setRefreshingMetrics] = useState(false)
+  const [refreshError, setRefreshError] = useState('')
+  const [lastManualRefresh, setLastManualRefresh] = useState(null)
   const [externalMetrics, setExternalMetrics] = useState({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
   const [sortConfig, setSortConfig] = useState({ key:'portfolio_order', direction:'asc' })
   const [collapsedProducts, setCollapsedProducts] = useState(() => new Set())
@@ -926,6 +929,29 @@ function Overview() {
     })()
     return()=>{cancelled=true}
   }, [user])
+
+  const refreshAllMetrics = async () => {
+    if (refreshingMetrics) return
+    setRefreshingMetrics(true)
+    setRefreshError('')
+    try {
+      // Bypass only the in-memory Overview cache; use the existing hub/billing/
+      // directory reads and never create an extra background polling process.
+      const { rows, warnings, externalMetrics: nextExternalMetrics } = await loadPlatformOfficeRows(true)
+      if (warnings?.length) {
+        setRefreshError('Some CRM metrics could not be refreshed: ' + warnings.join('; '))
+      }
+      setStats(rows)
+      setExternalMetrics(nextExternalMetrics)
+      setLoadError('')
+      setLastManualRefresh(new Date())
+    } catch (error) {
+      // Keep previously displayed figures instead of replacing them with zero.
+      setRefreshError(error?.message || 'Refresh failed; previous values retained')
+    } finally {
+      setRefreshingMetrics(false)
+    }
+  }
 
   // Keep TaxRes-family office usage live without rerunning the expensive portfolio
   // loader or writing anything back to Supabase. The already-bounded metrics cache
@@ -1186,9 +1212,14 @@ function Overview() {
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:14, marginBottom:32 }}>
         {KPI.map(k => (
           <div key={k.label} style={{ ...S.card, padding:'20px 18px' }}>
-            <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:8 }}>{k.label}</div>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
+              <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em' }}>{k.label}</div>
+              {k.label === 'Storage Used' && <button type="button" onClick={refreshAllMetrics} disabled={refreshingMetrics || stats===null} title="Refresh all CRM metrics now" aria-label="Refresh all CRM metrics" style={{ border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.08)', color:'#c4b5fd', borderRadius:7, padding:'4px 7px', fontSize:11, cursor:refreshingMetrics?'wait':'pointer', opacity:refreshingMetrics?.6:1 }}>{refreshingMetrics ? 'Refreshing…' : '↻ Refresh'}</button>}
+            </div>
             <div style={{ fontSize:28, fontWeight:900, color:k.color, lineHeight:1 }}>{stats===null?'…':k.val}</div>
             <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>{k.sub}</div>
+            {k.label === 'Storage Used' && lastManualRefresh && <div style={{ fontSize:10, color:'#64748b', marginTop:4 }}>Refreshed {lastManualRefresh.toLocaleTimeString()}</div>}
+            {k.label === 'Storage Used' && refreshError && <div role="status" style={{ fontSize:10, color:'#fbbf24', marginTop:6 }}>{refreshError}</div>}
           </div>
         ))}
       </div>
