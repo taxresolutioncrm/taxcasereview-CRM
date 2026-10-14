@@ -678,7 +678,6 @@ export default function Email() {
     }
   }
 
-
   function openEmail(email, index) {
     setSelected(email)
     setFocusIndex(index)
