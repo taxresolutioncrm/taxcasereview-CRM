@@ -566,6 +566,17 @@ serve(async (req) => {
     global: { headers: { Authorization: authHeader } },
   })
 
+  if (String(payload?.action || '').toLowerCase() === 'resolution_analysis') {
+    if (sourceKey !== 'tcr') return reply({ok:false,error:'Resolution Analysis is not enabled for this source project',code:'RESOLUTION_ANALYSIS_SOURCE_DISABLED'},403)
+    if (!requestedClientId) return reply({ok:false,error:'clientId required',code:'CLIENT_REQUIRED'},400)
+    try {
+      const result=await runResolutionAnalysis(userClient,geminiKey,String(requestedClientId))
+      return reply({ok:true,action:'resolution_analysis',...result,sourceProject:sourceKey})
+    } catch(err:any) {
+      return reply({ok:false,error:redactText(err?.message||err).slice(0,1000),code:'RESOLUTION_ANALYSIS_FAILED'})
+    }
+  }
+
   if (String(payload?.action || '').toLowerCase() === 'resolve_questions') {
     if (!requestedClientId) return reply({ ok:false,error:'clientId required',code:'CLIENT_REQUIRED' },400)
     try {
