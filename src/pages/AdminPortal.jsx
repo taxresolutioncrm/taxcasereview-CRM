@@ -361,12 +361,15 @@ async function loadPlatformOfficeRowsFresh() {
     const valueOrNull = (value) => value === null || value === undefined ? null : Number(value)
 
     for (const office of offices) {
-      const key = `${result.productKey}:${office.id}`
+      // Nashville is a TaxRes-family office, not a standalone RomyLabs product.
+      // Only the data feed is separate; preserve the central office UUID.
+      const isNashville = result.productKey === 'nashville' && String(office.id) === NASH_TENANT
+      const key = isNashville ? String(office.id) : `${result.productKey}:${office.id}`
       const existing = rows.findIndex(r => r.id === key)
       const normalized = {
         id:key,
         source_id:office.id,
-        product:result.productKey,
+        product:isNashville ? 'taxres_crm' : result.productKey,
         firm_name:office.name || `${cfg.label} Office`,
         brand_color:cfg.color,
         is_demo:
@@ -413,7 +416,9 @@ async function loadPlatformOfficeRowsFresh() {
       // for the universal contract/e-sign engine. This keeps sender routing,
       // document history, and future contract sends product-aware without
       // requiring manual registry rows.
-      registrySyncJobs.push({
+      // Nashville is already registered under taxres_crm; don't create a
+      // second registry record or overwrite its independently managed status.
+      if (!isNashville) registrySyncJobs.push({
         label:cfg.label,
         promise:supabase.rpc('admin_romylabs_upsert_office_registry', {
           p_product_key:result.productKey,
@@ -433,7 +438,9 @@ async function loadPlatformOfficeRowsFresh() {
 
     // Add only aggregate metrics that are not already represented by office rows.
     // This preserves accurate portfolio totals without double-counting.
-    const officeRowsForProduct = rows.filter(row => row.product === result.productKey)
+    const officeRowsForProduct = rows.filter(row => result.productKey === 'nashville'
+      ? row.product === 'taxres_crm' && String(row.source_id || row.id) === NASH_TENANT
+      : row.product === result.productKey)
     const representedStaff = officeRowsForProduct.reduce((sum,row)=>sum+Number(row.employee_count ?? 0),0)
     const representedClients = officeRowsForProduct.reduce((sum,row)=>sum+Number(row.client_count ?? 0),0)
     const representedLeads = officeRowsForProduct.reduce((sum,row)=>sum+Number(row.lead_count ?? 0),0)
