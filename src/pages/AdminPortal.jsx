@@ -413,7 +413,7 @@ async function loadPlatformOfficeRowsFresh() {
       // for the universal contract/e-sign engine. This keeps sender routing,
       // document history, and future contract sends product-aware without
       // requiring manual registry rows.
-      registrySyncJobs.push({
+      if (result.productKey !== 'nashville') registrySyncJobs.push({
         label:cfg.label,
         promise:supabase.rpc('admin_romylabs_upsert_office_registry', {
           p_product_key:result.productKey,
@@ -458,6 +458,12 @@ async function loadPlatformOfficeRowsFresh() {
         if (error) console.warn('[AdminPortal] office registry sync failed:', registrySyncJobs[index].label, error)
       })
     })
+  }
+
+  // Do not display Nashville's legacy TaxRes registry entry.
+  for (let i=rows.length-1;i>=0;i--) {
+    if (rows[i].product === 'taxres_crm' &&
+        String(rows[i].source_id || rows[i].id) === NASH_TENANT) rows.splice(i,1)
   }
 
   // Final revenue overlay: every product/office gets subscription collections
