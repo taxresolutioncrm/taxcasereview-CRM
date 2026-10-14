@@ -37,6 +37,7 @@ assert(sql.includes('CREATE OR REPLACE FUNCTION public.leadflow_cancel_appointme
 assert(sql.includes("SET status = 'canceled'"), 'cancellation must set canceled status')
 assert(sql.includes("RAISE EXCEPTION 'Appointment not found'"), 'cancellation must reject unknown appointment IDs')
 
+assert(!sql.includes('"irsOrState"'), 'LeadFlow case insert must not reference removed cases.irsOrState column')
 assert(sql.includes('RETURNS text'), 'LeadFlow RPCs must return text identifiers')
 assert(sql.includes("p_appointment_id text"), 'cancellation appointment id parameter missing')
 assert(sql.includes("p_reason         text DEFAULT NULL"), 'cancellation reason parameter missing')
