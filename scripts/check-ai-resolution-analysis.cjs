@@ -8,10 +8,10 @@ const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
 const requiredPrograms = [
   'full_pay_short_term','guaranteed_ia','streamlined_ia','non_streamlined_ia','ppia','cnc_status_53',
-  'oic_datc','oic_datl','oic_eta','penalty_fta','penalty_reasonable_cause',
-  'innocent_spouse_b','innocent_spouse_c','innocent_spouse_f','cdp_hearing','cap_appeal',
+  'oic_datc','oic_datl','oic_eta','penalty_fta','penalty_reasonable_cause','penalty_statutory_admin',
+  'innocent_spouse_b','innocent_spouse_c','innocent_spouse_f','cdp_hearing','equivalent_hearing','cap_appeal',
   'levy_release_hardship','lien_withdrawal','lien_discharge','lien_subordination','lien_release',
-  'audit_reconsideration','tas_hardship','tfrp_defense','payroll_tax_resolution'
+  'audit_reconsideration','amended_refund_abatement','identity_theft_resolution','tas_hardship','tfrp_defense','payroll_tax_resolution','bankruptcy_irs_coordination'
 ]
 for (const key of requiredPrograms) assert(edge.includes(`key:'${key}'`), `resolution catalog missing ${key}`)
 
