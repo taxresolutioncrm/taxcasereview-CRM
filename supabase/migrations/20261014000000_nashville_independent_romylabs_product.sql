@@ -37,7 +37,7 @@ insert into public.romylabs_products
 values
   ('nashville','Nashville Tax Solutions',true,
    'Independent tax resolution CRM; separately managed tenant and database',
-   'live',false,'https://nashville.taxrescrm.app','#6366f1',
+   'live',false,null,'#6366f1',
    11,'Tax Resolution',now());
 update public.romylabs_office_registry
 set product_key='nashville',updated_at=now()
