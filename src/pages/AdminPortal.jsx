@@ -502,12 +502,7 @@ async function loadPlatformOfficeRowsFresh() {
   // product/office data, so it adds no requests and no blocking I/O.
   // Nashville has its own CRM/database and must be a separate product header,
   // even while the legacy central registry has not been migrated.
-  const portfolioProducts = [
-    ...(productRows || []).filter(p => p.product_id !== 'nashville'),
-    { product_id:'nashville', name:'Nashville Tax Solutions', lifecycle:'live',
-      active:true, sort_order:1.5, app_url:'https://nashville.taxrescrm.app',
-      accent_color:'#6366f1' },
-  ]
+  const portfolioProducts = (productRows || [])
     .filter(p =>
       p.product_id !== 'romylabs' &&
       String(p.lifecycle || '').toLowerCase() !== 'internal'
