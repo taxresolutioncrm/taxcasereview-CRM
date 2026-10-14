@@ -511,6 +511,34 @@ async function runResolutionAnalysis(userClient:any, geminiKey:string, clientId:
   }
 }
 
+async function translateAiText(geminiKey:string, texts:any[], language:string) {
+  const target = language === 'es' ? 'Spanish' : 'English'
+  const clean = (Array.isArray(texts) ? texts : [])
+    .map(v => redactText(v).trim())
+    .filter(Boolean)
+    .slice(0,200)
+  if (!clean.length) return []
+
+  const totalChars = clean.reduce((sum,v)=>sum+v.length,0)
+  if (totalChars > 60000) throw new Error('Translation batch is too large')
+
+  const prompt = [
+    'Translate each string in INPUT into ' + target + '.',
+    'Return ONLY JSON with shape {"translations":["..."]}.',
+    'Keep the same array length and order.',
+    'Preserve client/person/business names, IRS form numbers, code sections, acronyms such as CNC, PPIA, OIC, CDP, CAP, TFRP, TAS, dates, tax years, dollar amounts, percentages, and identifiers.',
+    'Translate tax-resolution terminology professionally and naturally.',
+    'Do not add explanations, advice, or facts.',
+    'INPUT:',
+    JSON.stringify(clean),
+  ].join('\n')
+
+  const parsed = await callGemini(geminiKey,[{text:prompt}],8000)
+  const translations = Array.isArray(parsed?.translations) ? parsed.translations : []
+  if (translations.length !== clean.length) throw new Error('AI translation response length mismatch')
+  return translations.map((v:any)=>redactText(v).trim())
+}
+
 async function callGemini(apiKey: string, parts: any[], maxOutputTokens = 5000) {
   let lastError = 'AI provider request failed'
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -570,6 +598,19 @@ serve(async (req) => {
   const userClient = createClient(source.url, source.anon, {
     global: { headers: { Authorization: authHeader } },
   })
+
+  if (String(payload?.action || '').toLowerCase() === 'translate_ai_text') {
+    if (sourceKey !== 'tcr') return reply({ok:false,error:'AI translation is not enabled for this source project',code:'AI_TRANSLATION_SOURCE_DISABLED'},403)
+    const language = String(payload?.language || '').toLowerCase()
+    if (!['es','en'].includes(language)) return reply({ok:false,error:'language must be es or en',code:'LANGUAGE_REQUIRED'},400)
+    try {
+      const inputTexts = Array.isArray(payload?.texts) ? payload.texts : []
+      const translations = await translateAiText(geminiKey,inputTexts,language)
+      return reply({ok:true,action:'translate_ai_text',language,translations})
+    } catch(err:any) {
+      return reply({ok:false,error:redactText(err?.message||err).slice(0,1000),code:'AI_TRANSLATION_FAILED'})
+    }
+  }
 
   if (String(payload?.action || '').toLowerCase() === 'resolution_analysis') {
     if (sourceKey !== 'tcr') return reply({ok:false,error:'Resolution Analysis is not enabled for this source project',code:'RESOLUTION_ANALYSIS_SOURCE_DISABLED'},403)
