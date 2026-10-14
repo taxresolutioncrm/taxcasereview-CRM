@@ -63,7 +63,7 @@ export default function Email() {
   const [m365ClientId, setM365ClientId] = useState('')
   const [signature, setSignature] = useState({ text: '', logoUrl: '' })
   const { lastSyncAt, syncing, lastError, syncNow } = useGmailSync()
-  const { user, myTenantId } = useApp()
+  const { user, myTenantId, employeeName } = useApp()
   const userEmailLower = user?.email?.toLowerCase() || ''
   const isDemoMailbox = userEmailLower === 'demo@taxrescrm.net'
   const CLOUDCPA_TENANT_ID = 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae'
@@ -891,24 +891,78 @@ export default function Email() {
           onContextMenu={e => e.preventDefault()}
           style={{
             position:'fixed',left:emailContextMenu.x,top:emailContextMenu.y,zIndex:3000,
-            width:190,padding:6,borderRadius:10,border:'1px solid var(--br)',
+            width:248,padding:6,borderRadius:10,border:'1px solid var(--br)',
             background:'var(--sf)',boxShadow:'0 16px 40px rgba(0,0,0,.38)'
           }}
         >
-          <button
-            type="button"
-            onClick={()=>runEmailContextAction(emailContextMenu.email.is_read ? 'unread' : 'read')}
-            style={{width:'100%',textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:700}}
-          >
-            {emailContextMenu.email.is_read ? '✉️ Mark as unread' : '✓ Mark as read'}
+          {[
+            ['↩','Reply','reply'],
+            ['↪','Reply all','reply-all'],
+            ['➜','Forward','forward'],
+          ].map(([icon,label,action])=>(
+            <button key={action} type="button" onClick={()=>runEmailContextAction(action)}
+              style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+              <span style={{width:18,textAlign:'center'}}>{icon}</span><span>{label}</span>
+            </button>
+          ))}
+
+          <div style={{height:1,background:'var(--br)',margin:'5px 0'}} />
+
+          <button type="button" onClick={()=>runEmailContextAction('archive')}
+            style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+            <span style={{width:18,textAlign:'center'}}>▣</span><span>Archive</span>
           </button>
-          <div style={{height:1,background:'var(--br)',margin:'4px 0'}} />
-          <button
-            type="button"
-            onClick={()=>runEmailContextAction('delete')}
-            style={{width:'100%',textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--bad)',cursor:'pointer',fontSize:12,fontWeight:700}}
-          >
-            🗑 Delete
+          <button type="button" onClick={()=>runEmailContextAction('delete')}
+            style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+            <span style={{width:18,textAlign:'center'}}>🗑</span><span>Delete</span>
+          </button>
+          <button type="button" onClick={()=>runEmailContextAction(emailContextMenu.email.is_read ? 'unread' : 'read')}
+            style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+            <span style={{width:18,textAlign:'center'}}>✉</span>
+            <span>{emailContextMenu.email.is_read ? 'Mark as unread' : 'Mark as read'}</span>
+          </button>
+
+          <div style={{height:1,background:'var(--br)',margin:'5px 0'}} />
+
+          <button type="button" onClick={()=>runEmailContextAction('task')}
+            style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+            <span style={{width:18,textAlign:'center'}}>✓</span><span>Add to Tasks</span>
+          </button>
+
+          <div style={{position:'relative'}}
+            onMouseEnter={()=>setEmailContextSubmenu('move')}
+            onMouseLeave={()=>setEmailContextSubmenu(null)}>
+            <button type="button"
+              style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+              <span style={{width:18,textAlign:'center'}}>▣</span>
+              <span style={{flex:1}}>Move to</span>
+              <span>›</span>
+            </button>
+            {emailContextSubmenu==='move' && (
+              <div style={{
+                position:'absolute',left:'calc(100% - 2px)',top:0,width:180,padding:6,zIndex:3001,
+                borderRadius:10,border:'1px solid var(--br)',background:'var(--sf)',boxShadow:'0 12px 30px rgba(0,0,0,.32)'
+              }}>
+                {TRIAGE.filter(t=>t!==(emailContextMenu.email.triage||'Inbox') && t!=='Sent').map(t=>(
+                  <button key={t} type="button" onClick={()=>runEmailContextAction('move',t)}
+                    style={{width:'100%',textAlign:'left',padding:'8px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{height:1,background:'var(--br)',margin:'5px 0'}} />
+
+          <button type="button" onClick={()=>runEmailContextAction('find-sender')}
+            style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+            <span style={{width:18,textAlign:'center'}}>⌕</span>
+            <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Find emails from {emailSenderAddress(emailContextMenu.email) || 'sender'}</span>
+          </button>
+          <button type="button" onClick={()=>runEmailContextAction('open-window')}
+            style={{width:'100%',display:'flex',alignItems:'center',gap:10,textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:600}}>
+            <span style={{width:18,textAlign:'center'}}>↗</span><span>Open in new window</span>
           </button>
         </div>
       )}
