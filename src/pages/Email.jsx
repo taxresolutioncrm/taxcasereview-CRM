@@ -30,6 +30,7 @@ export default function Email() {
   const [sug, setSug]           = useState([])
   const [saving, setSaving]     = useState(false)
   const [toast, setToast]       = useState('')
+  const [emailContextMenu, setEmailContextMenu] = useState(null)
   const [view, setView]         = useState('inbox') // inbox | compose | templates
   const [searchParams] = useSearchParams()
   useEffect(() => { if (searchParams.get('new') === '1') { setForm(BLANK); setView('compose') } }, [searchParams])
@@ -677,6 +678,41 @@ export default function Email() {
     }
   }
 
+  function openEmailContextMenu(event, email) {
+    event.preventDefault()
+    event.stopPropagation()
+    const menuWidth = 190
+    const menuHeight = 126
+    const x = Math.min(event.clientX, Math.max(8, window.innerWidth - menuWidth - 8))
+    const y = Math.min(event.clientY, Math.max(8, window.innerHeight - menuHeight - 8))
+    setEmailContextMenu({ x, y, email })
+  }
+
+  async function runEmailContextAction(action) {
+    const email = emailContextMenu?.email
+    setEmailContextMenu(null)
+    if (!email) return
+    if (action === 'read') return markRead(email)
+    if (action === 'unread') return markUnread(email)
+    if (action === 'delete') return permanentlyDeleteEmail(email.id)
+  }
+
+  useEffect(() => {
+    if (!emailContextMenu) return
+    const close = () => setEmailContextMenu(null)
+    const onKey = event => { if (event.key === 'Escape') close() }
+    window.addEventListener('click', close)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [emailContextMenu])
+
   function openEmail(email, index) {
     setSelected(email)
     setFocusIndex(index)
@@ -740,6 +776,33 @@ export default function Email() {
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 52px)', margin: '-16px', overflow: 'hidden', background: 'var(--bg)', position: 'relative' }}>
       {toast && <div className="toast show">{toast}</div>}
+      {emailContextMenu && (
+        <div
+          onClick={e => e.stopPropagation()}
+          onContextMenu={e => e.preventDefault()}
+          style={{
+            position:'fixed',left:emailContextMenu.x,top:emailContextMenu.y,zIndex:3000,
+            width:190,padding:6,borderRadius:10,border:'1px solid var(--br)',
+            background:'var(--sf)',boxShadow:'0 16px 40px rgba(0,0,0,.38)'
+          }}
+        >
+          <button
+            type="button"
+            onClick={()=>runEmailContextAction(emailContextMenu.email.is_read ? 'unread' : 'read')}
+            style={{width:'100%',textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--tx)',cursor:'pointer',fontSize:12,fontWeight:700}}
+          >
+            {emailContextMenu.email.is_read ? '✉️ Mark as unread' : '✓ Mark as read'}
+          </button>
+          <div style={{height:1,background:'var(--br)',margin:'4px 0'}} />
+          <button
+            type="button"
+            onClick={()=>runEmailContextAction('delete')}
+            style={{width:'100%',textAlign:'left',padding:'9px 10px',border:0,borderRadius:7,background:'transparent',color:'var(--bad)',cursor:'pointer',fontSize:12,fontWeight:700}}
+          >
+            🗑 Delete
+          </button>
+        </div>
+      )}
 
       {/* ── Left sidebar ── */}
       <div className="email-sidebar" style={{ width: 220, flexShrink: 0, background: 'var(--nav)', borderRight: '1px solid var(--br)', display: 'flex', flexDirection: 'column' }}>
@@ -986,6 +1049,7 @@ export default function Email() {
                   <div key={e.id}
                     data-email-row
                     onClick={() => { if (!isDragging) openEmail(e, i) }}
+                    onContextMenu={ev => openEmailContextMenu(ev, e)}
                     draggable
                     onDragStart={ev => { isDragging = true; ev.dataTransfer.setData('emailId', e.id); ev.dataTransfer.effectAllowed = 'move' }}
                     onDragEnd={() => { setTimeout(() => { isDragging = false }, 100) }}
