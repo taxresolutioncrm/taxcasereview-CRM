@@ -44,6 +44,10 @@ export default function PreparedFile() {
   const [facts, setFacts] = useState([])
   const [entities, setEntities] = useState([])
   const [questions, setQuestions] = useState([])
+  const [resolutionRuns, setResolutionRuns] = useState([])
+  const [resolutionCandidates, setResolutionCandidates] = useState([])
+  const [resolutionBusy, setResolutionBusy] = useState(false)
+  const [resolutionStatus, setResolutionStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const [activeDoc, setActiveDoc] = useState('')
   const [error, setError] = useState('')
@@ -114,7 +118,7 @@ export default function PreparedFile() {
     setClient(nextClient)
     if (!nextClient) return
 
-    const [byId, byName, rs, fs, es, qs] = await Promise.all([
+    const [byId, byName, rs, fs, es, qs, rr, rc] = await Promise.all([
       supabase.from('documents').select('*').eq('client_id', clientId).order('created_at', { ascending:false }),
       nextClient.name
         ? supabase.from('documents').select('*').is('client_id', null).eq('client', nextClient.name).order('created_at', { ascending:false })
@@ -123,13 +127,15 @@ export default function PreparedFile() {
       supabase.from('document_ai_facts').select('*').eq('client_id', clientId).order('created_at', { ascending:false }),
       supabase.from('document_ai_entities').select('*').eq('client_id', clientId).order('created_at', { ascending:false }),
       supabase.from('document_ai_questions').select('*').eq('client_id', clientId).order('created_at', { ascending:false }),
+      supabase.from('document_ai_resolution_runs').select('*').eq('client_id', clientId).order('created_at', { ascending:false }),
+      supabase.from('document_ai_resolution_candidates').select('*').eq('client_id', clientId).order('created_at', { ascending:false }),
     ])
 
     const mergedDocs = [...(byId.data || []), ...(byName.data || [])]
       .filter((doc, index, all) => all.findIndex(x => String(x.id) === String(doc.id)) === index)
       .sort((a,b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
-    const firstError = [byId, byName, rs, fs, es, qs].find(result => result?.error)?.error
+    const firstError = [byId, byName, rs, fs, es, qs, rr, rc].find(result => result?.error)?.error
     if (firstError) setError(firstError.message)
 
     setDocs(mergedDocs)
@@ -137,6 +143,8 @@ export default function PreparedFile() {
     setFacts(fs.data || [])
     setEntities(es.data || [])
     setQuestions(qs.data || [])
+    setResolutionRuns(rr.data || [])
+    setResolutionCandidates(rc.data || [])
   }
 
   const latestByDoc = useMemo(() => {
