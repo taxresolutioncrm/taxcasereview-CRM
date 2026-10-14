@@ -240,12 +240,12 @@ BEGIN
 
   INSERT INTO public.cases (
     tenant_id, "clientName", "caseType", status, "irsBalance", "taxYears", "assignedTo",
-    "irsOrState", notes, lead_id, created_at
+    notes, lead_id, created_at
   ) VALUES (
     v_tenant, p_client_name, COALESCE(NULLIF(btrim(p_case_type), ''), 'OIC'),
     'Open', NULLIF(btrim(p_irs_balance), ''), NULLIF(btrim(p_tax_years), ''),
     COALESCE(NULLIF(btrim(p_assigned_to), ''), 'Dana Richard'),
-    'IRS Federal', p_notes, p_lead_id, now()
+    p_notes, p_lead_id, now()
   ) RETURNING id INTO v_id;
 
   RETURN v_id;
