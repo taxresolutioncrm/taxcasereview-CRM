@@ -616,7 +616,8 @@ const MANUAL_SECTIONS = [
       { type: 'steps', items: [
         { title: 'Open Email Blast', desc: 'Use the Communications section in the sidebar. Only users with Email/communications access can open the page.' },
         { title: 'Search and select recipients', desc: 'Select individual clients or Select visible. Only valid client email addresses from the active tenant are listed; existing opt-out/suppression flags are excluded.' },
-        { title: 'Compose the message', desc: 'Enter a subject and message. Supported merge fields are {{first_name}}, {{last_name}}, {{name}}, and {{email}}.' },
+        { title: 'Choose a template or start blank', desc: 'Use a built-in tax-office template for common outreach such as document requests, case updates, tax notices, payment reminders, appointment reminders, tax season updates, or general announcements. Templates fill the subject and message but remain fully editable.' },
+        { title: 'Compose the message', desc: 'Edit the subject and message as needed. Supported merge fields are {{first_name}}, {{last_name}}, {{name}}, and {{email}}. Use Recipient preview to verify the personalized output before sending.' },
         { title: 'Send a test first', desc: 'Enter a test email address and use Send test to verify subject, formatting, and merge content before the bulk send.' },
         { title: 'Confirm and send', desc: 'The CRM confirms the recipient count, sends through the existing office email transport, throttles recipients, and shows sent/failed status per recipient.' },
       ]},
