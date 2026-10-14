@@ -30,6 +30,7 @@ export default function Email() {
   const [sug, setSug]           = useState([])
   const [saving, setSaving]     = useState(false)
   const [toast, setToast]       = useState('')
+  const [emailContextMenu, setEmailContextMenu] = useState(null)
   const [view, setView]         = useState('inbox') // inbox | compose | templates
   const [searchParams] = useSearchParams()
   useEffect(() => { if (searchParams.get('new') === '1') { setForm(BLANK); setView('compose') } }, [searchParams])
