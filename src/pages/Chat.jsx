@@ -1,5 +1,5 @@
 import { validateFile, maybeCompressImage } from '../lib/uploadUtils'
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useCall } from '../context/CallContext'
@@ -1639,11 +1639,34 @@ export default function Chat() {
 
 // ── Small shared context-menu building blocks ──
 function ContextMenu({ pos, children }) {
+  const menuRef = useRef(null)
+  const [placement, setPlacement] = useState(() => ({ x: pos.x, y: pos.y }))
+
+  useLayoutEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+
+    const margin = 8
+    const rect = el.getBoundingClientRect()
+    const maxX = Math.max(margin, window.innerWidth - rect.width - margin)
+    const maxY = Math.max(margin, window.innerHeight - rect.height - margin)
+
+    const x = Math.min(Math.max(margin, pos.x), maxX)
+    let y = Math.min(Math.max(margin, pos.y), maxY)
+
+    if (pos.y + rect.height + margin > window.innerHeight) {
+      y = Math.max(margin, pos.y - rect.height)
+    }
+
+    setPlacement({ x, y })
+  }, [pos.x, pos.y])
+
   return (
-    <div onClick={e => e.stopPropagation()} style={{
-      position: 'fixed', top: pos.y, left: pos.x, zIndex: 2000,
+    <div ref={menuRef} onClick={e => e.stopPropagation()} style={{
+      position: 'fixed', top: placement.y, left: placement.x, zIndex: 2000,
       background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 10,
-      boxShadow: '0 12px 32px rgba(0,0,0,.5)', minWidth: 220, overflow: 'hidden', padding: '6px 0',
+      boxShadow: '0 12px 32px rgba(0,0,0,.5)', minWidth: 220,
+      maxHeight: 'calc(100vh - 16px)', overflowX: 'hidden', overflowY: 'auto', padding: '6px 0',
     }}>{children}</div>
   )
 }
