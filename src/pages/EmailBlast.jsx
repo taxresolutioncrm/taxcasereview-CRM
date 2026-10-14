@@ -113,12 +113,17 @@ export default function EmailBlast() {
   }, [rows, search])
 
   const allVisibleSelected = filtered.length > 0 && filtered.every(row => selected.has(row.id))
+  const allEligibleSelected = rows.length > 0 && rows.every(row => selected.has(row.id))
   const toggleAll = () => setSelected(current => {
     const next = new Set(current)
     if (allVisibleSelected) filtered.forEach(row => next.delete(row.id))
     else filtered.forEach(row => next.add(row.id))
     return next
   })
+  const toggleAllEligible = () => {
+    if (allEligibleSelected) setSelected(new Set())
+    else setSelected(new Set(rows.map(row => row.id)))
+  }
 
   function applyTemplate(templateId) {
     const template = EMAIL_TEMPLATES.find(item => item.id === templateId)
@@ -217,8 +222,8 @@ export default function EmailBlast() {
             {recipientCount>0 && <button className="btn sm" onClick={()=>setSelected(new Set())}>Clear selection</button>}
           </div>
 
-          <div style={{display:'flex',gap:8}}>
-            <div style={{position:'relative',flex:1}}>
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <div style={{position:'relative',flex:'1 1 240px'}}>
               <input
                 className="input"
                 style={{width:'100%',height:38,paddingLeft:12}}
@@ -229,6 +234,9 @@ export default function EmailBlast() {
             </div>
             <button className="btn" onClick={toggleAll} disabled={!filtered.length} style={{whiteSpace:'nowrap'}}>
               {allVisibleSelected?'Clear visible':'Select visible'}
+            </button>
+            <button className="btn" onClick={toggleAllEligible} disabled={!rows.length} style={{whiteSpace:'nowrap',fontWeight:800}}>
+              {allEligibleSelected?'Clear all':'Select all'}
             </button>
           </div>
 
