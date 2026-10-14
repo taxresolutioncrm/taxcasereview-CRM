@@ -286,13 +286,13 @@ export function AppProvider({ children }) {
           checkTenantStatus(),
         ])
 
-        // A silently-stale socket does not emit CLOSED/CHANNEL_ERROR. Force a
-        // clean reconnect only after the tab was genuinely backgrounded long
-        // enough to be throttled; a normal focus just ensures the socket is up.
+        // Do not tear down the shared Realtime socket on wake. Existing
+        // channels are owned by their subscription effects; disconnecting the
+        // socket here makes every channel emit CLOSED and can race their own
+        // reconnect handlers, multiplying channels until the project limit is
+        // reached. A normal connect() is idempotent and lets the client recover
+        // the existing channel set without creating replacements.
         const backgroundedMs = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0
-        if (backgroundedMs > 30_000) {
-          try { supabase.realtime.disconnect() } catch (_) {}
-        }
         try { supabase.realtime.connect() } catch (_) {}
 
         setRealtimeOk(true)
@@ -461,46 +461,71 @@ export function AppProvider({ children }) {
   // manages its own lifecycle independently.
   useEffect(() => {
     if (!user) return
-    const channels = []
     let cancelled = false
     const pendingTimeouts = []
+    const channelCleanups = []
 
     function withReconnect(name, table, handler) {
-      let attempt = 0
+      let channel = null
+      let reconnectTimer = null
+
+      async function disposeCurrent() {
+        const current = channel
+        channel = null
+        if (!current) return
+        try { await supabase.removeChannel(current) } catch (_) {}
+      }
+
+      function scheduleReconnect() {
+        if (cancelled || reconnectTimer) return
+        reconnectTimer = setTimeout(async () => {
+          reconnectTimer = null
+          if (cancelled) return
+          await disposeCurrent()
+          create()
+        }, 1500)
+        pendingTimeouts.push(reconnectTimer)
+      }
+
       function create() {
-        if (cancelled) return
+        if (cancelled || channel) return
         try {
-          const ch = supabase.channel(`${name}-${Date.now()}`)
+          const ch = supabase.channel(name)
+          channel = ch
           ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table }, handler)
             .subscribe(status => {
-              if (cancelled) return
+              if (cancelled || channel !== ch) return
+              if (status === 'SUBSCRIBED') {
+                setRealtimeOk(true)
+                return
+              }
               if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                 setRealtimeOk(false)
-                supabase.removeChannel(ch)
-                attempt = 0 // successful subscribe happened before this drop — reset backoff
-                pendingTimeouts.push(setTimeout(create, 1500))
-              } else if (status === 'SUBSCRIBED') {
-                setRealtimeOk(true)
-                attempt = 0
+                // Only this subscription owns its replacement. The one-timer
+                // guard prevents repeated terminal callbacks from stacking
+                // duplicate channels.
+                scheduleReconnect()
               }
             })
-          channels.push(ch)
         } catch (e) {
-          attempt += 1
-          if (attempt > 10) {
-            setRealtimeOk(false)
-            console.error(`[realtime] ${name} failed ${attempt} times in a row, giving up until next page load:`, e.message)
-            return
-          }
-          const delay = Math.min(3000 * attempt, 30000) // back off up to 30s between attempts
-          console.error(`[realtime] ${name} failed to (re)subscribe (attempt ${attempt}), retrying in ${delay}ms:`, e.message)
-          pendingTimeouts.push(setTimeout(create, delay))
+          setRealtimeOk(false)
+          console.error(`[realtime] ${name} failed to subscribe:`, e?.message || e)
+          scheduleReconnect()
         }
       }
+
       create()
+
+      return async () => {
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer)
+          reconnectTimer = null
+        }
+        await disposeCurrent()
+      }
     }
 
-    withReconnect('global-chat-notify', 'chat_messages', ({ new: msg }) => {
+    channelCleanups.push(withReconnect('global-chat-notify', 'chat_messages', ({ new: msg }) => {
       // Read fresh at message-arrival time, not once at effect-mount — the
       // employees lookup that fills myRealNameRef resolves asynchronously,
       // so capturing myName once here risked a stale "romy" fallback baked
@@ -519,36 +544,36 @@ export function AppProvider({ children }) {
       // Visual notification. Chat.jsx only mounts on /chat, so without this a rep
       // sitting on any other page never sees an incoming message.
       notifyChatMessage(msg, liveName)
-    })
+    }))
 
-    withReconnect('global-email-notify', 'emails', ({ new: row }) => {
+    channelCleanups.push(withReconnect('global-email-notify', 'emails', ({ new: row }) => {
       if ((row.triage || 'Inbox') === 'Inbox' && row.status !== 'Sent') playSound('email')
-    })
+    }))
 
-    withReconnect('global-sms-notify', 'sms_messages', ({ new: row }) => {
+    channelCleanups.push(withReconnect('global-sms-notify', 'sms_messages', ({ new: row }) => {
       if (row.direction === 'inbound') playSound('sms')
-    })
+    }))
 
-    withReconnect('global-fax-notify', 'fax_logs', ({ new: row }) => {
+    channelCleanups.push(withReconnect('global-fax-notify', 'fax_logs', ({ new: row }) => {
       if (row.direction === 'inbound') playSound('fax')
-    })
+    }))
 
-    withReconnect('global-voicemail-notify', 'voicemails', ({ new: row }) => {
+    channelCleanups.push(withReconnect('global-voicemail-notify', 'voicemails', ({ new: row }) => {
       if (!row.is_read) playSound('voicemail')
-    })
+    }))
 
-    withReconnect('global-task-notify', 'tasks', ({ new: row }) => {
+    channelCleanups.push(withReconnect('global-task-notify', 'tasks', ({ new: row }) => {
       playSound('task')
-    })
+    }))
 
-    withReconnect('global-esign-notify', 'esigns', ({ new: row }) => {
+    channelCleanups.push(withReconnect('global-esign-notify', 'esigns', ({ new: row }) => {
       if (row.status === 'Awaiting') playSound('esign')
-    })
+    }))
 
     return () => {
       cancelled = true
       pendingTimeouts.forEach(t => clearTimeout(t))
-      channels.forEach(ch => { try { supabase.removeChannel(ch) } catch (_) {} })
+      channelCleanups.forEach(cleanup => { try { cleanup() } catch (_) {} })
     }
   }, [user])
 
