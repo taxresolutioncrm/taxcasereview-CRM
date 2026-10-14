@@ -11,38 +11,49 @@ export default function GlobalTeamChatNotifier(){
 
   useEffect(()=>{
     if(!user?.email) return
+    const host=window.location.hostname.toLowerCase()
+    const isCentralNotificationRuntime=host!=='nashville.taxrescrm.app'
     const me=employeeName || user.user_metadata?.name || user.email.split('@')[0]
+
+    function handleHuddleMessage(msg){
+      if(!msg || msg.sender===me) return
+      if(msg.invite_to && msg.invite_to!==me) return
+      if(!msg.huddle_id) return
+
+      const caller=(msg.text||'').replace(/^📞\s*/,'').replace(/ is calling you.*/,'').replace(/ invited .*/,'') || msg.sender || 'Team member'
+      const target='/chat?huddle='+encodeURIComponent(msg.huddle_id)+'&from='+encodeURIComponent(caller)+'&c='+encodeURIComponent(msg.channel||'general')
+
+      // When Team Chat is already visible its own incoming-call banner is the
+      // only in-app huddle UI. Everywhere else, show the global Join card.
+      if(!location.pathname.includes('/chat')){
+        setNotice({
+          title:'Incoming huddle',
+          body:caller+' is inviting you to a huddle',
+          target,
+          huddle:true
+        })
+      }
+
+      // If the tab is hidden, the global notifier owns the OS notification
+      // even when /chat is the current route.
+      if(typeof Notification!=='undefined' && Notification.permission==='granted' && document.hidden){
+        const n=new Notification('Incoming huddle',{
+          body:caller+' is inviting you to a huddle',
+          tag:'teamchat-huddle-'+msg.huddle_id
+        })
+        n.onclick=()=>{ window.focus(); navigate(target); n.close() }
+      }
+    }
+
+    if(isCentralNotificationRuntime){
+      const onCentralInvite=(event)=>handleHuddleMessage(event.detail?.msg)
+      window.addEventListener('taxres:huddle-invite',onCentralInvite)
+      return()=>window.removeEventListener('taxres:huddle-invite',onCentralInvite)
+    }
+
     const ch=supabase.channel('global-teamchat-notifier-'+user.id)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},({new:msg})=>{
-        if(!msg || msg.sender===me) return
-        if(msg.invite_to && msg.invite_to!==me) return
-
-        const isHuddle=!!msg.huddle_id
-        // Normal Team Chat messages are handled globally by AppContext.
-        // This component is the huddle-specific join UI only.
-        if(!isHuddle) return
-        const caller=(msg.text||'').replace(/^📞\s*/,'').replace(/ is calling you.*/,'').replace(/ invited .*/,'') || msg.sender || 'Team member'
-        const target=isHuddle
-          ? '/chat?huddle='+encodeURIComponent(msg.huddle_id)+'&from='+encodeURIComponent(caller)+'&c='+encodeURIComponent(msg.channel||'general')
-          : '/chat?c='+encodeURIComponent(msg.channel||'general')
-
-        if(!location.pathname.includes('/chat') || isHuddle){
-          setNotice({
-            title:isHuddle?'Incoming huddle':(msg.sender||'Team Chat'),
-            body:isHuddle?(caller+' is inviting you to a huddle'):(msg.text||'Sent an attachment'),
-            target,
-            huddle:isHuddle
-          })
-        }
-
-        if(typeof Notification!=='undefined' && Notification.permission==='granted' && document.hidden){
-          const n=new Notification(isHuddle?'Incoming huddle':(msg.sender||'Team Chat'),{
-            body:isHuddle?(caller+' is inviting you to a huddle'):(msg.text||'Sent an attachment').slice(0,160),
-            tag:isHuddle?'teamchat-huddle-'+msg.huddle_id:'teamchat-'+(msg.channel||'general')
-          })
-          n.onclick=()=>{ window.focus(); navigate(target); n.close() }
-        }
-      }).subscribe()
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},({new:msg})=>handleHuddleMessage(msg))
+      .subscribe()
     return()=>supabase.removeChannel(ch)
   },[user?.id,user?.email,employeeName,location.pathname,navigate])
 
