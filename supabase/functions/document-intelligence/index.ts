@@ -83,6 +83,79 @@ JSON shape:
   ]
 }`
 
+
+const RESOLUTION_CATALOG = [
+  { key:'full_pay_short_term', name:'Full Pay / Short-Term Payment Plan', family:'payment_plan' },
+  { key:'guaranteed_ia', name:'Guaranteed Installment Agreement', family:'installment_agreement' },
+  { key:'streamlined_ia', name:'Streamlined Installment Agreement', family:'installment_agreement' },
+  { key:'non_streamlined_ia', name:'Non-Streamlined Installment Agreement', family:'installment_agreement' },
+  { key:'ppia', name:'Partial Payment Installment Agreement (PPIA)', family:'installment_agreement' },
+  { key:'cnc_status_53', name:'Currently Non-Collectible (CNC / Status 53)', family:'hardship' },
+  { key:'oic_datc', name:'Offer in Compromise — Doubt as to Collectibility', family:'offer_in_compromise' },
+  { key:'oic_datl', name:'Offer in Compromise — Doubt as to Liability', family:'offer_in_compromise' },
+  { key:'oic_eta', name:'Offer in Compromise — Effective Tax Administration', family:'offer_in_compromise' },
+  { key:'penalty_fta', name:'Penalty Abatement — First Time Abate', family:'penalty_relief' },
+  { key:'penalty_reasonable_cause', name:'Penalty Abatement — Reasonable Cause / Other Relief', family:'penalty_relief' },
+  { key:'innocent_spouse_b', name:'Innocent Spouse Relief — IRC §6015(b)', family:'spouse_relief' },
+  { key:'innocent_spouse_c', name:'Separation of Liability — IRC §6015(c)', family:'spouse_relief' },
+  { key:'innocent_spouse_f', name:'Equitable Relief — IRC §6015(f)', family:'spouse_relief' },
+  { key:'cdp_hearing', name:'Collection Due Process (CDP) Hearing', family:'appeals' },
+  { key:'cap_appeal', name:'Collection Appeals Program (CAP)', family:'appeals' },
+  { key:'levy_release_hardship', name:'Levy Release / Economic Hardship Relief', family:'levy_lien' },
+  { key:'lien_withdrawal', name:'Federal Tax Lien Withdrawal', family:'levy_lien' },
+  { key:'lien_discharge', name:'Lien Discharge of Specific Property', family:'levy_lien' },
+  { key:'lien_subordination', name:'Lien Subordination', family:'levy_lien' },
+  { key:'lien_release', name:'Lien Release After Satisfaction / Unenforceability', family:'levy_lien' },
+  { key:'audit_reconsideration', name:'Audit Reconsideration', family:'exam_relief' },
+  { key:'tas_hardship', name:'Taxpayer Advocate Service — Hardship / Systemic Relief', family:'hardship' },
+  { key:'tfrp_defense', name:'Trust Fund Recovery Penalty (TFRP) Defense / Protest', family:'payroll_tax' },
+  { key:'payroll_tax_resolution', name:'Business / Payroll Tax Resolution', family:'payroll_tax' },
+] as const
+
+const RESOLUTION_PROMPT = `
+You are the practitioner-facing IRS resolution analysis engine for a professional tax-resolution CRM.
+Use ONLY the trusted CRM_CONTEXT supplied. Return ONLY one valid JSON object.
+
+Purpose:
+- Evaluate EVERY program in RESOLUTION_CATALOG for this client.
+- This is decision support for trained tax-resolution staff, not an IRS determination and not legal advice.
+- Never state that a taxpayer definitively "qualifies" unless the trusted records establish every required criterion and no current-law verification is needed. Prefer candidate language.
+- Do not hard-code or invent current IRS dollar thresholds, allowable-expense standards, collection timeframes, or procedural deadlines. If a threshold/current rule matters and is not in CRM_CONTEXT, list it under missing_information and practitioner_note.
+- Do not recommend filing an OIC, IA, CNC request, innocent-spouse claim, appeal, or other submission solely because the client has a balance. Explain the factual fit.
+- Consider filing compliance, payment compliance, collection status, tax type, tax periods, CSED information if present, assets/equity, income, allowable/claimed expenses, disposable income, liabilities, penalties, notice history, levies/liens, marital facts, business/payroll facts, and existing case notes.
+- A client can have multiple strong/possible candidates at the same time (for example CNC plus penalty abatement plus levy release).
+- If facts conflict, put the conflict in concerns.
+- If key facts are missing, use insufficient_data rather than guessing.
+
+Candidate status must be one of:
+- strong_candidate
+- possible_candidate
+- insufficient_data
+- not_indicated
+
+Return this JSON shape:
+{
+  "overall_summary": "concise practitioner summary of the resolution landscape",
+  "top_candidate_keys": ["program_key"],
+  "candidates": [
+    {
+      "program_key": "must exactly match a key from RESOLUTION_CATALOG",
+      "candidate_status": "strong_candidate|possible_candidate|insufficient_data|not_indicated",
+      "confidence": 0.0,
+      "summary": "why this path fits or does not fit",
+      "why_supported": ["specific source-backed facts"],
+      "concerns": ["facts or procedural issues weighing against it"],
+      "missing_information": ["specific information still needed"],
+      "likely_forms": ["likely IRS forms or submissions; do not invent form numbers"],
+      "next_steps": ["practical practitioner next steps"],
+      "practitioner_note": "current-law/threshold/human-review caveat"
+    }
+  ]
+}
+
+The candidates array MUST contain one entry for every RESOLUTION_CATALOG key and no unknown keys.
+`
+
 function reply(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
