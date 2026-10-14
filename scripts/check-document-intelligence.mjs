@@ -33,7 +33,7 @@ assert(docs.includes('document-intelligence'), 'document uploads invoke Document
 assert(docs.includes('hasDocumentFile') && docs.includes('storage_path || doc?.file_url'), 'Documents open from storage_path or file_url')
 assert(prepared.includes('latestCompleteRunIds'), 'prepared file shows current analysis instead of duplicate historical runs')
 
-assert(prepared.includes('Select a client') && prepared.includes('source-backed AI findings'), 'AI Intelligence selector clearly explains client-scoped analysis and findings')
+assert(prepared.includes('if (!clientId)') && prepared.includes('selectedClientId'), 'AI Intelligence selector renders a client-scoped landing state')
 assert(prepared.includes('>AI Documents</button>'), 'selector exposes AI Documents')
 assert(prepared.includes('Resolve from CRM'), 'open questions can be re-checked against CRM data')
 assert(prepared.includes('Reading ${batchProgress.current} of ${batchProgress.total}'), 'batch analysis exposes live X-of-Y progress')
@@ -85,8 +85,8 @@ assert(!prepared.includes('disabled={!selectedClientId}'), 'AI selector actions 
 assert(prepared.includes("setError('Select a client first.'); return"), 'AI selector gives explicit guidance when no client is selected')
 assert(prepared.includes("navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')"), 'AI Documents still opens selected client File Review')
 
-assert(prepared.includes('placeholder="Search client files…"'), 'AI selector can search client files')
-assert(prepared.includes('Upload document to selected client'), 'AI selector exposes direct document upload')
+assert(prepared.includes('value={clientSearch}') && prepared.includes('setClientSearch(e.target.value)'), 'AI selector client search is wired to state')
+assert(prepared.includes('type="file"') && prepared.includes('setLandingUploadFile'), 'AI selector exposes direct document upload')
 assert(prepared.includes('async function uploadFromLanding()'), 'AI selector landing upload is implemented')
 assert(prepared.includes("functions.invoke(documentIntelligenceFunction"), 'landing upload invokes Document Intelligence')
 assert(prepared.includes("navigate('/ai-intelligence/' + selected.id + '?tab=documents')"), 'landing upload opens client File Review after analysis')
@@ -98,9 +98,9 @@ assert(prepared.includes('No client files match that search.'), 'File Review exp
 
 assert(prepared.includes("setClientSearchOpen(true)"), 'AI client search shows live autocomplete results')
 assert(prepared.includes("slice(0,12)"), 'AI client autocomplete limits the visible result list')
-assert(prepared.includes("No matching client files."), 'AI client autocomplete exposes a no-match state')
+assert(prepared.includes('!clientSearchResults.length'), 'AI client autocomplete exposes a no-match state')
 assert(prepared.includes("setSelectedClientId(c.id);setClientSearch(c.name);setClientSearchOpen(false)"), 'AI client autocomplete selects a client directly from results')
-assert(prepared.includes("Selected:"), 'AI client autocomplete shows the selected client')
+assert(prepared.includes('selectedLandingClient') && prepared.includes('selectedClientId ? ('), 'AI client autocomplete shows selected-client state')
 
 assert(prepared.includes('function rankClientMatch'), 'AI client search has relevance ranking')
 assert(prepared.includes("if (normalized.startsWith(search)) return 1"), 'AI client search prioritizes name prefixes')
@@ -108,7 +108,7 @@ assert(prepared.includes("if (parts.some(part => part.startsWith(search))) retur
 assert(prepared.includes("if (search.length >= 2 && normalized.includes(search)) return 3"), 'single-letter client search matches prefixes instead of arbitrary contains')
 assert(prepared.includes('const clientSearchResults = useMemo'), 'AI client search computes ranked results')
 assert(prepared.includes(".slice(0,100)"), 'AI client search can show up to 100 matches')
-assert(prepared.includes("matching client file"), 'AI client search shows match count')
+assert(prepared.includes('clientSearchResults.length.toLocaleString()'), 'AI client search shows match count')
 
 assert(prepared.includes('const concurrency = 3'), 'AI batch scanning uses bounded three-document concurrency')
 assert(prepared.includes('Promise.all(Array.from({ length:Math.min(concurrency, pending.length) }, () => worker()))'), 'AI batch scanning runs a bounded worker pool')
