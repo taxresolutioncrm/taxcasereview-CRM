@@ -279,9 +279,13 @@ export default function PreparedFile() {
       add(candidate.practitioner_note)
     })
     add(askReply)
+    add(resolutionStatus)
+    add(questionResolutionStatus)
+    add(uploadStatus)
+    add(batchProgress.file)
 
     return [...new Set(values)].slice(0,200)
-  }, [runs, currentFacts, currentEntities, currentQuestions, recommendedActions, resolutionRuns, currentResolutionCandidates, askReply])
+  }, [runs, currentFacts, currentEntities, currentQuestions, recommendedActions, resolutionRuns, currentResolutionCandidates, askReply, resolutionStatus, questionResolutionStatus, uploadStatus, batchProgress.file])
 
   useEffect(() => {
     if (language !== 'es' || !aiTranslationStrings.length) return
@@ -781,7 +785,7 @@ export default function PreparedFile() {
       {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
       {busy && batchProgress.total > 0 && <div className="card" style={{marginBottom:16,padding:12}}>
         <div style={{fontWeight:800}}>Analyzing {batchProgress.current} of {batchProgress.total}</div>
-        <div style={{fontSize:12,color:'var(--t3)',marginTop:4}}>{batchProgress.file}</div>
+        <div style={{fontSize:12,color:'var(--t3)',marginTop:4}}>{aiText(batchProgress.file)}</div>
         <div style={{height:6,background:'var(--bd)',borderRadius:99,overflow:'hidden',marginTop:8}}>
           <div style={{height:'100%',width:`${Math.round((batchProgress.current / batchProgress.total) * 100)}%`,background:'var(--pri,#6957ff)'}} />
         </div>
@@ -799,7 +803,7 @@ export default function PreparedFile() {
             </select>
             <input type="file" disabled={uploadBusy} onChange={e=>setUploadFile(e.target.files?.[0] || null)} accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx" />
             <button className="btn primary" disabled={uploadBusy || !uploadFile} onClick={uploadAndAnalyze}>
-              {uploadBusy ? (uploadStatus || 'Working…') : uploadType==='Profit & Loss (P&L)' ? '✦ Upload P&L & Analyze' : '✦ Upload & Analyze'}
+              {uploadBusy ? aiText(uploadStatus || 'Working…') : uploadType==='Profit & Loss (P&L)' ? '✦ Upload P&L & Analyze' : '✦ Upload & Analyze'}
             </button>
           </div>
         </div>
@@ -816,7 +820,7 @@ export default function PreparedFile() {
         ].map(([label,value])=>(
           <div className="card" key={label} style={{padding:16}}>
             <div style={{fontSize:24,fontWeight:900}}>{value}</div>
-            <div style={{fontSize:12,color:'var(--t3)'}}>{label}</div>
+            <div style={{fontSize:12,color:'var(--t3)'}}>{aiText(label)}</div>
           </div>
         ))}
       </div>
@@ -869,7 +873,7 @@ export default function PreparedFile() {
                       <div key={candidate.id} style={{padding:'7px 0',borderTop:'1px solid var(--bd)'}}>
                         <div style={{fontSize:12,fontWeight:800}}>{aiText(candidate.program_name)}</div>
                         <div style={{fontSize:10,color:candidate.candidate_status==='strong_candidate'?'#22c55e':'#3b82f6',marginTop:2,fontWeight:800}}>
-                          {candidate.candidate_status==='strong_candidate'?'Strong candidate':'Possible candidate'}
+                          {aiText(candidate.candidate_status==='strong_candidate'?'Strong candidate':'Possible candidate')}
                           {candidate.confidence!=null ? ' · '+pct(candidate.confidence)+'%' : ''}
                         </div>
                       </div>
@@ -880,7 +884,7 @@ export default function PreparedFile() {
                 <h3 style={{marginTop:0}}>Needs attention</h3>
                 {openQuestions.slice(0,8).map(q=>(
                   <button key={q.id} onClick={()=>answerQuestion(q)} style={{display:'block',width:'100%',textAlign:'left',padding:12,marginBottom:8,border:'1px solid var(--bd)',borderRadius:10,background:'var(--card)',cursor:'pointer'}}>
-                    <div style={{fontWeight:700,fontSize:13}}>{q.question}</div>
+                    <div style={{fontWeight:700,fontSize:13}}>{aiText(q.question)}</div>
                     {q.reason && <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>{aiText(q.reason)}</div>}
                   </button>
                 ))}
@@ -1021,7 +1025,7 @@ export default function PreparedFile() {
 
               {resolutionStatus && (
                 <div className="card" style={{padding:'10px 12px',marginBottom:12,fontSize:12}}>
-                  {resolutionStatus}
+                  {aiText(resolutionStatus)}
                 </div>
               )}
 
@@ -1036,9 +1040,9 @@ export default function PreparedFile() {
                         </div>
                       </div>
                       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(34,197,94,.12)',color:'#22c55e'}}>Strong {resolutionCounts.strong}</span>
-                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(59,130,246,.12)',color:'#3b82f6'}}>Possible {resolutionCounts.possible}</span>
-                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(245,158,11,.12)',color:'#f59e0b'}}>Need Data {resolutionCounts.insufficient}</span>
+                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(34,197,94,.12)',color:'#22c55e'}}>{aiText('Strong')} {resolutionCounts.strong}</span>
+                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(59,130,246,.12)',color:'#3b82f6'}}>{aiText('Possible')} {resolutionCounts.possible}</span>
+                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(245,158,11,.12)',color:'#f59e0b'}}>{aiText('Need Data')} {resolutionCounts.insufficient}</span>
                       </div>
                     </div>
                     <div style={{fontSize:13,lineHeight:1.6,marginTop:10,color:'var(--t2)'}}>
@@ -1082,7 +1086,7 @@ export default function PreparedFile() {
 
                           {sections.map(([label,items])=>Array.isArray(items) && items.length ? (
                             <div key={label} style={{marginTop:11}}>
-                              <div style={{fontSize:10,fontWeight:900,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)',marginBottom:4}}>{label}</div>
+                              <div style={{fontSize:10,fontWeight:900,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)',marginBottom:4}}>{aiText(label)}</div>
                               <ul style={{margin:'0 0 0 18px',padding:0,fontSize:11.5,lineHeight:1.55,color:'var(--t2)'}}>
                                 {items.map((item,index)=><li key={index} style={{marginBottom:3}}>{aiText(item)}</li>)}
                               </ul>
@@ -1149,15 +1153,15 @@ export default function PreparedFile() {
                   {resolvingQuestions ? 'Checking CRM…' : '✦ Resolve from CRM'}
                 </button>
               </div>
-              {questionResolutionStatus && <div className="card" style={{padding:10,marginBottom:10,fontSize:12}}>{questionResolutionStatus}</div>}
+              {questionResolutionStatus && <div className="card" style={{padding:10,marginBottom:10,fontSize:12}}>{aiText(questionResolutionStatus)}</div>}
               {currentQuestions.map(q=>(
                 <div key={q.id} style={{padding:'12px 0',borderBottom:'1px solid var(--bd)',opacity:q.status==='open'?1:.65}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12}}>
                     <strong>{aiText(q.question)}</strong>
-                    <span style={{fontSize:11,textTransform:'uppercase',color:'var(--t3)'}}>{q.priority} · {q.status}</span>
+                    <span style={{fontSize:11,textTransform:'uppercase',color:'var(--t3)'}}>{aiText(q.priority)} · {aiText(q.status)}</span>
                   </div>
-                  {q.reason && <div style={{fontSize:12,color:'var(--t3)',marginTop:5}}>{q.reason}</div>}
-                  {q.answer && <div style={{fontSize:12,marginTop:7}}><strong>Answer:</strong> {q.answer}</div>}
+                  {q.reason && <div style={{fontSize:12,color:'var(--t3)',marginTop:5}}>{aiText(q.reason)}</div>}
+                  {q.answer && <div style={{fontSize:12,marginTop:7}}><strong>Answer:</strong> {aiText(q.answer)}</div>}
                   {q.status==='open' && <button className="btn sm" style={{marginTop:8}} onClick={()=>answerQuestion(q)}>Answer manually</button>}
                 </div>
               ))}
