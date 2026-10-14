@@ -321,6 +321,12 @@ async function loadCrmContext(userClient:any, clientId:string) {
   const client:any = clientRes.data
   const clientName = String(client.name || '').trim()
 
+  const financialProfileRes = await userClient.from('client_financial_profiles')
+    .select('*')
+    .eq('tenant_id',client.tenant_id)
+    .eq('client_id',clientId)
+    .maybeSingle()
+
   const [notesById, notesByName, paymentsById, paymentsByName, casesById, casesByName, docsById, docsByName, facts, reps] = await Promise.all([
     userClient.from('client_notes').select('text,author,type,note_type,created_at').eq('client_id',clientId).order('created_at',{ascending:false}).limit(100),
     clientName ? userClient.from('client_notes').select('text,author,type,note_type,created_at').eq('clientname',clientName).order('created_at',{ascending:false}).limit(100) : Promise.resolve({data:[],error:null}),
@@ -352,6 +358,7 @@ async function loadCrmContext(userClient:any, clientId:string) {
     documents: compactRows(documents,150),
     prior_facts: compactRows(facts.data||[],200),
     representatives: compactRows(reps.data||[],100),
+    financial_profile: financialProfileRes.data ? sanitizeValue(financialProfileRes.data) : null,
   })
 }
 
