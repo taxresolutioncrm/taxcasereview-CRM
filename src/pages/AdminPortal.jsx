@@ -245,6 +245,39 @@ async function loadPlatformOfficeRowsFresh() {
     ;[tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
   }
 
+  // A successful batch HTTP response can still contain per-product 504s.
+  // Retry only those individual failures once, on demand, using the existing
+  // authenticated hub. Never start background polling or duplicate storage.
+  if (!batchError && batchData?.ok && batchData?.results) {
+    const failedTenantFeeds = tenantFeedResults.filter(feed => feed.error || !feed.data?.ok)
+    const failedProducts = results.filter(item => item.error || !Array.isArray(item.data?.offices))
+    const retryKeys = [
+      ...failedTenantFeeds.map(feed => feed.key),
+      ...failedProducts.map(item => item.productKey),
+    ].filter(key => !['pool_crm','health_insurance','barbers_salons'].includes(key))
+    const retried = await Promise.all(retryKeys.map(async key => {
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:key } }),
+          key + ' retry',
+          11000,
+        )
+        return { key, ...response }
+      } catch (error) {
+        return { key, data:null, error }
+      }
+    }))
+    const retryByKey = new Map(retried.map(item => [item.key, item]))
+    tenantFeedResults = tenantFeedResults.map(feed => {
+      const next = retryByKey.get(feed.key)
+      return next ? { ...feed, data:next.data, error:next.error } : feed
+    })
+    results = results.map(item => {
+      const next = retryByKey.get(item.productKey)
+      return next ? { ...item, data:next.data, error:next.error } : item
+    })
+  }
+
   for (const result of tenantFeedResults) {
     if (result.error || result.data?.ok === false) {
       warnings.push(`${result.name} usage feed unavailable`)
@@ -317,7 +350,10 @@ async function loadPlatformOfficeRowsFresh() {
     const cfg = externalProductConfigs[result.productKey] || EXTERNAL_OFFICE_PRODUCTS[result.productKey] || { label:result.productKey, color:'#6366f1', appUrl:null }
     const offices = Array.isArray(result.data?.offices) ? result.data.offices : null
     if (result.error || !offices) {
-      warnings.push(`${cfg.label} live office feed unavailable`)
+      const lifecycle = (productRows || []).find(p => p.product_id === result.productKey)?.lifecycle
+      if (String(lifecycle || '').toLowerCase() !== 'building') {
+        warnings.push(`${cfg.label} live office feed unavailable`)
+      }
       continue
     }
 
