@@ -83,6 +83,84 @@ JSON shape:
   ]
 }`
 
+
+const RESOLUTION_CATALOG = [
+  { key:'full_pay_short_term', name:'Full Pay / Short-Term Payment Plan', family:'payment_plan' },
+  { key:'guaranteed_ia', name:'Guaranteed Installment Agreement', family:'installment_agreement' },
+  { key:'streamlined_ia', name:'Streamlined Installment Agreement', family:'installment_agreement' },
+  { key:'non_streamlined_ia', name:'Non-Streamlined Installment Agreement', family:'installment_agreement' },
+  { key:'ppia', name:'Partial Payment Installment Agreement (PPIA)', family:'installment_agreement' },
+  { key:'cnc_status_53', name:'Currently Non-Collectible (CNC / Status 53)', family:'hardship' },
+  { key:'oic_datc', name:'Offer in Compromise — Doubt as to Collectibility', family:'offer_in_compromise' },
+  { key:'oic_datl', name:'Offer in Compromise — Doubt as to Liability', family:'offer_in_compromise' },
+  { key:'oic_eta', name:'Offer in Compromise — Effective Tax Administration', family:'offer_in_compromise' },
+  { key:'penalty_fta', name:'Penalty Abatement — First Time Abate', family:'penalty_relief' },
+  { key:'penalty_reasonable_cause', name:'Penalty Abatement — Reasonable Cause', family:'penalty_relief' },
+  { key:'penalty_statutory_admin', name:'Statutory / Administrative Penalty Relief', family:'penalty_relief' },
+  { key:'innocent_spouse_b', name:'Innocent Spouse Relief — IRC §6015(b)', family:'spouse_relief' },
+  { key:'innocent_spouse_c', name:'Separation of Liability — IRC §6015(c)', family:'spouse_relief' },
+  { key:'innocent_spouse_f', name:'Equitable Relief — IRC §6015(f)', family:'spouse_relief' },
+  { key:'cdp_hearing', name:'Collection Due Process (CDP) Hearing', family:'appeals' },
+  { key:'equivalent_hearing', name:'Equivalent Hearing', family:'appeals' },
+  { key:'cap_appeal', name:'Collection Appeals Program (CAP)', family:'appeals' },
+  { key:'levy_release_hardship', name:'Levy Release / Economic Hardship Relief', family:'levy_lien' },
+  { key:'lien_withdrawal', name:'Federal Tax Lien Withdrawal', family:'levy_lien' },
+  { key:'lien_discharge', name:'Lien Discharge of Specific Property', family:'levy_lien' },
+  { key:'lien_subordination', name:'Lien Subordination', family:'levy_lien' },
+  { key:'lien_release', name:'Lien Release After Satisfaction / Unenforceability', family:'levy_lien' },
+  { key:'audit_reconsideration', name:'Audit Reconsideration', family:'exam_relief' },
+  { key:'amended_refund_abatement', name:'Amended Return / Refund Claim / Tax Abatement', family:'exam_relief' },
+  { key:'identity_theft_resolution', name:'Identity-Theft Resolution', family:'account_relief' },
+  { key:'tas_hardship', name:'Taxpayer Advocate Service — Hardship / Systemic Relief', family:'hardship' },
+  { key:'tfrp_defense', name:'Trust Fund Recovery Penalty (TFRP) Defense / Protest', family:'payroll_tax' },
+  { key:'payroll_tax_resolution', name:'Business / Payroll Tax Resolution', family:'payroll_tax' },
+  { key:'bankruptcy_irs_coordination', name:'Bankruptcy / IRS Collection Coordination', family:'bankruptcy' },
+] as const
+
+const RESOLUTION_PROMPT = `
+You are the practitioner-facing IRS resolution analysis engine for a professional tax-resolution CRM.
+Use ONLY the trusted CRM_CONTEXT supplied. Return ONLY one valid JSON object.
+
+Purpose:
+- Evaluate EVERY program in RESOLUTION_CATALOG for this client.
+- This is decision support for trained tax-resolution staff, not an IRS determination and not legal advice.
+- Never state that a taxpayer definitively "qualifies" unless the trusted records establish every required criterion and no current-law verification is needed. Prefer candidate language.
+- Do not hard-code or invent current IRS dollar thresholds, allowable-expense standards, collection timeframes, or procedural deadlines. If a threshold/current rule matters and is not in CRM_CONTEXT, list it under missing_information and practitioner_note.
+- Do not recommend filing an OIC, IA, CNC request, innocent-spouse claim, appeal, or other submission solely because the client has a balance. Explain the factual fit.
+- Consider filing compliance, payment compliance, collection status, tax type, tax periods, CSED information if present, assets/equity, income, allowable/claimed expenses, disposable income, liabilities, penalties, notice history, levies/liens, marital facts, business/payroll facts, and existing case notes.
+- A client can have multiple strong/possible candidates at the same time (for example CNC plus penalty abatement plus levy release).
+- If facts conflict, put the conflict in concerns.
+- If key facts are missing, use insufficient_data rather than guessing.
+
+Candidate status must be one of:
+- strong_candidate
+- possible_candidate
+- insufficient_data
+- not_indicated
+
+Return this JSON shape:
+{
+  "overall_summary": "concise practitioner summary of the resolution landscape",
+  "top_candidate_keys": ["program_key"],
+  "candidates": [
+    {
+      "program_key": "must exactly match a key from RESOLUTION_CATALOG",
+      "candidate_status": "strong_candidate|possible_candidate|insufficient_data|not_indicated",
+      "confidence": 0.0,
+      "summary": "why this path fits or does not fit",
+      "why_supported": ["specific source-backed facts"],
+      "concerns": ["facts or procedural issues weighing against it"],
+      "missing_information": ["specific information still needed"],
+      "likely_forms": ["likely IRS forms or submissions; do not invent form numbers"],
+      "next_steps": ["practical practitioner next steps"],
+      "practitioner_note": "current-law/threshold/human-review caveat"
+    }
+  ]
+}
+
+The candidates array MUST contain one entry for every RESOLUTION_CATALOG key and no unknown keys.
+`
+
 function reply(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -248,6 +326,12 @@ async function loadCrmContext(userClient:any, clientId:string) {
   const client:any = clientRes.data
   const clientName = String(client.name || '').trim()
 
+  const financialProfileRes = await userClient.from('client_financial_profiles')
+    .select('*')
+    .eq('tenant_id',client.tenant_id)
+    .eq('client_id',clientId)
+    .maybeSingle()
+
   const [notesById, notesByName, paymentsById, paymentsByName, casesById, casesByName, docsById, docsByName, facts, reps] = await Promise.all([
     userClient.from('client_notes').select('text,author,type,note_type,created_at').eq('client_id',clientId).order('created_at',{ascending:false}).limit(100),
     clientName ? userClient.from('client_notes').select('text,author,type,note_type,created_at').eq('clientname',clientName).order('created_at',{ascending:false}).limit(100) : Promise.resolve({data:[],error:null}),
@@ -279,6 +363,7 @@ async function loadCrmContext(userClient:any, clientId:string) {
     documents: compactRows(documents,150),
     prior_facts: compactRows(facts.data||[],200),
     representatives: compactRows(reps.data||[],100),
+    financial_profile: financialProfileRes.data ? sanitizeValue(financialProfileRes.data) : null,
   })
 }
 
@@ -318,7 +403,115 @@ async function resolveOpenQuestions(userClient:any, geminiKey:string, clientId:s
   return {resolved,remaining:Math.max(0,open.length-resolved),resolutions}
 }
 
-async function callGemini(apiKey: string, parts: any[]) {
+
+async function runResolutionAnalysis(userClient:any, geminiKey:string, clientId:string) {
+  const context:any = await loadCrmContext(userClient,clientId)
+  const tenantId = String(context?.client?.tenant_id || '')
+  if (!tenantId) throw new Error('Client tenant context was not found')
+
+  const {data:run,error:runErr}=await userClient.from('document_ai_resolution_runs').insert({
+    tenant_id: tenantId,
+    client_id: clientId,
+    status: 'processing',
+    model: MODEL,
+  }).select('id').single()
+  if(runErr || !run) throw new Error(runErr?.message || 'Resolution analysis could not be started')
+
+  try {
+    const prompt = RESOLUTION_PROMPT
+      + '\n\nRESOLUTION_CATALOG:\n' + JSON.stringify(RESOLUTION_CATALOG)
+      + '\n\nCRM_CONTEXT:\n' + JSON.stringify(context)
+
+    const parsed = await callGemini(geminiKey,[{text:prompt}],12000)
+    const rawCandidates = Array.isArray(parsed?.candidates) ? parsed.candidates : []
+    const byKey = new Map<string,any>()
+    for (const raw of rawCandidates) {
+      const key = String(raw?.program_key || '')
+      if (!RESOLUTION_CATALOG.some(p => p.key === key) || byKey.has(key)) continue
+      byKey.set(key,raw)
+    }
+
+    const allowedStatuses = new Set(['strong_candidate','possible_candidate','insufficient_data','not_indicated'])
+    const rows = RESOLUTION_CATALOG.map((program,index) => {
+      const item = byKey.get(program.key) || {}
+      const status = allowedStatuses.has(String(item?.candidate_status))
+        ? String(item.candidate_status)
+        : 'insufficient_data'
+      const list = (value:any, limit=20) => Array.isArray(value)
+        ? value.map(v => redactText(v).trim()).filter(Boolean).slice(0,limit)
+        : []
+      return {
+        tenant_id: tenantId,
+        resolution_run_id: run.id,
+        client_id: clientId,
+        program_key: program.key,
+        program_name: program.name,
+        family: program.family,
+        candidate_status: status,
+        confidence: clamp(item?.confidence),
+        summary: redactText(item?.summary || (byKey.has(program.key) ? '' : 'AI did not return enough information to assess this program.')).slice(0,1800),
+        why_supported: list(item?.why_supported),
+        concerns: list(item?.concerns),
+        missing_information: list(item?.missing_information),
+        likely_forms: list(item?.likely_forms,12),
+        next_steps: list(item?.next_steps,12),
+        practitioner_note: redactText(item?.practitioner_note || '').slice(0,1800),
+        rank: index + 1,
+      }
+    })
+
+    // Rank strong/possible candidates first while keeping the full catalog.
+    const statusRank:any = { strong_candidate:0, possible_candidate:1, insufficient_data:2, not_indicated:3 }
+    rows.sort((a:any,b:any) => {
+      const byStatus = statusRank[a.candidate_status] - statusRank[b.candidate_status]
+      if (byStatus) return byStatus
+      const ac = a.confidence == null ? -1 : Number(a.confidence)
+      const bc = b.confidence == null ? -1 : Number(b.confidence)
+      return bc - ac || a.rank - b.rank
+    })
+    rows.forEach((row:any,index:number)=>{ row.rank=index+1 })
+
+    const {error:insertErr}=await userClient.from('document_ai_resolution_candidates').insert(rows)
+    if(insertErr) throw insertErr
+
+    const allowedTop = new Set<string>(RESOLUTION_CATALOG.map(p=>p.key as string))
+    const topCandidateKeys = Array.isArray(parsed?.top_candidate_keys)
+      ? [...new Set(parsed.top_candidate_keys.map((v:any)=>String(v)).filter((v:string)=>allowedTop.has(v)))].slice(0,8)
+      : rows.filter((r:any)=>['strong_candidate','possible_candidate'].includes(r.candidate_status)).slice(0,5).map((r:any)=>r.program_key)
+
+    const overallSummary = redactText(parsed?.overall_summary || '').slice(0,3000)
+    const {error:finishErr}=await userClient.from('document_ai_resolution_runs').update({
+      status:'complete',
+      overall_summary:overallSummary,
+      top_candidate_keys:topCandidateKeys,
+      completed_at:new Date().toISOString(),
+    }).eq('id',run.id)
+    if(finishErr) throw finishErr
+
+    return {
+      runId:run.id,
+      overallSummary,
+      topCandidateKeys,
+      counts:{
+        strong:rows.filter((r:any)=>r.candidate_status==='strong_candidate').length,
+        possible:rows.filter((r:any)=>r.candidate_status==='possible_candidate').length,
+        insufficient:rows.filter((r:any)=>r.candidate_status==='insufficient_data').length,
+        notIndicated:rows.filter((r:any)=>r.candidate_status==='not_indicated').length,
+      },
+      model:MODEL,
+    }
+  } catch(err:any) {
+    const safeError=redactText(err?.message||err).slice(0,1000)
+    await userClient.from('document_ai_resolution_runs').update({
+      status:'failed',
+      error_message:safeError,
+      completed_at:new Date().toISOString(),
+    }).eq('id',run.id)
+    throw new Error(safeError)
+  }
+}
+
+async function callGemini(apiKey: string, parts: any[], maxOutputTokens = 5000) {
   let lastError = 'AI provider request failed'
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
@@ -330,7 +523,7 @@ async function callGemini(apiKey: string, parts: any[]) {
           signal: AbortSignal.timeout(45_000),
           body: JSON.stringify({
             contents: [{ role: 'user', parts }],
-            generationConfig: { temperature: 0, maxOutputTokens: 5000, responseMimeType: 'application/json' },
+            generationConfig: { temperature: 0, maxOutputTokens, responseMimeType: 'application/json' },
           }),
         },
       )
@@ -377,6 +570,17 @@ serve(async (req) => {
   const userClient = createClient(source.url, source.anon, {
     global: { headers: { Authorization: authHeader } },
   })
+
+  if (String(payload?.action || '').toLowerCase() === 'resolution_analysis') {
+    if (sourceKey !== 'tcr') return reply({ok:false,error:'Resolution Analysis is not enabled for this source project',code:'RESOLUTION_ANALYSIS_SOURCE_DISABLED'},403)
+    if (!requestedClientId) return reply({ok:false,error:'clientId required',code:'CLIENT_REQUIRED'},400)
+    try {
+      const result=await runResolutionAnalysis(userClient,geminiKey,String(requestedClientId))
+      return reply({ok:true,action:'resolution_analysis',...result,sourceProject:sourceKey})
+    } catch(err:any) {
+      return reply({ok:false,error:redactText(err?.message||err).slice(0,1000),code:'RESOLUTION_ANALYSIS_FAILED'})
+    }
+  }
 
   if (String(payload?.action || '').toLowerCase() === 'resolve_questions') {
     if (!requestedClientId) return reply({ ok:false,error:'clientId required',code:'CLIENT_REQUIRED' },400)
