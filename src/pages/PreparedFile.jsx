@@ -719,6 +719,7 @@ export default function PreparedFile() {
             ['findings','Findings'],
             ['deadlines','Deadlines & Notices'],
             ['questions','Open Questions'],
+            ['resolution','Resolution Analysis'],
             ['actions','Recommended Actions'],
             ['ask','Ask AI'],
           ].map(([key,label])=>(
@@ -868,6 +869,115 @@ export default function PreparedFile() {
                 </div>
               ))}
               {!noticeDeadlineFacts.length && <div style={{color:'var(--t3)'}}>No notices or deadlines have been extracted yet.</div>}
+            </div>
+          )}
+
+          {tab === 'resolution' && (
+            <div>
+              <div style={{display:'flex',justifyContent:'space-between',gap:14,alignItems:'flex-start',flexWrap:'wrap',marginBottom:14}}>
+                <div>
+                  <h3 style={{margin:'0 0 4px'}}>IRS Resolution Analysis</h3>
+                  <p style={{fontSize:12,color:'var(--t3)',margin:0,maxWidth:760,lineHeight:1.55}}>
+                    AI evaluates the complete client file and financial profile across the CRM’s resolution catalog. Results are practitioner decision support — the IRS makes the final determination and current rules/thresholds must be verified before submission.
+                  </p>
+                </div>
+                <button className="btn primary" disabled={resolutionBusy} onClick={runResolutionAnalysis}>
+                  {resolutionBusy ? 'Analyzing resolution options…' : latestResolutionRun ? '✦ Re-analyze Resolution Options' : '✦ Analyze Resolution Options'}
+                </button>
+              </div>
+
+              {resolutionStatus && (
+                <div className="card" style={{padding:'10px 12px',marginBottom:12,fontSize:12}}>
+                  {resolutionStatus}
+                </div>
+              )}
+
+              {latestResolutionRun ? (
+                <>
+                  <div className="card" style={{padding:14,marginBottom:14,border:'1px solid var(--bd)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+                      <div>
+                        <div style={{fontSize:10,fontWeight:900,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em'}}>Latest Resolution Strategy</div>
+                        <div style={{fontSize:12,color:'var(--t3)',marginTop:3}}>
+                          {fmtDate(latestResolutionRun.completed_at || latestResolutionRun.created_at)} · {latestResolutionRun.model || 'AI'}
+                        </div>
+                      </div>
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(34,197,94,.12)',color:'#22c55e'}}>Strong {resolutionCounts.strong}</span>
+                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(59,130,246,.12)',color:'#3b82f6'}}>Possible {resolutionCounts.possible}</span>
+                        <span style={{fontSize:11,fontWeight:800,padding:'5px 9px',borderRadius:999,background:'rgba(245,158,11,.12)',color:'#f59e0b'}}>Need Data {resolutionCounts.insufficient}</span>
+                      </div>
+                    </div>
+                    <div style={{fontSize:13,lineHeight:1.6,marginTop:10,color:'var(--t2)'}}>
+                      {latestResolutionRun.overall_summary || 'Resolution analysis complete.'}
+                    </div>
+                  </div>
+
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:12}}>
+                    {currentResolutionCandidates.map(candidate=>{
+                      const statusMeta = {
+                        strong_candidate:{label:'Strong candidate',color:'#22c55e',bg:'rgba(34,197,94,.10)'},
+                        possible_candidate:{label:'Possible candidate',color:'#3b82f6',bg:'rgba(59,130,246,.10)'},
+                        insufficient_data:{label:'Insufficient data',color:'#f59e0b',bg:'rgba(245,158,11,.10)'},
+                        not_indicated:{label:'Not indicated',color:'var(--t3)',bg:'rgba(100,116,139,.10)'},
+                      }[candidate.candidate_status] || {label:candidate.candidate_status,color:'var(--t3)',bg:'var(--s2)'}
+                      const sections = [
+                        ['Why it fits',candidate.why_supported],
+                        ['Concerns',candidate.concerns],
+                        ['Missing information',candidate.missing_information],
+                        ['Likely forms / submissions',candidate.likely_forms],
+                        ['Next steps',candidate.next_steps],
+                      ]
+                      return (
+                        <div key={candidate.id} style={{border:'1px solid var(--bd)',borderRadius:12,padding:14,background:'var(--card)'}}>
+                          <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start'}}>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontSize:10,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em'}}>{candidate.family?.replaceAll('_',' ')}</div>
+                              <div style={{fontWeight:900,fontSize:14,marginTop:3}}>{candidate.program_name}</div>
+                            </div>
+                            <span style={{flexShrink:0,fontSize:10,fontWeight:900,padding:'4px 8px',borderRadius:999,background:statusMeta.bg,color:statusMeta.color}}>
+                              {statusMeta.label}
+                            </span>
+                          </div>
+
+                          <div style={{fontSize:12,lineHeight:1.55,color:'var(--t2)',marginTop:9}}>
+                            {candidate.summary || 'No summary returned.'}
+                          </div>
+                          {candidate.confidence != null && (
+                            <div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>{pct(candidate.confidence)}% AI confidence</div>
+                          )}
+
+                          {sections.map(([label,items])=>Array.isArray(items) && items.length ? (
+                            <div key={label} style={{marginTop:11}}>
+                              <div style={{fontSize:10,fontWeight:900,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)',marginBottom:4}}>{label}</div>
+                              <ul style={{margin:'0 0 0 18px',padding:0,fontSize:11.5,lineHeight:1.55,color:'var(--t2)'}}>
+                                {items.map((item,index)=><li key={index} style={{marginBottom:3}}>{String(item)}</li>)}
+                              </ul>
+                            </div>
+                          ) : null)}
+
+                          {candidate.practitioner_note && (
+                            <div style={{marginTop:11,padding:'8px 10px',borderRadius:8,background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.18)',fontSize:11,color:'var(--t2)',lineHeight:1.5}}>
+                              <strong>Practitioner review:</strong> {candidate.practitioner_note}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {!currentResolutionCandidates.length && (
+                    <div style={{color:'var(--t3)'}}>The latest resolution run has no candidate rows. Re-run the analysis.</div>
+                  )}
+                </>
+              ) : (
+                <div className="card" style={{padding:18}}>
+                  <div style={{fontWeight:900}}>No resolution analysis has been run yet.</div>
+                  <div style={{fontSize:12,color:'var(--t3)',marginTop:5,lineHeight:1.55}}>
+                    Analyze the client’s current CRM file to evaluate CNC, installment agreements including PPIA, OIC paths, penalty relief, innocent spouse, lien/levy relief, appeals, hardship/TAS, payroll/TFRP, audit reconsideration, and related IRS resolution routes.
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
