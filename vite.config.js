@@ -1,9 +1,26 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { execSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+
+const BUILD_ID = process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || (() => {
+  try { return execSync('git rev-parse HEAD').toString().trim() } catch { return 'dev-local' }
+})()
 
 export default defineConfig({
   base: '/',
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'taxres-build-marker',
+      closeBundle() {
+        writeFileSync('dist/taxres-build.json', JSON.stringify({ build: BUILD_ID }) + '\n')
+      },
+    },
+  ],
+  define: {
+    __TAXRES_BUILD__: JSON.stringify(BUILD_ID),
+  },
   server: {
     port: 5173,
     proxy: {

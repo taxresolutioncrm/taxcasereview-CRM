@@ -17,7 +17,7 @@ import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
 
 
-const TAXRES_FAMILY_BUILD = '20260919-formacorp-family-parity-3'
+const TAXRES_FAMILY_BUILD = __TAXRES_BUILD__
 const LAZY_RETRY_PREFIX = 'tcr_lazy_retry:'
 
 function isLazyChunkFailure(error) {
