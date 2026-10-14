@@ -192,6 +192,45 @@ export default function PreparedFile() {
     ...noticeDeadlineFacts.slice(0,4).map(f => ({ kind:'deadline', text:`Review ${f.field_label || f.field_key}: ${f.normalized_text || ''}` })),
   ].slice(0,10)
 
+  const latestResolutionRun = resolutionRuns.find(r => r.status === 'complete') || null
+  const currentResolutionCandidates = latestResolutionRun
+    ? resolutionCandidates
+        .filter(r => String(r.resolution_run_id) === String(latestResolutionRun.id))
+        .sort((a,b) => Number(a.rank || 999) - Number(b.rank || 999))
+    : []
+  const topResolutionCandidates = currentResolutionCandidates.filter(r => ['strong_candidate','possible_candidate'].includes(r.candidate_status))
+  const resolutionCounts = {
+    strong: currentResolutionCandidates.filter(r => r.candidate_status === 'strong_candidate').length,
+    possible: currentResolutionCandidates.filter(r => r.candidate_status === 'possible_candidate').length,
+    insufficient: currentResolutionCandidates.filter(r => r.candidate_status === 'insufficient_data').length,
+    notIndicated: currentResolutionCandidates.filter(r => r.candidate_status === 'not_indicated').length,
+  }
+
+  async function runResolutionAnalysis() {
+    if (!clientId || resolutionBusy) return
+    setResolutionBusy(true)
+    setResolutionStatus('')
+    setError('')
+    try {
+      const { data, error } = await supabase.functions.invoke(documentIntelligenceFunction, {
+        body: { action:'resolution_analysis', clientId },
+      })
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Resolution analysis failed')
+      setResolutionStatus(
+        'Resolution analysis complete · '
+        + Number(data?.counts?.strong || 0) + ' strong · '
+        + Number(data?.counts?.possible || 0) + ' possible candidate'
+        + (Number(data?.counts?.possible || 0) === 1 ? '' : 's')
+      )
+      await load()
+      setTab('resolution')
+    } catch (e) {
+      setError(e?.message || String(e))
+    } finally {
+      setResolutionBusy(false)
+    }
+  }
+
   async function uploadFromLanding() {
     if (!selectedClientId) { setError('Select a client first.'); return }
     if (!landingUploadFile) { setError('Choose a document to upload.'); return }
