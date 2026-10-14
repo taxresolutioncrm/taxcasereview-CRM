@@ -1004,7 +1004,7 @@ export default function PreparedFile() {
                 <div className="card" style={{padding:18}}>
                   <div style={{fontWeight:900}}>No resolution analysis has been run yet.</div>
                   <div style={{fontSize:12,color:'var(--t3)',marginTop:5,lineHeight:1.55}}>
-                    Analyze the client’s current CRM file to evaluate CNC, installment agreements including PPIA, OIC paths, penalty relief, innocent spouse, lien/levy relief, appeals, hardship/TAS, payroll/TFRP, audit reconsideration, and related IRS resolution routes.
+                    Analyze the client’s current CRM file to evaluate CNC, installment agreements including PPIA, OIC paths, penalty relief including statutory/administrative relief, innocent spouse, CDP and Equivalent Hearing, lien/levy relief, audit reconsideration, amended return/refund/abatement paths, identity-theft resolution, hardship/TAS, payroll/TFRP, bankruptcy coordination, and related IRS resolution routes.
                   </div>
                 </div>
               )}
