@@ -448,90 +448,149 @@ export default function PreparedFile() {
   }
 
   if (!clientId) {
+    const selectedLandingClient = clientOptions.find(c=>String(c.id)===String(selectedClientId))
     return (
       <div>
-        <div className="page-header">
+        <div className="page-header" style={{marginBottom:18}}>
           <div>
-            <h1>AI Intelligence</h1>
-            <p>Select a client to open their intelligence workspace, analyze documents, and review AI findings.</p>
+            <h1 style={{marginBottom:4}}>AI Intelligence</h1>
+            <p style={{maxWidth:760}}>Select a client, analyze their documents, and review source-backed AI findings in one workspace.</p>
           </div>
         </div>
 
-        {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#b91c1c'}}>{error}</div>}
+        {error && <div className="card" style={{border:'1px solid #ef4444',marginBottom:16,color:'#ef4444',padding:'12px 14px'}}>{error}</div>}
 
-        <div className="card" style={{maxWidth:760,padding:20}}>
-          <div style={{fontWeight:900,fontSize:16,marginBottom:4}}>Client</div>
-          <div style={{fontSize:12,color:'var(--t3)',marginBottom:12}}>
-            Choose the client first. Upload and analysis run inside that client's workspace so every document and AI finding stays linked correctly.
+        <div className="card" style={{maxWidth:920,padding:0,overflow:'visible'}}>
+          <div style={{padding:'20px 22px 18px',borderBottom:'1px solid var(--bd)',display:'flex',justifyContent:'space-between',gap:16,alignItems:'flex-start',flexWrap:'wrap'}}>
+            <div>
+              <div style={{fontWeight:900,fontSize:17}}>Client Intelligence Workspace</div>
+              <div style={{fontSize:12,color:'var(--t3)',marginTop:4,maxWidth:620,lineHeight:1.55}}>
+                Every upload, analysis run, finding, and source stays attached to the selected client's file.
+              </div>
+            </div>
+            <div style={{fontSize:11,fontWeight:800,color:'var(--t3)',padding:'5px 9px',border:'1px solid var(--bd)',borderRadius:999,whiteSpace:'nowrap'}}>
+              PRIVATE · TENANT-SCOPED
+            </div>
           </div>
-          <div style={{position:'relative',marginBottom:12}}>
-            <input
-              className="input"
-              value={clientSearch}
-              onFocus={()=>setClientSearchOpen(true)}
-              onChange={e=>{setClientSearch(e.target.value);setClientSearchOpen(true)}}
-              placeholder="Search client files…"
-              autoComplete="off"
-              style={{width:'100%'}}
-            />
-            {clientSearchOpen && clientSearch.trim() && (
-              <div style={{position:'absolute',left:0,right:0,top:'calc(100% + 6px)',zIndex:20,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:10,boxShadow:'0 14px 36px rgba(0,0,0,.28)',maxHeight:420,overflowY:'auto'}}>
-                <div style={{padding:'7px 12px',fontSize:10,color:'var(--t3)',borderBottom:'1px solid var(--bd)'}}>
-                  {clientSearchResults.length.toLocaleString()} matching client file{clientSearchResults.length===1?'':'s'}{clientSearchResults.length > 100 ? ' · showing first 100' : ''}
+
+          <div style={{padding:22}}>
+            <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr)',gap:18}}>
+              <section>
+                <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:9}}>
+                  <div style={{width:24,height:24,borderRadius:999,display:'grid',placeItems:'center',fontSize:11,fontWeight:900,background:'var(--pri,#6957ff)',color:'#fff'}}>1</div>
+                  <div>
+                    <div style={{fontWeight:900,fontSize:14}}>Select a client</div>
+                    <div style={{fontSize:11,color:'var(--t3)',marginTop:1}}>Search by client name and open the correct tax file.</div>
+                  </div>
                 </div>
-                {clientSearchResults
-                  .slice(0,100)
-                  .map(c=>(
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={()=>{setSelectedClientId(c.id);setClientSearch(c.name);setClientSearchOpen(false);setError('')}}
-                      style={{width:'100%',textAlign:'left',padding:'10px 12px',background:String(c.id)===String(selectedClientId)?'rgba(59,130,246,.14)':'transparent',border:0,borderBottom:'1px solid var(--bd)',color:'var(--tx)',cursor:'pointer'}}
-                    >
-                      <div style={{fontWeight:800,fontSize:13}}>{c.name}</div>
-                      <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>Open client AI file</div>
-                    </button>
-                  ))}
-                {!clientSearchResults.length && (
-                  <div style={{padding:'12px',fontSize:12,color:'var(--t3)'}}>No matching client files.</div>
+
+                <div style={{position:'relative'}}>
+                  <input
+                    className="input"
+                    value={clientSearch}
+                    onFocus={()=>setClientSearchOpen(true)}
+                    onChange={e=>{setClientSearch(e.target.value);setClientSearchOpen(true)}}
+                    placeholder="Search client files…"
+                    autoComplete="off"
+                    style={{width:'100%',height:42,fontSize:13,paddingLeft:13}}
+                  />
+                  {clientSearchOpen && clientSearch.trim() && (
+                    <div style={{position:'absolute',left:0,right:0,top:'calc(100% + 6px)',zIndex:30,background:'var(--sf)',border:'1px solid var(--bd)',borderRadius:10,boxShadow:'0 16px 40px rgba(0,0,0,.34)',maxHeight:380,overflowY:'auto'}}>
+                      <div style={{padding:'8px 12px',fontSize:10,color:'var(--t3)',borderBottom:'1px solid var(--bd)'}}>
+                        {clientSearchResults.length.toLocaleString()} matching client file{clientSearchResults.length===1?'':'s'}{clientSearchResults.length > 100 ? ' · showing first 100' : ''}
+                      </div>
+                      {clientSearchResults.slice(0,100).map(c=>(
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={()=>{setSelectedClientId(c.id);setClientSearch(c.name);setClientSearchOpen(false);setError('')}}
+                          style={{width:'100%',textAlign:'left',padding:'11px 13px',background:String(c.id)===String(selectedClientId)?'rgba(59,130,246,.14)':'transparent',border:0,borderBottom:'1px solid var(--bd)',color:'var(--tx)',cursor:'pointer'}}
+                        >
+                          <div style={{fontWeight:800,fontSize:13}}>{c.name}</div>
+                          <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>Open this client's AI workspace</div>
+                        </button>
+                      ))}
+                      {!clientSearchResults.length && (
+                        <div style={{padding:'13px',fontSize:12,color:'var(--t3)'}}>No matching client files.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {selectedClientId ? (
+                  <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 12px',border:'1px solid rgba(34,197,94,.28)',background:'rgba(34,197,94,.07)',borderRadius:9}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:10,fontWeight:900,color:'#22c55e',textTransform:'uppercase',letterSpacing:'.05em'}}>Selected client</div>
+                      <div style={{fontSize:13,fontWeight:900,color:'var(--tx)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{selectedLandingClient?.name || clientSearch}</div>
+                    </div>
+                    <button type="button" className="btn sm" onClick={()=>{setSelectedClientId('');setClientSearch('');setClientSearchOpen(false);setLandingUploadFile(null)}}>Change</button>
+                  </div>
+                ) : (
+                  <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>Select a client before uploading or opening an intelligence workspace.</div>
                 )}
+              </section>
+
+              <section style={{opacity:selectedClientId?1:.68,transition:'opacity .15s ease'}}>
+                <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:9}}>
+                  <div style={{width:24,height:24,borderRadius:999,display:'grid',placeItems:'center',fontSize:11,fontWeight:900,background:selectedClientId?'var(--pri,#6957ff)':'var(--bd)',color:'#fff'}}>2</div>
+                  <div>
+                    <div style={{fontWeight:900,fontSize:14}}>Upload & analyze</div>
+                    <div style={{fontSize:11,color:'var(--t3)',marginTop:1}}>PDF, image, spreadsheet, Word, or PowerPoint · up to 20 MB.</div>
+                  </div>
+                </div>
+
+                <div style={{border:'1px solid var(--bd)',borderRadius:11,padding:14,background:'rgba(255,255,255,.015)'}}>
+                  <div style={{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}>
+                    <div style={{minWidth:0,flex:'1 1 280px'}}>
+                      <div style={{fontSize:12,fontWeight:800,color:'var(--tx)'}}>{landingUploadFile ? landingUploadFile.name : 'Choose a document to analyze'}</div>
+                      <div style={{fontSize:10,color:'var(--t3)',marginTop:3}}>
+                        {landingUploadFile ? `${(landingUploadFile.size/1024/1024).toFixed(2)} MB · ready to upload` : 'The original stays in this client’s private document storage.'}
+                      </div>
+                    </div>
+                    <label className="btn" style={{cursor:selectedClientId&&!landingUploadBusy?'pointer':'default',margin:0,whiteSpace:'nowrap'}}>
+                      Choose File
+                      <input
+                        type="file"
+                        disabled={!selectedClientId || landingUploadBusy}
+                        onChange={e=>setLandingUploadFile(e.target.files?.[0] || null)}
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx"
+                        style={{display:'none'}}
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    className="btn primary"
+                    disabled={landingUploadBusy}
+                    onClick={uploadFromLanding}
+                    style={{width:'100%',justifyContent:'center',marginTop:12,minHeight:38,fontWeight:900}}
+                  >
+                    {landingUploadBusy ? 'Uploading & analyzing…' : '✦ Upload & Analyze'}
+                  </button>
+                </div>
+              </section>
+            </div>
+
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginTop:20,paddingTop:16,borderTop:'1px solid var(--bd)'}}>
+              <div style={{fontSize:11,color:'var(--t3)'}}>
+                Already have documents on file? Open the workspace without uploading anything new.
               </div>
-            )}
-            {selectedClientId && (
-              <div style={{marginTop:8,fontSize:11,color:'var(--t3)'}}>
-                Selected: <strong style={{color:'var(--tx)'}}>{clientOptions.find(c=>String(c.id)===String(selectedClientId))?.name || clientSearch}</strong>
-                <button type="button" className="btn sm" style={{marginLeft:8}} onClick={()=>{setSelectedClientId('');setClientSearch('');setClientSearchOpen(false)}}>Clear</button>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <button className="btn primary" onClick={()=>{
+                  if (!selectedClientId) { setError('Select a client first.'); return }
+                  navigate('/ai-intelligence/' + selectedClientId)
+                }}>
+                  ✦ Open AI Intelligence
+                </button>
+                <button className="btn" onClick={()=>{
+                  if (!selectedClientId) { setError('Select a client first.'); return }
+                  navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')
+                }}>AI Documents</button>
               </div>
-            )}
+            </div>
+
+            {!clientOptions.length && !error && <div style={{marginTop:14,fontSize:12,color:'var(--t3)'}}>No clients available.</div>}
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr',gap:10,marginBottom:12}}>
-            <label className="card" style={{padding:12,cursor:'pointer',margin:0}}>
-              <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>Upload document to selected client</div>
-              <div style={{fontSize:11,color:'var(--t3)',marginBottom:8}}>PDF, image, spreadsheet, Word or PowerPoint · up to 20 MB</div>
-              <input
-                type="file"
-                disabled={landingUploadBusy}
-                onChange={e=>setLandingUploadFile(e.target.files?.[0] || null)}
-                accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.json,.xml,.rtf,.xls,.xlsx,.xlsm,.docx,.pptx"
-              />
-            </label>
-            <button className="btn primary" disabled={landingUploadBusy} onClick={uploadFromLanding}>
-              {landingUploadBusy ? 'Uploading & analyzing…' : '✦ Upload & Analyze'}
-            </button>
-          </div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            <button className="btn primary" onClick={()=>{
-              if (!selectedClientId) { setError('Select a client first.'); return }
-              navigate('/ai-intelligence/' + selectedClientId)
-            }}>
-              Open AI Intelligence
-            </button>
-            <button className="btn" onClick={()=>{
-              if (!selectedClientId) { setError('Select a client first.'); return }
-              navigate('/ai-intelligence/' + selectedClientId + '?tab=documents')
-            }}>AI Documents</button>
-          </div>
-          {!clientOptions.length && !error && <div style={{marginTop:14,fontSize:12,color:'var(--t3)'}}>No clients available.</div>}
         </div>
       </div>
     )
