@@ -467,7 +467,14 @@ async function loadPlatformOfficeRowsFresh() {
     const row = rows[i]
     const productKey = row.product || 'taxres_crm'
     const externalId = row.source_id || row.id
+    // Nashville's operational metrics come from its separate project (nashville)
+    // while its existing subscription account is keyed taxres_crm in the
+    // RomyLabs billing ledger. Resolve that exact office ID without changing
+    // either product's authoritative records or duplicating collections.
     const billing = billingByOffice.get(`${productKey}:${externalId}`)
+      || (productKey === 'nashville' && String(externalId) === NASH_TENANT
+        ? billingByOffice.get(`taxres_crm:${NASH_TENANT}`)
+        : null)
     rows[i] = {
       ...row,
       // Distinguish a real zero-payment billing account from no billing account.
