@@ -469,7 +469,7 @@ async function runResolutionAnalysis(userClient:any, geminiKey:string, clientId:
     const {error:insertErr}=await userClient.from('document_ai_resolution_candidates').insert(rows)
     if(insertErr) throw insertErr
 
-    const allowedTop = new Set(RESOLUTION_CATALOG.map(p=>p.key))
+    const allowedTop = new Set<string>(RESOLUTION_CATALOG.map(p=>p.key as string))
     const topCandidateKeys = Array.isArray(parsed?.top_candidate_keys)
       ? [...new Set(parsed.top_candidate_keys.map((v:any)=>String(v)).filter((v:string)=>allowedTop.has(v)))].slice(0,8)
       : rows.filter((r:any)=>['strong_candidate','possible_candidate'].includes(r.candidate_status)).slice(0,5).map((r:any)=>r.program_key)
