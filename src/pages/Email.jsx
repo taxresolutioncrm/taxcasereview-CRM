@@ -767,6 +767,7 @@ export default function Email() {
       assignedTo: employeeName || user?.email || '',
       priority: 'Normal',
       done: false,
+      deleted: false,
       created_at: new Date().toISOString(),
     }])
     if (error) throw error
