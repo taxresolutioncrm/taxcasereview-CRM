@@ -95,11 +95,13 @@ const RESOLUTION_CATALOG = [
   { key:'oic_datl', name:'Offer in Compromise — Doubt as to Liability', family:'offer_in_compromise' },
   { key:'oic_eta', name:'Offer in Compromise — Effective Tax Administration', family:'offer_in_compromise' },
   { key:'penalty_fta', name:'Penalty Abatement — First Time Abate', family:'penalty_relief' },
-  { key:'penalty_reasonable_cause', name:'Penalty Abatement — Reasonable Cause / Other Relief', family:'penalty_relief' },
+  { key:'penalty_reasonable_cause', name:'Penalty Abatement — Reasonable Cause', family:'penalty_relief' },
+  { key:'penalty_statutory_admin', name:'Statutory / Administrative Penalty Relief', family:'penalty_relief' },
   { key:'innocent_spouse_b', name:'Innocent Spouse Relief — IRC §6015(b)', family:'spouse_relief' },
   { key:'innocent_spouse_c', name:'Separation of Liability — IRC §6015(c)', family:'spouse_relief' },
   { key:'innocent_spouse_f', name:'Equitable Relief — IRC §6015(f)', family:'spouse_relief' },
   { key:'cdp_hearing', name:'Collection Due Process (CDP) Hearing', family:'appeals' },
+  { key:'equivalent_hearing', name:'Equivalent Hearing', family:'appeals' },
   { key:'cap_appeal', name:'Collection Appeals Program (CAP)', family:'appeals' },
   { key:'levy_release_hardship', name:'Levy Release / Economic Hardship Relief', family:'levy_lien' },
   { key:'lien_withdrawal', name:'Federal Tax Lien Withdrawal', family:'levy_lien' },
@@ -107,9 +109,12 @@ const RESOLUTION_CATALOG = [
   { key:'lien_subordination', name:'Lien Subordination', family:'levy_lien' },
   { key:'lien_release', name:'Lien Release After Satisfaction / Unenforceability', family:'levy_lien' },
   { key:'audit_reconsideration', name:'Audit Reconsideration', family:'exam_relief' },
+  { key:'amended_refund_abatement', name:'Amended Return / Refund Claim / Tax Abatement', family:'exam_relief' },
+  { key:'identity_theft_resolution', name:'Identity-Theft Resolution', family:'account_relief' },
   { key:'tas_hardship', name:'Taxpayer Advocate Service — Hardship / Systemic Relief', family:'hardship' },
   { key:'tfrp_defense', name:'Trust Fund Recovery Penalty (TFRP) Defense / Protest', family:'payroll_tax' },
   { key:'payroll_tax_resolution', name:'Business / Payroll Tax Resolution', family:'payroll_tax' },
+  { key:'bankruptcy_irs_coordination', name:'Bankruptcy / IRS Collection Coordination', family:'bankruptcy' },
 ] as const
 
 const RESOLUTION_PROMPT = `
