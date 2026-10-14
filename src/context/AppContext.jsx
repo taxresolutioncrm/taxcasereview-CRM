@@ -443,137 +443,282 @@ export function AppProvider({ children }) {
     }
   }
 
-  // Global notification sounds — chat messages, leads/appointments via API,
-  // new emails, huddle invites, inbound SMS, and inbound faxes. Active
-  // whenever logged in. (Inbound-call ringing is handled in CallContext,
-  // right where the ring is actually detected via incoming_calls polling —
-  // calllog only ever gets a row written after a call ends, so listening
-  // for it here never caught the ring in time.)
-  //
-  // Realtime websockets can silently drop after a backgrounded/idle tab,
-  // laptop sleep, or brief network blip — Supabase doesn't always
-  // reconnect cleanly on its own. Each channel watches its own subscribe()
-  // status and rebuilds itself (only itself) if it reports CLOSED or
-  // CHANNEL_ERROR. We deliberately do NOT tear down/rebuild all channels
-  // together on tab-focus — reusing the same channel name before the old
-  // one finishes closing causes the realtime client to silently drop the
-  // new subscription, which is worse than doing nothing. Each channel
-  // manages its own lifecycle independently.
+  // Global notification delivery for central TaxRes-family offices.
+  // Runtime notifications use Supabase Realtime only — never GitHub Actions.
+  // Central TCR / CloudCPA / Centurion use ONE managed Realtime channel for
+  // notification events. Nashville retains its existing paths unchanged.
   useEffect(() => {
     if (!user) return
     let cancelled = false
     const pendingTimeouts = []
     const channelCleanups = []
+    const host = window.location.hostname.toLowerCase()
+    const isCentralNotificationRuntime = host !== 'nashville.taxrescrm.app'
 
-    function withReconnect(name, table, handler) {
-      let channel = null
-      let reconnectTimer = null
+    function openNotificationTarget(target) {
+      if (!target) return
+      window.history.pushState({}, '', target)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }
 
-      async function disposeCurrent() {
-        const current = channel
-        channel = null
-        if (!current) return
-        try { await supabase.removeChannel(current) } catch (_) {}
-      }
-
-      function scheduleReconnect() {
-        if (cancelled || reconnectTimer) return
-        reconnectTimer = setTimeout(async () => {
-          reconnectTimer = null
-          if (cancelled) return
-          await disposeCurrent()
-          create()
-        }, 1500)
-        pendingTimeouts.push(reconnectTimer)
-      }
-
-      function create() {
-        if (cancelled || channel) return
-        try {
-          const ch = supabase.channel(name)
-          channel = ch
-          ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table }, handler)
-            .subscribe(status => {
-              if (cancelled || channel !== ch) return
-              if (status === 'SUBSCRIBED') {
-                setRealtimeOk(true)
-                return
-              }
-              if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                setRealtimeOk(false)
-                // Only this subscription owns its replacement. The one-timer
-                // guard prevents repeated terminal callbacks from stacking
-                // duplicate channels.
-                scheduleReconnect()
-              }
-            })
-        } catch (e) {
-          setRealtimeOk(false)
-          console.error(`[realtime] ${name} failed to subscribe:`, e?.message || e)
-          scheduleReconnect()
+    function notifyAction({ title, body, target, tag, suppressPath = '' }) {
+      const onSuppressedPage = suppressPath && window.location.pathname.startsWith(suppressPath)
+      if (document.visibilityState !== 'visible') {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const n = new Notification(title, {
+            body,
+            icon: FIRM.logoUrl || '/icon-192.png',
+            tag,
+            requireInteraction: false,
+          })
+          n.onclick = () => {
+            window.focus()
+            openNotificationTarget(target)
+            n.close()
+          }
         }
+        return
       }
+      if (onSuppressedPage) return
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+      setToast({
+        msg: `${title}: ${body}`,
+        type: 'ok',
+        show: true,
+        onClick: () => openNotificationTarget(target),
+      })
+      toastTimer.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 7000)
+    }
 
-      create()
-
-      return async () => {
-        if (reconnectTimer) {
-          clearTimeout(reconnectTimer)
-          reconnectTimer = null
+    // Preserve the existing Nashville notification subscriptions exactly.
+    if (!isCentralNotificationRuntime) {
+      channelCleanups.push(withReconnect('global-chat-notify', 'chat_messages', ({ new: msg }) => {
+        // Read fresh at message-arrival time, not once at effect-mount — the
+        // employees lookup that fills myRealNameRef resolves asynchronously,
+        // so capturing myName once here risked a stale "romy" fallback baked
+        // in for the whole channel's lifetime even after the real name loaded.
+        const liveName = myRealNameRef.current || user?.user_metadata?.name || user?.email?.split('@')[0] || 'You'
+        if (msg.huddle_id && msg.sender === '🔔 System') {
+          // Huddle visual/browser notifications are handled by GlobalTeamChatNotifier
+          // so the Join action carries the room id and we do not emit duplicates.
+          playSound('huddle')
+          return
+        } else if (msg.sender === '🔔 System') {
+          playSound('lead') // new lead / appointment / payment notifications from LeadFlow etc.
+        } else if (msg.sender !== liveName) {
+          playSound('message')
         }
-        await disposeCurrent()
+        // Visual notification. Chat.jsx only mounts on /chat, so without this a rep
+        // sitting on any other page never sees an incoming message.
+        notifyChatMessage(msg, liveName)
+      }))
+  
+      channelCleanups.push(withReconnect('global-email-notify', 'emails', ({ new: row }) => {
+        if ((row.triage || 'Inbox') === 'Inbox' && row.status !== 'Sent') playSound('email')
+      }))
+  
+      channelCleanups.push(withReconnect('global-sms-notify', 'sms_messages', ({ new: row }) => {
+        if (row.direction === 'inbound') playSound('sms')
+      }))
+  
+      channelCleanups.push(withReconnect('global-fax-notify', 'fax_logs', ({ new: row }) => {
+        if (row.direction === 'inbound') playSound('fax')
+      }))
+  
+      channelCleanups.push(withReconnect('global-voicemail-notify', 'voicemails', ({ new: row }) => {
+        if (!row.is_read) playSound('voicemail')
+      }))
+  
+      channelCleanups.push(withReconnect('global-task-notify', 'tasks', ({ new: row }) => {
+        playSound('task')
+      }))
+  
+      channelCleanups.push(withReconnect('global-esign-notify', 'esigns', ({ new: row }) => {
+        if (row.status === 'Awaiting') playSound('esign')
+      }))
+
+      return () => {
+        cancelled = true
+        pendingTimeouts.forEach(t => clearTimeout(t))
+        channelCleanups.forEach(cleanup => { try { cleanup() } catch (_) {} })
       }
     }
 
-    channelCleanups.push(withReconnect('global-chat-notify', 'chat_messages', ({ new: msg }) => {
-      // Read fresh at message-arrival time, not once at effect-mount — the
-      // employees lookup that fills myRealNameRef resolves asynchronously,
-      // so capturing myName once here risked a stale "romy" fallback baked
-      // in for the whole channel's lifetime even after the real name loaded.
-      const liveName = myRealNameRef.current || user?.user_metadata?.name || user?.email?.split('@')[0] || 'You'
-      if (msg.huddle_id && msg.sender === '🔔 System') {
-        // Huddle visual/browser notifications are handled by GlobalTeamChatNotifier
-        // so the Join action carries the room id and we do not emit duplicates.
-        playSound('huddle')
-        return
-      } else if (msg.sender === '🔔 System') {
-        playSound('lead') // new lead / appointment / payment notifications from LeadFlow etc.
-      } else if (msg.sender !== liveName) {
-        playSound('message')
+    let channel = null
+    let reconnectTimer = null
+    let reconnectAttempt = 0
+
+    async function disposeCurrent() {
+      const current = channel
+      channel = null
+      if (!current) return
+      try { await supabase.removeChannel(current) } catch (_) {}
+    }
+
+    function scheduleReconnect() {
+      if (cancelled || reconnectTimer) return
+      const delay = Math.min(1000 * (2 ** reconnectAttempt), 30000)
+      reconnectAttempt = Math.min(reconnectAttempt + 1, 5)
+      reconnectTimer = setTimeout(async () => {
+        reconnectTimer = null
+        if (cancelled) return
+        await disposeCurrent()
+        createCentralNotificationChannel()
+      }, delay)
+      pendingTimeouts.push(reconnectTimer)
+    }
+
+    function createCentralNotificationChannel() {
+      if (cancelled || channel) return
+      try {
+        const ch = supabase.channel(`central-global-notifications-${user.id}`)
+        channel = ch
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, ({ new: msg }) => {
+          const liveName = myRealNameRef.current || user?.user_metadata?.name || user?.email?.split('@')[0] || 'You'
+          if (!msg || msg.sender === liveName) return
+          if (msg.huddle_id && msg.sender === '🔔 System') {
+            playSound('huddle')
+            window.dispatchEvent(new CustomEvent('taxres:huddle-invite', { detail: { msg } }))
+            return
+          }
+          // Calendar bookings have their own direct calendar notification path;
+          // keep the Team Chat audit message without emitting a duplicate alert.
+          if (msg.sender === '🔔 System' && String(msg.text || '').startsWith('📅 New appointment booked online:')) return
+          if (msg.sender === '🔔 System') playSound('lead')
+          else playSound('message')
+          notifyChatMessage(msg, liveName)
+        })
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emails' }, ({ new: row }) => {
+          if ((row.triage || 'Inbox') !== 'Inbox' || row.status === 'Sent' || row.direction === 'outbound') return
+          playSound('email')
+          const from = row.from_address || row.sender || row.clientName || row.clientname || row.recipient || 'Unknown sender'
+          notifyAction({
+            title: '📧 New Email',
+            body: `${from} — ${row.subject || '(no subject)'}`,
+            target: '/email',
+            tag: `email-${row.id}`,
+            suppressPath: '/email',
+          })
+        })
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, ({ new: row }) => {
+          const assignee = String(row.assignedTo || row.assignedto || '').trim().toLowerCase()
+          const liveName = String(myRealNameRef.current || user?.user_metadata?.name || user?.email?.split('@')[0] || '').trim().toLowerCase()
+          const liveEmail = String(user?.email || '').trim().toLowerCase()
+          if (assignee && assignee !== liveName && assignee !== liveEmail) return
+          if (!assignee) return
+          playSound('task')
+          notifyAction({
+            title: '✅ New Task Assigned',
+            body: `${row.title || 'New task'}${row.clientName ? ' · ' + row.clientName : ''}`,
+            target: '/tasks',
+            tag: `task-${row.id}`,
+          })
+        })
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calevents' }, ({ new: row }) => {
+          if (row.source !== 'booking_widget' && row.source !== 'online') return
+          playSound('reminder')
+          const who = row.clientName || row.title || 'New appointment'
+          notifyAction({
+            title: '📅 New Appointment Booked',
+            body: `${who}${row.date ? ' · ' + row.date : ''}${row.time ? ' ' + row.time : ''}`,
+            target: '/calendar',
+            tag: `calendar-${row.id}`,
+            // Calendar.jsx keeps its existing page-local toast/browser path for
+            // the page itself; global delivery covers every other CRM page.
+            suppressPath: '/calendar',
+          })
+        })
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sms_messages' }, ({ new: row }) => {
+          if (row.direction !== 'inbound') return
+          playSound('sms')
+          notifyAction({
+            title: '💬 New SMS',
+            body: row.from_number || row.sender || row.phone || 'New inbound message',
+            target: '/sms',
+            tag: `sms-${row.id}`,
+            suppressPath: '/sms',
+          })
+        })
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fax_logs' }, ({ new: row }) => {
+          if (row.direction !== 'inbound') return
+          playSound('fax')
+          notifyAction({
+            title: '📠 New Fax',
+            body: row.from_number || row.sender || 'New inbound fax',
+            target: '/fax',
+            tag: `fax-${row.id}`,
+            suppressPath: '/fax',
+          })
+        })
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voicemails' }, ({ new: row }) => {
+          if (row.is_read) return
+          playSound('voicemail')
+          notifyAction({
+            title: '📞 New Voicemail',
+            body: row.from_number || row.caller || row.caller_name || 'New voicemail',
+            target: '/dialer',
+            tag: `voicemail-${row.id}`,
+            suppressPath: '/dialer',
+          })
+        })
+
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'esigns' }, ({ new: row }) => {
+          if (row.status !== 'Awaiting') return
+          playSound('esign')
+          notifyAction({
+            title: '✍️ E-Signature Sent',
+            body: row.client_name || row.clientname || 'Signature request awaiting completion',
+            target: '/esign',
+            tag: `esign-awaiting-${row.id}`,
+            suppressPath: '/esign',
+          })
+        })
+
+        ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'esigns' }, ({ new: row }) => {
+          if (row.status !== 'Signed') return
+          playSound('esign')
+          notifyAction({
+            title: '✅ E-Signature Completed',
+            body: row.client_name || row.clientname || 'Signed document received',
+            target: '/esign',
+            tag: `esign-signed-${row.id}`,
+            suppressPath: '/esign',
+          })
+        })
+
+        ch.subscribe(status => {
+          if (cancelled || channel !== ch) return
+          if (status === 'SUBSCRIBED') {
+            reconnectAttempt = 0
+            setRealtimeOk(true)
+            return
+          }
+          if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            setRealtimeOk(false)
+            scheduleReconnect()
+          }
+        })
+      } catch (e) {
+        setRealtimeOk(false)
+        console.error('[realtime] central global notifications failed:', e?.message || e)
+        scheduleReconnect()
       }
-      // Visual notification. Chat.jsx only mounts on /chat, so without this a rep
-      // sitting on any other page never sees an incoming message.
-      notifyChatMessage(msg, liveName)
-    }))
+    }
 
-    channelCleanups.push(withReconnect('global-email-notify', 'emails', ({ new: row }) => {
-      if ((row.triage || 'Inbox') === 'Inbox' && row.status !== 'Sent') playSound('email')
-    }))
-
-    channelCleanups.push(withReconnect('global-sms-notify', 'sms_messages', ({ new: row }) => {
-      if (row.direction === 'inbound') playSound('sms')
-    }))
-
-    channelCleanups.push(withReconnect('global-fax-notify', 'fax_logs', ({ new: row }) => {
-      if (row.direction === 'inbound') playSound('fax')
-    }))
-
-    channelCleanups.push(withReconnect('global-voicemail-notify', 'voicemails', ({ new: row }) => {
-      if (!row.is_read) playSound('voicemail')
-    }))
-
-    channelCleanups.push(withReconnect('global-task-notify', 'tasks', ({ new: row }) => {
-      playSound('task')
-    }))
-
-    channelCleanups.push(withReconnect('global-esign-notify', 'esigns', ({ new: row }) => {
-      if (row.status === 'Awaiting') playSound('esign')
-    }))
+    createCentralNotificationChannel()
 
     return () => {
       cancelled = true
       pendingTimeouts.forEach(t => clearTimeout(t))
-      channelCleanups.forEach(cleanup => { try { cleanup() } catch (_) {} })
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      disposeCurrent()
     }
   }, [user])
 
