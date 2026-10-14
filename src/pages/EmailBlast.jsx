@@ -116,32 +116,174 @@ export default function EmailBlast() {
     setNotice('Blast complete: ' + sent + ' sent' + (failed ? ', ' + failed + ' failed.' : '.'))
   }
 
-  return <div style={{padding:24,maxWidth:1180,margin:'0 auto'}}>
-    <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'flex-start',marginBottom:18}}>
-      <div><h1 style={{margin:0}}>Email Blast</h1><p style={{color:'var(--t2)',marginTop:6}}>Send one office-scoped email to selected clients. Existing email opt-out flags are excluded automatically.</p></div>
-      <div style={{fontSize:13,color:'var(--t2)'}}>{selected.size} selected</div>
+  const selectedRecipients = rows.filter(row => selected.has(row.id))
+  const recipientCount = selectedRecipients.length
+  const visibleSelectedCount = filtered.filter(row => selected.has(row.id)).length
+
+  return <div style={{padding:'24px clamp(16px,2vw,28px)',maxWidth:1240,margin:'0 auto'}}>
+    <div style={{display:'flex',justifyContent:'space-between',gap:18,alignItems:'flex-start',marginBottom:20,flexWrap:'wrap'}}>
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          <h1 style={{margin:0,fontSize:30,lineHeight:1.15}}>Email Blast</h1>
+          <span style={{fontSize:10,fontWeight:900,letterSpacing:'.06em',padding:'5px 8px',borderRadius:999,border:'1px solid var(--bdr)',color:'var(--t3)'}}>OFFICE-SCOPED</span>
+        </div>
+        <p style={{color:'var(--t2)',margin:'7px 0 0',maxWidth:760,lineHeight:1.55}}>
+          Send one message to selected eligible clients. Email opt-outs and suppressed addresses are excluded automatically.
+        </p>
+      </div>
+      <div style={{minWidth:116,textAlign:'right'}}>
+        <div style={{fontSize:26,fontWeight:900,color:recipientCount?'var(--tx)':'var(--t3)'}}>{recipientCount}</div>
+        <div style={{fontSize:11,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em'}}>selected</div>
+      </div>
     </div>
-    {error && <div className="form-error" style={{marginBottom:12}}>{error}</div>}
-    {notice && <div className="form-notice" style={{marginBottom:12}}>{notice}</div>}
-    <div style={{display:'grid',gridTemplateColumns:'minmax(320px,1fr) minmax(360px,1.15fr)',gap:18}}>
-      <section className="card" style={{padding:16}}>
-        <div style={{display:'flex',gap:8,marginBottom:12}}><input style={{flex:1}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients…"/><button className="btn" onClick={toggleAll}>{allVisibleSelected?'Clear visible':'Select visible'}</button></div>
-        <div style={{maxHeight:560,overflow:'auto',border:'1px solid var(--bdr)',borderRadius:10}}>
-          {filtered.map(row => <label key={row.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--bdr)',cursor:'pointer'}}>
-            <input type="checkbox" checked={selected.has(row.id)} onChange={()=>setSelected(current=>{const next=new Set(current);next.has(row.id)?next.delete(row.id):next.add(row.id);return next})}/>
-            <div style={{minWidth:0,flex:1}}><strong style={{display:'block'}}>{displayName(row)}</strong><span style={{fontSize:12,color:'var(--t2)'}}>{row.email}</span></div>
-            <span style={{fontSize:11,color:status[row.id]==='failed'?'var(--bad)':status[row.id]==='sent'?'var(--ok)':'var(--t3)'}}>{status[row.id]||''}</span>
-          </label>)}
-          {!filtered.length && <div style={{padding:24,color:'var(--t3)',textAlign:'center'}}>No eligible email recipients.</div>}
+
+    {error && <div className="form-error" style={{marginBottom:14,padding:'11px 13px',borderRadius:9}}>{error}</div>}
+    {notice && <div className="form-notice" style={{marginBottom:14,padding:'11px 13px',borderRadius:9}}>{notice}</div>}
+
+    <div style={{display:'grid',gridTemplateColumns:'minmax(320px,.9fr) minmax(420px,1.1fr)',gap:18,alignItems:'stretch'}}>
+      <section className="card" style={{padding:0,overflow:'hidden',minHeight:620}}>
+        <div style={{padding:'17px 18px 15px',borderBottom:'1px solid var(--bdr)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start',marginBottom:12}}>
+            <div>
+              <div style={{fontWeight:900,fontSize:16}}>Recipients</div>
+              <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>{rows.length.toLocaleString()} eligible client{rows.length===1?'':'s'} in this office</div>
+            </div>
+            {recipientCount>0 && <button className="btn sm" onClick={()=>setSelected(new Set())}>Clear selection</button>}
+          </div>
+
+          <div style={{display:'flex',gap:8}}>
+            <div style={{position:'relative',flex:1}}>
+              <input
+                className="input"
+                style={{width:'100%',height:38,paddingLeft:12}}
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+                placeholder="Search clients by name or email…"
+              />
+            </div>
+            <button className="btn" onClick={toggleAll} disabled={!filtered.length} style={{whiteSpace:'nowrap'}}>
+              {allVisibleSelected?'Clear visible':'Select visible'}
+            </button>
+          </div>
+
+          <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:9,fontSize:10,color:'var(--t3)'}}>
+            <span>{filtered.length.toLocaleString()} visible</span>
+            <span>{visibleSelectedCount.toLocaleString()} visible selected</span>
+          </div>
+        </div>
+
+        <div style={{maxHeight:520,overflowY:'auto'}}>
+          {filtered.map(row => {
+            const isSelected = selected.has(row.id)
+            const rowStatus = status[row.id] || ''
+            return <label
+              key={row.id}
+              style={{
+                display:'flex',alignItems:'center',gap:11,padding:'12px 14px',
+                borderBottom:'1px solid var(--bdr)',cursor:'pointer',
+                background:isSelected?'rgba(59,130,246,.10)':'transparent',
+                transition:'background .12s ease'
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={()=>setSelected(current=>{const next=new Set(current);next.has(row.id)?next.delete(row.id):next.add(row.id);return next})}
+                style={{width:16,height:16,accentColor:'var(--pri,#6957ff)',flex:'0 0 auto'}}
+              />
+              <div style={{minWidth:0,flex:1}}>
+                <strong style={{display:'block',fontSize:13,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{displayName(row)}</strong>
+                <span style={{fontSize:11,color:'var(--t2)',display:'block',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{row.email}</span>
+              </div>
+              {rowStatus && <span style={{
+                fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'.04em',
+                color:rowStatus==='failed'?'var(--bad)':rowStatus==='sent'?'var(--ok)':'var(--t3)'
+              }}>{rowStatus}</span>}
+            </label>
+          })}
+          {!filtered.length && <div style={{padding:'46px 24px',color:'var(--t3)',textAlign:'center'}}>
+            <div style={{fontWeight:800,color:'var(--t2)',marginBottom:4}}>No eligible recipients found</div>
+            <div style={{fontSize:11}}>Try a different search. Opted-out and suppressed clients are hidden automatically.</div>
+          </div>}
         </div>
       </section>
-      <section className="card" style={{padding:16}}>
-        <label style={{display:'grid',gap:6,marginBottom:12}}><span style={{fontWeight:700}}>Subject</span><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Subject — supports {{first_name}}"/></label>
-        <label style={{display:'grid',gap:6,marginBottom:12}}><span style={{fontWeight:700}}>Message</span><textarea rows={14} value={body} onChange={e=>setBody(e.target.value)} placeholder={'Hi {{first_name}},\n\nYour message here…'}/></label>
-        <div style={{fontSize:12,color:'var(--t3)',marginBottom:14}}>{'Merge fields: {{first_name}}, {{last_name}}, {{name}}, {{email}}'}</div>
-        <div style={{display:'flex',gap:8,marginBottom:14}}><input style={{flex:1}} value={testEmail} onChange={e=>setTestEmail(e.target.value)} placeholder="Test email address"/><button className="btn" disabled={sending} onClick={sendTest}>Send test</button></div>
-        <button className="btn pri full" disabled={sending||!selected.size} onClick={sendBlast}>{sending?'Sending…':'Send Email Blast'}</button>
+
+      <section className="card" style={{padding:0,overflow:'hidden',minHeight:620}}>
+        <div style={{padding:'17px 18px 15px',borderBottom:'1px solid var(--bdr)'}}>
+          <div style={{fontWeight:900,fontSize:16}}>Compose message</div>
+          <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>Personalize the message with merge fields, then send yourself a test before the blast.</div>
+        </div>
+
+        <div style={{padding:18}}>
+          <label style={{display:'grid',gap:7,marginBottom:15}}>
+            <span style={{fontWeight:800,fontSize:12}}>Subject</span>
+            <input
+              className="input"
+              style={{width:'100%',height:40}}
+              value={subject}
+              onChange={e=>setSubject(e.target.value)}
+              placeholder="Example: Important tax update for {{first_name}}"
+            />
+          </label>
+
+          <label style={{display:'grid',gap:7,marginBottom:12}}>
+            <span style={{fontWeight:800,fontSize:12}}>Message</span>
+            <textarea
+              className="input"
+              rows={12}
+              style={{width:'100%',resize:'vertical',minHeight:250,lineHeight:1.55,padding:12}}
+              value={body}
+              onChange={e=>setBody(e.target.value)}
+              placeholder={'Hi {{first_name}},\n\nYour message here…'}
+            />
+          </label>
+
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:10,fontWeight:800,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:7}}>Available merge fields</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {['{{first_name}}','{{last_name}}','{{name}}','{{email}}'].map(token=>
+                <span key={token} style={{fontFamily:'monospace',fontSize:10,padding:'5px 8px',border:'1px solid var(--bdr)',borderRadius:7,color:'var(--t2)',background:'rgba(255,255,255,.02)'}}>{token}</span>
+              )}
+            </div>
+          </div>
+
+          <div style={{border:'1px solid var(--bdr)',borderRadius:11,padding:13,marginBottom:16,background:'rgba(255,255,255,.018)'}}>
+            <div style={{fontWeight:800,fontSize:12}}>Send a test first</div>
+            <div style={{fontSize:10,color:'var(--t3)',margin:'3px 0 9px'}}>Check the final subject, formatting, and merge-field output before sending to clients.</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <input
+                className="input"
+                style={{flex:'1 1 260px',height:38}}
+                value={testEmail}
+                onChange={e=>setTestEmail(e.target.value)}
+                placeholder="Test email address"
+              />
+              <button className="btn" disabled={sending} onClick={sendTest} style={{whiteSpace:'nowrap'}}>Send test</button>
+            </div>
+          </div>
+
+          <div style={{borderTop:'1px solid var(--bdr)',paddingTop:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:900,color:'var(--tx)'}}>
+                  {recipientCount ? recipientCount.toLocaleString()+' client'+(recipientCount===1?'':'s')+' selected' : 'No recipients selected'}
+                </div>
+                <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>A final confirmation appears before anything is sent.</div>
+              </div>
+              <div style={{fontSize:10,color:'var(--t3)'}}>Opt-outs excluded automatically</div>
+            </div>
+            <button
+              className="btn pri full"
+              disabled={sending||!recipientCount||!subject.trim()||!body.trim()}
+              onClick={sendBlast}
+              style={{minHeight:42,fontWeight:900}}
+            >
+              {sending?'Sending…':recipientCount?('Send Email Blast · '+recipientCount):'Select recipients to send'}
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   </div>
+}
 }
