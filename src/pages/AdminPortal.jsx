@@ -110,6 +110,7 @@ const EXTERNAL_OFFICE_PRODUCTS = {
   groundivo:     { label:'GroundIVO',     color:'#16a34a', appUrl:'https://app.groundivo.com/' },
   oculivo:       { label:'Oculivo',       color:'#7C3AED', appUrl:'https://app.oculivo.com/' },
   restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/login' },
+  nashville:     { label:'Nashville Tax Solutions', color:'#6366f1', appUrl:'https://nashville.taxrescrm.app' },
 }
 
 let platformOfficeRowsCache = null
@@ -177,6 +178,10 @@ async function loadPlatformOfficeRowsFresh() {
     { key:'cloudcpa', name:'CloudCPA Inc' },
     { key:'demo', name:'Tax Res CRM Demo' },
   ]
+  // Nashville runs in its own Supabase project and is not an entry in
+  // romylabs_products. Its authenticated hub feed must still be included.
+  // Treat the existing registry as display metadata, never read Nashville tables.
+  externalProductConfigs.nashville ||= EXTERNAL_OFFICE_PRODUCTS.nashville
   const productKeys = Object.keys(externalProductConfigs)
 
   // One authenticated hub call fetches all products concurrently server-side.
@@ -243,6 +248,30 @@ async function loadPlatformOfficeRowsFresh() {
       }
     }))
     ;[tenantFeedResults, results] = await Promise.all([tenantFeedPromise, productFeedPromise])
+  }
+
+  // Batch HTTP 200 may wrap per-office timeouts. Retry only failed products
+  // from the existing hub, once per user request, with no background polling.
+  if (!batchError && batchData?.ok && batchData?.results) {
+    const failedKeys = [
+      ...tenantFeedResults.filter(feed => feed.error || !feed.data?.ok).map(feed => feed.key),
+      ...results.filter(item => item.error || !Array.isArray(item.data?.offices))
+        .filter(item => String((productRows || []).find(p => p.product_id === item.productKey)?.lifecycle || '').toLowerCase() !== 'building')
+        .map(item => item.productKey),
+    ]
+    const retried = await Promise.all(failedKeys.map(async key => {
+      try {
+        const response = await metricsTimeout(
+          supabase.functions.invoke('hub-proxy', { body:{ product:key } }),
+          key + ' individual retry',
+          11000,
+        )
+        return { key, ...response }
+      } catch (error) { return { key, data:null, error } }
+    }))
+    const byKey = new Map(retried.map(item => [item.key, item]))
+    tenantFeedResults = tenantFeedResults.map(feed => byKey.has(feed.key) ? { ...feed, ...byKey.get(feed.key) } : feed)
+    results = results.map(item => byKey.has(item.productKey) ? { ...item, ...byKey.get(item.productKey) } : item)
   }
 
   for (const result of tenantFeedResults) {
@@ -317,7 +346,8 @@ async function loadPlatformOfficeRowsFresh() {
     const cfg = externalProductConfigs[result.productKey] || EXTERNAL_OFFICE_PRODUCTS[result.productKey] || { label:result.productKey, color:'#6366f1', appUrl:null }
     const offices = Array.isArray(result.data?.offices) ? result.data.offices : null
     if (result.error || !offices) {
-      warnings.push(`${cfg.label} live office feed unavailable`)
+      const lifecycle = (productRows || []).find(p => p.product_id === result.productKey)?.lifecycle
+      if (String(lifecycle || '').toLowerCase() !== 'building') warnings.push(`${cfg.label} live office feed unavailable`)
       continue
     }
 
