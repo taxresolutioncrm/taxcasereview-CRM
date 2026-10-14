@@ -1138,7 +1138,7 @@ export default function PreparedFile() {
               <p style={{fontSize:12,color:'var(--t3)'}}>Uses the current client’s document summaries, extracted facts, questions, notices and deadlines as context. It does not silently change CRM records.</p>
               <textarea className="textarea" rows={5} value={askText} onChange={e=>setAskText(e.target.value)} placeholder="Ask about the client file, case issues, missing information, deadlines, or next steps…" />
               <button className="btn primary" style={{marginTop:10}} disabled={askBusy || !askText.trim()} onClick={askClientAI}>{askBusy?'Thinking…':'Ask AI'}</button>
-              {askReply && <div className="card" style={{marginTop:14,whiteSpace:'pre-wrap',lineHeight:1.6}}>{askReply}</div>}
+              {askReply && <div className="card" style={{marginTop:14,whiteSpace:'pre-wrap',lineHeight:1.6}}>{aiText(askReply)}</div>}
             </div>
           )}
 
