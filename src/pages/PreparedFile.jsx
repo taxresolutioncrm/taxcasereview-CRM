@@ -847,7 +847,7 @@ export default function PreparedFile() {
                 {runs.filter(r=>r.status==='complete').slice(0,8).map(r=>(
                   <div key={r.id} style={{padding:'12px 0',borderBottom:'1px solid var(--bd)'}}>
                     <div style={{display:'flex',justifyContent:'space-between',gap:12}}>
-                      <strong>{r.document_type || 'Document'} {r.tax_year ? `· ${r.tax_year}` : ''}</strong>
+                      <strong>{aiText(r.document_type || 'Document')} {r.tax_year ? `· ${r.tax_year}` : ''}</strong>
                       <span style={{fontSize:12,color:'var(--t3)'}}>{r.confidence == null ? '' : pct(r.confidence)+'% confidence'}</span>
                     </div>
                     <div style={{fontSize:13,color:'var(--t2)',marginTop:5,lineHeight:1.5}}>{r.summary || 'Analysis complete.'}</div>
@@ -867,7 +867,7 @@ export default function PreparedFile() {
                     </div>
                     {topResolutionCandidates.slice(0,3).map(candidate=>(
                       <div key={candidate.id} style={{padding:'7px 0',borderTop:'1px solid var(--bd)'}}>
-                        <div style={{fontSize:12,fontWeight:800}}>{candidate.program_name}</div>
+                        <div style={{fontSize:12,fontWeight:800}}>{aiText(candidate.program_name)}</div>
                         <div style={{fontSize:10,color:candidate.candidate_status==='strong_candidate'?'#22c55e':'#3b82f6',marginTop:2,fontWeight:800}}>
                           {candidate.candidate_status==='strong_candidate'?'Strong candidate':'Possible candidate'}
                           {candidate.confidence!=null ? ' · '+pct(candidate.confidence)+'%' : ''}
@@ -881,7 +881,7 @@ export default function PreparedFile() {
                 {openQuestions.slice(0,8).map(q=>(
                   <button key={q.id} onClick={()=>answerQuestion(q)} style={{display:'block',width:'100%',textAlign:'left',padding:12,marginBottom:8,border:'1px solid var(--bd)',borderRadius:10,background:'var(--card)',cursor:'pointer'}}>
                     <div style={{fontWeight:700,fontSize:13}}>{q.question}</div>
-                    {q.reason && <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>{q.reason}</div>}
+                    {q.reason && <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>{aiText(q.reason)}</div>}
                   </button>
                 ))}
                 {!openQuestions.length && <div style={{color:'var(--t3)'}}>No unanswered questions found.</div>}
@@ -910,16 +910,16 @@ export default function PreparedFile() {
               {currentFacts.map(f=>(
                 <div key={f.id} style={{display:'grid',gridTemplateColumns:'180px 1fr 120px 170px',gap:12,alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--bd)'}}>
                   <div>
-                    <div style={{fontWeight:700,fontSize:13}}>{f.field_label || f.field_key}</div>
-                    <div style={{fontSize:10,color:'var(--t3)'}}>{f.category}</div>
+                    <div style={{fontWeight:700,fontSize:13}}>{aiText(f.field_label || f.field_key)}</div>
+                    <div style={{fontSize:10,color:'var(--t3)'}}>{aiText(f.category)}</div>
                   </div>
                   <div style={{fontSize:13}}>
-                    {f.normalized_text || (f.value_json == null ? '—' : typeof f.value_json === 'string' ? f.value_json : JSON.stringify(f.value_json))}
+                    {aiText(f.normalized_text || (f.value_json == null ? '—' : typeof f.value_json === 'string' ? f.value_json : JSON.stringify(f.value_json)))}
                     {(f.source_excerpt || f.source_locator || f.source_page) && <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>
                       <button className="btn sm" style={{marginRight:6,padding:'2px 6px'}} onClick={()=>openSource(f.document_id,f.source_page)}>
                         {f.source_locator || (f.source_page ? 'p.'+f.source_page : 'Source')}
                       </button>
-                      {f.source_excerpt ? '“'+f.source_excerpt+'”' : ''}
+                      {f.source_excerpt ? '“'+aiText(f.source_excerpt)+'”' : ''}
                     </div>}
                   </div>
                   <div style={{fontSize:11,color:'var(--t3)'}}>{f.confidence==null?'—':pct(f.confidence)+'% confidence'}</div>
@@ -976,10 +976,10 @@ export default function PreparedFile() {
               {reviewFindings.map(f=>(
                 <div key={f.id} style={{padding:'11px 0',borderBottom:'1px solid var(--bd)'}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12}}>
-                    <strong>{f.field_label || f.field_key}</strong>
+                    <strong>{aiText(f.field_label || f.field_key)}</strong>
                     <span style={{fontSize:11,color:'var(--t3)'}}>{f.confidence==null?'—':pct(f.confidence)+'% confidence'}</span>
                   </div>
-                  <div style={{fontSize:13,marginTop:4}}>{f.normalized_text || (f.value_json == null ? '—' : JSON.stringify(f.value_json))}</div>
+                  <div style={{fontSize:13,marginTop:4}}>{aiText(f.normalized_text || (f.value_json == null ? '—' : JSON.stringify(f.value_json)))}</div>
                   <div style={{display:'flex',gap:6,marginTop:8}}>
                     {(f.source_page || f.source_locator) && <button className="btn sm" onClick={()=>openSource(f.document_id,f.source_page)}>Open source</button>}
                     <button className="btn sm" onClick={()=>reviewFact(f.id,'verified')}>✓ Verify</button>
@@ -996,8 +996,8 @@ export default function PreparedFile() {
               <h3 style={{marginTop:0}}>Deadlines & notices found in the client file</h3>
               {noticeDeadlineFacts.map(f=>(
                 <div key={f.id} style={{display:'grid',gridTemplateColumns:'180px 1fr 130px',gap:12,alignItems:'center',padding:'11px 0',borderBottom:'1px solid var(--bd)'}}>
-                  <strong>{f.field_label || f.field_key}</strong>
-                  <div>{f.normalized_text || (f.value_json == null ? '—' : JSON.stringify(f.value_json))}</div>
+                  <strong>{aiText(f.field_label || f.field_key)}</strong>
+                  <div>{aiText(f.normalized_text || (f.value_json == null ? '—' : JSON.stringify(f.value_json)))}</div>
                   <button className="btn sm" onClick={()=>openSource(f.document_id,f.source_page)}>Open source</button>
                 </div>
               ))}
@@ -1042,7 +1042,7 @@ export default function PreparedFile() {
                       </div>
                     </div>
                     <div style={{fontSize:13,lineHeight:1.6,marginTop:10,color:'var(--t2)'}}>
-                      {latestResolutionRun.overall_summary || 'Resolution analysis complete.'}
+                      {aiText(latestResolutionRun.overall_summary || 'Resolution analysis complete.')}
                     </div>
                   </div>
 
@@ -1065,8 +1065,8 @@ export default function PreparedFile() {
                         <div key={candidate.id} style={{border:'1px solid var(--bd)',borderRadius:12,padding:14,background:'var(--card)'}}>
                           <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start'}}>
                             <div style={{minWidth:0}}>
-                              <div style={{fontSize:10,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em'}}>{candidate.family?.replaceAll('_',' ')}</div>
-                              <div style={{fontWeight:900,fontSize:14,marginTop:3}}>{candidate.program_name}</div>
+                              <div style={{fontSize:10,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em'}}>{aiText(candidate.family?.replaceAll('_',' '))}</div>
+                              <div style={{fontWeight:900,fontSize:14,marginTop:3}}>{aiText(candidate.program_name)}</div>
                             </div>
                             <span style={{flexShrink:0,fontSize:10,fontWeight:900,padding:'4px 8px',borderRadius:999,background:statusMeta.bg,color:statusMeta.color}}>
                               {statusMeta.label}
@@ -1074,7 +1074,7 @@ export default function PreparedFile() {
                           </div>
 
                           <div style={{fontSize:12,lineHeight:1.55,color:'var(--t2)',marginTop:9}}>
-                            {candidate.summary || 'No summary returned.'}
+                            {aiText(candidate.summary || 'No summary returned.')}
                           </div>
                           {candidate.confidence != null && (
                             <div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>{pct(candidate.confidence)}% AI confidence</div>
@@ -1084,14 +1084,14 @@ export default function PreparedFile() {
                             <div key={label} style={{marginTop:11}}>
                               <div style={{fontSize:10,fontWeight:900,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)',marginBottom:4}}>{label}</div>
                               <ul style={{margin:'0 0 0 18px',padding:0,fontSize:11.5,lineHeight:1.55,color:'var(--t2)'}}>
-                                {items.map((item,index)=><li key={index} style={{marginBottom:3}}>{String(item)}</li>)}
+                                {items.map((item,index)=><li key={index} style={{marginBottom:3}}>{aiText(item)}</li>)}
                               </ul>
                             </div>
                           ) : null)}
 
                           {candidate.practitioner_note && (
                             <div style={{marginTop:11,padding:'8px 10px',borderRadius:8,background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.18)',fontSize:11,color:'var(--t2)',lineHeight:1.5}}>
-                              <strong>Practitioner review:</strong> {candidate.practitioner_note}
+                              <strong>Practitioner review:</strong> {aiText(candidate.practitioner_note)}
                             </div>
                           )}
                         </div>
@@ -1120,8 +1120,8 @@ export default function PreparedFile() {
               <p style={{fontSize:12,color:'var(--t3)',marginTop:-4}}>Suggestions are derived from unread documents, unanswered questions, unverified findings, and extracted deadlines. Staff decides what becomes case work.</p>
               {recommendedActions.map((action,index)=>(
                 <div key={index} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 0',borderBottom:'1px solid var(--bd)'}}>
-                  <span style={{fontSize:11,textTransform:'uppercase',color:'var(--t3)',minWidth:72}}>{action.kind}</span>
-                  <strong style={{fontSize:13}}>{action.text}</strong>
+                  <span style={{fontSize:11,textTransform:'uppercase',color:'var(--t3)',minWidth:72}}>{aiText(action.kind)}</span>
+                  <strong style={{fontSize:13}}>{aiText(action.text)}</strong>
                 </div>
               ))}
               {!recommendedActions.length && <div style={{color:'var(--t3)'}}>No AI-recommended follow-up is currently pending.</div>}
@@ -1153,7 +1153,7 @@ export default function PreparedFile() {
               {currentQuestions.map(q=>(
                 <div key={q.id} style={{padding:'12px 0',borderBottom:'1px solid var(--bd)',opacity:q.status==='open'?1:.65}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12}}>
-                    <strong>{q.question}</strong>
+                    <strong>{aiText(q.question)}</strong>
                     <span style={{fontSize:11,textTransform:'uppercase',color:'var(--t3)'}}>{q.priority} · {q.status}</span>
                   </div>
                   {q.reason && <div style={{fontSize:12,color:'var(--t3)',marginTop:5}}>{q.reason}</div>}
