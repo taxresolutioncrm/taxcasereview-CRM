@@ -413,7 +413,9 @@ async function loadPlatformOfficeRowsFresh() {
       // for the universal contract/e-sign engine. This keeps sender routing,
       // document history, and future contract sends product-aware without
       // requiring manual registry rows.
-      registrySyncJobs.push({
+      // Nashville's office registry is deliberately migrated with its existing
+      // lifecycle/status. Reading metrics must never rewrite that status.
+      if (result.productKey !== 'nashville') registrySyncJobs.push({
         label:cfg.label,
         promise:supabase.rpc('admin_romylabs_upsert_office_registry', {
           p_product_key:result.productKey,
