@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getStoredLanguage } from '../lib/i18n'
 
 const hasReadableFile = (doc) => !!(doc?.storage_path || doc?.file_url)
 const pct = (n) => Math.max(0, Math.min(100, Math.round(Number(n || 0) * 100)))
@@ -76,6 +77,9 @@ export default function PreparedFile() {
   const [batchProgress, setBatchProgress] = useState({ current:0, total:0, file:'' })
   const [resolvingQuestions, setResolvingQuestions] = useState(false)
   const [questionResolutionStatus, setQuestionResolutionStatus] = useState('')
+  const [language, setLanguage] = useState(() => getStoredLanguage())
+  const [aiTranslations, setAiTranslations] = useState({})
+  const [translationBusy, setTranslationBusy] = useState(false)
 
   const clientSearchResults = useMemo(() => {
     if (!clientSearch.trim()) return []
@@ -89,6 +93,23 @@ export default function PreparedFile() {
     if (clientId) load()
     else loadClientOptions()
   }, [clientId])
+
+  useEffect(() => {
+    const onLanguageChange = event => {
+      const next = event?.detail?.language === 'es' ? 'es' : 'en'
+      setLanguage(next)
+      if (next === 'en') setAiTranslations({})
+    }
+    window.addEventListener('taxres-language-change', onLanguageChange)
+    return () => window.removeEventListener('taxres-language-change', onLanguageChange)
+  }, [])
+
+  const aiText = value => {
+    if (value == null) return value
+    const text = String(value)
+    if (language !== 'es') return text
+    return aiTranslations[text] || text
+  }
 
   useEffect(() => {
     if (searchParams.get('tab') === 'documents' || location.pathname.startsWith('/ai-documents/')) setTab('documents')
@@ -214,6 +235,84 @@ export default function PreparedFile() {
     insufficient: currentResolutionCandidates.filter(r => r.candidate_status === 'insufficient_data').length,
     notIndicated: currentResolutionCandidates.filter(r => r.candidate_status === 'not_indicated').length,
   }
+
+  const aiTranslationStrings = useMemo(() => {
+    const values = []
+    const add = value => {
+      const text = String(value || '').trim()
+      if (!text || text.length > 4000) return
+      values.push(text)
+    }
+
+    runs.filter(r => r.status === 'complete').forEach(r => {
+      add(r.document_type)
+      add(r.summary)
+    })
+    currentFacts.forEach(f => {
+      add(f.field_label)
+      add(f.normalized_text)
+      add(f.source_excerpt)
+      add(f.category)
+    })
+    currentEntities.forEach(e => {
+      add(e.relationship)
+      add(e.entity_type)
+    })
+    currentQuestions.forEach(q => {
+      add(q.question)
+      add(q.reason)
+      add(q.answer)
+      add(q.priority)
+    })
+    recommendedActions.forEach(action => {
+      add(action.kind)
+      add(action.text)
+    })
+    resolutionRuns.forEach(r => add(r.overall_summary))
+    currentResolutionCandidates.forEach(candidate => {
+      add(candidate.program_name)
+      add(candidate.family?.replaceAll('_',' '))
+      add(candidate.summary)
+      ;['why_supported','concerns','missing_information','likely_forms','next_steps'].forEach(key => {
+        if (Array.isArray(candidate[key])) candidate[key].forEach(add)
+      })
+      add(candidate.practitioner_note)
+    })
+    add(askReply)
+
+    return [...new Set(values)].slice(0,200)
+  }, [runs, currentFacts, currentEntities, currentQuestions, recommendedActions, resolutionRuns, currentResolutionCandidates, askReply])
+
+  useEffect(() => {
+    if (language !== 'es' || !aiTranslationStrings.length) return
+    const missing = aiTranslationStrings.filter(text => !aiTranslations[text])
+    if (!missing.length) return
+
+    let cancelled = false
+    ;(async () => {
+      setTranslationBusy(true)
+      try {
+        const { data, error } = await supabase.functions.invoke(documentIntelligenceFunction, {
+          body: { action:'translate_ai_text', language:'es', texts:missing },
+        })
+        if (cancelled) return
+        if (error || data?.error) throw new Error(data?.error || error?.message || 'AI translation failed')
+        const translated = Array.isArray(data?.translations) ? data.translations : []
+        if (translated.length !== missing.length) throw new Error('AI translation response was incomplete')
+        setAiTranslations(current => {
+          const next = { ...current }
+          missing.forEach((text,index) => { next[text] = translated[index] || text })
+          return next
+        })
+      } catch (e) {
+        console.error('[AI Intelligence] Spanish translation failed:', e?.message || e)
+      } finally {
+        if (!cancelled) setTranslationBusy(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [language, aiTranslationStrings, aiTranslations])
 
   async function runResolutionAnalysis() {
     if (!clientId || resolutionBusy) return
@@ -422,7 +521,11 @@ export default function PreparedFile() {
         'Notices/deadlines: ' + noticeDeadlineFacts.slice(0,15).map(f=>(f.field_label||f.field_key)+': '+(f.normalized_text||'')).join(' | '),
       ].join('\n')
       const { data, error } = await supabase.functions.invoke(aiChatFunction, {
-        body: { message, context, history: [] },
+        body: {
+          message: language === 'es' ? 'Responde en español profesional.\n\n' + message : message,
+          context: context + '\nResponse language: ' + (language === 'es' ? 'Spanish' : 'English'),
+          history: [],
+        },
       })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'AI request failed')
       setAskReply(String(data?.reply || data?.message || data?.content || 'No response returned.'))
