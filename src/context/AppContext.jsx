@@ -468,7 +468,6 @@ export function AppProvider({ children }) {
     function withReconnect(name, table, handler) {
       let channel = null
       let reconnectTimer = null
-      let subscribedOnce = false
 
       async function disposeCurrent() {
         const current = channel
@@ -497,7 +496,6 @@ export function AppProvider({ children }) {
             .subscribe(status => {
               if (cancelled || channel !== ch) return
               if (status === 'SUBSCRIBED') {
-                subscribedOnce = true
                 setRealtimeOk(true)
                 return
               }
