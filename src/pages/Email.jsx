@@ -31,6 +31,7 @@ export default function Email() {
   const [saving, setSaving]     = useState(false)
   const [toast, setToast]       = useState('')
   const [emailContextMenu, setEmailContextMenu] = useState(null)
+  const [emailContextSubmenu, setEmailContextSubmenu] = useState(null)
   const [view, setView]         = useState('inbox') // inbox | compose | templates
   const [searchParams] = useSearchParams()
   useEffect(() => { if (searchParams.get('new') === '1') { setForm(BLANK); setView('compose') } }, [searchParams])
@@ -694,23 +695,130 @@ export default function Email() {
     })
   }
 
+  function emailSenderAddress(email) {
+    return email?.from_address || email?.sender || email?.recipient || ''
+  }
+
+  function normalizeAddressList(value) {
+    if (!value) return []
+    if (Array.isArray(value)) return value.map(String).map(v => v.trim()).filter(Boolean)
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value)
+        if (Array.isArray(parsed)) return parsed.map(String).map(v => v.trim()).filter(Boolean)
+      } catch (_) {}
+      return value.split(',').map(v => v.trim()).filter(Boolean)
+    }
+    return []
+  }
+
+  function beginReply(email, replyAll = false) {
+    const sender = emailSenderAddress(email)
+    const originalRecipients = normalizeAddressList(email?.recipients)
+    const own = new Set([user?.email, email?.mailbox_owner, email?.received_mailbox].filter(Boolean).map(v => String(v).toLowerCase()))
+    const recipients = replyAll
+      ? [...new Set([sender, ...originalRecipients].filter(Boolean).filter(v => !own.has(String(v).toLowerCase())))]
+      : [sender].filter(Boolean)
+
+    const replySubject = String(email?.subject || '').toLowerCase().startsWith('re:')
+      ? email.subject
+      : 'Re: ' + (email?.subject || '')
+
+    setForm({
+      ...BLANK,
+      clientName: email?.clientName || email?.clientname || sender,
+      recipient: recipients.join(', '),
+      subject: replySubject,
+      routeId: email?.route_id || '',
+      replyFrom: email?.reply_from || email?.received_mailbox || '',
+      threadId: email?.thread_id || '',
+      inReplyTo: email?.message_id || '',
+      references: email?.references_header || '',
+      productId: email?.product_id || '',
+      ...(isNashville ? { m365MessageId: email?.m365_message_id || '' } : {})
+    })
+    setView('compose')
+  }
+
+  function beginForward(email) {
+    const from = emailSenderAddress(email) || 'Unknown sender'
+    const when = email?.created_at ? new Date(email.created_at).toLocaleString() : ''
+    const originalBody = email?.body || ''
+    const subject = String(email?.subject || '').toLowerCase().startsWith('fwd:')
+      ? email.subject
+      : 'Fwd: ' + (email?.subject || '')
+    setForm({
+      ...BLANK,
+      recipient: '',
+      clientName: email?.clientName || email?.clientname || '',
+      subject,
+      body: `\n\n---------- Forwarded message ----------\nFrom: ${from}\nDate: ${when}\nSubject: ${email?.subject || ''}\n\n${originalBody}`,
+      productId: email?.product_id || ''
+    })
+    setView('compose')
+  }
+
+  async function addEmailToTasks(email) {
+    const title = `Follow up: ${email?.subject || 'Email'}`
+    const { error } = await supabase.from('tasks').insert([{
+      title,
+      clientName: email?.clientName || email?.clientname || '',
+      notes: `Created from email from ${emailSenderAddress(email) || 'unknown sender'}.`,
+      assignedTo: employeeName || user?.email || '',
+      priority: 'Normal',
+      done: false,
+      created_at: new Date().toISOString(),
+    }])
+    if (error) throw error
+    showToast('✅ Added to Tasks')
+  }
+
+  function openEmailInNewWindow(email) {
+    const url = new URL(window.location.href)
+    url.pathname = '/email'
+    url.search = '?email=' + encodeURIComponent(email.id)
+    window.open(url.toString(), '_blank', 'noopener,noreferrer')
+  }
+
+  function findEmailsFromSender(email) {
+    const sender = emailSenderAddress(email)
+    if (!sender) return
+    setSearch(sender)
+    setTriageFilter('Inbox')
+    setView('inbox')
+  }
+
   function openEmailContextMenu(event, email) {
     event.preventDefault()
     event.stopPropagation()
-    const menuWidth = 190
-    const menuHeight = 126
+    const menuWidth = 248
+    const menuHeight = 460
     const x = Math.min(event.clientX, Math.max(8, window.innerWidth - menuWidth - 8))
     const y = Math.min(event.clientY, Math.max(8, window.innerHeight - menuHeight - 8))
+    setEmailContextSubmenu(null)
     setEmailContextMenu({ x, y, email })
   }
 
-  async function runEmailContextAction(action) {
+  async function runEmailContextAction(action, value) {
     const email = emailContextMenu?.email
     setEmailContextMenu(null)
+    setEmailContextSubmenu(null)
     if (!email) return
-    if (action === 'read') return markRead(email)
-    if (action === 'unread') return markUnread(email)
-    if (action === 'delete') return permanentlyDeleteEmail(email.id)
+    try {
+      if (action === 'reply') return beginReply(email, false)
+      if (action === 'reply-all') return beginReply(email, true)
+      if (action === 'forward') return beginForward(email)
+      if (action === 'archive') return archiveEmail(email.id)
+      if (action === 'read') return markRead(email)
+      if (action === 'unread') return markUnread(email)
+      if (action === 'delete') return permanentlyDeleteEmail(email.id)
+      if (action === 'task') return await addEmailToTasks(email)
+      if (action === 'move') return await moveTriage(email.id, value)
+      if (action === 'find-sender') return findEmailsFromSender(email)
+      if (action === 'open-window') return openEmailInNewWindow(email)
+    } catch (e) {
+      showToast((e?.message || String(e)) || 'Email action failed')
+    }
   }
 
   useEffect(() => {
