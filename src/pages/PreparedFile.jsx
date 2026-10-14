@@ -25,6 +25,13 @@ const fmtDate = (v) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
 }
 
+function isMissingResolutionTableError(error) {
+  const msg = String(error?.message || '')
+  return error?.code === '42P01'
+    || /document_ai_resolution_(runs|candidates).*does not exist/i.test(msg)
+    || /Could not find the table.*document_ai_resolution_/i.test(msg)
+}
+
 const aiHostname = typeof window !== 'undefined' ? window.location.hostname : ''
 const isAiSandboxPreview =
   aiHostname.includes('sandbox-ai-analysis-progress') ||
@@ -135,7 +142,9 @@ export default function PreparedFile() {
       .filter((doc, index, all) => all.findIndex(x => String(x.id) === String(doc.id)) === index)
       .sort((a,b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
-    const firstError = [byId, byName, rs, fs, es, qs, rr, rc].find(result => result?.error)?.error
+    const requiredResults = [byId, byName, rs, fs, es, qs]
+    const firstError = requiredResults.find(result => result?.error)?.error
+      || [rr, rc].map(result => result?.error).find(error => error && !isMissingResolutionTableError(error))
     if (firstError) setError(firstError.message)
 
     setDocs(mergedDocs)
