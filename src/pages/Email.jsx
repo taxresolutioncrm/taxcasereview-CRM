@@ -678,6 +678,23 @@ export default function Email() {
     }
   }
 
+
+  function openEmail(email, index) {
+    setSelected(email)
+    setFocusIndex(index)
+    anchorIndexRef.current = index
+    setCheckedIds(new Set())
+    markRead(email)
+  }
+
+  function toggleChecked(id) {
+    setCheckedIds(s => {
+      const n = new Set(s)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+
   function openEmailContextMenu(event, email) {
     event.preventDefault()
     event.stopPropagation()
@@ -713,21 +730,6 @@ export default function Email() {
     }
   }, [emailContextMenu])
 
-  function openEmail(email, index) {
-    setSelected(email)
-    setFocusIndex(index)
-    anchorIndexRef.current = index
-    setCheckedIds(new Set())
-    markRead(email)
-  }
-
-  function toggleChecked(id) {
-    setCheckedIds(s => {
-      const n = new Set(s)
-      n.has(id) ? n.delete(id) : n.add(id)
-      return n
-    })
-  }
 
   // Shift+Up/Down extends a checked range from wherever the selection
   // started (anchorIndexRef) to the new focus position — same convention
