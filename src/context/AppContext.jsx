@@ -490,6 +490,63 @@ export function AppProvider({ children }) {
       toastTimer.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 7000)
     }
 
+    function withReconnect(name, table, handler) {
+      let fallbackChannel = null
+      let fallbackReconnectTimer = null
+
+      async function disposeFallback() {
+        const current = fallbackChannel
+        fallbackChannel = null
+        if (!current) return
+        try { await supabase.removeChannel(current) } catch (_) {}
+      }
+
+      function scheduleFallbackReconnect() {
+        if (cancelled || fallbackReconnectTimer) return
+        fallbackReconnectTimer = setTimeout(async () => {
+          fallbackReconnectTimer = null
+          if (cancelled) return
+          await disposeFallback()
+          createFallback()
+        }, 1500)
+        pendingTimeouts.push(fallbackReconnectTimer)
+      }
+
+      function createFallback() {
+        if (cancelled || fallbackChannel) return
+        try {
+          const ch = supabase.channel(name)
+          fallbackChannel = ch
+          ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table }, handler)
+            .subscribe(status => {
+              if (cancelled || fallbackChannel !== ch) return
+              if (status === 'SUBSCRIBED') {
+                setRealtimeOk(true)
+                return
+              }
+              if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setRealtimeOk(false)
+                scheduleFallbackReconnect()
+              }
+            })
+        } catch (e) {
+          setRealtimeOk(false)
+          console.error(`[realtime] ${name} failed to subscribe:`, e?.message || e)
+          scheduleFallbackReconnect()
+        }
+      }
+
+      createFallback()
+
+      return async () => {
+        if (fallbackReconnectTimer) {
+          clearTimeout(fallbackReconnectTimer)
+          fallbackReconnectTimer = null
+        }
+        await disposeFallback()
+      }
+    }
+
     // Preserve the existing Nashville notification subscriptions exactly.
     if (!isCentralNotificationRuntime) {
       channelCleanups.push(withReconnect('global-chat-notify', 'chat_messages', ({ new: msg }) => {
