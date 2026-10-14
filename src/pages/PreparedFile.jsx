@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getStoredLanguage } from '../lib/i18n'
+import { getStoredLanguage, translateText } from '../lib/i18n'
 
 const hasReadableFile = (doc) => !!(doc?.storage_path || doc?.file_url)
 const pct = (n) => Math.max(0, Math.min(100, Math.round(Number(n || 0) * 100)))
@@ -108,7 +108,7 @@ export default function PreparedFile() {
     if (value == null) return value
     const text = String(value)
     if (language !== 'es') return text
-    return aiTranslations[text] || text
+    return aiTranslations[text] || translateText(text, 'es') || text
   }
 
   useEffect(() => {
