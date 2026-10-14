@@ -465,7 +465,7 @@ export default function PreparedFile() {
             <div>
               <div style={{fontWeight:900,fontSize:17}}>Client Intelligence Workspace</div>
               <div style={{fontSize:12,color:'var(--t3)',marginTop:4,maxWidth:620,lineHeight:1.55}}>
-                Every upload, analysis run, finding, and source stays attached to the selected client's file.
+                Every upload, analysis run, finding, and source stays attached to the selected client file.
               </div>
             </div>
             <div style={{fontSize:11,fontWeight:800,color:'var(--t3)',padding:'5px 9px',border:'1px solid var(--bd)',borderRadius:999,whiteSpace:'nowrap'}}>
