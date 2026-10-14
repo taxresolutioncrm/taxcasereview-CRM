@@ -55,5 +55,12 @@ begin
   or (select count(*) from public.romylabs_subscription_payments where account_id =
       (select id from public.romylabs_billing_accounts where external_tenant_id=v_id and product_key='nashville'))<>2
   then raise exception 'Nashville post-migration verification failed'; end if;
+  -- Product registration normally seeds a required *demo* office. It must
+  -- never be mistaken for a second operational Nashville office.
+  if (select count(*) from public.romylabs_office_registry
+      where product_key='nashville' and external_office_id=v_id) <> 1
+     or (select count(*) from public.romylabs_office_registry
+      where product_key='taxres_crm' and external_office_id=v_id) <> 0
+  then raise exception 'Nashville office ownership overlap'; end if;
 end $$;
 commit;
