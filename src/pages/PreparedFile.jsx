@@ -753,6 +753,27 @@ export default function PreparedFile() {
                 {!runs.some(r=>r.status==='complete') && <div style={{color:'var(--t3)'}}>Run AI analysis to build the prepared client file.</div>}
               </div>
               <div>
+                {latestResolutionRun && (
+                  <div style={{border:'1px solid var(--bd)',borderRadius:12,padding:12,marginBottom:14,background:'rgba(105,87,255,.05)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',marginBottom:8}}>
+                      <div>
+                        <div style={{fontSize:10,fontWeight:900,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em'}}>Resolution Opportunities</div>
+                        <div style={{fontSize:12,color:'var(--t3)',marginTop:2}}>Latest AI strategy</div>
+                      </div>
+                      <button className="btn sm" onClick={()=>setTab('resolution')}>View analysis</button>
+                    </div>
+                    {topResolutionCandidates.slice(0,3).map(candidate=>(
+                      <div key={candidate.id} style={{padding:'7px 0',borderTop:'1px solid var(--bd)'}}>
+                        <div style={{fontSize:12,fontWeight:800}}>{candidate.program_name}</div>
+                        <div style={{fontSize:10,color:candidate.candidate_status==='strong_candidate'?'#22c55e':'#3b82f6',marginTop:2,fontWeight:800}}>
+                          {candidate.candidate_status==='strong_candidate'?'Strong candidate':'Possible candidate'}
+                          {candidate.confidence!=null ? ' · '+pct(candidate.confidence)+'%' : ''}
+                        </div>
+                      </div>
+                    ))}
+                    {!topResolutionCandidates.length && <div style={{fontSize:11,color:'var(--t3)'}}>No strong/possible candidates in the latest analysis.</div>}
+                  </div>
+                )}
                 <h3 style={{marginTop:0}}>Needs attention</h3>
                 {openQuestions.slice(0,8).map(q=>(
                   <button key={q.id} onClick={()=>answerQuestion(q)} style={{display:'block',width:'100%',textAlign:'left',padding:12,marginBottom:8,border:'1px solid var(--bd)',borderRadius:10,background:'var(--card)',cursor:'pointer'}}>
