@@ -413,7 +413,9 @@ async function loadPlatformOfficeRowsFresh() {
       // for the universal contract/e-sign engine. This keeps sender routing,
       // document history, and future contract sends product-aware without
       // requiring manual registry rows.
-      registrySyncJobs.push({
+      // Nashville's office registry is deliberately migrated with its existing
+      // lifecycle/status. Reading metrics must never rewrite that status.
+      if (result.productKey !== 'nashville') registrySyncJobs.push({
         label:cfg.label,
         promise:supabase.rpc('admin_romylabs_upsert_office_registry', {
           p_product_key:result.productKey,
@@ -460,6 +462,14 @@ async function loadPlatformOfficeRowsFresh() {
     })
   }
 
+  // Nashville's legacy registry record is keyed taxres_crm; it is not a
+  // TaxRes-family office. Prefer its independent metrics row and do not count
+  // or display a second TaxRes copy for the same office UUID.
+  for (let i=rows.length-1; i>=0; i--) {
+    if (rows[i].product === 'taxres_crm' &&
+        String(rows[i].source_id || rows[i].id) === NASH_TENANT) rows.splice(i,1)
+  }
+
   // Final revenue overlay: every product/office gets subscription collections
   // exclusively from the central RomyLabs billing ledger. This prevents an
   // office's own client revenue from ever appearing as RomyLabs collections.
@@ -492,6 +502,8 @@ async function loadPlatformOfficeRowsFresh() {
 
   // Portfolio hierarchy is presentation metadata only. It reuses already-loaded
   // product/office data, so it adds no requests and no blocking I/O.
+  // Nashville has its own CRM/database and must be a separate product header,
+  // even while the legacy central registry has not been migrated.
   const portfolioProducts = (productRows || [])
     .filter(p =>
       p.product_id !== 'romylabs' &&
