@@ -11,7 +11,7 @@
 // demo/prospect tenant renders its own firm — never Tax Case Review's.
 
 import { supabase } from './supabase'
-import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from './centurionBrand'
+import { CENTURION_TENANT_ID, CENTURION_FAVICON_DATA_URL } from './centurionBrand'
 
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
 const ROMYLABS_ADMIN_FAVICON = '/romylabs-favicon.svg?v=20260830-3'
@@ -120,7 +120,7 @@ export async function loadFirmBranding() {
     // their demo should not see another firm's name above their own CRM. The
     // static index.html title remains the pre-login fallback. Admin Portal is
     // explicitly excluded from tenant browser branding.
-    FIRM.logoUrl = s.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : (s.logourl || '')
+    FIRM.logoUrl = s.logourl || ''
     setBrowserTitle(`${name} — IRS Resolution CRM`)
     setFavicon(s.tenant_id, name)
     FIRM.address = address
