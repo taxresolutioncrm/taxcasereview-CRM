@@ -1,6 +1,5 @@
 // Shared branded email wrapper for ALL outgoing TCR emails.
 import { FIRM } from './firmBranding'
-import { CENTURION_TENANT_ID } from './centurionBrand'
 // Usage: emailHtml({ body: '...inner html...' })
 // The logo is pulled from Supabase storage with an onerror fallback to text.
 // Pass { firmName, logoUrl, address, phone, email } to override for a
@@ -17,7 +16,7 @@ export function emailHtml({ body, headerBg = 'linear-gradient(135deg,#1e3a8a 0%,
   // Explicit override → this tenant's live settings (FIRM) → legacy default.
   const fName = firmName || FIRM.name || FIRM_NAME
   const rawLogo = logoUrl || FIRM.logoUrl || LOGO_URL
-  let fLogo = FIRM.tenantId === CENTURION_TENANT_ID ? '/centurion-logo.svg' : rawLogo
+  let fLogo = rawLogo
   try {
     if (fLogo && typeof window !== 'undefined') fLogo = new URL(fLogo, window.location.origin).href
   } catch (_) {}
