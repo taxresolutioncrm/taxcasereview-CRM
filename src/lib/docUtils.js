@@ -1085,7 +1085,7 @@ export async function sendFullPackage(client, supabase) {
       bodyText: getAgreementMessageText(client),
       firmName: firmName(),
       firmAddress: FIRM.address,
-      firmLogoUrl: FIRM.logoUrl,
+      firmLogoUrl: FIRM.pdfLogoUrl || FIRM.logoUrl,
       clientName: client?.name || '',
       repSignature: repSig,
     })
