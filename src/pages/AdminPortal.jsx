@@ -136,7 +136,7 @@ async function loadPlatformOfficeRowsFresh() {
   if (billingError) throw billingError
   if (productError) throw productError
 
-  const rows = (taxresRows || []).map(r => ({
+  const rows = (taxresRows || []).filter(r => String(r.id) !== NASH_TENANT).map(r => ({
     ...r,
     product: r.product || 'taxres_crm',
     brand_color: r.brand_color || '#2563EB',
@@ -306,15 +306,19 @@ async function loadPlatformOfficeRowsFresh() {
   // Central registry is the fallback/source of truth for offices already registered with RomyLabs.
   if (!registryError && Array.isArray(registryData)) {
     for (const office of registryData) {
-      if (!office?.product_key || office.product_key === 'taxres_crm' || !office.external_office_id) continue
-      const cfg = externalProductConfigs[office.product_key] || EXTERNAL_OFFICE_PRODUCTS[office.product_key] || { label:office.product_key, color:'#6366f1', appUrl:null }
-      const key = `${office.product_key}:${office.external_office_id}`
+      // Nashville belongs to the TaxRes family, but its operations come from its dedicated project.
+      // Keep its central registry row as a fallback if the remote feed is unavailable.
+      if (!office?.product_key || !office.external_office_id) continue
+      if (office.product_key === 'taxres_crm' && String(office.external_office_id) !== NASH_TENANT) continue
+      const operationalProduct = office.product_key === 'taxres_crm' && String(office.external_office_id) === NASH_TENANT ? 'nashville' : office.product_key
+      const cfg = externalProductConfigs[operationalProduct] || EXTERNAL_OFFICE_PRODUCTS[operationalProduct] || { label:operationalProduct, color:'#6366f1', appUrl:null }
+      const key = `${operationalProduct}:${office.external_office_id}`
       if (seen.has(key)) continue
       seen.add(key)
       rows.push({
         id:key,
         source_id:office.external_office_id,
-        product:office.product_key,
+        product:operationalProduct,
         firm_name:office.firm_name || `${cfg.label} Office`,
         brand_color:cfg.color,
         employee_count:null,
@@ -2100,14 +2104,15 @@ function OfficesList() {
   })
   const groups=[]
   for(const row of visibleRows){
-    const key=row.product||'taxres_crm'
+    // CRM family grouping is independent of the project's routing key.
+    const key=row.product==='nashville' ? 'taxres_crm' : (row.product||'taxres_crm')
     let group=groups.find(g=>g.key===key)
     if(!group){group={key,label:key,rows:[]};groups.push(group)}
     group.rows.push(row)
     const main=group.rows.find(x=>x.is_product_main)
     if(main) group.label=main.firm_name
-    else if(row.product_label) group.label=row.product_label
     else if(key==='taxres_crm') group.label='TaxRes CRM'
+    else if(row.product_label) group.label=row.product_label
   }
 
   return (
