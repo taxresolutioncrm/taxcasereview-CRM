@@ -2,6 +2,7 @@ import fs from 'node:fs'
 
 const read=p=>fs.readFileSync(p,'utf8')
 const app=read('src/App.jsx')
+const login=read('src/pages/Login.jsx')
 const ctx=read('src/context/AppContext.jsx')
 const page=read('src/pages/FamilyPassword.jsx')
 const issue=read('supabase/functions/taxres-family-sso-issue/index.ts')
@@ -18,6 +19,8 @@ const sendEmail=read('supabase/functions/send-email/index.ts')
 
 const checks=[
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
+  ['legacy reset-password route is public and uses the hardened family password page',app.includes('path="/reset-password" element={<FamilyPassword />}')&&app.includes("'/reset-password'")],
+  ['login forgot-password uses the hardened family reset function',login.includes("supabase.functions.invoke('taxres-family-password-reset'")&&!login.includes("supabase.auth.resetPasswordForEmail(target")],
   ['family password page verifies invite/recovery token',page.includes('verifyOtp({token_hash:tokenHash,type})')],
   ['family password does not auto-redeem one-time token on page load',page.includes('Do not redeem one-time Auth tokens during page load')&&page.includes('async function redeemLink()')&&page.includes('onClick={redeemLink}')],
   ['family password strips consumed token from address bar',page.includes("window.history.replaceState")],
@@ -34,7 +37,7 @@ const checks=[
   ['Nashville forgot-password redirect is Nashville-only',reset.includes("const NASHVILLE_REDIRECT='https://nashville.taxrescrm.app/reset-password'")],
   ['family password explains browser profile is separate from TaxRes identity',page.includes('Chrome/Google browser profile does not control this identity')],
   ['family password requires 10 characters',page.includes('password.length<10')],
-  ['password recovery stays on family page',ctx.includes("window.location.pathname === '/family-password'")],
+  ['password recovery stays on family/reset page',ctx.includes("window.location.pathname === '/family-password' || window.location.pathname === '/reset-password'")],
   ['SSO codes are private and RLS protected',migration.includes('taxres_family_sso_codes')&&migration.includes('enable row level security')&&migration.includes('revoke all')],
   ['SSO issue requires authenticated TaxRes session',issue.includes("Authentication required")&&issue.includes('code_challenge')],
   ['SSO issue expires codes quickly',issue.includes('2*60*1000')],

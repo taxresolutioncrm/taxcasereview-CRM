@@ -264,12 +264,18 @@ export default function Login() {
       return
     }
     setResetting(true); setError(''); setResetSent(false)
-    const { error } = await supabase.auth.resetPasswordForEmail(target, {
-      redirectTo: window.location.origin + '/'
-    })
-    setResetting(false)
-    if (error) { setError(error.message); return }
-    setResetSent(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('taxres-family-password-reset', {
+        body: { email: target, office: 'central' }
+      })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      setResetSent(true)
+    } catch (err) {
+      setError(authErrorText(err))
+    } finally {
+      setResetting(false)
+    }
   }
 
   async function submit(e) {
