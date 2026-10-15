@@ -23,6 +23,13 @@ const files = [
   'src/components/OrganizerWizard.jsx',
   'src/components/SendPaymentLinkModal.jsx',
   'src/pages/EmployeePortal.jsx',
+  'src/pages/ClientPortal.jsx',
+  'src/pages/BookingWidget.jsx',
+  'src/pages/ManageBooking.jsx',
+  'src/pages/MeetingRoom.jsx',
+  'src/components/FinancialIntakeWizard.jsx',
+  'src/components/QuickEmail.jsx',
+  'src/components/VirtualBackground.jsx',
 ]
 
 const failures = []
@@ -95,6 +102,7 @@ if (!fs.readFileSync('src/lib/invoicePdf.js','utf8').includes('firm.pdfLogoUrl |
 if (!fs.readFileSync('src/lib/taxReturnPdf.js','utf8').includes('FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('tax return PDF does not use PDF-safe tenant logo')
 if (!fs.readFileSync('src/lib/irsFormUtils.js','utf8').includes('FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('IRS-generated PDFs do not use PDF-safe tenant logo')
 if (!fs.readFileSync('src/lib/docUtils.js','utf8').includes('firmLogoUrl: FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('agreement PDF does not use PDF-safe tenant logo')
+if (fs.readFileSync('src/pages/ClientPortal.jsx','utf8').includes("firmName = 'Tax Case Review'")) failures.push('Client Portal can still fall back to Tax Case Review branding')
 
 if (failures.length) {
   console.error('CloudCPA document branding check FAILED:')
