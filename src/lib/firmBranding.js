@@ -11,7 +11,7 @@
 // demo/prospect tenant renders its own firm — never Tax Case Review's.
 
 import { supabase } from './supabase'
-import { CENTURION_TENANT_ID, CENTURION_FAVICON_DATA_URL } from './centurionBrand'
+import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from './centurionBrand'
 
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
 const ROMYLABS_ADMIN_FAVICON = '/romylabs-favicon.svg?v=20260830-3'
@@ -90,7 +90,7 @@ export async function loadFirmBranding() {
         if (tenant_id) FIRM.tenantId = tenant_id
         if (firm_name) FIRM.name = firm_name
         if (firm_name) FIRM.slug = firmSlug(firm_name)
-        FIRM.logoUrl = logo_url || ''
+        FIRM.logoUrl = tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : (logo_url || '')
         FIRM.loaded = true
         setBrowserTitle(`${FIRM.name} — IRS Resolution CRM`)
         setFavicon(FIRM.tenantId, FIRM.name)
@@ -120,7 +120,7 @@ export async function loadFirmBranding() {
     // their demo should not see another firm's name above their own CRM. The
     // static index.html title remains the pre-login fallback. Admin Portal is
     // explicitly excluded from tenant browser branding.
-    FIRM.logoUrl = s.logourl || ''
+    FIRM.logoUrl = s.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : (s.logourl || '')
     setBrowserTitle(`${name} — IRS Resolution CRM`)
     setFavicon(s.tenant_id, name)
     FIRM.address = address
@@ -158,7 +158,8 @@ export async function loadFirmBrandingPublic(tenantHint) {
     if (data) {
       if (data.tenant_id) FIRM.tenantId = data.tenant_id
       if (data.firm_name) FIRM.name = data.firm_name
-      if (data.logo_url) FIRM.logoUrl = data.logo_url
+      if (data.tenant_id === CENTURION_TENANT_ID) FIRM.logoUrl = CENTURION_LOGO_DATA_URL
+      else if (data.logo_url) FIRM.logoUrl = data.logo_url
       if (data.email) FIRM.email = data.email
       if (data.phone) FIRM.phone = data.phone
       FIRM.loaded = true
