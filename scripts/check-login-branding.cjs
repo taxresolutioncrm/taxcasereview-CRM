@@ -13,7 +13,7 @@ const check = (ok, msg) => { if (!ok) failures.push(msg) }
 
 check(login.includes("applyLoginBrowserBranding"), 'login must apply browser branding before auth')
 check(login.includes("data.favicon_url || data.logo_url"), 'login must prefer tenant favicon/logo')
-check(login.includes("logo_url: data.logo_url || data.favicon_url || null"), 'login must use favicon as visible brand fallback')
+check(login.includes("logo_url: isCenturion ? CENTURION_LOGO_DATA_URL : (data.logo_url || data.favicon_url || null)"), 'login must use embedded Centurion logo with normal tenant fallback')
 check(login.includes("document.title = branding.firm_name + ' CRM'"), 'login must update browser title for tenant')
 check(login.includes("apple.setAttribute('href', href)"), 'login must update apple touch icon')
 check(migration.includes("FROM public.employees e"), 'branding RPC must resolve tenant from employee login domain')
