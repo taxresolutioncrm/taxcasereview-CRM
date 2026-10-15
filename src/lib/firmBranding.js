@@ -11,11 +11,10 @@
 // demo/prospect tenant renders its own firm — never Tax Case Review's.
 
 import { supabase } from './supabase'
+import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from './centurionBrand'
 
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
 const ROMYLABS_ADMIN_FAVICON = '/romylabs-favicon.svg?v=20260830-3'
-const CENTURION_TENANT = '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'
-const CENTURION_FAVICON = '/centurion-favicon.svg?v=20261014-1'
 
 function isRomyLabsAdminHost() {
   try {
@@ -121,7 +120,7 @@ export async function loadFirmBranding() {
     // their demo should not see another firm's name above their own CRM. The
     // static index.html title remains the pre-login fallback. Admin Portal is
     // explicitly excluded from tenant browser branding.
-    FIRM.logoUrl = s.logourl || ''
+    FIRM.logoUrl = s.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : (s.logourl || '')
     setBrowserTitle(`${name} — IRS Resolution CRM`)
     setFavicon(s.tenant_id, name)
     FIRM.address = address
@@ -190,8 +189,8 @@ function setFavicon(tenantId, name) {
     let href
     if (tenantId === TCR_TENANT) {
       href = BASE + 'favicon.png'       // TCR keeps its own branded favicon
-    } else if (tenantId === CENTURION_TENANT) {
-      href = CENTURION_FAVICON          // Centurion uses its dedicated icon, not the horizontal logo
+    } else if (tenantId === CENTURION_TENANT_ID) {
+      href = CENTURION_FAVICON_DATA_URL // Centurion is embedded so favicon cannot 404
     } else if (FIRM.logoUrl) {
       href = FIRM.logoUrl               // tenant's own uploaded logo as favicon
     } else {
