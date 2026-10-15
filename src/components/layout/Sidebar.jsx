@@ -9,6 +9,29 @@ import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from '../../lib/centurio
 
 const LOGO = '/logo.png'
 
+function CenturionWordmark() {
+  return (
+    <svg
+      viewBox="0 0 280 68"
+      role="img"
+      aria-label="Centurion"
+      style={{ display:'block', width:'100%', maxWidth:280, height:'auto' }}
+    >
+      <g fill="none" stroke="#D7A75E" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 10 31 5l13 5v17c0 10-5.8 18.2-13 23-7.2-4.8-13-13-13-23Z"/>
+        <path d="M23 14.5 31 11l8 3.5v12.2c0 6.8-3.5 12.4-8 16-4.5-3.6-8-9.2-8-16Z"/>
+        <path d="M35.5 20.5a8 8 0 1 0 0 11"/>
+      </g>
+      <text x="56" y="36"
+        fill="#D7A75E"
+        fontFamily="Arial, Helvetica, sans-serif"
+        fontSize="24"
+        fontWeight="700"
+        letterSpacing="7">CENTURION</text>
+    </svg>
+  )
+}
+
 // Karbon-style accordion sections
 const SECTIONS = [
   {
@@ -114,6 +137,7 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const [logoUrl, setLogoUrl] = useState(() => FIRM.logoUrl || null)
+  const [activeTenantId, setActiveTenantId] = useState(() => FIRM.tenantId || '')
 
   // Determine which section contains the active route
   function activeSection() {
@@ -509,6 +533,7 @@ export default function Sidebar() {
       // Normal path — bind branding to the active tenant explicitly.
       const { data: tenantId } = await supabase.rpc('current_tenant_id')
       if (!tenantId) return
+      setActiveTenantId(tenantId)
       const { data: s } = await supabase.from('settings')
         .select('name,tagline,logourl')
         .eq('tenant_id', tenantId)
@@ -537,34 +562,32 @@ export default function Sidebar() {
       <aside className={`sidebar${mobileNavOpen ? ' mobile-open' : ''}`}>
       <div className="brand" onClick={() => navigate('/')} style={{flexDirection:'column',alignItems:'center',padding: logoUrl ? 0 : '8px 12px',gap:4,position:'relative',background:'#0C1F35'}}>
         <button className="sidebar-close-btn" onClick={(e)=>{e.stopPropagation();setMobileNavOpen(false)}} aria-label="Close menu">×</button>
-        {logoUrl
-          ? <img
-              src={logoUrl}
-              alt={firmName}
-              onError={() => {
-                if (FIRM.tenantId === CENTURION_TENANT_ID && logoUrl !== CENTURION_LOGO_DATA_URL) {
-                  setLogoUrl(CENTURION_LOGO_DATA_URL)
-                } else {
-                  setLogoUrl('')
-                }
-              }}
-              style={{
-                display:'block',
-                width:'calc(100% - 20px)',
-                maxWidth:280,
-                height:'auto',
-                maxHeight:64,
-                margin:'10px auto',
-                objectFit:'contain'
-              }}
-            />
-          : <>
-              <div style={{fontWeight:900,fontSize:18,color:'var(--blue)',textAlign:'center',lineHeight:1.2}}>{firmName}</div>
-              <div style={{textAlign:'center'}}>
-                <div className="brand-name" style={{fontSize:13}}>{firmName}</div>
-                <div className="brand-sub" style={{fontSize:10}}>{tagline || 'IRS Resolution Services'}</div>
-              </div>
-            </>
+        {(activeTenantId === CENTURION_TENANT_ID || user?.email?.toLowerCase().endsWith('@centurionfirm.com'))
+          ? <div style={{width:'100%',padding:'8px 12px',boxSizing:'border-box'}}>
+              <CenturionWordmark />
+            </div>
+          : logoUrl
+            ? <img
+                src={logoUrl}
+                alt={firmName}
+                onError={() => setLogoUrl('')}
+                style={{
+                  display:'block',
+                  width:'calc(100% - 20px)',
+                  maxWidth:280,
+                  height:'auto',
+                  maxHeight:64,
+                  margin:'10px auto',
+                  objectFit:'contain'
+                }}
+              />
+            : <>
+                <div style={{fontWeight:900,fontSize:18,color:'var(--blue)',textAlign:'center',lineHeight:1.2}}>{firmName}</div>
+                <div style={{textAlign:'center'}}>
+                  <div className="brand-name" style={{fontSize:13}}>{firmName}</div>
+                  <div className="brand-sub" style={{fontSize:10}}>{tagline || 'IRS Resolution Services'}</div>
+                </div>
+              </>
         }
       </div>
 
