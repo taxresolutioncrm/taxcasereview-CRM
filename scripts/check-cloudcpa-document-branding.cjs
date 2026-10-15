@@ -81,14 +81,20 @@ const useFirmSrc = fs.readFileSync('src/lib/useFirm.js','utf8')
 const emailTemplateSrc = fs.readFileSync('src/lib/emailTemplate.js','utf8')
 const centurionLogoSvg = fs.readFileSync('public/centurion-logo.svg','utf8')
 
-if (!firmBranding.includes('CENTURION_LOGO_DATA_URL')) failures.push('Centurion FIRM runtime does not pin the embedded PNG logo')
-if (!firmBranding.includes('s.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL')) failures.push('Centurion authenticated branding can still inherit the broken settings logo')
-if (!firmBranding.includes('data.tenant_id === CENTURION_TENANT_ID')) failures.push('Centurion public/client document branding does not force the tenant-safe logo')
-if (!useFirmSrc.includes('CENTURION_LOGO_DATA_URL')) failures.push('useFirm document/PDF branding does not normalize Centurion logo')
-if (!useFirmSrc.includes('logourl: resolvedLogo')) failures.push('direct firm.logourl consumers can still receive the broken Centurion URL')
-if (!emailTemplateSrc.includes("FIRM.tenantId === CENTURION_TENANT_ID ? '/centurion-logo.svg'")) failures.push('Centurion outgoing email wrapper does not use a public mail-safe logo')
+if (!firmBranding.includes('pdfLogoUrl')) failures.push('Centurion FIRM runtime does not separate PDF-safe branding')
+if (!firmBranding.includes("FIRM.pdfLogoUrl = s.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : FIRM.logoUrl")) failures.push('Centurion authenticated PDF branding is not pinned to embedded PNG')
+if (!firmBranding.includes("FIRM.pdfLogoUrl = data.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : FIRM.logoUrl")) failures.push('Centurion public/client PDF branding is not tenant-safe')
+if (!useFirmSrc.includes('pdfLogoUrl')) failures.push('useFirm document/PDF branding does not expose a PDF-safe logo')
+if (!useFirmSrc.includes('logourl: resolvedLogo')) failures.push('direct firm.logourl consumers do not receive public tenant logo')
+if (!emailTemplateSrc.includes('let fLogo = rawLogo')) failures.push('outgoing email wrapper is not using public tenant logo')
 if (!centurionLogoSvg.includes('<text') || centurionLogoSvg.includes('data:image/png;base64,')) failures.push('Centurion public email logo is not a clean standalone SVG')
 if (!centurionBrand.includes('CENTURION_LOGO_DATA_URL')) failures.push('Centurion embedded PNG source missing')
+
+
+if (!fs.readFileSync('src/lib/invoicePdf.js','utf8').includes('firm.pdfLogoUrl || firm.logoUrl')) failures.push('invoice PDF does not use PDF-safe tenant logo')
+if (!fs.readFileSync('src/lib/taxReturnPdf.js','utf8').includes('FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('tax return PDF does not use PDF-safe tenant logo')
+if (!fs.readFileSync('src/lib/irsFormUtils.js','utf8').includes('FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('IRS-generated PDFs do not use PDF-safe tenant logo')
+if (!fs.readFileSync('src/lib/docUtils.js','utf8').includes('firmLogoUrl: FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('agreement PDF does not use PDF-safe tenant logo')
 
 if (failures.length) {
   console.error('CloudCPA document branding check FAILED:')
