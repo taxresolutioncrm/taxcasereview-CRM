@@ -219,6 +219,22 @@ function Guard({ section, children }) {
 function Shell() {
   const { openModal, closeModal, realtimeOk } = useApp()
   const navigate = useNavigate()
+  const [showRealtimeWarning, setShowRealtimeWarning] = React.useState(false)
+
+  // Supabase Realtime briefly emits CLOSED / TIMED_OUT while its websocket
+  // reconnects. Do not present that transient socket churn as a CRM-wide
+  // outage. Only surface the warning if realtime remains degraded long enough
+  // to affect actual live-update delivery.
+  useEffect(() => {
+    if (realtimeOk) {
+      setShowRealtimeWarning(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      if (document.visibilityState === 'visible') setShowRealtimeWarning(true)
+    }, 8000)
+    return () => clearTimeout(timer)
+  }, [realtimeOk])
 
   function handleNew() {
     openModal('Quick Add', (
@@ -317,7 +333,7 @@ function Shell() {
           </PageErrorBoundary>
         </div>
       </div>
-      {!realtimeOk && (
+      {showRealtimeWarning && (
         <div style={{
           position:'fixed', bottom:0, left:0, right:0, zIndex:9999,
           background:'#f59e0b', color:'#1c1917', padding:'8px 16px',
