@@ -103,6 +103,9 @@ function Spinner() {
   return <div style={{ padding:48, textAlign:'center', color:'#475569', fontSize:13 }}>Loading…</div>
 }
 
+// Legacy product registry key maps to the canonical Health Insurance CRM family.
+const crmFamilyKey = key => key === 'nashville' ? 'taxres_crm' : key === 'health_insurance_crm' ? 'health_insurance' : (key || 'taxres_crm')
+
 const EXTERNAL_OFFICE_PRODUCTS = {
   arcvena:       { label:'Arcvena',       color:'#00c2ff', appUrl:'https://app.arcvena.com/' },
   camvella:      { label:'Camvella',      color:'#55B96A', appUrl:'https://app.camvella.com/' },
@@ -310,7 +313,10 @@ async function loadPlatformOfficeRowsFresh() {
       // Keep its central registry row as a fallback if the remote feed is unavailable.
       if (!office?.product_key || !office.external_office_id) continue
       if (office.product_key === 'taxres_crm' && String(office.external_office_id) !== NASH_TENANT) continue
-      const operationalProduct = office.product_key === 'taxres_crm' && String(office.external_office_id) === NASH_TENANT ? 'nashville' : office.product_key
+      // Both legacy and current Health Insurance demos are registry-only. Keep the
+      // original demo in the canonical family, without displaying a duplicate.
+      if (office.product_key === 'health_insurance' && office.external_office_id === 'romylabs-demo' && registryData.some(o => o.product_key === 'health_insurance_crm' && o.external_office_id === 'romylabs-demo')) continue
+      const operationalProduct = office.product_key === 'taxres_crm' && String(office.external_office_id) === NASH_TENANT ? 'nashville' : crmFamilyKey(office.product_key)
       const cfg = externalProductConfigs[operationalProduct] || EXTERNAL_OFFICE_PRODUCTS[operationalProduct] || { label:operationalProduct, color:'#6366f1', appUrl:null }
       const key = `${operationalProduct}:${office.external_office_id}`
       if (seen.has(key)) continue
@@ -518,7 +524,7 @@ async function loadPlatformOfficeRowsFresh() {
       ...row,
       row_kind:row.is_demo ? 'demo' : 'customer',
       counts_as_office:true,
-      product_sort:productSortByKey.get(row.product === 'nashville' ? 'taxres_crm' : (row.product || 'taxres_crm')) ?? 9999,
+      product_sort:productSortByKey.get(crmFamilyKey(row.product)) ?? 9999,
       row_sort:row.is_demo ? 1 : 2,
     }
   }
@@ -526,7 +532,7 @@ async function loadPlatformOfficeRowsFresh() {
   // Aggregate existing office data into the collapsible product header.
   // Unknown values remain null; revenue is sourced only from the central billing overlay.
   const productOfficeTotals = productKey => {
-    const offices = rows.filter(row => (row.product === productKey || (productKey === 'taxres_crm' && row.product === 'nashville')) && row.counts_as_office !== false)
+    const offices = rows.filter(row => crmFamilyKey(row.product) === productKey && row.counts_as_office !== false)
     const sumKnown = key => {
       const known = offices.map(row => row[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)))
       return known.length ? known.reduce((sum,v) => sum + Number(v), 0) : null
@@ -1300,7 +1306,7 @@ function Overview() {
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            sortedStats.map(r => (r.is_product_main || !collapsedProducts.has(r.product === 'nashville' ? 'taxres_crm' : r.product) ? (
+            sortedStats.map(r => (r.is_product_main || !collapsedProducts.has(crmFamilyKey(r.product)) ? (
               <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => { if (!r.is_product_main) openOverviewRow(r) }}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
@@ -2105,7 +2111,7 @@ function OfficesList() {
   const groups=[]
   for(const row of visibleRows){
     // CRM family grouping is independent of the project's routing key.
-    const key=row.product==='nashville' ? 'taxres_crm' : (row.product||'taxres_crm')
+    const key=crmFamilyKey(row.product)
     let group=groups.find(g=>g.key===key)
     if(!group){group={key,label:key,rows:[]};groups.push(group)}
     group.rows.push(row)
@@ -2270,7 +2276,7 @@ function DemoMgmt() {
   const visible=demoRows.filter(r=>!q || [r.firm_name,r.product,r.plan_tier].some(v=>String(v||'').toLowerCase().includes(q)))
   const groups=[]
   for(const row of visible){
-    const key=row.product==='nashville' ? 'taxres_crm' : (row.product||'taxres_crm')
+    const key=crmFamilyKey(row.product)
     let g=groups.find(x=>x.key===key)
     if(!g){
       const cfg=EXTERNAL_OFFICE_PRODUCTS[key]
