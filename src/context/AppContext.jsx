@@ -186,7 +186,7 @@ export function AppProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (_event === 'PASSWORD_RECOVERY' && session?.user) {
-        if (window.location.pathname === '/family-password') return
+        if (window.location.pathname === '/family-password' || window.location.pathname === '/reset-password') return
         window.location.href = '/settings?reset_password=1'
         return
       }
