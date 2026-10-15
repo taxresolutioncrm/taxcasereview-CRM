@@ -26,10 +26,11 @@ check(centurion.includes("perm_leads = 3") && centurion.includes("perm_reports =
 check(centurion.includes("https://taxrescrm.app/centurion-logo.svg"), 'Centurion must use the committed logo asset')
 check(centurion.includes("https://taxrescrm.app/centurion-favicon.svg"), 'Centurion pre-auth branding must use dedicated favicon')
 check(firmBranding.includes("CENTURION_TENANT") && firmBranding.includes("CENTURION_FAVICON"), 'authenticated shell must pin Centurion favicon')
-check(logo.includes("data:image/png;base64,"), 'Centurion logo asset must be embedded')
+check(logo.includes("<text") && !logo.includes("data:image/png;base64,"), 'Centurion public logo must be a clean standalone SVG')
 check(favicon.includes("data:image/png;base64,"), 'Centurion favicon asset must be embedded')
 
 check(centurionBrand.includes("CENTURION_LOGO_DATA_URL") && centurionBrand.includes("data:image/png;base64,"), 'Centurion runtime logo must be embedded as a PNG data URL')
+check(centurionBrand.includes("CENTURION_LOGO_DATA_URL"), 'Centurion embedded runtime logo must remain available for PDF-safe branding')
 check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime favicon must be embedded')
 check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
 check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
