@@ -8,6 +8,7 @@
  */
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
+import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from './centurionBrand'
 
 const BUCKET = 'firm-assets'
 
@@ -20,7 +21,8 @@ async function loadFirmData() {
       const { tenant_id, firm_name, logo_url } = JSON.parse(imp)
       const key = tenant_id ? 'tenant:' + tenant_id : null
       if (key && _cacheByTenant.has(key)) return _cacheByTenant.get(key)
-      const data = { cacheKey:key, firm:{ tenant_id, name:firm_name, logourl:logo_url }, logoUrl:logo_url || '' }
+      const resolvedLogo = tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : (logo_url || '')
+      const data = { cacheKey:key, firm:{ tenant_id, name:firm_name, logourl:resolvedLogo }, logoUrl:resolvedLogo }
       if (key) _cacheByTenant.set(key, data)
       return data
     }
@@ -36,7 +38,9 @@ async function loadFirmData() {
     .select('*')
     .eq('tenant_id', tenantId)
     .maybeSingle()
-  const data = { cacheKey:key, firm:settings || {}, logoUrl:settings?.logourl || '' }
+  const resolvedLogo = tenantId === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : (settings?.logourl || '')
+  const normalizedFirm = settings ? { ...settings, logourl: resolvedLogo } : {}
+  const data = { cacheKey:key, firm:normalizedFirm, logoUrl:resolvedLogo }
   _cacheByTenant.set(key, data)
   return data
 }
