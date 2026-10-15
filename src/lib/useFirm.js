@@ -8,6 +8,7 @@
  */
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
+import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from './centurionBrand'
 
 const BUCKET = 'firm-assets'
 
@@ -20,7 +21,9 @@ async function loadFirmData() {
       const { tenant_id, firm_name, logo_url } = JSON.parse(imp)
       const key = tenant_id ? 'tenant:' + tenant_id : null
       if (key && _cacheByTenant.has(key)) return _cacheByTenant.get(key)
-      const data = { cacheKey:key, firm:{ tenant_id, name:firm_name, logourl:logo_url }, logoUrl:logo_url || '' }
+      const resolvedLogo = logo_url || (tenant_id === CENTURION_TENANT_ID ? 'https://taxrescrm.app/centurion-logo.svg' : '')
+      const pdfLogoUrl = tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : resolvedLogo
+      const data = { cacheKey:key, firm:{ tenant_id, name:firm_name, logourl:resolvedLogo }, logoUrl:resolvedLogo, pdfLogoUrl }
       if (key) _cacheByTenant.set(key, data)
       return data
     }
@@ -36,7 +39,10 @@ async function loadFirmData() {
     .select('*')
     .eq('tenant_id', tenantId)
     .maybeSingle()
-  const data = { cacheKey:key, firm:settings || {}, logoUrl:settings?.logourl || '' }
+  const resolvedLogo = settings?.logourl || (tenantId === CENTURION_TENANT_ID ? 'https://taxrescrm.app/centurion-logo.svg' : '')
+  const pdfLogoUrl = tenantId === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : resolvedLogo
+  const normalizedFirm = settings ? { ...settings, logourl: resolvedLogo } : {}
+  const data = { cacheKey:key, firm:normalizedFirm, logoUrl:resolvedLogo, pdfLogoUrl }
   _cacheByTenant.set(key, data)
   return data
 }
@@ -44,6 +50,7 @@ async function loadFirmData() {
 export function useFirm() {
   const [firm, setFirm] = useState(null)
   const [logoUrl, setLogo] = useState('')
+  const [pdfLogoUrl, setPdfLogo] = useState('')
   const [loading, setLoading] = useState(true)
   const [cacheKey, setCacheKey] = useState(null)
 
@@ -55,6 +62,7 @@ export function useFirm() {
       setCacheKey(data.cacheKey || null)
       setFirm(data.firm)
       setLogo(data.logoUrl)
+      setPdfLogo(data.pdfLogoUrl || data.logoUrl || '')
       setLoading(false)
     })
     return () => { cancelled = true }
@@ -67,6 +75,7 @@ export function useFirm() {
       setCacheKey(data.cacheKey || null)
       setFirm(data.firm)
       setLogo(data.logoUrl)
+      setPdfLogo(data.pdfLogoUrl || data.logoUrl || '')
       setLoading(false)
     })
   }
@@ -103,5 +112,5 @@ export function useFirm() {
     return `${name} · ${address || ''} · ${email || ''} · Not a law firm`
   }
 
-  return { firm, logoUrl, loading, refresh, name, tagline, address, phone, email, website, letterhead, footer }
+  return { firm, logoUrl, pdfLogoUrl, loading, refresh, name, tagline, address, phone, email, website, letterhead, footer }
 }

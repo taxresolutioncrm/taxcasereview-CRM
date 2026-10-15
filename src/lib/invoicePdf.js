@@ -57,9 +57,10 @@ export async function generateInvoicePdfBase64(inv, firm = {}) {
   // Try to embed the firm's real logo. If it can't be fetched/decoded for
   // any reason, fall back to a plain text header — never block the PDF.
   let logoImg = null, logoW = 0, logoH = 0
-  if (firm.logoUrl) {
+  const pdfLogoUrl = firm.pdfLogoUrl || firm.logoUrl
+  if (pdfLogoUrl) {
     try {
-      const res = await fetch(firm.logoUrl)
+      const res = await fetch(pdfLogoUrl)
       const bytes = await res.arrayBuffer()
       try { logoImg = await pdfDoc.embedPng(bytes) }
       catch { logoImg = await pdfDoc.embedJpg(bytes) }

@@ -960,7 +960,7 @@ export async function generateCcAuthPdf(client) {
   let brandLogo = null, brandLogoW = 0, brandLogoH = 0;
   if (FIRM.logoUrl) {
     try {
-      const res = await fetch(FIRM.logoUrl);
+      const res = await fetch(FIRM.pdfLogoUrl || FIRM.logoUrl);
       const bytes = await res.arrayBuffer();
       try { brandLogo = await pdfDoc.embedPng(bytes); } catch { brandLogo = await pdfDoc.embedJpg(bytes); }
       brandLogoH = 32;

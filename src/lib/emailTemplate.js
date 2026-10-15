@@ -18,7 +18,7 @@ export function emailHtml({ body, headerBg = 'linear-gradient(135deg,#1e3a8a 0%,
   const rawLogo = logoUrl || FIRM.logoUrl || LOGO_URL
   let fLogo = rawLogo
   try {
-    if (rawLogo && typeof window !== 'undefined') fLogo = new URL(rawLogo, window.location.origin).href
+    if (fLogo && typeof window !== 'undefined') fLogo = new URL(fLogo, window.location.origin).href
   } catch (_) {}
   const fAddr = address || FIRM.address || FIRM_ADDRESS
   const fPhone = phone || FIRM.phone || FIRM_PHONE

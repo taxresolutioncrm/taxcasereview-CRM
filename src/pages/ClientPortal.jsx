@@ -875,7 +875,7 @@ export default function ClientPortal() {
   )
 }
 
-function EmailCard({ email, firmName = 'Tax Case Review' }) {
+function EmailCard({ email, firmName = 'Firm' }) {
   const [expanded, setExpanded] = useState(false)
   if (!email) return null
   const isInbound = email.triage === 'Inbox'

@@ -23,6 +23,13 @@ const files = [
   'src/components/OrganizerWizard.jsx',
   'src/components/SendPaymentLinkModal.jsx',
   'src/pages/EmployeePortal.jsx',
+  'src/pages/ClientPortal.jsx',
+  'src/pages/BookingWidget.jsx',
+  'src/pages/ManageBooking.jsx',
+  'src/pages/MeetingRoom.jsx',
+  'src/components/FinancialIntakeWizard.jsx',
+  'src/components/QuickEmail.jsx',
+  'src/components/VirtualBackground.jsx',
 ]
 
 const failures = []
@@ -75,9 +82,32 @@ if (!contactMigration.includes("firm_fax_number = '+15613280029'")) failures.pus
 if (firmBranding.includes("localStorage.setItem('tcr_firm_branding'")) failures.push('Global tenant branding cache can bleed another office into CloudCPA')
 if (/booking_get_public_meta',\s*args/.test(firmBranding)) failures.push('Public firm branding still has ambiguous no-tenant RPC path')
 
+
+const centurionBrand = fs.readFileSync('src/lib/centurionBrand.js','utf8')
+const useFirmSrc = fs.readFileSync('src/lib/useFirm.js','utf8')
+const emailTemplateSrc = fs.readFileSync('src/lib/emailTemplate.js','utf8')
+const centurionLogoSvg = fs.readFileSync('public/centurion-logo.svg','utf8')
+
+if (!firmBranding.includes('pdfLogoUrl')) failures.push('Centurion FIRM runtime does not separate PDF-safe branding')
+if (!firmBranding.includes("FIRM.pdfLogoUrl = s.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : FIRM.logoUrl")) failures.push('Centurion authenticated PDF branding is not pinned to embedded PNG')
+if (!firmBranding.includes("FIRM.pdfLogoUrl = data.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL : FIRM.logoUrl")) failures.push('Centurion public/client PDF branding is not tenant-safe')
+if (!useFirmSrc.includes('pdfLogoUrl')) failures.push('useFirm document/PDF branding does not expose a PDF-safe logo')
+if (!useFirmSrc.includes('logourl: resolvedLogo')) failures.push('direct firm.logourl consumers do not receive public tenant logo')
+if (!emailTemplateSrc.includes('let fLogo = rawLogo')) failures.push('outgoing email wrapper is not using public tenant logo')
+if (!centurionLogoSvg.includes('<text') || centurionLogoSvg.includes('data:image/png;base64,')) failures.push('Centurion public email logo is not a clean standalone SVG')
+if (!centurionBrand.includes('CENTURION_LOGO_DATA_URL')) failures.push('Centurion embedded PNG source missing')
+
+
+if (!fs.readFileSync('src/lib/invoicePdf.js','utf8').includes('firm.pdfLogoUrl || firm.logoUrl')) failures.push('invoice PDF does not use PDF-safe tenant logo')
+if (!fs.readFileSync('src/lib/taxReturnPdf.js','utf8').includes('FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('tax return PDF does not use PDF-safe tenant logo')
+if (!fs.readFileSync('src/lib/irsFormUtils.js','utf8').includes('FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('IRS-generated PDFs do not use PDF-safe tenant logo')
+if (!fs.readFileSync('src/lib/docUtils.js','utf8').includes('firmLogoUrl: FIRM.pdfLogoUrl || FIRM.logoUrl')) failures.push('agreement PDF does not use PDF-safe tenant logo')
+if (fs.readFileSync('src/pages/ClientPortal.jsx','utf8').includes("firmName = 'Tax Case Review'")) failures.push('Client Portal can still fall back to Tax Case Review branding')
+
 if (failures.length) {
   console.error('CloudCPA document branding check FAILED:')
   failures.forEach(f => console.error(' - ' + f))
   process.exit(1)
 }
 console.log('CloudCPA document branding check PASS')
+
