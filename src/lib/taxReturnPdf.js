@@ -25,9 +25,10 @@ export async function generateTaxReturnPdf(form, totals, preparer = {}) {
   const boldFont   = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica)
   let firmLogo = null, firmLogoW = 0, firmLogoH = 0
-  if (FIRM.logoUrl) {
+  const pdfLogoUrl = FIRM.pdfLogoUrl || FIRM.logoUrl
+  if (pdfLogoUrl) {
     try {
-      const res = await fetch(FIRM.logoUrl)
+      const res = await fetch(pdfLogoUrl)
       const bytes = await res.arrayBuffer()
       try { firmLogo = await pdfDoc.embedPng(bytes) } catch { firmLogo = await pdfDoc.embedJpg(bytes) }
       firmLogoH = 30
