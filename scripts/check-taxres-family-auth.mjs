@@ -17,6 +17,8 @@ const inviteEmployee=read('supabase/functions/invite-employee/index.ts')
 const sendEmail=read('supabase/functions/send-email/index.ts')
 
 const checks=[
+  ['invite-employee defines absoluteAssetUrl before use',inviteEmployee.includes('function absoluteAssetUrl(v:unknown)')&&inviteEmployee.indexOf('function absoluteAssetUrl(v:unknown)')<inviteEmployee.indexOf('absoluteAssetUrl(settings?.logourl||tenant?.logo_url)')],
+  ['invite-employee selects tenant logo_url for branded access mail',inviteEmployee.includes("select('tenant_code,firm_name,logo_url')")],
   ['family password route is public',app.includes('path="/family-password"')&&app.includes("'/family-password'")],
   ['family password page verifies invite/recovery token',page.includes('verifyOtp({token_hash:tokenHash,type})')],
   ['family password does not auto-redeem one-time token on page load',page.includes('Do not redeem one-time Auth tokens during page load')&&page.includes('async function redeemLink()')&&page.includes('onClick={redeemLink}')],
