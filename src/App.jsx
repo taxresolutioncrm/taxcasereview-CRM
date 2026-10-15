@@ -447,7 +447,7 @@ function AuthRouter() {
 
   // Public routes must render immediately — never block them on the auth check.
   // /book, /sign, /portal etc are anonymous; showing a spinner loses prospects.
-  const publicPaths = ['/book', '/sign', '/agreement', '/office-sign', '/portal', '/clockin', '/kiosk', '/family-password',
+  const publicPaths = ['/book', '/sign', '/agreement', '/office-sign', '/portal', '/clockin', '/kiosk', '/family-password', '/reset-password',
     '/employee', '/meet', '/screenshare', '/screenshare-host', '/financial-intake', '/organizer']
   const isPublicPath = publicPaths.some(p => path.startsWith(p))
 
@@ -473,6 +473,7 @@ function AuthRouter() {
     <Routes>
       <Route path="/impersonate" element={<ImpersonateGate />} />
       <Route path="/family-password" element={<FamilyPassword />} />
+      <Route path="/reset-password" element={<FamilyPassword />} />
       <Route path="/login" element={
         user &&
         new URLSearchParams(window.location.search).get('switch') !== '1' &&
