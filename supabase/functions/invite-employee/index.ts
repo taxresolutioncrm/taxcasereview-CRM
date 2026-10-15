@@ -11,6 +11,12 @@ const corsHeaders={
   'Access-Control-Allow-Methods':'POST, OPTIONS',
 }
 const safe=(v:unknown)=>String(v??'').trim()
+function absoluteAssetUrl(v:unknown){
+  const raw=safe(v)
+  if(!raw) return DEFAULT_LOGO_URL
+  if(/^https?:\/\//i.test(raw) || /^data:/i.test(raw)) return raw
+  try { return new URL(raw, CENTRAL_APP_ORIGIN).href } catch (_) { return DEFAULT_LOGO_URL }
+}
 const esc=(v:unknown)=>safe(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 
 async function findAuthUser(admin:any,email:string){
@@ -100,7 +106,7 @@ serve(async(req)=>{
       .limit(1).maybeSingle()
     if(otherEmployee) return json({error:'This email already belongs to another office'},409)
 
-    const {data:tenant}=await admin.from('tenants').select('tenant_code,firm_name').eq('id',tenantId).maybeSingle()
+    const {data:tenant}=await admin.from('tenants').select('tenant_code,firm_name,logo_url').eq('id',tenantId).maybeSingle()
     const {data:settings}=await admin.from('settings').select('name,firmname,logourl,email,firmemail').eq('tenant_id',tenantId).maybeSingle()
     const firmName=safe(settings?.name||settings?.firmname||tenant?.firm_name||DEFAULT_BRAND_NAME)
     const logoUrl=absoluteAssetUrl(settings?.logourl||tenant?.logo_url)
