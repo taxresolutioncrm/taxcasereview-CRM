@@ -6,6 +6,8 @@ const centurion = fs.readFileSync('supabase/migrations/20261014225500_centurion_
 const firmBranding = fs.readFileSync('src/lib/firmBranding.js','utf8')
 const logo = fs.readFileSync('public/centurion-logo.svg','utf8')
 const favicon = fs.readFileSync('public/centurion-favicon.svg','utf8')
+const centurionBrand = fs.readFileSync('src/lib/centurionBrand.js','utf8')
+const sidebar = fs.readFileSync('src/components/layout/Sidebar.jsx','utf8')
 const failures = []
 const check = (ok, msg) => { if (!ok) failures.push(msg) }
 
@@ -33,3 +35,9 @@ if (failures.length) {
   process.exit(1)
 }
 console.log('PASS pre-auth tenant logo/title/favicon branding guard')
+
+check(centurionBrand.includes("CENTURION_LOGO_DATA_URL") && centurionBrand.includes("data:image/png;base64,"), 'Centurion runtime logo must be embedded as a PNG data URL')
+check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime favicon must be embedded')
+check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
+check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
+check(sidebar.includes("onError={() =>"), 'sidebar logo must recover instead of showing a broken image icon')
