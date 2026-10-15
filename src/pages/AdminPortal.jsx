@@ -1300,7 +1300,7 @@ function Overview() {
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            sortedStats.map(r => (r.is_product_main || !collapsedProducts.has(r.product) ? (
+            sortedStats.map(r => (r.is_product_main || !collapsedProducts.has(r.product === 'nashville' ? 'taxres_crm' : r.product) ? (
               <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => { if (!r.is_product_main) openOverviewRow(r) }}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
@@ -2270,7 +2270,7 @@ function DemoMgmt() {
   const visible=demoRows.filter(r=>!q || [r.firm_name,r.product,r.plan_tier].some(v=>String(v||'').toLowerCase().includes(q)))
   const groups=[]
   for(const row of visible){
-    const key=row.product||'taxres_crm'
+    const key=row.product==='nashville' ? 'taxres_crm' : (row.product||'taxres_crm')
     let g=groups.find(x=>x.key===key)
     if(!g){
       const cfg=EXTERNAL_OFFICE_PRODUCTS[key]
