@@ -75,9 +75,25 @@ if (!contactMigration.includes("firm_fax_number = '+15613280029'")) failures.pus
 if (firmBranding.includes("localStorage.setItem('tcr_firm_branding'")) failures.push('Global tenant branding cache can bleed another office into CloudCPA')
 if (/booking_get_public_meta',\s*args/.test(firmBranding)) failures.push('Public firm branding still has ambiguous no-tenant RPC path')
 
+
+const centurionBrand = fs.readFileSync('src/lib/centurionBrand.js','utf8')
+const useFirmSrc = fs.readFileSync('src/lib/useFirm.js','utf8')
+const emailTemplateSrc = fs.readFileSync('src/lib/emailTemplate.js','utf8')
+const centurionLogoSvg = fs.readFileSync('public/centurion-logo.svg','utf8')
+
+if (!firmBranding.includes('CENTURION_LOGO_DATA_URL')) failures.push('Centurion FIRM runtime does not pin the embedded PNG logo')
+if (!firmBranding.includes('s.tenant_id === CENTURION_TENANT_ID ? CENTURION_LOGO_DATA_URL')) failures.push('Centurion authenticated branding can still inherit the broken settings logo')
+if (!firmBranding.includes('data.tenant_id === CENTURION_TENANT_ID')) failures.push('Centurion public/client document branding does not force the tenant-safe logo')
+if (!useFirmSrc.includes('CENTURION_LOGO_DATA_URL')) failures.push('useFirm document/PDF branding does not normalize Centurion logo')
+if (!useFirmSrc.includes('logourl: resolvedLogo')) failures.push('direct firm.logourl consumers can still receive the broken Centurion URL')
+if (!emailTemplateSrc.includes("FIRM.tenantId === CENTURION_TENANT_ID ? '/centurion-logo.svg'")) failures.push('Centurion outgoing email wrapper does not use a public mail-safe logo')
+if (!centurionLogoSvg.includes('<text') || centurionLogoSvg.includes('data:image/png;base64,')) failures.push('Centurion public email logo is not a clean standalone SVG')
+if (!centurionBrand.includes('CENTURION_LOGO_DATA_URL')) failures.push('Centurion embedded PNG source missing')
+
 if (failures.length) {
   console.error('CloudCPA document branding check FAILED:')
   failures.forEach(f => console.error(' - ' + f))
   process.exit(1)
 }
 console.log('CloudCPA document branding check PASS')
+
