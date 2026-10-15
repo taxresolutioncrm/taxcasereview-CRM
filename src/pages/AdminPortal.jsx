@@ -136,7 +136,7 @@ async function loadPlatformOfficeRowsFresh() {
   if (billingError) throw billingError
   if (productError) throw productError
 
-  const rows = (taxresRows || []).map(r => ({
+  const rows = (taxresRows || []).filter(r => String(r.id) !== NASH_TENANT).map(r => ({
     ...r,
     product: r.product || 'taxres_crm',
     brand_color: r.brand_color || '#2563EB',
@@ -306,15 +306,19 @@ async function loadPlatformOfficeRowsFresh() {
   // Central registry is the fallback/source of truth for offices already registered with RomyLabs.
   if (!registryError && Array.isArray(registryData)) {
     for (const office of registryData) {
-      if (!office?.product_key || office.product_key === 'taxres_crm' || !office.external_office_id) continue
-      const cfg = externalProductConfigs[office.product_key] || EXTERNAL_OFFICE_PRODUCTS[office.product_key] || { label:office.product_key, color:'#6366f1', appUrl:null }
-      const key = `${office.product_key}:${office.external_office_id}`
+      // Nashville belongs to the TaxRes family, but its operations come from its dedicated project.
+      // Keep its central registry row as a fallback if the remote feed is unavailable.
+      if (!office?.product_key || !office.external_office_id) continue
+      if (office.product_key === 'taxres_crm' && String(office.external_office_id) !== NASH_TENANT) continue
+      const operationalProduct = office.product_key === 'taxres_crm' && String(office.external_office_id) === NASH_TENANT ? 'nashville' : office.product_key
+      const cfg = externalProductConfigs[operationalProduct] || EXTERNAL_OFFICE_PRODUCTS[operationalProduct] || { label:operationalProduct, color:'#6366f1', appUrl:null }
+      const key = `${operationalProduct}:${office.external_office_id}`
       if (seen.has(key)) continue
       seen.add(key)
       rows.push({
         id:key,
         source_id:office.external_office_id,
-        product:office.product_key,
+        product:operationalProduct,
         firm_name:office.firm_name || `${cfg.label} Office`,
         brand_color:cfg.color,
         employee_count:null,
@@ -413,7 +417,7 @@ async function loadPlatformOfficeRowsFresh() {
       // for the universal contract/e-sign engine. This keeps sender routing,
       // document history, and future contract sends product-aware without
       // requiring manual registry rows.
-      registrySyncJobs.push({
+      if (result.productKey !== 'nashville') registrySyncJobs.push({
         label:cfg.label,
         promise:supabase.rpc('admin_romylabs_upsert_office_registry', {
           p_product_key:result.productKey,
@@ -514,7 +518,7 @@ async function loadPlatformOfficeRowsFresh() {
       ...row,
       row_kind:row.is_demo ? 'demo' : 'customer',
       counts_as_office:true,
-      product_sort:productSortByKey.get(row.product || 'taxres_crm') ?? 9999,
+      product_sort:productSortByKey.get(row.product === 'nashville' ? 'taxres_crm' : (row.product || 'taxres_crm')) ?? 9999,
       row_sort:row.is_demo ? 1 : 2,
     }
   }
@@ -522,7 +526,7 @@ async function loadPlatformOfficeRowsFresh() {
   // Aggregate existing office data into the collapsible product header.
   // Unknown values remain null; revenue is sourced only from the central billing overlay.
   const productOfficeTotals = productKey => {
-    const offices = rows.filter(row => row.product === productKey && row.counts_as_office !== false)
+    const offices = rows.filter(row => (row.product === productKey || (productKey === 'taxres_crm' && row.product === 'nashville')) && row.counts_as_office !== false)
     const sumKnown = key => {
       const known = offices.map(row => row[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)))
       return known.length ? known.reduce((sum,v) => sum + Number(v), 0) : null
@@ -1296,7 +1300,7 @@ function Overview() {
           </thead>
           <tbody>
             {!stats ? <tr><td colSpan={12}><Spinner /></td></tr> :
-            sortedStats.map(r => (r.is_product_main || !collapsedProducts.has(r.product) ? (
+            sortedStats.map(r => (r.is_product_main || !collapsedProducts.has(r.product === 'nashville' ? 'taxres_crm' : r.product) ? (
               <tr key={r.id} style={{ cursor:'pointer', background:r.is_product_main?'rgba(99,102,241,.055)':'transparent' }} onClick={() => { if (!r.is_product_main) openOverviewRow(r) }}>
                 <td style={{ ...S.td, color:'#e2e8f0', fontWeight:600 }}>
                   {r.brand_color && <span style={{ display:'inline-block',width:8,height:8,borderRadius:'50%',background:r.brand_color,marginRight:8 }}/>}
@@ -2100,14 +2104,15 @@ function OfficesList() {
   })
   const groups=[]
   for(const row of visibleRows){
-    const key=row.product||'taxres_crm'
+    // CRM family grouping is independent of the project's routing key.
+    const key=row.product==='nashville' ? 'taxres_crm' : (row.product||'taxres_crm')
     let group=groups.find(g=>g.key===key)
     if(!group){group={key,label:key,rows:[]};groups.push(group)}
     group.rows.push(row)
     const main=group.rows.find(x=>x.is_product_main)
     if(main) group.label=main.firm_name
-    else if(row.product_label) group.label=row.product_label
     else if(key==='taxres_crm') group.label='TaxRes CRM'
+    else if(row.product_label) group.label=row.product_label
   }
 
   return (
@@ -2265,7 +2270,7 @@ function DemoMgmt() {
   const visible=demoRows.filter(r=>!q || [r.firm_name,r.product,r.plan_tier].some(v=>String(v||'').toLowerCase().includes(q)))
   const groups=[]
   for(const row of visible){
-    const key=row.product||'taxres_crm'
+    const key=row.product==='nashville' ? 'taxres_crm' : (row.product||'taxres_crm')
     let g=groups.find(x=>x.key===key)
     if(!g){
       const cfg=EXTERNAL_OFFICE_PRODUCTS[key]
