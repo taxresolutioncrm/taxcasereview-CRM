@@ -110,4 +110,13 @@ requireAll('supabase/functions/romylabs-phone-state/index.ts', [
   "db.from('call_recordings').delete()",
 ])
 
+
+requireAll('src/App.jsx', [
+  "const [showRealtimeWarning, setShowRealtimeWarning] = React.useState(false)",
+  "}, 8000)",
+  "if (realtimeOk)",
+  "{showRealtimeWarning && (",
+  "Connection interrupted — real-time updates paused. Reconnecting...",
+])
+
 console.log('Critical workflow invariants: PASS')
