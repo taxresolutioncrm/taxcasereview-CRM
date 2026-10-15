@@ -417,7 +417,7 @@ async function loadPlatformOfficeRowsFresh() {
       // for the universal contract/e-sign engine. This keeps sender routing,
       // document history, and future contract sends product-aware without
       // requiring manual registry rows.
-      registrySyncJobs.push({
+      if (result.productKey !== 'nashville') registrySyncJobs.push({
         label:cfg.label,
         promise:supabase.rpc('admin_romylabs_upsert_office_registry', {
           p_product_key:result.productKey,
@@ -518,7 +518,7 @@ async function loadPlatformOfficeRowsFresh() {
       ...row,
       row_kind:row.is_demo ? 'demo' : 'customer',
       counts_as_office:true,
-      product_sort:productSortByKey.get(row.product || 'taxres_crm') ?? 9999,
+      product_sort:productSortByKey.get(row.product === 'nashville' ? 'taxres_crm' : (row.product || 'taxres_crm')) ?? 9999,
       row_sort:row.is_demo ? 1 : 2,
     }
   }
@@ -526,7 +526,7 @@ async function loadPlatformOfficeRowsFresh() {
   // Aggregate existing office data into the collapsible product header.
   // Unknown values remain null; revenue is sourced only from the central billing overlay.
   const productOfficeTotals = productKey => {
-    const offices = rows.filter(row => row.product === productKey && row.counts_as_office !== false)
+    const offices = rows.filter(row => (row.product === productKey || (productKey === 'taxres_crm' && row.product === 'nashville')) && row.counts_as_office !== false)
     const sumKnown = key => {
       const known = offices.map(row => row[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)))
       return known.length ? known.reduce((sum,v) => sum + Number(v), 0) : null
