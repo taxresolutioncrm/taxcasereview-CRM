@@ -6,12 +6,14 @@ const centurion = fs.readFileSync('supabase/migrations/20261014225500_centurion_
 const firmBranding = fs.readFileSync('src/lib/firmBranding.js','utf8')
 const logo = fs.readFileSync('public/centurion-logo.svg','utf8')
 const favicon = fs.readFileSync('public/centurion-favicon.svg','utf8')
+const centurionBrand = fs.readFileSync('src/lib/centurionBrand.js','utf8')
+const sidebar = fs.readFileSync('src/components/layout/Sidebar.jsx','utf8')
 const failures = []
 const check = (ok, msg) => { if (!ok) failures.push(msg) }
 
 check(login.includes("applyLoginBrowserBranding"), 'login must apply browser branding before auth')
 check(login.includes("data.favicon_url || data.logo_url"), 'login must prefer tenant favicon/logo')
-check(login.includes("logo_url: data.logo_url || data.favicon_url || null"), 'login must use favicon as visible brand fallback')
+check(login.includes("logo_url: isCenturion ? CENTURION_LOGO_DATA_URL : (data.logo_url || data.favicon_url || null)"), 'login must use embedded Centurion logo with normal tenant fallback')
 check(login.includes("document.title = branding.firm_name + ' CRM'"), 'login must update browser title for tenant')
 check(login.includes("apple.setAttribute('href', href)"), 'login must update apple touch icon')
 check(migration.includes("FROM public.employees e"), 'branding RPC must resolve tenant from employee login domain')
@@ -26,6 +28,12 @@ check(centurion.includes("https://taxrescrm.app/centurion-favicon.svg"), 'Centur
 check(firmBranding.includes("CENTURION_TENANT") && firmBranding.includes("CENTURION_FAVICON"), 'authenticated shell must pin Centurion favicon')
 check(logo.includes("data:image/png;base64,"), 'Centurion logo asset must be embedded')
 check(favicon.includes("data:image/png;base64,"), 'Centurion favicon asset must be embedded')
+
+check(centurionBrand.includes("CENTURION_LOGO_DATA_URL") && centurionBrand.includes("data:image/png;base64,"), 'Centurion runtime logo must be embedded as a PNG data URL')
+check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime favicon must be embedded')
+check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
+check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
+check(sidebar.includes("onError={() =>"), 'sidebar logo must recover instead of showing a broken image icon')
 
 if (failures.length) {
   console.error('Login branding guard FAILED')

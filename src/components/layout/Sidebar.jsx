@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { FIRM } from '../../lib/firmBranding'
 import { OPEN_STATUSES } from '../../lib/caseStatuses'
 import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
+import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from '../../lib/centurionBrand'
 
 const LOGO = '/logo.png'
 
@@ -517,17 +518,11 @@ export default function Sidebar() {
         FIRM.name = s.name
       }
       if (s?.tagline) setTagline(s.tagline)
-      if (s?.logourl) {
-        FIRM.logoUrl = s.logourl
-        // Only update state if different from what's already showing (avoid re-render flicker)
-        if (s.logourl !== logoUrl) {
-          const img = new Image()
-          img.onload = () => setLogoUrl(s.logourl)
-          img.src = s.logourl
-        }
-      } else {
-        setLogoUrl('')
-      }
+      const resolvedLogo = tenantId === CENTURION_TENANT_ID
+        ? CENTURION_LOGO_DATA_URL
+        : (s?.logourl || '')
+      FIRM.logoUrl = resolvedLogo
+      if (resolvedLogo !== logoUrl) setLogoUrl(resolvedLogo)
     }
     loadBranding()
   }, [])
@@ -543,9 +538,26 @@ export default function Sidebar() {
       <div className="brand" onClick={() => navigate('/')} style={{flexDirection:'column',alignItems:'center',padding: logoUrl ? 0 : '8px 12px',gap:4,position:'relative',background:'#0C1F35'}}>
         <button className="sidebar-close-btn" onClick={(e)=>{e.stopPropagation();setMobileNavOpen(false)}} aria-label="Close menu">×</button>
         {logoUrl
-          ? <img src={logoUrl} alt={firmName}
-                  style={{ display:'block', width:'100%', padding:'6px 10px',
-                           boxSizing:'border-box' }} />
+          ? <img
+              src={logoUrl}
+              alt={firmName}
+              onError={() => {
+                if (FIRM.tenantId === CENTURION_TENANT_ID && logoUrl !== CENTURION_LOGO_DATA_URL) {
+                  setLogoUrl(CENTURION_LOGO_DATA_URL)
+                } else {
+                  setLogoUrl('')
+                }
+              }}
+              style={{
+                display:'block',
+                width:'calc(100% - 20px)',
+                maxWidth:280,
+                height:'auto',
+                maxHeight:64,
+                margin:'10px auto',
+                objectFit:'contain'
+              }}
+            />
           : <>
               <div style={{fontWeight:900,fontSize:18,color:'var(--blue)',textAlign:'center',lineHeight:1.2}}>{firmName}</div>
               <div style={{textAlign:'center'}}>

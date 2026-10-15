@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
+import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from '../lib/centurionBrand'
 
 const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxrescrm.net', 'romy@taxcasereview.org']
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
@@ -234,10 +235,11 @@ export default function Login() {
       try {
         const { data } = await supabase.rpc('get_branding_by_email_domain', { p_domain: domain })
         if (data && data.firm_name) {
+          const isCenturion = data.tenant_id === CENTURION_TENANT_ID
           const resolved = {
             firm_name: data.firm_name,
-            logo_url: data.logo_url || data.favicon_url || null,
-            favicon_url: data.favicon_url || data.logo_url || null,
+            logo_url: isCenturion ? CENTURION_LOGO_DATA_URL : (data.logo_url || data.favicon_url || null),
+            favicon_url: isCenturion ? CENTURION_FAVICON_DATA_URL : (data.favicon_url || data.logo_url || null),
             sub: data.sub || 'IRS Resolution Platform'
           }
           setBranding(resolved)
