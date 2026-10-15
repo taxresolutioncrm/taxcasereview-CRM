@@ -29,15 +29,15 @@ check(firmBranding.includes("CENTURION_TENANT") && firmBranding.includes("CENTUR
 check(logo.includes("data:image/png;base64,"), 'Centurion logo asset must be embedded')
 check(favicon.includes("data:image/png;base64,"), 'Centurion favicon asset must be embedded')
 
+check(centurionBrand.includes("CENTURION_LOGO_DATA_URL") && centurionBrand.includes("data:image/png;base64,"), 'Centurion runtime logo must be embedded as a PNG data URL')
+check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime favicon must be embedded')
+check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
+check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
+check(sidebar.includes("onError={() =>"), 'sidebar logo must recover instead of showing a broken image icon')
+
 if (failures.length) {
   console.error('Login branding guard FAILED')
   failures.forEach(x => console.error(' - ' + x))
   process.exit(1)
 }
 console.log('PASS pre-auth tenant logo/title/favicon branding guard')
-
-check(centurionBrand.includes("CENTURION_LOGO_DATA_URL") && centurionBrand.includes("data:image/png;base64,"), 'Centurion runtime logo must be embedded as a PNG data URL')
-check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime favicon must be embedded')
-check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
-check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
-check(sidebar.includes("onError={() =>"), 'sidebar logo must recover instead of showing a broken image icon')
