@@ -49,7 +49,8 @@ const checks=[
   ['live representative alert repeats loudly until acknowledged',notifier.includes("setInterval(fire,5000)")&&notifier.includes("playRing()")&&notifier.includes("stopRingAudio()")],
   ['AI callback functions do not shadow URL constructor',!leg.includes("const URL=Deno.env.get('SUPABASE_URL')")&&!status.includes("const URL=Deno.env.get('SUPABASE_URL')")&&leg.includes("const SUPABASE_URL=Deno.env.get('SUPABASE_URL')")&&status.includes("const SUPABASE_URL=Deno.env.get('SUPABASE_URL')")&&leg.includes("new globalThis.URL(req.url)")&&status.includes("new globalThis.URL(req.url)")],
   ['provider callbacks use opaque session token',leg.includes(".eq('callback_token',token)")&&status.includes(".eq('callback_token',token)")],
-  ['cancel is authenticated and tenant scoped',cancel.includes("rpc('current_tenant_id')")&&cancel.includes(".eq('tenant_id',tenant)")],
+  ['cancel is authenticated and tenant scoped',cancel.includes("auth.replace(/^Bearer\\s+/i,'')")&&cancel.includes("rpc('current_tenant_id')")&&cancel.includes(".eq('tenant_id',tenant)")],
+  ['cancel reconciles provider state instead of leaving phantom sessions',cancel.includes("Provider did not confirm the call ended")&&cancel.includes("['completed','busy','failed','no-answer','canceled','cancelled']")],
   ['cancel provider URL normalization is bundle-safe',cancel.includes("replace(/^https?:[/][/]/,'')")&&!cancel.includes("replace(/^https?:\\\\/\\\\//")],
   ['edge auth config is correct',config.includes('[functions.ai-government-call-start]\nverify_jwt = true')&&config.includes('[functions.ai-government-call-leg]\nverify_jwt = false')&&config.includes('[functions.ai-government-call-status]\nverify_jwt = false')&&config.includes('[functions.ai-government-call-cancel]\nverify_jwt = true')],
 ]
