@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const URL=Deno.env.get('SUPABASE_URL')!
+const SUPABASE_URL=Deno.env.get('SUPABASE_URL')!
 const SERVICE=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const ANON=Deno.env.get('SUPABASE_ANON_KEY')!
 const PRIMARY='61a89aef-0e7e-4ea2-b222-44ab2024655a'
@@ -12,8 +12,8 @@ serve(async req=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
   try{
     const auth=req.headers.get('authorization')||''
-    const token=auth.replace(/^Bearer\\s+/i,'')
-    const caller=createClient(URL,ANON,{global:{headers:{Authorization:auth}}})
+    const token=auth.replace(/^Bearer\s+/i,'')
+    const caller=createClient(SUPABASE_URL,ANON,{global:{headers:{Authorization:auth}}})
     const {data:{user}}=await caller.auth.getUser(token)
     if(!user?.email)return json({error:'Unauthorized'},401)
 
@@ -21,7 +21,7 @@ serve(async req=>{
     if(!tenant)return json({error:'No active office context'},403)
 
     const body=await req.json().catch(()=>({}))
-    const db=createClient(URL,SERVICE)
+    const db=createClient(SUPABASE_URL,SERVICE)
     const {data:s}=await db.from('ai_government_call_sessions').select('*')
       .eq('id',body.session_id).eq('tenant_id',tenant).limit(1).maybeSingle()
     if(!s)return json({error:'AI call not found'},404)
@@ -35,7 +35,7 @@ serve(async req=>{
     if(s.provider_call_sid&&settings?.sw_space_url&&settings?.sw_project_id&&settings?.sw_api_token){
       const space=String(settings.sw_space_url).replace(/^https?:[/][/]/,'')
       const endpoint='https://'+space+'/api/laml/2010-04-01/Accounts/'+settings.sw_project_id+'/Calls/'+encodeURIComponent(s.provider_call_sid)+'.json'
-      await fetch(endpoint,{
+      const providerResponse=await fetch(endpoint,{
         method:'POST',
         headers:{
           Authorization:'Basic '+btoa(settings.sw_project_id+':'+settings.sw_api_token),
@@ -43,6 +43,19 @@ serve(async req=>{
         },
         body:new URLSearchParams({Status:'completed'})
       }).catch(()=>null)
+
+      // If SignalWire says the update failed, inspect the call before returning
+      // an error. A provider call that already ended should still reconcile cleanly
+      // instead of leaving a phantom active session in TaxRes.
+      if(!providerResponse?.ok){
+        const providerStatus=await fetch(endpoint,{
+          headers:{Authorization:'Basic '+btoa(settings.sw_project_id+':'+settings.sw_api_token)}
+        }).then(async r=>r.ok?await r.json():null).catch(()=>null)
+        const state=String(providerStatus?.status||'').toLowerCase()
+        if(!['completed','busy','failed','no-answer','canceled','cancelled'].includes(state)){
+          return json({error:'Provider did not confirm the call ended',provider_status:state||null},502)
+        }
+      }
     }
 
     const now=new Date().toISOString()
