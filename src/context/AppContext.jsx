@@ -53,7 +53,9 @@ export const ACCESS_LEVELS = {
   'Attorney':      { label: 'Attorney',      color: '#a855f7' },
   'View Only':   { label: 'View Only',   color: '#64748b' },
   'Tax Advisor': { label: 'Tax Advisor', color: '#10b981' },
+  'Sales Rep':   { label: 'Sales Rep',   color: '#8b5cf6' },
   'Manager':     { label: 'Manager',     color: '#06b6d4' },
+  'Sales Manager': { label: 'Sales Manager', color: '#0d9488' },
 }
 
 // Role-based defaults (used when no per-section perms exist)
@@ -92,9 +94,14 @@ const ROLE_DEFAULTS = {
     canView: ['dashboard','leads','calendar','sms','email','dialer','documents','esign','chat','tasks','settings'],
     canEdit: ['leads','calendar','sms','email','dialer','documents','esign','chat','tasks','settings'],
   },
-  // Sales manager — oversees Tax Advisors, sees every rep's leads (no
-  // my-leads-only lock, that only applies to the 'Tax Advisor' role),
-  // plus Reports for team performance.
+  'Sales Rep': {
+    canView: ['dashboard','leads','calendar','sms','email','dialer','documents','esign','chat','tasks'],
+    canEdit: ['leads','calendar','sms','email','dialer','documents','esign','chat','tasks'],
+  },
+  'Sales Manager': {
+    canView: ['dashboard','leads','clients','cases','calendar','sms','email','dialer','documents','esign','chat','reports','tasks'],
+    canEdit: ['leads','calendar','sms','email','dialer','documents','esign','chat','tasks'],
+  },
   'Manager': {
     canView: ['dashboard','leads','calendar','sms','email','dialer','documents','esign','chat','reports','tasks','settings'],
     canEdit: ['leads','calendar','sms','email','dialer','documents','esign','chat','tasks','settings'],
