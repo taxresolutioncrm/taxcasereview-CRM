@@ -26,7 +26,7 @@ const checks=[
   ['schema is tenant scoped and realtime enabled',migration.includes('tenant_id uuid not null references tenants')&&migration.includes('tenant_id=current_tenant_id()')&&migration.includes('supabase_realtime add table ai_government_call_sessions')],
   ['session stores durable conference and human handoff state',migration.includes('conference_name text')&&migration.includes("'human_detected'")&&migration.includes("'human_joined'")],
   ['server starts SignalWire call and durable outbound row',start.includes("entity_type:'ai-government'")&&start.includes('/Calls.json')&&start.includes('ai-government-call-leg?session=')&&start.includes('ai-government-call-status?session=')],
-  ['IVR controller listens before acting',leg.includes('<Gather input="speech"')&&leg.includes("action:'press'")&&leg.includes("confidence<.82")],
+  ['IVR controller listens before acting',leg.includes('<Gather input="speech"')&&leg.includes("choice.action==='press'")&&leg.includes("confidence<.82")],
   ['agent cannot authenticate or conduct taxpayer discussion',leg.includes('You NEVER discuss taxpayer facts, authenticate a taxpayer, claim to be the practitioner, or speak substantively to a live representative.')],
   ['live-human threshold and handoff conference exist',leg.includes("action==='human'")&&leg.includes("confidence<.9")&&leg.includes("status='human_detected'")&&leg.includes('connect you to the tax professional')],
   ['takeover session is claimed before browser self dial',calls.includes("status:'takeover_requested'")&&calls.includes('joinAIGovernmentCall')],
