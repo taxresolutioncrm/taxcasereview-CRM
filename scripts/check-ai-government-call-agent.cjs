@@ -44,7 +44,7 @@ const checks=[
   ['Dialer AI trigger is family-shared not tenant hard-coded',!dialer.includes('TRC-004')&&!dialer.includes('Centurion Firm')&&!dialer.includes('TRC-003')],
   ['case record has AI Call trigger',cases.includes('AIGovernmentCallModal')&&cases.includes('🤖 AI Call')],
   ['app route and global notifier mounted',app.includes('AIGovernmentCallNotifier')&&app.includes('path="/ai-government-calls"')],
-  ['sidebar navigation is under IRS and state resolution',sidebar.includes("path: '/ai-government-calls'")&&sidebar.includes("label: 'AI Government Calls'")],
+  ['sidebar navigation is under Communications',sidebar.includes("key: 'comms'")&&sidebar.indexOf("path: '/ai-government-calls'")>sidebar.indexOf("key: 'comms'")&&sidebar.indexOf("path: '/ai-government-calls'")<sidebar.indexOf("key: 'billing'")&&!sidebar.slice(sidebar.indexOf("key: 'irs'"),sidebar.indexOf("key: 'taxreturns'")).includes("path: '/ai-government-calls'")],
   ['provider callbacks use opaque session token',leg.includes(".eq('callback_token',token)")&&status.includes(".eq('callback_token',token)")],
   ['cancel is authenticated and tenant scoped',cancel.includes("rpc('current_tenant_id')")&&cancel.includes(".eq('tenant_id',tenant)")],
   ['cancel provider URL normalization is bundle-safe',cancel.includes("replace(/^https?:[/][/]/,'')")&&!cancel.includes("replace(/^https?:\\\\/\\\\//")],
