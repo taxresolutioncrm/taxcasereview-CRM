@@ -33,6 +33,7 @@ const routeToManual = {
   '/irsforms':'forms',
   '/stateforms':'stateforms',
   '/irsreference':'irsreference',
+  '/ai-government-calls':'ai-government-calls',
   '/irsportal':'transcripts',
   '/taxreturns':'taxreturns',
   '/formacorp':'formacorp',
@@ -81,6 +82,7 @@ const requiredWorkflowSignals = [
   ['FormaCorp embedded state-fee payment', /Pay Government Filing Amount/],
   ['FormaCorp Sunbiz submission', /Submit via Prepaid Sunbiz Fax/],
   ['FormaCorp EIN lifecycle', /Company Lifecycle → EIN/],
+  ['AI Government Calls workflow', /AI Government Calls handles government auto-attendant navigation/],
   ['manual release rule', /CRM Manual is part of the release scope/],
 ]
 for (const [name,re] of requiredWorkflowSignals) assert(re.test(manual), `CRM Manual is missing current workflow documentation: ${name}`)
