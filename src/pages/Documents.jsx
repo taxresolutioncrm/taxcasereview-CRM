@@ -51,6 +51,7 @@ export default function Documents() {
   const [form,         setForm]          = useState({ name:'', client:'', docType:'IRS Docs', notes:'' })
   const [file,         setFile]          = useState(null)
   const [saving,       setSaving]        = useState(false)
+  const [analyzingId,  setAnalyzingId]   = useState(null)
   const [toast,        setToast]         = useState('')
   const [confirmDel,   setConfirmDel]    = useState(null)
   const [customFolders,setCustomFolders] = useState([])
@@ -288,6 +289,29 @@ export default function Documents() {
     loadDocuments()
   }
 
+  async function analyzeDocument(doc) {
+    if (!doc?.id) return
+    if (!hasDocumentFile(doc)) { showToast('No file is attached to this document'); return }
+    const linkedClient = people.find(p => p.type === 'client' && (
+      String(p.id) === String(doc.client_id || '') ||
+      p.name.toLowerCase() === String(doc.client || doc.clientname || '').trim().toLowerCase()
+    ))
+    setAnalyzingId(doc.id)
+    showToast('✦ AI is analyzing this document…')
+    try {
+      const { data, error } = await supabase.functions.invoke('document-intelligence', {
+        body: { documentId: doc.id, ...(linkedClient?.id ? { clientId: linkedClient.id } : {}) }
+      })
+      if (error || data?.error || data?.ok === false) throw new Error(data?.error || error?.message || 'AI analysis failed')
+      showToast('✅ AI analysis complete — open AI Intelligence to review the results')
+      await loadDocuments()
+    } catch (e) {
+      showToast('AI analysis failed: ' + (e?.message || e))
+    } finally {
+      setAnalyzingId(null)
+    }
+  }
+
   async function openDocument(doc) {
     if (!hasDocumentFile(doc)) { showToast('No file is attached to this document'); return }
     const tab = window.open('about:blank','_blank')
@@ -372,7 +396,7 @@ export default function Documents() {
             {filtered.map(d=><tr key={d.id}>
               <td><span style={{marginRight:8}}>{fileIcon(d.file_name)}</span><strong>{d.name || 'Untitled document'}</strong></td>
               <td>{d.client||'—'}</td><td>{d.docType||'—'}</td><td>{fmtSize(d.file_size)}</td><td>{fmtDate(d.created_at)}</td>
-              <td><div style={{display:'flex',gap:5}}>{hasDocumentFile(d)&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}<button className="btn sm" onClick={()=>addNote(d)}>✏️</button>{isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}</div></td>
+              <td><div style={{display:'flex',gap:5}}>{hasDocumentFile(d)&&<><button className="btn sm" onClick={()=>openDocument(d)}>Open</button><button className="btn sm" disabled={analyzingId===d.id} onClick={()=>analyzeDocument(d)}>{analyzingId===d.id?'Analyzing…':'✦ AI Analyze'}</button></>}<button className="btn sm" onClick={()=>addNote(d)}>✏️</button>{isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}</div></td>
             </tr>)}
           </tbody></table>
         </div>
@@ -381,7 +405,7 @@ export default function Documents() {
           {filtered.map(d=><div key={d.id} className="card" style={{padding:'10px 14px',display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:24}}>{fileIcon(d.file_name)}</span>
             <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,color:'var(--tx)'}}>{d.name || 'Untitled document'}</div><div style={{fontSize:11,color:'var(--t3)'}}>{d.client||'General'} · {d.docType||'Unfiled'} · {fmtSize(d.file_size)} · {fmtDate(d.created_at)}</div></div>
-            {hasDocumentFile(d)&&<button className="btn sm" onClick={()=>openDocument(d)}>Open</button>}
+            {hasDocumentFile(d)&&<><button className="btn sm" onClick={()=>openDocument(d)}>Open</button><button className="btn sm" disabled={analyzingId===d.id} onClick={()=>analyzeDocument(d)}>{analyzingId===d.id?'Analyzing…':'✦ AI Analyze'}</button></>}
             <button className="btn sm" onClick={()=>addNote(d)}>✏️</button>
             {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(d)}>🗑</button>}
           </div>)}
@@ -425,6 +449,7 @@ export default function Documents() {
                   {hasDocumentFile(doc)&&<>
                     <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewDocument(doc)}>Preview</button>
                     <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openDocument(doc)}>Open ↗</button>
+                    <button className="btn sm" style={{fontSize:10,padding:'4px 7px'}} disabled={analyzingId===doc.id} onClick={()=>analyzeDocument(doc)}>{analyzingId===doc.id?'Analyzing…':'✦ AI Analyze'}</button>
                   </>}
                   <button className="btn sm" onClick={()=>addNote(doc)}>✏️</button>
                   {isAdmin&&<button className="btn sm danger" onClick={()=>setConfirmDel(doc)}>🗑</button>}
@@ -444,7 +469,7 @@ export default function Documents() {
                 <div style={{fontSize:10,color:'var(--t3)',marginTop:2}}>{previewDoc.client||'General'} · {previewDoc.docType||'Other'}{previewDoc.file_size?` · ${fmtSize(previewDoc.file_size)}`:''}</div>
               </div>
               <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                {previewUrl&&<button className="btn sm" onClick={()=>openDocument(previewDoc)}>Open ↗</button>}
+                {previewUrl&&<><button className="btn sm" onClick={()=>analyzeDocument(previewDoc)} disabled={analyzingId===previewDoc.id}>{analyzingId===previewDoc.id?'Analyzing…':'✦ AI Analyze'}</button><button className="btn sm" onClick={()=>openDocument(previewDoc)}>Open ↗</button></>}
                 <button className="modal-close" onClick={()=>setPreviewDoc(null)}>×</button>
               </div>
             </div>
