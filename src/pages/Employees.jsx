@@ -19,7 +19,7 @@ function safePermLevel(value, fallback = 0) {
 }
 
 // Base access levels — these are the actual permission presets (never change these keys)
-const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Tax Associate', 'EA', 'CPA', 'Attorney', 'Tax Advisor', 'Sales Rep', 'View Only']
+const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Sales Manager', 'Tax Associate', 'EA', 'CPA', 'Attorney', 'Tax Advisor', 'Sales Rep', 'View Only']
 // Display labels for each access level — pulled from FIRM.labels or defaults
 function getRoleLabels() {
   const l = FIRM.labels || {}
@@ -32,13 +32,14 @@ function getRoleLabels() {
     'Attorney':      'Attorney',
     'Tax Advisor':   l.taxAdvisorRole || 'Tax Advisor',
     'Manager':       'Manager',
-    'Sales Rep':     l.salesRepRole || 'Sales',
+    'Sales Manager': l.salesManagerRole || 'Sales Manager',
+    'Sales Rep':     l.salesRepRole || 'Sales Rep',
     'View Only':     'View Only',
   }
 }
-const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'EA': '#14b8a6', 'CPA': '#22c55e', 'Attorney': '#a855f7', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Rep': '#8b5cf6' }
+const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'EA': '#14b8a6', 'CPA': '#22c55e', 'Attorney': '#a855f7', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Sales Rep': '#8b5cf6' }
 // Role display colors (for the role badge — role is the title, access is the permission level)
-const TITLE_COLORS = { 'Super Admin': '#ef4444', 'Associate': '#10b981', 'Para': '#0ea5e9', 'Manager': '#06b6d4', 'Staff': '#64748b', 'Sales': '#8b5cf6' }
+const TITLE_COLORS = { 'Super Admin': '#ef4444', 'Associate': '#10b981', 'Para': '#0ea5e9', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Staff': '#64748b', 'Sales': '#8b5cf6', 'Sales Rep': '#8b5cf6' }
 
 // perm levels: 0=No Access, 1=View Only, 2=Edit, 3=Full Admin
 const PERM_SECTIONS = [
@@ -78,9 +79,10 @@ const ROLE_PERM_DEFAULTS = {
   'Tax Advisor': { perm_leads:2, perm_clients:0, perm_billing:0, perm_schedule:2, perm_documents:2, perm_irs:0, perm_comms:2, perm_reports:0, perm_hr:0, perm_settings:0 },
   // Sales rep — leads pipeline + comms; no access to client files, billing, IRS, HR, or settings
   'Sales Rep':   { perm_leads:2, perm_clients:0, perm_billing:0, perm_schedule:2, perm_documents:1, perm_irs:0, perm_comms:2, perm_reports:0, perm_hr:0, perm_settings:0 },
-  // Sales manager — oversees Tax Advisors. Full Admin on Leads (sees every
-  // rep's leads, unscoped — only 'Tax Advisor' gets the my-leads-only lock
-  // in Leads.jsx) plus Reports visibility for team performance.
+  // Sales Manager is distinct from the general Manager role. It can oversee
+  // the full lead pipeline and view converted clients for attribution/reporting,
+  // without granting billing, IRS practitioner, HR, or settings administration.
+  'Sales Manager': { perm_leads:3, perm_clients:1, perm_billing:0, perm_schedule:2, perm_documents:2, perm_irs:0, perm_comms:2, perm_reports:1, perm_hr:0, perm_settings:0 },
   'Manager':     { perm_leads:3, perm_clients:0, perm_billing:0, perm_schedule:2, perm_documents:2, perm_irs:0, perm_comms:2, perm_reports:1, perm_hr:0, perm_settings:0 },
 }
 
