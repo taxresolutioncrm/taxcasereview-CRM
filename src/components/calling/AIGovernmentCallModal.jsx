@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { AI_GOVERNMENT_CALL_PURPOSES, getGovernmentCallPurpose, formatGovernmentNumber } from '../../lib/governmentCallRecipes'
 
@@ -16,6 +16,20 @@ export default function AIGovernmentCallModal({ client, caseRecord=null, onClose
   const [phone, setPhone] = useState(purpose.phone || '')
   const [objective, setObjective] = useState(purpose.objective)
   const [starting, setStarting] = useState(false)
+  const [employees, setEmployees] = useState([])
+  const [assignedToEmail, setAssignedToEmail] = useState('')
+
+  useEffect(() => {
+    let cancelled=false
+    supabase.from('employees').select('name,email,status,perm_comms')
+      .eq('status','Active').order('name')
+      .then(({data}) => {
+        if(cancelled)return
+        setEmployees((data||[]).filter(e=>e.email&&Number(e.perm_comms||0)>=1))
+      })
+      .catch(()=>{})
+    return()=>{cancelled=true}
+  }, [])
 
   function choose(key) {
     const next=getGovernmentCallPurpose(key)
@@ -47,6 +61,7 @@ export default function AIGovernmentCallModal({ client, caseRecord=null, onClose
           destination_number: phone,
           objective: objective.trim(),
           route_hints: purpose.routeHints || [],
+          assigned_to_email: assignedToEmail || null,
         }
       })
       if(error || !data?.ok) throw new Error(data?.error || error?.message || 'Unable to start AI government call')
@@ -96,6 +111,15 @@ export default function AIGovernmentCallModal({ client, caseRecord=null, onClose
             <label>Government Phone Number</label>
             <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="866-860-4259"/>
           </div>
+        </div>
+
+        <div className="field">
+          <label>Takeover Employee</label>
+          <select value={assignedToEmail} onChange={e=>setAssignedToEmail(e.target.value)}>
+            <option value="">Me — whoever starts this AI call</option>
+            {employees.map(e=><option key={e.email} value={String(e.email).toLowerCase()}>{e.name || e.email}</option>)}
+          </select>
+          <div style={{fontSize:10,color:'var(--t3)',marginTop:5}}>This person gets the live-representative alert and TAKE OVER NOW button.</div>
         </div>
 
         <div className="field">
