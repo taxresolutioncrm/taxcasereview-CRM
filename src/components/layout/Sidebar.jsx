@@ -65,7 +65,7 @@ const SECTIONS = [
     items: [
       { path: '/sms',       icon: SmsIcon,     label: 'SMS',           badge: 'sms',    section: 'sms' },
       { path: '/fax',       icon: FaxIcon,     label: 'Fax',           badge: 'fax',    section: 'fax' },
-      { path: '/ai-government-calls', icon: DialIcon, label: 'AI Government Calls', section: 'dialer' },
+      { path: '/ai-government-calls', icon: DialIcon, label: 'AI Government Calls', badge: 'ai-government', section: 'dialer' },
       { path: '/documents', icon: FolderIcon,  label: 'Documents',     section: 'documents' },
       { path: '/esign',     icon: SignIcon,    label: 'E-Signatures',  badge: 'esign',  section: 'esign' },
     ]
@@ -185,6 +185,7 @@ export default function Sidebar() {
   const [unreadInbox, setUnreadInbox] = useState(0)
   const [openTasks, setOpenTasks] = useState(0)
   const [unreadChat, setUnreadChat] = useState(0)
+  const [aiGovernmentNeedsTakeover, setAiGovernmentNeedsTakeover] = useState(0)
   useEffect(() => {
     if (!user?.email) return
     let cancelled = false
@@ -337,7 +338,7 @@ export default function Sidebar() {
     return () => { supabase.removeChannel(ch); document.removeEventListener('visibilitychange', onVisible) }
   }, [user])
 
-  const BADGE_COUNTS = {leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: (pendingEsign + signedEsign), email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents, payments: pendingPayments, invoices: overdueInvoices, ar: overdueReceivables }
+  const BADGE_COUNTS = {leads: newLeads, clients: newClients, cases: openCases, deadlines: dueSoonDeadlines, fax: unreadFax, sms: unreadSms, voicemails: unreadVoicemails, esign: (pendingEsign + signedEsign), email: unreadInbox, tasks: openTasks, chat: unreadChat, calendar: upcomingEvents, payments: pendingPayments, invoices: overdueInvoices, ar: overdueReceivables, 'ai-government': aiGovernmentNeedsTakeover }
 
   // SIDEBAR_UNSEEN_ACK_V1
   useEffect(() => {
@@ -394,6 +395,37 @@ export default function Sidebar() {
       .subscribe()
     return () => { supabase.removeChannel(ch); document.removeEventListener('visibilitychange', onVisible) }
   }, [user])
+
+  // AI Government Calls badge — only calls that require this employee's
+  // immediate takeover light up the sidebar. Active IVR/hold calls are visible
+  // on the dashboard but do not create an action badge until a live rep answers.
+  useEffect(() => {
+    if (!user?.email) return
+    let cancelled = false
+    async function loadAIGovernmentBadge() {
+      const { count, error } = await supabase
+        .from('ai_government_call_sessions')
+        .select('id', { count:'exact', head:true })
+        .eq('assigned_to_email', user.email.toLowerCase())
+        .in('status', ['human_detected','takeover_requested'])
+      if (error) {
+        console.error('[badge] AI Government Calls query failed:', error.message)
+        return
+      }
+      if (!cancelled) setAiGovernmentNeedsTakeover(count || 0)
+    }
+    loadAIGovernmentBadge()
+    function onVisible() { if (document.visibilityState === 'visible') loadAIGovernmentBadge() }
+    document.addEventListener('visibilitychange', onVisible)
+    const ch = supabase.channel('sidebar-ai-government-rt-' + user.email)
+      .on('postgres_changes', { event:'*', schema:'public', table:'ai_government_call_sessions' }, loadAIGovernmentBadge)
+      .subscribe()
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+      supabase.removeChannel(ch)
+    }
+  }, [user?.email])
 
   // Calendar badge — events starting today or in the next 24 hours
   useEffect(() => {
