@@ -5,7 +5,7 @@ import { AI_GOVERNMENT_CALL_PURPOSES, getGovernmentCallPurpose, formatGovernment
 export default function AIGovernmentCallModal({ client, caseRecord=null, onClose, onStarted, showToast }) {
   const recommended = useMemo(() => {
     const status = String(client?.irsStatus || client?.stateStatus || caseRecord?.caseType || '').toLowerCase()
-    if (/acs|collection|levy|lien/.test(status)) return 'irs-acs-business'
+    if (/acs|collection|levy|lien/.test(status)) return 'irs-acs'
     if (/installment|payment/.test(status)) return 'irs-payment-plan'
     return 'irs-investigation'
   }, [client, caseRecord])
