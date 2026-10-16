@@ -12,6 +12,7 @@ import TopBar   from './components/layout/TopBar'
 import GlobalTeamChatNotifier from './components/GlobalTeamChatNotifier'
 import { Modal, Toast } from './components/ui'
 import ActiveCallBar from './components/calling/ActiveCallBar'
+import AIGovernmentCallNotifier from './components/calling/AIGovernmentCallNotifier'
 import ImpersonationBanner from './components/ImpersonationBanner'
 import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
@@ -158,6 +159,7 @@ const ActivityReport= lazyWithRecovery('ActivityReport', () => import('./pages/A
 const Reports       = lazyWithRecovery('Reports', () => import('./pages/Reports'))
 const Settings      = lazyWithRecovery('Settings', () => import('./pages/Settings'))
 const Dialer        = lazyWithRecovery('Dialer', () => import('./pages/Dialer'))
+const AIGovernmentCalls = lazyWithRecovery('AIGovernmentCalls', () => import('./pages/AIGovernmentCalls'))
 const Chat          = lazyWithRecovery('Chat', () => import('./pages/Chat'))
 const Books         = lazyWithRecovery('Books', () => import('./pages/Books'))
 const FormaCorp     = lazyWithRecovery('FormaCorp', () => import('./pages/FormaCorp'))
@@ -260,6 +262,7 @@ function Shell() {
     <GmailSyncProvider>
     <div className="app-shell">
       <GlobalTeamChatNotifier />
+      <AIGovernmentCallNotifier />
       <Sidebar />
       <div className="main-area">
         <TopBar onNew={handleNew} />
@@ -315,6 +318,7 @@ function Shell() {
             <Route path="/reports"     element={<Guard section="reports"><Reports /></Guard>} />
             <Route path="/settings"    element={<Guard section="settings"><Settings /></Guard>} />
             <Route path="/dialer"      element={<Guard section="dialer"><Dialer /></Guard>} />
+            <Route path="/ai-government-calls" element={<Guard section="dialer"><AIGovernmentCalls /></Guard>} />
             <Route path="/chat"        element={<Guard section="chat"><Chat /></Guard>} />
             <Route path="/books"       element={<Guard section="books"><Books /></Guard>} />
             <Route path="/formacorp"   element={<Guard section="formacorp"><FormaCorp /></Guard>} />
