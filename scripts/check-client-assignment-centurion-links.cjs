@@ -9,6 +9,7 @@ const portal=read('src/pages/ClientPortal.jsx')
 const sign=read('src/pages/SignPage.jsx')
 const intake=read('src/components/FinancialIntakeWizard.jsx')
 const migration=read('supabase/migrations/20261016190500_client_admin_assignment.sql')
+const sendEmail=read('supabase/functions/send-email/index.ts')
 
 const checks=[
   ['client schema has explicit Admin assignment',migration.includes('add column if not exists "clientAdmin" text')],
@@ -27,6 +28,7 @@ const checks=[
   ['public e-sign resolves branding from signed document tenant',sign.includes('loadFirmBrandingPublic(data.tenant_id)')],
   ['public financial intake resolves branding from intake tenant',intake.includes('loadFirmBrandingPublic(rec?.tenant_id)')],
   ['client link emails stay tenant scoped',clients.includes("tenant_id: FIRM.tenantId || undefined")],
+  ['Centurion client links have platform Stalwart fallback',sendEmail.includes("['TRC-003','TRC-004']")&&sendEmail.includes("relayTenant?.tenant_code === 'TRC-004' ? 'Centurion Firm'")&&sendEmail.includes("via:'taxres_platform_relay'")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
