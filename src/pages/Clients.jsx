@@ -10,6 +10,7 @@ import IRSFormFiller from '../components/IRSFormFiller'
 import ErrorBoundary from '../components/ErrorBoundary'
 import InPlaceCaller from '../components/InPlaceCaller'
 import CallAISummaries from '../components/CallAISummaries'
+import AIGovernmentCallModal from '../components/calling/AIGovernmentCallModal'
 import ClientTransactions from '../components/ClientTransactions'
 import BookingWidget from '../components/BookingWidget'
 import QuickEmail from '../components/QuickEmail'
@@ -1081,6 +1082,7 @@ export default function Clients() {
   }
   const [fillerClient, setFillerClient] = useState(null)
   const [bookingClient, setBookingClient] = useState(null)
+  const [aiGovClient, setAiGovClient] = useState(null)
   // Quick add task inline
   const [quickTask,   setQuickTask]   = useState('')
   const [addingTask,  setAddingTask]  = useState(false)
@@ -2245,7 +2247,7 @@ export default function Clients() {
         <div className="card" style={{marginBottom:12}}>
           <div style={{fontSize:10,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Quick Actions</div>
           <div className="ovx">
-          <div style={{display:'grid',gridTemplateColumns:'repeat(10, 1fr)',gap:8,minWidth:800}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(11, 1fr)',gap:8,minWidth:800}}>
             <ActionBtn color="#0891b2" icon="📅" label="Schedule" sub="Book Appointment" onClick={()=>setBookingClient(c)}/>
             <ActionBtn color="#7c3aed" icon="✅" label="Add Task" sub="Assign Work" onClick={()=>openTaskComposer()}/>
             <ActionBtn color="#dc2626" icon="📠" label="Send Fax" sub="SignalWire Fax" onClick={()=>{setFaxClient(c);setFaxModal(true)}}/>
@@ -2261,6 +2263,7 @@ export default function Clients() {
             <ActionBtn color="#991b1b" icon="🔄" label="Rewrite" sub="Default → New Plan" onClick={()=>{setRewriteForm({resolutionFee:String(c.contractFee||''),paymentPlan:'',startDate:'',notes:'',services:Array.isArray(c.services)?c.services:[],sendVia:'email'});setRewriteModal(true)}}/>
             <ActionBtn color="#0ea5e9" icon="🔓" label="Client Portal" sub="Compliance Access" onClick={()=>{setPortalClient(c);setPortalModal(true)}}/>
             <ActionBtn color="#4338ca" icon="🧾" label="Tax Organizer" sub="Send for Filing" onClick={()=>{setOrgClient(c);setOrgModal(true)}}/>
+            <ActionBtn color="#2563eb" icon="🤖" label="AI Call" sub="IRS / State Agent" onClick={()=>setAiGovClient(c)}/>
           </div>
           </div>
         </div>
@@ -3054,6 +3057,9 @@ export default function Clients() {
 
         {bookingClient && (
           <BookingWidget mode="client" contact={{id:bookingClient.id, name:bookingClient.name, email:bookingClient.email, phone:bookingClient.phone}} onClose={()=>setBookingClient(null)}/>
+        )}
+        {aiGovClient && (
+          <AIGovernmentCallModal client={aiGovClient} onClose={()=>setAiGovClient(null)} onStarted={()=>navigate('/ai-government-calls')} showToast={showToast}/>
         )}
         {quickEmail && <QuickEmail contact={{ name: quickEmail.name, email: quickEmail.email }} kind="client" onSent={() => loadRelated(quickEmail.name)} onClose={() => setQuickEmail(null)} />}
 
