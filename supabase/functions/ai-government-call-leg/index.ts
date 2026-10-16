@@ -85,7 +85,7 @@ serve(async req=>{
     await db.from('ai_government_call_events').insert(event)
     if(session.outbound_call_id) await db.from('outbound_calls').update({status:'connected'}).eq('id',session.outbound_call_id)
     const cb=`${URL}/functions/v1/call-recorded?tenant=${encodeURIComponent(session.tenant_id)}&amp;conf=${encodeURIComponent(session.conference_name)}`
-    return xml(`<Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="true" record="record-from-start" recordingStatusCallback="${cb}">${esc(session.conference_name)}</Conference></Dial>`)
+    return xml(`<Say voice="Polly.Ruth-Neural" language="en-US">Thank you. One moment while I connect you to the tax professional.</Say><Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="true" record="record-from-start" recordingStatusCallback="${cb}">${esc(session.conference_name)}</Conference></Dial>`)
   }
 
   if(choice.action==='press'&&choice.digit){
