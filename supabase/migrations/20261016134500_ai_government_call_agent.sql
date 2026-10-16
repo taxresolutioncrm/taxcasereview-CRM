@@ -2,8 +2,8 @@
 create table if not exists ai_government_call_sessions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  client_id uuid references clients(id) on delete set null,
-  case_id uuid references cases(id) on delete set null,
+  client_id text references clients(id) on delete set null,
+  case_id text references cases(id) on delete set null,
   client_name text,
   requested_by_email text not null,
   requested_by_name text,
