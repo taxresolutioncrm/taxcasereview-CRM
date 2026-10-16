@@ -990,6 +990,30 @@ const MANUAL_SECTIONS = [
     ]
   },
   {
+    id: 'ai-government-calls', icon: '🤖', label: 'AI Government Calls', category: 'IRS Tools',
+    title: 'AI Government Calls',
+    content: [
+      { type: 'lead', text: 'AI Government Calls handles government auto-attendant navigation and hold time for an authorized TaxRes employee. Start from a client/case or from the AI Government Calls page, choose what you need accomplished, and TaxRes routes the call toward the correct department before handing a live representative to staff.' },
+      { type: 'flow', items: ['Choose call purpose', 'AI dials agency', 'AI listens to each prompt', 'High-confidence menu choice', 'Queue / hold monitoring', 'Live representative detected', 'Assigned employee alerted', 'Human takeover'] },
+      { type: 'h3', text: 'Choose the purpose, not the phone-tree digits' },
+      { type: 'steps', items: [
+        { title: 'Select the call objective', desc: 'Use Tax Investigation, ACS / Collections, Payment Plan, Penalty Abatement, State Tax Call, or Custom Government Call. The objective tells the agent what department it is trying to reach.' },
+        { title: 'Review the agency and number', desc: 'Known IRS workflows can prefill a tested number and route hints. State and custom calls allow staff to enter the appropriate agency and number because every auto attendant is different.' },
+        { title: 'Review the known route hints', desc: 'Hints are not blind timers. For the seeded IRS Business ACS workflow, the known path is 1 English, 2 tax practitioner, 3 business, 4 ACS. The agent still listens to the live prompt before sending each digit.' },
+        { title: 'Start the AI call', desc: 'The government call runs server-side. You can keep working elsewhere in TaxRes while the agent navigates the attendant and waits in the queue.' },
+      ]},
+      { type: 'h3', text: 'When a government representative answers' },
+      { type: 'steps', items: [
+        { title: 'TaxRes detects conversational human speech', desc: 'The agent requires a high-confidence live-representative signal. It does not treat ordinary IVR announcements or hold messages as a human handoff.' },
+        { title: 'Assigned staff receives the takeover alert', desc: 'The CRM displays a Government Representative Connected alert and an audible call notification for the employee who started the call.' },
+        { title: 'Click TAKE OVER NOW', desc: 'Your browser joins the exact existing conference. The government leg remains connected instead of being redialed.' },
+        { title: 'Conduct authentication and the taxpayer discussion yourself', desc: 'The AI call agent stops at the handoff boundary. It must not impersonate the practitioner, authenticate a taxpayer, reveal taxpayer facts, or conduct the substantive account conversation with the government representative.' },
+      ]},
+      { type: 'warn', text: 'If the AI cannot confidently map an auto-attendant prompt to the selected objective, it does not guess a digit. Use the live call trail to review what it heard and take over or adjust the call workflow as needed.' },
+      { type: 'info', text: 'The AI Government Calls dashboard shows active calls, hold state, live-representative handoffs, elapsed time, the last prompt heard, confidence, and the event trail. End AI Call stops the server-side call when the call is no longer needed.' },
+    ]
+  },
+  {
     id: 'timeclock', icon: '🕒', label: 'Time Clock', category: 'HR & Payroll',
     title: 'Time Clock',
     content: [
