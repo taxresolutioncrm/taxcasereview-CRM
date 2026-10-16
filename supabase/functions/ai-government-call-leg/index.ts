@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const URL=Deno.env.get('SUPABASE_URL')!
+const SUPABASE_URL=Deno.env.get('SUPABASE_URL')!
 const SERVICE=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const GROQ=Deno.env.get('GROQ_API_KEY')||''
 const esc=(v:any)=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')
@@ -50,8 +50,8 @@ async function decide(prompt:string,session:any){
 
 serve(async req=>{
   if(!['GET','POST'].includes(req.method)) return xml('<Hangup/>',405)
-  const u=new URL(req.url),id=u.searchParams.get('session')||'',token=u.searchParams.get('token')||''
-  const db=createClient(URL,SERVICE)
+  const u=new globalThis.URL(req.url),id=u.searchParams.get('session')||'',token=u.searchParams.get('token')||''
+  const db=createClient(SUPABASE_URL,SERVICE)
   const {data:session}=await db.from('ai_government_call_sessions').select('*').eq('id',id).eq('callback_token',token).limit(1).maybeSingle()
   if(!session) return xml('<Hangup/>',403)
   if(['completed','failed','cancelled'].includes(session.status)) return xml('<Hangup/>')
@@ -68,7 +68,7 @@ serve(async req=>{
     }
   }
 
-  const self=`${URL}/functions/v1/ai-government-call-leg?session=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`
+  const self=`${SUPABASE_URL}/functions/v1/ai-government-call-leg?session=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`
   if(!prompt){
     await db.from('ai_government_call_sessions').update({status:session.status==='dialing'?'navigating':session.status,updated_at:new Date().toISOString()}).eq('id',id)
     return xml(gather(self))
@@ -84,7 +84,7 @@ serve(async req=>{
     await db.from('ai_government_call_sessions').update(baseUpdate).eq('id',id)
     await db.from('ai_government_call_events').insert(event)
     if(session.outbound_call_id) await db.from('outbound_calls').update({status:'connected'}).eq('id',session.outbound_call_id)
-    const cb=`${URL}/functions/v1/call-recorded?tenant=${encodeURIComponent(session.tenant_id)}&amp;conf=${encodeURIComponent(session.conference_name)}`
+    const cb=`${SUPABASE_URL}/functions/v1/call-recorded?tenant=${encodeURIComponent(session.tenant_id)}&amp;conf=${encodeURIComponent(session.conference_name)}`
     return xml(`<Say voice="Polly.Ruth-Neural" language="en-US">Thank you. One moment while I connect you to the tax professional.</Say><Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="true" record="record-from-start" recordingStatusCallback="${cb}">${esc(session.conference_name)}</Conference></Dial>`)
   }
 
