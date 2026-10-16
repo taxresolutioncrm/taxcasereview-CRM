@@ -664,8 +664,6 @@ serve(async (req) => {
         effectiveClientId = requestedClient.id
       }
     }
-    if (!effectiveClientId) return reply({ ok: false, error: 'Document is not linked to a client', code: 'DOCUMENT_NOT_LINKED' })
-
     const storagePath = doc.storage_path
       || (String(doc.file_url || '').startsWith('storage://documents/')
         ? String(doc.file_url).replace('storage://documents/', '')
@@ -705,7 +703,9 @@ serve(async (req) => {
         throw new Error('Unsupported AI file type. Use PDF, JPG, PNG, WebP, CSV, TXT, JSON, XML, RTF, XLS/XLSX/XLSM, DOCX, or PPTX.')
       }
 
-      const crmContext = await loadCrmContext(userClient,String(effectiveClientId))
+      const crmContext = effectiveClientId
+        ? await loadCrmContext(userClient,String(effectiveClientId))
+        : { client: null, note: 'This document/fax is currently unassigned. Analyze the file itself without requiring a client.' }
       parts.push({
         text: TAX_PROMPT
           + '\n\nCURRENT_DOCUMENT: client=' + redactText(doc.client || doc.clientname || requestedClient?.name || 'unknown')
@@ -790,11 +790,13 @@ serve(async (req) => {
 
       let autoResolution = { resolved:0, remaining:0, resolutions:[] as any[] }
       try {
-        const { count: openCount } = await userClient.from('document_ai_questions')
-          .select('id', { count:'exact', head:true })
-          .eq('client_id',effectiveClientId).eq('status','open')
-        if (Number(openCount || 0) > 0) {
-          autoResolution = await resolveOpenQuestions(userClient,geminiKey,String(effectiveClientId))
+        if (effectiveClientId) {
+          const { count: openCount } = await userClient.from('document_ai_questions')
+            .select('id', { count:'exact', head:true })
+            .eq('client_id',effectiveClientId).eq('status','open')
+          if (Number(openCount || 0) > 0) {
+            autoResolution = await resolveOpenQuestions(userClient,geminiKey,String(effectiveClientId))
+          }
         }
       } catch (resolveErr:any) {
         console.error('[document-intelligence:auto-resolve]',redactText(resolveErr?.message||resolveErr))

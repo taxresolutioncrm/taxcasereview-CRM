@@ -47,6 +47,7 @@ export default function Fax() {
   const [faxView, setFaxView] = useState('cards')
   const [cardPreviewUrls, setCardPreviewUrls] = useState({})
   const [analyzingFaxId, setAnalyzingFaxId] = useState(null)
+  const [faxAiResult, setFaxAiResult] = useState(null)
   useEffect(() => {
     if (qp.get('new') === '1') {
       setForm(prev => ({ ...BLANK, from_number: prev.from_number || '', client_name: qp.get('client') || '', to_number: (qp.get('phone') || '').replace(/\D/g,'') }))
@@ -180,15 +181,11 @@ export default function Fax() {
     const matched = (faxRow.client_name
       ? clients.find(c => c.name.toLowerCase() === String(faxRow.client_name).trim().toLowerCase())
       : null) || matchByPhone(faxRow.from_number)
-    if (!matched?.id) {
-      showToast('Assign this fax to a client before running AI so the results go to the correct file.', 'err')
-      return
-    }
-
     setAnalyzingFaxId(faxRow.id)
+    setFaxAiResult(null)
     showToast('✦ AI is analyzing this fax…')
     try {
-      const tenantId = matched.tenant_id || myTenantId
+      const tenantId = matched?.tenant_id || myTenantId
       if (!tenantId) throw new Error('Could not resolve this office')
 
       let storagePath = faxRow.storage_path || (
@@ -204,7 +201,7 @@ export default function Fax() {
         if (!response.ok) throw new Error('Could not copy the fax into secure document storage')
         const blob = await response.blob()
         const safeName = String(faxRow.file_name || ('fax_' + faxRow.id + '.pdf')).replace(/[^a-zA-Z0-9._-]+/g,'-')
-        storagePath = `${tenantId}/docs/${matched.id}/Correspondence/${Date.now()}_${safeName}`
+        storagePath = `${tenantId}/docs/${matched?.id || 'unassigned-faxes'}/Correspondence/${Date.now()}_${safeName}`
         const { error: uploadError } = await supabase.storage.from('documents').upload(storagePath, blob, {
           contentType: blob.type || 'application/pdf',
           upsert: false,
@@ -223,9 +220,9 @@ export default function Fax() {
       if (!doc) {
         const { data: created, error: createError } = await supabase.from('documents').insert([{
           tenant_id: tenantId,
-          client_id: matched.id,
-          client: matched.name,
-          clientname: matched.name,
+          client_id: matched?.id || null,
+          client: matched?.name || null,
+          clientname: matched?.name || null,
           name: faxRow.subject || `Fax — ${faxRow.from_number || 'Unknown number'}`,
           docType: 'Correspondence',
           notes: `Received via fax on ${faxRow.created_at ? new Date(faxRow.created_at).toLocaleString() : 'unknown date'}`,
@@ -240,10 +237,11 @@ export default function Fax() {
       }
 
       const { data, error } = await supabase.functions.invoke('document-intelligence', {
-        body: { documentId: doc.id, clientId: matched.id }
+        body: { documentId: doc.id, ...(matched?.id ? { clientId: matched.id } : {}) }
       })
       if (error || data?.error || data?.ok === false) throw new Error(data?.error || error?.message || 'AI analysis failed')
-      showToast('✅ AI fax analysis complete — results are in AI Intelligence')
+      setFaxAiResult({ faxId: faxRow.id, documentType: data?.documentType || 'Fax document', summary: data?.summary || 'Analysis complete.' })
+      showToast(matched?.id ? '✅ AI fax analysis complete — results saved to AI Intelligence' : '✅ AI fax analysis complete')
     } catch (e) {
       showToast('AI fax analysis failed: ' + (e?.message || e), 'err')
     } finally {
@@ -562,8 +560,15 @@ export default function Fax() {
               <button className='btn sec' style={{fontSize:11}} disabled={analyzingFaxId===previewFaxRow.id} onClick={()=>analyzeFax(previewFaxRow)}>{analyzingFaxId===previewFaxRow.id?'Analyzing…':'✦ AI Analyze'}</button>
               <button className='btn sec' style={{fontSize:11}} onClick={()=>openFaxNewTab(previewFaxRow)}>Open in new tab ↗</button>
               <button className='btn sec' style={{fontSize:11}} onClick={()=>downloadFax(previewFaxRow)}>Download ↓</button>
+              {faxAiResult?.faxId===previewFaxRow.id&&<span style={{fontSize:10,color:'var(--t3)',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>AI: {faxAiResult.documentType}</span>}
               <button className='btn sec' aria-label='Close fax preview' style={{fontSize:16,padding:'4px 9px'}} onClick={()=>setPreviewFaxRow(null)}>×</button>
             </div>
+            {faxAiResult?.faxId===previewFaxRow.id&&(
+              <div style={{padding:'10px 14px',borderBottom:'1px solid var(--br)',background:'rgba(99,102,241,.08)'}}>
+                <div style={{fontSize:11,fontWeight:900,color:'var(--tx)',marginBottom:4}}>✦ AI Analysis · {faxAiResult.documentType}</div>
+                <div style={{fontSize:11,color:'var(--t2)',lineHeight:1.45}}>{faxAiResult.summary}</div>
+              </div>
+            )}
             <div style={{flex:1,minHeight:0,background:'#eef2f7',position:'relative'}}>
               {previewLoading ? (
                 <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--t3)',fontSize:13}}>Loading fax preview…</div>
