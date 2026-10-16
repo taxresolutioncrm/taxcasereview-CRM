@@ -8,6 +8,7 @@ const notifier=read('src/components/calling/AIGovernmentCallNotifier.jsx')
 const calls=read('src/context/CallContext.jsx')
 const clients=read('src/pages/Clients.jsx')
 const cases=read('src/pages/Cases.jsx')
+const dialer=read('src/pages/Dialer.jsx')
 const app=read('src/App.jsx')
 const sidebar=read('src/components/layout/Sidebar.jsx')
 const migration=read('supabase/migrations/20261016134500_ai_government_call_agent.sql')
@@ -39,6 +40,8 @@ const checks=[
   ['dashboard exposes takeover and cancel controls',dashboard.includes('TAKE OVER NOW')&&dashboard.includes("'ai-government-call-cancel'")],
   ['global assigned-staff alert exists',notifier.includes('Government Representative Connected')&&notifier.includes('assigned_to_email')&&notifier.includes('playSound')],
   ['client record has AI Call trigger',clients.includes('AIGovernmentCallModal')&&clients.includes('label="AI Call"')&&clients.includes('IRS / State Agent')],
+  ['main Dialer exposes AI Government Call trigger',dialer.includes('AIGovernmentCallModal')&&dialer.includes('🤖 AI Government Call')&&dialer.includes("navigate('/ai-government-calls')")],
+  ['Dialer AI trigger is family-shared not tenant hard-coded',!dialer.includes('TRC-004')&&!dialer.includes('Centurion Firm')&&!dialer.includes('TRC-003')],
   ['case record has AI Call trigger',cases.includes('AIGovernmentCallModal')&&cases.includes('🤖 AI Call')],
   ['app route and global notifier mounted',app.includes('AIGovernmentCallNotifier')&&app.includes('path="/ai-government-calls"')],
   ['sidebar navigation is under IRS and state resolution',sidebar.includes("path: '/ai-government-calls'")&&sidebar.includes("label: 'AI Government Calls'")],
