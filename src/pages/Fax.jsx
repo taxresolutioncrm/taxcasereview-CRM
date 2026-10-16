@@ -17,7 +17,7 @@ function fmtPhone(v) {
 }
 
 export default function Fax() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [logs,     setLogs]     = useState([])
   const [clients,  setClients]  = useState([])
   const [leads,    setLeads]    = useState([])
@@ -46,6 +46,7 @@ export default function Fax() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [faxView, setFaxView] = useState('cards')
   const [cardPreviewUrls, setCardPreviewUrls] = useState({})
+  const [analyzingFaxId, setAnalyzingFaxId] = useState(null)
   useEffect(() => {
     if (qp.get('new') === '1') {
       setForm(prev => ({ ...BLANK, from_number: prev.from_number || '', client_name: qp.get('client') || '', to_number: (qp.get('phone') || '').replace(/\D/g,'') }))
@@ -66,7 +67,7 @@ export default function Fax() {
   async function load() {
     const [{ data:f },{ data:c },{ data:l },{ data:s }] = await Promise.all([
       supabase.from('fax_logs').select('*').order('created_at',{ascending:false}),
-      supabase.from('clients').select('id,name,phone'),
+      supabase.from('clients').select('id,name,phone,tenant_id'),
       supabase.from('leads').select('id,name,phone'),
       supabase.from('settings').select('sw_space_url,sw_inbound_did,firm_fax_number').limit(1).maybeSingle(),
     ])
@@ -171,6 +172,82 @@ export default function Fax() {
     } catch (e) {
       if (tab) tab.close()
       showToast('Could not open fax: ' + (e?.message || e), 'err')
+    }
+  }
+
+  async function analyzeFax(faxRow) {
+    if (!faxRow?.id || !faxRow.file_url) { showToast('This fax has no document attached', 'err'); return }
+    const matched = (faxRow.client_name
+      ? clients.find(c => c.name.toLowerCase() === String(faxRow.client_name).trim().toLowerCase())
+      : null) || matchByPhone(faxRow.from_number)
+    if (!matched?.id) {
+      showToast('Assign this fax to a client before running AI so the results go to the correct file.', 'err')
+      return
+    }
+
+    setAnalyzingFaxId(faxRow.id)
+    showToast('✦ AI is analyzing this fax…')
+    try {
+      const tenantId = matched.tenant_id || myTenantId
+      if (!tenantId) throw new Error('Could not resolve this office')
+
+      let storagePath = faxRow.storage_path || (
+        String(faxRow.file_url || '').startsWith('storage://documents/')
+          ? String(faxRow.file_url).replace('storage://documents/','')
+          : ''
+      )
+
+      if (!storagePath) {
+        const sourceUrl = await resolveFaxUrl(faxRow)
+        if (!sourceUrl) throw new Error('Fax document URL unavailable')
+        const response = await fetch(sourceUrl)
+        if (!response.ok) throw new Error('Could not copy the fax into secure document storage')
+        const blob = await response.blob()
+        const safeName = String(faxRow.file_name || ('fax_' + faxRow.id + '.pdf')).replace(/[^a-zA-Z0-9._-]+/g,'-')
+        storagePath = `${tenantId}/docs/${matched.id}/Correspondence/${Date.now()}_${safeName}`
+        const { error: uploadError } = await supabase.storage.from('documents').upload(storagePath, blob, {
+          contentType: blob.type || 'application/pdf',
+          upsert: false,
+        })
+        if (uploadError) throw uploadError
+      }
+
+      let doc = null
+      const { data: existing } = await supabase.from('documents')
+        .select('id,client_id,storage_path')
+        .eq('storage_path', storagePath)
+        .limit(1)
+        .maybeSingle()
+      doc = existing || null
+
+      if (!doc) {
+        const { data: created, error: createError } = await supabase.from('documents').insert([{
+          tenant_id: tenantId,
+          client_id: matched.id,
+          client: matched.name,
+          clientname: matched.name,
+          name: faxRow.subject || `Fax — ${faxRow.from_number || 'Unknown number'}`,
+          docType: 'Correspondence',
+          notes: `Received via fax on ${faxRow.created_at ? new Date(faxRow.created_at).toLocaleString() : 'unknown date'}`,
+          file_url: `storage://documents/${storagePath}`,
+          storage_path: storagePath,
+          file_name: faxRow.file_name || `fax_${faxRow.id}.pdf`,
+          file_size: null,
+          created_at: new Date().toISOString(),
+        }]).select('id').single()
+        if (createError || !created?.id) throw createError || new Error('Could not create the client document')
+        doc = created
+      }
+
+      const { data, error } = await supabase.functions.invoke('document-intelligence', {
+        body: { documentId: doc.id, clientId: matched.id }
+      })
+      if (error || data?.error || data?.ok === false) throw new Error(data?.error || error?.message || 'AI analysis failed')
+      showToast('✅ AI fax analysis complete — results are in AI Intelligence')
+    } catch (e) {
+      showToast('AI fax analysis failed: ' + (e?.message || e), 'err')
+    } finally {
+      setAnalyzingFaxId(null)
     }
   }
 
@@ -419,6 +496,8 @@ export default function Fax() {
                     <div style={{display:'flex',alignItems:'center',gap:5,marginTop:7,flexWrap:'wrap'}}>
                       <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>previewFax(l)}>Preview</button>
                       <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>openFaxNewTab(l)}>Open ↗</button>
+                    {inbound&&l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} disabled={analyzingFaxId===l.id} onClick={()=>analyzeFax(l)}>{analyzingFaxId===l.id?'Analyzing…':'✦ AI Analyze'}</button>}
+                      {inbound&&l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} disabled={analyzingFaxId===l.id} onClick={()=>analyzeFax(l)}>{analyzingFaxId===l.id?'Analyzing…':'✦ AI Analyze'}</button>}
                       <button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>downloadFax(l)}>↓</button>
                       {inbound&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>toggleUnread(l)}>{l.is_read===false?'Mark read':'Mark unread'}</button>}
                       {inbound&&l.file_url&&<button className='btn sec' style={{fontSize:10,padding:'4px 7px'}} onClick={()=>{setAttachPickerFor(pickerOpen?null:l.id);setAttachSearch('');setAttachFolder('Correspondence')}}>📎</button>}
@@ -480,6 +559,7 @@ export default function Fax() {
                   {previewFaxRow.file_name ? ' · '+previewFaxRow.file_name : ''}
                 </div>
               </div>
+              <button className='btn sec' style={{fontSize:11}} disabled={analyzingFaxId===previewFaxRow.id} onClick={()=>analyzeFax(previewFaxRow)}>{analyzingFaxId===previewFaxRow.id?'Analyzing…':'✦ AI Analyze'}</button>
               <button className='btn sec' style={{fontSize:11}} onClick={()=>openFaxNewTab(previewFaxRow)}>Open in new tab ↗</button>
               <button className='btn sec' style={{fontSize:11}} onClick={()=>downloadFax(previewFaxRow)}>Download ↓</button>
               <button className='btn sec' aria-label='Close fax preview' style={{fontSize:16,padding:'4px 9px'}} onClick={()=>setPreviewFaxRow(null)}>×</button>
