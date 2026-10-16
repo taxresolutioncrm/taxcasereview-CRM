@@ -88,6 +88,7 @@ const SECTIONS = [
       { path: '/irsforms',    icon: FormIcon,      label: 'IRS Forms & Docs',      section: 'irsforms' },
       { path: '/stateforms',  icon: FormIcon,      label: 'State Forms & Docs',    section: 'stateforms' },
       { path: '/irsreference', icon: PhoneBookIcon, label: 'IRS & State Reference', section: 'irsreference' },
+      { path: '/ai-government-calls', icon: DialIcon, label: 'AI Government Calls', section: 'dialer' },
       { path: '/irsportal',   icon: FormIcon,      label: 'IRS Portal',            section: 'transcripts' },
     ]
   },

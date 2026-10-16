@@ -185,6 +185,9 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   // calllog.raw_call_id created by the DB sync trigger, so post-call recap
   // enriches that one row instead of inserting a duplicate history row.
   const activeOutboundCallIdRef = useRef(null)
+  // Active AI government session, when a live agency representative has been handed to this browser.
+  const activeAIGovSessionRef = useRef(null)
+  const activeAIGovTenantRef = useRef(null)
   const uiStartedRef = useRef(false)
   const pageUnloadingRef = useRef(false)
   const callStartedAtRef = useRef(null)
@@ -890,6 +893,108 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     }
   }
 
+  async function joinAIGovernmentCall(session) {
+    if (!session?.id || !session?.conference_name) {
+      showCallToast('AI government call is missing its conference.')
+      return false
+    }
+    if (calling || uiStartedRef.current) {
+      showCallToast('Finish the current call before taking over the AI call.')
+      return false
+    }
+    if (relayStatus !== 'ready' || !relayRef.current || !callerNumberRef.current) {
+      showCallToast('Calling is not connected yet — wait a moment and try again.')
+      return false
+    }
+    if (!['human_detected','takeover_requested'].includes(String(session.status || ''))) {
+      showCallToast('The government representative is not waiting for takeover.')
+      return false
+    }
+
+    const now = new Date().toISOString()
+    const { data: claimed, error: claimErr } = await supabase
+      .from('ai_government_call_sessions')
+      .update({ status:'takeover_requested', updated_at:now })
+      .eq('id', session.id)
+      .in('status', ['human_detected','takeover_requested'])
+      .select('id')
+    if (claimErr || !claimed?.length) {
+      showCallToast('This AI call is no longer available for takeover.')
+      return false
+    }
+
+    const activeMeta = {
+      id: session.client_id || null,
+      name: session.client_name || session.agency || 'Government Call',
+      phone: session.destination_number,
+      entityType: session.client_id ? 'client' : 'manual',
+      status: 'AI Government Call',
+      aiGovernmentSessionId: session.id,
+    }
+
+    uiStartedRef.current = true
+    activeAIGovSessionRef.current = session.id
+    activeAIGovTenantRef.current = session.tenant_id || null
+    activeInboundCallsidRef.current = null
+    activeOutboundCallIdRef.current = session.outbound_call_id || null
+    activeConferenceRef.current = session.conference_name
+    callStartedAtRef.current = Date.now()
+    setActive(activeMeta)
+    setCalling(true)
+    setElapsed(0)
+    setLogForm(BLANK_LOG)
+    timerRef.current = setInterval(() => setElapsed(v => v + 1), 1000)
+    persistCallSession({
+      kind:'outbound',
+      conferenceName:session.conference_name,
+      outboundCallId:session.outbound_call_id || null,
+      active:activeMeta,
+      startedAt:callStartedAtRef.current,
+      aiGovernmentSessionId:session.id,
+    })
+
+    try {
+      const call = await relayRef.current.newCall({
+        destinationNumber: callerNumberRef.current,
+        callerNumber: callerNumberRef.current,
+      })
+      liveCallRef.current = call
+      activeCallRef.current = call
+      setMuted(false)
+      setOnHold(false)
+      const joinedAt = new Date().toISOString()
+      await supabase.from('ai_government_call_sessions')
+        .update({ status:'human_joined', human_joined_at:joinedAt, updated_at:joinedAt })
+        .eq('id', session.id)
+      await supabase.from('ai_government_call_events').insert({
+        tenant_id: session.tenant_id,
+        session_id: session.id,
+        event_type: 'human_joined',
+        action: 'browser_takeover',
+        meta: { email: user?.email || null },
+      })
+      showCallToast('☎ Government representative connected — you have the call.')
+      return true
+    } catch (err) {
+      clearInterval(timerRef.current)
+      uiStartedRef.current = false
+      activeAIGovSessionRef.current = null
+      activeAIGovTenantRef.current = null
+      activeConferenceRef.current = null
+      activeOutboundCallIdRef.current = null
+      setCalling(false)
+      setActive(null)
+      setElapsed(0)
+      clearPersistedCallSession()
+      await supabase.from('ai_government_call_sessions')
+        .update({ status:'human_detected', updated_at:new Date().toISOString() })
+        .eq('id', session.id)
+      console.error('[ai-government-call] browser takeover failed:', err)
+      showCallToast('Could not join the government call: ' + (err?.message || err))
+      return false
+    }
+  }
+
   function startCall(lead) {
     if (relayStatus !== 'ready') { showCallToast('Calling isn\'t connected yet — wait a moment and try again.'); return false }
     const digits = lead.phone?.replace(/\D/g, '')
@@ -1024,6 +1129,24 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     activeCallRef.current = null
 
     clearPersistedCallSession()
+    const aiGovSessionId = activeAIGovSessionRef.current
+    const aiGovTenantId = activeAIGovTenantRef.current
+    activeAIGovSessionRef.current = null
+    activeAIGovTenantRef.current = null
+    if (aiGovSessionId) {
+      const endedAt = new Date().toISOString()
+      await supabase.from('ai_government_call_sessions')
+        .update({ status:'completed', ended_at:endedAt, updated_at:endedAt })
+        .eq('id', aiGovSessionId)
+        .in('status', ['human_detected','takeover_requested','human_joined'])
+      await supabase.from('ai_government_call_events').insert({
+        tenant_id: aiGovTenantId,
+        session_id: aiGovSessionId,
+        event_type: 'human_completed',
+        action: 'conference_ended_by_staff',
+        meta: { email: user?.email || null },
+      }).then(({ error }) => error && console.warn('[ai-government-call] completion event skipped:', error.message))
+    }
     callStartedAtRef.current = null
     activeConferenceRef.current = null
     setMuted(false)
@@ -1228,7 +1351,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     outboundCallerId, setOutboundCallerId,
     logForm, setLogForm, logModal, setLogModal, saving, callToast,
     OUTCOMES, formatTime,
-    answerIncoming, declineIncoming, startCall, endCall, cancelCall,
+    answerIncoming, declineIncoming, startCall, joinAIGovernmentCall, endCall, cancelCall,
     muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer,
     sendDTMF: (digit) => {
       if (activeCallRef.current?.dtmf) {

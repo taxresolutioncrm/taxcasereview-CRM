@@ -252,3 +252,15 @@ verify_jwt = false
 # Public invalidation-only endpoint; it accepts no row data and performs no reads.
 [functions.metrics-signal]
 verify_jwt = false
+
+# AI Government Call Agent. Browser controls require authenticated staff.
+# SignalWire invokes leg/status callbacks directly; each callback validates
+# the opaque per-session token before reading or mutating call state.
+[functions.ai-government-call-start]
+verify_jwt = true
+[functions.ai-government-call-leg]
+verify_jwt = false
+[functions.ai-government-call-status]
+verify_jwt = false
+[functions.ai-government-call-cancel]
+verify_jwt = true

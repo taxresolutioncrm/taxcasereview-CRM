@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { triggerWorkflow } from '../lib/triggerWorkflow'
 import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
+import AIGovernmentCallModal from '../components/calling/AIGovernmentCallModal'
 import { CASE_STATUSES as STATUSES, CASE_STATUS_COLORS as STATUS_C, ACTIVE_STATUSES, PENDING_STATUSES, RESOLVED_STATUSES } from '../lib/caseStatuses'
 const CASE_TYPES = ['OIC','Installment Agreement','CNC','Penalty Abatement','Lien Withdrawal','TFRP','Appeals','Payroll Tax','Audit','Liens/Levies','Unfiled Returns','Tax Investigation','Other']
 
@@ -56,6 +57,7 @@ export default function Cases() {
   const [newNote,     setNewNote]     = useState('')
   const [addingNote,  setAddingNote]  = useState(false)
   const [showAllCaseNotes, setShowAllCaseNotes] = useState(false)
+  const [aiGovCase, setAiGovCase] = useState(null)
 
   // Guard: don't load until auth session confirmed — prevents wrong-tenant data on hard refresh
   useEffect(() => { if (user) load() }, [user?.id])
@@ -219,6 +221,7 @@ export default function Cases() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => { setDetail(null); navigate('/cases', { replace: true }) }}>← Cases</button>
           <div style={{ flex: 1 }} />
+          <button className="btn" onClick={() => setAiGovCase(c)}>🤖 AI Call</button>
           <button className="btn pri" onClick={() => openEdit(c)}>✏️ Edit Case</button>
           <button className="btn del" onClick={() => deleteCase(c.id)}>🗑</button>
         </div>
@@ -362,6 +365,16 @@ export default function Cases() {
             ))
           }
         </div>
+
+        {aiGovCase && (
+          <AIGovernmentCallModal
+            client={clients.find(x => String(x.name||'').trim().toLowerCase() === String(c.clientName||'').trim().toLowerCase()) || { name:c.clientName, irsBalance:c.irsBalance }}
+            caseRecord={c}
+            onClose={()=>setAiGovCase(null)}
+            onStarted={()=>navigate('/ai-government-calls')}
+            showToast={showToast}
+          />
+        )}
 
         {editCase && (
           <CaseModal form={form} fld={fld} reps={reps} saving={saving} onSave={saveEdit}
