@@ -65,6 +65,7 @@ const SECTIONS = [
     items: [
       { path: '/sms',       icon: SmsIcon,     label: 'SMS',           badge: 'sms',    section: 'sms' },
       { path: '/fax',       icon: FaxIcon,     label: 'Fax',           badge: 'fax',    section: 'fax' },
+      { path: '/ai-government-calls', icon: DialIcon, label: 'AI Government Calls', section: 'dialer' },
       { path: '/documents', icon: FolderIcon,  label: 'Documents',     section: 'documents' },
       { path: '/esign',     icon: SignIcon,    label: 'E-Signatures',  badge: 'esign',  section: 'esign' },
     ]
@@ -88,7 +89,6 @@ const SECTIONS = [
       { path: '/irsforms',    icon: FormIcon,      label: 'IRS Forms & Docs',      section: 'irsforms' },
       { path: '/stateforms',  icon: FormIcon,      label: 'State Forms & Docs',    section: 'stateforms' },
       { path: '/irsreference', icon: PhoneBookIcon, label: 'IRS & State Reference', section: 'irsreference' },
-      { path: '/ai-government-calls', icon: DialIcon, label: 'AI Government Calls', section: 'dialer' },
       { path: '/irsportal',   icon: FormIcon,      label: 'IRS Portal',            section: 'transcripts' },
     ]
   },
