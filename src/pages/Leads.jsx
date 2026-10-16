@@ -413,7 +413,7 @@ export default function Leads() {
   const MODEL_CLOSED = activeModel.closedStatuses // statuses that close a lead
   const { id: urlLeadId } = useParams()
   const [searchParams] = useSearchParams()
-  const isTaxAdvisor = role === 'Tax Advisor'
+  const isTaxAdvisor = role === 'Tax Advisor' || role === 'Sales Rep'
 
   // Cache settings at load time — avoids re-fetching signalwire_backend on every action
   const settingsRef = useRef(null)
@@ -1664,7 +1664,7 @@ export default function Leads() {
         if (Array.isArray(l.services)) return l.services
         try { return JSON.parse(l.services || '[]') } catch { return [] }
       })(),
-      salesRep: l.salesRep || null,
+      salesRep: l.salesRep || l.assignedTo || null,
       contractFee: l.contractFee || null,
       trade1Amount: l.trade1Amount || null, trade1Date: l.trade1Date || null,
       trade2Amount: l.trade2Amount || null, trade2Date: l.trade2Date || null,
