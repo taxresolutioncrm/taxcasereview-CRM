@@ -48,7 +48,7 @@ const IRS_STATUS_OPTIONS = ['ACS','Notice Status','Queue for ACS','Currently Not
 
 const BLANK_DEP = { name:'', ssn:'', dob:'', relationship:'Child' }
 const BLANK = {
-  clientType:'Individual', name:'', business_name:'', taxAssociate:'', phone:'', phone2:'', email:'',
+  clientType:'Individual', name:'', business_name:'', taxAssociate:'', clientAdmin:'', salesRep:'', phone:'', phone2:'', email:'',
   biz_street:'', biz_city:'', biz_state:'', biz_zip:'', biz_same_as_personal:false,
   street:'', city:'', state:'', zip:'', county:'',
   ssn:'', ein:'', dobM:'', dobD:'', dobY:'',
@@ -81,7 +81,7 @@ const FIELD_LABELS = {
   city:'City', state:'State', zip:'Zip', ssn:'SSN', ein:'EIN', dob:'DOB',
   filingStatus:'Filing Status', maritalStatus:'Marital Status', occupation:'Occupation',
   employer:'Employer', spouseName:'Spouse Name', spouseSsn:'Spouse SSN', spouseDob:'Spouse DOB',
-  taxFee:'Tax Fee', source:'Source', assignedTo:'Assigned To', businessName:'Business Name',
+  taxFee:'Tax Fee', source:'Source', assignedTo:'Associate', clientAdmin:'Admin', salesRep:'Sales Rep', businessName:'Business Name',
   business_name:'Business Name', clientType:'Client Type', irsOrState:'IRS or State', dependents:'Dependents',
 }
 // Fields that either change automatically as a side-effect of other actions
@@ -639,6 +639,7 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
       orgId = existing.id
     } else {
       const { data: created, error: createErr } = await supabase.from('tax_organizer_responses').insert([{
+        tenant_id: FIRM.tenantId || undefined,
         client_name: client.name, client_email: client.email || '', tax_year: year.trim(),
         answers: {}, status: 'In Progress', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }]).select().single()
@@ -1220,11 +1221,11 @@ export default function Clients() {
     if (!myTenantId) { setClients([]); setEmployees([]); return }
     const [{ data:cl },{ data:em },{ data:cats },{ data:sts }] = await Promise.all([
       supabase.from('clients')
-        .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+        .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
         .eq('tenant_id', myTenantId)
         .or('archived.eq.true,deleted_at.is.null')
         .order('name',{ascending:true}),
-      supabase.from('employees').select('id,name,avatar_url,email,tenant_id').eq('tenant_id', myTenantId),
+      supabase.from('employees').select('id,name,avatar_url,email,tenant_id,access,role,title,status').eq('tenant_id', myTenantId).eq('status','Active'),
       supabase.from('workflow_status_categories').select('*').eq('tenant_id', myTenantId).order('sort_order'),
       supabase.from('workflow_statuses').select('*').eq('tenant_id', myTenantId).order('sort_order'),
     ])
@@ -1346,6 +1347,8 @@ export default function Clients() {
         (c.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,'')) ||
         (c.assignedTo||'').toLowerCase().includes(q) ||
         (c.taxAssociate||'').toLowerCase().includes(q) ||
+        (c.clientAdmin||'').toLowerCase().includes(q) ||
+        (c.salesRep||'').toLowerCase().includes(q) ||
         (c.city||'').toLowerCase().includes(q) ||
         (c.business_name||'').toLowerCase().includes(q) ||
         (c.spouseName||'').toLowerCase().includes(q) ||
@@ -1408,7 +1411,7 @@ export default function Clients() {
     setModal(false); setForm(BLANK)
     // Reload then navigate straight into the new client's detail
     const { data: allClients } = await supabase.from('clients')
-      .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+      .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
       .eq('tenant_id', myTenantId)
       .or('archived.eq.true,deleted_at.is.null')
       .order('name', { ascending: true })
@@ -2032,6 +2035,17 @@ export default function Clients() {
     }
     // Update the client's current IRS or State status inline (+ log a note).
     const STATUS_FIELD_LABEL={irsStatus:'IRS status',stateStatus:'State status',irsStatusOther:'IRS status detail',stateStatusOther:'State status detail'}
+    const applyClientAssignment=async(field,value,assignmentLabel)=>{
+      if(!['assignedTo','clientAdmin','salesRep'].includes(field)) return
+      const prev=c[field]||''
+      if(prev===(value||'')) return
+      const {error}=await supabase.from('clients').update({[field]:value||null}).eq('tenant_id',myTenantId).eq('id',c.id)
+      if(error){showToast('Error updating '+assignmentLabel+': '+error.message);return}
+      const {data}=await supabase.from('clients').select('*').eq('tenant_id',myTenantId).eq('id',c.id).single()
+      if(data)setDetail(data)
+      await logAndRefreshNote(`👥 ${assignmentLabel} changed: ${prev||'Unassigned'} → ${value||'Unassigned'}`)
+    }
+
     const applyStatusField=async(field,value)=>{
       const prev=c[field]||''
       if(prev===(value||'')) return
@@ -2099,7 +2113,22 @@ export default function Clients() {
                 {/* Renders from pipelineStage itself, so it can never disagree
                     with the pipeline row below — one source of truth. */}
                 <Bdg s={'📊 '+pipelineStageLabel(c.pipelineStage||DEFAULT_PIPELINE_STAGE)} c="ba" style={{fontSize:13,padding:'4px 10px'}}/>
-                {c.assignedTo&&<Bdg s={'👤 '+c.assignedTo} c="bn" style={{fontSize:13,padding:'4px 10px'}}/>}
+                <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginLeft:4}}>
+                  {[
+                    ['Associate','assignedTo',c.assignedTo],
+                    ['Admin','clientAdmin',c.clientAdmin],
+                    ['Sales Rep','salesRep',c.salesRep],
+                  ].map(([assignmentLabel,field,value])=>(
+                    <label key={field} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:10,color:'var(--t3)',fontWeight:700}}>
+                      <span>{assignmentLabel}:</span>
+                      <select value={value||''} onChange={e=>applyClientAssignment(field,e.target.value,assignmentLabel)}
+                        style={{fontSize:11,padding:'4px 26px 4px 8px',borderRadius:16,background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',minWidth:145}}>
+                        <option value="">Unassigned</option>
+                        {reps.map(r=><option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
             {c.internal_note && (
@@ -2980,8 +3009,9 @@ export default function Clients() {
                   <DR label="State Deadline" val={c.stateDeadline}/>
                 </>
               )}
-              <DR label={label("assignedTo","Tax Advisor")} val={c.assignedTo}/>
-              <DR label={label("taxAssociate","Tax Associate")} val={c.taxAssociate}/>
+              <DR label="Associate" val={c.assignedTo}/>
+              <DR label="Admin" val={c.clientAdmin}/>
+              <DR label="Sales Rep" val={c.salesRep}/>
               <DR label="Client Since" val={c.clientSince}/>
             </div>
 
@@ -3989,15 +4019,19 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
               <option>Active</option><option>Inactive</option><option>Prospect</option>
             </select>
           </div>
-          <div className="field"><label>{label("assignedTo","Tax Advisor")}</label>
+          <div className="field"><label>Associate</label>
             <select value={form.assignedTo||''} onChange={e=>fld('assignedTo',e.target.value)}>
               <option value="">Unassigned</option>{reps.map(r=><option key={r}>{r}</option>)}
             </select>
           </div>
-          {/* Named associate overrides the round-robin pick on workflow steps. */}
-          <div className="field"><label>{label("taxAssociate","Tax Associate")}</label>
-            <select value={form.taxAssociate||''} onChange={e=>fld('taxAssociate',e.target.value)}>
-              <option value="">Auto (round-robin)</option>{reps.map(r=><option key={r}>{r}</option>)}
+          <div className="field"><label>Admin</label>
+            <select value={form.clientAdmin||''} onChange={e=>fld('clientAdmin',e.target.value)}>
+              <option value="">Unassigned</option>{reps.map(r=><option key={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>Sales Rep</label>
+            <select value={form.salesRep||''} onChange={e=>fld('salesRep',e.target.value)}>
+              <option value="">Unassigned</option>{reps.map(r=><option key={r}>{r}</option>)}
             </select>
           </div>
         </div>

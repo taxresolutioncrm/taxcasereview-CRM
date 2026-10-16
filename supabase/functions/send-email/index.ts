@@ -739,28 +739,28 @@ serve(async (req) => {
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
-    // CloudCPA prospect fallback: until Tony connects the office's own mailbox,
-    // system and staff mail can still be demonstrated without impersonating a
-    // different tenant's Gmail account. Physical delivery uses the proven
-    // TaxRes platform Stalwart transport, while Reply-To remains CloudCPA.
-    // This is intentionally scoped to TRC-003 and is removed from the path
-    // automatically once CloudCPA has its own Gmail OAuth credentials.
+    // Prospect / demo office fallback: until the office connects its own
+    // mailbox, deliver through the proven TaxRes Stalwart transport while
+    // preserving that tenant's branding. TRC-003 (CloudCPA) and TRC-004
+    // (Centurion) are intentionally explicit so no unrelated tenant silently
+    // inherits this fallback.
     if (tenant_id) {
-      const { data: cloudTenant } = await admin.from('tenants')
+      const { data: relayTenant } = await admin.from('tenants')
         .select('id,tenant_code,firm_name')
         .eq('id', tenant_id)
         .maybeSingle()
-      if (cloudTenant?.tenant_code === 'TRC-003') {
-        const { data: cloudSettings } = await admin.from('settings')
+      if (['TRC-003','TRC-004'].includes(String(relayTenant?.tenant_code || ''))) {
+        const { data: relaySettings } = await admin.from('settings')
           .select('name,firmname,email,firmemail,gmail_refresh_token')
           .eq('tenant_id', tenant_id)
           .maybeSingle()
-        if (!cloudSettings?.gmail_refresh_token) {
+        if (!relaySettings?.gmail_refresh_token) {
           const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product', {
             p_product_key: 'taxres_crm',
           })
+          const tenantLabel = relayTenant?.tenant_code === 'TRC-004' ? 'Centurion' : 'CloudCPA'
           if (!vaultTransport?.ok) {
-            return new Response(JSON.stringify({ error:'CloudCPA platform mail transport unavailable' }), {
+            return new Response(JSON.stringify({ error:`${tenantLabel} platform mail transport unavailable` }), {
               status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
             })
           }
@@ -771,7 +771,7 @@ serve(async (req) => {
             fromAddress: safe(vaultTransport.from_address || vaultTransport.username).toLowerCase(),
           }
           if (!transport.username || !transport.password || !transport.fromAddress) {
-            return new Response(JSON.stringify({ error:'CloudCPA platform mail credential incomplete' }), {
+            return new Response(JSON.stringify({ error:`${tenantLabel} platform mail credential incomplete` }), {
               status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
             })
           }
@@ -781,8 +781,10 @@ serve(async (req) => {
               status:422, headers:{...corsHeaders,'Content-Type':'application/json'},
             })
           }
-          const cloudName=safe(cloudSettings?.name || cloudSettings?.firmname || cloudTenant?.firm_name || 'CloudCPA Inc')
-          const cloudReply=safe(cloudSettings?.email || cloudSettings?.firmemail || 'tony@thecloudcpa.net').toLowerCase()
+          const fallbackName = relayTenant?.tenant_code === 'TRC-004' ? 'Centurion Firm' : 'CloudCPA Inc'
+          const relayName=safe(relaySettings?.name || relaySettings?.firmname || relayTenant?.firm_name || fallbackName)
+          const configuredReply=safe(relaySettings?.email || relaySettings?.firmemail).toLowerCase()
+          const relayReply=configuredReply || (relayTenant?.tenant_code === 'TRC-003' ? 'tony@thecloudcpa.net' : '')
           const submissions:any[]=[]
           for (const recipient of recipients) {
             const result=await sendViaStalwartJmap({
@@ -790,8 +792,8 @@ serve(async (req) => {
               username:transport.username,
               password:transport.password,
               fromAddress:transport.fromAddress,
-              replyTo:cloudReply,
-              fromName:`${cloudName} via TaxRes CRM`,
+              replyTo:relayReply || undefined,
+              fromName:`${relayName} via TaxRes CRM`,
               to:recipient,
               subject:safe(subject),
               html:html ? String(html) : undefined,
@@ -800,10 +802,6 @@ serve(async (req) => {
             submissions.push({recipient,submissionId:result.submissionId})
           }
 
-          // Log authenticated staff sends into the CloudCPA tenant mailbox so
-          // the demo has a truthful communication history even before mailbox
-          // cutover. System booking/e-sign sends are already represented by
-          // their workflow records and do not need duplicate email rows.
           if (authenticated) {
             for (const sent of submissions) {
               await admin.from('emails').insert([{
@@ -816,8 +814,8 @@ serve(async (req) => {
                 triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
                 sender:transport.fromAddress,
                 from_address:transport.fromAddress,
-                reply_from:cloudReply,
-                mailbox_owner:safe(authenticatedUser?.email || cloudReply).toLowerCase(),
+                reply_from:relayReply || transport.fromAddress,
+                mailbox_owner:safe(authenticatedUser?.email || relayReply || transport.fromAddress).toLowerCase(),
                 received_at:new Date().toISOString(),
                 created_at:new Date().toISOString(),
                 message_id:`stalwart:${sent.submissionId}`,
@@ -833,8 +831,9 @@ serve(async (req) => {
             success:true,
             via:'taxres_platform_relay',
             from:transport.fromAddress,
-            reply_to:cloudReply,
-            brand:cloudName,
+            reply_to:relayReply || null,
+            brand:relayName,
+            tenant_code:relayTenant?.tenant_code,
             submissions:submissions.map((x:any)=>x.submissionId),
           }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
         }
