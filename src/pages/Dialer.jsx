@@ -1,9 +1,11 @@
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCall } from '../context/CallContext'
 import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
+import AIGovernmentCallModal from '../components/calling/AIGovernmentCallModal'
 
 const OUTCOME_C = {
   'Connected': 'bg', 'No Answer': 'bn', 'Voicemail': 'ba',
@@ -31,6 +33,7 @@ function avColor(name) {
 }
 
 export default function Dialer() {
+  const navigate = useNavigate()
   const {
     relayStatus, calling, active,
     startCall: startCallShared, logModal,
@@ -38,6 +41,7 @@ export default function Dialer() {
   const { role } = useApp()
   const canDeleteRecordings = role === 'Super Admin' || role === 'Admin'
   const [confirmDel, setConfirmDel] = useState(null)
+  const [showAIGovernmentCall, setShowAIGovernmentCall] = useState(false)
 
   const [leads, setLeads]       = useState([])
   const [callLog, setCallLog]   = useState([])
@@ -337,18 +341,24 @@ export default function Dialer() {
       {toast && <div className="toast show">{toast}</div>}
 
       {/* ── Caller ID + calling connection status ─────────────────── */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:8 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:8, flexWrap:'wrap' }}>
         <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'var(--s2)', padding:'6px 10px', borderRadius:8, border:'1px solid var(--br)', fontSize:10.5, fontWeight:700, color:'var(--t2)' }}>
           <span>Outbound caller ID</span>
           <span style={{color:'var(--tx)'}}>(888) 334-5052</span>
         </div>
-        <span style={{
-          fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 600,
-          background: relayStatus === 'ready' ? 'rgba(37,162,90,0.15)' : relayStatus === 'error' ? 'rgba(192,32,47,0.15)' : 'rgba(245,158,11,0.15)',
-          color: relayStatus === 'ready' ? '#25A25A' : relayStatus === 'error' ? '#C0202F' : '#f59e0b',
-        }}>
-          {relayStatus === 'ready' ? '🟢 Phone line connected' : relayStatus === 'error' ? '🔴 Phone line error' : '🟡 Connecting phone line…'}
-        </span>
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginLeft:'auto'}}>
+          <button className="btn pri" onClick={()=>setShowAIGovernmentCall(true)}
+            style={{padding:'7px 12px',fontSize:11.5,fontWeight:800,background:'#7c3aed',borderColor:'#7c3aed'}}>
+            🤖 AI Government Call
+          </button>
+          <span style={{
+            fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 600,
+            background: relayStatus === 'ready' ? 'rgba(37,162,90,0.15)' : relayStatus === 'error' ? 'rgba(192,32,47,0.15)' : 'rgba(245,158,11,0.15)',
+            color: relayStatus === 'ready' ? '#25A25A' : relayStatus === 'error' ? '#C0202F' : '#f59e0b',
+          }}>
+            {relayStatus === 'ready' ? '🟢 Phone line connected' : relayStatus === 'error' ? '🔴 Phone line error' : '🟡 Connecting phone line…'}
+          </span>
+        </div>
       </div>
 
       {/* ── Incoming Call Banner and Active Call Banner now render
@@ -693,6 +703,15 @@ export default function Dialer() {
             </div>
           </div>
         </div>
+      )}
+
+      {showAIGovernmentCall && (
+        <AIGovernmentCallModal
+          client={null}
+          onClose={()=>setShowAIGovernmentCall(false)}
+          onStarted={()=>navigate('/ai-government-calls')}
+          showToast={showToast}
+        />
       )}
 
       {/* ── Log Call Modal now renders globally too (see ActiveCallBar
