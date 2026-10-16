@@ -187,6 +187,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const activeOutboundCallIdRef = useRef(null)
   // Active AI government session, when a live agency representative has been handed to this browser.
   const activeAIGovSessionRef = useRef(null)
+  const activeAIGovTenantRef = useRef(null)
   const uiStartedRef = useRef(false)
   const pageUnloadingRef = useRef(false)
   const callStartedAtRef = useRef(null)
@@ -933,6 +934,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
 
     uiStartedRef.current = true
     activeAIGovSessionRef.current = session.id
+    activeAIGovTenantRef.current = session.tenant_id || null
     activeInboundCallsidRef.current = null
     activeOutboundCallIdRef.current = session.outbound_call_id || null
     activeConferenceRef.current = session.conference_name
@@ -977,6 +979,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       clearInterval(timerRef.current)
       uiStartedRef.current = false
       activeAIGovSessionRef.current = null
+      activeAIGovTenantRef.current = null
       activeConferenceRef.current = null
       activeOutboundCallIdRef.current = null
       setCalling(false)
@@ -1127,7 +1130,9 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
 
     clearPersistedCallSession()
     const aiGovSessionId = activeAIGovSessionRef.current
+    const aiGovTenantId = activeAIGovTenantRef.current
     activeAIGovSessionRef.current = null
+    activeAIGovTenantRef.current = null
     if (aiGovSessionId) {
       const endedAt = new Date().toISOString()
       await supabase.from('ai_government_call_sessions')
@@ -1135,6 +1140,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
         .eq('id', aiGovSessionId)
         .in('status', ['human_detected','takeover_requested','human_joined'])
       await supabase.from('ai_government_call_events').insert({
+        tenant_id: aiGovTenantId,
         session_id: aiGovSessionId,
         event_type: 'human_completed',
         action: 'conference_ended_by_staff',
