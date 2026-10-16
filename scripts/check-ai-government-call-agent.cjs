@@ -45,6 +45,8 @@ const checks=[
   ['case record has AI Call trigger',cases.includes('AIGovernmentCallModal')&&cases.includes('🤖 AI Call')],
   ['app route and global notifier mounted',app.includes('AIGovernmentCallNotifier')&&app.includes('path="/ai-government-calls"')],
   ['sidebar navigation is under Communications',sidebar.includes("key: 'comms'")&&sidebar.indexOf("path: '/ai-government-calls'")>sidebar.indexOf("key: 'comms'")&&sidebar.indexOf("path: '/ai-government-calls'")<sidebar.indexOf("key: 'billing'")&&!sidebar.slice(sidebar.indexOf("key: 'irs'"),sidebar.indexOf("key: 'taxreturns'")).includes("path: '/ai-government-calls'")],
+  ['AI government sidebar badge counts assigned takeover calls',sidebar.includes("badge: 'ai-government'")&&sidebar.includes("setAiGovernmentNeedsTakeover")&&sidebar.includes(".in('status', ['human_detected','takeover_requested'])")],
+  ['live representative alert repeats loudly until acknowledged',notifier.includes("setInterval(fire,5000)")&&notifier.includes("playRing()")&&notifier.includes("stopRingAudio()")],
   ['provider callbacks use opaque session token',leg.includes(".eq('callback_token',token)")&&status.includes(".eq('callback_token',token)")],
   ['cancel is authenticated and tenant scoped',cancel.includes("rpc('current_tenant_id')")&&cancel.includes(".eq('tenant_id',tenant)")],
   ['cancel provider URL normalization is bundle-safe',cancel.includes("replace(/^https?:[/][/]/,'')")&&!cancel.includes("replace(/^https?:\\\\/\\\\//")],
