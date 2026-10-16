@@ -33,7 +33,7 @@ serve(async req=>{
     }
 
     if(s.provider_call_sid&&settings?.sw_space_url&&settings?.sw_project_id&&settings?.sw_api_token){
-      const space=String(settings.sw_space_url).replace(/^https?:\\/\\//,'')
+      const space=String(settings.sw_space_url).replace(/^https?:[/][/]/,'')
       const endpoint='https://'+space+'/api/laml/2010-04-01/Accounts/'+settings.sw_project_id+'/Calls/'+encodeURIComponent(s.provider_call_sid)+'.json'
       await fetch(endpoint,{
         method:'POST',

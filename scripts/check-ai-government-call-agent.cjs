@@ -44,6 +44,7 @@ const checks=[
   ['sidebar navigation is under IRS and state resolution',sidebar.includes("path: '/ai-government-calls'")&&sidebar.includes("label: 'AI Government Calls'")],
   ['provider callbacks use opaque session token',leg.includes(".eq('callback_token',token)")&&status.includes(".eq('callback_token',token)")],
   ['cancel is authenticated and tenant scoped',cancel.includes("rpc('current_tenant_id')")&&cancel.includes(".eq('tenant_id',tenant)")],
+  ['cancel provider URL normalization is bundle-safe',cancel.includes("replace(/^https?:[/][/]/,'')")&&!cancel.includes("replace(/^https?:\\\\/\\\\//")],
   ['edge auth config is correct',config.includes('[functions.ai-government-call-start]\nverify_jwt = true')&&config.includes('[functions.ai-government-call-leg]\nverify_jwt = false')&&config.includes('[functions.ai-government-call-status]\nverify_jwt = false')&&config.includes('[functions.ai-government-call-cancel]\nverify_jwt = true')],
 ]
 
