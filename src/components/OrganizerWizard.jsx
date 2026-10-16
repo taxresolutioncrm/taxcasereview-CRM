@@ -3,7 +3,7 @@ import { formatMoneyInput, parseMoney } from '../lib/money'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { ORGANIZER_STEPS, shouldShow } from '../lib/organizerSchema'
-import { FIRM } from '../lib/firmBranding'
+import { FIRM, loadFirmBrandingPublic } from '../lib/firmBranding'
 
 const LOGO_URL = ''  // replaced by FIRM.logoUrl
 
@@ -25,6 +25,10 @@ export default function OrganizerWizard({ organizerId, embedded = false, onCompl
     async function load() {
       const { data, error } = await supabase.rpc('organizer_get', { p_id: organizerId })
       if (error || !data) { setError('Organizer not found or expired.'); setLoading(false); return }
+      // Public organizer links must resolve branding from the organizer's own
+      // tenant before first render. This prevents Centurion/future offices from
+      // inheriting a stale/default TaxRes identity in a logged-out browser.
+      await loadFirmBrandingPublic(data.tenant_id)
       setRecord(data)
       setAnswers(data.answers || {})
       if (data.status === 'Submitted') setSubmitted(true)
