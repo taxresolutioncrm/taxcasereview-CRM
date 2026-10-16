@@ -34,6 +34,12 @@ serve(async req=>{
     const objective=String(body.objective||'').trim()
     if(!objective) return json({error:'Call objective is required'},400)
     const routeHints=Array.isArray(body.route_hints)?body.route_hints.slice(0,20).map((x:any)=>({intent:String(x?.intent||'').slice(0,160),digit:String(x?.digit||'').replace(/[^0-9*#]/g,'').slice(0,4)})).filter((x:any)=>x.intent&&x.digit):[]
+    const requestedAssignee=String(body.assigned_to_email||user.email).trim().toLowerCase()
+    const {data:assignee}=await db.from('employees').select('name,email,status,perm_comms')
+      .eq('tenant_id',tenantId).ilike('email',requestedAssignee).limit(1).maybeSingle()
+    if(!assignee||String(assignee.status||'Active').toLowerCase()!=='active'||Number(assignee.perm_comms||0)<1){
+      return json({error:'Takeover employee must be an active staff member with communications access'},400)
+    }
 
     let {data:settings,error:sErr}=await db.from('settings').select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did').eq('tenant_id',tenantId).limit(1).maybeSingle()
     if(!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token){
@@ -42,7 +48,10 @@ serve(async req=>{
       if(!sErr) sErr=fallback.error
     }
     if(sErr||!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token) return json({error:'SignalWire calling is not configured'},422)
-    const from=norm(settings.sw_inbound_did||settings.sw_outbound_did)
+    // Government calls intentionally present the local direct-return DID first.
+    // Ordinary TaxRes outbound calls use the public toll-free DID, but IRS/state
+    // representatives need the dedicated direct number when they call back.
+    const from=norm(settings.sw_outbound_did||settings.sw_inbound_did)
     if(!from) return json({error:'Outbound caller ID is not configured'},422)
 
     const callbackToken=crypto.randomUUID()+'-'+crypto.randomUUID()
@@ -54,7 +63,7 @@ serve(async req=>{
       client_name:String(body.client_name||'').slice(0,240)||null,
       requested_by_email:user.email.toLowerCase(),
       requested_by_name:emp?.name||user.email.split('@')[0],
-      assigned_to_email:user.email.toLowerCase(),
+      assigned_to_email:String(assignee.email).toLowerCase(),
       purpose_key:String(body.purpose_key||'custom').slice(0,80),
       agency:String(body.agency||'Government Agency').slice(0,160),
       destination_number:destination,
@@ -101,8 +110,8 @@ serve(async req=>{
         db.from('outbound_calls').update({provider_call_sid:sid,status:'ringing'}).eq('id',out.id)
       ])
     }
-    await db.from('ai_government_call_events').insert({tenant_id:tenantId,session_id:session.id,event_type:'started',action:'dial',meta:{destination,agency:body.agency,purpose_key:body.purpose_key}})
-    return json({ok:true,session_id:session.id,agency:String(body.agency||'Government Agency'),conference_name:conference,status:'navigating'})
+    await db.from('ai_government_call_events').insert({tenant_id:tenantId,session_id:session.id,event_type:'started',action:'dial',meta:{destination,agency:body.agency,purpose_key:body.purpose_key,assigned_to_email:String(assignee.email).toLowerCase(),caller_id:from}})
+    return json({ok:true,session_id:session.id,agency:String(body.agency||'Government Agency'),conference_name:conference,status:'navigating',assigned_to_email:String(assignee.email).toLowerCase(),caller_id:from})
   }catch(e){
     console.error('[ai-government-call-start]',e)
     return json({error:'Unable to start AI government call'},500)
