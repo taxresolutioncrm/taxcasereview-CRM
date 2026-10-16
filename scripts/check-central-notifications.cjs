@@ -1,6 +1,7 @@
 const fs = require('fs')
 
 const app = fs.readFileSync('src/context/AppContext.jsx','utf8')
+const sidebar = fs.readFileSync('src/components/layout/Sidebar.jsx','utf8')
 const globalHuddle = fs.readFileSync('src/components/GlobalTeamChatNotifier.jsx','utf8')
 const chat = fs.readFileSync('src/pages/Chat.jsx','utf8')
 const migration = fs.readFileSync('supabase/migrations/20261014_central_notification_realtime.sql','utf8')
@@ -19,6 +20,20 @@ assert(app.includes("title: '💬 New SMS'") && app.includes("target: '/sms'"), 
 assert(app.includes("title: '📠 New Fax'") && app.includes("target: '/fax'"), 'inbound fax must be globally actionable')
 assert(app.includes("title: '📞 New Voicemail'") && app.includes("target: '/dialer'"), 'voicemail must be globally actionable')
 assert(app.includes("title: '✍️ E-Signature Sent'") && app.includes("title: '✅ E-Signature Completed'") && app.includes("target: '/esign'"), 'e-sign activity must be globally actionable')
+
+const independentCentralChannels = [
+  'central-chat-notify-','central-email-notify-','central-task-notify-',
+  'central-calendar-notify-','central-sms-notify-','central-fax-notify-',
+  'central-voicemail-notify-','central-esign-new-notify-','central-esign-signed-notify-'
+]
+for (const name of independentCentralChannels) {
+  assert(app.includes(name), 'missing independent central notification channel '+name)
+}
+assert(app.includes("window.addEventListener('focus', wake)") && app.includes("window.addEventListener('online', online)"), 'notification channels must recover on focus/online wake')
+assert(sidebar.includes('setInterval(loadCommsCounts, 180000)'), 'communications badges need fallback polling')
+assert(sidebar.includes('setInterval(loadEmailTaskCounts, 180000)'), 'email/task badges need fallback polling')
+assert(sidebar.includes('setInterval(loadCounts, 180000)'), 'client-work badges need fallback polling')
+assert(sidebar.includes('setInterval(loadCalendarBadge, 180000)'), 'calendar badge needs fallback polling')
 
 assert(app.includes("window.dispatchEvent(new CustomEvent('taxres:huddle-invite'"), 'central huddles must fan out locally from AppContext')
 assert(globalHuddle.includes("window.addEventListener('taxres:huddle-invite'"), 'global huddle UI must consume local central fanout')
