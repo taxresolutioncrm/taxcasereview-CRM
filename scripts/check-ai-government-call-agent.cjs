@@ -20,9 +20,9 @@ const receive=read('supabase/functions/receive-call/index.ts')
 const config=read('supabase/config.toml')
 
 const checks=[
-  ['purpose-first launcher exists',recipes.includes("'irs-investigation'")&&recipes.includes("'irs-acs-business'")&&recipes.includes("'irs-payment-plan'")&&recipes.includes("'state-custom'")],
+  ['purpose-first launcher exists',recipes.includes("'irs-investigation'")&&recipes.includes("'irs-acs'")&&recipes.includes("'irs-payment-plan'")&&recipes.includes("'irs-business'")&&recipes.includes("'state-custom'")&&!recipes.includes("'irs-penalty'")],
   ['known IRS practitioner number seeded',recipes.includes("phone: '8668604259'")],
-  ['ACS route is 1 English -> 2 practitioner -> 3 business -> 4 ACS',recipes.includes("intent: 'English', digit: '1'")&&recipes.includes("intent: 'Tax practitioner / tax professional line', digit: '2'")&&recipes.includes("intent: 'Business taxpayer', digit: '3'")&&recipes.includes("intent: 'ACS / collections', digit: '4'")],
+  ['ACS route is option 3 after practitioner and Business is option 4',recipes.includes("intent: 'ACS / collections', digit: '3'")&&recipes.includes("intent: 'Business taxpayer / business account', digit: '4'")],
   ['launcher sends objective and hints to server',modal.includes("'ai-government-call-start'")&&modal.includes('route_hints: purpose.routeHints')&&modal.includes('objective: objective.trim()')],
   ['launcher lets staff choose the takeover employee',modal.includes('Takeover Employee')&&modal.includes('assigned_to_email: assignedToEmail || null')],
   ['server validates assigned takeover employee',start.includes("requestedAssignee=String(body.assigned_to_email||user.email)")&&start.includes("Takeover employee must be an active staff member with communications access")&&start.includes("assigned_to_email:String(assignee.email).toLowerCase()")],
@@ -38,7 +38,7 @@ const checks=[
   ['verified phone callback prioritizes requested AI conference',receive.includes("from('ai_government_call_sessions')")&&receive.includes(".eq('status','takeover_requested')")&&receive.includes('aiTakeover.conference_name')],
   ['shared SignalWire phone account can hand off cross-tenant session',receive.includes("select('id,tenant_id,conference_name,outbound_call_id')")&&receive.includes(".eq('tenant_id',aiTakeover.tenant_id)")],
   ['dashboard exposes takeover and cancel controls',dashboard.includes('TAKE OVER NOW')&&dashboard.includes("'ai-government-call-cancel'")],
-  ['global assigned-staff alert exists',notifier.includes('Government Representative Connected')&&notifier.includes('assigned_to_email')&&notifier.includes('playSound')],
+  ['global assigned-staff alert exists',notifier.includes('Government Representative Connected')&&notifier.includes('assigned_to_email')&&notifier.includes('playRing')],
   ['client record has AI Call trigger',clients.includes('AIGovernmentCallModal')&&clients.includes('label="AI Call"')&&clients.includes('IRS / State Agent')],
   ['main Dialer exposes AI Government Call trigger',dialer.includes('AIGovernmentCallModal')&&dialer.includes('🤖 AI Government Call')&&dialer.includes("navigate('/ai-government-calls')")],
   ['Dialer AI trigger is family-shared not tenant hard-coded',!dialer.includes('TRC-004')&&!dialer.includes('Centurion Firm')&&!dialer.includes('TRC-003')],
