@@ -1058,7 +1058,9 @@ const STATE_POA_FILES = {
   AZ:'AZ_POA.pdf', ID:'ID_POA.pdf',
 }
 
-export async function sendFullPackage(client, supabase) {
+export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
+  const tenantId = tenantIdOverride
+  if (!tenantId) return { error: 'Could not resolve office tenant for contract package' }
   const clientType  = client?.clientType || 'Individual'
   const irsOrState  = client?.irsOrState || 'IRS Federal'
   const clientState = client?.state || ''
@@ -1089,14 +1091,15 @@ export async function sendFullPackage(client, supabase) {
       clientName: client?.name || '',
       repSignature: repSig,
     })
-    const agreementPath = `docs/${safeName}/package/agreement.pdf`
+    const agreementPath = `${tenantId}/docs/${safeName}/package/agreement.pdf`
     const { error: agErr } = await supabase.storage.from('documents')
       .upload(agreementPath, new Blob([agreementBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
     if (agErr) throw agErr
-    const { data: agUrl } = await supabase.storage.from('documents').createSignedUrl(agreementPath, 94608000)
-    pdfAttachments.push({ formType: 'agreement', label: 'Tax Service Agreement', url: agUrl?.signedUrl || '' })
+    const { data: agUrl, error: agSignErr } = await supabase.storage.from('documents').createSignedUrl(agreementPath, 94608000)
+    if (agSignErr || !agUrl?.signedUrl) throw agSignErr || new Error('Could not create secure agreement link')
+    pdfAttachments.push({ formType: 'agreement', label: 'Tax Service Agreement', url: agUrl.signedUrl, storage_path: agreementPath })
   } catch (e) {
-    console.warn('Agreement PDF could not be generated:', e.message)
+    return { error: `Failed to build Tax Service Agreement: ${e.message}` }
   }
 
   // IRS forms (2848, 8821, cc_auth)
@@ -1105,12 +1108,13 @@ export async function sendFullPackage(client, supabase) {
       const bytes = formType === 'cc_auth'
         ? await generateCcAuthPdf(client)
         : await fillForm(formType, client, FORM_USES_EIN[formType])
-      const path = `docs/${safeName}/package/${formType}.pdf`
+      const path = `${tenantId}/docs/${safeName}/package/${formType}.pdf`
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw upErr
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-      pdfAttachments.push({ formType, label: FORM_LABELS[formType], url: urlData?.signedUrl || '' })
+      const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      if (signErr || !urlData?.signedUrl) throw signErr || new Error('Could not create secure document link')
+      pdfAttachments.push({ formType, label: FORM_LABELS[formType], url: urlData.signedUrl, storage_path: path })
     } catch (e) {
       return { error: `Failed to build ${FORM_LABELS[formType] || formType}: ${e.message}` }
     }
@@ -1136,24 +1140,30 @@ export async function sendFullPackage(client, supabase) {
         const rawBytes  = new Uint8Array(await poaRes.arrayBuffer())
         const mergedBytes = await generateStatePOAWithCover(client, rawBytes, party)
         const suffix = stateParties.length > 1 ? `_${party}` : ''
-        const path = `docs/${safeName}/package/state_poa_${clientState}${suffix}.pdf`
+        const path = `${tenantId}/docs/${safeName}/package/state_poa_${clientState}${suffix}.pdf`
         const { error: upErr } = await supabase.storage.from('documents')
           .upload(path, new Blob([mergedBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
         if (upErr) throw upErr
-        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+        const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+        if (signErr || !urlData?.signedUrl) throw signErr || new Error('Could not create secure State POA link')
         const partyLabel = stateParties.length > 1
           ? ` (${party === 'business' ? 'Business' : 'Personal'})`
           : ''
         pdfAttachments.push({
           formType: `state_poa${suffix}`,
           label: `${clientState} State Power of Attorney${partyLabel}`,
-          url: urlData?.signedUrl || '',
+          url: urlData.signedUrl,
+          storage_path: path,
         })
       } catch (e) {
-        console.warn(`State POA auto-include failed (${party}):`, e.message)
-        // Non-fatal — package continues without this state POA
+        return { error: `Failed to build ${clientState} State POA (${party}): ${e.message}` }
       }
     }
+  }
+
+  if (!pdfAttachments.some(a => a.formType === 'agreement')) return { error: 'Tax Service Agreement is missing from the package' }
+  if (includeIRS && formTypes.length && formTypes.some(ft => !pdfAttachments.some(a => a.formType === ft))) {
+    return { error: 'One or more required IRS package documents are missing' }
   }
 
   const { data, error } = await supabase.from('esigns').insert([{
@@ -1164,13 +1174,15 @@ export async function sendFullPackage(client, supabase) {
     pdf_attachments: pdfAttachments,
     priority: 'Normal',
     status: 'Awaiting',
+    tenant_id: tenantId,
     sent_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
   }]).select().single()
 
   if (error) return { error: error.message }
+  if (!/^[0-9a-f]{64}$/i.test(String(data?.signer_token || ''))) return { error: 'Signing request token was not created' }
 
-  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token || '')}`
+  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token)}`
   return { id: data.id, url, pdfAttachments }
 }
 
@@ -1181,7 +1193,9 @@ export async function sendFullPackage(client, supabase) {
 // doesn't touch notifications itself, matching how sendFullPackage is split.
 // Timestamped storage path (not a fixed one like the package forms) since an
 // addendum can legitimately be re-sent later with different fee terms.
-export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
+export async function sendAddendumForSignature(record, opts, supabase, sentBy, tenantIdOverride = '') {
+  const tenantId = tenantIdOverride
+  if (!tenantId) return { error: 'Could not resolve office tenant for addendum' }
   const safeName = (record?.name || 'client').replace(/[^a-zA-Z0-9]+/g, '-')
   let bytes
   try {
@@ -1190,7 +1204,7 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
     return { error: `Failed to build addendum PDF: ${e.message}` }
   }
 
-  const path = `docs/${safeName}/addendum/addendum_${Date.now()}.pdf`
+  const path = `${tenantId}/docs/${safeName}/addendum/addendum_${Date.now()}.pdf`
   const { error: upErr } = await supabase.storage.from('documents')
     .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
   if (upErr) return { error: upErr.message }
@@ -1210,12 +1224,13 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
     sent_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
     sent_by: sentBy || null,
-    tenant_id: FIRM.tenantId || undefined,
+    tenant_id: tenantId,
   }]).select().single()
 
   if (error) return { error: error.message }
+  if (!/^[0-9a-f]{64}$/i.test(String(data?.signer_token || ''))) return { error: 'Signing request token was not created' }
 
-  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token || '')}`
+  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token)}`
   return { id: data.id, url, pdfAttachments }
 }
 

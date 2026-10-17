@@ -172,7 +172,7 @@ function ActionBtn({color, icon, label, sub, onClick}) {
   )
 }
 
-function LeadInlineFax({ lead, onClose, onLogged }) {
+function LeadInlineFax({ lead, onClose, onLogged, tenantId }) {
   // TO stays blank on open — the lead's phone number is not the fax number,
   // and prefilling led users to send to the wrong destination.
   const [toNum,set0]=useState('')
@@ -202,7 +202,8 @@ function LeadInlineFax({ lead, onClose, onLogged }) {
     let fileUrl = null
     const toFull = '+1' + faxDigits
     try {
-      const path = `fax/${lead?.id || 'lead'}/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]/g,'_')}`
+      if (!tenantId) throw new Error('Could not resolve office tenant for fax upload')
+      const path = `${tenantId}/docs/${lead?.id || 'lead'}/fax/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]/g,'_')}`
       const { error: uploadErr } = await supabase.storage.from('documents').upload(path, file, { upsert:false, contentType:file.type || 'application/pdf' })
       if (uploadErr) throw uploadErr
       const { data:u, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
@@ -251,7 +252,7 @@ function LeadInlineFax({ lead, onClose, onLogged }) {
 }
 
 
-function LeadInlineEsign({ lead, onClose }) {
+function LeadInlineEsign({ lead, onClose, tenantId }) {
   const [docType,set0]=useState('Tax Service Agreement')
   const [sendVia,setSendVia]=useState(lead?.email ? 'email' : 'sms')
   const [saving,set2]=useState(false)
@@ -260,6 +261,7 @@ function LeadInlineEsign({ lead, onClose }) {
   const [customFile,setCustomFile]=useState(null)
   const [uploading,setUploading]=useState(false)
   async function create() {
+    if(!tenantId){ alert('Could not resolve office tenant. Refresh and try again.'); return }
     if(docType==='Custom Document' && !customMsg.trim() && !customFile){
       alert('For a custom document, type the text to sign or attach a PDF.');return
     }
@@ -269,13 +271,21 @@ function LeadInlineEsign({ lead, onClose }) {
     if(docType==='Custom Document' && customFile){
       setUploading(true)
       try{
-        const path=`esign-custom/${(lead?.name||'lead').replace(/[^A-Za-z0-9 _-]/g,'')}/${Date.now()}-${customFile.name}`
+        const officeTenant = tenantId
+        if(!officeTenant) throw new Error('Could not resolve office tenant for e-sign upload')
+        const path=`${officeTenant}/docs/${lead?.id || 'lead'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
-        if(!upErr){
-          const{data:u}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
-          pdfAttachments=[{formType:'custom',label:customFile.name,url:u?.signedUrl||''}]
-        }
-      }catch(e){console.error('custom upload:',e)}
+        if(upErr) throw upErr
+        const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
+        if(signErr || !u?.signedUrl) throw signErr || new Error('Could not create secure document link')
+        pdfAttachments=[{formType:'custom',label:customFile.name,url:u.signedUrl,storage_path:path}]
+      }catch(e){
+        console.error('custom upload:',e)
+        setUploading(false)
+        set2(false)
+        alert('Custom document upload failed: '+(e?.message||'Unknown upload error'))
+        return
+      }
       setUploading(false)
     }
     const{data,error}=await supabase.from('esigns').insert([{
@@ -290,16 +300,19 @@ function LeadInlineEsign({ lead, onClose }) {
       rep_name:lead?.assignedTo||null,
       send_via:sendVia,
       priority:'Normal',status:'Awaiting',
+      tenant_id:tenantId,
+      lead_id:lead?.id || null,
       sent_at:new Date().toISOString(),created_at:new Date().toISOString()
     }]).select().single()
     if(error){set2(false);alert('Error: '+error.message);return}
-    const url=window.location.origin+'/sign/'+data.id
+    if(!/^[0-9a-f]{64}$/i.test(String(data?.signer_token||''))){set2(false);alert('Signing request token was not created. Please try again.');return}
+    const url=window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token)
     await navigator.clipboard.writeText(url).catch(()=>{})
     let smsSent=false,emailSent=false
-    const cfg = await getSettings()
+    const deliveryErrors=[]
     if((sendVia==='email'||sendVia==='both')&&lead?.email){
       try{
-        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: FIRM.tenantId || undefined,
+        const{data:emailData,error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId,
           to:lead.email,
           subject:`Please Sign: ${docType} — ${firmName()}`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -330,14 +343,18 @@ function LeadInlineEsign({ lead, onClose }) {
 </td></tr></table>
 </body></html>`
         }})
-        if(!eErr)emailSent=true
-      }catch(e){console.error('Email error:',e)}
+        if(!eErr && emailData?.success!==false) emailSent=true
+        else deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
+      }catch(e){console.error('Email error:',e);deliveryErrors.push(e?.message||'Email delivery failed')}
     }
-    if((sendVia==='sms'||sendVia==='both')&&lead?.phone&&cfg?.signalwire_backend){
+    if((sendVia==='sms'||sendVia==='both')&&lead?.phone){
       try{
-        const r=await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:lead.phone,body:`Hi ${lead?.name}, ${firmName()} sent you a document to sign: ${url}`})})
-        const d=await r.json();if(d.success)smsSent=true
-      }catch(e){console.error('SMS error:',e)}
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:lead.phone,body:`Hi ${lead?.name}, ${firmName()} sent you a document to sign: ${url}`,lead_id:lead?.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      }catch(e){console.error('SMS error:',e);deliveryErrors.push(e?.message||'SMS delivery failed')}
     }
     set2(false)
     const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
@@ -348,12 +365,12 @@ function LeadInlineEsign({ lead, onClose }) {
         type:'System', author: lead?.assignedTo || 'System', created_at: new Date().toISOString()
       })
     } catch(_) {}
-    setDone({url,sent})
+    setDone({url,sent,errors:Array.from(new Set(deliveryErrors.filter(Boolean)))})
   }
   if(done) return <div style={{padding:'0 4px 12px'}}>
     <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
       <div style={{fontSize:13,fontWeight:700,color:'var(--ok)',marginBottom:6}}>{done.sent.length?`Sent via ${done.sent.join(' & ')}!`:'Link copied — share manually'}</div>
-      {!done.sent.length&&<div style={{fontSize:11,color:'var(--warn)',marginBottom:4}}>Email/SMS not configured in Settings yet.</div>}
+      {!done.sent.length&&<div style={{fontSize:11,color:'var(--warn)',marginBottom:4}}>{done.errors?.length?`Delivery failed: ${done.errors.join(' | ')}`:'No delivery channel completed. Share the secure link manually.'}</div>}
       <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all'}}>{done.url}</div>
     </div>
     <button className="btn sec" style={{width:'100%',justifyContent:'center'}} onClick={onClose}>Done</button>
@@ -788,35 +805,45 @@ export default function Leads() {
         const mergedBytes = await generateStatePOAWithCover(poaLead, rawBytes, party)
         const pdfBlob = new Blob([mergedBytes], { type: 'application/pdf' })
         const suffix = parties.length > 1 ? `_${party}` : ''
-        const path = `docs/${safeName}/state-poa/${formDef.state}_POA${suffix}_${stamp}.pdf`
+        const path = `${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA${suffix}_${stamp}.pdf`
         const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
         if (upErr) throw new Error(upErr.message)
         const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
         const partyLabel = parties.length > 1 ? ` (${party==='business'?'Business':'Personal'})` : ''
-        poaAttachments.push({ formType:`state_poa${suffix}`, label:`${formDef.state} POA — ${formDef.label}${partyLabel}`, url:urlData?.signedUrl||'' })
+        poaAttachments.push({ formType:`state_poa${suffix}`, label:`${formDef.state} POA — ${formDef.label}${partyLabel}`, url:urlData?.signedUrl||'', storage_path:path })
       }
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
         doc_type: `State POA — ${formDef.state} (${formDef.num})`,
         client_name: lead.name, client_email: lead.email||'', client_phone: lead.phone||'',
         message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${firmName()} to represent you before the ${formDef.state} tax authority.`,
         pdf_attachments: poaAttachments,
-        priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
+        priority:'Normal', status:'Awaiting', tenant_id:myTenantId, sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created')
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`
       await navigator.clipboard.writeText(sigUrl).catch(()=>{})
       let emailSent=false, smsSent=false
+      const deliveryErrors=[]
       if ((via==='email'||via==='both') && lead.email) {
-        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined, to:lead.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${lead.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>` }})
-        emailSent = !eErr
+        const { data:emailData, error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:lead.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${lead.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>` }})
+        emailSent = !eErr && emailData?.success!==false
+        if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
       }
       if ((via==='sms'||via==='both') && lead.phone) {
-        const cfg = await getSettings()
-        if (cfg?.signalwire_backend) { try { await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:lead.phone,body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`})}); smsSent=true } catch(_){} }
+        try {
+          const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+            body:{to:lead.phone,body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`,lead_id:lead.id||null}
+          })
+          smsSent=!smsErr && !!smsData?.success
+          if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+        } catch(e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
       }
-      await supabase.from('lead_notes').insert({ lead_id:lead.id, text:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, author:actor, created_at: new Date().toISOString() })
+      const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      await supabase.from('lead_notes').insert({ lead_id:lead.id, text:sent.length?`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num}) via ${sent.join(' & ')}`:`⚠️ ${formDef.state} State POA created but not delivered (${formDef.num})${reason?` — ${reason}`:''}`, author:actor, created_at: new Date().toISOString() })
       setPoaModal(false)
-      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing link copied to clipboard')
+      showToast(sent.length ? `✅ ${formDef.state} POA sent for signature!` : `State POA created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
     } catch(e) { showToast('Error: '+e.message) }
     setPoaSending(false)
   }
@@ -828,7 +855,7 @@ export default function Leads() {
     if (via !== 'email' && !l.phone) { showToast('Lead has no phone on file'); return }
     setAddendumSending(true)
     const actor = resolveActorName(user, employees)
-    const res = await sendAddendumForSignature(l, addForm, supabase, actor)
+    const res = await sendAddendumForSignature(l, addForm, supabase, actor, myTenantId)
     if (res.error) { setAddendumSending(false); showToast('Error: '+res.error); return }
 
     const url = res.url
@@ -861,9 +888,10 @@ export default function Leads() {
     </div>` : ''
 
     let emailSent=false, smsSent=false
+    const deliveryErrors=[]
 
     if ((via==='email'||via==='both') && l.email) {
-      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined,
+      const { data:emailData, error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
         to: l.email,
         subject: `Action Required: Sign Your Service Addendum — ${firmName()}`,
         html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -895,34 +923,41 @@ export default function Leads() {
 </td></tr></table>
 </body></html>`
       }})
-      emailSent = !eErr
+      emailSent = !eErr && emailData?.success!==false
+      if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
     }
     if ((via==='sms'||via==='both') && l.phone) {
-      const cfg = await getSettings()
-      if (cfg?.signalwire_backend) {
-        try {
-          const smsBody = stripePayUrl
-            ? `${firmName()}: Step 1 – Sign Addendum: ${url}  |  Step 2 – Pay ${feeDisplay}: ${stripePayUrl}`
-            : `${firmName()}: please review and sign your Service Addendum here: ${url}`
-          await fetch(cfg.signalwire_backend + '/sms/send', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: l.phone, body: smsBody })
-          })
-          smsSent = true
-        } catch (_) {}
-      }
+      try {
+        const smsBody = stripePayUrl
+          ? `${firmName()}: Step 1 – Sign Addendum: ${url}  |  Step 2 – Pay ${feeDisplay}: ${stripePayUrl}`
+          : `${firmName()}: please review and sign your Service Addendum here: ${url}`
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:l.phone,body:smsBody,lead_id:l.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
     }
 
     const feeText = `$${Number(addForm.resolutionFee).toLocaleString()}`
     const channels = [emailSent&&'email', smsSent&&'sms'].filter(Boolean).join(' + ')
-    const noteContent = `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText}${channels?` (${channels})`:''}`
+    if(!channels){
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      await supabase.from('lead_notes').insert({ lead_id:l.id, lead_name:l.name, text:`⚠️ Service Addendum created but not delivered — Resolution Fee ${feeText}${reason?` — ${reason}`:''}`, type:'System', author:actor, created_at:new Date().toISOString() })
+      setAddendumSending(false)
+      setAddModal(false)
+      loadLeadNotes(l.id)
+      showToast(`Addendum created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
+      return
+    }
+    const noteContent = `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText} (${channels})`
     await supabase.from('lead_notes').insert({ lead_id: l.id, lead_name: l.name, text: noteContent, type: 'System', author: actor, created_at: new Date().toISOString() })
     await advanceLeadStatus(supabase, l.name, 'Addendum Sent')
 
     setAddendumSending(false)
     setAddModal(false)
     loadLeadNotes(l.id)
-    showToast(emailSent||smsSent ? '✅ Addendum sent for signature!' : '⚠️ Link copied — configure email/SMS to send automatically')
+    showToast('✅ Addendum sent for signature!')
   }
 
   async function sendLeadSms(l) {
@@ -1308,6 +1343,7 @@ export default function Leads() {
       const { data: rec, error } = await supabase
         .from('financial_intake_responses')
         .select('answers')
+        .eq('tenant_id', myTenantId)
         .eq('client_name', l.name)
         .eq('status', 'Submitted')
         .order('submitted_at', { ascending: false })
@@ -1426,12 +1462,14 @@ export default function Leads() {
     if (!l.email) { showToast('No email on file for this lead'); return }
     setIntakeSending(true)
     let intakeId
+    if (!myTenantId) { setIntakeSending(false); showToast('Office tenant is not resolved yet. Refresh and try again.'); return }
     const { data: existing } = await supabase.from('financial_intake_responses')
-      .select('id').eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      .select('id').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
     if (existing) {
       intakeId = existing.id
     } else {
       const { data: created, error: createErr } = await supabase.from('financial_intake_responses').insert([{
+        tenant_id: myTenantId, client_id: l.id || null,
         client_name: l.name, client_email: l.email || '', status: 'Sent',
         answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }]).select().single()
@@ -1440,7 +1478,7 @@ export default function Leads() {
     }
     const intakeUrl = window.location.origin + '/financial-intake/' + intakeId
     const { error: emailErr } = await supabase.functions.invoke('send-email', {
-      body: { tenant_id: FIRM.tenantId || undefined,
+      body: { tenant_id: myTenantId,
         to: l.email,
         subject: `Your Financial Intake Form — ${firmName()}`,
         html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${l.name}</strong>,</p><p>Here's your link to fill out (or finish) your financial intake form — it takes about 10-15 minutes and your progress saves automatically.</p><p style="text-align:center;margin:24px 0"><a href="${intakeUrl}" style="background:#1d4ed8;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Start My Financial Intake</a></p><p style="font-size:12px;color:#64748b">Link: ${intakeUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
@@ -1472,32 +1510,61 @@ export default function Leads() {
       showToast('Set the Tax Investigation Fee on this lead before sending the package.')
       return
     }
+    if (!myTenantId) { showToast('Office tenant is not resolved yet. Refresh and try again.'); return }
     setPkgSending(true)
-    const res = await sendFullPackage({...l, address:l.street, business_name:l.business_name||l.name}, supabase)
-    if (res.error) { setPkgSending(false)
-      const _pa=getActor(user); await logActivity(supabase,{employeeName:_pa.name,employeeEmail:_pa.email,action:'package_sent',category:'esign',description:`Sent Tax Inv Package to: ${l.name}`,entityName:l.name}).catch(()=>{}); showToast('Error: '+res.error); return }
+
+    // Prepare the tenant-scoped financial intake first. Never send a package
+    // containing a fallback URL that does not resolve to a real intake record.
+    let intakeId = null
+    try {
+      const { data: existingIntake, error: intakeLookupErr } = await supabase.from('financial_intake_responses')
+        .select('id')
+        .eq('tenant_id', myTenantId)
+        .eq('client_name', l.name)
+        .order('created_at',{ascending:false})
+        .limit(1)
+        .maybeSingle()
+      if (intakeLookupErr) throw intakeLookupErr
+      if (existingIntake?.id) {
+        intakeId = existingIntake.id
+      } else {
+        const { data: newIntake, error: intakeCreateErr } = await supabase.from('financial_intake_responses').insert([{
+          tenant_id: myTenantId,
+          client_id: l.id || null,
+          client_name: l.name,
+          client_email: l.email || '',
+          status: 'Sent',
+          answers: {},
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }]).select().single()
+        if (intakeCreateErr) throw intakeCreateErr
+        intakeId = newIntake?.id || null
+      }
+    } catch(e) {
+      console.error('Intake record preparation error:', e)
+      setPkgSending(false)
+      showToast('Could not prepare the Financial Intake. Package was not sent.')
+      return
+    }
+    if (!intakeId) {
+      setPkgSending(false)
+      showToast('Could not prepare the Financial Intake. Package was not sent.')
+      return
+    }
+    const intakeUrl = `${window.location.origin}/financial-intake/${intakeId}`
+
+    const res = await sendFullPackage({...l, address:l.street, business_name:l.business_name||l.name}, supabase, myTenantId)
+    if (res.error) {
+      setPkgSending(false)
+      const _pa=getActor(user)
+      await logActivity(supabase,{employeeName:_pa.name,employeeEmail:_pa.email,action:'package_failed',category:'esign',description:`Failed Tax Inv Package for: ${l.name} — ${res.error}`,entityName:l.name,entityId:l.id}).catch(()=>{})
+      showToast('Error: '+res.error)
+      return
+    }
 
     const url = res.url
     await navigator.clipboard.writeText(url).catch(()=>{})
-
-    // Find or create the financial intake record and use its real ID
-    let intakeId = null
-    try {
-      const { data: existingIntake } = await supabase.from('financial_intake_responses')
-        .select('id').eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
-      if (existingIntake) {
-        intakeId = existingIntake.id
-      } else {
-        const { data: newIntake } = await supabase.from('financial_intake_responses').insert([{
-          client_name: l.name, client_email: l.email || '', status: 'Sent',
-          answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }]).select().single()
-        if (newIntake) intakeId = newIntake.id
-      }
-    } catch(e) { console.error('Intake record lookup error:', e) }
-    const intakeUrl = intakeId
-      ? `${window.location.origin}/financial-intake/${intakeId}`
-      : `${window.location.origin}/financial-intake/${l.id}`
 
     // Generate Stripe Checkout link for the 1st Trade investigation fee
     let stripePayUrl = null
@@ -1516,7 +1583,7 @@ export default function Leads() {
       if (!stripeErr && stripeData?.url) stripePayUrl = stripeData.url
     } catch(e) { console.error('Stripe link error:', e) }
     let smsSent=false,emailSent=false
-    const cfg = await getSettings()
+    const deliveryErrors=[]
 
     if(l.email){
       try{
@@ -1528,9 +1595,9 @@ export default function Leads() {
         <a href="${stripePayUrl}" style="display:inline-block;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#ffffff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:-.01em;box-shadow:0 4px 14px rgba(14,165,233,.35)">Pay $${Number(taxFeeAmt).toLocaleString()} Now →</a>
       </td></tr></table>
     </div>` : ''
-        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: FIRM.tenantId || undefined,
+        const{data:emailData,error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: myTenantId,
           to:l.email,
-          subject:`Action Required: Sign & Pay — ${firmName()} Investigation Package`,
+          subject: stripePayUrl ? `Action Required: Sign & Pay — ${firmName()} Investigation Package` : `Action Required: Sign — ${firmName()} Investigation Package`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px">
 <tr><td align="center">
@@ -1542,7 +1609,7 @@ export default function Leads() {
   </td></tr>
   <tr><td style="padding:40px 40px 32px">
     <p style="margin:0 0 16px;font-size:16px;color:#0f172a">Dear <strong>${l.name}</strong>,</p>
-    <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7">Your <strong>Tax Investigation Package</strong> is ready. Please complete both steps below to get started — it only takes a few minutes.</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7">Your <strong>Tax Investigation Package</strong> is ready. Please complete the steps below to get started — it only takes a few minutes.</p>
     <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:20px 24px;margin:0 0 20px">
       <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.06em">📋 Step 1 — Review &amp; Sign Your Documents</p>
       <p style="margin:0 0 10px;font-size:14px;color:#334155;line-height:1.6">This package includes:</p>
@@ -1559,7 +1626,7 @@ export default function Leads() {
     <p style="margin:0 0 4px;font-size:11px;color:#94a3b8;text-align:center">Sign link: <a href="${url}" style="color:#3b82f6">${url}</a></p>
     ${stripePayUrl?`<p style="margin:0 0 4px;font-size:11px;color:#94a3b8;text-align:center">Can't click the button above? <a href="${stripePayUrl}" style="color:#0ea5e9">Click here to pay</a></p>`:''}
     <div style="background:#fdf4ff;border:1px solid #e9d5ff;border-radius:10px;padding:20px 24px;margin:0 0 24px">
-      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#7e22ce;text-transform:uppercase;letter-spacing:.06em">📋 Step 3 — Complete Your Financial Intake</p>
+      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#7e22ce;text-transform:uppercase;letter-spacing:.06em">📋 Step ${stripePayUrl ? '3' : '2'} — Complete Your Financial Intake</p>
       <p style="margin:0 0 14px;font-size:14px;color:#6b21a8;line-height:1.6">To build your resolution strategy, your advisor needs a picture of your current finances. This takes about 10 minutes and your progress saves automatically.</p>
       <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
         <a href="${intakeUrl}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#ffffff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:-.01em;box-shadow:0 4px 14px rgba(124,58,237,.35)">Start Financial Intake →</a>
@@ -1577,23 +1644,35 @@ export default function Leads() {
 </td></tr></table>
 </body></html>`
         }})
-        if(!eErr)emailSent=true
-      }catch(e){console.error('Email error:',e)}
+        if(!eErr && emailData?.success!==false) emailSent=true
+        else deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
+      }catch(e){console.error('Email error:',e);deliveryErrors.push(e?.message||'Email delivery failed')}
     }
-    if(l.phone&&cfg?.signalwire_backend){
+    if(l.phone){
       try{
         const smsBody = stripePayUrl
           ? `Hi ${l.name}, ${firmName()} sent your Investigation Package. Step 1 – Sign: ${url}  |  Step 2 – Pay $${Number(taxFeeAmt).toLocaleString()}: ${stripePayUrl}  |  Step 3 – Financial Intake: ${intakeUrl}`
           : `Hi ${l.name}, ${firmName()} sent you a Tax Investigation Package to review and sign: ${url}  |  Financial Intake: ${intakeUrl}`
-        const r=await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:l.phone,body:smsBody})})
-        const d=await r.json();if(d.success)smsSent=true
-      }catch(e){console.error('SMS error:',e)}
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:l.phone,body:smsBody,lead_id:l.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      }catch(e){console.error('SMS error:',e);deliveryErrors.push(e?.message||'SMS delivery failed')}
     }
 
     setPkgSending(false)
     const sent=[emailSent&&`email to ${l.email}`,smsSent&&`SMS to ${l.phone}`].filter(Boolean)
-    showToast(sent.length?`Package sent via ${sent.join(' & ')}!`:'Package created — link copied (configure email/SMS in Settings to auto-send).')
-    await logAction(l.id, l.name, `📦 Full Package sent for e-signature — Form 2848/8821 + Service Agreement + $${Number(taxFeeAmt).toLocaleString()} investigation fee${sent.length?` (${sent.join(' & ')})`:' (link copied)'}`)
+    if(!sent.length){
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      showToast(`Package created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
+      await logAction(l.id,l.name,`⚠️ Full Package created but not delivered — ${reason||'no configured delivery channel'}`)
+      const _fd=getActor(user); await logActivity(supabase,{employeeName:_fd.name,employeeEmail:_fd.email,action:'package_delivery_failed',category:'esign',description:`Full Package created but not delivered to: ${l.name}${reason?` — ${reason}`:''}`,entityName:l.name,entityId:l.id}).catch(()=>{})
+      load()
+      return
+    }
+    showToast(`Package sent via ${sent.join(' & ')}!`)
+    await logAction(l.id, l.name, `📦 Full Package sent for e-signature — Form 2848/8821 + Service Agreement + $${Number(taxFeeAmt).toLocaleString()} investigation fee (${sent.join(' & ')})`)
     const _fa=getActor(user); await logActivity(supabase,{employeeName:_fa.name,employeeEmail:_fa.email,action:'package_sent',category:'esign',description:`Sent Full Package to: ${l.name}`,entityName:l.name,entityId:l.id}).catch(()=>{})
     await advanceLeadStatus(supabase, l.name, 'Tax Inv Agreement Sent')
     load()
@@ -1740,7 +1819,7 @@ export default function Leads() {
     let intakeAlreadySubmitted = false
     try {
       const { data: existingIntake } = await supabase.from('financial_intake_responses')
-        .select('id, status, answers, submitted_at').eq('client_name', l.name).order('created_at', { ascending: false }).limit(1).maybeSingle()
+        .select('id, status, answers, submitted_at').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at', { ascending: false }).limit(1).maybeSingle()
 
       if (existingIntake) {
         // Already has one (sent or submitted while a lead) -- leave it as
@@ -1756,12 +1835,13 @@ export default function Leads() {
           try {
             const pdfBytes = await generateFinancialIntakePdf(l.name, existingIntake.answers || {}, existingIntake.submitted_at)
             const safeName = l.name.replace(/[^a-zA-Z0-9]+/g, '-')
-            const path = `docs/${safeName}/financial-intake/financial-intake-${Date.now()}.pdf`
+            const path = `${myTenantId}/docs/${safeName}/financial-intake/financial-intake-${Date.now()}.pdf`
             const { error: upErr } = await supabase.storage.from('documents')
               .upload(path, new Blob([pdfBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
             if (!upErr) {
               const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
               await supabase.from('documents').insert([{
+                tenant_id: myTenantId,
                 client: l.name, name: 'Financial Intake', docType: 'Financial Statements',
                 file_url: urlData?.signedUrl || '', file_name: 'Financial Intake.pdf',
                 notes: `Submitted ${existingIntake.submitted_at ? new Date(existingIntake.submitted_at).toLocaleDateString() : ''}`,
@@ -1772,7 +1852,7 @@ export default function Leads() {
         } else if (l.email) {
           const intakeUrl = window.location.origin + '/financial-intake/' + existingIntake.id
           const { error: emailErr } = await supabase.functions.invoke('send-email', {
-            body: { tenant_id: FIRM.tenantId || undefined,
+            body: { tenant_id: myTenantId,
               to: l.email,
               subject: `Your Financial Intake Form — ${firmName()}`,
               html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${l.name}</strong>,</p><p>Welcome aboard! To get your case moving, please finish your financial intake form — it gives your advisor the full picture needed to put together your resolution plan. Your progress is saved.</p><p style="text-align:center;margin:24px 0"><a href="${intakeUrl}" style="background:#1d4ed8;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Finish My Financial Intake</a></p><p style="font-size:12px;color:#64748b">Link: ${intakeUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
@@ -1782,6 +1862,7 @@ export default function Leads() {
         }
       } else {
         const { data: intakeRec, error: intakeErr } = await supabase.from('financial_intake_responses').insert([{
+          tenant_id: myTenantId, client_id: l.id || null,
           client_name: l.name, client_email: l.email || '', status: 'Sent',
           answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         }]).select().single()
@@ -1789,7 +1870,7 @@ export default function Leads() {
           const intakeUrl = window.location.origin + '/financial-intake/' + intakeRec.id
           if (l.email) {
             const { error: emailErr } = await supabase.functions.invoke('send-email', {
-              body: { tenant_id: FIRM.tenantId || undefined,
+              body: { tenant_id: myTenantId,
                 to: l.email,
                 subject: `Your Financial Intake Form — ${firmName()}`,
                 html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${l.name}</strong>,</p><p>Welcome aboard! To get your case moving, please fill out this short financial intake form — it gives your advisor the full picture needed to put together your resolution plan. It takes about 10-15 minutes and your progress saves automatically.</p><p style="text-align:center;margin:24px 0"><a href="${intakeUrl}" style="background:#1d4ed8;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Start My Financial Intake</a></p><p style="font-size:12px;color:#64748b">Link: ${intakeUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
@@ -2850,7 +2931,7 @@ export default function Leads() {
           <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setShowFaxModal(false)}>
             <div className="modal" style={{width:520}}>
               <div className="mh"><span className="mt">📠 Send Fax — {inlineFaxLead.name}</span><button className="xbtn" onClick={()=>setShowFaxModal(false)}>&times;</button></div>
-              <LeadInlineFax lead={inlineFaxLead} onClose={()=>setShowFaxModal(false)} onLogged={()=>loadLeadNotes(inlineFaxLead.id)}/>
+              <LeadInlineFax lead={inlineFaxLead} tenantId={myTenantId} onClose={()=>setShowFaxModal(false)} onLogged={()=>loadLeadNotes(inlineFaxLead.id)}/>
             </div>
           </div>
         )}
@@ -2860,7 +2941,7 @@ export default function Leads() {
           <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setShowEsignModal(false)}>
             <div className="modal" style={{width:520}}>
               <div className="mh"><span className="mt">✍️ E-Signature — {inlineEsignLead.name}</span><button className="xbtn" onClick={()=>setShowEsignModal(false)}>&times;</button></div>
-              <LeadInlineEsign lead={inlineEsignLead} onClose={()=>{setShowEsignModal(false);loadLeadNotes(inlineEsignLead.id)}}/>
+              <LeadInlineEsign lead={inlineEsignLead} tenantId={myTenantId} onClose={()=>{setShowEsignModal(false);loadLeadNotes(inlineEsignLead.id)}}/>
             </div>
           </div>
         )}

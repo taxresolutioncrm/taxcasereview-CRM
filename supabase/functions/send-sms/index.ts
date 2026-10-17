@@ -56,7 +56,7 @@ serve(async(req)=>{
   let platformRelay=false
   if(!romylabsContext && (!settings?.sw_space_url||!settings?.sw_project_id||!settings?.sw_api_token)){
     const{data:cloudTenant}=await admin.from('tenants').select('tenant_code').eq('id',tenantId).maybeSingle()
-    if(['TRC-003','ADMIN'].includes(String(cloudTenant?.tenant_code||''))){
+    if(['TRC-003','TRC-004','ADMIN'].includes(String(cloudTenant?.tenant_code||''))){
       const{data:source}=await admin.from('settings').select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did').eq('tenant_id',SIGNALWIRE_SOURCE_TENANT).limit(1).maybeSingle()
       if(source?.sw_space_url&&source?.sw_project_id&&source?.sw_api_token){
         settings={...settings,...source}
@@ -96,7 +96,7 @@ serve(async(req)=>{
   }
   const{error:logErr}=await admin.from('sms_messages').insert({clientName,phone:toNumber,body:String(body).trim(),status:sw.status||'sent',direction:'outbound',signalwire_sms_id:sw.sid||null,sent_by:sentBy,tenant_id:tenantId,client_id:client_id?String(client_id):null,read:true})
   if(logErr)console.error('[send-sms] log failed',logErr.message)
-  if(esignIdToMark)await admin.from('esigns').update({signed_sms_sent_at:new Date().toISOString()}).eq('id',esignIdToMark)
+  if(esignIdToMark)await admin.from('esigns').update({signed_sms_sent_at:new Date().toISOString()}).eq('tenant_id',tenantId).eq('id',esignIdToMark)
   return json({success:true,sid:sw.sid,platform_relay:platformRelay,from_number:fromNumber,logged:!logErr})
  }catch(e){console.error('[send-sms]',e);return json({error:e?.message||'Send failed'},500)}
 })
