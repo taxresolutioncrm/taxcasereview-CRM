@@ -341,8 +341,9 @@ function LeadInlineEsign({ lead, onClose, tenantId }) {
 </td></tr></table>
 </body></html>`
         }})
-        if(!eErr)emailSent=true
-      }catch(e){console.error('Email error:',e)}
+        if(!eErr && emailData?.success!==false) emailSent=true
+        else deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
+      }catch(e){console.error('Email error:',e);deliveryErrors.push(e?.message||'Email delivery failed')}
     }
     if((sendVia==='sms'||sendVia==='both')&&lead?.phone){
       try{
@@ -1554,6 +1555,7 @@ export default function Leads() {
       if (!stripeErr && stripeData?.url) stripePayUrl = stripeData.url
     } catch(e) { console.error('Stripe link error:', e) }
     let smsSent=false,emailSent=false
+    const deliveryErrors=[]
 
     if(l.email){
       try{
@@ -1565,7 +1567,7 @@ export default function Leads() {
         <a href="${stripePayUrl}" style="display:inline-block;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#ffffff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:-.01em;box-shadow:0 4px 14px rgba(14,165,233,.35)">Pay $${Number(taxFeeAmt).toLocaleString()} Now →</a>
       </td></tr></table>
     </div>` : ''
-        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: myTenantId,
+        const{data:emailData,error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: myTenantId,
           to:l.email,
           subject: stripePayUrl ? `Action Required: Sign & Pay — ${firmName()} Investigation Package` : `Action Required: Sign — ${firmName()} Investigation Package`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -1626,13 +1628,22 @@ export default function Leads() {
           body:{to:l.phone,body:smsBody,lead_id:l.id||null}
         })
         smsSent=!smsErr && !!smsData?.success
-      }catch(e){console.error('SMS error:',e)}
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      }catch(e){console.error('SMS error:',e);deliveryErrors.push(e?.message||'SMS delivery failed')}
     }
 
     setPkgSending(false)
     const sent=[emailSent&&`email to ${l.email}`,smsSent&&`SMS to ${l.phone}`].filter(Boolean)
-    showToast(sent.length?`Package sent via ${sent.join(' & ')}!`:'Package created — link copied (configure email/SMS in Settings to auto-send).')
-    await logAction(l.id, l.name, `📦 Full Package sent for e-signature — Form 2848/8821 + Service Agreement + $${Number(taxFeeAmt).toLocaleString()} investigation fee${sent.length?` (${sent.join(' & ')})`:' (link copied)'}`)
+    if(!sent.length){
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      showToast(`Package created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
+      await logAction(l.id,l.name,`⚠️ Full Package created but not delivered — ${reason||'no configured delivery channel'}`)
+      const _fd=getActor(user); await logActivity(supabase,{employeeName:_fd.name,employeeEmail:_fd.email,action:'package_delivery_failed',category:'esign',description:`Full Package created but not delivered to: ${l.name}${reason?` — ${reason}`:''}`,entityName:l.name,entityId:l.id}).catch(()=>{})
+      load()
+      return
+    }
+    showToast(`Package sent via ${sent.join(' & ')}!`)
+    await logAction(l.id, l.name, `📦 Full Package sent for e-signature — Form 2848/8821 + Service Agreement + ${Number(taxFeeAmt).toLocaleString()} investigation fee (${sent.join(' & ')})`)
     const _fa=getActor(user); await logActivity(supabase,{employeeName:_fa.name,employeeEmail:_fa.email,action:'package_sent',category:'esign',description:`Sent Full Package to: ${l.name}`,entityName:l.name,entityId:l.id}).catch(()=>{})
     await advanceLeadStatus(supabase, l.name, 'Tax Inv Agreement Sent')
     load()
