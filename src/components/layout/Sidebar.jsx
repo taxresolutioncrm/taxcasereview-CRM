@@ -458,9 +458,9 @@ export default function Sidebar() {
       localStorage.setItem('tcr_sms_last_seen', new Date().toISOString())
       setUnreadSms(0)
     }
-    if (location.pathname.startsWith('/email')) {
-      setUnreadInbox(0)
-    }
+    // Email badge reflects the actual unread mailbox count even while the
+    // Email page is open. Reading a message updates is_read and the realtime
+    // badge refresh clears/decrements it; merely visiting /email must not.
     if (location.pathname.startsWith('/tasks')) {
       setOpenTasks(0)
     }
