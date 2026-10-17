@@ -295,7 +295,7 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
       sent_at:new Date().toISOString(),created_at:new Date().toISOString()
     }]).select().single()
     if(error){set2(false);alert('Error: '+error.message);return}
-    const url=window.location.origin+'/sign/'+data.id
+    const url=window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
     await navigator.clipboard.writeText(url).catch(()=>{})
     let smsSent=false,emailSent=false
     if((sendVia==='email'||sendVia==='both')&&lead?.email){
