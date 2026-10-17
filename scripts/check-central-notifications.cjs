@@ -5,6 +5,7 @@ const sidebar = fs.readFileSync('src/components/layout/Sidebar.jsx','utf8')
 const globalHuddle = fs.readFileSync('src/components/GlobalTeamChatNotifier.jsx','utf8')
 const chat = fs.readFileSync('src/pages/Chat.jsx','utf8')
 const migration = fs.readFileSync('supabase/migrations/20261014_central_notification_realtime.sql','utf8')
+const emailCountSync = fs.readFileSync('scripts/fix-email-bulk-counts.mjs','utf8')
 const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
@@ -38,6 +39,8 @@ assert(sidebar.includes('setInterval(loadCalendarBadge, 180000)'), 'calendar bad
 assert(!sidebar.includes("if (location.pathname.startsWith('/email')) {\n      setUnreadInbox(0)"), 'email badge must not be cleared merely by visiting /email')
 assert(!sidebar.includes("if (item.path === '/email') setUnreadInbox(0)"), 'email badge must not be cleared by clicking the Email nav item')
 assert(app.includes("window.addEventListener('pointerdown', request, true)") && app.includes("Notification.requestPermission()"), 'browser notification permission must be requested from a real user interaction')
+assert(emailCountSync.includes("supabase.rpc('get_sidebar_badge_counts')"), 'email prebuild must preserve protected sidebar badge RPC')
+assert(!emailCountSync.includes("const baseUnread = () => supabase.from('emails')"), 'email prebuild must not rewrite Sidebar to direct mailbox queries')
 
 assert(app.includes("window.dispatchEvent(new CustomEvent('taxres:huddle-invite'"), 'central huddles must fan out locally from AppContext')
 assert(globalHuddle.includes("window.addEventListener('taxres:huddle-invite'"), 'global huddle UI must consume local central fanout')
