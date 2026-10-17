@@ -37,7 +37,7 @@ const checks=[
   ['Centurion SMS has explicit platform relay',read('supabase/functions/send-sms/index.ts').includes("['TRC-003','TRC-004','ADMIN']")],
   ['lead e-sign receives current tenant',leads.includes('function LeadInlineEsign({ lead, onClose, tenantId })')&&leads.includes('tenantId={myTenantId}')],
   ['lead e-sign writes tenant and lead IDs explicitly',leads.includes('tenant_id:tenantId')&&leads.includes('lead_id:lead?.id || null')],
-  ['lead e-sign creates tokenized signing link',leads.includes("window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')")],
+  ['lead e-sign creates tokenized signing link and fails closed without token',leads.includes("window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token)")&&leads.includes("Signing request token was not created")],
   ['full package contract storage is tenant-prefixed',docUtils.includes('`${tenantId}/docs/${safeName}/package/agreement.pdf`')&&docUtils.includes('`${tenantId}/docs/${safeName}/package/${formType}.pdf`')&&docUtils.includes('`${tenantId}/docs/${safeName}/package/state_poa_${clientState}${suffix}.pdf`')],
   ['service addendum storage is tenant-prefixed',docUtils.includes('`${tenantId}/docs/${safeName}/addendum/addendum_${Date.now()}.pdf`')],
   ['full package e-sign row writes tenant explicitly',docUtils.includes("tenant_id: tenantId,\n    sent_at: new Date().toISOString()")],
@@ -80,6 +80,13 @@ const checks=[
   ['public financial intake mail uses validated server kinds',intake.includes("kind:'financial_intake_client_copy'")&&intake.includes("kind:'financial_intake_staff_notification'")&&!intake.includes("body: { tenant_id: FIRM.tenantId || undefined")],
   ['send-email validates submitted intake before public mail',sendEmail.includes("body.kind === 'financial_intake_client_copy' || body.kind === 'financial_intake_staff_notification'")&&sendEmail.includes("String(intake.status) !== 'Submitted'")&&sendEmail.includes("tenant_id = intake.tenant_id")],
   ['public intake recipients are server-derived',sendEmail.includes("to = intake.client_email")&&sendEmail.includes("to = employee.email")&&sendEmail.includes("skipped:'no_active_assignee_email'")],
+  ['all financial intake lead paths are tenant scoped',leads.includes(".select('answers')\n        .eq('tenant_id', myTenantId)")&&leads.includes(".select('id').eq('tenant_id', myTenantId).eq('client_name', l.name)")&&leads.includes("tenant_id: myTenantId, client_id: l.id || null")],
+  ['client document component receives and enforces active tenant',clients.includes("function ClientDocs({ clientId, clientName, tenantId, supabase")&&clients.includes("select('*').eq('tenant_id', tenantId)")&&clients.includes("tenant_id: tenantId,")&&clients.includes("tenantId={myTenantId}")],
+  ['all signing creation paths fail closed on missing token',docUtils.includes("Signing request token was not created")&&leads.includes("Signing request token was not created")&&clients.includes("Signing request token was not created")&&irsFiller.includes("Signing request token was not created")&&stateForms.includes("Signing request token was not created")],
+  ['central E-Sign lists are tenant scoped',esignPage.includes("from('esigns').select('*').eq('tenant_id', myTenantId)")&&esignPage.includes("from('clients').select('id,name,email,phone').eq('tenant_id', myTenantId)")],
+  ['central E-Sign mutations are tenant scoped',esignPage.includes("update({ status: 'Awaiting', sent_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', item.id)")&&esignPage.includes("update({ status }).eq('tenant_id', myTenantId).eq('id', id)")&&esignPage.includes("delete().eq('tenant_id', myTenantId).eq('id', id)")],
+  ['public E-Sign mutations are tenant bound',archiveFn.includes("update({opened_at:openedAt}).eq('tenant_id',e.tenant_id)")&&archiveFn.includes("}).eq('tenant_id',e.tenant_id).eq('id',id).eq('signer_token',token).in('status',['Awaiting','Viewed'])")&&archiveFn.includes(".eq('tenant_id',e.tenant_id).eq('id',id).eq('signer_token',token)")],
+  ['signed receipt markers are tenant bound',sendEmail.includes(".eq('tenant_id',tenant_id).eq('id',esignIdToMark)")&&read('supabase/functions/send-sms/index.ts').includes(".eq('tenant_id',tenantId).eq('id',esignIdToMark)")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
