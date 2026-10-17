@@ -124,8 +124,9 @@ export default function IRSFormFiller({ client, onClose }) {
         created_at: new Date().toISOString(),
       }]).select().single();
       if (esignErr) throw new Error(esignErr.message);
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created');
 
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`;
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`;
       let emailSent = false, smsSent = false;
       const deliveryErrors = [];
 
