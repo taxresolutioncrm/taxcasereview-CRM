@@ -804,14 +804,14 @@ export default function Leads() {
         client_name: lead.name, client_email: lead.email||'', client_phone: lead.phone||'',
         message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${firmName()} to represent you before the ${formDef.state} tax authority.`,
         pdf_attachments: poaAttachments,
-        priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
+        priority:'Normal', status:'Awaiting', tenant_id:myTenantId, sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
       const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
       await navigator.clipboard.writeText(sigUrl).catch(()=>{})
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && lead.email) {
-        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined, to:lead.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${lead.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>` }})
+        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:lead.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${lead.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>` }})
         emailSent = !eErr
       }
       if ((via==='sms'||via==='both') && lead.phone) {
@@ -1532,7 +1532,7 @@ export default function Leads() {
         <a href="${stripePayUrl}" style="display:inline-block;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#ffffff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:-.01em;box-shadow:0 4px 14px rgba(14,165,233,.35)">Pay $${Number(taxFeeAmt).toLocaleString()} Now →</a>
       </td></tr></table>
     </div>` : ''
-        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: FIRM.tenantId || undefined,
+        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: myTenantId,
           to:l.email,
           subject:`Action Required: Sign & Pay — ${firmName()} Investigation Package`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
