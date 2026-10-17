@@ -196,7 +196,7 @@ function ActionBtn({color, icon, label, sub, onClick}) {
 
 
 // ── Inline Fax Form ─────────────────────────────────────────────────────────
-function InlineFaxForm({ client, onClose, showToast, onLogged }) {
+function InlineFaxForm({ client, onClose, showToast, onLogged, tenantId }) {
   // TO stays blank on open — the client's phone number is not the fax number,
   // and prefilling led users to send to the wrong destination.
   const [toNum,   setToNum]   = useState('')
@@ -229,7 +229,8 @@ function InlineFaxForm({ client, onClose, showToast, onLogged }) {
     let fileUrl = null
     const toFull = '+1' + faxDigits
     try {
-      const path = `fax/${client?.id || 'client'}/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]/g,'_')}`
+      if (!tenantId) throw new Error('Could not resolve office tenant for fax upload')
+      const path = `${tenantId}/docs/${client?.id || 'client'}/fax/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]/g,'_')}`
       const { error: uploadErr } = await supabase.storage.from('documents').upload(path, file, {upsert:false, contentType:file.type || 'application/pdf'})
       if (uploadErr) throw uploadErr
       const { data:u, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
@@ -3442,7 +3443,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setFaxModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">📠 Send Fax — {faxClient.name}</span><button className="xbtn" onClick={()=>setFaxModal(false)}>&times;</button></div>
-            <InlineFaxForm client={faxClient} onClose={()=>setFaxModal(false)} showToast={showToast} onLogged={()=>loadRelated(faxClient.name)}/>
+            <InlineFaxForm client={faxClient} tenantId={myTenantId} onClose={()=>setFaxModal(false)} showToast={showToast} onLogged={()=>loadRelated(faxClient.name)}/>
           </div>
         </div>
       )}
