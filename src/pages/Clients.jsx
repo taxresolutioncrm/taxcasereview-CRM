@@ -1741,7 +1741,7 @@ export default function Clients() {
     if (via !== 'email' && !c.phone) { showToast('Client has no phone on file'); return }
     setAddendumSending(true)
     const actor = resolveActorName(user, employees)
-    const res = await sendAddendumForSignature(c, addForm, supabase, actor)
+    const res = await sendAddendumForSignature(c, addForm, supabase, actor, myTenantId)
     if (res.error) { setAddendumSending(false); showToast('Error: '+res.error); return }
 
     const url = res.url
@@ -1774,7 +1774,7 @@ export default function Clients() {
     let emailSent=false, smsSent=false
 
     if ((via==='email'||via==='both') && c.email) {
-      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined,
+      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
         to: c.email,
         subject: `Action Required: Sign Your Service Addendum — ${FIRM.name || 'Firm'}`,
         html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -1846,13 +1846,13 @@ export default function Clients() {
 
       // Generate the replacement agreement first. Client terms are not changed
       // unless a valid token-bound signing request exists.
-      const res = await sendAddendumForSignature(detail, plan, supabase, actor)
+      const res = await sendAddendumForSignature(detail, plan, supabase, actor, myTenantId)
       if (res.error) throw new Error(res.error)
       const url = res.url
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && detail.email) {
         const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', { body: {
-          tenant_id: FIRM.tenantId || undefined,
+          tenant_id: myTenantId,
           to: detail.email,
           subject: `Action Required: Review Your New Payment Plan — ${firmName()}`,
           html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Updated Service Plan</h2><p>Hi <strong>${detail.name}</strong>,</p><p>Your updated service/payment plan is ready for review and signature.</p><p><strong>Resolution fee:</strong> ${fee.toLocaleString()}${plan.paymentPlan ? `<br><strong>New payment:</strong> ${Number(plan.paymentPlan).toLocaleString()}/mo` : ''}${plan.startDate ? `<br><strong>Start date:</strong> ${plan.startDate}` : ''}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign New Plan</a></p><p>If you have questions, reply to this message before signing.</p><p><strong>${firmName()}</strong></p></div>`
