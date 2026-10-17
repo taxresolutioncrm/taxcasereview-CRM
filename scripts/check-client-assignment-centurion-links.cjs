@@ -14,6 +14,7 @@ const docUtils=read('src/lib/docUtils.js')
 const irsFiller=read('src/components/IRSFormFiller.jsx')
 const stateForms=read('src/pages/StateForms.jsx')
 const esignPage=read('src/pages/Esign.jsx')
+const archiveFn=read('supabase/functions/esign-archive-upload/index.ts')
 
 const checks=[
   ['client schema has explicit Admin assignment',migration.includes('add column if not exists "clientAdmin" text')],
@@ -55,6 +56,15 @@ const checks=[
   ['public signing page renders resolved firm name',sign.includes("{firmDisplayName || FIRM.name || 'Firm'} has been notified.")&&sign.includes(">{firmDisplayName || FIRM.name || 'Firm'}</div>")],
   ['lead fax upload is tenant-prefixed',leads.includes('`${tenantId}/docs/${lead?.id || \'lead\'}/fax/${Date.now()}_')&&leads.includes('tenantId={myTenantId}')],
   ['client fax upload is tenant-prefixed',clients.includes('`${tenantId}/docs/${client?.id || \'client\'}/fax/${Date.now()}_')&&clients.includes('tenantId={myTenantId}')],
+  ['signed e-sign archive is tenant-prefixed',archiveFn.includes('const prefix=`${e.tenant_id}/docs/${clean(e.client_name||\'client\')}/signed/${id}`')&&!archiveFn.includes('const prefix=`docs/${clean(e.client_name||\'client\')}/signed/${id}`')],
+  ['signed archive refuses missing tenant',archiveFn.includes("if(!e.tenant_id)return json({error:'Signing request tenant is missing'},500)")],
+  ['full package helper accepts active tenant override',docUtils.includes("sendFullPackage(client, supabase, tenantIdOverride = '')")&&docUtils.includes('tenantIdOverride || FIRM.tenantId')],
+  ['addendum helper accepts active tenant override',docUtils.includes("sendAddendumForSignature(record, opts, supabase, sentBy, tenantIdOverride = '')")],
+  ['lead full package passes active tenant',leads.includes('sendFullPackage({...l, address:l.street, business_name:l.business_name||l.name}, supabase, myTenantId)')],
+  ['lead addendum passes active tenant',leads.includes('sendAddendumForSignature(l, addForm, supabase, actor, myTenantId)')],
+  ['client addendum passes active tenant',clients.includes('sendAddendumForSignature(c, addForm, supabase, actor, myTenantId)')&&clients.includes('sendAddendumForSignature(detail, plan, supabase, actor, myTenantId)')],
+  ['package attachments persist storage paths',docUtils.includes("storage_path: agreementPath")&&docUtils.includes("storage_path: path")],
+  ['lead signing attachments persist storage paths',leads.includes("storage_path:path")&&leads.includes("storage_path:path })")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
