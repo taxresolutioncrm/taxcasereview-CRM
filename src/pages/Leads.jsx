@@ -252,7 +252,7 @@ function LeadInlineFax({ lead, onClose, onLogged, tenantId }) {
 }
 
 
-function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
+function LeadInlineEsign({ lead, onClose, tenantId }) {
   const [docType,set0]=useState('Tax Service Agreement')
   const [sendVia,setSendVia]=useState(lead?.email ? 'email' : 'sms')
   const [saving,set2]=useState(false)
@@ -345,10 +345,11 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
       }catch(e){console.error('Email error:',e)}
     }
     if((sendVia==='sms'||sendVia==='both')&&lead?.phone){
-      const cfg = typeof getSettings === 'function' ? await getSettings() : {}
-      if(cfg?.signalwire_backend) try{
-        const r=await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:lead.phone,body:`Hi ${lead?.name}, ${firmName()} sent you a document to sign: ${url}`})})
-        const d=await r.json();if(d.success)smsSent=true
+      try{
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:lead.phone,body:`Hi ${lead?.name}, ${firmName()} sent you a document to sign: ${url}`,lead_id:lead?.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
       }catch(e){console.error('SMS error:',e)}
     }
     set2(false)
@@ -910,19 +911,15 @@ export default function Leads() {
       emailSent = !eErr
     }
     if ((via==='sms'||via==='both') && l.phone) {
-      const cfg = await getSettings()
-      if (cfg?.signalwire_backend) {
-        try {
-          const smsBody = stripePayUrl
-            ? `${firmName()}: Step 1 – Sign Addendum: ${url}  |  Step 2 – Pay ${feeDisplay}: ${stripePayUrl}`
-            : `${firmName()}: please review and sign your Service Addendum here: ${url}`
-          await fetch(cfg.signalwire_backend + '/sms/send', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: l.phone, body: smsBody })
-          })
-          smsSent = true
-        } catch (_) {}
-      }
+      try {
+        const smsBody = stripePayUrl
+          ? `${firmName()}: Step 1 – Sign Addendum: ${url}  |  Step 2 – Pay ${feeDisplay}: ${stripePayUrl}`
+          : `${firmName()}: please review and sign your Service Addendum here: ${url}`
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:l.phone,body:smsBody,lead_id:l.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
+      } catch (_) {}
     }
 
     const feeText = `$${Number(addForm.resolutionFee).toLocaleString()}`
@@ -1528,7 +1525,6 @@ export default function Leads() {
       if (!stripeErr && stripeData?.url) stripePayUrl = stripeData.url
     } catch(e) { console.error('Stripe link error:', e) }
     let smsSent=false,emailSent=false
-    const cfg = await getSettings()
 
     if(l.email){
       try{
@@ -1592,13 +1588,15 @@ export default function Leads() {
         if(!eErr)emailSent=true
       }catch(e){console.error('Email error:',e)}
     }
-    if(l.phone&&cfg?.signalwire_backend){
+    if(l.phone){
       try{
         const smsBody = stripePayUrl
-          ? `Hi ${l.name}, ${firmName()} sent your Investigation Package. Step 1 – Sign: ${url}  |  Step 2 – Pay $${Number(taxFeeAmt).toLocaleString()}: ${stripePayUrl}  |  Step 3 – Financial Intake: ${intakeUrl}`
+          ? `Hi ${l.name}, ${firmName()} sent your Investigation Package. Step 1 – Sign: ${url}  |  Step 2 – Pay ${Number(taxFeeAmt).toLocaleString()}: ${stripePayUrl}  |  Step 3 – Financial Intake: ${intakeUrl}`
           : `Hi ${l.name}, ${firmName()} sent you a Tax Investigation Package to review and sign: ${url}  |  Financial Intake: ${intakeUrl}`
-        const r=await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:l.phone,body:smsBody})})
-        const d=await r.json();if(d.success)smsSent=true
+        const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+          body:{to:l.phone,body:smsBody,lead_id:l.id||null}
+        })
+        smsSent=!smsErr && !!smsData?.success
       }catch(e){console.error('SMS error:',e)}
     }
 
@@ -2872,7 +2870,7 @@ export default function Leads() {
           <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setShowEsignModal(false)}>
             <div className="modal" style={{width:520}}>
               <div className="mh"><span className="mt">✍️ E-Signature — {inlineEsignLead.name}</span><button className="xbtn" onClick={()=>setShowEsignModal(false)}>&times;</button></div>
-              <LeadInlineEsign lead={inlineEsignLead} tenantId={myTenantId} getSettings={getSettings} onClose={()=>{setShowEsignModal(false);loadLeadNotes(inlineEsignLead.id)}}/>
+              <LeadInlineEsign lead={inlineEsignLead} tenantId={myTenantId} onClose={()=>{setShowEsignModal(false);loadLeadNotes(inlineEsignLead.id)}}/>
             </div>
           </div>
         )}
