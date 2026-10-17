@@ -298,7 +298,6 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
     const url=window.location.origin+'/sign/'+data.id
     await navigator.clipboard.writeText(url).catch(()=>{})
     let smsSent=false,emailSent=false
-    const cfg = await getSettings()
     if((sendVia==='email'||sendVia==='both')&&lead?.email){
       try{
         const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId || FIRM.tenantId || undefined,
@@ -335,8 +334,9 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
         if(!eErr)emailSent=true
       }catch(e){console.error('Email error:',e)}
     }
-    if((sendVia==='sms'||sendVia==='both')&&lead?.phone&&cfg?.signalwire_backend){
-      try{
+    if((sendVia==='sms'||sendVia==='both')&&lead?.phone){
+      const cfg = typeof getSettings === 'function' ? await getSettings() : {}
+      if(cfg?.signalwire_backend) try{
         const r=await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:lead.phone,body:`Hi ${lead?.name}, ${firmName()} sent you a document to sign: ${url}`})})
         const d=await r.json();if(d.success)smsSent=true
       }catch(e){console.error('SMS error:',e)}
