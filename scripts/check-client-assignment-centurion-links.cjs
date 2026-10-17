@@ -13,6 +13,7 @@ const sendEmail=read('supabase/functions/send-email/index.ts')
 const docUtils=read('src/lib/docUtils.js')
 const irsFiller=read('src/components/IRSFormFiller.jsx')
 const stateForms=read('src/pages/StateForms.jsx')
+const esignPage=read('src/pages/Esign.jsx')
 
 const checks=[
   ['client schema has explicit Admin assignment',migration.includes('add column if not exists "clientAdmin" text')],
@@ -48,6 +49,10 @@ const checks=[
   ['IRS form e-sign row and email use active tenant',irsFiller.includes('tenant_id: myTenantId')&&!irsFiller.includes("const path = `docs/${safeName}/irs-forms/")],
   ['State Forms e-sign storage is tenant-prefixed',stateForms.includes('`${myTenantId}/docs/${safeName}/state-poa/${form.state}_POA_${Date.now()}.pdf`')],
   ['State Forms e-sign row and email use active tenant',stateForms.includes('tenant_id: myTenantId')&&!stateForms.includes("const path = `docs/${safeName}/state-poa/")],
+  ['central E-Sign creation writes active tenant',esignPage.includes('tenant_id: myTenantId || FIRM.tenantId || undefined')],
+  ['central E-Sign email uses active tenant',esignPage.includes('tenant_id:myTenantId || FIRM.tenantId || undefined')],
+  ['public signing page does not shadow firmName helper',!sign.includes("const [firmName, setFirmName]")&&sign.includes("const [firmDisplayName, setFirmDisplayName]")],
+  ['public signing page renders resolved firm name',sign.includes("{firmDisplayName || FIRM.name || 'Firm'} has been notified.")&&sign.includes(">{firmDisplayName || FIRM.name || 'Firm'}</div>")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
