@@ -1499,32 +1499,90 @@ function ExternalProductOfficePage({ productKey }) {
   if(loading) return <Spinner/>
   if(error) return <div style={{padding:32}}><button onClick={()=>navigate('/crm-admin/offices')} style={S.btn('ghost')}>← Offices</button><div style={{marginTop:18,color:'#fca5a5'}}>{error}</div></div>
 
-  const n = (...values) => { const v=values.find(x=>x!==null&&x!==undefined&&Number.isFinite(Number(x))); return v===undefined?'—':Number(v).toLocaleString() }
+
+  // Keep the same visual structure as the native TaxRes office details, even
+  // when operational metrics come from a separate Supabase project.
+  const n=(...values)=>{const v=values.find(x=>x!==null&&x!==undefined&&Number.isFinite(Number(x)));return v===undefined?'—':Number(v).toLocaleString()}
   const taxresFamily=productKey==='nashville'||productKey==='taxres_crm'
-  const cards=[
-    ['Employees',n(office.employee_count,office.active_staff,metrics.active_staff)],
-    ['Clients',n(office.client_count,office.active_clients,metrics.active_clients)],
-    ['Leads',n(office.lead_count,office.active_leads,metrics.active_leads)],
-    ['Status',office.status||(office.is_active===false?'inactive':'active')],
-    ['Payments',n(billing?.payment_count)],
-    ['Monthly Billing',billing?.monthly_amount_cents!=null?'$'+(Number(billing.monthly_amount_cents)/100).toFixed(2):'—']
+  const labelColor={Employees:'#6366f1',Clients:'#0ea5e9',Leads:'#f59e0b',Storage:'#8b5cf6',Collected:'#10b981',Transactions:'#6366f1','Last Activity':'#10b981',MRR:'#10b981'}
+  const amount=(cents)=>cents==null?'—':'$'+(Number(cents)/100).toLocaleString('en-US',{maximumFractionDigits:0})
+  const mrr=billing?.monthly_amount_cents!=null?amount(billing.monthly_amount_cents)+'/mo':office.mrr!=null?'$'+Number(office.mrr).toLocaleString()+'/mo':'—'
+  const kpis=[
+    ['Employees',n(office.employee_count,office.active_staff,metrics.active_staff,metrics.active_users)],
+    ['Clients',n(office.client_count,office.active_clients,metrics.total_clients,metrics.active_clients)],
+    ['Leads',n(office.lead_count,office.active_leads,metrics.total_leads,metrics.active_leads)],
+    ['Storage',office.storage_bytes!=null||metrics.storage_bytes!=null?fmtBytes(office.storage_bytes??metrics.storage_bytes):'—'],
+    ['Collected',amount(billing?.collected_cents??office.collected_cents??metrics.collected_cents)],
+    ['Transactions',n(office.transaction_count,billing?.payment_count,metrics.transaction_count)],
+    ['Last Activity',office.last_activity||metrics.last_activity?fmtAgo(office.last_activity||metrics.last_activity):'—'],
+    ['MRR',mrr],
   ]
-  const tabs=['Overview','Employees','Billing','Actions','Documents','Notes']
+  const tabs=['overview','employees','billing','actions','documents','notes']
+  const detailRows=[
+    ['Firm Name',office.name||cfg.label],
+    ['Tenant Code',office.tenant_code||office.code||'—'],
+    ['Plan',office.plan_tier||office.plan||'—'],
+    ['Status',office.status||(office.is_active===false?'inactive':'active')],
+    ['Contact',office.primary_contact_name||office.contact_name||'—'],
+    ['Email',office.primary_contact_email||office.email||'—'],
+    ['Phone',office.firm_phone||office.phone||'—'],
+    ['Address',office.firm_address||office.address||'—'],
+    ['Contract Start',office.contract_start_date?fmtDate(office.contract_start_date):'—'],
+    ['Contract End',office.contract_end_date?fmtDate(office.contract_end_date):'—'],
+    ['Notes',office.notes||'—'],
+  ]
+  const recentActions=Array.isArray(office.recent_actions)?office.recent_actions:[]
+  const employees=Array.isArray(office.employees)?office.employees:[]
   return (
-    <div style={{padding:'28px 36px',maxWidth:1150}}>
-      <button onClick={()=>navigate('/crm-admin/offices')} style={{...S.btn('ghost'),marginBottom:18}}>← All Offices</button>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:20}}>
-        <div><div style={{color:cfg.color,fontSize:11,fontWeight:800}}>{taxresFamily?'TaxRes CRM':cfg.label}</div><h2 style={{color:'#fff',margin:'8px 0'}}>{office.name||cfg.label}</h2><div style={{fontSize:12,color:'#64748b'}}>Office ID: {office.id}</div></div>
-        {cfg.appUrl&&<button style={S.btn('primary')} onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')}>Open CRM ↗</button>}
+    <div style={{padding:'28px 36px',maxWidth:1050}}>
+      <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:28}}>
+        <button onClick={()=>navigate('/crm-admin/offices')} style={{...S.btn('ghost'),padding:'6px 12px',fontSize:12}}>← Back</button>
+        <div style={{width:14,height:14,borderRadius:'50%',background:cfg.color||'#6366f1'}}/>
+        <div style={{flex:1}}>
+          <div style={{fontSize:22,fontWeight:800,color:'#fff'}}>{office.name||cfg.label}</div>
+          <div style={{fontSize:12,color:'#475569'}}>{office.tenant_code||office.code||'—'} · Since {office.since?fmtDate(office.since):'—'} · {office.primary_contact_email||office.email||'—'}</div>
+        </div>
+        <span style={S.badge(STATUS_COLOR[office.status]||'#64748b')}>{office.status||'active'}</span>
+        {cfg.appUrl&&<button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={{...S.btn('primary'),display:'flex',alignItems:'center',gap:6}}>🚀 Jump In</button>}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:24}}>{cards.map(([label,value])=><div key={label} style={{...S.card,padding:16}}><div style={{fontSize:10,color:'#64748b',fontWeight:800}}>{label.toUpperCase()}</div><div style={{fontSize:19,color:'#e2e8f0',marginTop:8,fontWeight:800}}>{value}</div></div>)}</div>
-      <div style={{display:'flex',gap:6,flexWrap:'wrap',borderBottom:'1px solid #334155',marginBottom:18}}>{tabs.map(x=><button key={x} onClick={()=>setTab(x)} style={{border:'none',cursor:'pointer',padding:'10px 14px',background:tab===x?'rgba(99,102,241,.15)':'transparent',color:tab===x?'#a5b4fc':'#94a3b8',borderBottom:tab===x?'2px solid #6366f1':'2px solid transparent'}}>{x}</button>)}</div>
-      {tab==='Overview'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}><div><b>Office:</b> {office.name||'—'}</div><div style={{marginTop:10}}><b>Product family:</b> {taxresFamily?'TaxRes CRM':cfg.label}</div><div style={{marginTop:10}}><b>Created:</b> {office.since?fmtDate(office.since):'—'}</div><div style={{marginTop:10}}><b>Status:</b> {office.status||'—'}</div></div>}
-      {tab==='Billing'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}><div>Seats: {n(billing?.seat_count)}</div><div style={{marginTop:10}}>Monthly: {billing?.monthly_amount_cents!=null?'$'+(Number(billing.monthly_amount_cents)/100).toFixed(2):'—'}</div><div style={{marginTop:10}}>Collected: {billing?.collected_cents!=null?'$'+(Number(billing.collected_cents)/100).toFixed(2):'—'}</div><div style={{marginTop:10}}>Payments: {n(billing?.payment_count)}</div></div>}
-      {tab==='Employees'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}>Employees reported by the connected office: {cards[0][1]}. Employee records remain in the office's existing CRM.</div>}
-      {tab==='Actions'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}>Administrative actions requiring office-level privileges remain in the existing CRM. {cfg.appUrl&&<button style={S.btn('ghost')} onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')}>Open CRM ↗</button>}</div>}
-      {tab==='Documents'&&<UniversalOfficeESign supabase={supabase} productKey={taxresFamily?'taxres_crm':productKey} externalOfficeId={office.id} firmName={office.name||cfg.label} contactName="" contactEmail="" seats={billing?.seat_count??null} monthlyAmount={billing?.monthly_amount_cents!=null?Number(billing.monthly_amount_cents)/100:(office.mrr??null)}/>}
-      {tab==='Notes'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}>Office notes have not been migrated. Existing notes remain in their original records.</div>}
+      <div style={{display:'flex',gap:12,marginBottom:24,flexWrap:'wrap'}}>
+        {kpis.map(([label,val])=><div key={label} style={{...S.card,padding:'12px 16px',flex:1,minWidth:110}}>
+          <div style={{fontSize:9,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'.06em'}}>{label}</div>
+          <div style={{fontSize:18,fontWeight:800,color:labelColor[label],marginTop:2}}>{val}</div>
+        </div>)}
+      </div>
+      <div style={{display:'flex',gap:2,marginBottom:20,borderBottom:'1px solid rgba(99,102,241,.15)'}}>
+        {tabs.map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{padding:'8px 18px',borderRadius:'8px 8px 0 0',border:'none',cursor:'pointer',fontSize:13,fontWeight:tab.toLowerCase()===tb?700:400,marginBottom:-1,background:tab.toLowerCase()===tb?'rgba(99,102,241,.15)':'transparent',color:tab.toLowerCase()===tb?'#a5b4fc':'#475569',borderBottom:tab.toLowerCase()===tb?'2px solid #6366f1':'2px solid transparent'}}>{tb.charAt(0).toUpperCase()+tb.slice(1)}</button>)}
+      </div>
+      {tab.toLowerCase()==='overview'&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+        <div style={{...S.card,padding:18}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:12}}>Firm Details</div>
+          {detailRows.map(([k,v])=><div key={k} style={{display:'flex',gap:8,padding:'5px 0',borderBottom:'1px solid rgba(99,102,241,.07)',fontSize:13}}>
+            <span style={{color:'#475569',width:120,flexShrink:0}}>{k}</span><span style={{color:'#e2e8f0'}}>{v}</span>
+          </div>)}
+        </div>
+        <div><div style={{...S.card,padding:18,marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:12}}>Admin Actions</div>
+          {recentActions.length===0?<div style={{color:'#475569',fontSize:13}}>No admin actions available.</div>:recentActions.slice(0,8).map((action,i)=><div key={action.id||i} style={{padding:'6px 0',borderBottom:'1px solid rgba(99,102,241,.07)',fontSize:12}}>
+            <span style={{color:'#6366f1',fontWeight:600}}>{action.action||action.type}</span><span style={{color:'#475569'}}> · {action.created_at?fmtAgo(action.created_at):'—'}</span>
+          </div>)}
+        </div></div>
+      </div>}
+      {tab.toLowerCase()==='employees'&&<div style={S.card}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Name','Email','Role','Last Activity'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+        <tbody>{employees.map((e,i)=><tr key={e.id||i}><td style={{...S.td,color:'#e2e8f0',fontWeight:600}}>{e.name||'—'}</td><td style={S.td}>{e.email||'—'}</td><td style={S.td}>{e.role||e.access||'—'}</td><td style={S.td}>{e.last_activity?fmtAgo(e.last_activity):'—'}</td></tr>)}</tbody></table>
+        {!employees.length&&<div style={{padding:20,fontSize:12,color:'#64748b'}}>Employee details are not provided by this office's metrics feed. {kpis[0][1]} employees reported.</div>}
+      </div>}
+      {tab.toLowerCase()==='billing'&&<div style={{maxWidth:480}}><div style={{...S.card,padding:20}}>
+        <div style={{fontSize:12,fontWeight:700,color:'#475569',textTransform:'uppercase',marginBottom:16}}>Billing Settings</div>
+        {[['Plan',office.plan_tier||office.plan||'—'],['Seats',n(billing?.seat_count)],['Monthly Rate',mrr],['Collected',amount(billing?.collected_cents)],['Payments',n(billing?.payment_count)]].map(([k,v])=><div key={k} style={{padding:'9px 0',borderBottom:'1px solid rgba(99,102,241,.07)',fontSize:13,color:'#e2e8f0'}}>{k}: {v}</div>)}
+      </div></div>}
+      {tab.toLowerCase()==='actions'&&<div style={{...S.card,padding:20}}>
+        <div style={{fontSize:12,fontWeight:700,color:'#475569',textTransform:'uppercase',marginBottom:12}}>Admin Actions</div>
+        {recentActions.length?recentActions.map((action,i)=><div key={action.id||i} style={{padding:8,color:'#94a3b8'}}>{action.action||action.type} · {action.created_at?fmtAgo(action.created_at):'—'}</div>):<div style={{color:'#64748b'}}>No admin action history available from the office feed.</div>}
+      </div>}
+      {tab.toLowerCase()==='documents'&&<UniversalOfficeESign supabase={supabase} productKey={taxresFamily?'taxres_crm':productKey} externalOfficeId={office.id} firmName={office.name||cfg.label} contactName={office.primary_contact_name||''} contactEmail={office.primary_contact_email||''} seats={billing?.seat_count??null} monthlyAmount={billing?.monthly_amount_cents!=null?Number(billing.monthly_amount_cents)/100:(office.mrr??null)}/>}
+      {tab.toLowerCase()==='notes'&&<div style={{...S.card,padding:20,color:'#64748b',fontSize:13}}>No notes returned by this office's connected data feed. Existing office records have not been changed.</div>}
     </div>
   )
 }
