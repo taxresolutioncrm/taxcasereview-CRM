@@ -1059,7 +1059,7 @@ const STATE_POA_FILES = {
 }
 
 export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
-  const tenantId = tenantIdOverride || FIRM.tenantId
+  const tenantId = tenantIdOverride
   if (!tenantId) return { error: 'Could not resolve office tenant for contract package' }
   const clientType  = client?.clientType || 'Individual'
   const irsOrState  = client?.irsOrState || 'IRS Federal'
@@ -1186,7 +1186,7 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
 // Timestamped storage path (not a fixed one like the package forms) since an
 // addendum can legitimately be re-sent later with different fee terms.
 export async function sendAddendumForSignature(record, opts, supabase, sentBy, tenantIdOverride = '') {
-  const tenantId = tenantIdOverride || FIRM.tenantId
+  const tenantId = tenantIdOverride
   if (!tenantId) return { error: 'Could not resolve office tenant for addendum' }
   const safeName = (record?.name || 'client').replace(/[^a-zA-Z0-9]+/g, '-')
   let bytes
