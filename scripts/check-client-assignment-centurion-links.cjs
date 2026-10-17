@@ -68,6 +68,9 @@ const checks=[
   ['lead custom e-sign fails closed on upload error',leads.includes("if(upErr) throw upErr")&&leads.includes("alert('Custom document upload failed: '")],
   ['e-sign attachment loader enforces tenant boundary',archiveFn.includes("Attachment tenant mismatch")&&archiveFn.includes("p.startsWith(String(e.tenant_id)+'/')")],
   ['package email does not promise payment when Stripe unavailable',leads.includes("subject: stripePayUrl ? `Action Required: Sign & Pay")&&leads.includes("Step ${stripePayUrl ? '3' : '2'} — Complete Your Financial Intake")],
+  ['public financial intake mail uses validated server kinds',intake.includes("kind:'financial_intake_client_copy'")&&intake.includes("kind:'financial_intake_staff_notification'")&&!intake.includes("body: { tenant_id: FIRM.tenantId || undefined")],
+  ['send-email validates submitted intake before public mail',sendEmail.includes("body.kind === 'financial_intake_client_copy' || body.kind === 'financial_intake_staff_notification'")&&sendEmail.includes("String(intake.status) !== 'Submitted'")&&sendEmail.includes("tenant_id = intake.tenant_id")],
+  ['public intake recipients are server-derived',sendEmail.includes("to = intake.client_email")&&sendEmail.includes("to = employee.email")&&sendEmail.includes("skipped:'no_active_assignee_email'")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
