@@ -1095,10 +1095,11 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
     const { error: agErr } = await supabase.storage.from('documents')
       .upload(agreementPath, new Blob([agreementBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
     if (agErr) throw agErr
-    const { data: agUrl } = await supabase.storage.from('documents').createSignedUrl(agreementPath, 94608000)
-    pdfAttachments.push({ formType: 'agreement', label: 'Tax Service Agreement', url: agUrl?.signedUrl || '', storage_path: agreementPath })
+    const { data: agUrl, error: agSignErr } = await supabase.storage.from('documents').createSignedUrl(agreementPath, 94608000)
+    if (agSignErr || !agUrl?.signedUrl) throw agSignErr || new Error('Could not create secure agreement link')
+    pdfAttachments.push({ formType: 'agreement', label: 'Tax Service Agreement', url: agUrl.signedUrl, storage_path: agreementPath })
   } catch (e) {
-    console.warn('Agreement PDF could not be generated:', e.message)
+    return { error: `Failed to build Tax Service Agreement: ${e.message}` }
   }
 
   // IRS forms (2848, 8821, cc_auth)
@@ -1111,8 +1112,9 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw upErr
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-      pdfAttachments.push({ formType, label: FORM_LABELS[formType], url: urlData?.signedUrl || '', storage_path: path })
+      const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      if (signErr || !urlData?.signedUrl) throw signErr || new Error('Could not create secure document link')
+      pdfAttachments.push({ formType, label: FORM_LABELS[formType], url: urlData.signedUrl, storage_path: path })
     } catch (e) {
       return { error: `Failed to build ${FORM_LABELS[formType] || formType}: ${e.message}` }
     }
@@ -1142,21 +1144,26 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
         const { error: upErr } = await supabase.storage.from('documents')
           .upload(path, new Blob([mergedBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
         if (upErr) throw upErr
-        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+        const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+        if (signErr || !urlData?.signedUrl) throw signErr || new Error('Could not create secure State POA link')
         const partyLabel = stateParties.length > 1
           ? ` (${party === 'business' ? 'Business' : 'Personal'})`
           : ''
         pdfAttachments.push({
           formType: `state_poa${suffix}`,
           label: `${clientState} State Power of Attorney${partyLabel}`,
-          url: urlData?.signedUrl || '',
+          url: urlData.signedUrl,
           storage_path: path,
         })
       } catch (e) {
-        console.warn(`State POA auto-include failed (${party}):`, e.message)
-        // Non-fatal — package continues without this state POA
+        return { error: `Failed to build ${clientState} State POA (${party}): ${e.message}` }
       }
     }
+  }
+
+  if (!pdfAttachments.some(a => a.formType === 'agreement')) return { error: 'Tax Service Agreement is missing from the package' }
+  if (includeIRS && formTypes.length && formTypes.some(ft => !pdfAttachments.some(a => a.formType === ft))) {
+    return { error: 'One or more required IRS package documents are missing' }
   }
 
   const { data, error } = await supabase.from('esigns').insert([{
