@@ -1096,7 +1096,7 @@ export async function sendFullPackage(client, supabase) {
       .upload(agreementPath, new Blob([agreementBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
     if (agErr) throw agErr
     const { data: agUrl } = await supabase.storage.from('documents').createSignedUrl(agreementPath, 94608000)
-    pdfAttachments.push({ formType: 'agreement', label: 'Tax Service Agreement', url: agUrl?.signedUrl || '' })
+    pdfAttachments.push({ formType: 'agreement', label: 'Tax Service Agreement', url: agUrl?.signedUrl || '', storage_path: agreementPath })
   } catch (e) {
     console.warn('Agreement PDF could not be generated:', e.message)
   }
@@ -1112,7 +1112,7 @@ export async function sendFullPackage(client, supabase) {
         .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw upErr
       const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-      pdfAttachments.push({ formType, label: FORM_LABELS[formType], url: urlData?.signedUrl || '' })
+      pdfAttachments.push({ formType, label: FORM_LABELS[formType], url: urlData?.signedUrl || '', storage_path: path })
     } catch (e) {
       return { error: `Failed to build ${FORM_LABELS[formType] || formType}: ${e.message}` }
     }
@@ -1150,6 +1150,7 @@ export async function sendFullPackage(client, supabase) {
           formType: `state_poa${suffix}`,
           label: `${clientState} State Power of Attorney${partyLabel}`,
           url: urlData?.signedUrl || '',
+          storage_path: path,
         })
       } catch (e) {
         console.warn(`State POA auto-include failed (${party}):`, e.message)
