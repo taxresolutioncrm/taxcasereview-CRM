@@ -58,17 +58,33 @@ function patchEmailPage() {
 
 function patchSidebar() {
   const path = 'src/components/layout/Sidebar.jsx'
-  let s = fs.readFileSync(path, 'utf8')
-  const original = s
-  const start = `    async function loadEmailTaskCounts() {`
-  const end = `    if (!user) return`
-  if (!s.includes(start) || !s.includes(end)) throw new Error('Sidebar.jsx: email count anchors missing')
+  const s = fs.readFileSync(path, 'utf8')
 
-  const replacement = `    async function loadEmailTaskCounts() {\n      if (!user?.email) return\n      // Exact server-side counts avoid PostgREST row ceilings and exclude\n      // soft-deleted messages. IS NOT TRUE preserves legacy NULL-as-unread\n      // behavior without downloading the whole mailbox into the browser.\n      const baseUnread = () => supabase.from('emails')\n        .select('id', { count: 'exact', head: true })\n        .eq('mailbox_owner', user.email)\n        .is('deleted_at', null)\n        .not('is_read', 'is', true)\n      const [inboxRes, inboxLegacyRes, actionRes, waitingRes, tasksRes] = await Promise.all([\n        baseUnread().eq('triage', 'Inbox'),\n        baseUnread().is('triage', null),\n        baseUnread().eq('triage', 'Action Needed'),\n        baseUnread().eq('triage', 'Waiting'),\n        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', false).not('deleted','is',true),\n      ])\n      for (const [label, result] of [['Inbox', inboxRes], ['Legacy inbox', inboxLegacyRes], ['Action Needed', actionRes], ['Waiting', waitingRes]]) {\n        if (result.error) console.error(\`[badge] \${label} email count failed:\`, result.error.message)\n      }\n      setUnreadInbox((inboxRes.count || 0) + (inboxLegacyRes.count || 0) + (actionRes.count || 0) + (waitingRes.count || 0))\n      setEmailActionNeeded(actionRes.count || 0)\n      setEmailWaiting(waitingRes.count || 0)\n      setOpenTasks(tasksRes.count || 0)\n    }\n`
+  // Sidebar badge counts are intentionally sourced from the protected RPC.
+  // Do NOT rewrite this to a direct mailbox_owner=user.email query during
+  // prebuild: production must execute the same badge logic that is committed
+  // in Sidebar.jsx. Build-time source mutation made production diverge from
+  // reviewed source and could silently zero badges for shared/admin mailboxes.
+  const expected = `    async function loadEmailTaskCounts() {
+      if (!user?.email) return
+      const { data, error } = await supabase.rpc('get_sidebar_badge_counts')
+      if (error) {
+        // A navigation-aborted fetch is not an application error. Keep the last
+        // successful badge values and let the next realtime/poll/visibility pass retry.
+        console.warn('[badge] email/task count refresh skipped:', error.message)
+        return
+      }
+      const b = data || {}
+      setUnreadInbox(Number(b.email) || 0)
+      setOpenTasks(Number(b.tasks) || 0)
+      setEmailActionNeeded(0)
+      setEmailWaiting(0)
+    }`
 
-  s = replaceBetween(s, start, end, replacement, 'Sidebar email counts')
-  if (s !== original) fs.writeFileSync(path, s)
-  console.log(`Sidebar email counts ${s !== original ? 'patched' : 'already current'}.`)
+  if (!s.includes(expected)) {
+    throw new Error('Sidebar.jsx: protected RPC badge loader is missing or was modified')
+  }
+  console.log('Sidebar email counts already current: protected RPC preserved.')
 }
 
 patchEmailPage()
