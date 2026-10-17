@@ -261,6 +261,7 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
   const [customFile,setCustomFile]=useState(null)
   const [uploading,setUploading]=useState(false)
   async function create() {
+    if(!tenantId){ alert('Could not resolve office tenant. Refresh and try again.'); return }
     if(docType==='Custom Document' && !customMsg.trim() && !customFile){
       alert('For a custom document, type the text to sign or attach a PDF.');return
     }
@@ -270,7 +271,7 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
     if(docType==='Custom Document' && customFile){
       setUploading(true)
       try{
-        const officeTenant = tenantId || FIRM.tenantId
+        const officeTenant = tenantId
         if(!officeTenant) throw new Error('Could not resolve office tenant for e-sign upload')
         const path=`${officeTenant}/docs/${lead?.id || 'lead'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
@@ -299,7 +300,7 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
       rep_name:lead?.assignedTo||null,
       send_via:sendVia,
       priority:'Normal',status:'Awaiting',
-      tenant_id:tenantId || FIRM.tenantId || undefined,
+      tenant_id:tenantId,
       lead_id:lead?.id || null,
       sent_at:new Date().toISOString(),created_at:new Date().toISOString()
     }]).select().single()
@@ -309,7 +310,7 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
     let smsSent=false,emailSent=false
     if((sendVia==='email'||sendVia==='both')&&lead?.email){
       try{
-        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId || FIRM.tenantId || undefined,
+        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId,
           to:lead.email,
           subject:`Please Sign: ${docType} — ${firmName()}`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
