@@ -763,7 +763,7 @@ function ClientWIPWidget({ clientId, clientName }) {
 const FILE_EXT_ICON = n => { const e=(n||'').split('.').pop().toLowerCase(); return {pdf:'📄',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',tiff:'🖼️'}[e]||'📎' }
 const fmt = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB'
 
-export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged }) {
+export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast, onLogged }) {
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
   const [uploading,  setUploading]  = useState(false)
@@ -776,7 +776,8 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
   useEffect(() => { loadDocs() }, [clientId, clientName])
 
   async function loadDocs() {
-    let q = supabase.from('documents').select('*')
+    if (!tenantId) { setDocs([]); return }
+    let q = supabase.from('documents').select('*').eq('tenant_id', tenantId)
     q = clientId ? q.eq('client_id', String(clientId)) : q.eq('client', clientName)
     const { data } = await q.order('created_at', { ascending: false })
     setDocs(data || [])
@@ -789,16 +790,18 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
     if (file) {
       const folderKey = String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')
       const ownerKey = clientId ? String(clientId) : clientName.replace(/\s+/g,'-')
-      if (!myTenantId) { showToast('Could not resolve this office'); setSaving(false); return }
+      if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
       const safeFileName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const path = `${myTenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${safeFileName}`
+      const path = `${tenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${safeFileName}`
       storagePath = path
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }
       const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
       fileUrl = urlData?.signedUrl || null; fileName = file.name; fileSize = file.size
     }
+    if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
     const { error } = await supabase.from('documents').insert([{
+      tenant_id: tenantId,
       name: form.name, client: clientName, clientname: clientName,
       client_id: clientId ? String(clientId) : null,
       docType: form.docType,
@@ -2466,7 +2469,7 @@ export default function Clients() {
           {/* Docs Tab */}
           {detailTab==='docs'&&(
             <div style={{padding:0}}>
-              <ClientDocs clientId={c.id} clientName={c.name} supabase={supabase} showToast={showToast} onLogged={(text)=>logAction(c.name, text)}/>
+              <ClientDocs clientId={c.id} clientName={c.name} tenantId={myTenantId} supabase={supabase} showToast={showToast} onLogged={(text)=>logAction(c.name, text)}/>
             </div>
           )}
 
