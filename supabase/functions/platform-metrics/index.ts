@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
         supabase.rpc('_admin_tenant_storage_bytes',{p_tenant_id:tenantId}),
         supabase.rpc('_admin_tenant_storage_files',{p_tenant_id:tenantId}),
         supabase.from('activity_log').select('description,created_at,employee_email').eq('tenant_id',tenantId).order('created_at',{ascending:false}).limit(50),
-        supabase.from('employees').select('id,email').eq('tenant_id',tenantId).ilike('status','active'),
+        supabase.from('employees').select('id,name,email,role,access,avatar_url,created_at').eq('tenant_id',tenantId).ilike('status','active'),
         supabase.from('tenants').select('monthly_rate,per_seat_rate,billing_seats').eq('id',tenantId).maybeSingle(),
       ])
       const documentStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
@@ -107,6 +107,7 @@ Deno.serve(async (req) => {
           lead_count:totalLeadCount||0,
           active_staff:staffCount,
           employee_count:staffCount,
+          employees:scopedEmployees.map((e:any)=>({id:e.id,name:e.name||'',email:e.email||'',role:e.role||e.access||'',avatar_url:e.avatar_url||null,last_activity:null})),
           open_jobs:caseCount||0,
           job_count:caseCount||0,
           pending_tasks:taskCount||0,
@@ -135,10 +136,10 @@ Deno.serve(async (req) => {
       scoped(supabase.from('tasks').select('*',{count:'exact',head:true}).eq('done',false).or('deleted.is.null,deleted.eq.false')),
       scoped(supabase.from('documents').select('file_size')),
       scoped(supabase.from('activity_log').select('description,created_at,employee_email')).order('created_at',{ascending:false}).limit(5),
-      scoped(supabase.from('employees').select('id')).limit(200)
+      scoped(supabase.from('employees').select('id,tenant_id,name,email,role,access,avatar_url').ilike('status','active')).limit(1000)
     ])
     const totalMRR=(tenants||[]).reduce((s:number,t:any)=>s+Number(t.monthly_rate||0),0)
     const totalStorage=(docs||[]).reduce((s:number,d:any)=>s+Number(d.file_size||0),0)
-    return new Response(JSON.stringify({ok:true,product:'taxres_crm',product_label:'Tax Res CRM',fetched_at:now.toISOString(),metrics:{mrr:totalMRR,arr:totalMRR*12,active_clients:clientCount||0,active_leads:leadCount||0,pending_tasks:taskCount||0,storage_bytes:totalStorage,active_offices:(tenants||[]).length,total_offices:(tenants||[]).length,active_users:(employees||[]).length},offices:(tenants||[]).map((t:any)=>({id:t.id,name:t.firm_name,is_active:true,mrr:t.monthly_rate||0,since:t.created_at?.slice(0,10)})),recent_activity:(recentActivity||[]).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))}),{headers:{...cors,'Content-Type':'application/json'}})
+    return new Response(JSON.stringify({ok:true,product:'taxres_crm',product_label:'Tax Res CRM',fetched_at:now.toISOString(),metrics:{mrr:totalMRR,arr:totalMRR*12,active_clients:clientCount||0,active_leads:leadCount||0,pending_tasks:taskCount||0,storage_bytes:totalStorage,active_offices:(tenants||[]).length,total_offices:(tenants||[]).length,active_users:(employees||[]).length},offices:(tenants||[]).map((t:any)=>({id:t.id,name:t.firm_name,is_active:true,mrr:t.monthly_rate||0,since:t.created_at?.slice(0,10),employees:(employees||[]).filter((e:any)=>e.tenant_id===t.id).map((e:any)=>({id:e.id,name:e.name||'',email:e.email||'',role:e.role||e.access||'',avatar_url:e.avatar_url||null,last_activity:null}))})),recent_activity:(recentActivity||[]).map((n:any)=>({text:(n.description||'').slice(0,120),at:n.created_at,by:n.employee_email}))}),{headers:{...cors,'Content-Type':'application/json'}})
   } catch(err){console.error('platform-metrics error:',err);return new Response(JSON.stringify({ok:false,error:String(err)}),{status:500,headers:{...cors,'Content-Type':'application/json'}})}
 })
