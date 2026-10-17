@@ -274,11 +274,17 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
         if(!officeTenant) throw new Error('Could not resolve office tenant for e-sign upload')
         const path=`${officeTenant}/docs/${lead?.id || 'lead'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
-        if(!upErr){
-          const{data:u}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
-          pdfAttachments=[{formType:'custom',label:customFile.name,url:u?.signedUrl||'',storage_path:path}]
-        }
-      }catch(e){console.error('custom upload:',e)}
+        if(upErr) throw upErr
+        const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
+        if(signErr || !u?.signedUrl) throw signErr || new Error('Could not create secure document link')
+        pdfAttachments=[{formType:'custom',label:customFile.name,url:u.signedUrl,storage_path:path}]
+      }catch(e){
+        console.error('custom upload:',e)
+        setUploading(false)
+        set2(false)
+        alert('Custom document upload failed: '+(e?.message||'Unknown upload error'))
+        return
+      }
       setUploading(false)
     }
     const{data,error}=await supabase.from('esigns').insert([{
