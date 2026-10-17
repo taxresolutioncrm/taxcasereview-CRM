@@ -1341,6 +1341,7 @@ export default function Leads() {
       const { data: rec, error } = await supabase
         .from('financial_intake_responses')
         .select('answers')
+        .eq('tenant_id', myTenantId)
         .eq('client_name', l.name)
         .eq('status', 'Submitted')
         .order('submitted_at', { ascending: false })
@@ -1459,12 +1460,14 @@ export default function Leads() {
     if (!l.email) { showToast('No email on file for this lead'); return }
     setIntakeSending(true)
     let intakeId
+    if (!myTenantId) { setIntakeSending(false); showToast('Office tenant is not resolved yet. Refresh and try again.'); return }
     const { data: existing } = await supabase.from('financial_intake_responses')
-      .select('id').eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      .select('id').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
     if (existing) {
       intakeId = existing.id
     } else {
       const { data: created, error: createErr } = await supabase.from('financial_intake_responses').insert([{
+        tenant_id: myTenantId, client_id: l.id || null,
         client_name: l.name, client_email: l.email || '', status: 'Sent',
         answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }]).select().single()
@@ -1814,7 +1817,7 @@ export default function Leads() {
     let intakeAlreadySubmitted = false
     try {
       const { data: existingIntake } = await supabase.from('financial_intake_responses')
-        .select('id, status, answers, submitted_at').eq('client_name', l.name).order('created_at', { ascending: false }).limit(1).maybeSingle()
+        .select('id, status, answers, submitted_at').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at', { ascending: false }).limit(1).maybeSingle()
 
       if (existingIntake) {
         // Already has one (sent or submitted while a lead) -- leave it as
@@ -1836,6 +1839,7 @@ export default function Leads() {
             if (!upErr) {
               const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
               await supabase.from('documents').insert([{
+                tenant_id: myTenantId,
                 client: l.name, name: 'Financial Intake', docType: 'Financial Statements',
                 file_url: urlData?.signedUrl || '', file_name: 'Financial Intake.pdf',
                 notes: `Submitted ${existingIntake.submitted_at ? new Date(existingIntake.submitted_at).toLocaleDateString() : ''}`,
@@ -1856,6 +1860,7 @@ export default function Leads() {
         }
       } else {
         const { data: intakeRec, error: intakeErr } = await supabase.from('financial_intake_responses').insert([{
+          tenant_id: myTenantId, client_id: l.id || null,
           client_name: l.name, client_email: l.email || '', status: 'Sent',
           answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         }]).select().single()
