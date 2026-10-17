@@ -14,6 +14,7 @@ for (const table of requiredTables) {
 }
 
 assert(app.includes("title: '📧 New Email'") && app.includes("target: '/email'"), 'new email must be globally actionable')
+assert(!app.includes("tag: `email-${row.id}`,\n        suppressPath: '/email'"), 'new email alert must still display while the Email page is open')
 assert(app.includes("title: '✅ New Task Assigned'") && app.includes("target: '/tasks'"), 'assigned task must be globally actionable')
 assert(app.includes("title: '📅 New Appointment Booked'") && app.includes("target: '/calendar'"), 'new online booking must be globally actionable')
 assert(app.includes("title: '💬 New SMS'") && app.includes("target: '/sms'"), 'inbound SMS must be globally actionable')
