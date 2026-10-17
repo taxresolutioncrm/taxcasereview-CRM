@@ -668,7 +668,6 @@ export function AppProvider({ children }) {
         body: `${from} — ${row.subject || '(no subject)'}`,
         target: '/email',
         tag: `email-${row.id}`,
-        suppressPath: '/email',
       })
     }))
 
