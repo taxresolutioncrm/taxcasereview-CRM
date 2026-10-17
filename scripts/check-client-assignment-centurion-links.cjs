@@ -65,6 +65,9 @@ const checks=[
   ['client addendum passes active tenant',clients.includes('sendAddendumForSignature(c, addForm, supabase, actor, myTenantId)')&&clients.includes('sendAddendumForSignature(detail, plan, supabase, actor, myTenantId)')],
   ['package attachments persist storage paths',docUtils.includes("storage_path: agreementPath")&&docUtils.includes("storage_path: path")],
   ['lead signing attachments persist storage paths',leads.includes("storage_path:path")&&leads.includes("storage_path:path })")],
+  ['lead custom e-sign fails closed on upload error',leads.includes("if(upErr) throw upErr")&&leads.includes("alert('Custom document upload failed: '")],
+  ['e-sign attachment loader enforces tenant boundary',archiveFn.includes("Attachment tenant mismatch")&&archiveFn.includes("p.startsWith(String(e.tenant_id)+'/')")],
+  ['package email does not promise payment when Stripe unavailable',leads.includes("subject: stripePayUrl ? `Action Required: Sign & Pay")&&leads.includes("Step ${stripePayUrl ? '3' : '2'} — Complete Your Financial Intake")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
