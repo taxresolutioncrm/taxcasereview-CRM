@@ -833,7 +833,7 @@ export default function Leads() {
     if (via !== 'email' && !l.phone) { showToast('Lead has no phone on file'); return }
     setAddendumSending(true)
     const actor = resolveActorName(user, employees)
-    const res = await sendAddendumForSignature(l, addForm, supabase, actor)
+    const res = await sendAddendumForSignature(l, addForm, supabase, actor, myTenantId)
     if (res.error) { setAddendumSending(false); showToast('Error: '+res.error); return }
 
     const url = res.url
@@ -1445,7 +1445,7 @@ export default function Leads() {
     }
     const intakeUrl = window.location.origin + '/financial-intake/' + intakeId
     const { error: emailErr } = await supabase.functions.invoke('send-email', {
-      body: { tenant_id: FIRM.tenantId || undefined,
+      body: { tenant_id: myTenantId,
         to: l.email,
         subject: `Your Financial Intake Form — ${firmName()}`,
         html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${l.name}</strong>,</p><p>Here's your link to fill out (or finish) your financial intake form — it takes about 10-15 minutes and your progress saves automatically.</p><p style="text-align:center;margin:24px 0"><a href="${intakeUrl}" style="background:#1d4ed8;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Start My Financial Intake</a></p><p style="font-size:12px;color:#64748b">Link: ${intakeUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
@@ -1478,7 +1478,7 @@ export default function Leads() {
       return
     }
     setPkgSending(true)
-    const res = await sendFullPackage({...l, address:l.street, business_name:l.business_name||l.name}, supabase)
+    const res = await sendFullPackage({...l, address:l.street, business_name:l.business_name||l.name}, supabase, myTenantId)
     if (res.error) { setPkgSending(false)
       const _pa=getActor(user); await logActivity(supabase,{employeeName:_pa.name,employeeEmail:_pa.email,action:'package_sent',category:'esign',description:`Sent Tax Inv Package to: ${l.name}`,entityName:l.name}).catch(()=>{}); showToast('Error: '+res.error); return }
 
@@ -1777,7 +1777,7 @@ export default function Leads() {
         } else if (l.email) {
           const intakeUrl = window.location.origin + '/financial-intake/' + existingIntake.id
           const { error: emailErr } = await supabase.functions.invoke('send-email', {
-            body: { tenant_id: FIRM.tenantId || undefined,
+            body: { tenant_id: myTenantId,
               to: l.email,
               subject: `Your Financial Intake Form — ${firmName()}`,
               html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${l.name}</strong>,</p><p>Welcome aboard! To get your case moving, please finish your financial intake form — it gives your advisor the full picture needed to put together your resolution plan. Your progress is saved.</p><p style="text-align:center;margin:24px 0"><a href="${intakeUrl}" style="background:#1d4ed8;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Finish My Financial Intake</a></p><p style="font-size:12px;color:#64748b">Link: ${intakeUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
@@ -1794,7 +1794,7 @@ export default function Leads() {
           const intakeUrl = window.location.origin + '/financial-intake/' + intakeRec.id
           if (l.email) {
             const { error: emailErr } = await supabase.functions.invoke('send-email', {
-              body: { tenant_id: FIRM.tenantId || undefined,
+              body: { tenant_id: myTenantId,
                 to: l.email,
                 subject: `Your Financial Intake Form — ${firmName()}`,
                 html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${l.name}</strong>,</p><p>Welcome aboard! To get your case moving, please fill out this short financial intake form — it gives your advisor the full picture needed to put together your resolution plan. It takes about 10-15 minutes and your progress saves automatically.</p><p style="text-align:center;margin:24px 0"><a href="${intakeUrl}" style="background:#1d4ed8;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Start My Financial Intake</a></p><p style="font-size:12px;color:#64748b">Link: ${intakeUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
