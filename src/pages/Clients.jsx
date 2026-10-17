@@ -312,6 +312,7 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
   const [delivered, setDelivered] = useState([])
 
   async function create() {
+    if(!tenantId){ showToast('Could not resolve office tenant. Refresh and try again.','err'); return }
     if(docType==='Custom Document' && !message.trim() && !customFile){
       showToast('For a custom document, type the text to sign or attach a PDF.','err');return
     }
@@ -319,7 +320,7 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
     let pdfAttachments=null
     if(docType==='Custom Document' && customFile){
       try{
-        const officeTenant = tenantId || FIRM.tenantId
+        const officeTenant = tenantId
         if(!officeTenant) throw new Error('Could not resolve office tenant for e-sign upload')
         const path=`${officeTenant}/docs/${client?.id || 'client'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
@@ -337,7 +338,7 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
     const { data, error } = await supabase.from('esigns').insert([{
       doc_type: docType, client_name: client?.name, client_email: client?.email||'', client_phone: client?.phone||'',
       message, pdf_attachments:pdfAttachments, priority, status:'Awaiting', sent_at: new Date().toISOString(), created_at: new Date().toISOString(),
-      tenant_id: tenantId || FIRM.tenantId || undefined
+      tenant_id: tenantId
     }]).select().single()
     if (error) { setSaving(false); showToast('Error: '+error.message,'err'); return }
     const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
@@ -348,7 +349,7 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
       try {
         const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', {
           body:{
-            tenant_id:tenantId || FIRM.tenantId || undefined,
+            tenant_id:tenantId,
             to:client.email,
             subject:`Action Required: Sign Your ${docType} — ${firmName()}`,
             html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Signature Requested</h2><p>Hi <strong>${client.name}</strong>,</p><p>${message}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign</a></p><p style="font-size:12px;color:#64748b;word-break:break-all">${url}</p><p><strong>${firmName()}</strong></p></div>`
