@@ -191,7 +191,7 @@ export default function StateForms() {
         client_email: selectedClient.email || '',
         client_phone: selectedClient.phone || '',
         message: `Please review and sign your ${form.state} Power of Attorney form. This authorizes ${firmName()} to represent you before the ${form.state} tax authority.`,
-        pdf_attachments: [{ formType: 'state_poa', label: `${form.state} POA — ${form.label}`, url: pdfUrl }],
+        pdf_attachments: [{ formType: 'state_poa', label: `${form.state} POA — ${form.label}`, url: pdfUrl, storage_path:path }],
         priority: 'Normal',
         status: 'Awaiting',
         tenant_id: myTenantId,
