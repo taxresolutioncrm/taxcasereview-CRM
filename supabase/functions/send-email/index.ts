@@ -865,7 +865,7 @@ serve(async (req) => {
           }
 
           if (esignIdToMark) {
-            await admin.from('esigns').update({ signed_copy_sent_at:new Date().toISOString() }).eq('id',esignIdToMark)
+            await admin.from('esigns').update({ signed_copy_sent_at:new Date().toISOString() }).eq('tenant_id',tenant_id).eq('id',esignIdToMark)
           }
           return new Response(JSON.stringify({
             success:true,
@@ -919,7 +919,7 @@ serve(async (req) => {
       }
       if (!sr.ok) return new Response(JSON.stringify({ error: sd?.error?.message || 'Gmail send failed', retryable: sr.status === 429 }), { status: sr.status === 429 ? 429 : 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
-    if (esignIdToMark) await admin.from('esigns').update({ signed_copy_sent_at: new Date().toISOString() }).eq('id', esignIdToMark)
+    if (esignIdToMark) await admin.from('esigns').update({ signed_copy_sent_at: new Date().toISOString() }).eq('tenant_id',tenant_id).eq('id', esignIdToMark)
     return new Response(JSON.stringify({ success: true, via: 'gmail' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (e) {
     console.error('[send-email]', e)
