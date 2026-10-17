@@ -311,7 +311,7 @@ function LeadInlineEsign({ lead, onClose, tenantId }) {
     const deliveryErrors=[]
     if((sendVia==='email'||sendVia==='both')&&lead?.email){
       try{
-        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId,
+        const{data:emailData,error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId,
           to:lead.email,
           subject:`Please Sign: ${docType} — ${firmName()}`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -881,9 +881,10 @@ export default function Leads() {
     </div>` : ''
 
     let emailSent=false, smsSent=false
+    const deliveryErrors=[]
 
     if ((via==='email'||via==='both') && l.email) {
-      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
+      const { data:emailData, error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
         to: l.email,
         subject: `Action Required: Sign Your Service Addendum — ${firmName()}`,
         html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -915,7 +916,8 @@ export default function Leads() {
 </td></tr></table>
 </body></html>`
       }})
-      emailSent = !eErr
+      emailSent = !eErr && emailData?.success!==false
+      if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
     }
     if ((via==='sms'||via==='both') && l.phone) {
       try {
@@ -926,19 +928,29 @@ export default function Leads() {
           body:{to:l.phone,body:smsBody,lead_id:l.id||null}
         })
         smsSent=!smsErr && !!smsData?.success
-      } catch (_) {}
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
     }
 
-    const feeText = `$${Number(addForm.resolutionFee).toLocaleString()}`
+    const feeText = `${Number(addForm.resolutionFee).toLocaleString()}`
     const channels = [emailSent&&'email', smsSent&&'sms'].filter(Boolean).join(' + ')
-    const noteContent = `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText}${channels?` (${channels})`:''}`
+    if(!channels){
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      await supabase.from('lead_notes').insert({ lead_id:l.id, lead_name:l.name, text:`⚠️ Service Addendum created but not delivered — Resolution Fee ${feeText}${reason?` — ${reason}`:''}`, type:'System', author:actor, created_at:new Date().toISOString() })
+      setAddendumSending(false)
+      setAddModal(false)
+      loadLeadNotes(l.id)
+      showToast(`Addendum created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
+      return
+    }
+    const noteContent = `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText} (${channels})`
     await supabase.from('lead_notes').insert({ lead_id: l.id, lead_name: l.name, text: noteContent, type: 'System', author: actor, created_at: new Date().toISOString() })
     await advanceLeadStatus(supabase, l.name, 'Addendum Sent')
 
     setAddendumSending(false)
     setAddModal(false)
     loadLeadNotes(l.id)
-    showToast(emailSent||smsSent ? '✅ Addendum sent for signature!' : '⚠️ Link copied — configure email/SMS to send automatically')
+    showToast('✅ Addendum sent for signature!')
   }
 
   async function sendLeadSms(l) {
@@ -1622,8 +1634,9 @@ export default function Leads() {
 </td></tr></table>
 </body></html>`
         }})
-        if(!eErr)emailSent=true
-      }catch(e){console.error('Email error:',e)}
+        if(!eErr && emailData?.success!==false) emailSent=true
+        else deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
+      }catch(e){console.error('Email error:',e);deliveryErrors.push(e?.message||'Email delivery failed')}
     }
     if(l.phone){
       try{
