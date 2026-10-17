@@ -51,15 +51,10 @@ function renderAnswersHtml(answers) {
   return sections
 }
 
-async function sendIntakeCopyEmail(record, answers) {
-  if (!record?.client_email) return
-  const answersHtml = renderAnswersHtml(answers)
+async function sendIntakeCopyEmail(record) {
+  if (!record?.id) return
   await supabase.functions.invoke('send-email', {
-    body: { tenant_id: FIRM.tenantId || undefined,
-      to: record.client_email,
-      subject: `Your Financial Intake Submission — ${FIRM.name}`,
-      html: `<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:32px 16px\"><tr><td align=\"center\"><table width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)\"><tr><td style=\"background:linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 100%);padding:32px 40px;text-align:center\"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:60px;max-width:240px;object-fit:contain\" onerror=\"this.style.display='none'\"/><div style=\"font-size:22px;font-weight:800;color:#ffffff;margin-top:12px;letter-spacing:-.02em\">${FIRM.name}</div><div style=\"font-size:12px;color:#93c5fd;margin-top:4px;letter-spacing:.08em;text-transform:uppercase\">IRS Resolution Services</div></td></tr><tr><td style=\"padding:40px 40px 32px;color:#334155;font-size:15px;line-height:1.7\"><p style=\"margin:0 0 16px;font-size:16px;color:#0f172a\">Dear <strong>${record.client_name||'Client'}</strong>,</p><p style=\"margin:0 0 16px\">Thank you for completing your financial intake. Your advisor now has what they need to review your situation and build a resolution plan. Here is a copy of everything you submitted, for your records.</p>${answersHtml}<p style=\"margin:16px 0 0\">If anything looks wrong, just reply to this email and we will correct it.</p><p style=\"margin:20px 0 0\">Sincerely,<br/><strong>${FIRM.name}</strong></p></td></tr><tr><td style=\"background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 40px;font-size:11px;color:#94a3b8;line-height:1.6\">${FIRM.name} · ${FIRM.address}<br/>This message and any attachments are confidential and intended only for the addressee.</td></tr></table></td></tr></table></body></html>`
-    }
+    body: { kind:'financial_intake_client_copy', intake_id:String(record.id) }
   })
 }
 
@@ -429,22 +424,15 @@ export default function FinancialIntakeWizard({ intakeId, embedded = false, onCo
 
     // Notify the assigned rep that a client just submitted their intake.
     try {
-      if (submitResult?.assigneeEmail) {
+      if (submitResult?.assigneeEmail && record?.id) {
         await supabase.functions.invoke('send-email', {
-          body: { tenant_id: FIRM.tenantId || undefined,
-            to: submitResult.assigneeEmail,
-            subject: `Financial Intake Submitted — ${record.client_name}`,
-            html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
-              <p><strong>${record.client_name}</strong> just submitted their Financial Intake form.</p>
-              <p>A task has been created on your list to review it and build a resolution plan. Check the Financial Profile tab (I&E, Assets &amp; Equity) on their file for the full breakdown.</p>
-            </div>`
-          }
+          body: { kind:'financial_intake_staff_notification', intake_id:String(record.id) }
         })
       }
     } catch (e) { console.error('Financial intake staff notification error:', e) }
 
     // Email a full copy of the submitted answers to the client.
-    try { await sendIntakeCopyEmail(record, answers) } catch (e) { console.error('Financial intake copy email error:', e) }
+    try { await sendIntakeCopyEmail(record) } catch (e) { console.error('Financial intake copy email error:', e) }
     setSaving(false)
     setSubmitted(true)
     if (onComplete) onComplete()
