@@ -11,6 +11,8 @@ const intake=read('src/components/FinancialIntakeWizard.jsx')
 const migration=read('supabase/migrations/20261016190500_client_admin_assignment.sql')
 const sendEmail=read('supabase/functions/send-email/index.ts')
 const docUtils=read('src/lib/docUtils.js')
+const irsFiller=read('src/components/IRSFormFiller.jsx')
+const stateForms=read('src/pages/StateForms.jsx')
 
 const checks=[
   ['client schema has explicit Admin assignment',migration.includes('add column if not exists "clientAdmin" text')],
@@ -38,6 +40,14 @@ const checks=[
   ['full package e-sign row writes tenant explicitly',docUtils.includes("tenant_id: tenantId,\n    sent_at: new Date().toISOString()")],
   ['lead custom e-sign uploads are tenant-prefixed',leads.includes("const path=`${officeTenant}/docs/${lead?.id || 'lead'}/esign-custom/${Date.now()}-${customFile.name}`")],
   ['lead e-sign email does not depend on SMS settings',!leads.includes('let smsSent=false,emailSent=false\n    const cfg = await getSettings()\n    if((sendVia')&&leads.includes("const cfg = typeof getSettings === 'function' ? await getSettings() : {}")],
+  ['lead state POA storage is tenant-prefixed',leads.includes('`${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA${suffix}_${stamp}.pdf`')],
+  ['lead state POA e-sign row is tenant-scoped',leads.includes("priority:'Normal', status:'Awaiting', tenant_id:myTenantId")],
+  ['client custom e-sign upload is tenant-prefixed',clients.includes("`${officeTenant}/docs/${client?.id || 'client'}/esign-custom/${Date.now()}-${customFile.name}`")],
+  ['client state POA storage is tenant-prefixed',clients.includes('`${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`')],
+  ['IRS form e-sign storage is tenant-prefixed',irsFiller.includes('`${myTenantId}/docs/${safeName}/irs-forms/${formType}_${Date.now()}.pdf`')],
+  ['IRS form e-sign row and email use active tenant',irsFiller.includes('tenant_id: myTenantId')&&!irsFiller.includes("const path = `docs/${safeName}/irs-forms/")) ,
+  ['State Forms e-sign storage is tenant-prefixed',stateForms.includes('`${myTenantId}/docs/${safeName}/state-poa/${form.state}_POA_${Date.now()}.pdf`')],
+  ['State Forms e-sign row and email use active tenant',stateForms.includes('tenant_id: myTenantId')&&!stateForms.includes("const path = `docs/${safeName}/state-poa/")) ,
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
