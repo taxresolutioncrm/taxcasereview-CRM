@@ -300,7 +300,7 @@ function InlineFaxForm({ client, onClose, showToast, onLogged }) {
 // ── Inline E-Sign Form ───────────────────────────────────────────────────────
 const DOC_TYPES_INLINE = ESIGN_DOC_TYPES
 
-function InlineEsignForm({ client, onClose, showToast }) {
+function InlineEsignForm({ client, onClose, showToast, tenantId }) {
   const [docType,  setDocType]  = useState('Tax Service Agreement')
   const [message,  setMessage]  = useState('Please review and sign the attached document at your earliest convenience.')
   const [priority, setPriority] = useState('Normal')
@@ -318,7 +318,9 @@ function InlineEsignForm({ client, onClose, showToast }) {
     let pdfAttachments=null
     if(docType==='Custom Document' && customFile){
       try{
-        const path=`esign-custom/${(client?.name||'client').replace(/[^A-Za-z0-9 _-]/g,'')}/${Date.now()}-${customFile.name}`
+        const officeTenant = tenantId || FIRM.tenantId
+        if(!officeTenant) throw new Error('Could not resolve office tenant for e-sign upload')
+        const path=`${officeTenant}/docs/${client?.id || 'client'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
         if(upErr) throw upErr
         const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path, 3600)
@@ -1693,7 +1695,7 @@ export default function Clients() {
       const mergedBytes = await generateStatePOAWithCover(client, rawBytes)
       const pdfBlob = new Blob([mergedBytes], { type: 'application/pdf' })
       const safeName = (client.name||'client').replace(/[^a-zA-Z0-9]+/g,'-')
-      const path = `docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`
+      const path = `${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
       if (upErr) throw new Error(upErr.message)
       const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
@@ -3449,7 +3451,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setEsignModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">✍️ E-Signature — {esignClient.name}</span><button className="xbtn" onClick={()=>setEsignModal(false)}>&times;</button></div>
-            <InlineEsignForm client={esignClient} onClose={()=>setEsignModal(false)} showToast={showToast}/>
+            <InlineEsignForm client={esignClient} tenantId={myTenantId} onClose={()=>setEsignModal(false)} showToast={showToast}/>
           </div>
         </div>
       )}
