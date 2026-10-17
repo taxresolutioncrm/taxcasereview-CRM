@@ -71,7 +71,7 @@ function generatePOALetter(){printBase('Power of Attorney Cover Letter',`<p><b>I
 
 export default function StateForms() {
   const [searchParams] = useSearchParams()
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [search, setSearch]               = useState('')
   const [stateItems, setStateItems]       = useState([])
   const [stateModal, setStateModal]       = useState(false)
@@ -175,7 +175,8 @@ export default function StateForms() {
 
       // Upload to Supabase storage
       const safeName = (selectedClient.name || 'client').replace(/[^a-zA-Z0-9]+/g, '-')
-      const path = `docs/${safeName}/state-poa/${form.state}_POA_${Date.now()}.pdf`
+      if (!myTenantId) throw new Error('Could not resolve office tenant')
+      const path = `${myTenantId}/docs/${safeName}/state-poa/${form.state}_POA_${Date.now()}.pdf`
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw new Error(upErr.message)
@@ -193,6 +194,7 @@ export default function StateForms() {
         pdf_attachments: [{ formType: 'state_poa', label: `${form.state} POA — ${form.label}`, url: pdfUrl }],
         priority: 'Normal',
         status: 'Awaiting',
+        tenant_id: myTenantId,
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         sent_by: actor,
