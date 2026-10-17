@@ -305,7 +305,8 @@ function LeadInlineEsign({ lead, onClose, tenantId }) {
       sent_at:new Date().toISOString(),created_at:new Date().toISOString()
     }]).select().single()
     if(error){set2(false);alert('Error: '+error.message);return}
-    const url=window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
+    if(!/^[0-9a-f]{64}$/i.test(String(data?.signer_token||''))){set2(false);alert('Signing request token was not created. Please try again.');return}
+    const url=window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token)
     await navigator.clipboard.writeText(url).catch(()=>{})
     let smsSent=false,emailSent=false
     const deliveryErrors=[]
@@ -819,7 +820,8 @@ export default function Leads() {
         priority:'Normal', status:'Awaiting', tenant_id:myTenantId, sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created')
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`
       await navigator.clipboard.writeText(sigUrl).catch(()=>{})
       let emailSent=false, smsSent=false
       const deliveryErrors=[]
