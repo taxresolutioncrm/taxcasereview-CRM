@@ -31,6 +31,7 @@ const checks=[
   ['Centurion client links have platform Stalwart fallback',sendEmail.includes("['TRC-003','TRC-004']")&&sendEmail.includes("relayTenant?.tenant_code === 'TRC-004' ? 'Centurion Firm'")&&sendEmail.includes("via:'taxres_platform_relay'")],
   ['lead e-sign receives current tenant + settings loader',leads.includes('function LeadInlineEsign({ lead, onClose, getSettings, tenantId })')&&leads.includes('tenantId={myTenantId} getSettings={getSettings}')],
   ['lead e-sign writes tenant and lead IDs explicitly',leads.includes('tenant_id:tenantId || FIRM.tenantId || undefined')&&leads.includes('lead_id:lead?.id || null')],
+  ['lead e-sign creates tokenized signing link',leads.includes("window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')")],
   ['lead e-sign email does not depend on SMS settings',!leads.includes('let smsSent=false,emailSent=false\n    const cfg = await getSettings()\n    if((sendVia')&&leads.includes("const cfg = typeof getSettings === 'function' ? await getSettings() : {}")],
 ]
 let failed=0
