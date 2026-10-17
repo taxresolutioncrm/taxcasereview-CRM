@@ -432,7 +432,7 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
 }
 
 
-function InlinePortalForm({ client, onClose, showToast }) {
+function InlinePortalForm({ client, onClose, showToast, tenantId }) {
   const [sendVia, setSendVia] = useState(client?.email ? 'email' : 'sms')
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(null)
@@ -449,7 +449,7 @@ function InlinePortalForm({ client, onClose, showToast }) {
     if ((sendVia === 'email' || sendVia === 'both') && client?.email) {
       try {
         const { error } = await supabase.functions.invoke('send-email', {
-          body: { tenant_id: FIRM.tenantId || undefined,
+          body: { tenant_id: tenantId,
             to: client.email,
             subject: `Your ${firmName()} Client Portal Is Ready — Welcome, ${client.name}!`,
             html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -627,7 +627,7 @@ function InlinePortalForm({ client, onClose, showToast }) {
 }
 
 // ── Tax Organizer Quick Action — picks a year, creates the record, sends link ──
-function InlineOrganizerForm({ client, onClose, showToast }) {
+function InlineOrganizerForm({ client, onClose, showToast, tenantId }) {
   const [year, setYear] = useState(String(new Date().getFullYear() + 1))
   const [sendVia, setSendVia] = useState(client?.email ? 'email' : 'sms')
   const [sending, setSending] = useState(false)
@@ -637,13 +637,14 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     if (!/^\d{4}$/.test(year.trim())) { showToast('Enter a valid 4-digit tax year'); return }
     setSending(true)
     let orgId
+    if (!tenantId) { setSending(false); showToast('Could not resolve office tenant. Refresh and try again.'); return }
     const { data: existing } = await supabase.from('tax_organizer_responses')
-      .select('id').eq('client_name', client.name).eq('tax_year', year.trim()).maybeSingle()
+      .select('id').eq('tenant_id', tenantId).eq('client_name', client.name).eq('tax_year', year.trim()).maybeSingle()
     if (existing) {
       orgId = existing.id
     } else {
       const { data: created, error: createErr } = await supabase.from('tax_organizer_responses').insert([{
-        tenant_id: FIRM.tenantId || undefined,
+        tenant_id: tenantId,
         client_name: client.name, client_email: client.email || '', tax_year: year.trim(),
         answers: {}, status: 'In Progress', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }]).select().single()
@@ -656,7 +657,7 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     if ((sendVia === 'email' || sendVia === 'both') && client?.email) {
       try {
         const { error } = await supabase.functions.invoke('send-email', {
-          body: { tenant_id: FIRM.tenantId || undefined,
+          body: { tenant_id: tenantId,
             to: client.email,
             subject: `Your ${year.trim()} Tax Organizer — ${FIRM.name || 'Firm'}`,
             html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Please complete your ${year.trim()} tax organizer so we can begin preparing your return. It only takes a few minutes, and you can save your progress and come back anytime.</p><p style="text-align:center;margin:24px 0"><a href="${url}" style="background:#9333ea;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Start My Tax Organizer</a></p><p style="font-size:12px;color:#64748b">Link: ${url}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
@@ -3577,7 +3578,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setPortalModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">🔓 Client Portal — {portalClient.name}</span><button className="xbtn" onClick={()=>setPortalModal(false)}>&times;</button></div>
-            <InlinePortalForm client={portalClient} onClose={()=>setPortalModal(false)} showToast={showToast}/>
+            <InlinePortalForm client={portalClient} tenantId={myTenantId} onClose={()=>setPortalModal(false)} showToast={showToast}/>
           </div>
         </div>
       )}
@@ -3586,7 +3587,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setOrgModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">🧾 Tax Organizer — {orgClient.name}</span><button className="xbtn" onClick={()=>setOrgModal(false)}>&times;</button></div>
-            <InlineOrganizerForm client={orgClient} onClose={()=>setOrgModal(false)} showToast={showToast}/>
+            <InlineOrganizerForm client={orgClient} tenantId={myTenantId} onClose={()=>setOrgModal(false)} showToast={showToast}/>
           </div>
         </div>
       )}
