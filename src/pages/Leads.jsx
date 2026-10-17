@@ -269,7 +269,9 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
     if(docType==='Custom Document' && customFile){
       setUploading(true)
       try{
-        const path=`esign-custom/${(lead?.name||'lead').replace(/[^A-Za-z0-9 _-]/g,'')}/${Date.now()}-${customFile.name}`
+        const officeTenant = tenantId || FIRM.tenantId
+        if(!officeTenant) throw new Error('Could not resolve office tenant for e-sign upload')
+        const path=`${officeTenant}/docs/${lead?.id || 'lead'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
         if(!upErr){
           const{data:u}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
