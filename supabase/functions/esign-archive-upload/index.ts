@@ -51,6 +51,7 @@ Deno.serve(async(req:Request)=>{
       for(const a of Array.isArray(e.pdf_attachments)?e.pdf_attachments:[]){
         const p=attachmentPath(a)
         if(!p)continue
+        if(!e.tenant_id || !p.startsWith(String(e.tenant_id)+'/')) return json({error:'Attachment tenant mismatch'},403)
         const {data,error}=await db.storage.from('documents').createSignedUrl(p,900)
         if(error||!data?.signedUrl)return json({error:`Could not open ${String(a?.label||'attachment')}`},500)
         out.push({...a,url:data.signedUrl,storage_path:p})
@@ -91,6 +92,7 @@ Deno.serve(async(req:Request)=>{
       for(const a of Array.isArray(e.pdf_attachments)?e.pdf_attachments:[]){
         const p=attachmentPath(a)
         if(!p)continue
+        if(!e.tenant_id || !p.startsWith(String(e.tenant_id)+'/')) return json({error:'Attachment tenant mismatch'},403)
         const {data,error}=await db.storage.from('documents').createSignedUrl(p,900)
         if(error||!data?.signedUrl)return json({error:`Could not open ${String(a?.label||'attachment')}`},500)
         out.push({...a,url:data.signedUrl,storage_path:p})
