@@ -45,9 +45,9 @@ const checks=[
   ['client custom e-sign upload is tenant-prefixed',clients.includes("`${officeTenant}/docs/${client?.id || 'client'}/esign-custom/${Date.now()}-${customFile.name}`")],
   ['client state POA storage is tenant-prefixed',clients.includes('`${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`')],
   ['IRS form e-sign storage is tenant-prefixed',irsFiller.includes('`${myTenantId}/docs/${safeName}/irs-forms/${formType}_${Date.now()}.pdf`')],
-  ['IRS form e-sign row and email use active tenant',irsFiller.includes('tenant_id: myTenantId')&&!irsFiller.includes("const path = `docs/${safeName}/irs-forms/")) ,
+  ['IRS form e-sign row and email use active tenant',irsFiller.includes('tenant_id: myTenantId')&&!irsFiller.includes("const path = `docs/${safeName}/irs-forms/")],
   ['State Forms e-sign storage is tenant-prefixed',stateForms.includes('`${myTenantId}/docs/${safeName}/state-poa/${form.state}_POA_${Date.now()}.pdf`')],
-  ['State Forms e-sign row and email use active tenant',stateForms.includes('tenant_id: myTenantId')&&!stateForms.includes("const path = `docs/${safeName}/state-poa/")) ,
+  ['State Forms e-sign row and email use active tenant',stateForms.includes('tenant_id: myTenantId')&&!stateForms.includes("const path = `docs/${safeName}/state-poa/")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
