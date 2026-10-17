@@ -2152,7 +2152,7 @@ function OfficesList() {
                 {group.rows.map(r=>{
                   const activeStaff=r.employee_count==null?null:Number(r.employee_count)
                   const seats=Number(r.billing_seats||0)>0?Number(r.billing_seats):activeStaff
-                  return <div key={r.id} style={{ ...S.card, padding:'15px 16px', display:'flex', alignItems:'center', gap:13, cursor:'pointer',
+                  return <div key={r.id} data-romylabs-product={r.product} style={{ ...S.card, padding:'15px 16px', display:'flex', alignItems:'center', gap:13, cursor:'pointer',
                     borderColor:r.is_product_main?'rgba(99,102,241,.35)':undefined, background:r.is_product_main?'rgba(99,102,241,.055)':undefined }}
                     onClick={()=>openOffice(r)}>
                     <div style={{ width:38,height:38,borderRadius:10,flexShrink:0,
