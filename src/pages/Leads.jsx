@@ -1481,32 +1481,61 @@ export default function Leads() {
       showToast('Set the Tax Investigation Fee on this lead before sending the package.')
       return
     }
+    if (!myTenantId) { showToast('Office tenant is not resolved yet. Refresh and try again.'); return }
     setPkgSending(true)
+
+    // Prepare the tenant-scoped financial intake first. Never send a package
+    // containing a fallback URL that does not resolve to a real intake record.
+    let intakeId = null
+    try {
+      const { data: existingIntake, error: intakeLookupErr } = await supabase.from('financial_intake_responses')
+        .select('id')
+        .eq('tenant_id', myTenantId)
+        .eq('client_name', l.name)
+        .order('created_at',{ascending:false})
+        .limit(1)
+        .maybeSingle()
+      if (intakeLookupErr) throw intakeLookupErr
+      if (existingIntake?.id) {
+        intakeId = existingIntake.id
+      } else {
+        const { data: newIntake, error: intakeCreateErr } = await supabase.from('financial_intake_responses').insert([{
+          tenant_id: myTenantId,
+          client_id: l.id || null,
+          client_name: l.name,
+          client_email: l.email || '',
+          status: 'Sent',
+          answers: {},
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }]).select().single()
+        if (intakeCreateErr) throw intakeCreateErr
+        intakeId = newIntake?.id || null
+      }
+    } catch(e) {
+      console.error('Intake record preparation error:', e)
+      setPkgSending(false)
+      showToast('Could not prepare the Financial Intake. Package was not sent.')
+      return
+    }
+    if (!intakeId) {
+      setPkgSending(false)
+      showToast('Could not prepare the Financial Intake. Package was not sent.')
+      return
+    }
+    const intakeUrl = `${window.location.origin}/financial-intake/${intakeId}`
+
     const res = await sendFullPackage({...l, address:l.street, business_name:l.business_name||l.name}, supabase, myTenantId)
-    if (res.error) { setPkgSending(false)
-      const _pa=getActor(user); await logActivity(supabase,{employeeName:_pa.name,employeeEmail:_pa.email,action:'package_sent',category:'esign',description:`Sent Tax Inv Package to: ${l.name}`,entityName:l.name}).catch(()=>{}); showToast('Error: '+res.error); return }
+    if (res.error) {
+      setPkgSending(false)
+      const _pa=getActor(user)
+      await logActivity(supabase,{employeeName:_pa.name,employeeEmail:_pa.email,action:'package_failed',category:'esign',description:`Failed Tax Inv Package for: ${l.name} — ${res.error}`,entityName:l.name,entityId:l.id}).catch(()=>{})
+      showToast('Error: '+res.error)
+      return
+    }
 
     const url = res.url
     await navigator.clipboard.writeText(url).catch(()=>{})
-
-    // Find or create the financial intake record and use its real ID
-    let intakeId = null
-    try {
-      const { data: existingIntake } = await supabase.from('financial_intake_responses')
-        .select('id').eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
-      if (existingIntake) {
-        intakeId = existingIntake.id
-      } else {
-        const { data: newIntake } = await supabase.from('financial_intake_responses').insert([{
-          client_name: l.name, client_email: l.email || '', status: 'Sent',
-          answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }]).select().single()
-        if (newIntake) intakeId = newIntake.id
-      }
-    } catch(e) { console.error('Intake record lookup error:', e) }
-    const intakeUrl = intakeId
-      ? `${window.location.origin}/financial-intake/${intakeId}`
-      : `${window.location.origin}/financial-intake/${l.id}`
 
     // Generate Stripe Checkout link for the 1st Trade investigation fee
     let stripePayUrl = null
