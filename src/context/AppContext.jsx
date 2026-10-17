@@ -138,6 +138,29 @@ export function AppProvider({ children }) {
   const [planTier, setPlanTier] = useState('enterprise') // canonical top tier until tenant plan loads
   const toastTimer = useRef(null)
 
+  // Browser notifications must be granted per browser/profile. Browsers may
+  // ignore permission prompts fired without a user gesture, so request it on
+  // the first real interaction after login instead of relying on a page-specific
+  // automatic prompt. This covers Chrome, Edge and other Notification-API browsers.
+  useEffect(() => {
+    if (!user || !('Notification' in window) || Notification.permission !== 'default') return
+    let done = false
+    const request = async () => {
+      if (done) return
+      done = true
+      cleanup()
+      try { await Notification.requestPermission() } catch (_) {}
+    }
+    const cleanup = () => {
+      window.removeEventListener('pointerdown', request, true)
+      window.removeEventListener('keydown', request, true)
+    }
+    window.addEventListener('pointerdown', request, true)
+    window.addEventListener('keydown', request, true)
+    return cleanup
+  }, [user?.id])
+
+
   function applyBrandColor(hex) {
     if (!hex || !hex.startsWith('#')) return
     const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16)
