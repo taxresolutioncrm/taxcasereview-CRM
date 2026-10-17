@@ -336,7 +336,7 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
     const { data, error } = await supabase.from('esigns').insert([{
       doc_type: docType, client_name: client?.name, client_email: client?.email||'', client_phone: client?.phone||'',
       message, pdf_attachments:pdfAttachments, priority, status:'Awaiting', sent_at: new Date().toISOString(), created_at: new Date().toISOString(),
-      tenant_id: FIRM.tenantId || undefined
+      tenant_id: tenantId || FIRM.tenantId || undefined
     }]).select().single()
     if (error) { setSaving(false); showToast('Error: '+error.message,'err'); return }
     const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
@@ -347,7 +347,7 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
       try {
         const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', {
           body:{
-            tenant_id:FIRM.tenantId||undefined,
+            tenant_id:tenantId || FIRM.tenantId || undefined,
             to:client.email,
             subject:`Action Required: Sign Your ${docType} — ${firmName()}`,
             html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Signature Requested</h2><p>Hi <strong>${client.name}</strong>,</p><p>${message}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign</a></p><p style="font-size:12px;color:#64748b;word-break:break-all">${url}</p><p><strong>${firmName()}</strong></p></div>`
@@ -1706,13 +1706,13 @@ export default function Clients() {
         message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${FIRM.name || 'Firm'} to represent you before the ${formDef.state} tax authority.`,
         pdf_attachments: [{ formType:'state_poa', label:`${formDef.state} POA — ${formDef.label}`, url:urlData.signedUrl, storage_path:path }],
         priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
-        tenant_id: FIRM.tenantId || undefined,
+        tenant_id: myTenantId,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
       const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && client.email) {
-        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
+        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
         emailSent = !eErr
       }
       if ((via==='sms'||via==='both') && client.phone) {
