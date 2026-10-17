@@ -1423,6 +1423,9 @@ function ExternalProductOfficePage({ productKey }) {
   const [office,setOffice] = useState(null)
   const [loading,setLoading] = useState(true)
   const [error,setError] = useState('')
+  const [tab,setTab] = useState('Overview')
+  const [billing,setBilling] = useState(null)
+  const [metrics,setMetrics] = useState({})
 
   useEffect(() => {
     let cancelled=false
@@ -1448,6 +1451,11 @@ function ExternalProductOfficePage({ productKey }) {
       setLoading(true); setError('')
       const {data,error:invokeError}=await supabase.functions.invoke('hub-proxy',{body:{product:productKey}})
       if(cancelled) return
+      setMetrics(data?.metrics || {})
+      const {data:billingRows}=await supabase.rpc('admin_romylabs_billing_totals')
+      if(cancelled) return
+      const account=(Array.isArray(billingRows)?billingRows:[]).find(b=>String(b.external_tenant_id)===officeId && (b.product_key===productKey || (productKey==='nashville'&&b.product_key==='taxres_crm')))
+      setBilling(account||null)
       const offices=Array.isArray(data?.offices)?data.offices:[]
       const liveMatch=offices.find(o=>String(o.id)===officeId)
       if(liveMatch){
@@ -1491,31 +1499,32 @@ function ExternalProductOfficePage({ productKey }) {
   if(loading) return <Spinner/>
   if(error) return <div style={{padding:32}}><button onClick={()=>navigate('/crm-admin/offices')} style={S.btn('ghost')}>← Offices</button><div style={{marginTop:18,color:'#fca5a5'}}>{error}</div></div>
 
-  const kv=[['Product',cfg.label],['Status',office.status||(office.is_active===false?'inactive':'active')],['Office ID',office.id],['Created',office.since?fmtDate(office.since):'—']]
+  const n = (...values) => { const v=values.find(x=>x!==null&&x!==undefined&&Number.isFinite(Number(x))); return v===undefined?'—':Number(v).toLocaleString() }
+  const taxresFamily=productKey==='nashville'||productKey==='taxres_crm'
+  const cards=[
+    ['Employees',n(office.employee_count,office.active_staff,metrics.active_staff)],
+    ['Clients',n(office.client_count,office.active_clients,metrics.active_clients)],
+    ['Leads',n(office.lead_count,office.active_leads,metrics.active_leads)],
+    ['Status',office.status||(office.is_active===false?'inactive':'active')],
+    ['Payments',n(billing?.payment_count)],
+    ['Monthly Billing',billing?.monthly_amount_cents!=null?'$'+(Number(billing.monthly_amount_cents)/100).toFixed(2):'—']
+  ]
+  const tabs=['Overview','Employees','Billing','Actions','Documents','Notes']
   return (
-    <div style={{padding:'28px 36px',maxWidth:1100}}>
+    <div style={{padding:'28px 36px',maxWidth:1150}}>
       <button onClick={()=>navigate('/crm-admin/offices')} style={{...S.btn('ghost'),marginBottom:18}}>← All Offices</button>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,marginBottom:22}}>
-        <div>
-          <div style={{fontSize:11,color:cfg.color,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:5}}>{cfg.label} Office</div>
-          <div style={{fontSize:28,fontWeight:900,color:'#fff'}}>{office.name||`${cfg.label} Office`}</div>
-          <div style={{fontSize:13,color:'#64748b',marginTop:4}}>You are inside this office only.</div>
-        </div>
-        {cfg.appUrl && <button onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')} style={S.btn('primary')}>Open {cfg.label} CRM ↗</button>}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:20}}>
+        <div><div style={{color:cfg.color,fontSize:11,fontWeight:800}}>{taxresFamily?'TaxRes CRM':cfg.label}</div><h2 style={{color:'#fff',margin:'8px 0'}}>{office.name||cfg.label}</h2><div style={{fontSize:12,color:'#64748b'}}>Office ID: {office.id}</div></div>
+        {cfg.appUrl&&<button style={S.btn('primary')} onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')}>Open CRM ↗</button>}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:22}}>
-        {kv.map(([label,value])=><div key={label} style={{...S.card,padding:'16px 18px'}}><div style={{fontSize:10,fontWeight:800,color:'#475569',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>{label}</div><div style={{fontSize:14,fontWeight:700,color:'#e2e8f0',wordBreak:'break-word'}}>{String(value??'—')}</div></div>)}
-      </div>
-      <UniversalOfficeESign
-        supabase={supabase}
-        productKey={productKey}
-        externalOfficeId={office.id}
-        firmName={office.name||`${cfg.label} Office`}
-        contactName=""
-        contactEmail=""
-        seats={null}
-        monthlyAmount={office.mrr ?? null}
-      />
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:24}}>{cards.map(([label,value])=><div key={label} style={{...S.card,padding:16}}><div style={{fontSize:10,color:'#64748b',fontWeight:800}}>{label.toUpperCase()}</div><div style={{fontSize:19,color:'#e2e8f0',marginTop:8,fontWeight:800}}>{value}</div></div>)}</div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',borderBottom:'1px solid #334155',marginBottom:18}}>{tabs.map(x=><button key={x} onClick={()=>setTab(x)} style={{border:'none',cursor:'pointer',padding:'10px 14px',background:tab===x?'rgba(99,102,241,.15)':'transparent',color:tab===x?'#a5b4fc':'#94a3b8',borderBottom:tab===x?'2px solid #6366f1':'2px solid transparent'}}>{x}</button>)}</div>
+      {tab==='Overview'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}><div><b>Office:</b> {office.name||'—'}</div><div style={{marginTop:10}}><b>Product family:</b> {taxresFamily?'TaxRes CRM':cfg.label}</div><div style={{marginTop:10}}><b>Created:</b> {office.since?fmtDate(office.since):'—'}</div><div style={{marginTop:10}}><b>Status:</b> {office.status||'—'}</div></div>}
+      {tab==='Billing'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}><div>Seats: {n(billing?.seat_count)}</div><div style={{marginTop:10}}>Monthly: {billing?.monthly_amount_cents!=null?'$'+(Number(billing.monthly_amount_cents)/100).toFixed(2):'—'}</div><div style={{marginTop:10}}>Collected: {billing?.collected_cents!=null?'$'+(Number(billing.collected_cents)/100).toFixed(2):'—'}</div><div style={{marginTop:10}}>Payments: {n(billing?.payment_count)}</div></div>}
+      {tab==='Employees'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}>Employees reported by the connected office: {cards[0][1]}. Employee records remain in the office's existing CRM.</div>}
+      {tab==='Actions'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}>Administrative actions requiring office-level privileges remain in the existing CRM. {cfg.appUrl&&<button style={S.btn('ghost')} onClick={()=>window.open(cfg.appUrl,'_blank','noopener,noreferrer')}>Open CRM ↗</button>}</div>}
+      {tab==='Documents'&&<UniversalOfficeESign supabase={supabase} productKey={taxresFamily?'taxres_crm':productKey} externalOfficeId={office.id} firmName={office.name||cfg.label} contactName="" contactEmail="" seats={billing?.seat_count??null} monthlyAmount={billing?.monthly_amount_cents!=null?Number(billing.monthly_amount_cents)/100:(office.mrr??null)}/>}
+      {tab==='Notes'&&<div style={{...S.card,padding:20,color:'#cbd5e1'}}>Office notes have not been migrated. Existing notes remain in their original records.</div>}
     </div>
   )
 }
