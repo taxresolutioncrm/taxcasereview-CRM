@@ -308,6 +308,7 @@ function LeadInlineEsign({ lead, onClose, tenantId }) {
     const url=window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
     await navigator.clipboard.writeText(url).catch(()=>{})
     let smsSent=false,emailSent=false
+    const deliveryErrors=[]
     if((sendVia==='email'||sendVia==='both')&&lead?.email){
       try{
         const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId,
@@ -351,7 +352,8 @@ function LeadInlineEsign({ lead, onClose, tenantId }) {
           body:{to:lead.phone,body:`Hi ${lead?.name}, ${firmName()} sent you a document to sign: ${url}`,lead_id:lead?.id||null}
         })
         smsSent=!smsErr && !!smsData?.success
-      }catch(e){console.error('SMS error:',e)}
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      }catch(e){console.error('SMS error:',e);deliveryErrors.push(e?.message||'SMS delivery failed')}
     }
     set2(false)
     const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
@@ -362,12 +364,12 @@ function LeadInlineEsign({ lead, onClose, tenantId }) {
         type:'System', author: lead?.assignedTo || 'System', created_at: new Date().toISOString()
       })
     } catch(_) {}
-    setDone({url,sent})
+    setDone({url,sent,errors:Array.from(new Set(deliveryErrors.filter(Boolean)))})
   }
   if(done) return <div style={{padding:'0 4px 12px'}}>
     <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.3)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
       <div style={{fontSize:13,fontWeight:700,color:'var(--ok)',marginBottom:6}}>{done.sent.length?`Sent via ${done.sent.join(' & ')}!`:'Link copied — share manually'}</div>
-      {!done.sent.length&&<div style={{fontSize:11,color:'var(--warn)',marginBottom:4}}>Email/SMS not configured in Settings yet.</div>}
+      {!done.sent.length&&<div style={{fontSize:11,color:'var(--warn)',marginBottom:4}}>{done.errors?.length?`Delivery failed: ${done.errors.join(' | ')}`:'No delivery channel completed. Share the secure link manually.'}</div>}
       <div style={{fontSize:11,color:'var(--t3)',wordBreak:'break-all'}}>{done.url}</div>
     </div>
     <button className="btn sec" style={{width:'100%',justifyContent:'center'}} onClick={onClose}>Done</button>
