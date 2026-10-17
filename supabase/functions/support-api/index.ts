@@ -403,6 +403,236 @@ async function handleAddReply(
   return jsonResp({ ok: true, message_id: msg.id, created_at: msg.created_at })
 }
 
+// ── Arcvena system-mail relay ─────────────────────────────────────────────────
+//
+// Arcvena runs in its own Supabase project, while the Stalwart credential vault
+// for RomyLabs product mailboxes is centralized here. Product backends already
+// authenticate to this API with HMAC. Reuse that trust boundary instead of
+// copying mailbox passwords into product databases or browsers.
+
+const SYSTEM_MAIL_KINDS = new Set(['auth_invite', 'auth_access', 'auth_recovery'])
+const MAX_SYSTEM_SUBJECT_LEN = 300
+const MAX_SYSTEM_HTML_LEN = 200_000
+
+function cleanHeader(value: unknown): string {
+  return String(value ?? '').replace(/[\r\n]+/g, ' ').trim()
+}
+
+function validEmailAddress(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+async function sendSystemMailViaStalwart(opts: {
+  host: string
+  username: string
+  password: string
+  fromAddress: string
+  fromName: string
+  to: string
+  subject: string
+  html: string
+}) {
+  const base = 'https://' + opts.host.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  const authorization = 'Basic ' + btoa(opts.username + ':' + opts.password)
+
+  const sessionResponse = await fetch(base + '/.well-known/jmap', {
+    headers: { Authorization: authorization, Accept: 'application/json' },
+  })
+  if (!sessionResponse.ok) throw new Error('Stalwart JMAP session failed (' + sessionResponse.status + ')')
+
+  const session = await sessionResponse.json()
+  const apiUrl = String(session?.apiUrl || '').replace('{accountId}', '')
+  const accountId =
+    session?.primaryAccounts?.['urn:ietf:params:jmap:mail'] ||
+    Object.keys(session?.accounts || {})[0]
+  if (!apiUrl || !accountId) throw new Error('Stalwart JMAP session missing mail account')
+
+  const metadataResponse = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: authorization,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      using: [
+        'urn:ietf:params:jmap:core',
+        'urn:ietf:params:jmap:mail',
+        'urn:ietf:params:jmap:submission',
+      ],
+      methodCalls: [
+        ['Identity/get', { accountId }, 'identity'],
+        ['Mailbox/get', { accountId, properties: ['id', 'name', 'role'] }, 'mailboxes'],
+      ],
+    }),
+  })
+  if (!metadataResponse.ok) {
+    throw new Error('Stalwart JMAP metadata failed (' + metadataResponse.status + ')')
+  }
+
+  const metadata = await metadataResponse.json()
+  const identities =
+    metadata?.methodResponses?.find((item: any) => item?.[0] === 'Identity/get')?.[1]?.list || []
+  const mailboxes =
+    metadata?.methodResponses?.find((item: any) => item?.[0] === 'Mailbox/get')?.[1]?.list || []
+
+  const fromAddress = opts.fromAddress.toLowerCase()
+  const identity = identities.find(
+    (item: any) => String(item?.email || '').toLowerCase() === fromAddress,
+  )
+  const drafts = mailboxes.find(
+    (item: any) => String(item?.role || '').toLowerCase() === 'drafts',
+  )
+  const sent = mailboxes.find(
+    (item: any) => String(item?.role || '').toLowerCase() === 'sent',
+  )
+
+  if (!identity?.id) throw new Error('Stalwart sender identity is unavailable')
+  if (!drafts?.id || !sent?.id) throw new Error('Stalwart Drafts or Sent mailbox unavailable')
+
+  const partId = 'html'
+  const emailObject = {
+    from: [{ email: fromAddress, name: opts.fromName }],
+    to: [{ email: opts.to }],
+    subject: opts.subject,
+    mailboxIds: { [drafts.id]: true },
+    keywords: { '$draft': true },
+    bodyValues: { [partId]: { value: opts.html, charset: 'utf-8' } },
+    htmlBody: [{ partId, type: 'text/html' }],
+  }
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: authorization,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      using: [
+        'urn:ietf:params:jmap:core',
+        'urn:ietf:params:jmap:mail',
+        'urn:ietf:params:jmap:submission',
+      ],
+      methodCalls: [
+        ['Email/set', { accountId, create: { draft: emailObject } }, 'email'],
+        ['EmailSubmission/set', {
+          accountId,
+          create: { send: { emailId: '#draft', identityId: identity.id } },
+          onSuccessUpdateEmail: {
+            '#send': {
+              ['mailboxIds/' + drafts.id]: null,
+              ['mailboxIds/' + sent.id]: true,
+              'keywords/$draft': null,
+            },
+          },
+        }, 'submission'],
+      ],
+    }),
+  })
+  if (!response.ok) throw new Error('Stalwart JMAP send failed (' + response.status + ')')
+
+  const result = await response.json()
+  const emailSet =
+    result?.methodResponses?.find((item: any) => item?.[0] === 'Email/set')?.[1]
+  const emailRejected = emailSet?.notCreated?.draft
+  if (emailRejected) {
+    throw new Error(
+      String(emailRejected.description || emailRejected.type || 'Stalwart rejected email draft'),
+    )
+  }
+
+  const submission =
+    result?.methodResponses?.find((item: any) => item?.[0] === 'EmailSubmission/set')?.[1]
+  const rejected = submission?.notCreated?.send
+  if (rejected) {
+    throw new Error(String(rejected.description || rejected.type || 'Stalwart rejected send'))
+  }
+
+  const submissionId = submission?.created?.send?.id
+  if (!submissionId) throw new Error('Stalwart did not confirm message submission')
+  return String(submissionId)
+}
+
+async function handleSendSystemEmail(
+  supabase: ReturnType<typeof createClient>,
+  product: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  // Keep this endpoint narrow. It exists specifically so the Arcvena project can
+  // use the already-registered Arcvena Stalwart identity in the central vault.
+  if (product !== 'arcvena') return authError()
+
+  const kind = cleanHeader(body.kind).toLowerCase()
+  const to = cleanHeader(body.to).toLowerCase()
+  const subject = cleanHeader(body.subject)
+  const html = String(body.html ?? '')
+
+  if (!SYSTEM_MAIL_KINDS.has(kind)) return validationError('Unsupported system mail kind')
+  if (!validEmailAddress(to)) return validationError('A valid recipient email is required')
+  if (!subject || subject.length > MAX_SYSTEM_SUBJECT_LEN) {
+    return validationError('System email subject is invalid')
+  }
+  if (!html || html.length > MAX_SYSTEM_HTML_LEN) {
+    return validationError('System email body is invalid')
+  }
+
+  // Prevent this highly privileged relay from being repurposed for unrelated
+  // mail or another RomyLabs product.
+  if (!/arcvena/i.test(subject + '\n' + html)) {
+    return validationError('Arcvena branding is required')
+  }
+  const forbiddenBrands = ['Tax Case Review', 'TaxRes CRM', 'Nashville Tax Solutions', 'CloudCPA']
+  if (forbiddenBrands.some(brand => subject.includes(brand) || html.includes(brand))) {
+    return validationError('Foreign branding is not allowed')
+  }
+
+  const { data: transport, error: transportError } = await supabase.rpc(
+    'romylabs_stalwart_transport_for_product',
+    { p_product_key: 'arcvena' },
+  )
+  if (
+    transportError ||
+    !transport?.ok ||
+    !transport?.host ||
+    !transport?.username ||
+    !transport?.password ||
+    !transport?.from_address
+  ) {
+    console.error(
+      'support-api Arcvena system mail transport unavailable:',
+      transportError?.message || transport?.error || 'incomplete transport',
+    )
+    return jsonResp({ error: 'Arcvena system mail transport is unavailable' }, 503)
+  }
+
+  try {
+    const submissionId = await sendSystemMailViaStalwart({
+      host: cleanHeader(transport.host),
+      username: cleanHeader(transport.username),
+      password: String(transport.password),
+      fromAddress: cleanHeader(transport.from_address).toLowerCase(),
+      fromName: 'Arcvena',
+      to,
+      subject,
+      html,
+    })
+
+    return jsonResp({
+      ok: true,
+      provider: 'STALWART_JMAP',
+      from: cleanHeader(transport.from_address).toLowerCase(),
+      submission_id: submissionId,
+    })
+  } catch (error) {
+    console.error(
+      'support-api Arcvena Stalwart send failed:',
+      error instanceof Error ? error.message : String(error),
+    )
+    return jsonResp({ error: 'Arcvena Stalwart delivery failed' }, 502)
+  }
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -462,10 +692,11 @@ Deno.serve(async (req: Request) => {
   if (!action) return validationError('Missing action')
 
   switch (action) {
-    case 'create_ticket': return handleCreateTicket(supabase, product, body)
-    case 'list_tickets':  return handleListTickets(supabase, product, body)
-    case 'get_ticket':    return handleGetTicket(supabase, product, body)
-    case 'add_reply':     return handleAddReply(supabase, product, body)
+    case 'create_ticket':      return handleCreateTicket(supabase, product, body)
+    case 'list_tickets':       return handleListTickets(supabase, product, body)
+    case 'get_ticket':         return handleGetTicket(supabase, product, body)
+    case 'add_reply':          return handleAddReply(supabase, product, body)
+    case 'send_system_email':  return handleSendSystemEmail(supabase, product, body)
     default:
       return validationError(`Unknown action: ${action}`)
   }
