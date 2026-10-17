@@ -181,8 +181,9 @@ export default function StateForms() {
         .upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw new Error(upErr.message)
 
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-      const pdfUrl = urlData?.signedUrl || ''
+      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      if (signedUrlErr || !urlData?.signedUrl) throw new Error(signedUrlErr?.message || 'Could not create secure State POA link')
+      const pdfUrl = urlData.signedUrl
 
       // Create esign record
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
@@ -205,10 +206,11 @@ export default function StateForms() {
       await navigator.clipboard.writeText(sigUrl).catch(() => {})
 
       let emailSent = false, smsSent = false
+      const deliveryErrors = []
 
       // Send email
       if ((via === 'email' || via === 'both') && selectedClient.email) {
-        const { error: eErr } = await supabase.functions.invoke('send-email', {
+        const { data:emailData, error: eErr } = await supabase.functions.invoke('send-email', {
           body: {
             tenant_id: myTenantId,
             to: selectedClient.email,
@@ -237,7 +239,8 @@ export default function StateForms() {
 </table></td></tr></table></body></html>`
           }
         })
-        emailSent = !eErr
+        emailSent = !eErr && emailData?.success!==false
+        if (!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
       }
 
       // Send SMS
@@ -247,18 +250,21 @@ export default function StateForms() {
             body: { to:selectedClient.phone, body:`${firmName()}: please review and sign your ${form.state} POA here: ${sigUrl}`, client_id:selectedClient.id || null }
           })
           smsSent = !smsErr && !!smsData?.success
-        } catch (_) {}
+          if (!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+        } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
       }
 
       // Log note on client
+      const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
       await supabase.from('client_notes').insert({
         clientname: selectedClient.name,
-        text: `🏛️ ${form.state} State POA sent for e-signature (${form.num})${emailSent ? ' via email' : ''}${smsSent ? ' via SMS' : ''}`,
+        text: sent.length ? `🏛️ ${form.state} State POA sent for e-signature (${form.num}) via ${sent.join(' & ')}` : `⚠️ ${form.state} State POA created but not delivered (${form.num})${reason?` — ${reason}`:''}`,
         author: actor,
         visible_to_client: false,
       })
 
-      showToast(emailSent || smsSent ? `✅ ${form.state} POA sent for signature!` : '✅ Created — signing link copied to clipboard')
+      showToast(sent.length ? `✅ ${form.state} POA sent for signature!` : `State POA created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
     } catch (e) {
       showToast('Error: ' + e.message)
     }
