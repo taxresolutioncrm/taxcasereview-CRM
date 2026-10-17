@@ -1714,9 +1714,11 @@ export default function Clients() {
       if (esignErr) throw new Error(esignErr.message)
       const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
       let emailSent=false, smsSent=false
+      const deliveryErrors=[]
       if ((via==='email'||via==='both') && client.email) {
-        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
-        emailSent = !eErr
+        const { data:emailData, error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
+        emailSent = !eErr && emailData?.success!==false
+        if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
       }
       if ((via==='sms'||via==='both') && client.phone) {
         try {
@@ -1724,11 +1726,14 @@ export default function Clients() {
             body:{to:client.phone, body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`, client_id:client.id||null}
           })
           smsSent = !smsErr && !!smsData?.success
-        } catch(_) {}
+          if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+        } catch(e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
       }
-      await insertClientNote({ clientname:client.name, content:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, created_by:actor, visible_to_client:false, created_at:new Date().toISOString() })
+      const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      await insertClientNote({ clientname:client.name, content:sent.length?`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num}) via ${sent.join(' & ')}`:`⚠️ ${formDef.state} State POA created but not delivered (${formDef.num})${reason?` — ${reason}`:''}`, created_by:actor, visible_to_client:false, created_at:new Date().toISOString() })
       setPoaModal(false)
-      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing request created — delivery was not completed')
+      showToast(sent.length ? `✅ ${formDef.state} POA sent for signature!` : `State POA created, but delivery failed${reason?': '+reason:''}. Signing link remains available.`)
     } catch(e) { showToast('Error: '+e.message) }
     setPoaSending(false)
   }
@@ -1774,9 +1779,10 @@ export default function Clients() {
     </div>` : ''
 
     let emailSent=false, smsSent=false
+    const deliveryErrors=[]
 
     if ((via==='email'||via==='both') && c.email) {
-      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
+      const { data:emailData, error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
         to: c.email,
         subject: `Action Required: Sign Your Service Addendum — ${FIRM.name || 'Firm'}`,
         html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -1808,7 +1814,8 @@ export default function Clients() {
 </td></tr></table>
 </body></html>`
       }})
-      emailSent = !eErr
+      emailSent = !eErr && emailData?.success!==false
+      if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
     }
     if ((via==='sms'||via==='both') && c.phone) {
       try {
@@ -1816,18 +1823,20 @@ export default function Clients() {
           body:{to:c.phone, body:`${firmName()}: please review and sign your Service Addendum here: ${url}`, client_id:c.id||null}
         })
         smsSent = !smsErr && !!smsData?.success
-      } catch (_) {}
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
     }
 
-    const feeText = `$${Number(addForm.resolutionFee).toLocaleString()}`
+    const feeText = `${Number(addForm.resolutionFee).toLocaleString()}`
     const channels = [emailSent&&'email', smsSent&&'sms'].filter(Boolean).join(' + ')
-    const noteContent = `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText}${channels?` (${channels})`:''}`
+    const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+    const noteContent = channels ? `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText} (${channels})` : `⚠️ Service Addendum created but not delivered — Resolution Fee ${feeText}${reason?` — ${reason}`:''}`
     await insertClientNote({ clientname: c.name, content: noteContent, created_by: actor, created_at: new Date().toISOString() })
 
     setAddendumSending(false)
     setAddModal(false)
     loadRelated(c.name)
-    showToast(emailSent||smsSent ? '✅ Addendum sent for signature!' : '⚠️ Link copied — configure email/SMS to send automatically')
+    showToast(channels ? '✅ Addendum sent for signature!' : `Addendum created, but delivery failed${reason?': '+reason:''}. Signing link remains available.`)
   }
 
   async function saveRewritePlan() {
