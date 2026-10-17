@@ -1541,7 +1541,7 @@ export default function Leads() {
     </div>` : ''
         const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: myTenantId,
           to:l.email,
-          subject:`Action Required: Sign & Pay — ${firmName()} Investigation Package`,
+          subject: stripePayUrl ? `Action Required: Sign & Pay — ${firmName()} Investigation Package` : `Action Required: Sign — ${firmName()} Investigation Package`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px">
 <tr><td align="center">
@@ -1553,7 +1553,7 @@ export default function Leads() {
   </td></tr>
   <tr><td style="padding:40px 40px 32px">
     <p style="margin:0 0 16px;font-size:16px;color:#0f172a">Dear <strong>${l.name}</strong>,</p>
-    <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7">Your <strong>Tax Investigation Package</strong> is ready. Please complete both steps below to get started — it only takes a few minutes.</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.7">Your <strong>Tax Investigation Package</strong> is ready. Please complete the steps below to get started — it only takes a few minutes.</p>
     <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:20px 24px;margin:0 0 20px">
       <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.06em">📋 Step 1 — Review &amp; Sign Your Documents</p>
       <p style="margin:0 0 10px;font-size:14px;color:#334155;line-height:1.6">This package includes:</p>
@@ -1570,7 +1570,7 @@ export default function Leads() {
     <p style="margin:0 0 4px;font-size:11px;color:#94a3b8;text-align:center">Sign link: <a href="${url}" style="color:#3b82f6">${url}</a></p>
     ${stripePayUrl?`<p style="margin:0 0 4px;font-size:11px;color:#94a3b8;text-align:center">Can't click the button above? <a href="${stripePayUrl}" style="color:#0ea5e9">Click here to pay</a></p>`:''}
     <div style="background:#fdf4ff;border:1px solid #e9d5ff;border-radius:10px;padding:20px 24px;margin:0 0 24px">
-      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#7e22ce;text-transform:uppercase;letter-spacing:.06em">📋 Step 3 — Complete Your Financial Intake</p>
+      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#7e22ce;text-transform:uppercase;letter-spacing:.06em">📋 Step ${stripePayUrl ? '3' : '2'} — Complete Your Financial Intake</p>
       <p style="margin:0 0 14px;font-size:14px;color:#6b21a8;line-height:1.6">To build your resolution strategy, your advisor needs a picture of your current finances. This takes about 10 minutes and your progress saves automatically.</p>
       <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
         <a href="${intakeUrl}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#ffffff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:-.01em;box-shadow:0 4px 14px rgba(124,58,237,.35)">Start Financial Intake →</a>
