@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { fillForm, FORM_LABELS, TEMPLATE_PATHS } from '../lib/irsFormUtils';
 import { FIRM } from '../lib/firmBranding'
+import { useApp } from '../context/AppContext'
 
 function downloadPdf(bytes, filename) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -42,6 +43,7 @@ const ALL_IRS_FORMS = [
 ];
 
 export default function IRSFormFiller({ client, onClose }) {
+  const { myTenantId } = useApp();
   const [loading,  setLoading]  = useState(null);
   const [sending,  setSending]  = useState(null);
   const [sendVia,  setSendVia]  = useState('email');
@@ -97,7 +99,8 @@ export default function IRSFormFiller({ client, onClose }) {
       const bytes = await fillForm(formType, client);
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const safeName = clientName.replace(/[^a-zA-Z0-9]+/g, '-');
-      const path = `docs/${safeName}/irs-forms/${formType}_${Date.now()}.pdf`;
+      if (!myTenantId) throw new Error('Could not resolve office tenant');
+      const path = `${myTenantId}/docs/${safeName}/irs-forms/${formType}_${Date.now()}.pdf`;
 
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, blob, { upsert: true, contentType: 'application/pdf' });
@@ -115,6 +118,7 @@ export default function IRSFormFiller({ client, onClose }) {
         pdf_attachments: [{ formType, label, url: urlData?.signedUrl || '', storage_path: path }],
         priority: 'Normal',
         status: 'Awaiting',
+        tenant_id: myTenantId,
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         tenant_id: FIRM.tenantId || undefined,
