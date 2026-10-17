@@ -242,16 +242,12 @@ export default function StateForms() {
 
       // Send SMS
       if ((via === 'sms' || via === 'both') && selectedClient.phone) {
-        const { data: cfg } = await supabase.from('settings').select('signalwire_backend').limit(1).maybeSingle()
-        if (cfg?.signalwire_backend) {
-          try {
-            await fetch(cfg.signalwire_backend + '/sms/send', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: selectedClient.phone, body: `${firmName()}: please review and sign your ${form.state} POA here: ${sigUrl}` })
-            })
-            smsSent = true
-          } catch (_) {}
-        }
+        try {
+          const { data:smsData, error:smsErr } = await supabase.functions.invoke('send-sms', {
+            body: { to:selectedClient.phone, body:`${firmName()}: please review and sign your ${form.state} POA here: ${sigUrl}`, client_id:selectedClient.id || null }
+          })
+          smsSent = !smsErr && !!smsData?.success
+        } catch (_) {}
       }
 
       // Log note on client
