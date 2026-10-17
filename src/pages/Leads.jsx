@@ -867,7 +867,7 @@ export default function Leads() {
     let emailSent=false, smsSent=false
 
     if ((via==='email'||via==='both') && l.email) {
-      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined,
+      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
         to: l.email,
         subject: `Action Required: Sign Your Service Addendum — ${firmName()}`,
         html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
