@@ -1180,8 +1180,9 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
   }]).select().single()
 
   if (error) return { error: error.message }
+  if (!/^[0-9a-f]{64}$/i.test(String(data?.signer_token || ''))) return { error: 'Signing request token was not created' }
 
-  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token || '')}`
+  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token)}`
   return { id: data.id, url, pdfAttachments }
 }
 
@@ -1227,8 +1228,9 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy, t
   }]).select().single()
 
   if (error) return { error: error.message }
+  if (!/^[0-9a-f]{64}$/i.test(String(data?.signer_token || ''))) return { error: 'Signing request token was not created' }
 
-  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token || '')}`
+  const url = `${window.location.origin}/sign/${data.id}?token=${encodeURIComponent(data.signer_token)}`
   return { id: data.id, url, pdfAttachments }
 }
 
