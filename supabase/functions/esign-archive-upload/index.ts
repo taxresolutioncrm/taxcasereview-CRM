@@ -40,6 +40,7 @@ Deno.serve(async(req:Request)=>{
       .select('id,tenant_id,status,client_name,client_email,client_phone,doc_type,message,investigation_fee,tax_years,due_date,signed_name,signer_full_name,signer_ip,signed_at,signed_timestamp,pdf_attachments,signed_attachments,finalized_at,opened_at,rep_name,sent_by,client_id,lead_id')
       .eq('id',id).eq('signer_token',token).maybeSingle()
     if(eErr||!e)return json({error:'Signing request not found'},404)
+    if(!e.tenant_id)return json({error:'Signing request tenant is missing'},500)
     if(['Declined','Expired','Voided'].includes(String(e.status)))return json({error:'Signing request is no longer active'},410)
 
     if(action==='load'){
@@ -60,7 +61,7 @@ Deno.serve(async(req:Request)=>{
       const firstOpen=!openedAt
       if(firstOpen&&e.status==='Awaiting'){
         openedAt=new Date().toISOString()
-        await db.from('esigns').update({opened_at:openedAt}).eq('id',id).eq('signer_token',token).is('opened_at',null)
+        await db.from('esigns').update({opened_at:openedAt}).eq('tenant_id',e.tenant_id).eq('id',id).eq('signer_token',token).is('opened_at',null)
       }
       return json({success:true,document:{...e,opened_at:openedAt,pdf_attachments:out},first_open:firstOpen})
     }
@@ -80,7 +81,7 @@ Deno.serve(async(req:Request)=>{
       const {data:signed,error:signErr}=await db.from('esigns').update({
         status:'Signed',signed_at:signedAt,signed_name:signedName,signer_full_name:fullName,
         signer_ip:forwarded||null,signed_timestamp:signedAt,signed_user_agent:ua||null
-      }).eq('id',id).eq('signer_token',token).in('status',['Awaiting','Viewed'])
+      }).eq('tenant_id',e.tenant_id).eq('id',id).eq('signer_token',token).in('status',['Awaiting','Viewed'])
         .select('id,status,signed_at,signed_name,signer_full_name,signer_ip').maybeSingle()
       if(signErr)return json({error:'Could not save signature'},500)
       if(!signed)return json({error:'Signing request was already completed'},409)
@@ -107,7 +108,6 @@ Deno.serve(async(req:Request)=>{
     }
 
     if(e.status!=='Signed')return json({error:'Signing request is not signed'},409)
-    if(!e.tenant_id)return json({error:'Signing request tenant is missing'},500)
     const prefix=`${e.tenant_id}/docs/${clean(e.client_name||'client')}/signed/${id}`
     const expected=new Map<string,string>()
     for(const a of Array.isArray(e.pdf_attachments)?e.pdf_attachments:[]){
@@ -177,7 +177,7 @@ Deno.serve(async(req:Request)=>{
       })
       if(finErr)return json({error:finErr.message},500)
       await db.from('esigns').update({signed_attachments:signedAttachments,finalized_at:new Date().toISOString()})
-        .eq('id',id).eq('signer_token',token)
+        .eq('tenant_id',e.tenant_id).eq('id',id).eq('signer_token',token)
 
       let clientEmailSent=false,clientSmsSent=false
       if(e.client_email){
