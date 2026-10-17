@@ -562,8 +562,12 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             await loadRequests()
             if (onImportedRef.current) onImportedRef.current()
           }
+        } else {
+          // Keep unacknowledged deliveries retryable when the extension replays its queue.
+          attempted.delete(bridgeId)
         }
       } catch (e) {
+        attempted.delete(bridgeId)
         setHelperLog(l => [{ at: new Date(), name, source: 'SOR Bridge', status: 'error', detail: e?.message || 'Failed' }, ...l].slice(0, 25))
       }
     }
