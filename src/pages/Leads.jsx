@@ -822,9 +822,11 @@ export default function Leads() {
       const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
       await navigator.clipboard.writeText(sigUrl).catch(()=>{})
       let emailSent=false, smsSent=false
+      const deliveryErrors=[]
       if ((via==='email'||via==='both') && lead.email) {
-        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:lead.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${lead.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>` }})
-        emailSent = !eErr
+        const { data:emailData, error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:lead.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${lead.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>` }})
+        emailSent = !eErr && emailData?.success!==false
+        if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
       }
       if ((via==='sms'||via==='both') && lead.phone) {
         try {
@@ -832,11 +834,14 @@ export default function Leads() {
             body:{to:lead.phone,body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`,lead_id:lead.id||null}
           })
           smsSent=!smsErr && !!smsData?.success
-        } catch(_) {}
+          if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+        } catch(e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
       }
-      await supabase.from('lead_notes').insert({ lead_id:lead.id, text:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, author:actor, created_at: new Date().toISOString() })
+      const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      await supabase.from('lead_notes').insert({ lead_id:lead.id, text:sent.length?`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num}) via ${sent.join(' & ')}`:`⚠️ ${formDef.state} State POA created but not delivered (${formDef.num})${reason?` — ${reason}`:''}`, author:actor, created_at: new Date().toISOString() })
       setPoaModal(false)
-      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing link copied to clipboard')
+      showToast(sent.length ? `✅ ${formDef.state} POA sent for signature!` : `State POA created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
     } catch(e) { showToast('Error: '+e.message) }
     setPoaSending(false)
   }
