@@ -36,6 +36,7 @@ assert(sidebar.includes('setInterval(loadEmailTaskCounts, 180000)'), 'email/task
 assert(sidebar.includes('setInterval(loadCounts, 180000)'), 'client-work badges need fallback polling')
 assert(sidebar.includes('setInterval(loadCalendarBadge, 180000)'), 'calendar badge needs fallback polling')
 assert(!sidebar.includes("if (location.pathname.startsWith('/email')) {\n      setUnreadInbox(0)"), 'email badge must not be cleared merely by visiting /email')
+assert(!sidebar.includes("if (item.path === '/email') setUnreadInbox(0)"), 'email badge must not be cleared by clicking the Email nav item')
 assert(app.includes("window.addEventListener('pointerdown', request, true)") && app.includes("Notification.requestPermission()"), 'browser notification permission must be requested from a real user interaction')
 
 assert(app.includes("window.dispatchEvent(new CustomEvent('taxres:huddle-invite'"), 'central huddles must fan out locally from AppContext')
