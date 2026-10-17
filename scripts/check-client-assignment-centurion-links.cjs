@@ -87,6 +87,7 @@ const checks=[
   ['central E-Sign mutations are tenant scoped',esignPage.includes("update({ status: 'Awaiting', sent_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', item.id)")&&esignPage.includes("update({ status }).eq('tenant_id', myTenantId).eq('id', id)")&&esignPage.includes("delete().eq('tenant_id', myTenantId).eq('id', id)")],
   ['public E-Sign mutations are tenant bound',archiveFn.includes("update({opened_at:openedAt}).eq('tenant_id',e.tenant_id)")&&archiveFn.includes("}).eq('tenant_id',e.tenant_id).eq('id',id).eq('signer_token',token).in('status',['Awaiting','Viewed'])")&&archiveFn.includes(".eq('tenant_id',e.tenant_id).eq('id',id).eq('signer_token',token)")],
   ['signed receipt markers are tenant bound',sendEmail.includes(".eq('tenant_id',tenant_id).eq('id',esignIdToMark)")&&read('supabase/functions/send-sms/index.ts').includes(".eq('tenant_id',tenantId).eq('id',esignIdToMark)")],
+  ['signed archive SMS uses authorized e-sign receipt path',archiveFn.includes("kind:'esign_signed_receipt',esign_id:id")&&read('supabase/functions/send-sms/index.ts').includes("payload.kind==='esign_signed_receipt'&&payload.esign_id")],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
