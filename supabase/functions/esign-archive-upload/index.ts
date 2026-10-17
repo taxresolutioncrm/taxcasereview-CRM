@@ -201,7 +201,7 @@ Deno.serve(async(req:Request)=>{
         const res=await fetch(url+'/functions/v1/send-sms',{
           method:'POST',
           headers:{'Content-Type':'application/json',apikey:service,Authorization:'Bearer '+service},
-          body:JSON.stringify({to:e.client_phone,body:`${String(e.client_name||'Client')}, your ${String(e.doc_type||'document')} has been signed and saved.`})
+          body:JSON.stringify({kind:'esign_signed_receipt',esign_id:id})
         })
         const out=await res.json().catch(()=>({}))
         clientSmsSent=!!(res.ok&&out?.success)
