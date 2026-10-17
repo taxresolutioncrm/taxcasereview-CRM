@@ -792,7 +792,7 @@ export default function Leads() {
         const mergedBytes = await generateStatePOAWithCover(poaLead, rawBytes, party)
         const pdfBlob = new Blob([mergedBytes], { type: 'application/pdf' })
         const suffix = parties.length > 1 ? `_${party}` : ''
-        const path = `docs/${safeName}/state-poa/${formDef.state}_POA${suffix}_${stamp}.pdf`
+        const path = `${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA${suffix}_${stamp}.pdf`
         const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
         if (upErr) throw new Error(upErr.message)
         const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
@@ -1760,7 +1760,7 @@ export default function Leads() {
           try {
             const pdfBytes = await generateFinancialIntakePdf(l.name, existingIntake.answers || {}, existingIntake.submitted_at)
             const safeName = l.name.replace(/[^a-zA-Z0-9]+/g, '-')
-            const path = `docs/${safeName}/financial-intake/financial-intake-${Date.now()}.pdf`
+            const path = `${myTenantId}/docs/${safeName}/financial-intake/financial-intake-${Date.now()}.pdf`
             const { error: upErr } = await supabase.storage.from('documents')
               .upload(path, new Blob([pdfBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
             if (!upErr) {
