@@ -251,7 +251,7 @@ function LeadInlineFax({ lead, onClose, onLogged }) {
 }
 
 
-function LeadInlineEsign({ lead, onClose }) {
+function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
   const [docType,set0]=useState('Tax Service Agreement')
   const [sendVia,setSendVia]=useState(lead?.email ? 'email' : 'sms')
   const [saving,set2]=useState(false)
@@ -290,6 +290,8 @@ function LeadInlineEsign({ lead, onClose }) {
       rep_name:lead?.assignedTo||null,
       send_via:sendVia,
       priority:'Normal',status:'Awaiting',
+      tenant_id:tenantId || FIRM.tenantId || undefined,
+      lead_id:lead?.id || null,
       sent_at:new Date().toISOString(),created_at:new Date().toISOString()
     }]).select().single()
     if(error){set2(false);alert('Error: '+error.message);return}
@@ -299,7 +301,7 @@ function LeadInlineEsign({ lead, onClose }) {
     const cfg = await getSettings()
     if((sendVia==='email'||sendVia==='both')&&lead?.email){
       try{
-        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: FIRM.tenantId || undefined,
+        const{error:eErr}=await supabase.functions.invoke('send-email',{body:{ tenant_id: tenantId || FIRM.tenantId || undefined,
           to:lead.email,
           subject:`Please Sign: ${docType} — ${firmName()}`,
           html:`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -2860,7 +2862,7 @@ export default function Leads() {
           <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setShowEsignModal(false)}>
             <div className="modal" style={{width:520}}>
               <div className="mh"><span className="mt">✍️ E-Signature — {inlineEsignLead.name}</span><button className="xbtn" onClick={()=>setShowEsignModal(false)}>&times;</button></div>
-              <LeadInlineEsign lead={inlineEsignLead} onClose={()=>{setShowEsignModal(false);loadLeadNotes(inlineEsignLead.id)}}/>
+              <LeadInlineEsign lead={inlineEsignLead} tenantId={myTenantId} getSettings={getSettings} onClose={()=>{setShowEsignModal(false);loadLeadNotes(inlineEsignLead.id)}}/>
             </div>
           </div>
         )}
