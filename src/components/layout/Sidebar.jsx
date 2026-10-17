@@ -691,7 +691,6 @@ export default function Sidebar() {
                   className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${tierLocked ? ' tier-locked' : ''}`}
                   onClick={e => {
                     if (tierLocked) { e.preventDefault(); return }
-                    if (item.path === '/email') setUnreadInbox(0)
                     if (item.path === '/tasks') setOpenTasks(0)
                     if (item.path === '/esign') {
                       localStorage.setItem(`tcr_esign_signed_last_seen_${user?.email || 'anon'}`, new Date().toISOString())
