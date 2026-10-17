@@ -201,8 +201,9 @@ export default function StateForms() {
         sent_by: actor,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created')
 
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`
       await navigator.clipboard.writeText(sigUrl).catch(() => {})
 
       let emailSent = false, smsSent = false
