@@ -1059,6 +1059,8 @@ const STATE_POA_FILES = {
 }
 
 export async function sendFullPackage(client, supabase) {
+  const tenantId = FIRM.tenantId
+  if (!tenantId) return { error: 'Could not resolve office tenant for contract package' }
   const clientType  = client?.clientType || 'Individual'
   const irsOrState  = client?.irsOrState || 'IRS Federal'
   const clientState = client?.state || ''
@@ -1089,7 +1091,7 @@ export async function sendFullPackage(client, supabase) {
       clientName: client?.name || '',
       repSignature: repSig,
     })
-    const agreementPath = `docs/${safeName}/package/agreement.pdf`
+    const agreementPath = `${tenantId}/docs/${safeName}/package/agreement.pdf`
     const { error: agErr } = await supabase.storage.from('documents')
       .upload(agreementPath, new Blob([agreementBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
     if (agErr) throw agErr
@@ -1105,7 +1107,7 @@ export async function sendFullPackage(client, supabase) {
       const bytes = formType === 'cc_auth'
         ? await generateCcAuthPdf(client)
         : await fillForm(formType, client, FORM_USES_EIN[formType])
-      const path = `docs/${safeName}/package/${formType}.pdf`
+      const path = `${tenantId}/docs/${safeName}/package/${formType}.pdf`
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw upErr
@@ -1136,7 +1138,7 @@ export async function sendFullPackage(client, supabase) {
         const rawBytes  = new Uint8Array(await poaRes.arrayBuffer())
         const mergedBytes = await generateStatePOAWithCover(client, rawBytes, party)
         const suffix = stateParties.length > 1 ? `_${party}` : ''
-        const path = `docs/${safeName}/package/state_poa_${clientState}${suffix}.pdf`
+        const path = `${tenantId}/docs/${safeName}/package/state_poa_${clientState}${suffix}.pdf`
         const { error: upErr } = await supabase.storage.from('documents')
           .upload(path, new Blob([mergedBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
         if (upErr) throw upErr
@@ -1164,6 +1166,7 @@ export async function sendFullPackage(client, supabase) {
     pdf_attachments: pdfAttachments,
     priority: 'Normal',
     status: 'Awaiting',
+    tenant_id: tenantId,
     sent_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
   }]).select().single()
@@ -1182,6 +1185,8 @@ export async function sendFullPackage(client, supabase) {
 // Timestamped storage path (not a fixed one like the package forms) since an
 // addendum can legitimately be re-sent later with different fee terms.
 export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
+  const tenantId = FIRM.tenantId
+  if (!tenantId) return { error: 'Could not resolve office tenant for addendum' }
   const safeName = (record?.name || 'client').replace(/[^a-zA-Z0-9]+/g, '-')
   let bytes
   try {
@@ -1190,7 +1195,7 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
     return { error: `Failed to build addendum PDF: ${e.message}` }
   }
 
-  const path = `docs/${safeName}/addendum/addendum_${Date.now()}.pdf`
+  const path = `${tenantId}/docs/${safeName}/addendum/addendum_${Date.now()}.pdf`
   const { error: upErr } = await supabase.storage.from('documents')
     .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
   if (upErr) return { error: upErr.message }
@@ -1210,7 +1215,7 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy) {
     sent_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
     sent_by: sentBy || null,
-    tenant_id: FIRM.tenantId || undefined,
+    tenant_id: tenantId,
   }]).select().single()
 
   if (error) return { error: error.message }
