@@ -121,7 +121,6 @@ export default function IRSFormFiller({ client, onClose }) {
         tenant_id: myTenantId,
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
-        tenant_id: FIRM.tenantId || undefined,
       }]).select().single();
       if (esignErr) throw new Error(esignErr.message);
 
@@ -131,7 +130,7 @@ let emailSent = false, smsSent = false;
       if ((sendVia === 'email' || sendVia === 'both') && client.email) {
         const { error: eErr } = await supabase.functions.invoke('send-email', {
           body: {
-            tenant_id: FIRM.tenantId || undefined,
+            tenant_id: myTenantId,
             to: client.email,
             subject: `Action Required: Sign Your ${label}`,
             html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
