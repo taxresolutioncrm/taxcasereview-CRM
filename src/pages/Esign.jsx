@@ -165,6 +165,7 @@ export default function Esign() {
 
   async function resendLink(item) {
     const url = signingUrl(item.id, item.signer_token)
+    if (!url) { showToast('Signing token is missing — regenerate the request.'); return }
     await navigator.clipboard.writeText(url).catch(() => {})
     if (!myTenantId) { showToast('Could not resolve office tenant. Refresh and try again.'); return }
     const { error: updErr } = await supabase.from('esigns').update({ status: 'Awaiting', sent_at: new Date().toISOString() }).eq('tenant_id', myTenantId).eq('id', item.id)
