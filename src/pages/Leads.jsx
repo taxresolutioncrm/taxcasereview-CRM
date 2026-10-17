@@ -276,7 +276,7 @@ function LeadInlineEsign({ lead, onClose, getSettings, tenantId }) {
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
         if(!upErr){
           const{data:u}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
-          pdfAttachments=[{formType:'custom',label:customFile.name,url:u?.signedUrl||''}]
+          pdfAttachments=[{formType:'custom',label:customFile.name,url:u?.signedUrl||'',storage_path:path}]
         }
       }catch(e){console.error('custom upload:',e)}
       setUploading(false)
@@ -798,7 +798,7 @@ export default function Leads() {
         if (upErr) throw new Error(upErr.message)
         const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
         const partyLabel = parties.length > 1 ? ` (${party==='business'?'Business':'Personal'})` : ''
-        poaAttachments.push({ formType:`state_poa${suffix}`, label:`${formDef.state} POA — ${formDef.label}${partyLabel}`, url:urlData?.signedUrl||'' })
+        poaAttachments.push({ formType:`state_poa${suffix}`, label:`${formDef.state} POA — ${formDef.label}${partyLabel}`, url:urlData?.signedUrl||'', storage_path:path })
       }
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
         doc_type: `State POA — ${formDef.state} (${formDef.num})`,
