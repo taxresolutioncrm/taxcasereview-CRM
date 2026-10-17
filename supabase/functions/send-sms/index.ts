@@ -96,7 +96,7 @@ serve(async(req)=>{
   }
   const{error:logErr}=await admin.from('sms_messages').insert({clientName,phone:toNumber,body:String(body).trim(),status:sw.status||'sent',direction:'outbound',signalwire_sms_id:sw.sid||null,sent_by:sentBy,tenant_id:tenantId,client_id:client_id?String(client_id):null,read:true})
   if(logErr)console.error('[send-sms] log failed',logErr.message)
-  if(esignIdToMark)await admin.from('esigns').update({signed_sms_sent_at:new Date().toISOString()}).eq('id',esignIdToMark)
+  if(esignIdToMark)await admin.from('esigns').update({signed_sms_sent_at:new Date().toISOString()}).eq('tenant_id',tenantId).eq('id',esignIdToMark)
   return json({success:true,sid:sw.sid,platform_relay:platformRelay,from_number:fromNumber,logged:!logErr})
  }catch(e){console.error('[send-sms]',e);return json({error:e?.message||'Send failed'},500)}
 })
