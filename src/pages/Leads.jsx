@@ -827,8 +827,12 @@ export default function Leads() {
         emailSent = !eErr
       }
       if ((via==='sms'||via==='both') && lead.phone) {
-        const cfg = await getSettings()
-        if (cfg?.signalwire_backend) { try { await fetch(cfg.signalwire_backend+'/sms/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:lead.phone,body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`})}); smsSent=true } catch(_){} }
+        try {
+          const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
+            body:{to:lead.phone,body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`,lead_id:lead.id||null}
+          })
+          smsSent=!smsErr && !!smsData?.success
+        } catch(_) {}
       }
       await supabase.from('lead_notes').insert({ lead_id:lead.id, text:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, author:actor, created_at: new Date().toISOString() })
       setPoaModal(false)
