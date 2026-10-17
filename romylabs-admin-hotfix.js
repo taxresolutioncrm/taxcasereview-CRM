@@ -190,14 +190,12 @@
   }
 
   function productFromCard(el) {
-    var node = el;
-    while (node && node !== document.body) {
-      var text = (node.textContent || '').replace(/\s+/g, ' ').trim();
-      if (/\bCamvella\b/i.test(text)) return 'camvella';
-      if (/\bArcvena\b/i.test(text)) return 'arcvena';
-      node = node.parentElement;
-    }
-    return null;
+    // Use only explicit card identity, never ancestor text. The All Offices
+    // container contains Camvella elsewhere and previously hijacked TaxRes
+    // "Open" buttons, sending every tax office to the Camvella app.
+    var card = el && el.closest ? el.closest('[data-romylabs-product]') : null;
+    var product = card && card.getAttribute('data-romylabs-product');
+    return product === 'camvella' || product === 'arcvena' ? product : null;
   }
 
   function crmFor(product) {
