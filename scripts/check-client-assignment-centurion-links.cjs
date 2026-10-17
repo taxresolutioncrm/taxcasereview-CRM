@@ -53,6 +53,8 @@ const checks=[
   ['central E-Sign email uses active tenant',esignPage.includes('tenant_id:myTenantId || FIRM.tenantId || undefined')],
   ['public signing page does not shadow firmName helper',!sign.includes("const [firmName, setFirmName]")&&sign.includes("const [firmDisplayName, setFirmDisplayName]")],
   ['public signing page renders resolved firm name',sign.includes("{firmDisplayName || FIRM.name || 'Firm'} has been notified.")&&sign.includes(">{firmDisplayName || FIRM.name || 'Firm'}</div>")],
+  ['lead fax upload is tenant-prefixed',leads.includes('`${tenantId}/docs/${lead?.id || \'lead\'}/fax/${Date.now()}_')&&leads.includes('tenantId={myTenantId}')],
+  ['client fax upload is tenant-prefixed',clients.includes('`${tenantId}/docs/${client?.id || \'client\'}/fax/${Date.now()}_')&&clients.includes('tenantId={myTenantId}')],
 ]
 let failed=0
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'}  ${name}`);if(!ok)failed++}
