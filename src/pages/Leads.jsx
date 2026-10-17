@@ -932,7 +932,7 @@ export default function Leads() {
       } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
     }
 
-    const feeText = `${Number(addForm.resolutionFee).toLocaleString()}`
+    const feeText = `$${Number(addForm.resolutionFee).toLocaleString()}`
     const channels = [emailSent&&'email', smsSent&&'sms'].filter(Boolean).join(' + ')
     if(!channels){
       const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
@@ -1641,7 +1641,7 @@ export default function Leads() {
     if(l.phone){
       try{
         const smsBody = stripePayUrl
-          ? `Hi ${l.name}, ${firmName()} sent your Investigation Package. Step 1 – Sign: ${url}  |  Step 2 – Pay ${Number(taxFeeAmt).toLocaleString()}: ${stripePayUrl}  |  Step 3 – Financial Intake: ${intakeUrl}`
+          ? `Hi ${l.name}, ${firmName()} sent your Investigation Package. Step 1 – Sign: ${url}  |  Step 2 – Pay $${Number(taxFeeAmt).toLocaleString()}: ${stripePayUrl}  |  Step 3 – Financial Intake: ${intakeUrl}`
           : `Hi ${l.name}, ${firmName()} sent you a Tax Investigation Package to review and sign: ${url}  |  Financial Intake: ${intakeUrl}`
         const {data:smsData,error:smsErr}=await supabase.functions.invoke('send-sms',{
           body:{to:l.phone,body:smsBody,lead_id:l.id||null}
@@ -1662,7 +1662,7 @@ export default function Leads() {
       return
     }
     showToast(`Package sent via ${sent.join(' & ')}!`)
-    await logAction(l.id, l.name, `📦 Full Package sent for e-signature — Form 2848/8821 + Service Agreement + ${Number(taxFeeAmt).toLocaleString()} investigation fee (${sent.join(' & ')})`)
+    await logAction(l.id, l.name, `📦 Full Package sent for e-signature — Form 2848/8821 + Service Agreement + $${Number(taxFeeAmt).toLocaleString()} investigation fee (${sent.join(' & ')})`)
     const _fa=getActor(user); await logActivity(supabase,{employeeName:_fa.name,employeeEmail:_fa.email,action:'package_sent',category:'esign',description:`Sent Full Package to: ${l.name}`,entityName:l.name,entityId:l.id}).catch(()=>{})
     await advanceLeadStatus(supabase, l.name, 'Tax Inv Agreement Sent')
     load()
