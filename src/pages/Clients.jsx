@@ -341,7 +341,8 @@ function InlineEsignForm({ client, onClose, showToast, tenantId }) {
       tenant_id: tenantId
     }]).select().single()
     if (error) { setSaving(false); showToast('Error: '+error.message,'err'); return }
-    const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
+    if (!/^[0-9a-f]{64}$/i.test(String(data?.signer_token || ''))) { setSaving(false); showToast('Signing request token was not created. Please try again.','err'); return }
+    const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token)
     setLink(url)
 
     let emailSent=false, smsSent=false
@@ -773,7 +774,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [preview,    setPreview]    = useState(null)
   const fileRef = useRef(null)
 
-  useEffect(() => { loadDocs() }, [clientId, clientName])
+  useEffect(() => { loadDocs() }, [clientId, clientName, tenantId])
 
   async function loadDocs() {
     if (!tenantId) { setDocs([]); return }
@@ -1715,7 +1716,8 @@ export default function Clients() {
         tenant_id: myTenantId,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created')
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`
       let emailSent=false, smsSent=false
       const deliveryErrors=[]
       if ((via==='email'||via==='both') && client.email) {
