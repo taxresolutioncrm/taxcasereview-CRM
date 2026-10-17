@@ -10,6 +10,7 @@ const sign=read('src/pages/SignPage.jsx')
 const intake=read('src/components/FinancialIntakeWizard.jsx')
 const migration=read('supabase/migrations/20261016190500_client_admin_assignment.sql')
 const sendEmail=read('supabase/functions/send-email/index.ts')
+const docUtils=read('src/lib/docUtils.js')
 
 const checks=[
   ['client schema has explicit Admin assignment',migration.includes('add column if not exists "clientAdmin" text')],
@@ -32,6 +33,10 @@ const checks=[
   ['lead e-sign receives current tenant + settings loader',leads.includes('function LeadInlineEsign({ lead, onClose, getSettings, tenantId })')&&leads.includes('tenantId={myTenantId} getSettings={getSettings}')],
   ['lead e-sign writes tenant and lead IDs explicitly',leads.includes('tenant_id:tenantId || FIRM.tenantId || undefined')&&leads.includes('lead_id:lead?.id || null')],
   ['lead e-sign creates tokenized signing link',leads.includes("window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')")],
+  ['full package contract storage is tenant-prefixed',docUtils.includes('`${tenantId}/docs/${safeName}/package/agreement.pdf`')&&docUtils.includes('`${tenantId}/docs/${safeName}/package/${formType}.pdf`')&&docUtils.includes('`${tenantId}/docs/${safeName}/package/state_poa_${clientState}${suffix}.pdf`')],
+  ['service addendum storage is tenant-prefixed',docUtils.includes('`${tenantId}/docs/${safeName}/addendum/addendum_${Date.now()}.pdf`')],
+  ['full package e-sign row writes tenant explicitly',docUtils.includes("tenant_id: tenantId,\n    sent_at: new Date().toISOString()")],
+  ['lead custom e-sign uploads are tenant-prefixed',leads.includes("const path=`${officeTenant}/docs/${lead?.id || 'lead'}/esign-custom/${Date.now()}-${customFile.name}`")],
   ['lead e-sign email does not depend on SMS settings',!leads.includes('let smsSent=false,emailSent=false\n    const cfg = await getSettings()\n    if((sendVia')&&leads.includes("const cfg = typeof getSettings === 'function' ? await getSettings() : {}")],
 ]
 let failed=0
