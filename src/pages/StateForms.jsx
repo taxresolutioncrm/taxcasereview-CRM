@@ -210,7 +210,7 @@ export default function StateForms() {
       if ((via === 'email' || via === 'both') && selectedClient.email) {
         const { error: eErr } = await supabase.functions.invoke('send-email', {
           body: {
-            tenant_id: FIRM.tenantId || undefined,
+            tenant_id: myTenantId,
             to: selectedClient.email,
             subject: `Action Required: Sign Your ${form.state} Power of Attorney — ${firmName()}`,
             html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
