@@ -74,7 +74,7 @@ export default function SignPage() {
   const [searchParams] = useSearchParams()
   const signerToken = searchParams.get('token') || ''
   const [firmLogo, setFirmLogo] = useState('')
-  const [firmName, setFirmName] = useState('')
+  const [firmDisplayName, setFirmDisplayName] = useState('')
   const [doc,      setDoc]      = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
@@ -93,7 +93,7 @@ export default function SignPage() {
       if (!/^[0-9a-f]{64}$/i.test(signerToken)) {
         await loadFirmBrandingPublic()
         setFirmLogo(FIRM.logoUrl || '')
-        setFirmName(FIRM.name || '')
+        setFirmDisplayName(FIRM.name || '')
         setError('Signing link is incomplete or expired.'); setLoading(false); return
       }
       const { data: result, error } = await supabase.functions.invoke('esign-archive-upload', {
@@ -103,12 +103,12 @@ export default function SignPage() {
       if (error || !result?.success || !data) {
         await loadFirmBrandingPublic()
         setFirmLogo(FIRM.logoUrl || '')
-        setFirmName(FIRM.name || '')
+        setFirmDisplayName(FIRM.name || '')
         setError(result?.error || 'Signing request not found or expired.'); setLoading(false); return
       }
       await loadFirmBrandingPublic(data.tenant_id)
       setFirmLogo(FIRM.logoUrl || '')
-      setFirmName(FIRM.name || '')
+      setFirmDisplayName(FIRM.name || '')
       if (data.status === 'Signed') { setDone(true); setDoc(data); setLoading(false); return }
       setDoc(data); setLoading(false)
       if (result.first_open) {
@@ -359,7 +359,7 @@ export default function SignPage() {
           <div style={{ color:'#94a3b8', fontSize:14, lineHeight:1.7, marginBottom:20 }}>
             Thank you, <strong style={{color:'#f1f5f9'}}>{doc?.signer_full_name || doc?.client_name}</strong>.<br/>
             Your signature has been recorded and saved.<br/>
-            ${FIRM.name} has been notified.
+            {firmDisplayName || FIRM.name || 'Firm'} has been notified.
           </div>
           <div style={{ background:'#0a2540', border:'1px solid #166534', borderRadius:10, padding:'14px 16px', fontSize:12, color:'#86efac', textAlign:'left', lineHeight:2, fontFamily:'monospace' }}>
             <strong>CERTIFICATE OF COMPLETION</strong><br/>
@@ -385,7 +385,7 @@ export default function SignPage() {
       {/* Header */}
       <div style={{ textAlign:'center', marginBottom:24, paddingBottom:18, borderBottom:'1px solid #1e3a5f', width:'100%', maxWidth:660 }}>
         {firmLogo && <img src={firmLogo} alt="" style={{ height:48, marginBottom:10, objectFit:'contain' }}/>}
-        <div style={{ fontSize:12, fontWeight:800, color:'#60a5fa', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:4 }}>${FIRM.name}</div>
+        <div style={{ fontSize:12, fontWeight:800, color:'#60a5fa', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:4 }}>{firmDisplayName || FIRM.name || 'Firm'}</div>
         <div style={{ fontSize:11, color:'#475569' }}>Secure Document Signing Portal</div>
       </div>
 

@@ -71,7 +71,7 @@ function generatePOALetter(){printBase('Power of Attorney Cover Letter',`<p><b>I
 
 export default function StateForms() {
   const [searchParams] = useSearchParams()
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [search, setSearch]               = useState('')
   const [stateItems, setStateItems]       = useState([])
   const [stateModal, setStateModal]       = useState(false)
@@ -175,13 +175,15 @@ export default function StateForms() {
 
       // Upload to Supabase storage
       const safeName = (selectedClient.name || 'client').replace(/[^a-zA-Z0-9]+/g, '-')
-      const path = `docs/${safeName}/state-poa/${form.state}_POA_${Date.now()}.pdf`
+      if (!myTenantId) throw new Error('Could not resolve office tenant')
+      const path = `${myTenantId}/docs/${safeName}/state-poa/${form.state}_POA_${Date.now()}.pdf`
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw new Error(upErr.message)
 
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
-      const pdfUrl = urlData?.signedUrl || ''
+      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      if (signedUrlErr || !urlData?.signedUrl) throw new Error(signedUrlErr?.message || 'Could not create secure State POA link')
+      const pdfUrl = urlData.signedUrl
 
       // Create esign record
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
@@ -190,25 +192,28 @@ export default function StateForms() {
         client_email: selectedClient.email || '',
         client_phone: selectedClient.phone || '',
         message: `Please review and sign your ${form.state} Power of Attorney form. This authorizes ${firmName()} to represent you before the ${form.state} tax authority.`,
-        pdf_attachments: [{ formType: 'state_poa', label: `${form.state} POA — ${form.label}`, url: pdfUrl }],
+        pdf_attachments: [{ formType: 'state_poa', label: `${form.state} POA — ${form.label}`, url: pdfUrl, storage_path:path }],
         priority: 'Normal',
         status: 'Awaiting',
+        tenant_id: myTenantId,
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         sent_by: actor,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created')
 
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`
       await navigator.clipboard.writeText(sigUrl).catch(() => {})
 
       let emailSent = false, smsSent = false
+      const deliveryErrors = []
 
       // Send email
       if ((via === 'email' || via === 'both') && selectedClient.email) {
-        const { error: eErr } = await supabase.functions.invoke('send-email', {
+        const { data:emailData, error: eErr } = await supabase.functions.invoke('send-email', {
           body: {
-            tenant_id: FIRM.tenantId || undefined,
+            tenant_id: myTenantId,
             to: selectedClient.email,
             subject: `Action Required: Sign Your ${form.state} Power of Attorney — ${firmName()}`,
             html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -235,32 +240,32 @@ export default function StateForms() {
 </table></td></tr></table></body></html>`
           }
         })
-        emailSent = !eErr
+        emailSent = !eErr && emailData?.success!==false
+        if (!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
       }
 
       // Send SMS
       if ((via === 'sms' || via === 'both') && selectedClient.phone) {
-        const { data: cfg } = await supabase.from('settings').select('signalwire_backend').limit(1).maybeSingle()
-        if (cfg?.signalwire_backend) {
-          try {
-            await fetch(cfg.signalwire_backend + '/sms/send', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: selectedClient.phone, body: `${firmName()}: please review and sign your ${form.state} POA here: ${sigUrl}` })
-            })
-            smsSent = true
-          } catch (_) {}
-        }
+        try {
+          const { data:smsData, error:smsErr } = await supabase.functions.invoke('send-sms', {
+            body: { to:selectedClient.phone, body:`${firmName()}: please review and sign your ${form.state} POA here: ${sigUrl}`, client_id:selectedClient.id || null }
+          })
+          smsSent = !smsErr && !!smsData?.success
+          if (!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+        } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
       }
 
       // Log note on client
+      const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
       await supabase.from('client_notes').insert({
         clientname: selectedClient.name,
-        text: `🏛️ ${form.state} State POA sent for e-signature (${form.num})${emailSent ? ' via email' : ''}${smsSent ? ' via SMS' : ''}`,
+        text: sent.length ? `🏛️ ${form.state} State POA sent for e-signature (${form.num}) via ${sent.join(' & ')}` : `⚠️ ${form.state} State POA created but not delivered (${form.num})${reason?` — ${reason}`:''}`,
         author: actor,
         visible_to_client: false,
       })
 
-      showToast(emailSent || smsSent ? `✅ ${form.state} POA sent for signature!` : '✅ Created — signing link copied to clipboard')
+      showToast(sent.length ? `✅ ${form.state} POA sent for signature!` : `State POA created, but delivery failed${reason?': '+reason:''}. Signing link copied.`)
     } catch (e) {
       showToast('Error: ' + e.message)
     }

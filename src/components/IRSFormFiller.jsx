@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { fillForm, FORM_LABELS, TEMPLATE_PATHS } from '../lib/irsFormUtils';
 import { FIRM } from '../lib/firmBranding'
+import { useApp } from '../context/AppContext'
 
 function downloadPdf(bytes, filename) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -42,6 +43,7 @@ const ALL_IRS_FORMS = [
 ];
 
 export default function IRSFormFiller({ client, onClose }) {
+  const { myTenantId } = useApp();
   const [loading,  setLoading]  = useState(null);
   const [sending,  setSending]  = useState(null);
   const [sendVia,  setSendVia]  = useState('email');
@@ -97,13 +99,15 @@ export default function IRSFormFiller({ client, onClose }) {
       const bytes = await fillForm(formType, client);
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const safeName = clientName.replace(/[^a-zA-Z0-9]+/g, '-');
-      const path = `docs/${safeName}/irs-forms/${formType}_${Date.now()}.pdf`;
+      if (!myTenantId) throw new Error('Could not resolve office tenant');
+      const path = `${myTenantId}/docs/${safeName}/irs-forms/${formType}_${Date.now()}.pdf`;
 
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, blob, { upsert: true, contentType: 'application/pdf' });
       if (upErr) throw new Error(upErr.message);
 
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000);
+      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000);
+      if (signedUrlErr || !urlData?.signedUrl) throw new Error(signedUrlErr?.message || 'Could not create secure IRS form link');
       const label = FORM_LABELS[formType] || formType;
 
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
@@ -115,19 +119,21 @@ export default function IRSFormFiller({ client, onClose }) {
         pdf_attachments: [{ formType, label, url: urlData?.signedUrl || '', storage_path: path }],
         priority: 'Normal',
         status: 'Awaiting',
+        tenant_id: myTenantId,
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
-        tenant_id: FIRM.tenantId || undefined,
       }]).select().single();
       if (esignErr) throw new Error(esignErr.message);
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created');
 
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`;
-let emailSent = false, smsSent = false;
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`;
+      let emailSent = false, smsSent = false;
+      const deliveryErrors = [];
 
       if ((sendVia === 'email' || sendVia === 'both') && client.email) {
-        const { error: eErr } = await supabase.functions.invoke('send-email', {
+        const { data:emailData, error: eErr } = await supabase.functions.invoke('send-email', {
           body: {
-            tenant_id: FIRM.tenantId || undefined,
+            tenant_id: myTenantId,
             to: client.email,
             subject: `Action Required: Sign Your ${label}`,
             html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
@@ -144,7 +150,8 @@ let emailSent = false, smsSent = false;
             </div>`
           }
         });
-        emailSent = !eErr;
+        emailSent = !eErr && emailData?.success!==false;
+        if (!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed');
       }
 
       if ((sendVia === 'sms' || sendVia === 'both') && client.phone) {
@@ -157,10 +164,13 @@ let emailSent = false, smsSent = false;
             }
           });
           smsSent = !smsErr && !!smsData?.success;
-        } catch (_) {}
+          if (!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed');
+        } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed'); }
       }
 
-      setSentMsg(emailSent || smsSent ? '✅ Sent for signature!' : '✅ Signing request created — delivery was not completed');
+      const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean);
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ');
+      setSentMsg(sent.length ? `✅ Sent for signature via ${sent.join(' & ')}!` : `⚠️ Signing request created, but delivery failed${reason?': '+reason:''}. Secure link is available in E-Signatures.`);
       setTimeout(() => setSentMsg(''), 4000);
     } catch (e) {
       setError(e.message);

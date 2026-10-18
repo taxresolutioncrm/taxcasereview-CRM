@@ -196,7 +196,7 @@ function ActionBtn({color, icon, label, sub, onClick}) {
 
 
 // ── Inline Fax Form ─────────────────────────────────────────────────────────
-function InlineFaxForm({ client, onClose, showToast, onLogged }) {
+function InlineFaxForm({ client, onClose, showToast, onLogged, tenantId }) {
   // TO stays blank on open — the client's phone number is not the fax number,
   // and prefilling led users to send to the wrong destination.
   const [toNum,   setToNum]   = useState('')
@@ -229,7 +229,8 @@ function InlineFaxForm({ client, onClose, showToast, onLogged }) {
     let fileUrl = null
     const toFull = '+1' + faxDigits
     try {
-      const path = `fax/${client?.id || 'client'}/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]/g,'_')}`
+      if (!tenantId) throw new Error('Could not resolve office tenant for fax upload')
+      const path = `${tenantId}/docs/${client?.id || 'client'}/fax/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]/g,'_')}`
       const { error: uploadErr } = await supabase.storage.from('documents').upload(path, file, {upsert:false, contentType:file.type || 'application/pdf'})
       if (uploadErr) throw uploadErr
       const { data:u, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
@@ -300,7 +301,7 @@ function InlineFaxForm({ client, onClose, showToast, onLogged }) {
 // ── Inline E-Sign Form ───────────────────────────────────────────────────────
 const DOC_TYPES_INLINE = ESIGN_DOC_TYPES
 
-function InlineEsignForm({ client, onClose, showToast }) {
+function InlineEsignForm({ client, onClose, showToast, tenantId }) {
   const [docType,  setDocType]  = useState('Tax Service Agreement')
   const [message,  setMessage]  = useState('Please review and sign the attached document at your earliest convenience.')
   const [priority, setPriority] = useState('Normal')
@@ -311,6 +312,7 @@ function InlineEsignForm({ client, onClose, showToast }) {
   const [delivered, setDelivered] = useState([])
 
   async function create() {
+    if(!tenantId){ showToast('Could not resolve office tenant. Refresh and try again.','err'); return }
     if(docType==='Custom Document' && !message.trim() && !customFile){
       showToast('For a custom document, type the text to sign or attach a PDF.','err');return
     }
@@ -318,7 +320,9 @@ function InlineEsignForm({ client, onClose, showToast }) {
     let pdfAttachments=null
     if(docType==='Custom Document' && customFile){
       try{
-        const path=`esign-custom/${(client?.name||'client').replace(/[^A-Za-z0-9 _-]/g,'')}/${Date.now()}-${customFile.name}`
+        const officeTenant = tenantId
+        if(!officeTenant) throw new Error('Could not resolve office tenant for e-sign upload')
+        const path=`${officeTenant}/docs/${client?.id || 'client'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
         if(upErr) throw upErr
         const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path, 3600)
@@ -334,10 +338,11 @@ function InlineEsignForm({ client, onClose, showToast }) {
     const { data, error } = await supabase.from('esigns').insert([{
       doc_type: docType, client_name: client?.name, client_email: client?.email||'', client_phone: client?.phone||'',
       message, pdf_attachments:pdfAttachments, priority, status:'Awaiting', sent_at: new Date().toISOString(), created_at: new Date().toISOString(),
-      tenant_id: FIRM.tenantId || undefined
+      tenant_id: tenantId
     }]).select().single()
     if (error) { setSaving(false); showToast('Error: '+error.message,'err'); return }
-    const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token||'')
+    if (!/^[0-9a-f]{64}$/i.test(String(data?.signer_token || ''))) { setSaving(false); showToast('Signing request token was not created. Please try again.','err'); return }
+    const url = window.location.origin+'/sign/'+data.id+'?token='+encodeURIComponent(data.signer_token)
     setLink(url)
 
     let emailSent=false, smsSent=false
@@ -345,7 +350,7 @@ function InlineEsignForm({ client, onClose, showToast }) {
       try {
         const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', {
           body:{
-            tenant_id:FIRM.tenantId||undefined,
+            tenant_id:tenantId,
             to:client.email,
             subject:`Action Required: Sign Your ${docType} — ${firmName()}`,
             html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Signature Requested</h2><p>Hi <strong>${client.name}</strong>,</p><p>${message}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign</a></p><p style="font-size:12px;color:#64748b;word-break:break-all">${url}</p><p><strong>${firmName()}</strong></p></div>`
@@ -428,7 +433,7 @@ function InlineEsignForm({ client, onClose, showToast }) {
 }
 
 
-function InlinePortalForm({ client, onClose, showToast }) {
+function InlinePortalForm({ client, onClose, showToast, tenantId }) {
   const [sendVia, setSendVia] = useState(client?.email ? 'email' : 'sms')
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(null)
@@ -445,7 +450,7 @@ function InlinePortalForm({ client, onClose, showToast }) {
     if ((sendVia === 'email' || sendVia === 'both') && client?.email) {
       try {
         const { error } = await supabase.functions.invoke('send-email', {
-          body: { tenant_id: FIRM.tenantId || undefined,
+          body: { tenant_id: tenantId,
             to: client.email,
             subject: `Your ${firmName()} Client Portal Is Ready — Welcome, ${client.name}!`,
             html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -623,7 +628,7 @@ function InlinePortalForm({ client, onClose, showToast }) {
 }
 
 // ── Tax Organizer Quick Action — picks a year, creates the record, sends link ──
-function InlineOrganizerForm({ client, onClose, showToast }) {
+function InlineOrganizerForm({ client, onClose, showToast, tenantId }) {
   const [year, setYear] = useState(String(new Date().getFullYear() + 1))
   const [sendVia, setSendVia] = useState(client?.email ? 'email' : 'sms')
   const [sending, setSending] = useState(false)
@@ -633,13 +638,14 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     if (!/^\d{4}$/.test(year.trim())) { showToast('Enter a valid 4-digit tax year'); return }
     setSending(true)
     let orgId
+    if (!tenantId) { setSending(false); showToast('Could not resolve office tenant. Refresh and try again.'); return }
     const { data: existing } = await supabase.from('tax_organizer_responses')
-      .select('id').eq('client_name', client.name).eq('tax_year', year.trim()).maybeSingle()
+      .select('id').eq('tenant_id', tenantId).eq('client_name', client.name).eq('tax_year', year.trim()).maybeSingle()
     if (existing) {
       orgId = existing.id
     } else {
       const { data: created, error: createErr } = await supabase.from('tax_organizer_responses').insert([{
-        tenant_id: FIRM.tenantId || undefined,
+        tenant_id: tenantId,
         client_name: client.name, client_email: client.email || '', tax_year: year.trim(),
         answers: {}, status: 'In Progress', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }]).select().single()
@@ -652,7 +658,7 @@ function InlineOrganizerForm({ client, onClose, showToast }) {
     if ((sendVia === 'email' || sendVia === 'both') && client?.email) {
       try {
         const { error } = await supabase.functions.invoke('send-email', {
-          body: { tenant_id: FIRM.tenantId || undefined,
+          body: { tenant_id: tenantId,
             to: client.email,
             subject: `Your ${year.trim()} Tax Organizer — ${FIRM.name || 'Firm'}`,
             html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Please complete your ${year.trim()} tax organizer so we can begin preparing your return. It only takes a few minutes, and you can save your progress and come back anytime.</p><p style="text-align:center;margin:24px 0"><a href="${url}" style="background:#9333ea;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Start My Tax Organizer</a></p><p style="font-size:12px;color:#64748b">Link: ${url}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}</p></div>`
@@ -758,7 +764,7 @@ function ClientWIPWidget({ clientId, clientName }) {
 const FILE_EXT_ICON = n => { const e=(n||'').split('.').pop().toLowerCase(); return {pdf:'📄',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',tiff:'🖼️'}[e]||'📎' }
 const fmt = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB'
 
-export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged }) {
+export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast, onLogged }) {
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
   const [uploading,  setUploading]  = useState(false)
@@ -768,10 +774,11 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
   const [preview,    setPreview]    = useState(null)
   const fileRef = useRef(null)
 
-  useEffect(() => { loadDocs() }, [clientId, clientName])
+  useEffect(() => { loadDocs() }, [clientId, clientName, tenantId])
 
   async function loadDocs() {
-    let q = supabase.from('documents').select('*')
+    if (!tenantId) { setDocs([]); return }
+    let q = supabase.from('documents').select('*').eq('tenant_id', tenantId)
     q = clientId ? q.eq('client_id', String(clientId)) : q.eq('client', clientName)
     const { data } = await q.order('created_at', { ascending: false })
     setDocs(data || [])
@@ -784,16 +791,18 @@ export function ClientDocs({ clientId, clientName, supabase, showToast, onLogged
     if (file) {
       const folderKey = String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')
       const ownerKey = clientId ? String(clientId) : clientName.replace(/\s+/g,'-')
-      if (!myTenantId) { showToast('Could not resolve this office'); setSaving(false); return }
+      if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
       const safeFileName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const path = `${myTenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${safeFileName}`
+      const path = `${tenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${safeFileName}`
       storagePath = path
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }
       const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
       fileUrl = urlData?.signedUrl || null; fileName = file.name; fileSize = file.size
     }
+    if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
     const { error } = await supabase.from('documents').insert([{
+      tenant_id: tenantId,
       name: form.name, client: clientName, clientname: clientName,
       client_id: clientId ? String(clientId) : null,
       docType: form.docType,
@@ -1693,7 +1702,7 @@ export default function Clients() {
       const mergedBytes = await generateStatePOAWithCover(client, rawBytes)
       const pdfBlob = new Blob([mergedBytes], { type: 'application/pdf' })
       const safeName = (client.name||'client').replace(/[^a-zA-Z0-9]+/g,'-')
-      const path = `docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`
+      const path = `${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
       if (upErr) throw new Error(upErr.message)
       const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
@@ -1704,14 +1713,17 @@ export default function Clients() {
         message: `Please review and sign your ${formDef.state} Power of Attorney. This authorizes ${FIRM.name || 'Firm'} to represent you before the ${formDef.state} tax authority.`,
         pdf_attachments: [{ formType:'state_poa', label:`${formDef.state} POA — ${formDef.label}`, url:urlData.signedUrl, storage_path:path }],
         priority:'Normal', status:'Awaiting', sent_at:new Date().toISOString(), created_at:new Date().toISOString(), sent_by:actor,
-        tenant_id: FIRM.tenantId || undefined,
+        tenant_id: myTenantId,
       }]).select().single()
       if (esignErr) throw new Error(esignErr.message)
-      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token || '')}`
+      if (!/^[0-9a-f]{64}$/i.test(String(esign?.signer_token || ''))) throw new Error('Signing request token was not created')
+      const sigUrl = `${window.location.origin}/sign/${esign.id}?token=${encodeURIComponent(esign.signer_token)}`
       let emailSent=false, smsSent=false
+      const deliveryErrors=[]
       if ((via==='email'||via==='both') && client.email) {
-        const { error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
-        emailSent = !eErr
+        const { data:emailData, error:eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId, to:client.email, subject:`Action Required: Sign Your ${formDef.state} Power of Attorney — ${FIRM.name}`, html:`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px"><div style="text-align:center;margin-bottom:20px"><img src=\"${FIRM.logoUrl}\" alt=\"${FIRM.name}\" style=\"max-height:56px;max-width:190px;object-fit:contain;display:block;margin:0 auto 8px\" onerror=\"this.style.display='none'\"/><div style="font-size:12px;font-weight:800;color:#1d4ed8;letter-spacing:.1em;text-transform:uppercase;margin-top:6px">${FIRM.name}</div></div><p>Dear <strong>${client.name}</strong>,</p><p>Your <strong>${formDef.state} Power of Attorney (${formDef.num})</strong> is ready for your review and signature.</p><p style="text-align:center;margin:24px 0"><a href="${sigUrl}" style="background:#1d4ed8;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;display:inline-block">Review &amp; Sign →</a></p><p style="font-size:12px;color:#64748b">${sigUrl}</p><p style="font-size:11px;color:#94a3b8;margin-top:24px">${firmName()} · ${FIRM.address}<br/>📞 ${FIRM.phone}</p></div>` }})
+        emailSent = !eErr && emailData?.success!==false
+        if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
       }
       if ((via==='sms'||via==='both') && client.phone) {
         try {
@@ -1719,11 +1731,14 @@ export default function Clients() {
             body:{to:client.phone, body:`${firmName()}: sign your ${formDef.state} POA here: ${sigUrl}`, client_id:client.id||null}
           })
           smsSent = !smsErr && !!smsData?.success
-        } catch(_) {}
+          if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+        } catch(e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
       }
-      await insertClientNote({ clientname:client.name, content:`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num})${emailSent?' via email':''}${smsSent?' via SMS':''}`, created_by:actor, visible_to_client:false, created_at:new Date().toISOString() })
+      const sent=[emailSent&&'email',smsSent&&'SMS'].filter(Boolean)
+      const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+      await insertClientNote({ clientname:client.name, content:sent.length?`🏛️ ${formDef.state} State POA sent for e-signature (${formDef.num}) via ${sent.join(' & ')}`:`⚠️ ${formDef.state} State POA created but not delivered (${formDef.num})${reason?` — ${reason}`:''}`, created_by:actor, visible_to_client:false, created_at:new Date().toISOString() })
       setPoaModal(false)
-      showToast(emailSent||smsSent ? `✅ ${formDef.state} POA sent for signature!` : '✅ Signing request created — delivery was not completed')
+      showToast(sent.length ? `✅ ${formDef.state} POA sent for signature!` : `State POA created, but delivery failed${reason?': '+reason:''}. Signing link remains available.`)
     } catch(e) { showToast('Error: '+e.message) }
     setPoaSending(false)
   }
@@ -1738,7 +1753,7 @@ export default function Clients() {
     if (via !== 'email' && !c.phone) { showToast('Client has no phone on file'); return }
     setAddendumSending(true)
     const actor = resolveActorName(user, employees)
-    const res = await sendAddendumForSignature(c, addForm, supabase, actor)
+    const res = await sendAddendumForSignature(c, addForm, supabase, actor, myTenantId)
     if (res.error) { setAddendumSending(false); showToast('Error: '+res.error); return }
 
     const url = res.url
@@ -1769,9 +1784,10 @@ export default function Clients() {
     </div>` : ''
 
     let emailSent=false, smsSent=false
+    const deliveryErrors=[]
 
     if ((via==='email'||via==='both') && c.email) {
-      const { error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: FIRM.tenantId || undefined,
+      const { data:emailData, error: eErr } = await supabase.functions.invoke('send-email', { body: { tenant_id: myTenantId,
         to: c.email,
         subject: `Action Required: Sign Your Service Addendum — ${FIRM.name || 'Firm'}`,
         html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif">
@@ -1803,7 +1819,8 @@ export default function Clients() {
 </td></tr></table>
 </body></html>`
       }})
-      emailSent = !eErr
+      emailSent = !eErr && emailData?.success!==false
+      if(!emailSent) deliveryErrors.push(eErr?.message || emailData?.error || 'Email delivery failed')
     }
     if ((via==='sms'||via==='both') && c.phone) {
       try {
@@ -1811,18 +1828,20 @@ export default function Clients() {
           body:{to:c.phone, body:`${firmName()}: please review and sign your Service Addendum here: ${url}`, client_id:c.id||null}
         })
         smsSent = !smsErr && !!smsData?.success
-      } catch (_) {}
+        if(!smsSent) deliveryErrors.push(smsErr?.message || smsData?.error || 'SMS delivery failed')
+      } catch (e) { deliveryErrors.push(e?.message || 'SMS delivery failed') }
     }
 
-    const feeText = `$${Number(addForm.resolutionFee).toLocaleString()}`
+    const feeText = `${Number(addForm.resolutionFee).toLocaleString()}`
     const channels = [emailSent&&'email', smsSent&&'sms'].filter(Boolean).join(' + ')
-    const noteContent = `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText}${channels?` (${channels})`:''}`
+    const reason=Array.from(new Set(deliveryErrors.filter(Boolean))).join(' | ')
+    const noteContent = channels ? `📋 Service Addendum sent for e-signature — Resolution Fee ${feeText} (${channels})` : `⚠️ Service Addendum created but not delivered — Resolution Fee ${feeText}${reason?` — ${reason}`:''}`
     await insertClientNote({ clientname: c.name, content: noteContent, created_by: actor, created_at: new Date().toISOString() })
 
     setAddendumSending(false)
     setAddModal(false)
     loadRelated(c.name)
-    showToast(emailSent||smsSent ? '✅ Addendum sent for signature!' : '⚠️ Link copied — configure email/SMS to send automatically')
+    showToast(channels ? '✅ Addendum sent for signature!' : `Addendum created, but delivery failed${reason?': '+reason:''}. Signing link remains available.`)
   }
 
   async function saveRewritePlan() {
@@ -1843,13 +1862,13 @@ export default function Clients() {
 
       // Generate the replacement agreement first. Client terms are not changed
       // unless a valid token-bound signing request exists.
-      const res = await sendAddendumForSignature(detail, plan, supabase, actor)
+      const res = await sendAddendumForSignature(detail, plan, supabase, actor, myTenantId)
       if (res.error) throw new Error(res.error)
       const url = res.url
       let emailSent=false, smsSent=false
       if ((via==='email'||via==='both') && detail.email) {
         const { data:emailData, error:emailErr } = await supabase.functions.invoke('send-email', { body: {
-          tenant_id: FIRM.tenantId || undefined,
+          tenant_id: myTenantId,
           to: detail.email,
           subject: `Action Required: Review Your New Payment Plan — ${firmName()}`,
           html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><h2>Updated Service Plan</h2><p>Hi <strong>${detail.name}</strong>,</p><p>Your updated service/payment plan is ready for review and signature.</p><p><strong>Resolution fee:</strong> ${fee.toLocaleString()}${plan.paymentPlan ? `<br><strong>New payment:</strong> ${Number(plan.paymentPlan).toLocaleString()}/mo` : ''}${plan.startDate ? `<br><strong>Start date:</strong> ${plan.startDate}` : ''}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; Sign New Plan</a></p><p>If you have questions, reply to this message before signing.</p><p><strong>${firmName()}</strong></p></div>`
@@ -2452,7 +2471,7 @@ export default function Clients() {
           {/* Docs Tab */}
           {detailTab==='docs'&&(
             <div style={{padding:0}}>
-              <ClientDocs clientId={c.id} clientName={c.name} supabase={supabase} showToast={showToast} onLogged={(text)=>logAction(c.name, text)}/>
+              <ClientDocs clientId={c.id} clientName={c.name} tenantId={myTenantId} supabase={supabase} showToast={showToast} onLogged={(text)=>logAction(c.name, text)}/>
             </div>
           )}
 
@@ -3440,7 +3459,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setFaxModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">📠 Send Fax — {faxClient.name}</span><button className="xbtn" onClick={()=>setFaxModal(false)}>&times;</button></div>
-            <InlineFaxForm client={faxClient} onClose={()=>setFaxModal(false)} showToast={showToast} onLogged={()=>loadRelated(faxClient.name)}/>
+            <InlineFaxForm client={faxClient} tenantId={myTenantId} onClose={()=>setFaxModal(false)} showToast={showToast} onLogged={()=>loadRelated(faxClient.name)}/>
           </div>
         </div>
       )}
@@ -3449,7 +3468,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setEsignModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">✍️ E-Signature — {esignClient.name}</span><button className="xbtn" onClick={()=>setEsignModal(false)}>&times;</button></div>
-            <InlineEsignForm client={esignClient} onClose={()=>setEsignModal(false)} showToast={showToast}/>
+            <InlineEsignForm client={esignClient} tenantId={myTenantId} onClose={()=>setEsignModal(false)} showToast={showToast}/>
           </div>
         </div>
       )}
@@ -3573,7 +3592,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setPortalModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">🔓 Client Portal — {portalClient.name}</span><button className="xbtn" onClick={()=>setPortalModal(false)}>&times;</button></div>
-            <InlinePortalForm client={portalClient} onClose={()=>setPortalModal(false)} showToast={showToast}/>
+            <InlinePortalForm client={portalClient} tenantId={myTenantId} onClose={()=>setPortalModal(false)} showToast={showToast}/>
           </div>
         </div>
       )}
@@ -3582,7 +3601,7 @@ export default function Clients() {
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setOrgModal(false)}>
           <div className="modal" style={{width:500}}>
             <div className="mh"><span className="mt">🧾 Tax Organizer — {orgClient.name}</span><button className="xbtn" onClick={()=>setOrgModal(false)}>&times;</button></div>
-            <InlineOrganizerForm client={orgClient} onClose={()=>setOrgModal(false)} showToast={showToast}/>
+            <InlineOrganizerForm client={orgClient} tenantId={myTenantId} onClose={()=>setOrgModal(false)} showToast={showToast}/>
           </div>
         </div>
       )}

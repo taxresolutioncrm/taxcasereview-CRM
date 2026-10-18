@@ -7,6 +7,7 @@ const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxresc
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
 const NASHVILLE_HOST = 'nashville.taxrescrm.app'
 const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'
+const CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'
 const NASHVILLE_EXACT_EMAILS = new Set([
   'art@nationwideprofessionals.com',
   'tomas@nationwideprofessionals.com',
@@ -227,6 +228,21 @@ export default function Login() {
     if (!domain || !domain.includes('.')) {
       setBranding(null)
       applyLoginBrowserBranding(null, false)
+      return
+    }
+
+    // Centurion is a committed TaxRes-family demo tenant. Apply its branding
+    // immediately from the login domain so the screen never flashes/falls back
+    // to generic TaxRes while the anonymous branding RPC is pending or stale.
+    if (domain === CENTURION_LOGIN_DOMAIN) {
+      const centurionBranding = {
+        firm_name: 'Centurion Firm',
+        logo_url: CENTURION_LOGO_DATA_URL,
+        favicon_url: CENTURION_FAVICON_DATA_URL,
+        sub: 'Strategic Tax Solutions for the Innovators and Operators of Tomorrow'
+      }
+      setBranding(centurionBranding)
+      applyLoginBrowserBranding(centurionBranding, false)
       return
     }
 

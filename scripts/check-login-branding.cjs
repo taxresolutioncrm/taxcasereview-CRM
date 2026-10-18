@@ -33,6 +33,7 @@ check(centurionBrand.includes("CENTURION_LOGO_DATA_URL") && centurionBrand.inclu
 check(centurionBrand.includes("CENTURION_LOGO_DATA_URL"), 'Centurion embedded runtime logo must remain available for PDF-safe branding')
 check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime favicon must be embedded')
 check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
+check(login.includes("CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'") && login.includes("if (domain === CENTURION_LOGIN_DOMAIN)"), 'Centurion login domain must apply pinned branding before RPC fallback')
 check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
 check(sidebar.includes("onError={() =>"), 'sidebar logo must recover instead of showing a broken image icon')
 

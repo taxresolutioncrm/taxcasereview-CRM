@@ -379,7 +379,47 @@ serve(async (req) => {
       // decides which office may send this message.
       tenant_id = resolvedTenantId
     } else {
-      if (body.kind === 'esign_signed_copy') {
+      if (body.kind === 'financial_intake_client_copy' || body.kind === 'financial_intake_staff_notification') {
+        const intakeId = safe(body.intake_id)
+        if (!intakeId) return new Response(JSON.stringify({ error:'Financial intake id required' }), { status:422, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        const { data:intake, error:intakeErr } = await admin.from('financial_intake_responses')
+          .select('id,tenant_id,client_id,client_name,client_email,status,answers,submitted_at')
+          .eq('id', intakeId).maybeSingle()
+        if (intakeErr || !intake || String(intake.status) !== 'Submitted') {
+          return new Response(JSON.stringify({ error:'Invalid or incomplete financial intake' }), { status:403, headers:{...corsHeaders,'Content-Type':'application/json'} })
+        }
+        tenant_id = intake.tenant_id
+        attachments = []
+        const { data:ts } = await admin.from('settings').select('name,firmname,email,firmemail,smtp_email,tenant_id').eq('tenant_id', tenant_id).maybeSingle()
+        const brandName = ts?.name || ts?.firmname || 'TaxRes CRM'
+        const reply = ts?.email || ts?.firmemail || ts?.smtp_email || 'romy@taxrescrm.net'
+        from_name = brandName
+        from_email = reply
+
+        if (body.kind === 'financial_intake_client_copy') {
+          if (!intake.client_email) return new Response(JSON.stringify({ success:true, skipped:'no_client_email' }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+          to = intake.client_email
+          subject = `Your Financial Intake Submission — ${safe(brandName)}`
+          const submitted = intake.submitted_at ? new Date(intake.submitted_at).toLocaleString('en-US',{timeZone:'America/New_York'}) : new Date().toLocaleString('en-US',{timeZone:'America/New_York'})
+          const answerRows = Object.entries((intake.answers && typeof intake.answers === 'object') ? intake.answers : {})
+            .slice(0,250)
+            .map(([k,v])=>`<tr><td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;color:#64748b">${esc(k.replace(/_/g,' '))}</td><td style="padding:5px 8px;border-bottom:1px solid #e2e8f0">${esc(typeof v==='object' ? JSON.stringify(v) : v)}</td></tr>`)
+            .join('')
+          html = `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:28px"><h2 style="margin:0 0 14px">${esc(brandName)}</h2><p>Dear <strong>${esc(intake.client_name || 'Client')}</strong>,</p><p>Thank you for completing your financial intake. Your submission was received on ${esc(submitted)} and is now available to your advisor.</p>${answerRows ? `<table style="width:100%;border-collapse:collapse;margin-top:20px">${answerRows}</table>` : ''}<p style="margin-top:22px">If anything looks wrong, reply to this email and we will correct it.</p><p>Sincerely,<br><strong>${esc(brandName)}</strong></p></div>`
+        } else {
+          let leadQuery = admin.from('leads').select('id,name,assignedTo,tenant_id').eq('tenant_id', tenant_id)
+          if (intake.client_id) leadQuery = leadQuery.eq('id', String(intake.client_id))
+          else leadQuery = leadQuery.eq('name', intake.client_name || '')
+          const { data:lead } = await leadQuery.order('created_at',{ascending:false}).limit(1).maybeSingle()
+          const assignee = safe(lead?.assignedTo)
+          if (!assignee) return new Response(JSON.stringify({ success:true, skipped:'no_assignee' }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+          const { data:employee } = await admin.from('employees').select('email,status').eq('tenant_id', tenant_id).ilike('name', assignee).limit(1).maybeSingle()
+          if (!employee?.email || String(employee.status || 'Active').toLowerCase() !== 'active') return new Response(JSON.stringify({ success:true, skipped:'no_active_assignee_email' }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
+          to = employee.email
+          subject = `Financial Intake Submitted — ${safe(intake.client_name || 'Client')}`
+          html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px"><p><strong>${esc(intake.client_name || 'Client')}</strong> just submitted their Financial Intake form.</p><p>A task has been created to review it and build the resolution plan. Open the client file and review the Financial Profile for the full breakdown.</p><p><strong>${esc(brandName)}</strong></p></div>`
+        }
+      } else if (body.kind === 'esign_signed_copy') {
         if (!body.esign_id) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
         const { data: e, error } = await admin.from('esigns').select('id,status,client_email,client_name,doc_type,tenant_id,signed_attachments,signed_at,signed_copy_sent_at').eq('id', String(body.esign_id)).maybeSingle()
         if (error || !e || e.status !== 'Signed') return new Response(JSON.stringify({ error: 'Invalid signing request' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -825,7 +865,7 @@ serve(async (req) => {
           }
 
           if (esignIdToMark) {
-            await admin.from('esigns').update({ signed_copy_sent_at:new Date().toISOString() }).eq('id',esignIdToMark)
+            await admin.from('esigns').update({ signed_copy_sent_at:new Date().toISOString() }).eq('tenant_id',tenant_id).eq('id',esignIdToMark)
           }
           return new Response(JSON.stringify({
             success:true,
@@ -879,7 +919,7 @@ serve(async (req) => {
       }
       if (!sr.ok) return new Response(JSON.stringify({ error: sd?.error?.message || 'Gmail send failed', retryable: sr.status === 429 }), { status: sr.status === 429 ? 429 : 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
-    if (esignIdToMark) await admin.from('esigns').update({ signed_copy_sent_at: new Date().toISOString() }).eq('id', esignIdToMark)
+    if (esignIdToMark) await admin.from('esigns').update({ signed_copy_sent_at: new Date().toISOString() }).eq('tenant_id',tenant_id).eq('id', esignIdToMark)
     return new Response(JSON.stringify({ success: true, via: 'gmail' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (e) {
     console.error('[send-email]', e)
