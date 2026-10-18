@@ -35,7 +35,9 @@ check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime 
 check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
 check(login.includes("CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'") && login.includes("if (domain === CENTURION_LOGIN_DOMAIN)"), 'Centurion login domain must apply pinned branding before RPC fallback')
 check(login.includes('emailInputRef') && login.includes('syncAutofilledEmail') && login.includes('setInterval(syncAutofilledEmail, 250)'), 'login must detect browser/password-manager autofill before tenant branding')
-check(login.includes('const isCenturionBrand') && login.includes('aria-label="Centurion Firm"') && login.includes('tcr-centurion-logo2'), 'Centurion login logo must render inline without external image loading')
+check(login.includes("window.addEventListener('pageshow', onPageShow)") && login.includes("window.addEventListener('focus', onPageShow)") && login.includes("document.addEventListener('visibilitychange', onVisibility)"), 'login must resync autofilled identity after page restore/focus/visibility changes')
+check(login.includes('function isCenturionIdentity') && login.includes("email.endsWith('@' + CENTURION_LOGIN_DOMAIN)"), 'Centurion identity detection must be centralized and domain-pinned')
+check(login.includes('const isCenturionBrand') && login.includes('isCenturionIdentity(emailInputRef.current?.value)') && login.includes('aria-label="Centurion Firm"') && login.includes('tcr-centurion-logo2'), 'Centurion login logo must render inline from state or live autofilled DOM identity without external image loading')
 check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
 check(sidebar.includes("onError={() =>"), 'sidebar logo must recover instead of showing a broken image icon')
 
