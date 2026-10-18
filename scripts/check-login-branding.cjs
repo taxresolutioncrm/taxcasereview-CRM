@@ -34,6 +34,7 @@ check(centurionBrand.includes("CENTURION_LOGO_DATA_URL"), 'Centurion embedded ru
 check(centurionBrand.includes("CENTURION_FAVICON_DATA_URL"), 'Centurion runtime favicon must be embedded')
 check(login.includes("CENTURION_LOGO_DATA_URL") && login.includes("CENTURION_FAVICON_DATA_URL"), 'pre-auth login must bypass external Centurion asset URLs')
 check(login.includes("CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'") && login.includes("if (domain === CENTURION_LOGIN_DOMAIN)"), 'Centurion login domain must apply pinned branding before RPC fallback')
+check(login.includes('emailInputRef') && login.includes('syncAutofilledEmail') && login.includes('setInterval(syncAutofilledEmail, 250)'), 'login must detect browser/password-manager autofill before tenant branding')
 check(sidebar.includes("CENTURION_LOGO_DATA_URL"), 'authenticated sidebar must use embedded Centurion logo')
 check(sidebar.includes("onError={() =>"), 'sidebar logo must recover instead of showing a broken image icon')
 
