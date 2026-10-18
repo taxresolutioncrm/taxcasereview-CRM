@@ -16,6 +16,10 @@ function isNashvilleIdentity(value) {
   const email = String(value || '').trim().toLowerCase()
   return email.endsWith('@nashvilletaxsolutions.com') || NASHVILLE_EXACT_EMAILS.has(email)
 }
+function isCenturionIdentity(value) {
+  const email = String(value || '').trim().toLowerCase()
+  return email.endsWith('@' + CENTURION_LOGIN_DOMAIN)
+}
 function isCentralTaxResHost() {
   const host = window.location.hostname.toLowerCase()
   return host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
@@ -220,7 +224,17 @@ export default function Login() {
     }
     syncAutofilledEmail()
     const timer = window.setInterval(syncAutofilledEmail, 250)
-    return () => window.clearInterval(timer)
+    const onPageShow = () => syncAutofilledEmail()
+    const onVisibility = () => { if (!document.hidden) syncAutofilledEmail() }
+    window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('focus', onPageShow)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('focus', onPageShow)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
 
   useEffect(() => {
@@ -249,7 +263,7 @@ export default function Login() {
     // Centurion is a committed TaxRes-family demo tenant. Apply its branding
     // immediately from the login domain so the screen never flashes/falls back
     // to generic TaxRes while the anonymous branding RPC is pending or stale.
-    if (domain === CENTURION_LOGIN_DOMAIN) {
+    if (domain === CENTURION_LOGIN_DOMAIN || isCenturionIdentity(email)) {
       const centurionBranding = {
         firm_name: 'Centurion Firm',
         logo_url: CENTURION_LOGO_DATA_URL,
@@ -367,7 +381,8 @@ export default function Login() {
   const firmName = branding?.firm_name || (isAdminHost ? 'RomyLabs' : 'Tax Case Review')
   const logoUrl = branding?.logo_url || (isAdminHost ? '/romylabs-logo.png' : '/taxrescrm-logo.png')
   const isCenturionBrand = branding?.firm_name === 'Centurion Firm'
-    || email.trim().toLowerCase().endsWith('@centurionfirm.com')
+    || isCenturionIdentity(email)
+    || isCenturionIdentity(emailInputRef.current?.value)
 
   return (
     <div className="tcr-login-page">
