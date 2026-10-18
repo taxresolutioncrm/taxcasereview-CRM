@@ -16,6 +16,10 @@ function isNashvilleIdentity(value) {
   const email = String(value || '').trim().toLowerCase()
   return email.endsWith('@nashvilletaxsolutions.com') || NASHVILLE_EXACT_EMAILS.has(email)
 }
+function isCenturionIdentity(value) {
+  const email = String(value || '').trim().toLowerCase()
+  return email.endsWith('@' + CENTURION_LOGIN_DOMAIN)
+}
 function isCentralTaxResHost() {
   const host = window.location.hostname.toLowerCase()
   return host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
@@ -136,6 +140,7 @@ const CSS = `
 .tcr-login-left2:before{content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(26,127,212,.18) 0%,transparent 70%);pointer-events:none}
 .tcr-login-left2:after{content:'';position:absolute;bottom:-60px;left:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(26,127,212,.10) 0%,transparent 70%);pointer-events:none}
 .tcr-login-logo2{height:48px;max-width:220px;object-fit:contain;display:block;margin-bottom:40px;position:relative;z-index:1}
+.tcr-centurion-logo2{width:280px;max-width:100%;height:68px;display:block;margin-bottom:20px;position:relative;z-index:1}
 .tcr-login-copy2{position:relative;z-index:1;display:flex;flex-direction:column;flex:1}
 .tcr-login-eyebrow2{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#1A7FD4;margin-bottom:12px}
 .tcr-login-title2{font-size:28px;font-weight:800;color:#F0F6FF;line-height:1.18;margin:0 0 18px;letter-spacing:-.01em}
@@ -219,7 +224,17 @@ export default function Login() {
     }
     syncAutofilledEmail()
     const timer = window.setInterval(syncAutofilledEmail, 250)
-    return () => window.clearInterval(timer)
+    const onPageShow = () => syncAutofilledEmail()
+    const onVisibility = () => { if (!document.hidden) syncAutofilledEmail() }
+    window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('focus', onPageShow)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('focus', onPageShow)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
 
   useEffect(() => {
@@ -248,7 +263,7 @@ export default function Login() {
     // Centurion is a committed TaxRes-family demo tenant. Apply its branding
     // immediately from the login domain so the screen never flashes/falls back
     // to generic TaxRes while the anonymous branding RPC is pending or stale.
-    if (domain === CENTURION_LOGIN_DOMAIN) {
+    if (domain === CENTURION_LOGIN_DOMAIN || isCenturionIdentity(email)) {
       const centurionBranding = {
         firm_name: 'Centurion Firm',
         logo_url: CENTURION_LOGO_DATA_URL,
@@ -365,12 +380,27 @@ export default function Login() {
 
   const firmName = branding?.firm_name || (isAdminHost ? 'RomyLabs' : 'Tax Case Review')
   const logoUrl = branding?.logo_url || (isAdminHost ? '/romylabs-logo.png' : '/taxrescrm-logo.png')
+  const isCenturionBrand = branding?.firm_name === 'Centurion Firm'
+    || isCenturionIdentity(email)
+    || isCenturionIdentity(emailInputRef.current?.value)
 
   return (
     <div className="tcr-login-page">
       <div className="tcr-login-card2">
         <div className="tcr-login-left2">
-          <img src={logoUrl} alt={firmName} className="tcr-login-logo2" onError={e => { e.target.style.display = 'none' }} />
+          {isCenturionBrand ? (
+            <svg className="tcr-centurion-logo2" viewBox="0 0 280 68" role="img" aria-label="Centurion Firm">
+              <rect width="280" height="68" fill="#0C1F35" />
+              <g fill="none" stroke="#D7A75E" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 10 31 5l13 5v17c0 10-5.8 18.2-13 23-7.2-4.8-13-13-13-23Z" />
+                <path d="M23 14.5 31 11l8 3.5v12.2c0 6.8-3.5 12.4-8 16-4.5-3.6-8-9.2-8-16Z" />
+                <path d="M35.5 20.5a8 8 0 1 0 0 11" />
+              </g>
+              <text x="56" y="37" fill="#D7A75E" fontFamily="Arial, Helvetica, sans-serif" fontSize="24" fontWeight="700" letterSpacing="7">CENTURION</text>
+            </svg>
+          ) : (
+            <img src={logoUrl} alt={firmName} className="tcr-login-logo2" onError={e => { e.target.style.display = 'none' }} />
+          )}
           <div className="tcr-login-copy2">
             <div className="tcr-login-eyebrow2">{t.eyebrow}</div>
             <h1 className="tcr-login-title2">{t.headline}</h1>
