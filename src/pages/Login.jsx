@@ -183,6 +183,7 @@ export default function Login() {
   const [branding, setBranding] = useState(null)
   const [lang, setLang] = useState('en')
   const debounceRef = useRef(null)
+  const emailInputRef = useRef(null)
   const isAdminHost = window.location.hostname.toLowerCase() === ROMYLABS_ADMIN_HOST
   const t = COPY[lang]
 
@@ -206,6 +207,19 @@ export default function Login() {
     style.textContent = CSS
     document.head.appendChild(style)
     return () => style.remove()
+  }, [])
+
+  useEffect(() => {
+    // Password managers/browser autofill can populate a controlled email input
+    // without firing React's onChange. Mirror the real DOM value so pre-auth
+    // tenant branding still resolves immediately for saved Centurion logins.
+    const syncAutofilledEmail = () => {
+      const actual = emailInputRef.current?.value || ''
+      setEmail(current => actual && actual !== current ? actual : current)
+    }
+    syncAutofilledEmail()
+    const timer = window.setInterval(syncAutofilledEmail, 250)
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -380,7 +394,7 @@ export default function Login() {
             <form onSubmit={submit} noValidate>
               <div className="tcr-login-field2">
                 <label htmlFor="tcr-email">{t.email}</label>
-                <input id="tcr-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" autoFocus />
+                <input ref={emailInputRef} id="tcr-email" type="email" value={email} onInput={e => setEmail(e.currentTarget.value)} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" autoFocus />
               </div>
               <div className="tcr-login-field2">
                 <label htmlFor="tcr-password">{t.password}</label>
