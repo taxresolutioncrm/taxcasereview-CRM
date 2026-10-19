@@ -552,14 +552,13 @@ export default function App() {
         }
       } catch (_) {}
     }
+    // Check only when the SPA first mounts. Never force a production-build
+    // refresh merely because the user switched Chrome tabs and came back:
+    // that destroys unsaved notes/forms. A fresh navigation/reload will pick
+    // up the new build safely before the user starts editing.
     check()
-    const timer = window.setInterval(check, 60_000)
-    const onVisible = () => { if (document.visibilityState === 'visible') check() }
-    document.addEventListener('visibilitychange', onVisible)
     return () => {
       stopped = true
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [])
 
