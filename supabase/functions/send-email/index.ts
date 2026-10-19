@@ -815,6 +815,12 @@ serve(async (req) => {
               status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
             })
           }
+          // Centurion is a TaxRes-hosted demo office. Its client-facing system
+          // mail must use the TaxRes info identity, not the operator mailbox
+          // stored in the shared transport credential.
+          const relayFrom = relayTenant?.tenant_code === 'TRC-004'
+            ? 'info@taxrescrm.net'
+            : transport.fromAddress
           const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
           if (!recipients.length) {
             return new Response(JSON.stringify({ error:'Recipient missing' }), {
@@ -831,8 +837,8 @@ serve(async (req) => {
               host:transport.host,
               username:transport.username,
               password:transport.password,
-              fromAddress:transport.fromAddress,
-              replyTo:relayReply || undefined,
+              fromAddress:relayFrom,
+              replyTo:relayReply || (relayTenant?.tenant_code === 'TRC-004' ? relayFrom : undefined),
               fromName:`${relayName} via TaxRes CRM`,
               to:recipient,
               subject:safe(subject),
@@ -852,14 +858,14 @@ serve(async (req) => {
                 body:safe(text || String(html || '').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')),
                 body_html:html ? String(html) : null,
                 triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
-                sender:transport.fromAddress,
-                from_address:transport.fromAddress,
-                reply_from:relayReply || transport.fromAddress,
-                mailbox_owner:safe(authenticatedUser?.email || relayReply || transport.fromAddress).toLowerCase(),
+                sender:relayFrom,
+                from_address:relayFrom,
+                reply_from:relayReply || relayFrom,
+                mailbox_owner:safe(authenticatedUser?.email || relayReply || relayFrom).toLowerCase(),
                 received_at:new Date().toISOString(),
                 created_at:new Date().toISOString(),
                 message_id:`stalwart:${sent.submissionId}`,
-                received_mailbox:transport.fromAddress,
+                received_mailbox:relayFrom,
               }])
             }
           }
@@ -870,7 +876,7 @@ serve(async (req) => {
           return new Response(JSON.stringify({
             success:true,
             via:'taxres_platform_relay',
-            from:transport.fromAddress,
+            from:relayFrom,
             reply_to:relayReply || null,
             brand:relayName,
             tenant_code:relayTenant?.tenant_code,
