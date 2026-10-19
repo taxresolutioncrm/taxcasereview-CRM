@@ -451,6 +451,27 @@ export function buildNameAddress(client, party = 'personal') {
 // which is most fetches, and made package generation visibly slow.
 const tenantPathMemo = new Map()
 
+// Cloudflare/Vite can return the SPA index.html with HTTP 200 for a missing
+// static asset. pdf-lib then reports "No PDF header found", which made a
+// tenant-specific template miss look like a corrupt IRS form. Validate the
+// bytes before accepting any candidate so we fall through to the shared
+// TaxRes template instead of handing HTML to PDFDocument.load().
+function hasPdfHeader(buffer) {
+  const bytes = new Uint8Array(buffer)
+  const limit = Math.min(bytes.length - 4, 1024)
+  for (let i = 0; i <= limit; i++) {
+    if (bytes[i] === 0x25 && bytes[i+1] === 0x50 && bytes[i+2] === 0x44 && bytes[i+3] === 0x46 && bytes[i+4] === 0x2d) return true
+  }
+  return false
+}
+
+async function fetchPdfCandidate(url) {
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const bytes = await res.arrayBuffer()
+  return hasPdfHeader(bytes) ? bytes : null
+}
+
 export async function resolveStateFormUrl(base, filename) {
   const slug = FIRM.slug || '';
   if (slug) {
@@ -460,8 +481,10 @@ export async function resolveStateFormUrl(base, filename) {
     if (memo !== false) {
       try {
         const head = await fetch(tenantUrl, { method: 'HEAD' });
-        tenantPathMemo.set(tenantUrl, head.ok);
-        if (head.ok) return tenantUrl;
+        const contentType = String(head.headers?.get?.('content-type') || '').toLowerCase()
+        const isPdf = head.ok && contentType.includes('application/pdf')
+        tenantPathMemo.set(tenantUrl, isPdf);
+        if (isPdf) return tenantUrl;
       } catch (_) { tenantPathMemo.set(tenantUrl, false); }
     }
   }
@@ -469,13 +492,13 @@ export async function resolveStateFormUrl(base, filename) {
 }
 
 export async function fetchTemplate(filename) {
-  // If filename is a full URL (for IRS forms fetched direct from IRS.gov), try it directly
+  // If filename is a full URL (for IRS forms fetched direct from IRS.gov), try it directly.
   if (filename.startsWith('http')) {
     try {
-      const res = await fetch(filename);
-      if (res.ok) return res.arrayBuffer();
+      const bytes = await fetchPdfCandidate(filename)
+      if (bytes) return bytes
     } catch (_) {}
-    throw new Error(`Could not fetch form from: ${filename}`);
+    throw new Error(`Could not fetch a valid PDF form from: ${filename}`);
   }
 
   const slug = FIRM.slug || '';
@@ -490,14 +513,13 @@ export async function fetchTemplate(filename) {
   for (const url of paths) {
     if (tenantPathMemo.get(url) === false) continue;
     try {
-      const res = await fetch(url);
-      // Only misses are memoized: a template that WAS found must stay
-      // re-fetchable, since its bytes are consumed by the caller each time.
-      if (res.ok) return res.arrayBuffer();
+      const bytes = await fetchPdfCandidate(url)
+      // A 200 HTML SPA fallback is a miss, not a valid template.
+      if (bytes) return bytes
       tenantPathMemo.set(url, false);
     } catch (_) { tenantPathMemo.set(url, false); }
   }
-  throw new Error(`Template not found: ${filename}`);
+  throw new Error(`Valid PDF template not found: ${filename}`);
 }
 
 // Fills the taxpayer fields on a blank IRS form template and returns the
