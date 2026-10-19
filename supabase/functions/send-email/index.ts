@@ -815,12 +815,9 @@ serve(async (req) => {
               status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
             })
           }
-          // Centurion is a TaxRes-hosted demo office. Its client-facing system
-          // mail must use the TaxRes info identity, not the operator mailbox
-          // stored in the shared transport credential.
-          const relayFrom = relayTenant?.tenant_code === 'TRC-004'
-            ? 'info@taxrescrm.net'
-            : transport.fromAddress
+          // TaxRes-hosted demo offices send through the authorized Stalwart
+          // identity carried by the shared TaxRes transport credential.
+          const relayFrom = transport.fromAddress
           const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
           if (!recipients.length) {
             return new Response(JSON.stringify({ error:'Recipient missing' }), {
