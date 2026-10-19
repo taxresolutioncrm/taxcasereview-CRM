@@ -35,7 +35,7 @@ const checks=[
   ['public financial intake resolves branding from intake tenant',intake.includes('loadFirmBrandingPublic(rec?.tenant_id)')],
   ['client link emails stay tenant scoped',clients.includes("function InlinePortalForm({ client, onClose, showToast, tenantId })")&&clients.includes("function InlineOrganizerForm({ client, onClose, showToast, tenantId })")&&clients.includes("body: { tenant_id: tenantId,")],
   ['Centurion client links have platform Stalwart fallback',sendEmail.includes("['TRC-003','TRC-004']")&&sendEmail.includes("relayTenant?.tenant_code === 'TRC-004' ? 'Centurion Firm'")&&sendEmail.includes("via:'taxres_platform_relay'")],
-  ['Centurion platform mail uses exact TaxRes info sender',sendEmail.includes("relayTenant?.tenant_code === 'TRC-004'\n            ? 'info@taxrescrm.net'")&&sendEmail.includes('fromAddress:relayFrom')&&sendEmail.includes('from:relayFrom')],
+  ['Centurion platform mail uses authorized TaxRes Stalwart sender',sendEmail.includes('const relayFrom = transport.fromAddress')&&sendEmail.includes('fromAddress:relayFrom')&&sendEmail.includes('from:relayFrom')],
   ['IRS template loader rejects SPA HTML before PDF parse',irsUtils.includes('function hasPdfHeader(buffer)')&&irsUtils.includes('async function fetchPdfCandidate(url)')&&irsUtils.includes('return hasPdfHeader(bytes) ? bytes : null')&&irsUtils.includes('A 200 HTML SPA fallback is a miss, not a valid template')],
   ['tenant state-form override requires PDF content type',irsUtils.includes("contentType.includes('application/pdf')")&&irsUtils.includes('tenantPathMemo.set(tenantUrl, isPdf)')],
   ['Centurion SMS has explicit platform relay',read('supabase/functions/send-sms/index.ts').includes("['TRC-003','TRC-004','ADMIN']")],
