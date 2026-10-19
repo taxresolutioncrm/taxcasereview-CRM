@@ -29,7 +29,7 @@ const EN_ES = {
   'State Forms & Docs': 'Formularios y documentos estatales',
   'IRS & State Reference': 'Referencia del IRS y estatal',
   'IRS Reference': 'Referencia del IRS',
-  'IRS Portal': 'Portal del IRS',
+  'IRS TDS/SOR Portal': 'Portal TDS/SOR del IRS',
   'Tax Returns & Entities': 'Declaraciones y entidades',
   'Tax Returns': 'Declaraciones de impuestos',
   'HR & Payroll': 'RR. HH. y nómina',
