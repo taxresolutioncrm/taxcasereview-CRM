@@ -15,6 +15,7 @@ const irsFiller=read('src/components/IRSFormFiller.jsx')
 const stateForms=read('src/pages/StateForms.jsx')
 const esignPage=read('src/pages/Esign.jsx')
 const archiveFn=read('supabase/functions/esign-archive-upload/index.ts')
+const irsUtils=read('src/lib/irsFormUtils.js')
 
 const checks=[
   ['client schema has explicit Admin assignment',migration.includes('add column if not exists "clientAdmin" text')],
@@ -34,6 +35,9 @@ const checks=[
   ['public financial intake resolves branding from intake tenant',intake.includes('loadFirmBrandingPublic(rec?.tenant_id)')],
   ['client link emails stay tenant scoped',clients.includes("function InlinePortalForm({ client, onClose, showToast, tenantId })")&&clients.includes("function InlineOrganizerForm({ client, onClose, showToast, tenantId })")&&clients.includes("body: { tenant_id: tenantId,")],
   ['Centurion client links have platform Stalwart fallback',sendEmail.includes("['TRC-003','TRC-004']")&&sendEmail.includes("relayTenant?.tenant_code === 'TRC-004' ? 'Centurion Firm'")&&sendEmail.includes("via:'taxres_platform_relay'")],
+  ['Centurion platform mail uses exact TaxRes info sender',sendEmail.includes("relayTenant?.tenant_code === 'TRC-004'\n            ? 'info@taxrescrm.net'")&&sendEmail.includes('fromAddress:relayFrom')&&sendEmail.includes('from:relayFrom')],
+  ['IRS template loader rejects SPA HTML before PDF parse',irsUtils.includes('function hasPdfHeader(buffer)')&&irsUtils.includes('async function fetchPdfCandidate(url)')&&irsUtils.includes('return hasPdfHeader(bytes) ? bytes : null')&&irsUtils.includes('A 200 HTML SPA fallback is a miss, not a valid template')],
+  ['tenant state-form override requires PDF content type',irsUtils.includes("contentType.includes('application/pdf')")&&irsUtils.includes('tenantPathMemo.set(tenantUrl, isPdf)')],
   ['Centurion SMS has explicit platform relay',read('supabase/functions/send-sms/index.ts').includes("['TRC-003','TRC-004','ADMIN']")],
   ['lead e-sign receives current tenant',leads.includes('function LeadInlineEsign({ lead, onClose, tenantId })')&&leads.includes('tenantId={myTenantId}')],
   ['lead e-sign writes tenant and lead IDs explicitly',leads.includes('tenant_id:tenantId')&&leads.includes('lead_id:lead?.id || null')],
