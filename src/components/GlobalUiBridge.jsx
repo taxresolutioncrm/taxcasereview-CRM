@@ -11,7 +11,7 @@ const ES_LOCAL = {
   'Overview':'Resumen','Home':'Inicio','Client Work':'Trabajo de clientes','Communications':'Comunicaciones','Billing':'Facturación',
   'Transactions':'Transacciones','Time & Billing':'Tiempo y facturación','Books & Ledger':'Libros y contabilidad',
   'IRS & State Resolution':'Resolución IRS y estatal','IRS Forms & Docs':'Formularios y documentos del IRS','State Forms & Docs':'Formularios y documentos estatales',
-  'IRS & State Reference':'Referencia IRS y estatal','IRS Portal':'Portal del IRS','Tax Returns & Entities':'Declaraciones y entidades',
+  'IRS & State Reference':'Referencia IRS y estatal','IRS TDS/SOR Portal':'Portal TDS/SOR del IRS','Tax Returns & Entities':'Declaraciones y entidades',
   'HR & Payroll':'RR. HH. y nómina','Time Kiosk':'Kiosco de tiempo','Employee Portal':'Portal del empleado','Time Off':'Tiempo libre',
   'Activity Report':'Informe de actividad','Firm':'Firma','Training':'Capacitación','CRM Manual':'Manual del CRM',
   'Search clients, cases, leads…':'Buscar clientes, casos, prospectos…','Search clients, cases, leads...':'Buscar clientes, casos, prospectos…',
