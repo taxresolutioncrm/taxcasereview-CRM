@@ -275,6 +275,19 @@ export function AppProvider({ children }) {
       if (!user?.email || cancelled || wakeInFlightRef.current) return
 
       const now = Date.now()
+      const backgroundedMs = hiddenAtRef.current ? now - hiddenAtRef.current : 0
+
+      // A normal Chrome tab switch must be completely non-destructive.
+      // Do not re-read role/tenant/branding or dispatch a wake event for a
+      // short background interval; those state writes can cause page-level
+      // effects to refetch and overwrite in-progress form/note drafts.
+      // Full recovery is reserved for a genuinely idle/sleeping tab.
+      if ((reason === 'focus' || reason === 'visibility') && backgroundedMs > 0 && backgroundedMs < 60_000) {
+        hiddenAtRef.current = 0
+        try { supabase.realtime.connect() } catch (_) {}
+        return
+      }
+
       // focus + visibilitychange commonly fire together; coalesce them.
       if (now - lastWakeAtRef.current < 1500) return
       lastWakeAtRef.current = now
@@ -322,12 +335,12 @@ export function AppProvider({ children }) {
         // reconnect handlers, multiplying channels until the project limit is
         // reached. A normal connect() is idempotent and lets the client recover
         // the existing channel set without creating replacements.
-        const backgroundedMs = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0
+        const recoveredBackgroundedMs = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : backgroundedMs
         try { supabase.realtime.connect() } catch (_) {}
 
         setRealtimeOk(true)
         window.dispatchEvent(new CustomEvent('taxres:wake', {
-          detail: { reason, backgroundedMs }
+          detail: { reason, backgroundedMs: recoveredBackgroundedMs }
         }))
       } catch (e) {
         console.error('[idle-wake] recovery failed:', e?.message || e)
