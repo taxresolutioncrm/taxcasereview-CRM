@@ -1210,7 +1210,7 @@ export default function Settings() {
                 Added automatically to the bottom of every email sent from the CRM (invoices, reminders, the Email page, etc).
               </div>
               <textarea value={firm.email_signature||''} onChange={set('email_signature')} rows={4}
-                placeholder={"Best regards,\nTax Case Review\n(305) 555-0000\nwww.taxcasereview.org"} />
+                placeholder="Enter your office email signature (optional)" />
             </div>
 
             <div className="field" style={{ maxWidth: 420 }}>
