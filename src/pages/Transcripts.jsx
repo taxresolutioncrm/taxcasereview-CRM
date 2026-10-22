@@ -44,7 +44,7 @@ export default function Transcripts() {
   async function load() {
     const [{ data:t },{ data:c },{ data:e }] = await Promise.all([
       supabase.from('transcripts').select('*').order('created_at',{ascending:false}),
-      supabase.from('clients').select('id,name,ssn,taxYears,assignedTo'),
+      supabase.from('clients').select('id,name,taxYears,assignedTo'),
       supabase.from('employees').select('name'),
     ])
     if (t) setItems(t)

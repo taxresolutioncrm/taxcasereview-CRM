@@ -341,7 +341,7 @@ export default function TaxReturns() {
     setLoading(true)
     const [r, c, e] = await Promise.all([
       supabase.from('tax_returns').select('*').eq('tenant_id', myTenantId).order('created_at', { ascending: false }),
-      supabase.from('clients').select('id,name,ssn,filingStatus,assignedTo').eq('tenant_id', myTenantId).order('name'),
+      supabase.from('clients').select('id,name,filingStatus,assignedTo').eq('tenant_id', myTenantId).order('name'),
       supabase.from('employees').select('id,name,status').eq('tenant_id', myTenantId).eq('status','Active').order('name'),
     ])
     if (r.error && (r.error.code === '42P01' || r.error.message?.includes('does not exist'))) {

@@ -65,7 +65,7 @@ serve(async (req) => {
       return json({error:'Too many attempts. Please try again later.'},429,{'Retry-After':'1800'})
     }
 
-    let { data: record } = await supabase.from('clients').select('id,name,ssn,email,tenant_id').eq('id', normalizedId).maybeSingle()
+    let { data: record } = await supabase.from('clients').select('id,name,email,tenant_id').eq('id', normalizedId).maybeSingle()
     let isLead = false
     if (!record) {
       const { data: l } = await supabase.from('leads').select('id,name,ssn,email,tenant_id').eq('id', normalizedId).maybeSingle()
@@ -81,7 +81,22 @@ serve(async (req) => {
     }
 
     if (!record) return await fail()
-    const last4 = (record.ssn || '').replace(/\D/g, '').slice(-4)
+    let portalSsn = ''
+    if (!isLead) {
+      const { data: sensitive, error: sensitiveErr } = await supabase.from('client_sensitive_fields')
+        .select('ssn')
+        .eq('tenant_id', record.tenant_id)
+        .eq('client_id', String(record.id))
+        .maybeSingle()
+      if (sensitiveErr) {
+        console.error('[portal-login] protected SSN lookup failed:', sensitiveErr.message)
+        return json({ error: 'Portal login failed' },500)
+      }
+      portalSsn = String(sensitive?.ssn || '')
+    } else {
+      portalSsn = String(record.ssn || '')
+    }
+    const last4 = portalSsn.replace(/\D/g, '').slice(-4)
     const emailOnFile = (record.email || '').trim().toLowerCase()
     if (!last4 || !emailOnFile || normalizedEmail !== emailOnFile || normalizedPin !== last4) return await fail()
 

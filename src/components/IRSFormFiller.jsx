@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { fillForm, FORM_LABELS, TEMPLATE_PATHS } from '../lib/irsFormUtils';
 import { FIRM } from '../lib/firmBranding'
 import { useApp } from '../context/AppContext'
+import { loadIrsSensitiveClient } from '../lib/clientSensitive'
 
 function downloadPdf(bytes, filename) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -54,7 +55,7 @@ export default function IRSFormFiller({ client, onClose }) {
   if (!client) return null;
 
   const clientName = client.business_name || client.name || 'Client';
-  const hasSsn = !!(client.ssn || client.tin);
+  const hasSsn = true; // authorization is checked only when a form actually requires SSN data
   const hasEin = !!client.ein;
   const isBiz  = hasEin || !!client.business_name || client.clientType === 'Business' || client.clientType === 'Individual & Biz';
   const hasEmail = !!client.email;
@@ -77,7 +78,8 @@ export default function IRSFormFiller({ client, onClose }) {
     setLoading(formType);
     setError('');
     try {
-      const bytes = await fillForm(formType, client);
+      const secureClient = (ALL_IRS_FORMS.find(f=>f.formType===formType)?.needsSsn) ? await loadIrsSensitiveClient(client) : client;
+      const bytes = await fillForm(formType, secureClient);
       const label = FORM_LABELS[formType] || formType;
       const safeName = clientName.replace(/[^a-zA-Z0-9]+/g, '_');
       downloadPdf(bytes, `${formType}_${safeName}.pdf`);
@@ -96,7 +98,8 @@ export default function IRSFormFiller({ client, onClose }) {
       if (sendVia !== 'sms' && !hasEmail) throw new Error('Client has no email on file');
       if (sendVia !== 'email' && !hasPhone) throw new Error('Client has no phone on file');
 
-      const bytes = await fillForm(formType, client);
+      const secureClient = (ALL_IRS_FORMS.find(f=>f.formType===formType)?.needsSsn) ? await loadIrsSensitiveClient(client) : client;
+      const bytes = await fillForm(formType, secureClient);
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const safeName = clientName.replace(/[^a-zA-Z0-9]+/g, '-');
       if (!myTenantId) throw new Error('Could not resolve office tenant');

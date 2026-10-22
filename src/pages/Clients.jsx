@@ -57,7 +57,7 @@ const BLANK = {
   filingRequirements:[],
   irsStatus:'', irsStatusOther:'', irsDeadline:'',
   stateStatus:'', stateStatusOther:'', stateDeadline:'',
-  clientSince:'', status:'Active', notes:'', assignedTo:'',
+  clientSince:'', status:'Active', notes:'', assignedTo:'', office_label:'',
   pipelineStage:DEFAULT_PIPELINE_STAGE, dependents:[],
   autopay_enabled:false, autopay_amount:'', autopay_frequency:'monthly', autopay_next_charge:'',
 }
@@ -87,7 +87,7 @@ const FIELD_LABELS = {
 // Fields that either change automatically as a side-effect of other actions
 // (so logging them here would be noisy/redundant with their own dedicated
 // log line) or are internal bookkeeping never worth showing to a human.
-const SKIP_DIFF_FIELDS = new Set(['id','created_at','updated_at','tenant_id','pipelineStage','status','archived','dobM','dobD','dobY'])
+const SKIP_DIFF_FIELDS = new Set(['id','created_at','updated_at','tenant_id','pipelineStage','status','archived','dobM','dobD','dobY','ssn','spouseSsn','dependents'])
 function summarizeFieldChanges(before, after) {
   if (!before || !after) return []
   const changes = []
@@ -765,14 +765,18 @@ const FILE_EXT_ICON = n => { const e=(n||'').split('.').pop().toLowerCase(); ret
 const fmt = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB'
 
 export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast, onLogged }) {
+  const { can } = useApp()
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
   const [uploading,  setUploading]  = useState(false)
-  const [form,       setForm]       = useState({ name:'', docType:'IRS Docs', notes:'' })
-  const [file,       setFile]       = useState(null)
+  const [form,       setForm]       = useState({ docType:'IRS Docs', notes:'' })
+  const [files,      setFiles]      = useState([])
   const [saving,     setSaving]     = useState(false)
+  const [uploadResults,setUploadResults] = useState([])
+  const [batchProgress,setBatchProgress] = useState({ done:0, total:0 })
   const [preview,    setPreview]    = useState(null)
   const fileRef = useRef(null)
+  const canUpload = can('edit','documents')
 
   useEffect(() => { loadDocs() }, [clientId, clientName, tenantId])
 
@@ -784,38 +788,137 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     setDocs(data || [])
   }
 
-  async function upload() {
-    if (!form.name.trim()) { showToast('Document name required'); return }
-    setSaving(true)
-    let fileUrl = null, fileName = null, fileSize = null, storagePath = null
-    if (file) {
-      const folderKey = String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const ownerKey = clientId ? String(clientId) : clientName.replace(/\s+/g,'-')
-      if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
-      const safeFileName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const path = `${tenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${safeFileName}`
-      storagePath = path
-      const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
-      if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
-      fileUrl = urlData?.signedUrl || null; fileName = file.name; fileSize = file.size
+  function chooseFiles(fileList) {
+    const incoming=[...(fileList||[])]
+    const valid=[]
+    const failures=[]
+    const allowed=/\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png|tif|tiff)$/i
+    for(const f of incoming){
+      if(!allowed.test(f.name||'')){failures.push({key:`${f.name}-${f.size}`,name:f.name,status:'failed',message:'Unsupported file type'});continue}
+      if(Number(f.size||0)>50*1024*1024){failures.push({key:`${f.name}-${f.size}`,name:f.name,status:'failed',message:'File exceeds 50 MB'});continue}
+      valid.push(f)
     }
-    if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
-    const { error } = await supabase.from('documents').insert([{
-      tenant_id: tenantId,
-      name: form.name, client: clientName, clientname: clientName,
-      client_id: clientId ? String(clientId) : null,
-      docType: form.docType,
-      notes: form.notes, file_url: fileUrl, file_name: fileName,
-      storage_path: storagePath,
-      file_size: fileSize, created_at: new Date().toISOString()
-    }])
+    setFiles(prev=>{
+      const seen=new Set(prev.map(f=>`${f.name}|${f.size}|${f.lastModified}`))
+      return [...prev,...valid.filter(f=>{const k=`${f.name}|${f.size}|${f.lastModified}`;if(seen.has(k))return false;seen.add(k);return true})]
+    })
+    if(failures.length) setUploadResults(prev=>[...prev,...failures])
+  }
+
+  async function sha256(file) {
+    const buf=await file.arrayBuffer()
+    const digest=await crypto.subtle.digest('SHA-256',buf)
+    return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('')
+  }
+
+  function setResult(key,patch){
+    setUploadResults(prev=>{
+      const idx=prev.findIndex(r=>r.key===key)
+      if(idx<0)return [...prev,{key,...patch}]
+      const next=[...prev];next[idx]={...next[idx],...patch};return next
+    })
+  }
+
+  async function upload() {
+    if (!canUpload) { showToast('You do not have permission to upload client documents.'); return }
+    if (!tenantId || !clientId) { showToast('Could not resolve this client and office.'); return }
+    if (!files.length) { showToast('Choose one or more documents first.'); return }
+    setSaving(true)
+    setUploadResults([])
+    setBatchProgress({done:0,total:files.length})
+    const batchId=crypto.randomUUID?.() || `batch-${Date.now()}`
+    const folderKey=String(form.docType||'Other').replace(/[^a-zA-Z0-9._-]+/g,'-')
+    const ownerKey=String(clientId)
+    const knownHashes=new Set(
+      docs.filter(d=>String(d.client_id||'')===String(clientId) && d.file_hash)
+        .map(d=>String(d.file_hash))
+    )
+    let successCount=0, duplicateCount=0, failureCount=0
+
+    for(let i=0;i<files.length;i++){
+      const selectedFile=files[i]
+      const key=`${selectedFile.name}|${selectedFile.size}|${selectedFile.lastModified}`
+      setResult(key,{name:selectedFile.name,status:'hashing',message:'Checking for duplicates…'})
+      try{
+        const hash=await sha256(selectedFile)
+        if(knownHashes.has(hash)){
+          duplicateCount++
+          setResult(key,{name:selectedFile.name,status:'duplicate',message:'Already filed in this client folder'})
+          setBatchProgress({done:i+1,total:files.length})
+          continue
+        }
+
+        const {data:existing,error:dupeErr}=await supabase.from('documents')
+          .select('id,docType').eq('tenant_id',tenantId).eq('client_id',String(clientId))
+          .eq('file_hash',hash).limit(1)
+        if(dupeErr) throw dupeErr
+        if(existing?.length){
+          knownHashes.add(hash);duplicateCount++
+          setResult(key,{name:selectedFile.name,status:'duplicate',message:'Already filed in this client folder'})
+          setBatchProgress({done:i+1,total:files.length})
+          continue
+        }
+
+        setResult(key,{name:selectedFile.name,status:'uploading',message:'Uploading…'})
+        const safeFileName=String(selectedFile.name||'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
+        const path=`${tenantId}/docs/${ownerKey}/${folderKey}/${hash.slice(0,16)}_${safeFileName}`
+        const {error:upErr}=await supabase.storage.from('documents').upload(path,selectedFile,{
+          upsert:false,
+          contentType:selectedFile.type||'application/octet-stream',
+        })
+        if(upErr){
+          if(/already exists|duplicate/i.test(upErr.message||'')){
+            duplicateCount++;knownHashes.add(hash)
+            setResult(key,{name:selectedFile.name,status:'duplicate',message:'Already uploaded'})
+            setBatchProgress({done:i+1,total:files.length})
+            continue
+          }
+          throw upErr
+        }
+
+        const displayName=String(selectedFile.name||'Document').replace(/\.[^.]+$/,'') || selectedFile.name
+        const {error:insertErr}=await supabase.from('documents').insert([{
+          tenant_id:tenantId,
+          name:displayName,
+          client:clientName,
+          clientname:clientName,
+          client_id:String(clientId),
+          docType:form.docType,
+          notes:form.notes,
+          file_url:`storage://documents/${path}`,
+          file_name:selectedFile.name,
+          original_file_name:selectedFile.name,
+          storage_path:path,
+          file_size:selectedFile.size,
+          file_hash:hash,
+          upload_batch_id:batchId,
+          created_at:new Date().toISOString(),
+        }])
+        if(insertErr){
+          await supabase.storage.from('documents').remove([path]).catch(()=>{})
+          if(insertErr.code==='23505'){
+            duplicateCount++;knownHashes.add(hash)
+            setResult(key,{name:selectedFile.name,status:'duplicate',message:'Duplicate prevented'})
+          }else throw insertErr
+        }else{
+          successCount++;knownHashes.add(hash)
+          setResult(key,{name:selectedFile.name,status:'success',message:`Filed in ${form.docType}`})
+        }
+      }catch(e){
+        failureCount++
+        setResult(key,{name:selectedFile.name,status:'failed',message:e?.message||'Upload failed'})
+      }
+      setBatchProgress({done:i+1,total:files.length})
+    }
+
     setSaving(false)
-    if (error) { showToast('Error: '+error.message); return }
-    showToast('✅ Document saved!')
-    const loggedName = form.name, loggedType = form.docType
-    setForm({ name:'', docType:'IRS Docs', notes:'' }); setFile(null); setUploading(false); loadDocs()
-    if (onLogged) await onLogged(`📁 Document added: "${loggedName}" (${loggedType})`)
+    await loadDocs()
+    if(successCount && onLogged) await onLogged(`📁 Uploaded ${successCount} document(s) to ${form.docType}`)
+    showToast(`Upload finished: ${successCount} saved${duplicateCount?`, ${duplicateCount} duplicate(s) skipped`:''}${failureCount?`, ${failureCount} failed`:''}`)
+    if(failureCount===0){
+      setFiles([])
+      if(fileRef.current) fileRef.current.value=''
+    }
   }
 
   async function openClientDoc(doc) {
@@ -877,32 +980,66 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       {/* Upload form */}
       {uploading && (
         <div style={{padding:'10px 14px',background:'var(--s2)',borderBottom:'1px solid var(--br)'}}>
-          <div className="fg2">
-            <div className="field"><label>Name *</label>
-              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. 2023 Tax Return"/>
-            </div>
-            <div className="field"><label>Folder</label>
-              <select value={form.docType} onChange={e=>setForm(f=>({...f,docType:e.target.value}))}>
-                {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{border:'2px dashed var(--br)',borderRadius:7,padding:'10px',textAlign:'center',cursor:'pointer',background:file?'rgba(34,197,94,.05)':'transparent',marginBottom:8}}
-            onClick={()=>fileRef.current?.click()}
-            onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--blue)'}}
-            onDragLeave={e=>e.currentTarget.style.borderColor='var(--br)'}
-            onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)setFile(f);e.currentTarget.style.borderColor='var(--br)'}}>
-            {file
-              ? <span style={{fontSize:12,color:'var(--ok)',fontWeight:600}}>{FILE_EXT_ICON(file.name)} {file.name} ({fmt(file.size)})</span>
-              : <span style={{fontSize:11,color:'var(--t3)'}}>📎 Drop file here or click to browse</span>
-            }
-            <input ref={fileRef} type="file" style={{display:'none'}} onChange={e=>setFile(e.target.files[0])}/>
-          </div>
-          <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Notes (optional)"
-            style={{width:'100%',padding:'6px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12,marginBottom:8}}/>
-          <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:7}} onClick={upload} disabled={saving}>
-            {saving?'Saving…':'💾 Save Document'}
-          </button>
+          {!canUpload ? (
+            <div style={{fontSize:12,color:'var(--bad)',fontWeight:700}}>You do not have permission to upload client documents.</div>
+          ) : (
+            <>
+              <div className="fg2">
+                <div className="field"><label>Destination Folder</label>
+                  <select value={form.docType} onChange={e=>setForm(f=>({...f,docType:e.target.value}))}>
+                    {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div className="field"><label>Notes for this batch (optional)</label>
+                  <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Applied to each uploaded document"/>
+                </div>
+              </div>
+              <div style={{border:'2px dashed var(--br)',borderRadius:7,padding:'16px 10px',textAlign:'center',cursor:'pointer',background:files.length?'rgba(34,197,94,.05)':'transparent',marginBottom:8}}
+                onClick={()=>fileRef.current?.click()}
+                onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--blue)'}}
+                onDragLeave={e=>e.currentTarget.style.borderColor='var(--br)'}
+                onDrop={e=>{e.preventDefault();chooseFiles(e.dataTransfer.files);e.currentTarget.style.borderColor='var(--br)'}}>
+                <div style={{fontSize:12,color:'var(--t2)',fontWeight:700}}>📎 Drop multiple files here or click to browse</div>
+                <div style={{fontSize:10,color:'var(--t3)',marginTop:4}}>PDF, Word, Excel, JPG/PNG/TIFF · 50 MB max each</div>
+                <input ref={fileRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tif,.tiff" style={{display:'none'}} onChange={e=>chooseFiles(e.target.files)}/>
+              </div>
+
+              {files.length>0 && (
+                <div style={{border:'1px solid var(--br)',borderRadius:7,overflow:'hidden',marginBottom:8}}>
+                  {files.map(f=>{
+                    const key=`${f.name}|${f.size}|${f.lastModified}`
+                    const result=uploadResults.find(r=>r.key===key)
+                    const statusColor=result?.status==='success'?'var(--ok)':result?.status==='failed'?'var(--bad)':result?.status==='duplicate'?'var(--warn)':'var(--t3)'
+                    return <div key={key} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 9px',borderBottom:'1px solid var(--br)',fontSize:11}}>
+                      <span>{FILE_EXT_ICON(f.name)}</span>
+                      <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={f.name}>{f.name}</span>
+                      <span style={{color:'var(--t3)',flexShrink:0}}>{fmt(f.size)}</span>
+                      {result&&<span style={{color:statusColor,fontWeight:700,flexShrink:0}}>{result.message}</span>}
+                      {!saving&&<button type="button" className="btn sec" style={{fontSize:9,padding:'2px 5px'}} onClick={()=>setFiles(prev=>prev.filter(x=>x!==f))}>Remove</button>}
+                    </div>
+                  })}
+                </div>
+              )}
+
+              {uploadResults.filter(r=>!files.some(f=>`${f.name}|${f.size}|${f.lastModified}`===r.key)).map(r=>(
+                <div key={r.key} style={{fontSize:11,color:'var(--bad)',marginBottom:4}}>{r.name}: {r.message}</div>
+              ))}
+
+              {saving&&batchProgress.total>0&&(
+                <div style={{margin:'8px 0'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--t3)',marginBottom:4}}><span>Uploading batch</span><span>{batchProgress.done}/{batchProgress.total}</span></div>
+                  <div style={{height:6,background:'var(--s3)',borderRadius:999,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.round((batchProgress.done/batchProgress.total)*100)}%`,background:'var(--blue)',transition:'width .15s'}}/></div>
+                </div>
+              )}
+
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn pri" style={{flex:1,justifyContent:'center',padding:7}} onClick={upload} disabled={saving||!files.length}>
+                  {saving?`Uploading ${batchProgress.done}/${batchProgress.total}…`:`⬆ Upload ${files.length||''} Document${files.length===1?'':'s'}`}
+                </button>
+                {!saving&&files.length>0&&<button className="btn sec" onClick={()=>{setFiles([]);setUploadResults([]);if(fileRef.current)fileRef.current.value=''}}>Clear</button>}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1026,6 +1163,11 @@ export default function Clients() {
   const [modal,     setModal]     = useState(false)
   const [editModal, setEditModal] = useState(false)
   const [form,      setForm]      = useState(BLANK)
+  const [officeOptions, setOfficeOptions] = useState([])
+  const [sensitiveInfo, setSensitiveInfo] = useState({
+    clientId:null, canReveal:false, ssnMasked:'', spouseSsnMasked:'',
+    ssnFull:'', spouseSsnFull:'', revealed:false, loading:false,
+  })
   const [saving,    setSaving]    = useState(false)
   const [toast,     setToast]     = useState('')
   const [detail,    setDetail]    = useState(null)
@@ -1134,6 +1276,85 @@ export default function Clients() {
   const [savingPay,   setSavingPay]   = useState(false)
 
   useEffect(() => {
+    if (!myTenantId) { setOfficeOptions([]); return }
+    let cancelled = false
+    supabase.from('settings')
+      .select('client_offices,name,firmname')
+      .eq('tenant_id', myTenantId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { console.error('[client offices] load failed:', error.message); setOfficeOptions(FIRM.name ? [FIRM.name] : []); return }
+        let configured = data?.client_offices
+        if (typeof configured === 'string') { try { configured = JSON.parse(configured) } catch { configured = [] } }
+        const options = Array.isArray(configured) ? configured.map(v=>String(v||'').trim()).filter(Boolean) : []
+        const fallback = String(data?.name || data?.firmname || FIRM.name || '').trim()
+        if (!options.length && fallback) options.push(fallback)
+        setOfficeOptions([...new Set(options)])
+      })
+    return () => { cancelled = true }
+  }, [myTenantId])
+
+  async function loadSensitiveCapability(clientId) {
+    if (!clientId) return
+    setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:true})
+    const { data, error } = await supabase.functions.invoke('client-sensitive', { body:{ action:'capability', client_id:String(clientId) } })
+    if (error || data?.error) {
+      setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:false})
+      return
+    }
+    setSensitiveInfo({
+      clientId,
+      canReveal:!!data?.can_reveal,
+      ssnMasked:data?.ssn_masked||'',
+      spouseSsnMasked:data?.spouse_ssn_masked||'',
+      ssnFull:'',
+      spouseSsnFull:'',
+      revealed:false,
+      loading:false,
+    })
+  }
+
+  useEffect(() => {
+    if (detail?.id) loadSensitiveCapability(detail.id)
+    else setSensitiveInfo({clientId:null,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:false})
+  }, [detail?.id])
+
+  async function readSensitive(clientId, purpose='profile_reveal') {
+    const { data, error } = await supabase.functions.invoke('client-sensitive', { body:{ action:'read', client_id:String(clientId), purpose } })
+    if (error || data?.error) throw new Error(data?.error || error?.message || 'Sensitive client access denied')
+    return data || {}
+  }
+
+  async function revealClientSsn(clientId) {
+    if (!sensitiveInfo.canReveal) return
+    if (sensitiveInfo.revealed) {
+      setSensitiveInfo(prev=>({...prev,revealed:false,ssnFull:'',spouseSsnFull:''}))
+      return
+    }
+    setSensitiveInfo(prev=>({...prev,loading:true}))
+    try {
+      const data=await readSensitive(clientId,'profile_reveal')
+      setSensitiveInfo(prev=>({...prev,loading:false,revealed:true,ssnFull:data.ssn||'',spouseSsnFull:data.spouse_ssn||''}))
+    } catch (e) {
+      setSensitiveInfo(prev=>({...prev,loading:false,revealed:false,ssnFull:'',spouseSsnFull:''}))
+      showToast(e?.message || 'Full SSN access denied')
+    }
+  }
+
+  async function copyClientSsn(clientId) {
+    if (!sensitiveInfo.canReveal) return
+    try {
+      const data=await readSensitive(clientId,'profile_copy')
+      if (!data.ssn) { showToast('No SSN on file'); return }
+      await navigator.clipboard.writeText(data.ssn)
+      showToast('SSN copied')
+    } catch (e) {
+      showToast(e?.message || 'Full SSN access denied')
+    }
+  }
+
+  useEffect(() => {
     // Guard: don't load until auth session confirmed so current_tenant_id()
     // is established before the first query — prevents wrong-tenant data on hard refresh.
     if (!user || !myTenantId) { setClients([]); return }
@@ -1230,7 +1451,7 @@ export default function Clients() {
     if (!myTenantId) { setClients([]); setEmployees([]); return }
     const [{ data:cl },{ data:em },{ data:cats },{ data:sts }] = await Promise.all([
       supabase.from('clients')
-        .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+        .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
         .eq('tenant_id', myTenantId)
         .or('archived.eq.true,deleted_at.is.null')
         .order('name',{ascending:true}),
@@ -1361,8 +1582,7 @@ export default function Clients() {
         (c.city||'').toLowerCase().includes(q) ||
         (c.business_name||'').toLowerCase().includes(q) ||
         (c.spouseName||'').toLowerCase().includes(q) ||
-        (c.tags||'').toLowerCase().includes(q) ||
-        (c.ssn||'').replace(/-/g,'').includes(q.replace(/-/g,''))
+        (c.tags||'').toLowerCase().includes(q)
       ))
   }, [clients, clientSearch, showArchived, filter, filterStatus, filterRep, filterPipeline])
 
@@ -1398,7 +1618,7 @@ export default function Clients() {
     // Persist the canonical mixed-case pipelineStage column. The edit form exposes
     // this field, so excluding it made the dropdown appear to save while silently
     // leaving the previous stage in the database.
-    const safe = { ...rest, pipelineStage: pipelineStage || DEFAULT_PIPELINE_STAGE, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
+    const safe = { ...rest, office_label: rest.office_label || officeOptions[0] || FIRM.name || null, pipelineStage: pipelineStage || DEFAULT_PIPELINE_STAGE, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
     // Empty-string values blow up non-text columns (date, numeric) with
     // "invalid input syntax" — Postgres wants null for "no value", not ''.
     Object.keys(safe).forEach(k => { if (safe[k] === '') safe[k] = null })
@@ -1420,7 +1640,7 @@ export default function Clients() {
     setModal(false); setForm(BLANK)
     // Reload then navigate straight into the new client's detail
     const { data: allClients } = await supabase.from('clients')
-      .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+      .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
       .eq('tenant_id', myTenantId)
       .or('archived.eq.true,deleted_at.is.null')
       .order('name', { ascending: true })
@@ -2000,7 +2220,7 @@ export default function Clients() {
     const filingReqs=parseDependents(c.filingRequirements)
     let dobM='',dobD='',dobY=''
     if (c.dob){const p=c.dob.split('/');if(p.length===3){dobM=p[0];dobD=p[1];dobY=p[2]}}
-    setForm({...BLANK,...c,dobM,dobD,dobY,dependents:deps,filingRequirements:filingReqs})
+    setForm({...BLANK,...c,office_label:c.office_label||officeOptions[0]||FIRM.name||'',dobM,dobD,dobY,dependents:deps,filingRequirements:filingReqs,ssn:'',spouseSsn:''})
     setEditModal(true)
   }
 
@@ -2029,6 +2249,28 @@ export default function Clients() {
     const si=stageIdx(c)
     // Palette for the flow chips (PIPELINE_STAGES have no colors of their own).
     const STAGE_PALETTE=['#6366f1','#8b5cf6','#3b82f6','#0ea5e9','#06b6d4','#14b8a6','#10b981','#84cc16','#f59e0b','#f97316','#ef4444','#ec4899','#64748b']
+    const copyContactInfo=async()=>{
+      const personal=[c.street,[c.city,c.state].filter(Boolean).join(', '),c.zip].filter(Boolean).join(', ')
+      const business=[c.biz_street,[c.biz_city,c.biz_state].filter(Boolean).join(', '),c.biz_zip].filter(Boolean).join(', ')
+      const lines=[
+        c.name && `Client: ${c.name}`,
+        c.phone && `Phone: ${c.phone}`,
+        c.phone2 && `Phone 2: ${c.phone2}`,
+        c.email && `Email: ${c.email}`,
+        personal && `Personal Address: ${personal}`,
+        business && `Business Address: ${business}`,
+      ].filter(Boolean)
+      await navigator.clipboard.writeText(lines.join('\n'))
+      showToast('Contact info copied')
+    }
+    const applyOfficeLabel=async(value)=>{
+      const next=String(value||'').trim()
+      const {error}=await supabase.from('clients').update({office_label:next||null}).eq('tenant_id',myTenantId).eq('id',c.id)
+      if(error){showToast('Error updating office: '+error.message);return}
+      setDetail(prev=>prev&&prev.id===c.id?{...prev,office_label:next||null}:prev)
+      setClients(prev=>prev.map(row=>row.id===c.id?{...row,office_label:next||null}:row))
+      await logAndRefreshNote(`🏢 Office label changed to: ${next||'Unassigned'}`)
+    }
     // Toggle a parallel service/action on/off (clients.services text[]).
     // Log a client_note and refresh the notes panel — same pattern as
     // applyPipelineStage, so Active Services and IRS/State status changes show
@@ -2941,7 +3183,18 @@ export default function Clients() {
 
             {/* Contact Info */}
             <div className="card">
-              <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)',marginBottom:10}}>Contact Info</div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:10}}>
+                <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)'}}>Contact Info</div>
+                <button className="btn sec" style={{fontSize:10,padding:'4px 8px'}} onClick={copyContactInfo}>Copy Contact Info</button>
+              </div>
+              <div style={{display:'flex',borderBottom:'1px solid var(--br)',padding:'7px 0',gap:12}}>
+                <div style={{minWidth:130,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)',paddingTop:5}}>Office</div>
+                <select value={c.office_label||officeOptions[0]||''} onChange={e=>applyOfficeLabel(e.target.value)}
+                  style={{flex:1,maxWidth:260,background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',padding:'5px 8px',fontSize:12}}>
+                  <option value="">Unassigned</option>
+                  {officeOptions.map(o=><option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
               <DR label="Phone"   val={c.phone} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name) }}/>
               <DR label="Phone 2" val={c.phone2} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name) }}/>
               <DR label="Email"   val={c.email ? <span style={{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}} title="Send email" onClick={()=>setQuickEmail({ name:c.name, email:c.email })}>{c.email} ✉️</span> : null}/>
@@ -2970,13 +3223,22 @@ export default function Clients() {
             {/* Taxpayer Info (+ Dependents, merged into one card) */}
             <div className="card">
               <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)',marginBottom:10}}>🔒 Taxpayer Info</div>
-              <DR label="SSN"           val={c.ssn?'***-**-'+c.ssn.replace(/-/g,'').slice(-4):null}/>
+              <div style={{display:'flex',borderBottom:'1px solid var(--br)',padding:'7px 0',gap:12,alignItems:'center'}}>
+                <div style={{minWidth:130,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)'}}>SSN</div>
+                <div style={{flex:1,fontSize:13,color:'var(--tx)',fontFamily:'monospace'}}>
+                  {sensitiveInfo.loading ? 'Loading…' : (sensitiveInfo.revealed ? (sensitiveInfo.ssnFull||'—') : (sensitiveInfo.ssnMasked||'—'))}
+                </div>
+                {sensitiveInfo.canReveal&&<>
+                  <button className="btn sec" style={{fontSize:9,padding:'3px 7px'}} onClick={()=>revealClientSsn(c.id)}>{sensitiveInfo.revealed?'Hide':'Show'}</button>
+                  <button className="btn sec" style={{fontSize:9,padding:'3px 7px'}} onClick={()=>copyClientSsn(c.id)}>Copy SSN</button>
+                </>}
+              </div>
               <DR label="EIN"           val={c.ein}/>
               <DR label="Date of Birth" val={c.dob}/>
               <DR label="Filing Status" val={c.filingStatus}/>
               <DR label="Spouse Name"   val={c.spouseName}/>
               <DR label="Spouse DOB"    val={c.spouseDob}/>
-              <DR label="Spouse SSN"    val={c.spouseSsn?'***-**-'+c.spouseSsn.replace(/-/g,'').slice(-4):null}/>
+              <DR label="Spouse SSN"    val={sensitiveInfo.revealed&&sensitiveInfo.canReveal?sensitiveInfo.spouseSsnFull:sensitiveInfo.spouseSsnMasked}/>
 
               {deps.length>0&&(
                 <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--br)'}}>
@@ -3096,7 +3358,7 @@ export default function Clients() {
         </div>
         )}
 
-        {editModal&&<ClientFormModal form={form} fld={fld} reps={reps} saving={saving} onSave={saveEdit} onClose={()=>setEditModal(false)} title="Edit Client"/>}
+        {editModal&&<ClientFormModal form={form} fld={fld} reps={reps} officeOptions={officeOptions} saving={saving} onSave={saveEdit} onClose={()=>setEditModal(false)} title="Edit Client"/>}
 
         {fillerClient && (
           <ErrorBoundary onClose={()=>setFillerClient(null)}>
@@ -3717,7 +3979,7 @@ export default function Clients() {
         </div>
       </div>
 
-      {modal&&<ClientFormModal form={form} fld={fld} reps={reps} saving={saving} onSave={save} onClose={()=>setModal(false)} title="Add Client"/>}
+      {modal&&<ClientFormModal form={form} fld={fld} reps={reps} officeOptions={officeOptions} saving={saving} onSave={save} onClose={()=>setModal(false)} title="Add Client"/>}
 
       {/* ✅ Fixed: DeleteConfirmModal must live HERE in the parent component, not inside ClientFormModal */}
       <DeleteConfirmModal
@@ -3731,7 +3993,7 @@ export default function Clients() {
 }
 
 // ── Form Modal ────────────────────────────────────────────────────────────────
-function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
+function ClientFormModal({form,fld,reps,officeOptions=[],saving,onSave,onClose,title}) {
   // Keep all input-format/state helpers inside the modal's lexical scope.
   // This component lives outside Clients(), so calling helpers declared inside
   // Clients() throws at input time and makes controlled fields appear read-only.
@@ -3803,6 +4065,12 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
           <div className="field"><label>Full Name *</label>
             <input value={form.name} onChange={e=>fld('name',e.target.value)} placeholder="First Last"/>
           </div>
+        </div>
+        <div className="field"><label>Office</label>
+          <select value={form.office_label||''} onChange={e=>fld('office_label',e.target.value)}>
+            <option value="">Unassigned</option>
+            {officeOptions.map(o=><option key={o} value={o}>{o}</option>)}
+          </select>
         </div>
         {form.clientType !== 'Individual' && (
           <div className="fg2">

@@ -30,7 +30,13 @@ const checks=[
   ['E-Signature quick action creates a tokenized signer link',clients.includes('label="E-Signature"')&&clients.includes("'/sign/'+data.id+'?token='")&&clients.includes('data.signer_token')],
   ['E-Signature quick action delivers by email text or both',clients.includes("Signing request sent via")&&clients.includes("functions.invoke('send-email'")&&clients.includes("functions.invoke('send-sms'")],
   ['Rewrite quick action is wired to a replacement token-secured agreement',clients.includes('label="Rewrite"')&&clients.includes('saveRewritePlan')&&clients.includes('sendAddendumForSignature(detail, plan')],
-  ['quick actions do not trigger automatic clipboard permission prompts',!clients.includes('navigator.clipboard.writeText(')],
+  ['clipboard writes are limited to explicit Copy Contact Info / Copy SSN actions',
+    (clients.match(/navigator\.clipboard\.writeText\(/g)||[]).length===2
+    && clients.includes('async function copyClientSsn(clientId)')
+    && clients.includes("await navigator.clipboard.writeText(data.ssn)")
+    && clients.includes('const copyContactInfo=async()=>')
+    && clients.includes("await navigator.clipboard.writeText(lines.join('\\n'))")
+  ],
   ['quick-action dependencies avoid native browser dialogs',!bookingWidget.includes('alert(')&&!bookingWidget.includes('confirm(')&&!bookingWidget.includes('prompt(')&&!clients.includes('alert(')&&!clients.includes('confirm(')&&!clients.includes('prompt(')],
   ['IRS pre-fill quick action is wired',clients.includes('label="Pre-Fill 8821/2848"')&&clients.includes('setFillerClient')],
   ['IRS form signing uses tokenized links and retained storage paths',irsFormFiller.includes('/sign/')&&irsFormFiller.includes('signer_token')&&irsFormFiller.includes('storage_path: path')],

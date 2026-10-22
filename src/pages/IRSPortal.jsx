@@ -49,7 +49,7 @@ export default function IRSPortal() {
     return matches.length === 1 ? matches[0] : null
   }
   useEffect(() => {
-    supabase.from('clients').select('id,name,ssn,dob,taxYears').order('name')
+    supabase.from('clients').select('id,name,dob,taxYears').order('name')
       .then(({ data }) => setClients((data || []).filter(c => c?.id && c?.name)))
   }, [])
 

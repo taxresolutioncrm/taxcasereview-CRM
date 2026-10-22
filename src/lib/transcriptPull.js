@@ -185,7 +185,7 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
 
   const safeFile = String(file.name || 'transcript.pdf').replace(/[\\/\r\n]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 140) || 'transcript.pdf'
   const uploadedHere = !existing?.filePath
-  const filePath = existing?.filePath || `transcripts/${clientId}/${crypto.randomUUID()}-${safeFile}`
+  const filePath = existing?.filePath || `${tenantId}/transcripts/${clientId}/${crypto.randomUUID()}-${safeFile}`
   if (uploadedHere) {
     const { error: uploadErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
     if (uploadErr) throw new Error(`Transcript PDF upload failed: ${uploadErr.message}`)
@@ -532,9 +532,11 @@ export function browserMatchProblem(req, clientTinLast4, parsed) {
 
 async function clientTinLast4(clientId) {
   if (!clientId) return null
-  const { data } = await supabase.from('clients').select('ssn,ein').eq('id', clientId).maybeSingle()
-  const digits = String(data?.ein || data?.ssn || '').replace(/\D/g, '')
-  return digits.length >= 4 ? digits.slice(-4) : null
+  const { data, error } = await supabase.functions.invoke('client-sensitive', {
+    body: { action: 'tin_last4', client_id: String(clientId) },
+  })
+  if (error || data?.error) throw new Error(data?.error || error?.message || 'Client TIN match permission denied.')
+  return data?.tin_last4 || null
 }
 
 // One filing at a time per browser tab, so a folder scan and a drop can never file the same PDF twice.
@@ -626,19 +628,15 @@ export async function findFiledTranscriptBySha(key) {
   return data?.[0] || null
 }
 
-// The clients in this office whose SSN/EIN ends in these 4 digits.
+// The client ids in this office whose SSN/EIN ends in these 4 digits.
+// The sensitive endpoint performs the scan server-side; no SSN values are returned to the browser.
 async function clientsWithTinLast4(last4) {
   if (!/^\d{4}$/.test(String(last4 || ''))) return new Set()
-  const ids = new Set()
-  for (const col of ['ssn', 'ein']) {
-    const { data, error } = await supabase.from('clients').select(`id,${col}`).ilike(col, `%${last4}`).limit(10)
-    if (error) throw new Error(`Client match check failed: ${error.message}`)
-    for (const row of data || []) {
-      const digits = String(row[col] || '').replace(/\D/g, '')
-      if (digits.length >= 4 && digits.slice(-4) === last4) ids.add(row.id)
-    }
-  }
-  return ids
+  const { data, error } = await supabase.functions.invoke('client-sensitive', {
+    body: { action: 'tin_candidates', last4: String(last4) },
+  })
+  if (error || data?.error) throw new Error(data?.error || error?.message || 'Client match check failed.')
+  return new Set((data?.client_ids || []).map(String))
 }
 
 // Pick the one open browser request a returned PDF belongs to. Fails closed — returns null (→ "Needs a client")

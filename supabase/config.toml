@@ -264,3 +264,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.ai-government-call-cancel]
 verify_jwt = true
+
+[functions.client-sensitive]
+verify_jwt = true

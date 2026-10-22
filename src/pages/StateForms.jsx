@@ -3,6 +3,7 @@ import { useFirm } from '../lib/useFirm'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
+import { loadIrsSensitiveClient } from '../lib/clientSensitive'
 import { FIRM } from '../lib/firmBranding'
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
@@ -96,7 +97,7 @@ export default function StateForms() {
   useEffect(() => {
     if (!user) return
     supabase.from('state_form_tracker').select('*').order('created_at',{ascending:false}).then(({data})=>setStateItems(data||[]))
-    supabase.from('clients').select('id,name,ssn,ein,street,city,state,zip,dob,phone,email,spouseName,spouseSsn,filingStatus')
+    supabase.from('clients').select('id,name,ein,street,city,state,zip,dob,phone,email,spouseName,filingStatus')
       .then(({ data }) => setClients(data || []))
     supabase.from('leads').select('id,name,ssn,ein,street,city,state,zip,dob,phone,email')
       .then(({ data }) => setLeads(data || []))
@@ -139,7 +140,8 @@ export default function StateForms() {
       if (!pdfRes.ok) throw new Error('Could not load state form PDF')
       const rawBytes = new Uint8Array(await pdfRes.arrayBuffer())
       const { generateStatePOAWithCover } = await import('../lib/irsFormUtils')
-      const mergedBytes = await generateStatePOAWithCover(selectedClient, rawBytes)
+      const secureClient = await loadIrsSensitiveClient(selectedClient)
+      const mergedBytes = await generateStatePOAWithCover(secureClient, rawBytes)
       const blob = new Blob([mergedBytes], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -170,7 +172,7 @@ export default function StateForms() {
       if (!pdfRes.ok) throw new Error('Could not load state form PDF')
       const rawBytes = new Uint8Array(await pdfRes.arrayBuffer())
       const { generateStatePOAWithCover } = await import('../lib/irsFormUtils')
-      const mergedBytes = await generateStatePOAWithCover(selectedClient, rawBytes)
+      const mergedBytes = await generateStatePOAWithCover(await loadIrsSensitiveClient(selectedClient), rawBytes)
       const pdfBlob = new Blob([mergedBytes], { type: 'application/pdf' })
 
       // Upload to Supabase storage
