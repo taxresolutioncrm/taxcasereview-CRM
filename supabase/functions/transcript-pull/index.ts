@@ -164,7 +164,7 @@ async function resolveContext(service: any, pull: any, employee: any) {
   if (requestedYears.size > 0) { const authorizedYears = parseYears(poa.tax_years); if (authorizedYears.size === 0 || [...requestedYears].some(y => !authorizedYears.has(y))) throw new Error('The recorded POA/TIA does not cover every requested tax year.') }
 
   const stableClientId = String(pull.client_id || poa.client_id || '').trim()
-  let clientQuery = service.from('clients').select('id,name,ssn,ein').eq('tenant_id', tenantId)
+  let clientQuery = service.from('clients').select('id,name,ein').eq('tenant_id', tenantId)
   clientQuery = stableClientId ? clientQuery.eq('id', stableClientId) : clientQuery.eq('name', pull.client_name)
   const { data: clients, error: clientErr } = await clientQuery.limit(2)
   if (clientErr) throw new Error(clientErr.message)
@@ -175,7 +175,14 @@ async function resolveContext(service: any, pull: any, employee: any) {
   }
   const client = clients[0]
   if (poa.client_id && String(poa.client_id) !== String(client.id)) throw new Error('The POA client does not match the transcript request client.')
-  const tin = String(client.ein || client.ssn || '').replace(/\D/g, '')
+  let protectedSsn = ''
+  if (!client.ein) {
+    const { data: sensitive, error: sensitiveErr } = await service.from('client_sensitive_fields')
+      .select('ssn').eq('tenant_id', tenantId).eq('client_id', String(client.id)).maybeSingle()
+    if (sensitiveErr) throw new Error(sensitiveErr.message)
+    protectedSsn = String(sensitive?.ssn || '')
+  }
+  const tin = String(client.ein || protectedSsn).replace(/\D/g, '')
   if (!tin) throw new Error('Client SSN/EIN is required for direct TDS.')
   let caf = String(employee?.caf_number || employee?.caf || '').trim()
   if (!caf) {
