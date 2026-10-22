@@ -33,7 +33,7 @@ create table if not exists public.client_sensitive_fields (
 );
 
 alter table public.client_sensitive_fields enable row level security;
-revoke all on public.client_sensitive_fields from anon, authenticated;
+revoke all on public.client_sensitive_fields from public, anon, authenticated;
 
 -- Existing client writes may still include ssn/spouseSsn. Capture them into the
 -- private table and erase them from the normal clients row before it is stored,
