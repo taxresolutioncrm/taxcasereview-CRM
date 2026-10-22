@@ -338,7 +338,7 @@ export default function Esign() {
 
       {viewCert && <div className="modal-bg" onMouseDown={e=>{if(e.target===e.currentTarget)setViewCert(null)}}><div className="modal" style={{maxWidth:620}}><div className="modal-head"><span>Certificate of Completion</span><button className="x" onClick={()=>setViewCert(null)}>×</button></div><div className="modal-body"><div style={{border:'1px solid var(--br)',borderRadius:8,padding:22,fontSize:12,lineHeight:2}}><div style={{fontSize:16,fontWeight:800,marginBottom:12}}>CERTIFICATE OF COMPLETION</div><div>Document: <strong>{viewCert.doc_type}</strong></div><div>Client: <strong>{viewCert.client_name}</strong></div><div>Signed By: <strong>{viewCert.signer_full_name||viewCert.signed_name||'—'}</strong></div><div>Date: <strong>{viewCert.signed_at?new Date(viewCert.signed_at).toLocaleString():'—'}</strong></div><div>IP: <strong>{viewCert.signer_ip||'—'}</strong></div><div style={{marginTop:12,color:'var(--t3)'}}>This certificate is generated from the immutable signature audit record maintained by TaxRes CRM.</div></div></div></div></div>}
 
-      {confirmDel && <DeleteConfirmModal itemName={confirmDel.client_name || 'this signing request'} onConfirm={()=>del(confirmDel.id)} onCancel={()=>setConfirmDel(null)} />}
+      {confirmDel && <DeleteConfirmModal open={!!confirmDel} label={confirmDel.client_name ? `e-signature request for ${confirmDel.client_name}` : 'e-signature request'} onConfirm={()=>del(confirmDel.id)} onCancel={()=>setConfirmDel(null)} />}
     </div>
   )
 }
