@@ -117,3 +117,151 @@ drop trigger if exists delete_client_sensitive_fields_trg on public.clients;
 create trigger delete_client_sensitive_fields_trg
 after delete on public.clients
 for each row execute function public.delete_client_sensitive_fields();
+
+
+-- Documents table permissions: tenant + employee document permission.
+alter table public.documents enable row level security;
+drop policy if exists tenant_isolation on public.documents;
+drop policy if exists tenant_scoped_staff_only on public.documents;
+drop policy if exists documents_select_perm on public.documents;
+drop policy if exists documents_insert_perm on public.documents;
+drop policy if exists documents_update_perm on public.documents;
+drop policy if exists documents_delete_perm on public.documents;
+
+create policy documents_select_perm on public.documents
+for select to authenticated
+using (
+  tenant_id = public.current_tenant_id()
+  and public.current_employee_permission('perm_documents') >= 1
+);
+
+create policy documents_insert_perm on public.documents
+for insert to authenticated
+with check (
+  tenant_id = public.current_tenant_id()
+  and public.current_employee_permission('perm_documents') >= 2
+);
+
+create policy documents_update_perm on public.documents
+for update to authenticated
+using (
+  tenant_id = public.current_tenant_id()
+  and public.current_employee_permission('perm_documents') >= 2
+)
+with check (
+  tenant_id = public.current_tenant_id()
+  and public.current_employee_permission('perm_documents') >= 2
+);
+
+create policy documents_delete_perm on public.documents
+for delete to authenticated
+using (
+  tenant_id = public.current_tenant_id()
+  and public.current_employee_permission('perm_documents') >= 3
+);
+
+-- Legacy Storage objects can predate tenant-prefixed paths. Keep a service-only
+-- ownership map so existing documents remain readable without weakening new uploads.
+create table if not exists public.storage_object_tenants (
+  bucket_id text not null,
+  object_name text not null,
+  tenant_id uuid not null references public.tenants(id) on delete restrict,
+  source text not null default 'legacy_owner',
+  created_at timestamptz not null default now(),
+  primary key (bucket_id, object_name)
+);
+
+alter table public.storage_object_tenants enable row level security;
+revoke all on public.storage_object_tenants from public, anon, authenticated;
+grant all on public.storage_object_tenants to service_role;
+
+insert into public.storage_object_tenants(bucket_id, object_name, tenant_id, source)
+select so.bucket_id, so.name, e.tenant_id, 'legacy_owner'
+from storage.objects so
+join auth.users u on u.id::text = so.owner_id
+join public.employees e on lower(e.email) = lower(u.email)
+where so.bucket_id = 'documents'
+  and e.tenant_id is not null
+on conflict (bucket_id, object_name)
+do update set tenant_id = excluded.tenant_id, source = excluded.source;
+
+create or replace function public.storage_object_belongs_to_current_tenant(p_bucket text, p_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select exists (
+    select 1
+    from public.storage_object_tenants m
+    where m.bucket_id = p_bucket
+      and m.object_name = p_name
+      and m.tenant_id = public.current_tenant_id()
+  );
+$$;
+
+revoke all on function public.storage_object_belongs_to_current_tenant(text,text) from public, anon;
+grant execute on function public.storage_object_belongs_to_current_tenant(text,text) to authenticated, service_role;
+
+-- Remove historical broad document-bucket policies and any prior versions of
+-- the strict policies before recreating the final permission-aware rules.
+drop policy if exists "documents bucket - allow all" on storage.objects;
+drop policy if exists "documents bucket - allow all writes" on storage.objects;
+drop policy if exists documents_authenticated_select on storage.objects;
+drop policy if exists documents_authenticated_insert on storage.objects;
+drop policy if exists documents_authenticated_update on storage.objects;
+drop policy if exists documents_authenticated_delete on storage.objects;
+drop policy if exists documents_tenant_select on storage.objects;
+drop policy if exists documents_tenant_insert on storage.objects;
+drop policy if exists documents_tenant_update on storage.objects;
+drop policy if exists documents_tenant_delete on storage.objects;
+
+create policy documents_tenant_select on storage.objects
+for select to authenticated
+using (
+  bucket_id = 'documents'
+  and public.current_employee_permission('perm_documents') >= 1
+  and (
+    split_part(name,'/',1) = public.current_tenant_id()::text
+    or public.storage_object_belongs_to_current_tenant(bucket_id,name)
+  )
+);
+
+create policy documents_tenant_insert on storage.objects
+for insert to authenticated
+with check (
+  bucket_id = 'documents'
+  and public.current_employee_permission('perm_documents') >= 2
+  and split_part(name,'/',1) = public.current_tenant_id()::text
+);
+
+create policy documents_tenant_update on storage.objects
+for update to authenticated
+using (
+  bucket_id = 'documents'
+  and public.current_employee_permission('perm_documents') >= 2
+  and (
+    split_part(name,'/',1) = public.current_tenant_id()::text
+    or public.storage_object_belongs_to_current_tenant(bucket_id,name)
+  )
+)
+with check (
+  bucket_id = 'documents'
+  and public.current_employee_permission('perm_documents') >= 2
+  and (
+    split_part(name,'/',1) = public.current_tenant_id()::text
+    or public.storage_object_belongs_to_current_tenant(bucket_id,name)
+  )
+);
+
+create policy documents_tenant_delete on storage.objects
+for delete to authenticated
+using (
+  bucket_id = 'documents'
+  and public.current_employee_permission('perm_documents') >= 3
+  and (
+    split_part(name,'/',1) = public.current_tenant_id()::text
+    or public.storage_object_belongs_to_current_tenant(bucket_id,name)
+  )
+);
