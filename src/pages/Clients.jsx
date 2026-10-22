@@ -57,7 +57,7 @@ const BLANK = {
   filingRequirements:[],
   irsStatus:'', irsStatusOther:'', irsDeadline:'',
   stateStatus:'', stateStatusOther:'', stateDeadline:'',
-  clientSince:'', status:'Active', notes:'', assignedTo:'',
+  clientSince:'', status:'Active', notes:'', assignedTo:'', office_label:'',
   pipelineStage:DEFAULT_PIPELINE_STAGE, dependents:[],
   autopay_enabled:false, autopay_amount:'', autopay_frequency:'monthly', autopay_next_charge:'',
 }
@@ -765,14 +765,18 @@ const FILE_EXT_ICON = n => { const e=(n||'').split('.').pop().toLowerCase(); ret
 const fmt = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB'
 
 export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast, onLogged }) {
+  const { can } = useApp()
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
   const [uploading,  setUploading]  = useState(false)
-  const [form,       setForm]       = useState({ name:'', docType:'IRS Docs', notes:'' })
-  const [file,       setFile]       = useState(null)
+  const [form,       setForm]       = useState({ docType:'IRS Docs', notes:'' })
+  const [files,      setFiles]      = useState([])
   const [saving,     setSaving]     = useState(false)
+  const [uploadResults,setUploadResults] = useState([])
+  const [batchProgress,setBatchProgress] = useState({ done:0, total:0 })
   const [preview,    setPreview]    = useState(null)
   const fileRef = useRef(null)
+  const canUpload = can('edit','documents')
 
   useEffect(() => { loadDocs() }, [clientId, clientName, tenantId])
 
@@ -784,38 +788,137 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     setDocs(data || [])
   }
 
-  async function upload() {
-    if (!form.name.trim()) { showToast('Document name required'); return }
-    setSaving(true)
-    let fileUrl = null, fileName = null, fileSize = null, storagePath = null
-    if (file) {
-      const folderKey = String(form.docType || 'Documents').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const ownerKey = clientId ? String(clientId) : clientName.replace(/\s+/g,'-')
-      if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
-      const safeFileName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
-      const path = `${tenantId}/docs/${ownerKey}/${folderKey}/${Date.now()}_${safeFileName}`
-      storagePath = path
-      const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
-      if (upErr) { showToast('Upload error: '+upErr.message); setSaving(false); return }
-      const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
-      fileUrl = urlData?.signedUrl || null; fileName = file.name; fileSize = file.size
+  function chooseFiles(fileList) {
+    const incoming=[...(fileList||[])]
+    const valid=[]
+    const failures=[]
+    const allowed=/\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png|tif|tiff)$/i
+    for(const f of incoming){
+      if(!allowed.test(f.name||'')){failures.push({key:`${f.name}-${f.size}`,name:f.name,status:'failed',message:'Unsupported file type'});continue}
+      if(Number(f.size||0)>50*1024*1024){failures.push({key:`${f.name}-${f.size}`,name:f.name,status:'failed',message:'File exceeds 50 MB'});continue}
+      valid.push(f)
     }
-    if (!tenantId) { showToast('Could not resolve this office'); setSaving(false); return }
-    const { error } = await supabase.from('documents').insert([{
-      tenant_id: tenantId,
-      name: form.name, client: clientName, clientname: clientName,
-      client_id: clientId ? String(clientId) : null,
-      docType: form.docType,
-      notes: form.notes, file_url: fileUrl, file_name: fileName,
-      storage_path: storagePath,
-      file_size: fileSize, created_at: new Date().toISOString()
-    }])
+    setFiles(prev=>{
+      const seen=new Set(prev.map(f=>`${f.name}|\${f.size}|\${f.lastModified}`))
+      return [...prev,...valid.filter(f=>{const k=`${f.name}|\${f.size}|\${f.lastModified}`;if(seen.has(k))return false;seen.add(k);return true})]
+    })
+    if(failures.length) setUploadResults(prev=>[...prev,...failures])
+  }
+
+  async function sha256(file) {
+    const buf=await file.arrayBuffer()
+    const digest=await crypto.subtle.digest('SHA-256',buf)
+    return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('')
+  }
+
+  function setResult(key,patch){
+    setUploadResults(prev=>{
+      const idx=prev.findIndex(r=>r.key===key)
+      if(idx<0)return [...prev,{key,...patch}]
+      const next=[...prev];next[idx]={...next[idx],...patch};return next
+    })
+  }
+
+  async function upload() {
+    if (!canUpload) { showToast('You do not have permission to upload client documents.'); return }
+    if (!tenantId || !clientId) { showToast('Could not resolve this client and office.'); return }
+    if (!files.length) { showToast('Choose one or more documents first.'); return }
+    setSaving(true)
+    setUploadResults([])
+    setBatchProgress({done:0,total:files.length})
+    const batchId=crypto.randomUUID?.() || `batch-${Date.now()}`
+    const folderKey=String(form.docType||'Other').replace(/[^a-zA-Z0-9._-]+/g,'-')
+    const ownerKey=String(clientId)
+    const knownHashes=new Set(
+      docs.filter(d=>String(d.client_id||'')===String(clientId) && (d.docType||'Other')===form.docType && d.file_hash)
+        .map(d=>String(d.file_hash))
+    )
+    let successCount=0, duplicateCount=0, failureCount=0
+
+    for(let i=0;i<files.length;i++){
+      const selectedFile=files[i]
+      const key=`${selectedFile.name}|\${selectedFile.size}|\${selectedFile.lastModified}`
+      setResult(key,{name:selectedFile.name,status:'hashing',message:'Checking for duplicates…'})
+      try{
+        const hash=await sha256(selectedFile)
+        if(knownHashes.has(hash)){
+          duplicateCount++
+          setResult(key,{name:selectedFile.name,status:'duplicate',message:'Already filed in this client folder'})
+          setBatchProgress({done:i+1,total:files.length})
+          continue
+        }
+
+        const {data:existing,error:dupeErr}=await supabase.from('documents')
+          .select('id').eq('tenant_id',tenantId).eq('client_id',String(clientId))
+          .eq('docType',form.docType).eq('file_hash',hash).limit(1)
+        if(dupeErr) throw dupeErr
+        if(existing?.length){
+          knownHashes.add(hash);duplicateCount++
+          setResult(key,{name:selectedFile.name,status:'duplicate',message:'Already filed in this client folder'})
+          setBatchProgress({done:i+1,total:files.length})
+          continue
+        }
+
+        setResult(key,{name:selectedFile.name,status:'uploading',message:'Uploading…'})
+        const safeFileName=String(selectedFile.name||'document').replace(/[^a-zA-Z0-9._-]+/g,'-')
+        const path=`${tenantId}/docs/${ownerKey}/${folderKey}/${hash.slice(0,16)}_${safeFileName}`
+        const {error:upErr}=await supabase.storage.from('documents').upload(path,selectedFile,{
+          upsert:false,
+          contentType:selectedFile.type||'application/octet-stream',
+        })
+        if(upErr){
+          if(/already exists|duplicate/i.test(upErr.message||'')){
+            duplicateCount++;knownHashes.add(hash)
+            setResult(key,{name:selectedFile.name,status:'duplicate',message:'Already uploaded'})
+            setBatchProgress({done:i+1,total:files.length})
+            continue
+          }
+          throw upErr
+        }
+
+        const displayName=String(selectedFile.name||'Document').replace(/\.[^.]+$/,'') || selectedFile.name
+        const {error:insertErr}=await supabase.from('documents').insert([{
+          tenant_id:tenantId,
+          name:displayName,
+          client:clientName,
+          clientname:clientName,
+          client_id:String(clientId),
+          docType:form.docType,
+          notes:form.notes,
+          file_url:`storage://documents/${path}`,
+          file_name:selectedFile.name,
+          original_file_name:selectedFile.name,
+          storage_path:path,
+          file_size:selectedFile.size,
+          file_hash:hash,
+          upload_batch_id:batchId,
+          created_at:new Date().toISOString(),
+        }])
+        if(insertErr){
+          await supabase.storage.from('documents').remove([path]).catch(()=>{})
+          if(insertErr.code==='23505'){
+            duplicateCount++;knownHashes.add(hash)
+            setResult(key,{name:selectedFile.name,status:'duplicate',message:'Duplicate prevented'})
+          }else throw insertErr
+        }else{
+          successCount++;knownHashes.add(hash)
+          setResult(key,{name:selectedFile.name,status:'success',message:`Filed in ${form.docType}`})
+        }
+      }catch(e){
+        failureCount++
+        setResult(key,{name:selectedFile.name,status:'failed',message:e?.message||'Upload failed'})
+      }
+      setBatchProgress({done:i+1,total:files.length})
+    }
+
     setSaving(false)
-    if (error) { showToast('Error: '+error.message); return }
-    showToast('✅ Document saved!')
-    const loggedName = form.name, loggedType = form.docType
-    setForm({ name:'', docType:'IRS Docs', notes:'' }); setFile(null); setUploading(false); loadDocs()
-    if (onLogged) await onLogged(`📁 Document added: "${loggedName}" (${loggedType})`)
+    await loadDocs()
+    if(successCount && onLogged) await onLogged(`📁 Uploaded ${successCount} document(s) to ${form.docType}`)
+    showToast(`Upload finished: ${successCount} saved${duplicateCount?`, ${duplicateCount} duplicate(s) skipped`:''}${failureCount?`, ${failureCount} failed`:''}`)
+    if(failureCount===0){
+      setFiles([])
+      if(fileRef.current) fileRef.current.value=''
+    }
   }
 
   async function openClientDoc(doc) {
@@ -877,32 +980,66 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       {/* Upload form */}
       {uploading && (
         <div style={{padding:'10px 14px',background:'var(--s2)',borderBottom:'1px solid var(--br)'}}>
-          <div className="fg2">
-            <div className="field"><label>Name *</label>
-              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. 2023 Tax Return"/>
-            </div>
-            <div className="field"><label>Folder</label>
-              <select value={form.docType} onChange={e=>setForm(f=>({...f,docType:e.target.value}))}>
-                {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{border:'2px dashed var(--br)',borderRadius:7,padding:'10px',textAlign:'center',cursor:'pointer',background:file?'rgba(34,197,94,.05)':'transparent',marginBottom:8}}
-            onClick={()=>fileRef.current?.click()}
-            onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--blue)'}}
-            onDragLeave={e=>e.currentTarget.style.borderColor='var(--br)'}
-            onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)setFile(f);e.currentTarget.style.borderColor='var(--br)'}}>
-            {file
-              ? <span style={{fontSize:12,color:'var(--ok)',fontWeight:600}}>{FILE_EXT_ICON(file.name)} {file.name} ({fmt(file.size)})</span>
-              : <span style={{fontSize:11,color:'var(--t3)'}}>📎 Drop file here or click to browse</span>
-            }
-            <input ref={fileRef} type="file" style={{display:'none'}} onChange={e=>setFile(e.target.files[0])}/>
-          </div>
-          <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Notes (optional)"
-            style={{width:'100%',padding:'6px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12,marginBottom:8}}/>
-          <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:7}} onClick={upload} disabled={saving}>
-            {saving?'Saving…':'💾 Save Document'}
-          </button>
+          {!canUpload ? (
+            <div style={{fontSize:12,color:'var(--bad)',fontWeight:700}}>You do not have permission to upload client documents.</div>
+          ) : (
+            <>
+              <div className="fg2">
+                <div className="field"><label>Destination Folder</label>
+                  <select value={form.docType} onChange={e=>setForm(f=>({...f,docType:e.target.value}))}>
+                    {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div className="field"><label>Notes for this batch (optional)</label>
+                  <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Applied to each uploaded document"/>
+                </div>
+              </div>
+              <div style={{border:'2px dashed var(--br)',borderRadius:7,padding:'16px 10px',textAlign:'center',cursor:'pointer',background:files.length?'rgba(34,197,94,.05)':'transparent',marginBottom:8}}
+                onClick={()=>fileRef.current?.click()}
+                onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--blue)'}}
+                onDragLeave={e=>e.currentTarget.style.borderColor='var(--br)'}
+                onDrop={e=>{e.preventDefault();chooseFiles(e.dataTransfer.files);e.currentTarget.style.borderColor='var(--br)'}}>
+                <div style={{fontSize:12,color:'var(--t2)',fontWeight:700}}>📎 Drop multiple files here or click to browse</div>
+                <div style={{fontSize:10,color:'var(--t3)',marginTop:4}}>PDF, Word, Excel, JPG/PNG/TIFF · 50 MB max each</div>
+                <input ref={fileRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.tif,.tiff" style={{display:'none'}} onChange={e=>chooseFiles(e.target.files)}/>
+              </div>
+
+              {files.length>0 && (
+                <div style={{border:'1px solid var(--br)',borderRadius:7,overflow:'hidden',marginBottom:8}}>
+                  {files.map(f=>{
+                    const key=`${f.name}|\${f.size}|\${f.lastModified}`
+                    const result=uploadResults.find(r=>r.key===key)
+                    const statusColor=result?.status==='success'?'var(--ok)':result?.status==='failed'?'var(--bad)':result?.status==='duplicate'?'var(--warn)':'var(--t3)'
+                    return <div key={key} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 9px',borderBottom:'1px solid var(--br)',fontSize:11}}>
+                      <span>{FILE_EXT_ICON(f.name)}</span>
+                      <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={f.name}>{f.name}</span>
+                      <span style={{color:'var(--t3)',flexShrink:0}}>{fmt(f.size)}</span>
+                      {result&&<span style={{color:statusColor,fontWeight:700,flexShrink:0}}>{result.message}</span>}
+                      {!saving&&<button type="button" className="btn sec" style={{fontSize:9,padding:'2px 5px'}} onClick={()=>setFiles(prev=>prev.filter(x=>x!==f))}>Remove</button>}
+                    </div>
+                  })}
+                </div>
+              )}
+
+              {uploadResults.filter(r=>!files.some(f=>`${f.name}|\${f.size}|\${f.lastModified}`===r.key)).map(r=>(
+                <div key={r.key} style={{fontSize:11,color:'var(--bad)',marginBottom:4}}>{r.name}: {r.message}</div>
+              ))}
+
+              {saving&&batchProgress.total>0&&(
+                <div style={{margin:'8px 0'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--t3)',marginBottom:4}}><span>Uploading batch</span><span>{batchProgress.done}/{batchProgress.total}</span></div>
+                  <div style={{height:6,background:'var(--s3)',borderRadius:999,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.round((batchProgress.done/batchProgress.total)*100)}%`,background:'var(--blue)',transition:'width .15s'}}/></div>
+                </div>
+              )}
+
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn pri" style={{flex:1,justifyContent:'center',padding:7}} onClick={upload} disabled={saving||!files.length}>
+                  {saving?`Uploading ${batchProgress.done}/${batchProgress.total}…`:`⬆ Upload ${files.length||''} Document${files.length===1?'':'s'}`}
+                </button>
+                {!saving&&files.length>0&&<button className="btn sec" onClick={()=>{setFiles([]);setUploadResults([]);if(fileRef.current)fileRef.current.value=''}}>Clear</button>}
+              </div>
+            </>
+          )}
         </div>
       )}
 
