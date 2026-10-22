@@ -532,9 +532,11 @@ export function browserMatchProblem(req, clientTinLast4, parsed) {
 
 async function clientTinLast4(clientId) {
   if (!clientId) return null
-  const { data } = await supabase.from('clients').select('ssn,ein').eq('id', clientId).maybeSingle()
-  const digits = String(data?.ein || data?.ssn || '').replace(/\D/g, '')
-  return digits.length >= 4 ? digits.slice(-4) : null
+  const { data, error } = await supabase.functions.invoke('client-sensitive', {
+    body: { action: 'tin_last4', client_id: String(clientId) },
+  })
+  if (error || data?.error) throw new Error(data?.error || error?.message || 'Client TIN match permission denied.')
+  return data?.tin_last4 || null
 }
 
 // One filing at a time per browser tab, so a folder scan and a drop can never file the same PDF twice.
