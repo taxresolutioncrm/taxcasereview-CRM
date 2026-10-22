@@ -238,7 +238,7 @@ async function persistTranscriptPdf(service: any, pull: any, pdfBytes: Uint8Arra
   if (!pdfBytes?.length) return { resultKeys, filePaths, added: false, resultKey: null, filePath: null }
   const resultKey = await sha256Hex(pdfBytes)
   if (resultKeys.includes(resultKey)) return { resultKeys, filePaths, added: false, resultKey, filePath: filePaths[resultKeys.indexOf(resultKey)] || null }
-  const filePath = `tds-direct/${pull.tenant_id}/${pull.id}/${resultKey}.pdf`
+  const filePath = `${pull.tenant_id}/tds-direct/${pull.id}/${resultKey}.pdf`
   const { error: uploadErr } = await service.storage.from('documents').upload(filePath, pdfBytes, { contentType: 'application/pdf', upsert: false })
   if (uploadErr && !/already exists|duplicate/i.test(uploadErr.message || '')) throw new Error(`Could not store IRS transcript: ${uploadErr.message}`)
   return { resultKeys: [...resultKeys, resultKey], filePaths: [...filePaths, filePath], added: true, resultKey, filePath }
