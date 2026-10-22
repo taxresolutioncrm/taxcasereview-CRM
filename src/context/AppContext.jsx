@@ -674,11 +674,32 @@ export function AppProvider({ children }) {
 
     channelCleanups.push(withReconnect('central-email-notify-'+user.id, 'emails', ({ new: row }) => {
       if ((row.triage || 'Inbox') !== 'Inbox' || row.status === 'Sent' || row.direction === 'outbound') return
+
+      // Automated infrastructure/security mail should remain visible in Email
+      // history, but it must never impersonate a client message by firing the
+      // global "New Email" sound/toast/browser notification.
+      const from = String(
+        row.from_address || row.sender || row.clientName || row.clientname || row.recipient || ''
+      ).trim().toLowerCase()
+      const subject = String(row.subject || '').trim().toLowerCase()
+      const automatedSender = [
+        /(^|@)([^@.]+\.)*mimecastreport\.com$/,
+        /(^|@)(mailer-daemon|postmaster)@?/,
+      ].some(re => re.test(from))
+      const automatedSubject = [
+        /^report domain:/,
+        /\bdmarc\b.*\breport\b/,
+        /\baggregate report\b/,
+        /\bdelivery status notification\b/,
+        /\bundeliverable\b/,
+        /\bmail delivery (subsystem|failed)\b/,
+      ].some(re => re.test(subject))
+      if (automatedSender || automatedSubject) return
+
       playSound('email')
-      const from = row.from_address || row.sender || row.clientName || row.clientname || row.recipient || 'Unknown sender'
       notifyAction({
         title: '📧 New Email',
-        body: `${from} — ${row.subject || '(no subject)'}`,
+        body: `${from || 'Unknown sender'} — ${row.subject || '(no subject)'}`,
         target: '/email',
         tag: `email-${row.id}`,
       })
