@@ -185,6 +185,33 @@ where so.bucket_id = 'documents'
 on conflict (bucket_id, object_name)
 do update set tenant_id = excluded.tenant_id, source = excluded.source;
 
+
+-- Prefer durable document metadata when it can identify legacy ownership.
+insert into public.storage_object_tenants(bucket_id, object_name, tenant_id, source)
+select 'documents', so.name, d.tenant_id, 'document_record'
+from storage.objects so
+join public.documents d
+  on so.bucket_id = 'documents'
+ and d.tenant_id is not null
+ and (
+   nullif(d.storage_path,'') = so.name
+   or replace(coalesce(d.file_url,''),'storage://documents/','') = so.name
+ )
+where so.bucket_id = 'documents'
+on conflict (bucket_id, object_name)
+do update set tenant_id = excluded.tenant_id, source = excluded.source;
+
+-- Historical direct-TDS service-role uploads used tds-direct/<tenant_uuid>/...
+-- and may have no storage owner. That path itself contains the exact tenant.
+insert into public.storage_object_tenants(bucket_id, object_name, tenant_id, source)
+select 'documents', so.name, t.id, 'legacy_tds_path'
+from storage.objects so
+join public.tenants t on t.id::text = split_part(so.name,'/',2)
+where so.bucket_id = 'documents'
+  and split_part(so.name,'/',1) = 'tds-direct'
+on conflict (bucket_id, object_name)
+do update set tenant_id = excluded.tenant_id, source = excluded.source;
+
 create or replace function public.storage_object_belongs_to_current_tenant(p_bucket text, p_name text)
 returns boolean
 language sql
