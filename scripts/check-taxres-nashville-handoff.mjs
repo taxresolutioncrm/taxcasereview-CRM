@@ -31,7 +31,7 @@ for(const n of [
   "status:'failed'",
   'DOC_FOLDERS.map',
 ]) has(clients,n,'Clients bulk upload missing: '+n)
-has(migration,'documents_client_folder_hash_uidx','DB duplicate guard missing')
+has(migration,'documents_client_hash_uidx','DB duplicate guard missing')
 has(migration,"public.current_employee_permission('perm_documents') >= 2",'document write permission policy missing')
 has(migration,"split_part(name,'/',1) = public.current_tenant_id()::text",'storage tenant prefix missing')
 has(migration,'storage_object_belongs_to_current_tenant','legacy storage compatibility missing')
