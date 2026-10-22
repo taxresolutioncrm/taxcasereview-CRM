@@ -48,6 +48,29 @@ serve(async(req)=>{
   let body:any={}
   try{body=await req.json()}catch{return json({error:'Invalid JSON'},400)}
   const action=String(body.action||'capability')
+
+  if(action==='tin_candidates'){
+    if(irsLevel<1 && level<3) return json({error:'IRS client identification access denied'},403)
+    const last4=String(body.last4||'').replace(/\D/g,'')
+    if(last4.length!==4) return json({error:'last4 must contain exactly 4 digits'},400)
+    const ids=new Set<string>()
+    const {data:clientRows,error:clientRowsErr}=await admin.from('clients')
+      .select('id,ein').eq('tenant_id',tenantId)
+    if(clientRowsErr) return json({error:'Client match check failed'},500)
+    for(const row of clientRows||[]){
+      const digits=String(row.ein||'').replace(/\D/g,'')
+      if(digits.length>=4 && digits.slice(-4)===last4) ids.add(String(row.id))
+    }
+    const {data:sensitiveRows,error:sensitiveRowsErr}=await admin.from('client_sensitive_fields')
+      .select('client_id,ssn').eq('tenant_id',tenantId)
+    if(sensitiveRowsErr) return json({error:'Client match check failed'},500)
+    for(const row of sensitiveRows||[]){
+      const digits=String(row.ssn||'').replace(/\D/g,'')
+      if(digits.length>=4 && digits.slice(-4)===last4) ids.add(String(row.client_id))
+    }
+    return json({client_ids:[...ids]})
+  }
+
   const clientId=String(body.client_id||'').trim()
   if(!clientId) return json({error:'client_id is required'},400)
 
@@ -77,28 +100,6 @@ serve(async(req)=>{
     if(irsLevel<1 && level<3) return json({error:'IRS client identification access denied'},403)
     const digits=String(client?.ein || sensitive?.ssn || '').replace(/\D/g,'')
     return json({tin_last4:digits.length>=4?digits.slice(-4):'',tin_type:client?.ein?'EIN':'SSN'})
-  }
-
-  if(action==='tin_candidates'){
-    if(irsLevel<1 && level<3) return json({error:'IRS client identification access denied'},403)
-    const last4=String(body.last4||'').replace(/\D/g,'')
-    if(last4.length!==4) return json({error:'last4 must contain exactly 4 digits'},400)
-    const ids=new Set<string>()
-    const {data:clientRows,error:clientRowsErr}=await admin.from('clients')
-      .select('id,ein').eq('tenant_id',tenantId)
-    if(clientRowsErr) return json({error:'Client match check failed'},500)
-    for(const row of clientRows||[]){
-      const digits=String(row.ein||'').replace(/\D/g,'')
-      if(digits.length>=4 && digits.slice(-4)===last4) ids.add(String(row.id))
-    }
-    const {data:sensitiveRows,error:sensitiveRowsErr}=await admin.from('client_sensitive_fields')
-      .select('client_id,ssn').eq('tenant_id',tenantId)
-    if(sensitiveRowsErr) return json({error:'Client match check failed'},500)
-    for(const row of sensitiveRows||[]){
-      const digits=String(row.ssn||'').replace(/\D/g,'')
-      if(digits.length>=4 && digits.slice(-4)===last4) ids.add(String(row.client_id))
-    }
-    return json({client_ids:[...ids]})
   }
 
   if(action==='irs_read'){
