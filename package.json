@@ -65,7 +65,8 @@
     "check-leadflow-integration": "node scripts/check-leadflow-integration.cjs",
     "check-login-branding": "node scripts/check-login-branding.cjs",
     "check-ai-government-call-agent": "node scripts/check-ai-government-call-agent.cjs",
-    "check-client-assignment-centurion-links": "node scripts/check-client-assignment-centurion-links.cjs"
+    "check-client-assignment-centurion-links": "node scripts/check-client-assignment-centurion-links.cjs",
+    "check-taxres-nashville-handoff": "node scripts/check-taxres-nashville-handoff.mjs"
   },
   "dependencies": {
     "@signalwire/js": "^1.5.0",
