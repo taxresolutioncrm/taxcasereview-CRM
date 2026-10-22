@@ -185,7 +185,7 @@ export async function storeTranscriptAnalysis(file, clientName, a, existing = nu
 
   const safeFile = String(file.name || 'transcript.pdf').replace(/[\\/\r\n]/g, '_').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 140) || 'transcript.pdf'
   const uploadedHere = !existing?.filePath
-  const filePath = existing?.filePath || `transcripts/${clientId}/${crypto.randomUUID()}-${safeFile}`
+  const filePath = existing?.filePath || `${tenantId}/transcripts/${clientId}/${crypto.randomUUID()}-${safeFile}`
   if (uploadedHere) {
     const { error: uploadErr } = await supabase.storage.from('documents').upload(filePath, file, { upsert: false })
     if (uploadErr) throw new Error(`Transcript PDF upload failed: ${uploadErr.message}`)
