@@ -633,7 +633,7 @@ export async function findFiledTranscriptBySha(key) {
 async function clientsWithTinLast4(last4) {
   if (!/^\d{4}$/.test(String(last4 || ''))) return new Set()
   const { data, error } = await supabase.functions.invoke('client-sensitive', {
-    body: { action: 'tin_candidates', client_id: '__scope__', last4: String(last4) },
+    body: { action: 'tin_candidates', last4: String(last4) },
   })
   if (error || data?.error) throw new Error(data?.error || error?.message || 'Client match check failed.')
   return new Set((data?.client_ids || []).map(String))
