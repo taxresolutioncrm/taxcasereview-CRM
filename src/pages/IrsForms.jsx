@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useFirm } from '../lib/useFirm'
 import { useApp } from '../context/AppContext'
+import { loadIrsSensitiveClient } from '../lib/clientSensitive'
 import IRSFormFiller from '../components/IRSFormFiller'
 import { FIRM } from '../lib/firmBranding'
 
@@ -268,7 +269,7 @@ export default function IrsForms() {
   }
 
   async function loadClients() {
-    const { data, error } = await supabase.from('clients').select('id, name, business_name, street, city, state, zip, phone, email, ssn, ein').order('name')
+    const { data, error } = await supabase.from('clients').select('id, name, business_name, street, city, state, zip, phone, email, ein').order('name')
     if (error) { console.error('loadClients error:', error.message); return }
     if (data) setClients(data)
   }
@@ -296,7 +297,16 @@ export default function IrsForms() {
   }
 
   // Pre-fill for forms that aren't 2848/8821 — branded cover sheet + form window
-  function prefillGenericForm(c, form) {
+  async function prefillGenericForm(c, form) {
+    const w = window.open('', '_blank', 'width=900,height=700')
+    if (!w) { showToast('Allow pop-ups to prepare IRS forms.'); return }
+    try {
+      c = await loadIrsSensitiveClient(c)
+    } catch (e) {
+      w.close()
+      showToast(e?.message || 'SSN access denied for this IRS form.')
+      return
+    }
     const name = c.business_name || c.name || ''
     const addr = [c.street, c.city, c.state, c.zip].filter(Boolean).join(', ')
     const ssn  = c.ssn  ? `SSN: ${c.ssn}`  : ''
@@ -304,7 +314,6 @@ export default function IrsForms() {
     const tid  = [ssn, ein].filter(Boolean).join('  |  ')
     const now  = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
-    const w = window.open('', '_blank', 'width=900,height=700')
     w.document.write(`<!DOCTYPE html><html><head>
       <title>Form ${form.num} — ${name}</title>
       <style>
