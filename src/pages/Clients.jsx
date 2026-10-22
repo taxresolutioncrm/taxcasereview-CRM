@@ -799,8 +799,8 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       valid.push(f)
     }
     setFiles(prev=>{
-      const seen=new Set(prev.map(f=>`${f.name}|\${f.size}|\${f.lastModified}`))
-      return [...prev,...valid.filter(f=>{const k=`${f.name}|\${f.size}|\${f.lastModified}`;if(seen.has(k))return false;seen.add(k);return true})]
+      const seen=new Set(prev.map(f=>`${f.name}|${f.size}|${f.lastModified}`))
+      return [...prev,...valid.filter(f=>{const k=`${f.name}|${f.size}|${f.lastModified}`;if(seen.has(k))return false;seen.add(k);return true})]
     })
     if(failures.length) setUploadResults(prev=>[...prev,...failures])
   }
@@ -837,7 +837,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
     for(let i=0;i<files.length;i++){
       const selectedFile=files[i]
-      const key=`${selectedFile.name}|\${selectedFile.size}|\${selectedFile.lastModified}`
+      const key=`${selectedFile.name}|${selectedFile.size}|${selectedFile.lastModified}`
       setResult(key,{name:selectedFile.name,status:'hashing',message:'Checking for duplicates…'})
       try{
         const hash=await sha256(selectedFile)
@@ -1007,7 +1007,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
               {files.length>0 && (
                 <div style={{border:'1px solid var(--br)',borderRadius:7,overflow:'hidden',marginBottom:8}}>
                   {files.map(f=>{
-                    const key=`${f.name}|\${f.size}|\${f.lastModified}`
+                    const key=`${f.name}|${f.size}|${f.lastModified}`
                     const result=uploadResults.find(r=>r.key===key)
                     const statusColor=result?.status==='success'?'var(--ok)':result?.status==='failed'?'var(--bad)':result?.status==='duplicate'?'var(--warn)':'var(--t3)'
                     return <div key={key} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 9px',borderBottom:'1px solid var(--br)',fontSize:11}}>
@@ -1021,7 +1021,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
                 </div>
               )}
 
-              {uploadResults.filter(r=>!files.some(f=>`${f.name}|\${f.size}|\${f.lastModified}`===r.key)).map(r=>(
+              {uploadResults.filter(r=>!files.some(f=>`${f.name}|${f.size}|${f.lastModified}`===r.key)).map(r=>(
                 <div key={r.key} style={{fontSize:11,color:'var(--bad)',marginBottom:4}}>{r.name}: {r.message}</div>
               ))}
 
