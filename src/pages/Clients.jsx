@@ -830,7 +830,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     const folderKey=String(form.docType||'Other').replace(/[^a-zA-Z0-9._-]+/g,'-')
     const ownerKey=String(clientId)
     const knownHashes=new Set(
-      docs.filter(d=>String(d.client_id||'')===String(clientId) && (d.docType||'Other')===form.docType && d.file_hash)
+      docs.filter(d=>String(d.client_id||'')===String(clientId) && d.file_hash)
         .map(d=>String(d.file_hash))
     )
     let successCount=0, duplicateCount=0, failureCount=0
@@ -849,8 +849,8 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         }
 
         const {data:existing,error:dupeErr}=await supabase.from('documents')
-          .select('id').eq('tenant_id',tenantId).eq('client_id',String(clientId))
-          .eq('docType',form.docType).eq('file_hash',hash).limit(1)
+          .select('id,docType').eq('tenant_id',tenantId).eq('client_id',String(clientId))
+          .eq('file_hash',hash).limit(1)
         if(dupeErr) throw dupeErr
         if(existing?.length){
           knownHashes.add(hash);duplicateCount++
