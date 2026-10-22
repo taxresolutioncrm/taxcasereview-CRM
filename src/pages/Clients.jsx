@@ -1163,6 +1163,11 @@ export default function Clients() {
   const [modal,     setModal]     = useState(false)
   const [editModal, setEditModal] = useState(false)
   const [form,      setForm]      = useState(BLANK)
+  const [officeOptions, setOfficeOptions] = useState([])
+  const [sensitiveInfo, setSensitiveInfo] = useState({
+    clientId:null, canReveal:false, ssnMasked:'', spouseSsnMasked:'',
+    ssnFull:'', spouseSsnFull:'', revealed:false, loading:false,
+  })
   const [saving,    setSaving]    = useState(false)
   const [toast,     setToast]     = useState('')
   const [detail,    setDetail]    = useState(null)
@@ -1271,6 +1276,85 @@ export default function Clients() {
   const [savingPay,   setSavingPay]   = useState(false)
 
   useEffect(() => {
+    if (!myTenantId) { setOfficeOptions([]); return }
+    let cancelled = false
+    supabase.from('settings')
+      .select('client_offices,name,firmname')
+      .eq('tenant_id', myTenantId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { console.error('[client offices] load failed:', error.message); setOfficeOptions(FIRM.name ? [FIRM.name] : []); return }
+        let configured = data?.client_offices
+        if (typeof configured === 'string') { try { configured = JSON.parse(configured) } catch { configured = [] } }
+        const options = Array.isArray(configured) ? configured.map(v=>String(v||'').trim()).filter(Boolean) : []
+        const fallback = String(data?.name || data?.firmname || FIRM.name || '').trim()
+        if (!options.length && fallback) options.push(fallback)
+        setOfficeOptions([...new Set(options)])
+      })
+    return () => { cancelled = true }
+  }, [myTenantId])
+
+  async function loadSensitiveCapability(clientId) {
+    if (!clientId) return
+    setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:true})
+    const { data, error } = await supabase.functions.invoke('client-sensitive', { body:{ action:'capability', client_id:String(clientId) } })
+    if (error || data?.error) {
+      setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:false})
+      return
+    }
+    setSensitiveInfo({
+      clientId,
+      canReveal:!!data?.can_reveal,
+      ssnMasked:data?.ssn_masked||'',
+      spouseSsnMasked:data?.spouse_ssn_masked||'',
+      ssnFull:'',
+      spouseSsnFull:'',
+      revealed:false,
+      loading:false,
+    })
+  }
+
+  useEffect(() => {
+    if (detail?.id) loadSensitiveCapability(detail.id)
+    else setSensitiveInfo({clientId:null,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:false})
+  }, [detail?.id])
+
+  async function readSensitive(clientId, purpose='profile_reveal') {
+    const { data, error } = await supabase.functions.invoke('client-sensitive', { body:{ action:'read', client_id:String(clientId), purpose } })
+    if (error || data?.error) throw new Error(data?.error || error?.message || 'Sensitive client access denied')
+    return data || {}
+  }
+
+  async function revealClientSsn(clientId) {
+    if (!sensitiveInfo.canReveal) return
+    if (sensitiveInfo.revealed) {
+      setSensitiveInfo(prev=>({...prev,revealed:false,ssnFull:'',spouseSsnFull:''}))
+      return
+    }
+    setSensitiveInfo(prev=>({...prev,loading:true}))
+    try {
+      const data=await readSensitive(clientId,'profile_reveal')
+      setSensitiveInfo(prev=>({...prev,loading:false,revealed:true,ssnFull:data.ssn||'',spouseSsnFull:data.spouse_ssn||''}))
+    } catch (e) {
+      setSensitiveInfo(prev=>({...prev,loading:false,revealed:false,ssnFull:'',spouseSsnFull:''}))
+      showToast(e?.message || 'Full SSN access denied')
+    }
+  }
+
+  async function copyClientSsn(clientId) {
+    if (!sensitiveInfo.canReveal) return
+    try {
+      const data=await readSensitive(clientId,'profile_copy')
+      if (!data.ssn) { showToast('No SSN on file'); return }
+      await navigator.clipboard.writeText(data.ssn)
+      showToast('SSN copied')
+    } catch (e) {
+      showToast(e?.message || 'Full SSN access denied')
+    }
+  }
+
+  useEffect(() => {
     // Guard: don't load until auth session confirmed so current_tenant_id()
     // is established before the first query — prevents wrong-tenant data on hard refresh.
     if (!user || !myTenantId) { setClients([]); return }
@@ -1367,7 +1451,7 @@ export default function Clients() {
     if (!myTenantId) { setClients([]); setEmployees([]); return }
     const [{ data:cl },{ data:em },{ data:cats },{ data:sts }] = await Promise.all([
       supabase.from('clients')
-        .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+        .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
         .eq('tenant_id', myTenantId)
         .or('archived.eq.true,deleted_at.is.null')
         .order('name',{ascending:true}),
@@ -1498,8 +1582,7 @@ export default function Clients() {
         (c.city||'').toLowerCase().includes(q) ||
         (c.business_name||'').toLowerCase().includes(q) ||
         (c.spouseName||'').toLowerCase().includes(q) ||
-        (c.tags||'').toLowerCase().includes(q) ||
-        (c.ssn||'').replace(/-/g,'').includes(q.replace(/-/g,''))
+        (c.tags||'').toLowerCase().includes(q)
       ))
   }, [clients, clientSearch, showArchived, filter, filterStatus, filterRep, filterPipeline])
 
@@ -1535,7 +1618,7 @@ export default function Clients() {
     // Persist the canonical mixed-case pipelineStage column. The edit form exposes
     // this field, so excluding it made the dropdown appear to save while silently
     // leaving the previous stage in the database.
-    const safe = { ...rest, pipelineStage: pipelineStage || DEFAULT_PIPELINE_STAGE, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
+    const safe = { ...rest, office_label: rest.office_label || officeOptions[0] || FIRM.name || null, pipelineStage: pipelineStage || DEFAULT_PIPELINE_STAGE, dob, dependents: JSON.stringify(f.dependents || []), filingRequirements: JSON.stringify(f.filingRequirements || []) }
     // Empty-string values blow up non-text columns (date, numeric) with
     // "invalid input syntax" — Postgres wants null for "no value", not ''.
     Object.keys(safe).forEach(k => { if (safe[k] === '') safe[k] = null })
@@ -2137,7 +2220,7 @@ export default function Clients() {
     const filingReqs=parseDependents(c.filingRequirements)
     let dobM='',dobD='',dobY=''
     if (c.dob){const p=c.dob.split('/');if(p.length===3){dobM=p[0];dobD=p[1];dobY=p[2]}}
-    setForm({...BLANK,...c,dobM,dobD,dobY,dependents:deps,filingRequirements:filingReqs})
+    setForm({...BLANK,...c,office_label:c.office_label||officeOptions[0]||FIRM.name||'',dobM,dobD,dobY,dependents:deps,filingRequirements:filingReqs,ssn:'',spouseSsn:''})
     setEditModal(true)
   }
 
@@ -2166,6 +2249,28 @@ export default function Clients() {
     const si=stageIdx(c)
     // Palette for the flow chips (PIPELINE_STAGES have no colors of their own).
     const STAGE_PALETTE=['#6366f1','#8b5cf6','#3b82f6','#0ea5e9','#06b6d4','#14b8a6','#10b981','#84cc16','#f59e0b','#f97316','#ef4444','#ec4899','#64748b']
+    const copyContactInfo=async()=>{
+      const personal=[c.street,[c.city,c.state].filter(Boolean).join(', '),c.zip].filter(Boolean).join(', ')
+      const business=[c.biz_street,[c.biz_city,c.biz_state].filter(Boolean).join(', '),c.biz_zip].filter(Boolean).join(', ')
+      const lines=[
+        c.name && `Client: ${c.name}`,
+        c.phone && `Phone: ${c.phone}`,
+        c.phone2 && `Phone 2: ${c.phone2}`,
+        c.email && `Email: ${c.email}`,
+        personal && `Personal Address: ${personal}`,
+        business && `Business Address: ${business}`,
+      ].filter(Boolean)
+      await navigator.clipboard.writeText(lines.join('\n'))
+      showToast('Contact info copied')
+    }
+    const applyOfficeLabel=async(value)=>{
+      const next=String(value||'').trim()
+      const {error}=await supabase.from('clients').update({office_label:next||null}).eq('tenant_id',myTenantId).eq('id',c.id)
+      if(error){showToast('Error updating office: '+error.message);return}
+      setDetail(prev=>prev&&prev.id===c.id?{...prev,office_label:next||null}:prev)
+      setClients(prev=>prev.map(row=>row.id===c.id?{...row,office_label:next||null}:row))
+      await logAndRefreshNote(`🏢 Office label changed to: ${next||'Unassigned'}`)
+    }
     // Toggle a parallel service/action on/off (clients.services text[]).
     // Log a client_note and refresh the notes panel — same pattern as
     // applyPipelineStage, so Active Services and IRS/State status changes show
@@ -3078,7 +3183,18 @@ export default function Clients() {
 
             {/* Contact Info */}
             <div className="card">
-              <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)',marginBottom:10}}>Contact Info</div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:10}}>
+                <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)'}}>Contact Info</div>
+                <button className="btn sec" style={{fontSize:10,padding:'4px 8px'}} onClick={copyContactInfo}>Copy Contact Info</button>
+              </div>
+              <div style={{display:'flex',borderBottom:'1px solid var(--br)',padding:'7px 0',gap:12}}>
+                <div style={{minWidth:130,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)',paddingTop:5}}>Office</div>
+                <select value={c.office_label||officeOptions[0]||''} onChange={e=>applyOfficeLabel(e.target.value)}
+                  style={{flex:1,maxWidth:260,background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',padding:'5px 8px',fontSize:12}}>
+                  <option value="">Unassigned</option>
+                  {officeOptions.map(o=><option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
               <DR label="Phone"   val={c.phone} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name) }}/>
               <DR label="Phone 2" val={c.phone2} name={c.name} entityId={c.id} showToast={showToast} onLogged={()=>{ loadRelated(c.name) }}/>
               <DR label="Email"   val={c.email ? <span style={{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}} title="Send email" onClick={()=>setQuickEmail({ name:c.name, email:c.email })}>{c.email} ✉️</span> : null}/>
@@ -3107,13 +3223,22 @@ export default function Clients() {
             {/* Taxpayer Info (+ Dependents, merged into one card) */}
             <div className="card">
               <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)',marginBottom:10}}>🔒 Taxpayer Info</div>
-              <DR label="SSN"           val={c.ssn?'***-**-'+c.ssn.replace(/-/g,'').slice(-4):null}/>
+              <div style={{display:'flex',borderBottom:'1px solid var(--br)',padding:'7px 0',gap:12,alignItems:'center'}}>
+                <div style={{minWidth:130,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)'}}>SSN</div>
+                <div style={{flex:1,fontSize:13,color:'var(--tx)',fontFamily:'monospace'}}>
+                  {sensitiveInfo.loading ? 'Loading…' : (sensitiveInfo.revealed ? (sensitiveInfo.ssnFull||'—') : (sensitiveInfo.ssnMasked||'—'))}
+                </div>
+                {sensitiveInfo.canReveal&&<>
+                  <button className="btn sec" style={{fontSize:9,padding:'3px 7px'}} onClick={()=>revealClientSsn(c.id)}>{sensitiveInfo.revealed?'Hide':'Show'}</button>
+                  <button className="btn sec" style={{fontSize:9,padding:'3px 7px'}} onClick={()=>copyClientSsn(c.id)}>Copy SSN</button>
+                </>}
+              </div>
               <DR label="EIN"           val={c.ein}/>
               <DR label="Date of Birth" val={c.dob}/>
               <DR label="Filing Status" val={c.filingStatus}/>
               <DR label="Spouse Name"   val={c.spouseName}/>
               <DR label="Spouse DOB"    val={c.spouseDob}/>
-              <DR label="Spouse SSN"    val={c.spouseSsn?'***-**-'+c.spouseSsn.replace(/-/g,'').slice(-4):null}/>
+              <DR label="Spouse SSN"    val={sensitiveInfo.revealed&&sensitiveInfo.canReveal?sensitiveInfo.spouseSsnFull:sensitiveInfo.spouseSsnMasked}/>
 
               {deps.length>0&&(
                 <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--br)'}}>
@@ -3233,7 +3358,7 @@ export default function Clients() {
         </div>
         )}
 
-        {editModal&&<ClientFormModal form={form} fld={fld} reps={reps} saving={saving} onSave={saveEdit} onClose={()=>setEditModal(false)} title="Edit Client"/>}
+        {editModal&&<ClientFormModal form={form} fld={fld} reps={reps} officeOptions={officeOptions} saving={saving} onSave={saveEdit} onClose={()=>setEditModal(false)} title="Edit Client"/>}
 
         {fillerClient && (
           <ErrorBoundary onClose={()=>setFillerClient(null)}>
@@ -3854,7 +3979,7 @@ export default function Clients() {
         </div>
       </div>
 
-      {modal&&<ClientFormModal form={form} fld={fld} reps={reps} saving={saving} onSave={save} onClose={()=>setModal(false)} title="Add Client"/>}
+      {modal&&<ClientFormModal form={form} fld={fld} reps={reps} officeOptions={officeOptions} saving={saving} onSave={save} onClose={()=>setModal(false)} title="Add Client"/>}
 
       {/* ✅ Fixed: DeleteConfirmModal must live HERE in the parent component, not inside ClientFormModal */}
       <DeleteConfirmModal
@@ -3868,7 +3993,7 @@ export default function Clients() {
 }
 
 // ── Form Modal ────────────────────────────────────────────────────────────────
-function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
+function ClientFormModal({form,fld,reps,officeOptions=[],saving,onSave,onClose,title}) {
   // Keep all input-format/state helpers inside the modal's lexical scope.
   // This component lives outside Clients(), so calling helpers declared inside
   // Clients() throws at input time and makes controlled fields appear read-only.
@@ -3940,6 +4065,12 @@ function ClientFormModal({form,fld,reps,saving,onSave,onClose,title}) {
           <div className="field"><label>Full Name *</label>
             <input value={form.name} onChange={e=>fld('name',e.target.value)} placeholder="First Last"/>
           </div>
+        </div>
+        <div className="field"><label>Office</label>
+          <select value={form.office_label||''} onChange={e=>fld('office_label',e.target.value)}>
+            <option value="">Unassigned</option>
+            {officeOptions.map(o=><option key={o} value={o}>{o}</option>)}
+          </select>
         </div>
         {form.clientType !== 'Individual' && (
           <div className="fg2">
