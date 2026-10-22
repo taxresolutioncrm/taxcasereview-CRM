@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SECRET_KEY='centurion_system_mail_relay_v1'
-const ALLOWED=new Set(['employee_access','esign_request','esign_reminder','esign_signed_copy','esign_internal_notification'])
+const ALLOWED=new Set(['employee_access'])
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type, x-system-mail-secret','Content-Type':'application/json','Cache-Control':'no-store'}
 const json=(b:any,s=200)=>new Response(JSON.stringify(b),{status:s,headers:cors})
 const safe=(v:any)=>String(v??'').replace(/[\r\n]+/g,' ').trim()
