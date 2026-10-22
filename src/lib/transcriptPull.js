@@ -628,19 +628,15 @@ export async function findFiledTranscriptBySha(key) {
   return data?.[0] || null
 }
 
-// The clients in this office whose SSN/EIN ends in these 4 digits.
+// The client ids in this office whose SSN/EIN ends in these 4 digits.
+// The sensitive endpoint performs the scan server-side; no SSN values are returned to the browser.
 async function clientsWithTinLast4(last4) {
   if (!/^\d{4}$/.test(String(last4 || ''))) return new Set()
-  const ids = new Set()
-  for (const col of ['ssn', 'ein']) {
-    const { data, error } = await supabase.from('clients').select(`id,${col}`).ilike(col, `%${last4}`).limit(10)
-    if (error) throw new Error(`Client match check failed: ${error.message}`)
-    for (const row of data || []) {
-      const digits = String(row[col] || '').replace(/\D/g, '')
-      if (digits.length >= 4 && digits.slice(-4) === last4) ids.add(row.id)
-    }
-  }
-  return ids
+  const { data, error } = await supabase.functions.invoke('client-sensitive', {
+    body: { action: 'tin_candidates', client_id: '__scope__', last4: String(last4) },
+  })
+  if (error || data?.error) throw new Error(data?.error || error?.message || 'Client match check failed.')
+  return new Set((data?.client_ids || []).map(String))
 }
 
 // Pick the one open browser request a returned PDF belongs to. Fails closed — returns null (→ "Needs a client")
