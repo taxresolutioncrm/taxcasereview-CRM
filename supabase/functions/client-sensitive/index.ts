@@ -37,7 +37,7 @@ serve(async(req)=>{
     .maybeSingle()
   if(empErr||!employee||String(employee.status||'').toLowerCase()!=='active') return json({error:'Active employee required'},403)
 
-  const {data:permission}=await userDb.rpc('current_employee_permission',{permission_name:'perm_clients'})
+  const {data:permission}=await userDb.rpc('current_employee_permission',{p_column:'perm_clients'})
   const level=Number(permission ?? employee.perm_clients ?? 0)
   if(level<1) return json({error:'Client access denied'},403)
 
