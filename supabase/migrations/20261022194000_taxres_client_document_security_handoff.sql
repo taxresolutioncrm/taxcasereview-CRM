@@ -6,8 +6,9 @@ alter table public.documents
   add column if not exists original_file_name text,
   add column if not exists upload_batch_id text;
 
-create unique index if not exists documents_client_folder_hash_uidx
-  on public.documents (tenant_id, client_id, "docType", file_hash)
+drop index if exists public.documents_client_folder_hash_uidx;
+create unique index if not exists documents_client_hash_uidx
+  on public.documents (tenant_id, client_id, file_hash)
   where file_hash is not null and client_id is not null;
 
 alter table public.clients
