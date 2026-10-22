@@ -87,7 +87,7 @@ const FIELD_LABELS = {
 // Fields that either change automatically as a side-effect of other actions
 // (so logging them here would be noisy/redundant with their own dedicated
 // log line) or are internal bookkeeping never worth showing to a human.
-const SKIP_DIFF_FIELDS = new Set(['id','created_at','updated_at','tenant_id','pipelineStage','status','archived','dobM','dobD','dobY'])
+const SKIP_DIFF_FIELDS = new Set(['id','created_at','updated_at','tenant_id','pipelineStage','status','archived','dobM','dobD','dobY','ssn','spouseSsn','dependents'])
 function summarizeFieldChanges(before, after) {
   if (!before || !after) return []
   const changes = []
@@ -1640,7 +1640,7 @@ export default function Clients() {
     setModal(false); setForm(BLANK)
     // Reload then navigate straight into the new client's detail
     const { data: allClients } = await supabase.from('clients')
-      .select('id,name,status,email,phone,city,state,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,ssn,archived,deleted_at,"business_name",created_at,tenant_id')
+      .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
       .eq('tenant_id', myTenantId)
       .or('archived.eq.true,deleted_at.is.null')
       .order('name', { ascending: true })
