@@ -24,7 +24,7 @@ for(const n of [
   'onDrop={e=>',
   "crypto.subtle.digest('SHA-256'",
   "eq('tenant_id',tenantId).eq('client_id',String(clientId))",
-  ".eq('docType',form.docType).eq('file_hash',hash)",
+  ".eq('file_hash',hash)",
   'original_file_name:selectedFile.name',
   'upload_batch_id:batchId',
   'setBatchProgress({done:i+1,total:files.length})',
