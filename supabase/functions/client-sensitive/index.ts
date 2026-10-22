@@ -31,15 +31,19 @@ serve(async(req)=>{
   if(tenantErr||!tenantId) return json({error:'Office tenant could not be resolved'},403)
 
   const {data:employee,error:empErr}=await admin.from('employees')
-    .select('id,name,email,status,perm_clients,tenant_id')
+    .select('id,name,email,status,perm_clients,perm_irs,tenant_id')
     .eq('tenant_id',tenantId)
     .ilike('email',userData.user.email)
     .maybeSingle()
   if(empErr||!employee||String(employee.status||'').toLowerCase()!=='active') return json({error:'Active employee required'},403)
 
-  const {data:permission}=await userDb.rpc('current_employee_permission',{p_column:'perm_clients'})
-  const level=Number(permission ?? employee.perm_clients ?? 0)
-  if(level<1) return json({error:'Client access denied'},403)
+  const [{data:clientPermission},{data:irsPermission}]=await Promise.all([
+    userDb.rpc('current_employee_permission',{p_column:'perm_clients'}),
+    userDb.rpc('current_employee_permission',{p_column:'perm_irs'}),
+  ])
+  const level=Number(clientPermission ?? employee.perm_clients ?? 0)
+  const irsLevel=Number(irsPermission ?? employee.perm_irs ?? 0)
+  if(level<1 && irsLevel<1) return json({error:'Client access denied'},403)
 
   let body:any={}
   try{body=await req.json()}catch{return json({error:'Invalid JSON'},400)}
@@ -48,7 +52,7 @@ serve(async(req)=>{
   if(!clientId) return json({error:'client_id is required'},400)
 
   const {data:client,error:clientErr}=await admin.from('clients')
-    .select('id,tenant_id')
+    .select('id,tenant_id,ein')
     .eq('tenant_id',tenantId)
     .eq('id',clientId)
     .maybeSingle()
@@ -66,6 +70,20 @@ serve(async(req)=>{
       can_reveal: level>=3,
       ssn_masked: masked(sensitive?.ssn),
       spouse_ssn_masked: masked(sensitive?.spouse_ssn),
+    })
+  }
+
+  if(action==='tin_last4'){
+    if(irsLevel<1 && level<3) return json({error:'IRS client identification access denied'},403)
+    const digits=String(client?.ein || sensitive?.ssn || '').replace(/\D/g,'')
+    return json({tin_last4:digits.length>=4?digits.slice(-4):'',tin_type:client?.ein?'EIN':'SSN'})
+  }
+
+  if(action==='irs_read'){
+    if(irsLevel<2 && level<3) return json({error:'IRS client sensitive-data access denied'},403)
+    return json({
+      ssn:formatSsn(cleanSsn(sensitive?.ssn)),
+      spouse_ssn:formatSsn(cleanSsn(sensitive?.spouse_ssn)),
     })
   }
 
