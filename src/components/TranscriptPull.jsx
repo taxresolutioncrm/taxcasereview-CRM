@@ -966,7 +966,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                       >
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
                         <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
-                          SSN {maskedSsn(c.ssn)}{c.dob ? ` · DOB ${c.dob}` : ''}
+                          {c.dob ? `DOB ${c.dob}` : 'Taxpayer ID protected'}
                         </div>
                       </div>
                     ))}
@@ -994,7 +994,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     <div>
                       <div style={{ fontWeight: 800, fontSize: 12.5 }}>{formClient.name}</div>
                       <div style={{ color: 'var(--t3)', fontSize: 11, marginTop: 3 }}>
-                        SSN {maskedSsn(formClient.ssn)} · DOB {formClient.dob || 'Not on file'}
+                        DOB {formClient.dob || 'Not on file'} · Taxpayer ID protected
                       </div>
                     </div>
                     <span style={{ background: formPoa ? '#15803d' : '#b91c1c', color: '#fff', borderRadius: 6, padding: '3px 8px', fontSize: 10.5, fontWeight: 800, alignSelf: 'flex-start' }}>
