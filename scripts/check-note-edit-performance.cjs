@@ -1,0 +1,14 @@
+const fs=require('fs');const assert=require('assert');
+const e=fs.readFileSync('src/components/EditableNote.jsx','utf8');
+const c=fs.readFileSync('src/pages/Clients.jsx','utf8');
+const l=fs.readFileSync('src/pages/Leads.jsx','utf8');
+const k=fs.readFileSync('src/pages/Cases.jsx','utf8');
+const m=fs.readFileSync('supabase/migrations/20261023130500_note_edit_performance_indexes.sql','utf8');
+assert(e.includes("export default memo(EditableNote)"),'note view must be memoized');
+assert(!e.includes('useEffect')&&!e.includes('useMemo'),'idle note rows must not mount sync/memo hooks');
+assert(e.includes('function NoteEditor'),'stateful editor must mount only after Edit');
+assert(c.includes(".select('id,client_id,clientname,text,author,type,note_type,visible_to_client,created_at,last_edited_at,last_edited_by_employee_id,last_edited_by_name,edit_version')"),'client notes must use narrow select');
+assert(l.includes(".select('id,lead_id,lead_name,text,author,type,note_type,created_at,last_edited_at,last_edited_by_employee_id,last_edited_by_name,edit_version')"),'lead notes must use narrow select');
+assert(k.includes(".select('id,case_id,note,author,created_at,last_edited_at,last_edited_by_employee_id,last_edited_by_name,edit_version').eq('tenant_id', myTenantId)"),'case notes must be narrow and tenant scoped');
+for(const idx of ['client_notes_tenant_clientname_created_idx','lead_notes_tenant_lead_created_idx','case_notes_tenant_case_created_idx']) assert(m.includes(idx),'missing '+idx);
+console.log('PASS note edit performance hotfix checks');
