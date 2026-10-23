@@ -97,7 +97,7 @@ export default function Cases() {
   }
 
   async function loadCaseNotes(caseId) {
-    const { data } = await supabase.from('case_notes').select('*').eq('case_id', caseId).order('created_at', { ascending: false })
+    const { data } = await supabase.from('case_notes').select('id,case_id,note,author,created_at,last_edited_at,last_edited_by_employee_id,last_edited_by_name,edit_version').eq('tenant_id', myTenantId).eq('case_id', caseId).order('created_at', { ascending: false })
     setCaseNotes(data || [])
   }
 

@@ -626,7 +626,7 @@ export default function Leads() {
 
   async function loadLeadNotes(leadId) {
     if (!myTenantId) { setLeadNotes([]); return }
-    const { data } = await supabase.from('lead_notes').select('*')
+    const { data } = await supabase.from('lead_notes').select('id,lead_id,lead_name,text,author,type,note_type,created_at,last_edited_at,last_edited_by_employee_id,last_edited_by_name,edit_version')
       .eq('tenant_id', myTenantId)
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false })
