@@ -1502,7 +1502,7 @@ export default function Clients() {
       supabase.from('tasks').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).not('deleted','is',true).order('dueDate',{ascending:true}).order('created_at',{ascending:true}),
       supabase.from('invoices').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('created_at',{ascending:false}),
       (clientId ? docsQuery.eq('client_id', String(clientId)) : docsQuery.eq('client', clientName)).order('created_at',{ascending:false}),
-      supabase.from('client_notes').select('*').eq('tenant_id', myTenantId).eq('clientname', clientName).order('created_at',{ascending:false}),
+      supabase.from('client_notes').select('id,client_id,clientname,text,author,type,note_type,visible_to_client,created_at,last_edited_at,last_edited_by_employee_id,last_edited_by_name,edit_version').eq('tenant_id', myTenantId).eq('clientname', clientName).order('created_at',{ascending:false}),
       supabase.from('payments').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('created_at',{ascending:false}),
       supabase.from('sms_messages').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('created_at',{ascending:false}),
       supabase.from('deadlines').select('*').eq('tenant_id', myTenantId).eq('clientName', clientName).order('dueDate',{ascending:true}),
@@ -2281,7 +2281,7 @@ export default function Clients() {
       const {error:noteErr}=await insertClientNote({clientname:c.name,content,created_by:actor,created_at:new Date().toISOString()})
       if(noteErr){showToast('Saved, but failed to log note: '+noteErr.message);return}
       if(detail?.id===c.id){
-        const{data:notesData}=await supabase.from('client_notes').select('*').eq('clientname',c.name).order('created_at',{ascending:false})
+        const{data:notesData}=await supabase.from('client_notes').select('id,client_id,clientname,text,author,type,note_type,visible_to_client,created_at,last_edited_at,last_edited_by_employee_id,last_edited_by_name,edit_version').eq('tenant_id',myTenantId).eq('clientname',c.name).order('created_at',{ascending:false})
         if(notesData)setRelNotes(notesData)
       }
     }
