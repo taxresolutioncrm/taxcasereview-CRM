@@ -29,6 +29,7 @@ import SavedCardsPanel from '../components/SavedCardsPanel'
 import SplitPaymentModal from '../components/SplitPaymentModal'
 import { SMS_TEMPLATES, applySmsTemplate } from '../lib/smsTemplates'
 import { FIRM, label } from '../lib/firmBranding'
+import EditableNote from '../components/EditableNote'
 
 // Tenant-resolved firm name + contact email so the transactional email HTML,
 // SMS bodies, and subject lines below read as whichever firm is signed in,
@@ -2628,7 +2629,12 @@ export default function Leads() {
                                 {n.type && n.type!=='System' && <Bdg s={n.type} c="bn"/>}
                                 <span style={{fontSize:11,color:'var(--t3)'}}>{n.created_at ? new Date(n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : ''}</span>
                               </div>
-                              <div style={{fontSize:13,lineHeight:1.6,color:'var(--tx)',whiteSpace:'pre-wrap'}}>{n.text}</div>
+                              <EditableNote
+                                note={n}
+                                kind="lead"
+                                onSaved={patch=>setLeadNotes(prev=>prev.map(x=>x.id===patch.id?patch:x))}
+                                onReload={()=>loadLeadNotes(detail.id)}
+                              />
                             </div>
                           </div>
                         )
