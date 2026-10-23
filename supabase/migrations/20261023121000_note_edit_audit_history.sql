@@ -225,7 +225,7 @@ begin
     select n.note,n.author,n.edit_version,n.case_id::text,c."clientName"
       into v_old_content,v_author,v_version,v_entity_id,v_entity_name
     from public.case_notes n
-    left join public.cases c on c.id=n.case_id and c.tenant_id=n.tenant_id
+    left join public.cases c on c.id=n.case_id::text and c.tenant_id=n.tenant_id
     where n.id=p_note_id and n.tenant_id=v_tenant
     for update of n;
   end if;
