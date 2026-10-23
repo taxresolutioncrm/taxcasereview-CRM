@@ -33,6 +33,7 @@ import { RESOLUTION_SERVICES, resolveStateFormUrl } from '../lib/irsFormUtils'
 import { generatePOACoverLetterPdf } from '../lib/irsFormUtils'
 import { SMS_TEMPLATES, applySmsTemplate } from '../lib/smsTemplates'
 import { FIRM, label } from '../lib/firmBranding'
+import EditableNote from '../components/EditableNote'
 
 // Tenant-resolved firm name so onboarding email + POA/addendum SMS bodies
 // read for whichever firm is signed in. Mirrors Leads.jsx and docUtils.
@@ -2836,7 +2837,12 @@ export default function Clients() {
                                 <span style={{fontSize:11,color:'var(--t3)'}}>{n.created_at ? new Date(n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : ''}</span>
                                 {n.visible_to_client && <span style={{fontSize:10,fontWeight:700,color:'var(--ok)',background:'rgba(34,197,94,.12)',padding:'1px 7px',borderRadius:99}}>👁 Client can see this</span>}
                               </div>
-                              <div style={{fontSize:13,lineHeight:1.6,color:'var(--tx)',whiteSpace:'pre-wrap'}}>{n.text}</div>
+                              <EditableNote
+                                note={n}
+                                kind="client"
+                                onSaved={patch=>setRelNotes(prev=>prev.map(x=>x.id===patch.id?patch:x))}
+                                onReload={()=>loadRelated(c.name)}
+                              />
                             </div>
                           </div>
                         )
