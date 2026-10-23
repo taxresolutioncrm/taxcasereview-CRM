@@ -332,3 +332,74 @@ $$;
 
 revoke all on function public.admin_executive_metrics() from public,anon;
 grant execute on function public.admin_executive_metrics() to authenticated;
+
+
+create table if not exists public.romylabs_executive_metric_snapshots (
+  snapshot_date date primary key,
+  total_revenue numeric(14,2) not null,
+  mrr numeric(14,2) not null,
+  active_seats integer not null,
+  companies integer not null,
+  products integer not null,
+  demo_tenants integer not null,
+  occupancy_active integer not null,
+  occupancy_capacity integer not null,
+  occupancy_pct numeric(6,2),
+  occupancy_complete boolean not null default false,
+  captured_at timestamptz not null default now()
+);
+
+alter table public.romylabs_executive_metric_snapshots enable row level security;
+revoke all on public.romylabs_executive_metric_snapshots from public,anon,authenticated;
+
+create or replace function public.admin_capture_executive_snapshot()
+returns jsonb
+language plpgsql
+security definer
+set search_path=public,pg_temp
+as $$
+declare
+  v jsonb;
+  existing public.romylabs_executive_metric_snapshots%rowtype;
+begin
+  if not coalesce(public._is_platform_admin(),false) then
+    raise exception 'Platform admin required';
+  end if;
+
+  select * into existing
+  from public.romylabs_executive_metric_snapshots
+  where snapshot_date=current_date;
+
+  if found then
+    return to_jsonb(existing);
+  end if;
+
+  v:=public.admin_executive_metrics();
+  if coalesce((v->>'ok')::boolean,false)=false then
+    raise exception 'Executive metrics unavailable';
+  end if;
+
+  insert into public.romylabs_executive_metric_snapshots(
+    snapshot_date,total_revenue,mrr,active_seats,companies,products,demo_tenants,
+    occupancy_active,occupancy_capacity,occupancy_pct,occupancy_complete
+  ) values (
+    current_date,
+    coalesce((v->'kpis'->>'total_revenue')::numeric,0),
+    coalesce((v->'kpis'->>'mrr')::numeric,0),
+    coalesce((v->'kpis'->>'active_seats')::int,0),
+    coalesce((v->'kpis'->>'companies')::int,0),
+    coalesce((v->'kpis'->>'products')::int,0),
+    coalesce((v->'kpis'->>'demo_tenants')::int,0),
+    coalesce((v->'kpis'->>'occupancy_active')::int,0),
+    coalesce((v->'kpis'->>'occupancy_capacity')::int,0),
+    (v->'kpis'->>'occupancy_pct')::numeric,
+    coalesce((v->'kpis'->>'occupancy_complete')::boolean,false)
+  )
+  returning * into existing;
+
+  return to_jsonb(existing);
+end;
+$$;
+
+revoke all on function public.admin_capture_executive_snapshot() from public,anon;
+grant execute on function public.admin_capture_executive_snapshot() to authenticated;
