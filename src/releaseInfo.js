@@ -3,10 +3,11 @@
 // Shared code can carry different office versions through tenant-specific entries.
 
 const DEFAULT_RELEASE = {
-  version: '3.0.0',
+  version: '3.0.1',
   releasedAt: '2026-10-23',
   title: 'TaxRes CRM 3.0 — Formal Versioning Baseline',
   changes: [
+    'Release notes modal now opens above every CRM page without content overlap',
     'Formal semantic versioning begins with this release baseline',
     'Employee note editing with permanent audit history',
     'Note editor performance optimization',
@@ -29,6 +30,17 @@ const OFFICE_RELEASES = {
   'a0000000-0000-0000-0000-000000000001': {
     ...DEFAULT_RELEASE,
     title: 'TaxRes CRM 3.0 — Formal Versioning Baseline',
+  },
+
+  // Nashville Tax Solutions — dedicated database/project and independent release line
+  '489ace07-1a6b-4864-833a-4f8420568b40': {
+    version: '3.0.0',
+    releasedAt: '2026-10-23',
+    title: 'Nashville Tax Solutions CRM 3.0 — Formal Versioning Baseline',
+    changes: [
+      'Formal semantic versioning begins with this release baseline',
+      'Release notes dialog opens above CRM page content without overlap',
+    ],
   },
 
   // CloudCPA

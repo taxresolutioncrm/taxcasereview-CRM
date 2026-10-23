@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import { supabase } from '../../lib/supabase'
@@ -142,6 +143,20 @@ export default function Sidebar() {
   const [activeTenantId, setActiveTenantId] = useState(() => FIRM.tenantId || '')
   const [showReleaseNotes, setShowReleaseNotes] = useState(false)
   const releaseInfo = getReleaseInfo(activeTenantId || FIRM.tenantId || '')
+
+  useEffect(() => {
+    if (!showReleaseNotes) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = e => {
+      if (e.key === 'Escape') setShowReleaseNotes(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [showReleaseNotes])
 
   // Determine which section contains the active route
   function activeSection() {
@@ -740,20 +755,24 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {showReleaseNotes && (
+      {showReleaseNotes && typeof document !== 'undefined' && createPortal(
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Release notes"
           onClick={()=>setShowReleaseNotes(false)}
           style={{
-            position:'fixed',inset:0,zIndex:5000,background:'rgba(2,6,23,.72)',
+            position:'fixed',inset:0,zIndex:2147483647,background:'rgba(2,6,23,.82)',
             display:'flex',alignItems:'center',justifyContent:'center',padding:20
           }}
         >
           <div
             onClick={e=>e.stopPropagation()}
             style={{
-              width:'min(520px,94vw)',maxHeight:'78vh',overflowY:'auto',
-              background:'var(--s1)',border:'1px solid var(--br)',borderRadius:14,
-              boxShadow:'0 24px 80px rgba(0,0,0,.45)',padding:20,color:'var(--tx)'
+              width:'min(560px,94vw)',maxHeight:'80vh',overflowY:'auto',
+              background:'#0f2237',border:'1px solid #2a4761',borderRadius:14,
+              boxShadow:'0 28px 100px rgba(0,0,0,.65)',padding:22,color:'var(--tx)',
+              position:'relative',zIndex:1
             }}
           >
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16}}>
@@ -766,10 +785,10 @@ export default function Sidebar() {
                 type="button"
                 onClick={()=>setShowReleaseNotes(false)}
                 aria-label="Close release notes"
-                style={{background:'none',border:'none',color:'var(--t3)',fontSize:22,cursor:'pointer',lineHeight:1}}
+                style={{background:'none',border:'none',color:'var(--t3)',fontSize:24,cursor:'pointer',lineHeight:1,padding:4}}
               >×</button>
             </div>
-            <div style={{marginTop:16,padding:'10px 12px',borderRadius:10,background:'var(--s2)',border:'1px solid var(--br)'}}>
+            <div style={{marginTop:16,padding:'10px 12px',borderRadius:10,background:'rgba(255,255,255,.035)',border:'1px solid var(--br)'}}>
               <div style={{fontSize:11,color:'var(--t3)'}}>Current production version</div>
               <div style={{fontSize:22,fontWeight:900,marginTop:2}}>v{releaseInfo.version}</div>
             </div>
@@ -782,7 +801,8 @@ export default function Sidebar() {
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {user && (

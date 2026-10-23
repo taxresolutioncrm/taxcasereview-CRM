@@ -8,6 +8,11 @@ assert(sidebar.includes('v{releaseInfo.version}'),'visible sidebar production ve
 assert(sidebar.includes("What's New"),'release notes panel missing');
 assert(sidebar.includes('getReleaseInfo'),'sidebar must resolve per-office release metadata');
 assert(release.includes('OFFICE_RELEASES'),'per-office version support missing');
-assert(release.includes("version: '3.0.0'"),'formal baseline must be v3.0.0');
-assert(release.includes('Formal semantic versioning begins with this release baseline'),'formal baseline disclosure missing');
+assert(pkg.version === '3.0.0' || /^3\.\d+\.\d+$/.test(pkg.version),'current formal-versioning line must remain in major version 3');
+assert(release.includes('Formal semantic versioning begins with this release baseline'),'formal v3.0.0 baseline disclosure missing');
+const nashvilleBlock = release.match(/'489ace07-1a6b-4864-833a-4f8420568b40':[\s\S]*?\n  },/)?.[0] || '';
+assert(nashvilleBlock,'Nashville independent release line missing');
+assert(nashvilleBlock.includes("version: '3.0.0'"),'Nashville baseline must start independently at v3.0.0');
+assert(!nashvilleBlock.includes('Employee note editing'),'Nashville release notes must not claim note editing before Nashville ships it');
+assert(!nashvilleBlock.includes('Note editor performance optimization'),'Nashville release notes must not claim TCR note performance work');
 console.log('PASS CRM release version accountability');
