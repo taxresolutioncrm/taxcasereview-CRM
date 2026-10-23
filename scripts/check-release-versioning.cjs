@@ -1,0 +1,12 @@
+const fs=require('fs');const assert=require('assert');
+const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+const release=fs.readFileSync('src/releaseInfo.js','utf8');
+const sidebar=fs.readFileSync('src/components/layout/Sidebar.jsx','utf8');
+assert(/^\d+\.\d+\.\d+$/.test(pkg.version),'package version must be semantic x.y.z');
+assert(release.includes(`version: '${pkg.version}'`),'release manifest and package version must match');
+assert(sidebar.includes('v{releaseInfo.version}'),'visible sidebar production version missing');
+assert(sidebar.includes("What's New"),'release notes panel missing');
+assert(sidebar.includes('getReleaseInfo'),'sidebar must resolve per-office release metadata');
+assert(release.includes('OFFICE_RELEASES'),'per-office version support missing');
+assert(!release.includes('TCR dashboard reporting accuracy corrections'),'unreleased TCR dashboard fix must not be claimed in current changelog');
+console.log('PASS CRM release version accountability');
