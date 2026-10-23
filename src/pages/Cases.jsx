@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext'
 import ClientLink from '../components/ClientLink'
 import AIGovernmentCallModal from '../components/calling/AIGovernmentCallModal'
 import { CASE_STATUSES as STATUSES, CASE_STATUS_COLORS as STATUS_C, ACTIVE_STATUSES, PENDING_STATUSES, RESOLVED_STATUSES } from '../lib/caseStatuses'
+import EditableNote from '../components/EditableNote'
 const CASE_TYPES = ['OIC','Installment Agreement','CNC','Penalty Abatement','Lien Withdrawal','TFRP','Appeals','Payroll Tax','Audit','Liens/Levies','Unfiled Returns','Tax Investigation','Other']
 
 const BLANK = { clientName:'', caseType:'OIC', irsBalance:'', status:'Open', assignedTo:'', taxAssociate:'', deadline:'', taxYears:'', resolutionAmount:'', notes:'' }
@@ -106,8 +107,8 @@ export default function Cases() {
     const actor = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Staff'
     await supabase.from('case_notes').insert([{
       case_id: detail.id,
-      text: newNote.trim(),
-      created_by: actor,
+      note: newNote.trim(),
+      author: actor,
       created_at: new Date().toISOString()
     }])
     setAddingNote(false)
@@ -348,16 +349,23 @@ export default function Cases() {
                   color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 11, fontWeight: 800, flexShrink: 0, textTransform: 'uppercase'
                 }}>
-                  {(n.created_by || 'S').slice(0, 2)}
+                  {(n.author || 'S').slice(0, 2)}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 3 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tx)' }}>{n.created_by || 'Staff'}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tx)' }}>{n.author || 'Staff'}</span>
                     <span style={{ fontSize: 10, color: 'var(--t3)' }}>
                       {n.created_at ? new Date(n.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
                     </span>
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--tx)', lineHeight: 1.5 }}>{n.text}</div>
+                  <EditableNote
+                    note={n}
+                    kind="case"
+                    contentField="note"
+                    textStyle={{ fontSize: 13, color: 'var(--tx)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}
+                    onSaved={patch=>setCaseNotes(prev=>prev.map(x=>x.id===patch.id?patch:x))}
+                    onReload={()=>loadCaseNotes(detail.id)}
+                  />
                 </div>
                 <button onClick={async () => { const { error } = await supabase.from('case_notes').delete().eq('id', n.id); if (error) { showToast('Error: ' + error.message); return } loadCaseNotes(detail.id) }}
                   style={{ background: 'none', border: 'none', color: 'var(--t3)', cursor: 'pointer', fontSize: 16, flexShrink: 0, lineHeight: 1, padding: '0 2px' }}>×</button>
