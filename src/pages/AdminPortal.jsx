@@ -945,6 +945,7 @@ function AdminDialer() {
 // ── Overview ─────────────────────────────────────────────────────────────────
 function Overview() {
   const [stats, setStats] = useState(null)
+  const [executiveMetrics, setExecutiveMetrics] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [refreshingMetrics, setRefreshingMetrics] = useState(false)
   const [refreshError, setRefreshError] = useState('')
@@ -964,12 +965,21 @@ function Overview() {
         if(cancelled) return
         setStats(rows)
         setExternalMetrics(productMetrics)
+        const { data: executive, error: executiveError } = await supabase.rpc('admin_executive_metrics')
+        if (executiveError) throw executiveError
+        if(cancelled) return
+        setExecutiveMetrics(executive?.ok === false ? null : executive)
+        if (executive?.ok !== false) {
+          const { error: snapshotError } = await supabase.rpc('admin_capture_executive_snapshot')
+          if (snapshotError) console.warn('[Admin Overview] executive snapshot:', snapshotError.message)
+        }
         // Partial external metrics failures must not present as a fatal Overview error
         // because the central RomyLabs registry remains the office-directory fallback.
         setLoadError('')
       } catch(error) {
         if(cancelled) return
         setStats([])
+        setExecutiveMetrics(null)
         setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
         setLoadError(error?.message || 'Unable to load platform offices')
       }
@@ -990,6 +1000,13 @@ function Overview() {
       }
       setStats(rows)
       setExternalMetrics(nextExternalMetrics)
+      const { data: executive, error: executiveError } = await supabase.rpc('admin_executive_metrics')
+      if (executiveError) throw executiveError
+      setExecutiveMetrics(executive?.ok === false ? null : executive)
+      if (executive?.ok !== false) {
+        const { error: snapshotError } = await supabase.rpc('admin_capture_executive_snapshot')
+        if (snapshotError) console.warn('[Admin Overview] executive snapshot:', snapshotError.message)
+      }
       setLoadError('')
       setLastManualRefresh(new Date())
     } catch (error) {
@@ -1153,19 +1170,24 @@ function Overview() {
   }, [user])
 
   const operatingStats = (stats||[]).filter(r => r.counts_as_office !== false)
-  const totalMRR     = operatingStats.reduce((s,r) => s+Number(r.effective_monthly||0), 0)
-  const activeOff    = operatingStats.filter(r => r.status==='active').length
   const effectiveSeatCount = row => {
     const purchased = Number(row?.billing_seats || 0)
     const active = Number(row?.employee_count || 0)
     return purchased > 0 ? purchased : active
   }
-  const totalSeats   = operatingStats.reduce((s,r) => s + effectiveSeatCount(r), 0)
-  const totalClients = operatingStats.reduce((s,r) => s+Number(r.client_count||0), 0) + externalMetrics.active_clients
-  const totalLeads   = operatingStats.reduce((s,r) => s+Number(r.lead_count||0), 0) + externalMetrics.active_leads
-  const totalStorage = operatingStats.reduce((s,r) => s+Number(r.storage_bytes||0), 0) + externalMetrics.storage_bytes
-  const totalCollected = operatingStats.reduce((s,r) => s+Number(r.total_collected||0), 0)
-  const totalTx        = operatingStats.reduce((s,r) => s+Number(r.transaction_count||0), 0)
+  // Executive KPI cards MUST use the canonical server-side reporting contract.
+  // Office rows below remain operational drill-down data and are never re-summed
+  // into portfolio revenue/MRR/seats on the client.
+  const execKpis = executiveMetrics?.kpis || {}
+  const execQuality = executiveMetrics?.quality || {}
+  const executiveReady = Boolean(executiveMetrics?.ok)
+  const qualityCounts = {
+    duplicate: Array.isArray(execQuality.duplicate_offices) ? execQuality.duplicate_offices.length : 0,
+    unclassified: Array.isArray(execQuality.unclassified_offices) ? execQuality.unclassified_offices.length : 0,
+    missingFeeds: Array.isArray(execQuality.missing_product_feeds) ? execQuality.missing_product_feeds.length : 0,
+    staleFeeds: Array.isArray(execQuality.stale_feeds) ? execQuality.stale_feeds.length : 0,
+  }
+  const hasQualityWarning = Object.values(qualityCounts).some(Boolean) || execQuality.occupancy_incomplete === true
 
   const SORT_COLUMNS = [
     { label:'Firm', key:'firm_name', type:'text' },
@@ -1236,12 +1258,18 @@ function Overview() {
   const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
 
   const KPI = [
-    { label:'Monthly Recurring', val: `$${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981' },
-    { label:'Active Offices',    val: activeOff, sub:`${operatingStats.length} total`, color:'#6366f1' },
-    { label:'Total Seats',       val: totalSeats, sub:'across all firms', color:'#f59e0b' },
-    { label:'Total Clients',     val: totalClients.toLocaleString(), sub:`${totalLeads} leads`, color:'#0ea5e9' },
-    { label:'Storage Used',      val: fmtBytes(totalStorage), sub:'documents', color:'#8b5cf6' },
-    { label:'Total Collected',    val: `$${totalCollected.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:`${totalTx.toLocaleString()} transactions`, color:'#10b981' },
+    { label:'Total Revenue', val: executiveReady ? `${Number(execKpis.total_revenue||0).toLocaleString('en-US',{maximumFractionDigits:0})}` : '—', sub:'Collected RomyLabs subscriptions', color:'#f8fafc' },
+    { label:'MRR', val: executiveReady ? `${Number(execKpis.mrr||0).toLocaleString('en-US',{maximumFractionDigits:0})}` : '—', sub:'Active subscription billing', color:'#10b981' },
+    { label:'Active Seats', val: executiveReady ? Number(execKpis.active_seats||0).toLocaleString() : '—', sub:'Verified active staff', color:'#f59e0b' },
+    { label:'Occupancy', val: executiveReady && Number(execKpis.occupancy_capacity||0)>0
+        ? `${Number(execKpis.occupancy_active||0).toLocaleString()} / ${Number(execKpis.occupancy_capacity||0).toLocaleString()} known`
+        : '—',
+      sub: executiveReady && Number(execKpis.occupancy_capacity||0)>0
+        ? `${Number(execKpis.occupancy_pct||0).toFixed(1)}% · capacity known for ${execKpis.occupancy_covered_companies||0}/${execKpis.occupancy_total_companies||0} companies`
+        : 'No verified seat capacity', color:'#a78bfa' },
+    { label:'Products', val: executiveReady ? Number(execKpis.products||0).toLocaleString() : '—', sub:'Active non-internal products', color:'#8b5cf6' },
+    { label:'Companies', val: executiveReady ? Number(execKpis.companies||0).toLocaleString() : '—', sub:'Verified real companies', color:'#38bdf8' },
+    { label:'Demo Tenants', val: executiveReady ? Number(execKpis.demo_tenants||0).toLocaleString() : '—', sub:'Canonical product demos', color:'#64748b' },
   ]
 
   return (
@@ -1253,20 +1281,27 @@ function Overview() {
         <div style={{ fontSize:26, fontWeight:800, color:'#fff', marginBottom:4 }}>
           {h<12?'Good morning':h<17?'Good afternoon':'Good evening'}, Romy 👋
         </div>
-        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — {operatingStats.length} offices</div>
+        <div style={{ fontSize:14, color:'#475569' }}>RomyLabs Platform — source-of-truth executive reporting</div>
       </div>
+
+      {executiveReady && hasQualityWarning && (
+        <div style={{padding:'12px 14px',borderRadius:10,background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.22)',color:'#fbbf24',marginBottom:16,fontSize:11,lineHeight:1.6}}>
+          Reporting quality check: {qualityCounts.duplicate} duplicate office source{qualityCounts.duplicate===1?'':'s'} deduped · {qualityCounts.unclassified} unclassified office{qualityCounts.unclassified===1?'':'s'} excluded · {qualityCounts.missingFeeds} product feed{qualityCounts.missingFeeds===1?'':'s'} missing · {qualityCounts.staleFeeds} feed{qualityCounts.staleFeeds===1?'':'s'} stale.
+          {execQuality.occupancy_incomplete ? ' Portfolio occupancy is intentionally marked as partial until every real company has verified contracted-seat capacity.' : ''}
+        </div>
+      )}
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:14, marginBottom:32 }}>
         {KPI.map(k => (
           <div key={k.label} style={{ ...S.card, padding:'20px 18px' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
               <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em' }}>{k.label}</div>
-              {k.label === 'Storage Used' && <button type="button" onClick={refreshAllMetrics} disabled={refreshingMetrics || stats===null} title="Refresh all CRM metrics now" aria-label="Refresh all CRM metrics" style={{ border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.08)', color:'#c4b5fd', borderRadius:7, padding:'4px 7px', fontSize:11, cursor:refreshingMetrics?'wait':'pointer', opacity:refreshingMetrics?.6:1 }}>{refreshingMetrics ? 'Refreshing…' : '↻ Refresh'}</button>}
+              {k.label === 'MRR' && <button type="button" onClick={refreshAllMetrics} disabled={refreshingMetrics || stats===null} title="Refresh all CRM metrics now" aria-label="Refresh all CRM metrics" style={{ border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.08)', color:'#c4b5fd', borderRadius:7, padding:'4px 7px', fontSize:11, cursor:refreshingMetrics?'wait':'pointer', opacity:refreshingMetrics?.6:1 }}>{refreshingMetrics ? 'Refreshing…' : '↻ Refresh'}</button>}
             </div>
             <div style={{ fontSize:28, fontWeight:900, color:k.color, lineHeight:1 }}>{stats===null?'…':k.val}</div>
             <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>{k.sub}</div>
-            {k.label === 'Storage Used' && lastManualRefresh && <div style={{ fontSize:10, color:'#64748b', marginTop:4 }}>Refreshed {lastManualRefresh.toLocaleTimeString()}</div>}
-            {k.label === 'Storage Used' && refreshError && <div role="status" style={{ fontSize:10, color:'#fbbf24', marginTop:6 }}>{refreshError}</div>}
+            {k.label === 'MRR' && lastManualRefresh && <div style={{ fontSize:10, color:'#64748b', marginTop:4 }}>Refreshed {lastManualRefresh.toLocaleTimeString()}</div>}
+            {k.label === 'MRR' && refreshError && <div role="status" style={{ fontSize:10, color:'#fbbf24', marginTop:6 }}>{refreshError}</div>}
           </div>
         ))}
       </div>
