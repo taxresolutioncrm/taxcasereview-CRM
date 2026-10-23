@@ -14,6 +14,7 @@ function tf(q) {
   return FIRM.tenantId ? q.eq('tenant_id', FIRM.tenantId) : q
 }
 
+const TCR_TENANT_ID = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
 const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
 
 const CARD_COLORS = {
@@ -135,7 +136,10 @@ export default function Dashboard() {
       { data: tasks }, { data: invoices }, { data: payments },
       { data: deadlines }, { data: arScheduled },
     ] = await Promise.all([
-      tf(supabase.from('leads').select('*')).order('created_at', { ascending: false }),
+      (FIRM.tenantId === TCR_TENANT_ID
+        ? tf(supabase.from('leads').select('*')).is('deleted_at', null)
+        : tf(supabase.from('leads').select('*'))
+      ).order('created_at', { ascending: false }),
       tf(supabase.from('clients').select('*').is('deleted_at', null)).order('created_at', { ascending: false }),
       tf(supabase.from('cases').select('*')).order('created_at', { ascending: false }),
       tf(supabase.from('tasks').select('*').not('deleted','is',true)).order('created_at', { ascending: false }),
