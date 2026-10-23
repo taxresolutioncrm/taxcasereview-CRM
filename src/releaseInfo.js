@@ -32,6 +32,17 @@ const OFFICE_RELEASES = {
     title: 'TaxRes CRM 3.0 — Formal Versioning Baseline',
   },
 
+  // Nashville Tax Solutions — dedicated database/project and independent release line
+  '489ace07-1a6b-4864-833a-4f8420568b40': {
+    version: '3.0.0',
+    releasedAt: '2026-10-23',
+    title: 'Nashville Tax Solutions CRM 3.0 — Formal Versioning Baseline',
+    changes: [
+      'Formal semantic versioning begins with this release baseline',
+      'Release notes dialog opens above CRM page content without overlap',
+    ],
+  },
+
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
     ...DEFAULT_RELEASE,
