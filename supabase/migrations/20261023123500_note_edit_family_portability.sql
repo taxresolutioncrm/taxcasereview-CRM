@@ -134,6 +134,8 @@ begin
     where n.id=p_note_id and n.tenant_id=v_tenant;
   end if;
 
+  perform set_config('app.note_edit_rpc','',true);
+
   insert into public.note_edit_audit(tenant_id,note_kind,note_id,entity_type,entity_id,entity_name,previous_content,updated_content,employee_id,employee_name,edit_version,edited_at)
   values(v_tenant,p_note_kind,p_note_id,p_note_kind,v_entity_id,v_entity_name,v_old_content,btrim(p_new_content),v_employee.id,v_employee.name,coalesce(v_version,0)+1,v_edited_at);
 
