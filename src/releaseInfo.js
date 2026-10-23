@@ -21,7 +21,6 @@ const OFFICE_RELEASES = {
     title: 'Tax Case Review CRM 3.2',
     changes: [
       ...DEFAULT_RELEASE.changes,
-      'TCR dashboard reporting accuracy corrections',
     ],
   },
 
