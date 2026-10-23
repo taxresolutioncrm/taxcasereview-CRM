@@ -1,5 +1,11 @@
 begin;
 
+-- Existing case_notes.case_id was uuid while cases.id is text (e.g. cs..., c-demo-...).
+-- Normalize the relationship before enabling note editing so new/existing case notes
+-- use the same identifier shape as the cases table.
+alter table public.case_notes
+  alter column case_id type text using case_id::text;
+
 alter table public.client_notes
   add column if not exists last_edited_at timestamptz,
   add column if not exists last_edited_by_employee_id text,
@@ -225,7 +231,7 @@ begin
     select n.note,n.author,n.edit_version,n.case_id::text,c."clientName"
       into v_old_content,v_author,v_version,v_entity_id,v_entity_name
     from public.case_notes n
-    left join public.cases c on c.id=n.case_id::text and c.tenant_id=n.tenant_id
+    left join public.cases c on c.id=n.case_id and c.tenant_id=n.tenant_id
     where n.id=p_note_id and n.tenant_id=v_tenant
     for update of n;
   end if;
