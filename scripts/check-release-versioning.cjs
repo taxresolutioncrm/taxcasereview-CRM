@@ -8,5 +8,6 @@ assert(sidebar.includes('v{releaseInfo.version}'),'visible sidebar production ve
 assert(sidebar.includes("What's New"),'release notes panel missing');
 assert(sidebar.includes('getReleaseInfo'),'sidebar must resolve per-office release metadata');
 assert(release.includes('OFFICE_RELEASES'),'per-office version support missing');
-assert(!release.includes('TCR dashboard reporting accuracy corrections'),'unreleased TCR dashboard fix must not be claimed in current changelog');
+assert(release.includes("version: '3.0.0'"),'formal baseline must be v3.0.0');
+assert(release.includes('Formal semantic versioning begins with this release baseline'),'formal baseline disclosure missing');
 console.log('PASS CRM release version accountability');
