@@ -2,10 +2,6 @@ name: Deploy RomyLabs Admin to Cloudflare
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.deploy/admin-romylabs'
 
 permissions:
   contents: read
@@ -38,22 +34,17 @@ jobs:
         run: npx vite build
       - name: Deploy dist to Cloudflare Pages
         run: npx --yes wrangler@latest pages deploy dist --project-name=taxcasereview-crm --branch=main --commit-dirty=true
-      - name: Verify production reporting bundle
+      - name: Verify production build marker
         shell: bash
         run: |
-          set -euo pipefail
-          base='https://admin.romylabs.com'
+          marker='ROMYLABS_MEET_EMAIL_20260830_0545'
           for i in 1 2 3 4 5 6; do
-            html="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "$base/?v=$(date +%s)" || true)"
-            asset="$(printf '%s' "$html" | grep -oE '/assets/index-[^"]+\.js' | head -n1 || true)"
-            if [ -n "$asset" ]; then
-              js="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-cache' "$base$asset?v=$(date +%s)" || true)"
-              if printf '%s' "$js" | grep -q 'admin_executive_metrics' && printf '%s' "$js" | grep -q 'admin_capture_executive_snapshot'; then
-                echo 'admin.romylabs.com is serving the executive reporting accuracy bundle.'
-                exit 0
-              fi
+            live=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "https://admin.romylabs.com/admin-portal-build.txt?v=$(date +%s)" || true)
+            if printf '%s' "$live" | grep -q "$marker"; then
+              echo 'admin.romylabs.com is serving the current build marker.'
+              exit 0
             fi
             sleep 10
           done
-          echo 'Cloudflare deployment completed but the live Admin bundle was not verified.'
+          echo 'Cloudflare deployment completed but custom domain did not expose the current marker.'
           exit 1
