@@ -3,10 +3,11 @@
 // Shared code can carry different office versions through tenant-specific entries.
 
 const DEFAULT_RELEASE = {
-  version: '3.0.0',
+  version: '3.0.1',
   releasedAt: '2026-10-23',
   title: 'TaxRes CRM 3.0 — Formal Versioning Baseline',
   changes: [
+    'Release notes modal now opens above every CRM page without content overlap',
     'Formal semantic versioning begins with this release baseline',
     'Employee note editing with permanent audit history',
     'Note editor performance optimization',
