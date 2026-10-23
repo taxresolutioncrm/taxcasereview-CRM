@@ -969,6 +969,10 @@ function Overview() {
         if (executiveError) throw executiveError
         if(cancelled) return
         setExecutiveMetrics(executive?.ok === false ? null : executive)
+        if (executive?.ok !== false) {
+          const { error: snapshotError } = await supabase.rpc('admin_capture_executive_snapshot')
+          if (snapshotError) console.warn('[Admin Overview] executive snapshot:', snapshotError.message)
+        }
         // Partial external metrics failures must not present as a fatal Overview error
         // because the central RomyLabs registry remains the office-directory fallback.
         setLoadError('')
@@ -999,6 +1003,10 @@ function Overview() {
       const { data: executive, error: executiveError } = await supabase.rpc('admin_executive_metrics')
       if (executiveError) throw executiveError
       setExecutiveMetrics(executive?.ok === false ? null : executive)
+      if (executive?.ok !== false) {
+        const { error: snapshotError } = await supabase.rpc('admin_capture_executive_snapshot')
+        if (snapshotError) console.warn('[Admin Overview] executive snapshot:', snapshotError.message)
+      }
       setLoadError('')
       setLastManualRefresh(new Date())
     } catch (error) {
