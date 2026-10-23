@@ -10,6 +10,7 @@ const cases = fs.readFileSync('src/pages/Cases.jsx','utf8')
 for (const table of ['client_notes','lead_notes','case_notes']) {
   assert(migration.includes('alter table public.'+table), table+' metadata migration missing')
 }
+assert(migration.includes('alter column case_id type text'), 'case_notes.case_id must match text cases.id')
 assert(migration.includes('create table if not exists public.note_edit_audit'), 'audit table missing')
 assert(migration.includes('for update'), 'row lock missing')
 assert(migration.includes('p_expected_version'), 'optimistic concurrency version missing')
