@@ -46,15 +46,15 @@ revenue_truth as (
   from paid_payments
 ),
 monthly_revenue as (
-  select date_trunc('month',coalesce(paid_at,created_at))::date month,
+  select date_trunc('month',coalesce(paid_at,created_at))::date month_start,
          sum(amount_cents)::numeric/100.0 revenue
   from paid_payments
   group by 1
 ),
 revenue_period as (
   select
-    coalesce((select revenue from monthly_revenue where month=date_trunc('month',current_date)::date),0) current_month,
-    coalesce((select revenue from monthly_revenue where month=(date_trunc('month',current_date)-interval '1 month')::date),0) previous_month
+    coalesce((select revenue from monthly_revenue where month_start=date_trunc('month',current_date)::date),0) current_month,
+    coalesce((select revenue from monthly_revenue where month_start=(date_trunc('month',current_date)-interval '1 month')::date),0) previous_month
 ),
 cache as (
   select product_key,payload,fetched_at
@@ -268,9 +268,9 @@ office_revenue as (
   ) x
 ),
 revenue_series as (
-  select coalesce(jsonb_agg(jsonb_build_object('month',month,'revenue',revenue) order by month),'[]'::jsonb) value
+  select coalesce(jsonb_agg(jsonb_build_object('month',month_start,'revenue',revenue) order by month_start),'[]'::jsonb) value
   from monthly_revenue
-  where month >= (date_trunc('month',current_date)-interval '11 months')::date
+  where month_start >= (date_trunc('month',current_date)-interval '11 months')::date
 )
 select case when not (select ok from authorized) then
   jsonb_build_object('ok',false,'error','Platform admin required')
