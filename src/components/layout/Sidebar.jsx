@@ -6,6 +6,7 @@ import { FIRM } from '../../lib/firmBranding'
 import { OPEN_STATUSES } from '../../lib/caseStatuses'
 import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from '../../lib/centurionBrand'
+import { getReleaseInfo } from '../../releaseInfo'
 
 const LOGO = '/logo.png'
 
@@ -139,6 +140,8 @@ export default function Sidebar() {
   const navigate = useNavigate()
   const [logoUrl, setLogoUrl] = useState(() => FIRM.logoUrl || null)
   const [activeTenantId, setActiveTenantId] = useState(() => FIRM.tenantId || '')
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false)
+  const releaseInfo = getReleaseInfo(activeTenantId || FIRM.tenantId || '')
 
   // Determine which section contains the active route
   function activeSection() {
@@ -720,6 +723,67 @@ export default function Sidebar() {
       })}
 
       <div style={{ flex: 1 }} />
+
+      <div style={{padding:'8px 14px 0',flexShrink:0}}>
+        <button
+          type="button"
+          onClick={()=>setShowReleaseNotes(true)}
+          title="View release history"
+          style={{
+            width:'100%',background:'transparent',border:'1px solid var(--br)',borderRadius:8,
+            padding:'7px 9px',display:'flex',alignItems:'center',justifyContent:'space-between',
+            color:'var(--t3)',fontSize:10,cursor:'pointer'
+          }}
+        >
+          <span>{FIRM.name || 'TaxRes CRM'}</span>
+          <span style={{fontWeight:800,color:'var(--blue)'}}>v{releaseInfo.version}</span>
+        </button>
+      </div>
+
+      {showReleaseNotes && (
+        <div
+          onClick={()=>setShowReleaseNotes(false)}
+          style={{
+            position:'fixed',inset:0,zIndex:5000,background:'rgba(2,6,23,.72)',
+            display:'flex',alignItems:'center',justifyContent:'center',padding:20
+          }}
+        >
+          <div
+            onClick={e=>e.stopPropagation()}
+            style={{
+              width:'min(520px,94vw)',maxHeight:'78vh',overflowY:'auto',
+              background:'var(--s1)',border:'1px solid var(--br)',borderRadius:14,
+              boxShadow:'0 24px 80px rgba(0,0,0,.45)',padding:20,color:'var(--tx)'
+            }}
+          >
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:800,color:'var(--blue)',textTransform:'uppercase',letterSpacing:'.08em'}}>What's New</div>
+                <div style={{fontSize:20,fontWeight:900,marginTop:3}}>{releaseInfo.title}</div>
+                <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>Production release · {releaseInfo.releasedAt}</div>
+              </div>
+              <button
+                type="button"
+                onClick={()=>setShowReleaseNotes(false)}
+                aria-label="Close release notes"
+                style={{background:'none',border:'none',color:'var(--t3)',fontSize:22,cursor:'pointer',lineHeight:1}}
+              >×</button>
+            </div>
+            <div style={{marginTop:16,padding:'10px 12px',borderRadius:10,background:'var(--s2)',border:'1px solid var(--br)'}}>
+              <div style={{fontSize:11,color:'var(--t3)'}}>Current production version</div>
+              <div style={{fontSize:22,fontWeight:900,marginTop:2}}>v{releaseInfo.version}</div>
+            </div>
+            <div style={{marginTop:16}}>
+              {(releaseInfo.changes || []).map((item,i)=>(
+                <div key={i} style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12,lineHeight:1.55,marginBottom:9}}>
+                  <span style={{color:'var(--blue)',fontWeight:900}}>•</span>
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {user && (
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--br)', flexShrink: 0 }}>
