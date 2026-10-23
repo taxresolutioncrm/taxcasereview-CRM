@@ -195,7 +195,8 @@ missing_product_feeds as (
   select coalesce(jsonb_agg(jsonb_build_object('product_id',p.product_id,'name',p.name) order by p.sort_order,p.name),'[]'::jsonb) value
   from active_products p
   left join cache c on c.product_key=p.product_id
-  where c.product_key is null
+  where lower(coalesce(p.lifecycle,''))='live'
+    and c.product_key is null
 ),
 stale_feeds as (
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -204,6 +205,53 @@ stale_feeds as (
   ) order by fetched_at),'[]'::jsonb) value
   from cache
   where fetched_at < now()-interval '2 hours'
+),
+company_status as (
+  select coalesce(jsonb_object_agg(status_name,cnt),'{}'::jsonb) value
+  from (
+    select status_name,count(*)::int cnt
+    from (
+      select v.office_id,
+             case
+               when lower(coalesce(b.status,'')) in ('active','trial','past_due','suspended','cancelled') then lower(b.status)
+               when lower(coalesce(v.registry_status,'')) in ('active','trial','past_due','suspended','cancelled') then lower(v.registry_status)
+               when v.is_active then 'active'
+               else 'inactive'
+             end status_name
+      from verified_companies v
+      left join lateral (
+        select status
+        from billing_accounts ba
+        where ba.external_tenant_id=v.office_id
+        order by ba.updated_at desc
+        limit 1
+      ) b on true
+    ) x
+    group by status_name
+  ) y
+),
+verified_company_rows as (
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'office_id',v.office_id,
+    'office_name',v.office_name,
+    'product',v.product_key,
+    'active_staff',v.active_staff,
+    'status',case
+      when lower(coalesce(b.status,'')) in ('active','trial','past_due','suspended','cancelled') then lower(b.status)
+      when lower(coalesce(v.registry_status,'')) in ('active','trial','past_due','suspended','cancelled') then lower(v.registry_status)
+      when v.is_active then 'active'
+      else 'inactive'
+    end,
+    'fetched_at',v.fetched_at
+  ) order by v.office_name),'[]'::jsonb) value
+  from verified_companies v
+  left join lateral (
+    select status
+    from billing_accounts ba
+    where ba.external_tenant_id=v.office_id
+    order by ba.updated_at desc
+    limit 1
+  ) b on true
 ),
 office_revenue as (
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -267,8 +315,11 @@ else jsonb_build_object(
   ),
   'charts',jsonb_build_object(
     'monthly_revenue',(select value from revenue_series),
-    'office_revenue',(select value from office_revenue)
+    'historical_mrr','[]'::jsonb,
+    'office_revenue',(select value from office_revenue),
+    'office_status',(select value from company_status)
   ),
+  'companies',(select value from verified_company_rows),
   'quality',jsonb_build_object(
     'duplicate_offices',(select value from duplicate_offices),
     'unclassified_offices',(select value from unclassified_offices),
