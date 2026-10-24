@@ -4,6 +4,7 @@
 // demo management, system health, audit log, support, email.
 
 import React, { useState, useEffect, Suspense, lazy, useCallback } from 'react'
+import AdminPortalReleaseControl from '../components/AdminPortalReleaseControl'
 import { ScreenShareProvider, useScreenShare } from '../context/ScreenShareContext'
 import { Routes, Route, NavLink, useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -673,6 +674,7 @@ function Sidebar({ onSignOut, mobile=false, onClose }) {
       <div style={{ padding:'14px 14px', borderTop:'1px solid rgba(99,102,241,.15)' }}>
         <div style={{ fontSize:11, color:'#a5b4fc', fontWeight:600, marginBottom:2 }}>info@romylabs.com</div>
         <div style={{ fontSize:10, color:'#6366f1', fontWeight:700, marginBottom:10 }}>Platform Owner</div>
+        <AdminPortalReleaseControl />
         <button onClick={onSignOut} style={{ ...S.btn('ghost'), width:'100%', justifyContent:'center', fontSize:12, padding:'7px 0' }}>
           Sign Out
         </button>
