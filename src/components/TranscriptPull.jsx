@@ -998,7 +998,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             <div style={{ border:'1px solid var(--line)', borderRadius:10, padding:'11px 13px', background:'var(--s1)' }}>
               <div style={{ fontWeight:800, fontSize:12.5, marginBottom:6 }}>Browser folder intake</div>
               <div style={{ fontSize:11.5, color:'var(--t3)', lineHeight:1.55, marginBottom:8 }}>
-                In compatible Chrome/Edge browsers, connect a dedicated IRS transcript folder. Save authorized SOR PDFs there and use Scan Now. Uncertain matches are retained in Unassigned Transcripts.
+                In Chrome or Edge, select Connect Download Folder, choose a dedicated IRS transcript folder and grant browser read/write access. Save authorized SOR PDFs or HTML files there. The portal scans approximately every 30 seconds or when you select Scan Now. Files are deleted locally only after verified CRM storage; if permission expires, select Reauthorize Folder. Uncertain matches go to Unassigned Transcripts.
               </div>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
                 {!dirName && !savedFolder && <button className="btn sec" onClick={connectFolder}>Connect Download Folder</button>}
@@ -1084,12 +1084,12 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 </>
               ) : savedFolder ? (
                 <>
-                  <span>Allow the CRM to keep reading <b>{savedFolder.name}</b> for this visit.</span>
+                  <span>Reauthorize read/write access to <b>{savedFolder.name}</b> so automatic cleanup can resume.</span>
                   <button className="btn sec" style={{ fontSize: 11 }} onClick={reconnectFolder}>Reconnect Folder</button>
                 </>
               ) : (
                 <>
-                  <span>Choose the folder where your browser saves IRS transcript PDFs (one time), or drop the PDFs on the request below.</span>
+                  <span>Choose a dedicated IRS download folder and approve browser read/write permission when prompted; there is no separate cleanup setup. Connecting the folder does not change your browser download location, so save IRS PDFs there. After SHA-verified CRM storage, processed local PDFs are automatically removed when browser permission permits. You can also drop PDFs on the request below.</span>
                   <button className="btn sec" style={{ fontSize: 11 }} onClick={connectFolder}>Connect Download Folder</button>
                 </>
               )}
