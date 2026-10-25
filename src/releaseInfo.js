@@ -1,38 +1,38 @@
 // TaxRes-family production release manifest.
-// The visible CRM version MUST only change when that office's production release ships.
-// Shared code can carry different office versions through tenant-specific entries.
+// Each office keeps an independent semantic version line.
+// Shared code does not make Nashville part of a central release.
+
+const IRS_WORKFLOW_CHANGES = [
+  'IRS TDS/SOR Portal now includes built-in How to Use This Feature guidance',
+  'Receive-only SOR Mailbox workflow is available inside the IRS portal',
+  'Persistent Unassigned Transcripts inbox retains unmatched IRS documents across refresh and logout',
+  'SHA-256 duplicate protection prevents the same IRS document from being processed twice',
+  'Uncertain taxpayer matches require explicit employee assignment before filing',
+  'Assignment and discard actions retain an audit trail with safe retry behavior',
+]
 
 const DEFAULT_RELEASE = {
-  version: '3.0.1',
-  releasedAt: '2026-10-23',
-  title: 'TaxRes CRM 3.0 — Formal Versioning Baseline',
-  changes: [
-    'Release notes modal now opens above every CRM page without content overlap',
-    'Formal semantic versioning begins with this release baseline',
-    'Employee note editing with permanent audit history',
-    'Note editor performance optimization',
-    'Case-note relationship correction',
-    'Tenant and permission hardening',
-  ],
+  version: '3.1.0',
+  releasedAt: '2026-10-25',
+  title: 'TaxRes CRM 3.1 — IRS TDS/SOR Workflow',
+  changes: IRS_WORKFLOW_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    ...DEFAULT_RELEASE,
-    title: 'Tax Case Review CRM 3.0 — Formal Versioning Baseline',
-    changes: [
-      ...DEFAULT_RELEASE.changes,
-    ],
+    version: '3.1.0',
+    releasedAt: '2026-10-25',
+    title: 'Tax Case Review CRM 3.1 — IRS TDS/SOR Workflow',
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
-  // TaxRes office
+  // TaxRes administrative/default office
   'a0000000-0000-0000-0000-000000000001': {
     ...DEFAULT_RELEASE,
-    title: 'TaxRes CRM 3.0 — Formal Versioning Baseline',
   },
 
-  // Nashville Tax Solutions — dedicated database/project and independent release line
+  // Nashville Tax Solutions remains on its independently deployed release line.
   '489ace07-1a6b-4864-833a-4f8420568b40': {
     version: '3.0.0',
     releasedAt: '2026-10-23',
@@ -45,14 +45,18 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    ...DEFAULT_RELEASE,
-    title: 'CloudCPA CRM 3.0 — Formal Versioning Baseline',
+    version: '3.1.0',
+    releasedAt: '2026-10-25',
+    title: 'CloudCPA CRM 3.1 — IRS TDS/SOR Workflow',
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    ...DEFAULT_RELEASE,
-    title: 'Centurion Firm CRM 3.0 — Formal Versioning Baseline',
+    version: '3.1.0',
+    releasedAt: '2026-10-25',
+    title: 'Centurion Firm CRM 3.1 — IRS TDS/SOR Workflow',
+    changes: IRS_WORKFLOW_CHANGES,
   },
 }
 
