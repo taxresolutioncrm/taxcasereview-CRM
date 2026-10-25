@@ -44,16 +44,17 @@ test('01 connectFolder uses readwrite mode', async () => {
   writeResult(CAT, 'connectFolder uses readwrite mode', 'PASS')
 })
 
-test('02 connectFolder sets cleanupPermission to granted on success', async () => {
+test('02 connectFolder checks actual browser write permission', async () => {
   const code = src()
   const block = between(code, 'async function connectFolder()', 'function disconnectFolder()')
-  expect(block).toContain("setCleanupPermission('granted')")
-  writeResult(CAT, 'connectFolder sets cleanupPermission granted', 'PASS')
+  expect(block).toContain("queryPermission({ mode: 'readwrite' })")
+  expect(block).toContain("setCleanupPermission(writePermission === 'granted' ? 'granted' : 'prompt')")
+  writeResult(CAT, 'connectFolder checks granted browser permission', 'PASS')
 })
 
 test('03 connectFolder explains readwrite to employees in UI text', async () => {
   const code = src()
-  expect(code).toContain('read and write access')
+  expect(code).toContain('read/write permission')
   writeResult(CAT, 'Connect folder UI mentions read and write access', 'PASS')
 })
 
@@ -64,15 +65,12 @@ test('04 loadWatchedFolder effect checks readwrite permission', async () => {
   writeResult(CAT, 'loadWatchedFolder effect queries readwrite permission', 'PASS')
 })
 
-test('05 reconnectFolder tries readwrite before read fallback', async () => {
+test('05 reconnectFolder requires readwrite without read-only fallback', async () => {
   const code = src()
   const block = between(code, 'async function reconnectFolder()', '// ── runCleanup')
   expect(block).toMatch(/requestPermission\(\s*\{\s*mode:\s*'readwrite'/)
-  expect(block).toMatch(/requestPermission\(\s*\{\s*mode:\s*'read'/)
-  const rwPos = block.indexOf("mode: 'readwrite'")
-  const rdPos = block.indexOf("mode: 'read'")
-  expect(rwPos).toBeLessThan(rdPos)
-  writeResult(CAT, 'reconnectFolder tries readwrite then falls back to read', 'PASS')
+  expect(block).not.toMatch(/requestPermission\(\s*\{\s*mode:\s*'read'/)
+  writeResult(CAT, 'reconnectFolder requires readwrite permission', 'PASS')
 })
 
 test('06 runCleanup is defined and gates on readwrite queryPermission', async () => {
@@ -246,7 +244,7 @@ test('26 cleanup-grant-btn data-testid present for prompt and denied states', as
   const deniedBlock = between(code, "cleanupPermission === 'denied'", "cleanupPermission === 'unknown'")
   expect(promptBlock).toContain('cleanup-grant-btn')
   expect(deniedBlock).toContain('cleanup-grant-btn')
-  writeResult(CAT, 'Enable Cleanup / Retry button present for prompt and denied states', 'PASS')
+  writeResult(CAT, 'Reauthorize Folder / Retry button present for expired and denied states', 'PASS')
 })
 
 test('27 cleanup-run-btn present for granted state with queue', async () => {
