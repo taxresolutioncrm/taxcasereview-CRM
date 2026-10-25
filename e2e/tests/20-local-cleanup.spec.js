@@ -129,7 +129,7 @@ test('12 NotAllowedError retains item for explicit reauthorization', async () =>
   const code = src()
   const block = between(code, 'async function runCleanup()', 'async function retryCleanup()')
   expect(block).toContain('cleanupQueueRef.current.push(item)')
-  expect(block).toContain("status: 'permission-denied'")
+  expect(block).toContain("const status = isPermDenied ? 'permission-denied'")
   writeResult(CAT, 'Permission-denied items retained until reauthorization', 'PASS')
 })
 
