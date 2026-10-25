@@ -5,6 +5,7 @@ import { parseTranscriptFile, storeTranscriptAnalysis, openIrsPopup, IRS_TDS_URL
 import TranscriptPull from '../components/TranscriptPull'
 import UnassignedTranscriptInbox from '../components/UnassignedTranscriptInbox'
 import IrsTranscriptHelp from '../components/IrsTranscriptHelp'
+import '../taxres-irs-portal.css'
 
 // ── IRS Portal ──
 // Two tools that together close the POA -> transcripts loop:
@@ -251,53 +252,47 @@ export default function IRSPortal() {
   const inputStyle = { width: '100%', boxSizing: 'border-box' }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>🏛️ IRS TDS/SOR Portal</h1>
-          <div style={{ color: 'var(--t3)', fontSize: 12, marginTop: 4 }}>
+    <div className="irs-portal">
+      <div className="irs-portal-header">
+        <div className="irs-portal-header-text">
+          <h1>🏛️ IRS TDS/SOR Portal</h1>
+          <p>
             Practitioner TDS requests, receive-only SOR intake, AI transcript analysis, and POA / CAF tracking in one place.
-          </div>
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="irs-portal-header-actions">
           <button
             className="btn"
             onClick={() => { const { w } = openIrsPopup(IRS_TDS_URL); if (!w) window.alert(IRS_POPUP_BLOCKED) }}
           >
             Sign in to IRS TDS
           </button>
-          <button
-            className="btn sec"
-            onClick={() => setTab('sor')}
-          >
-            📮 SOR Mailbox
-          </button>
           <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer">↗ Submit 2848 / 8821</a>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="irs-tab-nav" role="tablist">
         {[
           ['pull', '📄 Pull Transcripts'],
           ['sor', '📮 SOR Mailbox'],
           ['inbox', '📥 Unassigned' + (unassignedCount > 0 ? ` (${unassignedCount})` : '')],
           ['transcripts', '📊 AI Analysis'],
-          ['poa', 'POA / CAF Tracker'],
-          ['session', 'Session Status'],
-          ['history', 'Request History'],
-          ['manual', 'Manual Upload (Fallback)'],
+          ['poa', '📋 POA / CAF'],
+          ['history', '🕐 Request History'],
+          ['manual', '📁 Manual Upload'],
         ].map(([k, label]) => (
           <button
             key={k}
-            className={tab === k || (tab === 'pull' && ['session','history','manual'].includes(k)) ? 'btn' : 'btn sec'}
-            style={{ minHeight: 34, padding: '7px 12px', fontWeight: 700 }}
+            role="tab"
+            aria-selected={tab === k || (tab === 'pull' && ['history','manual'].includes(k))}
+            className={`irs-tab-btn${tab === k || (tab === 'pull' && ['history','manual'].includes(k)) ? ' active' : ''}${k === 'inbox' && unassignedCount > 0 ? ' has-badge' : ''}`}
             onClick={() => {
               if (['pull','sor','inbox','transcripts','poa'].includes(k)) {
                 setTab(k)
                 return
               }
               setTab('pull')
-              const id = k === 'session' ? 'irs-session-status' : k === 'history' ? 'irs-request-history' : 'irs-manual-fallback'
+              const id = k === 'history' ? 'irs-request-history' : 'irs-manual-fallback'
               setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
             }}
           >
