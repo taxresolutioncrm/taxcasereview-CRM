@@ -17,17 +17,17 @@ export default function IrsTranscriptHelp({ section = 'pull', onOpenInbox }) {
     ['Open the SOR Mailbox', 'Use this receive-only workflow for IRS Secure Object Repository deliveries.'],
     ['Sign in as an authorized practitioner', 'Complete IRS identity verification in the IRS site. The CRM does not bypass IRS authentication.'],
     ['Retrieve the delivered document', 'Open the authorized SOR message/object and save the delivered PDF or HTML document.'],
-    ['Use secure CRM intake', 'Where folder monitoring is available, connect the dedicated folder and use Scan Now or the automatic scan.'],
+    ['Use secure CRM intake', 'In Chrome or Edge select Connect Download Folder, choose a dedicated IRS transcript folder, and approve read/write access. No separate Enable Cleanup step is needed. Keep the portal open for automatic scans approximately every 30 seconds, or select Scan Now.'],
     ['Review unmatched items', 'Documents without a confident client match must go to Unassigned Transcripts for employee review.'],
-    ['Verify filing', 'Confirm the final document appears under the correct client in Documents → Transcripts.'],
+    ['Verify filing', 'Confirm the original PDF is in the correct client’s Documents → Transcripts. Local processed PDFs are deleted automatically only after SHA-based CRM storage verification and while browser write permission remains granted. If permission expires, select Reauthorize Folder.'],
   ] : [
     ['Select the client', 'Choose the correct existing client before starting the transcript request.'],
     ['Verify POA authorization', 'Confirm the appropriate POA/CAF authorization is on file for the practitioner and taxpayer.'],
     ['Choose years and transcript types', 'Select only the tax years and transcript types needed for the request.'],
     ['Authenticate with IRS TDS', 'An authorized practitioner signs in to IRS TDS and completes required IRS identity verification.'],
     ['Retrieve authorized documents', 'Download only documents the practitioner is authorized to access.'],
-    ['Connect the download folder when supported', 'In compatible Chrome/Edge browsers, connect a dedicated IRS transcript folder, save IRS PDFs there, and use Scan Now or the automatic scan.'],
-    ['Verify filing', 'Confirm the PDF is under the correct client in Documents → Transcripts and review available AI analysis.'],
+    ['Connect the download folder when supported', 'In Chrome or Edge select Connect Download Folder, choose a dedicated IRS transcript folder and grant read/write permission in the browser prompt. No separate Enable Cleanup step is required. Save IRS PDFs there; keep the portal open for scans approximately every 30 seconds, or select Scan Now.'],
+    ['Verify filing', 'Confirm the original PDF is under the correct client in Documents → Transcripts and review available AI analysis. Only after SHA-based verification of durable CRM storage are processed local PDFs deleted automatically while browser write permission remains granted. If permission expires, select Reauthorize Folder.'],
   ]
 
   return (
