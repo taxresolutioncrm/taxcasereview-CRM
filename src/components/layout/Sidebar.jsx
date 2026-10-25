@@ -91,7 +91,7 @@ const SECTIONS = [
       { path: '/irsforms',    icon: FormIcon,      label: 'IRS Forms & Docs',      section: 'irsforms' },
       { path: '/stateforms',  icon: FormIcon,      label: 'State Forms & Docs',    section: 'stateforms' },
       { path: '/irsreference', icon: PhoneBookIcon, label: 'IRS & State Reference', section: 'irsreference' },
-      { path: '/irsportal',   icon: FormIcon,      label: 'IRS Portal',            section: 'transcripts' },
+      { path: '/irsportal',   icon: FormIcon,      label: 'IRS TDS/SOR Portal',            section: 'transcripts' },
     ]
   },
   {
