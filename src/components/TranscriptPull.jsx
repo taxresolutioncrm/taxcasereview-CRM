@@ -34,7 +34,7 @@ function base64ToFile(base64, name) {
 }
 const BLANK = { clientName: '', clientId: null, types: [], taxYears: '', notes: '' }
 
-export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
+export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported, sorMailboxMode = false }) {
   const { employeeName } = useApp()
   const [requests, setRequests] = useState([])
   const [legacyCount, setLegacyCount] = useState(0)
@@ -821,6 +821,72 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     } finally {
       setSaving(false)
     }
+  }
+
+  if (sorMailboxMode) {
+    const sorSessionActive = popupOpen && [...irsBindingsRef.current.values()].some(b => b.url === IRS_SOR_URL)
+    const pendingSorLocal = unmatched.filter(x => String(x.key || '').startsWith('sor-bridge:'))
+    const mismatchSorLocal = needsReviewMismatch.filter(x => String(x.key || '').startsWith('sor-bridge:'))
+    return (
+      <div data-testid="sor-mailbox-view">
+        <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:14, overflow:'hidden', marginBottom:14 }}>
+          <div style={{ padding:'13px 16px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ fontWeight:800, fontSize:15 }}>SOR — Secure IRS Mailbox</div>
+              <div style={{ color:'var(--t3)', fontSize:11.5, marginTop:3 }}>
+                Receive-only intake for documents delivered by the IRS. IRS / ID.me credentials stay on the IRS site and are never stored by the CRM.
+              </div>
+            </div>
+            <span style={{ background:sorSessionActive ? '#15803d' : '#64748b', color:'#fff', borderRadius:6, padding:'4px 9px', fontSize:10.5, fontWeight:700 }}>
+              {sorSessionActive ? '● SOR session open' : '○ No active SOR session'}
+            </span>
+          </div>
+          <div style={{ padding:'14px 16px' }}>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginBottom:12 }}>
+              <button className="btn" onClick={() => openIrs(IRS_SOR_URL)} data-testid="sor-open-mailbox">📮 Open IRS SOR Mailbox</button>
+              {sorSessionActive && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) { setIrsSessionIds(new Map()); irsBindingsRef.current.clear() } }}>Show SOR window</button>}
+            </div>
+            <div style={{ border:'1px solid var(--line)', borderRadius:10, padding:'11px 13px', background:'var(--s1)', marginBottom:12 }}>
+              <div style={{ fontWeight:800, fontSize:12.5, marginBottom:6 }}>Secure intake status</div>
+              <div style={{ fontSize:11.5, color:'var(--t3)', lineHeight:1.55 }}>
+                <div><strong style={{ color:'var(--t2)' }}>SOR Bridge:</strong> {sorBridgeConnected ? `Connected${sorBridgeVersion ? ` v${sorBridgeVersion}` : ''}` : 'Not detected'}</div>
+                <div><strong style={{ color:'var(--t2)' }}>TaxRes IRS Helper:</strong> {helperConnected ? 'Connected' : 'Not detected'}</div>
+              </div>
+              {!sorBridgeConnected && !helperConnected && <div style={{ marginTop:8, display:'flex', gap:8, flexWrap:'wrap' }}>
+                <a className="btn sec" style={{ fontSize:11 }} href={SOR_BRIDGE_ZIP_URL} download>Download SOR Bridge</a>
+                <a className="btn sec" style={{ fontSize:11 }} href={HELPER_ZIP_URL} download>Download IRS Helper</a>
+              </div>}
+            </div>
+            <div style={{ border:'1px solid var(--line)', borderRadius:10, padding:'11px 13px', background:'var(--s1)' }}>
+              <div style={{ fontWeight:800, fontSize:12.5, marginBottom:6 }}>Browser folder intake</div>
+              <div style={{ fontSize:11.5, color:'var(--t3)', lineHeight:1.55, marginBottom:8 }}>
+                In compatible Chrome/Edge browsers, connect a dedicated IRS transcript folder. Save authorized SOR PDFs there and use Scan Now. Uncertain matches are retained in Unassigned Transcripts.
+              </div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                {!dirName && !savedFolder && <button className="btn sec" onClick={connectFolder}>Connect Download Folder</button>}
+                {!dirName && savedFolder && <button className="btn sec" onClick={reconnectFolder}>Reconnect Folder</button>}
+                {dirName && <button className="btn sec" disabled={scanning} onClick={() => scanFolder(true)}>{scanning ? 'Scanning…' : 'Scan Now'}</button>}
+                <span style={{ fontSize:11, color:'var(--t3)' }}>{dirName ? `Connected: ${dirName}` : 'No folder connected'}</span>
+              </div>
+              {lastScan && <div style={{ marginTop:6, fontSize:10.5, color:'var(--t3)' }}>Last scan: {lastScan.toLocaleTimeString()}</div>}
+            </div>
+          </div>
+        </div>
+
+        {(pendingSorLocal.length > 0 || mismatchSorLocal.length > 0) && (
+          <div style={{ background:'var(--s2)', border:'1px solid #b45309', borderRadius:12, padding:14, marginBottom:14 }}>
+            <div style={{ fontWeight:800, fontSize:12.5, marginBottom:5 }}>SOR documents awaiting safe persistence</div>
+            <div style={{ color:'var(--t3)', fontSize:11.5, lineHeight:1.5 }}>
+              {pendingSorLocal.length + mismatchSorLocal.length} item(s) are visible in this browser session while the persistent inbox write is retried. Do not close this tab until they are stored or filed.
+            </div>
+          </div>
+        )}
+
+        <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:12, padding:18, color:'var(--t2)', fontSize:12.5, lineHeight:1.6 }}>
+          Documents that cannot be matched confidently are stored in <strong>Unassigned Transcripts</strong>. Review taxpayer identity there, then explicitly assign, create a client if necessary, or intentionally discard with an audit reason.
+        </div>
+      </div>
+    )
   }
 
   // Derive the single most-actionable reason the CTA is unavailable (used below CTA only)
