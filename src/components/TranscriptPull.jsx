@@ -10,6 +10,7 @@ import {
   openPendingIrsTab, startBrowserTdsRequest, sha256File, withHelperPairing,
   analyzeReturnedTranscript, matchBrowserRequest, fileBrowserTranscripts, findFiledTranscriptBySha,
   saveWatchedFolder, loadWatchedFolder, forgetWatchedFolder,
+  saveUnassignedTranscript, findUnassignedTranscriptBySha,
 } from '../lib/transcriptPull'
 
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
@@ -351,12 +352,24 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   // positive SSN/EIN last-4 + year + type match to exactly one open request -> filed and analyzed; otherwise -> "Needs a client".
   async function intakeReturnedPdf(file, key, { since = -Infinity, onlyRequestIds = null } = {}) {
     const openBrowser = requestsRef.current.filter(isOpenBrowserRequest)
+    // Determine intake_source from the key prefix for audit trail.
+    const intakeSource = key.startsWith('sor-bridge:') ? 'sor-bridge'
+      : key.startsWith('helper:') ? 'tds-helper'
+      : 'folder-scan'
+    const employee = employeeName || 'Unknown employee'
     try {
       // Same PDF bytes already filed anywhere in this office → duplicate, whatever the file name or IRS address.
-      const prior = await findFiledTranscriptBySha(await sha256File(file))
+      const sha = await sha256File(file)
+      const prior = await findFiledTranscriptBySha(sha)
       if (prior) {
         setUnmatched(u => u.filter(x => x.key !== key))
         return { status: 'duplicate', client: prior.client_name || '' }
+      }
+      // Also check the unassigned inbox — a transcript already waiting there should not
+      // trigger a second AI analysis pass or a second saveUnassignedTranscript attempt.
+      const inboxPrior = await findUnassignedTranscriptBySha(sha).catch(() => null)
+      if (inboxPrior) {
+        return { status: 'duplicate', client: inboxPrior.taxpayer_name || 'unassigned inbox' }
       }
       const parsed = await analyzeReturnedTranscript(file)
       const target = file.lastModified >= since ? await matchBrowserRequest(openBrowser, parsed, { onlyRequestIds }) : null
@@ -369,26 +382,68 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         }
         if (res.status === 'duplicate') return { status: 'duplicate', client: target.client_name }
         if (res.status === 'needs-review-mismatch') {
-          setNeedsReviewMismatch(m => [
-            ...m.filter(x => x.key !== key),
-            {
-              key, fileName: file.name, file, analysis: parsed.analysis,
-              conflictReason: res.reason || 'AI detected a possible TIN mismatch',
-              conflicts: res.conflicts || [],
-              boundClientName: target.client_name,
-              boundClientId: target.client_id || null,
-              assignTo: '', queuedAt: Date.now(),
-            },
-          ])
-          return { status: 'needs-review-mismatch', detail: res.reason || 'AI detected a possible TIN mismatch' }
+          // TIN mismatch: persist to DB inbox with conflict reason for employee review.
+          const conflictReason = res.reason || 'AI detected a possible TIN mismatch'
+          try {
+            await saveUnassignedTranscript(
+              file,
+              { ...parsed.analysis, file_sha256: sha, bound_client_name: target.client_name, bound_client_id: target.client_id || null, conflicts: res.conflicts || [] },
+              intakeSource,
+              employee,
+              conflictReason
+            )
+          } catch (persistErr) {
+            // DB persist failed: fall back to in-memory so the transcript is not silently lost this session.
+            // Return persistFailed: true so the caller skips adding to seenRef — the file will be retried
+            // on the next scan interval, giving another chance to reach Supabase.
+            console.warn('intakeReturnedPdf: could not persist TIN-mismatch to DB, using in-memory fallback:', persistErr?.message)
+            setNeedsReviewMismatch(m => [
+              ...m.filter(x => x.key !== key),
+              {
+                key, fileName: file.name, file, analysis: parsed.analysis,
+                conflictReason,
+                conflicts: res.conflicts || [],
+                boundClientName: target.client_name,
+                boundClientId: target.client_id || null,
+                assignTo: '', queuedAt: Date.now(),
+                persistError: persistErr?.message,
+              },
+            ])
+            return { status: 'needs-review-mismatch', detail: conflictReason, persistFailed: true, persistError: persistErr?.message }
+          }
+          return { status: 'needs-review-mismatch', detail: conflictReason }
         }
-        setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: parsed.analysis, error: res.reason || null, assignTo: '' }])
+        // Matched request but filing failed for another reason — persist to DB inbox.
+        try {
+          await saveUnassignedTranscript(file, { ...parsed.analysis, file_sha256: sha }, intakeSource, employee, res.reason || null)
+        } catch (persistErr) {
+          console.warn('intakeReturnedPdf: could not persist failed-match to DB, using in-memory fallback:', persistErr?.message)
+          setUnmatched(u => [...u.filter(x => x.key !== key), {
+            key, fileName: file.name, file, analysis: parsed.analysis,
+            error: res.reason || null, assignTo: '',
+            persistError: persistErr?.message,
+          }])
+          return { status: 'unmatched', detail: res.reason || 'Could not file', persistFailed: true, persistError: persistErr?.message }
+        }
         return { status: 'unmatched', detail: res.reason || 'Could not file' }
       }
-      // No positive taxpayer (SSN/EIN) match to a pending request: never auto-file — leave it for manual assignment.
-      setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: parsed.analysis, assignTo: '' }])
+      // No positive taxpayer (SSN/EIN) match to a pending request: never auto-file.
+      // Persist to the Unassigned IRS Transcripts inbox (DB-backed, not React state).
+      try {
+        await saveUnassignedTranscript(file, { ...parsed.analysis, file_sha256: sha }, intakeSource, employee)
+      } catch (persistErr) {
+        // DB persist failed: fall back to in-memory for this session so the transcript is not silently lost.
+        // Return persistFailed: true so caller skips seenRef — next scan interval will retry persistence.
+        console.warn('intakeReturnedPdf: could not persist unmatched to DB, using in-memory fallback:', persistErr?.message)
+        setUnmatched(u => [...u.filter(x => x.key !== key), {
+          key, fileName: file.name, file, analysis: parsed.analysis,
+          assignTo: '', persistError: persistErr?.message,
+        }])
+        return { status: 'unmatched', persistFailed: true, persistError: persistErr?.message }
+      }
       return { status: 'unmatched' }
     } catch (err) {
+      // Catastrophic error (parse failed etc.) — fall back to in-memory so the employee sees the failure.
       setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: null, error: err?.message || 'Import failed', assignTo: '' }])
       return { status: 'error', detail: err?.message || 'Import failed' }
     }
@@ -399,7 +454,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     if (!handle || scanBusyRef.current) return
     scanBusyRef.current = true
     setScanning(true)
-    let found = 0, filed = 0
+    let found = 0, filed = 0, inboxed = 0, persistFailed = 0
     try {
       for await (const entry of handle.values()) {
         if (entry.kind !== 'file' || !/\.(pdf|html?)$/i.test(entry.name)) continue
@@ -410,13 +465,27 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         const openBrowser = requestsRef.current.filter(isOpenBrowserRequest)
         const since = openBrowser.reduce((m, r) => Math.min(m, new Date(r.requested_at || 0).getTime()), Infinity) - 10 * 60 * 1000
         const out = await intakeReturnedPdf(file, key, { since })
-        if (out.status !== 'error') seenRef.current.add(key)
+        // Only mark seen when the transcript was safely stored (filed, duplicate, or persisted to inbox).
+        // If persistFailed, leave it out of seenRef so the next scan interval retries the DB write.
+        if (out.status !== 'error' && !out.persistFailed) seenRef.current.add(key)
         if (out.status === 'filed') filed++
+        else if (out.status === 'unmatched' && !out.persistFailed) inboxed++
+        else if (out.persistFailed) persistFailed++
       }
       setLastScan(new Date())
       await loadRequests()
       if (onImported && filed > 0) onImported()
-      if (manual) flash(found === 0 ? 'Scan complete — no new PDFs in the folder.' : `✅ Scan complete — ${filed} of ${found} new PDF${found === 1 ? '' : 's'} filed automatically.`)
+      if (manual) {
+        if (found === 0) {
+          flash('Scan complete — no new PDFs in the folder.')
+        } else {
+          const parts = []
+          if (filed > 0) parts.push(`${filed} filed`)
+          if (inboxed > 0) parts.push(`${inboxed} sent to inbox`)
+          if (persistFailed > 0) parts.push(`${persistFailed} ⚠ not saved — retrying`)
+          flash(`✅ Scan complete — ${found} new PDF${found === 1 ? '' : 's'}: ${parts.join(', ') || 'no action taken'}.`)
+        }
+      }
     } catch (e) {
       flash('❌ Folder scan failed: ' + (e?.message || 'Unknown error'))
     } finally {
