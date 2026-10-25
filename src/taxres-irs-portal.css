@@ -1,0 +1,521 @@
+/* ═══════════════════════════════════════════════
+   TaxRes CRM Family — IRS TDS/SOR Portal Styles
+   Workflow-oriented design for practitioner use
+   ═══════════════════════════════════════════════ */
+
+/* ── Portal Page Layout ── */
+.irs-portal {
+  padding: 20px 20px 40px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+/* ── Portal Header ── */
+.irs-portal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.irs-portal-header-text h1 {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 3px;
+  letter-spacing: -0.3px;
+}
+
+.irs-portal-header-text p {
+  font-size: 12px;
+  color: var(--t3);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.irs-portal-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ── Connection Status Pill ── */
+.irs-connection-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid;
+}
+
+.irs-connection-pill.connected {
+  background: rgba(37, 162, 90, .12);
+  color: var(--ok);
+  border-color: rgba(37, 162, 90, .25);
+}
+
+.irs-connection-pill.disconnected {
+  background: var(--s2);
+  color: var(--t2);
+  border-color: var(--br);
+}
+
+.irs-connection-pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ── Workflow Tab Navigation ── */
+.irs-tab-nav {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 20px;
+  background: var(--s2);
+  border: 1px solid var(--br);
+  border-radius: 10px;
+  padding: 4px;
+  flex-wrap: wrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.irs-tab-nav::-webkit-scrollbar { display: none; }
+
+.irs-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--t2);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.1s;
+  flex-shrink: 0;
+}
+
+.irs-tab-btn:hover {
+  background: var(--s3);
+  color: var(--tx);
+}
+
+.irs-tab-btn.active {
+  background: var(--sf);
+  color: var(--tx);
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+
+.irs-tab-btn.admin-tab {
+  margin-left: auto;
+  color: var(--t3);
+  font-size: 11px;
+}
+
+.irs-tab-btn.admin-tab:hover { color: var(--warn); }
+.irs-tab-btn.admin-tab.active { color: var(--warn); background: rgba(212, 147, 10, .1); }
+
+.irs-tab-badge {
+  background: var(--bad);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.irs-tab-badge.warn { background: var(--warn); }
+.irs-tab-badge.ok { background: var(--ok); }
+
+/* ── Workflow Section Cards ── */
+.irs-section {
+  background: var(--sf);
+  border: 1px solid var(--br);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.irs-section-header {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--br);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.irs-section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.irs-section-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: var(--blt);
+  flex-shrink: 0;
+}
+
+.irs-section-title {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.irs-section-subtitle {
+  font-size: 11.5px;
+  color: var(--t3);
+  margin-top: 2px;
+}
+
+.irs-section-body {
+  padding: 16px 18px;
+}
+
+/* ── Status Badge ── */
+.irs-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.irs-status-badge.green { background: rgba(37, 162, 90, .15); color: var(--ok); }
+.irs-status-badge.blue { background: var(--blt); color: var(--blue); }
+.irs-status-badge.gray { background: var(--s3); color: var(--t2); }
+.irs-status-badge.amber { background: rgba(212, 147, 10, .15); color: var(--warn); }
+.irs-status-badge.red { background: rgba(192, 32, 47, .12); color: var(--bad); }
+
+/* ── Info Banner ── */
+.irs-info-banner {
+  border-radius: 9px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.irs-info-banner.amber {
+  background: rgba(212, 147, 10, .1);
+  border: 1px solid rgba(212, 147, 10, .25);
+  color: var(--warn);
+}
+
+.irs-info-banner.blue {
+  background: var(--blt);
+  border: 1px solid rgba(26, 127, 212, .25);
+  color: var(--blue);
+}
+
+.irs-info-banner.green {
+  background: rgba(37, 162, 90, .1);
+  border: 1px solid rgba(37, 162, 90, .25);
+  color: var(--ok);
+}
+
+.irs-info-banner strong { color: inherit; }
+
+/* ── Workflow Steps Row ── */
+.irs-steps {
+  display: flex;
+  gap: 0;
+  margin-bottom: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.irs-steps::-webkit-scrollbar { display: none; }
+
+.irs-step {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.irs-step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 60px;
+  padding: 0 4px;
+}
+
+.irs-step-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+  background: var(--s3);
+  color: var(--t3);
+  border: 2px solid var(--br);
+}
+
+.irs-step-dot.done { background: rgba(37, 162, 90, .15); color: var(--ok); border-color: var(--ok); }
+.irs-step-dot.active { background: var(--blt); color: var(--blue); border-color: var(--blue); }
+
+.irs-step-label {
+  font-size: 10px;
+  color: var(--t3);
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.irs-step-label.active { color: var(--blue); }
+.irs-step-label.done { color: var(--ok); }
+
+.irs-step-connector {
+  flex: 1;
+  height: 2px;
+  background: var(--br);
+  margin: 0 -2px;
+  margin-top: -16px;
+  align-self: flex-start;
+  min-width: 12px;
+}
+
+/* ── Request Summary Card ── */
+.irs-request-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.irs-request-metric {
+  background: var(--s2);
+  border: 1px solid var(--br);
+  border-radius: 9px;
+  padding: 11px 13px;
+}
+
+.irs-request-metric-label {
+  font-size: 10px;
+  color: var(--t3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+}
+
+.irs-request-metric-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.irs-request-metric-sub {
+  font-size: 10.5px;
+  color: var(--t3);
+  margin-top: 3px;
+}
+
+/* ── Admin Diagnostics Section ── */
+.irs-admin-diagnostics {
+  border: 1px dashed var(--br);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.irs-admin-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--t3);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  transition: background .1s;
+}
+
+.irs-admin-toggle:hover { background: var(--s2); color: var(--t2); }
+
+.irs-admin-toggle svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform .15s;
+}
+
+.irs-admin-toggle.open svg { transform: rotate(180deg); }
+
+.irs-admin-body {
+  padding: 0 16px 16px;
+}
+
+/* ── Grid Caps Row ── */
+.irs-caps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.irs-cap-tile {
+  background: var(--s2);
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+
+.irs-cap-tile.ok { border: 1px solid rgba(37, 162, 90, .25); }
+.irs-cap-tile.bad { border: 1px solid rgba(192, 32, 47, .25); }
+.irs-cap-tile.neutral { border: 1px solid var(--br); }
+
+.irs-cap-label { font-size: 10.5px; color: var(--t3); font-weight: 600; margin-bottom: 3px; }
+.irs-cap-value { font-size: 13px; font-weight: 800; }
+.irs-cap-tile.ok .irs-cap-value { color: var(--ok); }
+.irs-cap-tile.bad .irs-cap-value { color: var(--bad); }
+.irs-cap-tile.neutral .irs-cap-value { color: var(--t2); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .irs-portal { padding: 12px 12px 32px; }
+  .irs-portal-header { flex-direction: column; gap: 12px; }
+  .irs-portal-header-actions { width: 100%; }
+  .irs-tab-nav { gap: 1px; padding: 3px; }
+  .irs-tab-btn { padding: 6px 10px; font-size: 12px; }
+  .irs-tab-btn.admin-tab { margin-left: 0; }
+  .irs-section-body { padding: 12px 14px; }
+  .irs-steps { display: none; }
+}
+
+@media (max-width: 480px) {
+  .irs-portal-header-text h1 { font-size: 17px; }
+  .irs-tab-btn { padding: 5px 9px; font-size: 11.5px; }
+}
+
+/* ── Practitioner form refinement: isolated to the IRS Portal ── */
+.irs-portal .irs-transcript-request-form {
+  background: var(--sf) !important;
+  border-color: var(--br) !important;
+  box-shadow: 0 3px 18px rgba(0, 0, 0, .08);
+}
+.irs-portal .irs-transcript-request-form > div:first-child {
+  padding: 17px 20px !important;
+  background: var(--s2);
+  border-color: var(--br) !important;
+}
+.irs-portal .irs-transcript-request-form > div:first-child > div {
+  font-size: 15px !important;
+  letter-spacing: -.01em;
+}
+.irs-portal .irs-transcript-request-form > div:nth-child(2) {
+  padding: 22px 20px 24px !important;
+}
+.irs-portal .irs-transcript-request-form label {
+  font-size: 12px !important;
+  color: var(--t2) !important;
+  font-weight: 700 !important;
+  margin-bottom: 8px !important;
+}
+.irs-portal .irs-transcript-request-form input:not([type="checkbox"]),
+.irs-portal .irs-transcript-request-form select,
+.irs-portal .irs-transcript-request-form textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  background: var(--s2) !important;
+  color: var(--tx) !important;
+  border: 1px solid var(--br) !important;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  outline: none;
+}
+.irs-portal .irs-transcript-request-form textarea { min-height: 76px !important; }
+.irs-portal .irs-transcript-request-form input::placeholder,
+.irs-portal .irs-transcript-request-form textarea::placeholder { color: var(--t3); opacity: 1; }
+.irs-portal .irs-transcript-request-form input:focus,
+.irs-portal .irs-transcript-request-form select:focus,
+.irs-portal .irs-transcript-request-form textarea:focus {
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 3px var(--blt);
+}
+.irs-portal .irs-transcript-request-form select option { background: var(--sf); color: var(--tx); }
+.irs-portal .irs-transcript-request-form button[aria-pressed] {
+  min-height: 36px;
+  padding: 8px 13px !important;
+  background: var(--s2) !important;
+  border: 1px solid var(--br) !important;
+  color: var(--t2) !important;
+  border-radius: 9px !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+.irs-portal .irs-transcript-request-form button[aria-pressed="true"] {
+  background: var(--blt) !important;
+  color: var(--blue) !important;
+  border-color: var(--blue) !important;
+}
+.irs-portal .irs-transcript-request-form button[aria-pressed]:hover {
+  border-color: var(--blue) !important;
+}
+.irs-portal .irs-transcript-request-form button:focus-visible,
+.irs-portal .irs-tab-btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.irs-portal .irs-transcript-request-form .btn:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 768px) {
+  .irs-portal .irs-transcript-request-form > div:nth-child(2) { padding: 16px !important; }
+  .irs-portal .irs-transcript-request-form > div:first-child { padding: 14px 16px !important; }
+}
+
+
+/* Contextual IRS practitioner help */
+.irs-portal .irs-help-guide { margin: 0 0 16px; background: var(--sf); border: 1px solid var(--br); border-radius: 12px; overflow: hidden; }
+.irs-portal .irs-help-guide-toggle { width: 100%; padding: 14px 16px; background: var(--s2); color: var(--tx); font: inherit; font-size: 13px; font-weight: 750; border: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; text-align: left; }
+.irs-portal .irs-help-guide-toggle:hover { background: var(--s3); }
+.irs-portal .irs-help-guide-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
+.irs-portal .irs-help-guide-content { padding: 16px; color: var(--t2); font-size: 12.5px; }
+.irs-portal .irs-help-guide-note { margin: 0 0 14px; line-height: 1.6; }
+.irs-portal .irs-help-guide-steps { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.irs-portal .irs-help-guide-steps li { border: 1px solid var(--br); border-radius: 9px; background: var(--s2); padding: 11px 12px; display: flex; flex-direction: column; gap: 4px; line-height: 1.5; }
+.irs-portal .irs-help-guide-steps strong { color: var(--tx); font-size: 12.5px; }
+.irs-portal .irs-help-guide-note button { color: var(--blue); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; font: inherit; font-weight: 700; }
+@media(max-width:700px) { .irs-portal .irs-help-guide-steps { grid-template-columns: 1fr; } }
