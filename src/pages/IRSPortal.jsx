@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { parseTranscriptFile, storeTranscriptAnalysis, openIrsPopup, IRS_TDS_URL, IRS_POPUP_BLOCKED } from '../lib/transcriptPull'
+import { parseTranscriptFile, storeTranscriptAnalysis, openIrsPopup, IRS_TDS_URL, IRS_SOR_URL, IRS_POPUP_BLOCKED } from '../lib/transcriptPull'
 import TranscriptPull from '../components/TranscriptPull'
+import UnassignedTranscriptInbox from '../components/UnassignedTranscriptInbox'
+import IrsTranscriptHelp from '../components/IrsTranscriptHelp'
 
 // ── IRS Portal ──
 // Two tools that together close the POA -> transcripts loop:
@@ -35,6 +37,8 @@ function money(n) {
 export default function IRSPortal() {
   const location = useLocation()
   const [tab, setTab] = useState('pull')
+  const [unassignedCount, setUnassignedCount] = useState(0)
+  const [inboxKey, setInboxKey] = useState(0)
   useEffect(() => {
     if (new URLSearchParams(location.search).get('new') === '1') setTab('pull')
   }, [location.search])
@@ -49,7 +53,7 @@ export default function IRSPortal() {
     return matches.length === 1 ? matches[0] : null
   }
   useEffect(() => {
-    supabase.from('clients').select('id,name,dob,taxYears').order('name')
+    supabase.from('clients').select('id,name,dob,taxYears,email').order('name')
       .then(({ data }) => setClients((data || []).filter(c => c?.id && c?.name)))
   }, [])
 
@@ -250,9 +254,9 @@ export default function IRSPortal() {
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>🏛️ IRS Portal</h1>
+          <h1 style={{ margin: 0, fontSize: 22 }}>🏛️ IRS TDS/SOR Portal</h1>
           <div style={{ color: 'var(--t3)', fontSize: 12, marginTop: 4 }}>
-            IRS transcript requests, transcript analysis, and POA / CAF tracking in one place.
+            Practitioner TDS requests, receive-only SOR intake, AI transcript analysis, and POA / CAF tracking in one place.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -262,14 +266,22 @@ export default function IRSPortal() {
           >
             Sign in to IRS TDS
           </button>
+          <button
+            className="btn sec"
+            onClick={() => setTab('sor')}
+          >
+            📮 SOR Mailbox
+          </button>
           <a className="btn sec" href="https://www.irs.gov/tax-professionals/submit-forms-2848-and-8821-online" target="_blank" rel="noreferrer">↗ Submit 2848 / 8821</a>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
         {[
-          ['pull', 'Pull Transcripts'],
-          ['transcripts', 'Transcript Analysis'],
+          ['pull', '📄 Pull Transcripts'],
+          ['sor', '📮 SOR Mailbox'],
+          ['inbox', '📥 Unassigned' + (unassignedCount > 0 ? ` (${unassignedCount})` : '')],
+          ['transcripts', '📊 AI Analysis'],
           ['poa', 'POA / CAF Tracker'],
           ['session', 'Session Status'],
           ['history', 'Request History'],
@@ -280,7 +292,7 @@ export default function IRSPortal() {
             className={tab === k || (tab === 'pull' && ['session','history','manual'].includes(k)) ? 'btn' : 'btn sec'}
             style={{ minHeight: 34, padding: '7px 12px', fontWeight: 700 }}
             onClick={() => {
-              if (k === 'pull' || k === 'transcripts' || k === 'poa') {
+              if (['pull','sor','inbox','transcripts','poa'].includes(k)) {
                 setTab(k)
                 return
               }
@@ -486,10 +498,33 @@ export default function IRSPortal() {
         </div>
       )}
 
-      {/* ═══════════ PULL TRANSCRIPTS TAB ═══════════ */}
+      {['pull', 'sor', 'inbox'].includes(tab) && (
+        <IrsTranscriptHelp section={tab} onOpenInbox={() => setTab('inbox')} />
+      )}
+
+      {/* ═══════════ TDS — PULL TRANSCRIPTS TAB ═══════════ */}
       {tab === 'pull' && (
         <TranscriptPull clientNames={clientNames} clients={clients} poas={poas}
           onGoToPoa={() => setTab('poa')} onImported={loadAnalyses} />
+      )}
+
+      {/* ═══════════ SOR — SECURE MAILBOX TAB ═══════════ */}
+      {tab === 'sor' && (
+        <TranscriptPull clientNames={clientNames} clients={clients} poas={poas}
+          onGoToPoa={() => setTab('poa')} onImported={loadAnalyses} sorMailboxMode={true} />
+      )}
+
+      {/* ═══════════ UNASSIGNED TRANSCRIPTS TAB ═══════════ */}
+      {tab === 'inbox' && (
+        <UnassignedTranscriptInbox
+          key={inboxKey}
+          clients={clients}
+          onAssigned={() => {
+            loadAnalyses()
+            setInboxKey(k => k + 1)
+          }}
+          onCountChange={setUnassignedCount}
+        />
       )}
 
       {/* ═══════════ POA TAB ═══════════ */}
