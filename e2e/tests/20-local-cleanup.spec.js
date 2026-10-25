@@ -125,12 +125,12 @@ test('11 NotFoundError treated as successful deletion', async () => {
   writeResult(CAT, 'NotFoundError treated as successful deletion', 'PASS')
 })
 
-test('12 NotAllowedError does not re-queue the item', async () => {
+test('12 NotAllowedError retains item for explicit reauthorization', async () => {
   const code = src()
   const block = between(code, 'async function runCleanup()', 'async function retryCleanup()')
-  // Re-queue must be conditional on !isPermDenied
-  expect(block).toContain('if (!isPermDenied) cleanupQueueRef.current.push(item)')
-  writeResult(CAT, 'NotAllowedError does not re-queue the item', 'PASS')
+  expect(block).toContain('cleanupQueueRef.current.push(item)')
+  expect(block).toContain("status: 'permission-denied'")
+  writeResult(CAT, 'Permission-denied items retained until reauthorization', 'PASS')
 })
 
 test('13 runCleanup resets cleanupRunningRef after completion', async () => {
@@ -274,4 +274,13 @@ test('30 cleanup log entries keyed by id from crypto.randomUUID()', async () => 
   const logJsx = between(code, 'cleanupLog].reverse()', '})')
   expect(logJsx).toContain('key={entry.id}')
   writeResult(CAT, 'Cleanup log entries keyed by crypto.randomUUID()', 'PASS')
+})
+
+test('31 changed local download is preserved, never deleted', async () => {
+  const block = between(src(), 'async function runCleanup()', 'async function retryCleanup()')
+  expect(block).toContain('getFileHandle(item.fileName)')
+  expect(block).toContain('sha256File(currentFile)')
+  expect(block).toContain('currentSha !== item.sha')
+  expect(block.indexOf('currentSha !== item.sha')).toBeLessThan(block.indexOf('removeEntry(item.fileName)'))
+  writeResult(CAT, 'Changed local file protected by fresh SHA', 'PASS')
 })
