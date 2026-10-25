@@ -40,6 +40,8 @@ export default function IrsTranscriptHelp({ section = 'pull', onOpenInbox }) {
         <p className="irs-help-guide-note">
           Use only transcripts obtained by an authorized practitioner. This CRM does not bypass IRS identity verification and does not claim an IRS Direct API connection unless that office has separately verified authorization and a working contract.
         </p>
+        {section === 'pull' && <p className="irs-help-guide-note"><strong>How to request and receive IRS transcripts:</strong> Select the authorized client, confirm POA/CAF, obtain the transcript through practitioner IRS TDS, and save the PDF into the connected folder. Match or review the document before filing.</p>}
+        {section !== 'inbox' && <p className="irs-help-guide-note"><strong>How to set up automatic IRS downloads:</strong> In Chrome or Edge create a dedicated IRS download folder, select Connect Download Folder, and approve read/write permission in the browser prompt. Save authorized IRS PDFs there; selecting a folder does not change the browser download location. The CRM scans approximately every 30 seconds while this portal is open, or select Scan Now. After successful SHA-based CRM storage verification it automatically deletes processed local PDFs when write permission is granted. If permission expires, select Reauthorize Folder. There is no separate Enable Cleanup step.</p>}
         <ol className="irs-help-guide-steps">
           {steps.map(([heading, description], i) => (
             <li key={heading}><strong>{i + 1}. {heading}</strong><span>{description}</span></li>
