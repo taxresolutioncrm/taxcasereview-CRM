@@ -828,20 +828,20 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     const pendingSorLocal = unmatched.filter(x => String(x.key || '').startsWith('sor-bridge:'))
     const mismatchSorLocal = needsReviewMismatch.filter(x => String(x.key || '').startsWith('sor-bridge:'))
     return (
-      <div data-testid="sor-mailbox-view">
-        <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:14, overflow:'hidden', marginBottom:14 }}>
-          <div style={{ padding:'13px 16px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+      <div className="irs-sor-shell" data-testid="sor-mailbox-view">
+        <div className="irs-sor-card">
+          <div className="irs-sor-card-header">
             <div>
               <div style={{ fontWeight:800, fontSize:15 }}>SOR — Secure IRS Mailbox</div>
               <div style={{ color:'var(--t3)', fontSize:11.5, marginTop:3 }}>
                 Receive-only intake for documents delivered by the IRS. IRS / ID.me credentials stay on the IRS site and are never stored by the CRM.
               </div>
             </div>
-            <span style={{ background:sorSessionActive ? '#15803d' : '#64748b', color:'#fff', borderRadius:6, padding:'4px 9px', fontSize:10.5, fontWeight:700 }}>
+            <span className={`irs-status-pill${sorSessionActive ? ' ok' : ''}`}>
               {sorSessionActive ? '● SOR session open' : '○ No active SOR session'}
             </span>
           </div>
-          <div style={{ padding:'14px 16px' }}>
+          <div className="irs-sor-card-body">
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginBottom:12 }}>
               <button className="btn" onClick={() => openIrs(IRS_SOR_URL)} data-testid="sor-open-mailbox">📮 Open IRS SOR Mailbox</button>
               {sorSessionActive && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) { setIrsSessionIds(new Map()); irsBindingsRef.current.clear() } }}>Show SOR window</button>}
@@ -900,7 +900,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   })()
 
   return (
-    <div>
+    <div className="irs-transcript-pull">
       {/* ── Connection-state card ───────────────────────────────────────────── */}
       <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
         <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -933,86 +933,6 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 <button className="btn sec" onClick={() => openIrs(IRS_SOR_URL)} data-testid="irs-sor">SOR — Receive Only</button>
                 {popupOpen && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) { setIrsSessionIds(new Map()); irsBindingsRef.current.clear() } }} data-testid="irs-show-window">Show IRS window</button>}
               </div>
-            </div>
-            <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.45 }} data-testid="irs-helper-status">
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }} data-testid="irs-sor-bridge-status">
-                <strong style={{ color: 'var(--t2)' }}>SOR Bridge:</strong>
-                {sorBridgeConnected ? (
-                  <span style={{ color: '#22c55e', fontWeight: 700 }}>● SOR bridge connected{sorBridgeVersion ? ` v${sorBridgeVersion}` : ''}</span>
-                ) : (
-                  <span>SOR bridge not detected.</span>
-                )}
-                {!sorBridgeConnected && <a className="btn sec" style={{ fontSize: 11 }} href={SOR_BRIDGE_ZIP_URL} download>Download SOR Bridge 1.1.0</a>}
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <strong style={{ color: 'var(--t2)' }}>TaxRes IRS Helper:</strong>
-                {helperConnected ? (
-                  <span style={{ color: '#22c55e', fontWeight: 700 }}>● Helper connected</span>
-                ) : (
-                  <span>Not detected in this browser.</span>
-                )}
-                <span>
-                  {helperConnected
-                    ? 'Open SOR (Secure Object Repository), then click "Send to CRM" on the helper panel. Transcript PDFs you download from TDS or SOR are also sent here.'
-                    : 'Free Chrome add-on that sends your IRS transcript PDFs back here. It never sees your IRS password or sign-in.'}
-                </span>
-                {!helperConnected && <a className="btn sec" style={{ fontSize: 11 }} href={HELPER_ZIP_URL} download>Download helper</a>}
-              </div>
-              {!helperConnected && (
-                <details style={{ marginTop: 8 }}>
-                  <summary style={{ cursor: 'pointer', color: 'var(--t2)', fontWeight: 600 }}>▶ How to install (one time, about 2 minutes)</summary>
-                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {[
-                      {
-                        n: 1,
-                        title: 'Download the helper',
-                        body: <>Click the <b>Download helper</b> button above. A file called <b>taxres-irs-helper.zip</b> will appear in your Downloads folder.</>,
-                      },
-                      {
-                        n: 2,
-                        title: 'Open Chrome Extensions',
-                        body: <>In Chrome, click the address bar, type <b>chrome://extensions</b> and press Enter. Or click the puzzle-piece icon <span style={{fontSize:13}}>🧩</span> at the top right of Chrome → <b>Manage Extensions</b>.</>,
-                      },
-                      {
-                        n: 3,
-                        title: 'Turn on Developer Mode',
-                        body: <>In the top-right corner of the Extensions page, flip the <b>Developer mode</b> toggle ON. A row of buttons will appear.</>,
-                      },
-                      {
-                        n: 4,
-                        title: 'Extract the zip and load the helper',
-                        body: <>Right-click <b>taxres-irs-helper.zip</b> → <b>Extract All</b>. Back on the Chrome Extensions page, click <b>Load unpacked</b> and choose the extracted folder that contains <b>manifest.json</b>.</>,
-                      },
-                      {
-                        n: 5,
-                        title: 'Come back here and reload',
-                        body: <>Return to this page and press <b>F5</b> (or Ctrl+R) to reload. The status above will change to <b style={{color:'#22c55e'}}>● Helper connected</b>. You only do this once — it stays installed.</>,
-                      },
-                    ].map(s => (
-                      <div key={s.n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--surface2,rgba(255,255,255,.04))', borderRadius: 7, padding: '8px 10px' }}>
-                        <div style={{ minWidth: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: '#fff', fontWeight: 800, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</div>
-                        <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-                          <div style={{ fontWeight: 700, color: 'var(--t1,#fff)', marginBottom: 2 }}>{s.title}</div>
-                          <div style={{ color: 'var(--t2,#94a3b8)' }}>{s.body}</div>
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
-                      ⚠ This installs in <b>your Chrome only</b>. Every person who uses the IRS Portal needs to do this once on their own computer.
-                    </div>
-                  </div>
-                </details>
-              )}
-              {helperLog.length > 0 && (
-                <div style={{ marginTop: 6 }}>
-                  {helperLog.slice(0, 5).map((h, i) => (
-                    <div key={i} style={{ fontSize: 11 }}>
-                      {h.status === 'filed' ? '✅' : h.status === 'duplicate' ? '↺' : h.status === 'unmatched' ? '⚠' : '❌'}{' '}
-                      {h.name} — {h.status === 'filed' ? `filed to ${h.client}` : h.status === 'duplicate' ? 'already filed' : h.status === 'unmatched' ? 'needs a client (see below)' : h.detail}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
             <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.45, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <strong style={{ color: 'var(--t2)' }}>Returned PDFs:</strong>
