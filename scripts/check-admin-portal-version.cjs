@@ -18,5 +18,6 @@ assert.match(dialog, /document[.]body[.]style[.]overflow/)
 assert.match(dialog, /event[.]key === 'Escape'/)
 assert.match(dialog, /event[.]target === event[.]currentTarget/)
 assert.doesNotMatch(manifest, /Nashville|TCR|Arcvena|BocaSync|RestoreRelay|Camvella|Oculivo|GroundIVO|IRS|transcripts|payments|seat counts/i)
-assert.equal(JSON.parse(fs.readFileSync('package.json', 'utf8')).version, '3.0.1')
+const packageVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version
+assert.match(packageVersion, /^3[.]\d+[.]\d+$/, 'Shared CRM package must remain on semantic major version 3 while Admin Portal tracks independently')
 console.log('PASS: Admin Portal v3.0.0 release baseline and dialog guard')
