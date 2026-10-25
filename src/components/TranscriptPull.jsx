@@ -299,7 +299,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       dirRef.current = handle
       setDirName(handle.name)
       setSavedFolder(null)
-      setCleanupPermission('granted')
+      const writePermission = await handle.queryPermission({ mode: 'readwrite' }).catch(() => 'prompt')
+      setCleanupPermission(writePermission === 'granted' ? 'granted' : 'prompt')
       saveWatchedFolder(handle)
       await scanFolder(true)
     } catch (e) {
@@ -321,11 +322,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     loadWatchedFolder().then(async handle => {
       if (!alive || !handle) return
       let perm = 'prompt'
-      try { perm = await handle.queryPermission({ mode: 'readwrite' }) } catch { /* unsupported */ }
+      try { perm = await handle.queryPermission({ mode: 'read' }) } catch { /* unsupported */ }
       if (perm === 'granted') {
         dirRef.current = handle
         setDirName(handle.name)
-        // Check whether we also have write access for cleanup (may have been granted previously).
+        // Previously granted write access is restored automatically when the browser permits it.
         try {
           const rwPerm = await handle.queryPermission({ mode: 'readwrite' })
           setCleanupPermission(rwPerm === 'granted' ? 'granted' : 'prompt')
@@ -341,17 +342,20 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     const handle = savedFolder
     if (!handle) return connectFolder()
     try {
-      // Try readwrite first so cleanup stays enabled. Falls back to read-only if refused.
-      let perm = await handle.requestPermission({ mode: 'readwrite' })
-      if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'read' })
-      if (perm !== 'granted') return
+      // Ask for read/write directly during folder reconnection; no separate cleanup setup.
+      const perm = await handle.requestPermission({ mode: 'readwrite' })
+      if (perm !== 'granted') {
+        setCleanupPermission('denied')
+        flash('⚠ Browser write permission is required to automatically remove stored IRS PDFs. Reconnect the folder and allow read/write access.')
+        return
+      }
       dirRef.current = handle
       setDirName(handle.name)
       setSavedFolder(null)
       // Determine actual cleanup permission after the browser grant.
       try {
         const rwPerm = await handle.queryPermission({ mode: 'readwrite' })
-        setCleanupPermission(rwPerm === 'granted' ? 'granted' : 'denied')
+        setCleanupPermission(rwPerm === 'granted' ? 'granted' : 'prompt')
       } catch { setCleanupPermission('denied') }
       await scanFolder(true)
     } catch (e) {
@@ -369,7 +373,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     try { perm = await handle.queryPermission({ mode: 'readwrite' }) } catch {}
     if (perm !== 'granted') {
       setCleanupPermission(cp => cp === 'granted' ? 'prompt' : cp)
-      return // wait for employee to re-grant via "Enable Cleanup" button
+      return // browser requires a new user gesture; never bypass its permission prompt
     }
 
     cleanupRunningRef.current = true
@@ -1099,8 +1103,8 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                     <span style={{ color: '#15803d' }}>✓ Enabled — filed PDFs are deleted from your folder after CRM storage is confirmed.</span>
                   ) : cleanupPermission === 'prompt' ? (
                     <>
-                      <span style={{ color: '#b45309' }}>⚠ Write access needed to delete local PDFs.</span>
-                      <button className="btn sec" style={{ fontSize: 11 }} onClick={retryCleanup} data-testid="cleanup-grant-btn">Enable Cleanup</button>
+                      <span style={{ color: '#b45309' }}>⚠ Browser write permission has expired. Reauthorize the folder to resume automatic cleanup.</span>
+                      <button className="btn sec" style={{ fontSize: 11 }} onClick={retryCleanup} data-testid="cleanup-grant-btn">Reauthorize Folder</button>
                     </>
                   ) : cleanupPermission === 'denied' ? (
                     <>
