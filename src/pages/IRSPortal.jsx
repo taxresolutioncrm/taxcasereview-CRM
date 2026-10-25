@@ -6,6 +6,7 @@ import TranscriptPull from '../components/TranscriptPull'
 import UnassignedTranscriptInbox from '../components/UnassignedTranscriptInbox'
 import IrsTranscriptHelp from '../components/IrsTranscriptHelp'
 import '../taxres-irs-portal.css'
+import '../taxres-irs-parity-overrides.css'
 
 // ── IRS Portal ──
 // Two tools that together close the POA -> transcripts loop:
