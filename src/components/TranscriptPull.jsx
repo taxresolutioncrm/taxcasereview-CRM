@@ -399,8 +399,17 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         continue
       }
 
-      // Gate 2 — delete the local file.
+      // Gate 2 — confirm the current local file still has the SHA of the stored PDF.
+      // The file name may have been reused or the download replaced since intake.
+      // Never delete a newer or changed local file based only on its original name.
       try {
+        const currentHandle = await handle.getFileHandle(item.fileName)
+        const currentFile = await currentHandle.getFile()
+        const currentSha = await sha256File(currentFile)
+        if (currentSha !== item.sha) {
+          results.push({ id: item.id, fileName: item.fileName, sha: item.sha, status: 'changed-locally', at: new Date(), error: 'Local file changed since import; kept on disk' })
+          continue
+        }
         await handle.removeEntry(item.fileName)
         results.push({ id: item.id, fileName: item.fileName, sha: item.sha, status: 'deleted', at: new Date() })
       } catch (e) {
@@ -412,7 +421,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         } else {
           const status = isPermDenied ? 'permission-denied' : 'delete-failed'
           results.push({ id: item.id, fileName: item.fileName, sha: item.sha, status, at: new Date(), error: e?.message })
-          if (!isPermDenied) cleanupQueueRef.current.push(item) // retry later unless permission explicitly denied
+          // Keep permission-denied items queued for a user-initiated reauthorization.
+          // No automatic browser permission prompts are attempted in the background.
+          cleanupQueueRef.current.push(item)
         }
       }
     }
