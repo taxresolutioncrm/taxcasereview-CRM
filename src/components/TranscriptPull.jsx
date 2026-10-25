@@ -74,6 +74,16 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   const irsBindingsRef = useRef(new Map())
   const fsSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
+  // ── Local file cleanup ────────────────────────────────────────────────────
+  // Tracks PDFs that have been successfully processed and are safe to delete.
+  const cleanupQueueRef = useRef([]) // [{ id, fileName, sha }]
+  const cleanupTimerRef = useRef(null)
+  const cleanupRunningRef = useRef(false)
+  // 'granted' = readwrite access confirmed; 'prompt' = can request; 'denied' = user declined; 'unknown' = not yet checked
+  const [cleanupPermission, setCleanupPermission] = useState('unknown')
+  const [cleanupLog, setCleanupLog] = useState([])
+  // [{ id, fileName, sha, status:'deleted'|'verify-failed'|'delete-failed'|'permission-denied', at, error? }]
+
   // Client combobox state
   const [clientSearch, setClientSearch] = useState('')
   const [clientDropOpen, setClientDropOpen] = useState(false)
@@ -282,10 +292,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
 
   async function connectFolder() {
     try {
-      const handle = await window.showDirectoryPicker({ id: 'tds-downloads', mode: 'read' })
+      // Request read+write so the CRM can delete processed PDFs from your folder after filing.
+      // Chrome/Edge will show a permission prompt — the CRM only deletes files it has already
+      // successfully filed or stored in the Unassigned IRS Transcripts inbox.
+      const handle = await window.showDirectoryPicker({ id: 'tds-downloads', mode: 'readwrite' })
       dirRef.current = handle
       setDirName(handle.name)
       setSavedFolder(null)
+      setCleanupPermission('granted')
       saveWatchedFolder(handle)
       await scanFolder(true)
     } catch (e) {
@@ -307,9 +321,18 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     loadWatchedFolder().then(async handle => {
       if (!alive || !handle) return
       let perm = 'prompt'
-      try { perm = await handle.queryPermission({ mode: 'read' }) } catch { /* unsupported */ }
-      if (perm === 'granted') { dirRef.current = handle; setDirName(handle.name) }
-      else setSavedFolder(handle)
+      try { perm = await handle.queryPermission({ mode: 'readwrite' }) } catch { /* unsupported */ }
+      if (perm === 'granted') {
+        dirRef.current = handle
+        setDirName(handle.name)
+        // Check whether we also have write access for cleanup (may have been granted previously).
+        try {
+          const rwPerm = await handle.queryPermission({ mode: 'readwrite' })
+          setCleanupPermission(rwPerm === 'granted' ? 'granted' : 'prompt')
+        } catch { setCleanupPermission('prompt') }
+      } else {
+        setSavedFolder(handle)
+      }
     })
     return () => { alive = false }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -318,14 +341,100 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     const handle = savedFolder
     if (!handle) return connectFolder()
     try {
-      if (await handle.requestPermission({ mode: 'read' }) !== 'granted') return
+      // Try readwrite first so cleanup stays enabled. Falls back to read-only if refused.
+      let perm = await handle.requestPermission({ mode: 'readwrite' })
+      if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'read' })
+      if (perm !== 'granted') return
       dirRef.current = handle
       setDirName(handle.name)
       setSavedFolder(null)
+      // Determine actual cleanup permission after the browser grant.
+      try {
+        const rwPerm = await handle.queryPermission({ mode: 'readwrite' })
+        setCleanupPermission(rwPerm === 'granted' ? 'granted' : 'denied')
+      } catch { setCleanupPermission('denied') }
       await scanFolder(true)
     } catch (e) {
       flash('❌ Could not reconnect the TDS download folder: ' + (e?.message || 'Unknown error'))
     }
+  }
+
+  // ── runCleanup — verify durable storage then delete local PDF ─────────────
+  async function runCleanup() {
+    const handle = dirRef.current
+    if (!handle || cleanupQueueRef.current.length === 0 || cleanupRunningRef.current) return
+
+    // Confirm write access without requiring a user gesture.
+    let perm = 'denied'
+    try { perm = await handle.queryPermission({ mode: 'readwrite' }) } catch {}
+    if (perm !== 'granted') {
+      setCleanupPermission(cp => cp === 'granted' ? 'prompt' : cp)
+      return // wait for employee to re-grant via "Enable Cleanup" button
+    }
+
+    cleanupRunningRef.current = true
+    const queue = [...cleanupQueueRef.current]
+    cleanupQueueRef.current = []
+
+    const results = []
+    for (const item of queue) {
+      // Gate 1 — confirm the file is durably stored in the CRM before touching it locally.
+      let verified = false
+      try {
+        const filed = await findFiledTranscriptBySha(item.sha)
+        if (filed) { verified = true }
+        else {
+          const inbox = await findUnassignedTranscriptBySha(item.sha).catch(() => null)
+          if (inbox) verified = true
+        }
+      } catch { /* leave verified = false — will retry next cycle */ }
+
+      if (!verified) {
+        results.push({ id: item.id, fileName: item.fileName, sha: item.sha, status: 'verify-failed', at: new Date(), error: 'CRM record not yet confirmed — will retry' })
+        cleanupQueueRef.current.push(item) // back to queue for next run
+        continue
+      }
+
+      // Gate 2 — delete the local file.
+      try {
+        await handle.removeEntry(item.fileName)
+        results.push({ id: item.id, fileName: item.fileName, sha: item.sha, status: 'deleted', at: new Date() })
+      } catch (e) {
+        const isPermDenied = e?.name === 'NotAllowedError' || e?.name === 'SecurityError'
+        const alreadyGone = e?.name === 'NotFoundError'
+        if (alreadyGone) {
+          // File already removed — treat as success.
+          results.push({ id: item.id, fileName: item.fileName, sha: item.sha, status: 'deleted', at: new Date() })
+        } else {
+          const status = isPermDenied ? 'permission-denied' : 'delete-failed'
+          results.push({ id: item.id, fileName: item.fileName, sha: item.sha, status, at: new Date(), error: e?.message })
+          if (!isPermDenied) cleanupQueueRef.current.push(item) // retry later unless permission explicitly denied
+        }
+      }
+    }
+
+    if (results.length) {
+      setCleanupLog(l => [...l, ...results].slice(-50))
+    }
+    cleanupRunningRef.current = false
+  }
+
+  async function retryCleanup() {
+    // Called from the UI "Retry" button. Re-requests write permission if needed.
+    const handle = dirRef.current
+    if (!handle) return
+    let perm = 'denied'
+    try { perm = await handle.queryPermission({ mode: 'readwrite' }) } catch {}
+    if (perm !== 'granted') {
+      try { perm = await handle.requestPermission({ mode: 'readwrite' }) } catch {}
+    }
+    if (perm !== 'granted') {
+      setCleanupPermission('denied')
+      flash('⚠ Folder write access was denied — local PDFs were not deleted.')
+      return
+    }
+    setCleanupPermission('granted')
+    await runCleanup()
   }
 
   async function addReturnedFiles(req, fileList) {
@@ -363,13 +472,13 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       const prior = await findFiledTranscriptBySha(sha)
       if (prior) {
         setUnmatched(u => u.filter(x => x.key !== key))
-        return { status: 'duplicate', client: prior.client_name || '' }
+        return { status: 'duplicate', client: prior.client_name || '', sha }
       }
       // Also check the unassigned inbox — a transcript already waiting there should not
       // trigger a second AI analysis pass or a second saveUnassignedTranscript attempt.
       const inboxPrior = await findUnassignedTranscriptBySha(sha).catch(() => null)
       if (inboxPrior) {
-        return { status: 'duplicate', client: inboxPrior.taxpayer_name || 'unassigned inbox' }
+        return { status: 'duplicate', client: inboxPrior.taxpayer_name || 'unassigned inbox', sha }
       }
       const parsed = await analyzeReturnedTranscript(file)
       const target = file.lastModified >= since ? await matchBrowserRequest(openBrowser, parsed, { onlyRequestIds }) : null
@@ -378,9 +487,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         const res = out.results[0] || {}
         if (res.status === 'filed') {
           setImported(im => [...im, { file: file.name, client: target.client_name, year: parsed.analysis.tax_year, type: parsed.analysis.transcript_type, aiValidated: res.aiValidated || false }])
-          return { status: 'filed', client: target.client_name }
+          return { status: 'filed', client: target.client_name, sha }
         }
-        if (res.status === 'duplicate') return { status: 'duplicate', client: target.client_name }
+        if (res.status === 'duplicate') return { status: 'duplicate', client: target.client_name, sha }
         if (res.status === 'needs-review-mismatch') {
           // TIN mismatch: persist to DB inbox with conflict reason for employee review.
           const conflictReason = res.reason || 'AI detected a possible TIN mismatch'
@@ -409,9 +518,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 persistError: persistErr?.message,
               },
             ])
-            return { status: 'needs-review-mismatch', detail: conflictReason, persistFailed: true, persistError: persistErr?.message }
+            return { status: 'needs-review-mismatch', detail: conflictReason, persistFailed: true, persistError: persistErr?.message, sha }
           }
-          return { status: 'needs-review-mismatch', detail: conflictReason }
+          return { status: 'needs-review-mismatch', detail: conflictReason, sha }
         }
         // Matched request but filing failed for another reason — persist to DB inbox.
         try {
@@ -423,9 +532,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
             error: res.reason || null, assignTo: '',
             persistError: persistErr?.message,
           }])
-          return { status: 'unmatched', detail: res.reason || 'Could not file', persistFailed: true, persistError: persistErr?.message }
+          return { status: 'unmatched', detail: res.reason || 'Could not file', persistFailed: true, persistError: persistErr?.message, sha }
         }
-        return { status: 'unmatched', detail: res.reason || 'Could not file' }
+        return { status: 'unmatched', detail: res.reason || 'Could not file', sha }
       }
       // No positive taxpayer (SSN/EIN) match to a pending request: never auto-file.
       // Persist to the Unassigned IRS Transcripts inbox (DB-backed, not React state).
@@ -439,9 +548,9 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
           key, fileName: file.name, file, analysis: parsed.analysis,
           assignTo: '', persistError: persistErr?.message,
         }])
-        return { status: 'unmatched', persistFailed: true, persistError: persistErr?.message }
+        return { status: 'unmatched', persistFailed: true, persistError: persistErr?.message, sha }
       }
-      return { status: 'unmatched' }
+      return { status: 'unmatched', sha }
     } catch (err) {
       // Catastrophic error (parse failed etc.) — fall back to in-memory so the employee sees the failure.
       setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: null, error: err?.message || 'Import failed', assignTo: '' }])
@@ -467,7 +576,14 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         const out = await intakeReturnedPdf(file, key, { since })
         // Only mark seen when the transcript was safely stored (filed, duplicate, or persisted to inbox).
         // If persistFailed, leave it out of seenRef so the next scan interval retries the DB write.
-        if (out.status !== 'error' && !out.persistFailed) seenRef.current.add(key)
+        if (out.status !== 'error' && !out.persistFailed) {
+          seenRef.current.add(key)
+          // Queue for local cleanup if we have the sha and cleanup is available.
+          // Never queue if the persist failed — the file must stay until the DB write succeeds.
+          if (out.sha) {
+            cleanupQueueRef.current.push({ id: crypto.randomUUID(), fileName: entry.name, sha: out.sha })
+          }
+        }
         if (out.status === 'filed') filed++
         else if (out.status === 'unmatched' && !out.persistFailed) inboxed++
         else if (out.persistFailed) persistFailed++
@@ -475,6 +591,11 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       setLastScan(new Date())
       await loadRequests()
       if (onImported && filed > 0) onImported()
+      // Schedule local cleanup ~8 s after scan so Supabase has time to commit before we verify.
+      if (cleanupQueueRef.current.length > 0) {
+        clearTimeout(cleanupTimerRef.current)
+        cleanupTimerRef.current = setTimeout(runCleanup, 8000)
+      }
       if (manual) {
         if (found === 0) {
           flash('Scan complete — no new PDFs in the folder.')
@@ -498,6 +619,19 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     const t = setInterval(() => { if (dirRef.current) scanFolder(false) }, 30000)
     return () => clearInterval(t)
   }, [requests, clientNames])
+
+  // Logout sweep — attempt cleanup before the session ends; warn if items remain.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return
+      if (cleanupQueueRef.current.length === 0) return
+      const remaining = cleanupQueueRef.current.length
+      // Best-effort cleanup; cannot await here since the component may unmount.
+      runCleanup()
+      flash(`⚠ Logging out — ${remaining} processed transcript${remaining !== 1 ? 's' : ''} may still be on your local computer. Check Local File Cleanup status before closing.`)
+    })
+    return () => subscription.unsubscribe()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   intakeRef.current = intakeReturnedPdf
   scanRef.current = scanFolder
@@ -956,6 +1090,47 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
                 </>
               )}
             </div>
+            {/* ── Local File Cleanup panel ──────────────────────────────── */}
+            {dirName && fsSupported && (
+              <div data-testid="local-cleanup-panel" style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 9, fontSize: 11.5 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <strong style={{ color: 'var(--t2)' }}>Local File Cleanup:</strong>
+                  {cleanupPermission === 'granted' ? (
+                    <span style={{ color: '#15803d' }}>✓ Enabled — filed PDFs are deleted from your folder after CRM storage is confirmed.</span>
+                  ) : cleanupPermission === 'prompt' ? (
+                    <>
+                      <span style={{ color: '#b45309' }}>⚠ Write access needed to delete local PDFs.</span>
+                      <button className="btn sec" style={{ fontSize: 11 }} onClick={retryCleanup} data-testid="cleanup-grant-btn">Enable Cleanup</button>
+                    </>
+                  ) : cleanupPermission === 'denied' ? (
+                    <>
+                      <span style={{ color: '#b91c1c' }}>✗ Write access denied — local PDFs will not be deleted automatically.</span>
+                      <button className="btn sec" style={{ fontSize: 11 }} onClick={retryCleanup} data-testid="cleanup-grant-btn">Retry</button>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--t3)' }}>Checking…</span>
+                  )}
+                  {cleanupPermission === 'granted' && cleanupQueueRef.current.length > 0 && (
+                    <button className="btn sec" style={{ fontSize: 11 }} onClick={retryCleanup} data-testid="cleanup-run-btn">Clean Up Now</button>
+                  )}
+                </div>
+                {cleanupLog.length > 0 && (
+                  <div style={{ marginTop: 6, maxHeight: 120, overflowY: 'auto', border: '1px solid var(--br)', borderRadius: 6, background: 'var(--sf)', padding: '6px 10px' }}>
+                    {[...cleanupLog].reverse().map(entry => (
+                      <div key={entry.id} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 11, color: entry.status === 'deleted' ? '#15803d' : entry.status === 'verify-failed' ? '#b45309' : '#b91c1c', marginBottom: 2 }}>
+                        <span>{entry.status === 'deleted' ? '✓' : entry.status === 'verify-failed' ? '↻' : '✗'}</span>
+                        <span style={{ flex: 1, wordBreak: 'break-all' }}>{entry.fileName}</span>
+                        <span style={{ color: 'var(--t3)', flexShrink: 0 }}>{entry.at.toLocaleTimeString()}</span>
+                        {entry.error && <span style={{ color: 'var(--t3)', fontSize: 10 }}>{entry.error}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop: 5, fontSize: 10, color: 'var(--t3)', lineHeight: 1.4 }}>
+                  ⚠ Ordinary browser file removal does not guarantee permanent erasure. Recovered copies may exist in system backups, cloud sync, or on disk. Do not rely on this for forensic deletion.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
