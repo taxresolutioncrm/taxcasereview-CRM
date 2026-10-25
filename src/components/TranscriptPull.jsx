@@ -10,6 +10,7 @@ import {
   openPendingIrsTab, startBrowserTdsRequest, sha256File, withHelperPairing,
   analyzeReturnedTranscript, matchBrowserRequest, fileBrowserTranscripts, findFiledTranscriptBySha,
   saveWatchedFolder, loadWatchedFolder, forgetWatchedFolder,
+  saveUnassignedTranscript, findUnassignedTranscriptBySha,
 } from '../lib/transcriptPull'
 
 const REQ_STATUSES = ['Requested', 'In Progress', 'Completed', 'Canceled']
@@ -33,7 +34,7 @@ function base64ToFile(base64, name) {
 }
 const BLANK = { clientName: '', clientId: null, types: [], taxYears: '', notes: '' }
 
-export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported }) {
+export default function TranscriptPull({ clientNames = [], clients = [], poas = [], onGoToPoa, onImported, sorMailboxMode = false }) {
   const { employeeName } = useApp()
   const [requests, setRequests] = useState([])
   const [legacyCount, setLegacyCount] = useState(0)
@@ -351,12 +352,24 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
   // positive SSN/EIN last-4 + year + type match to exactly one open request -> filed and analyzed; otherwise -> "Needs a client".
   async function intakeReturnedPdf(file, key, { since = -Infinity, onlyRequestIds = null } = {}) {
     const openBrowser = requestsRef.current.filter(isOpenBrowserRequest)
+    // Determine intake_source from the key prefix for audit trail.
+    const intakeSource = key.startsWith('sor-bridge:') ? 'sor-bridge'
+      : key.startsWith('helper:') ? 'tds-helper'
+      : 'folder-scan'
+    const employee = employeeName || 'Unknown employee'
     try {
       // Same PDF bytes already filed anywhere in this office → duplicate, whatever the file name or IRS address.
-      const prior = await findFiledTranscriptBySha(await sha256File(file))
+      const sha = await sha256File(file)
+      const prior = await findFiledTranscriptBySha(sha)
       if (prior) {
         setUnmatched(u => u.filter(x => x.key !== key))
         return { status: 'duplicate', client: prior.client_name || '' }
+      }
+      // Also check the unassigned inbox — a transcript already waiting there should not
+      // trigger a second AI analysis pass or a second saveUnassignedTranscript attempt.
+      const inboxPrior = await findUnassignedTranscriptBySha(sha).catch(() => null)
+      if (inboxPrior) {
+        return { status: 'duplicate', client: inboxPrior.taxpayer_name || 'unassigned inbox' }
       }
       const parsed = await analyzeReturnedTranscript(file)
       const target = file.lastModified >= since ? await matchBrowserRequest(openBrowser, parsed, { onlyRequestIds }) : null
@@ -369,26 +382,68 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         }
         if (res.status === 'duplicate') return { status: 'duplicate', client: target.client_name }
         if (res.status === 'needs-review-mismatch') {
-          setNeedsReviewMismatch(m => [
-            ...m.filter(x => x.key !== key),
-            {
-              key, fileName: file.name, file, analysis: parsed.analysis,
-              conflictReason: res.reason || 'AI detected a possible TIN mismatch',
-              conflicts: res.conflicts || [],
-              boundClientName: target.client_name,
-              boundClientId: target.client_id || null,
-              assignTo: '', queuedAt: Date.now(),
-            },
-          ])
-          return { status: 'needs-review-mismatch', detail: res.reason || 'AI detected a possible TIN mismatch' }
+          // TIN mismatch: persist to DB inbox with conflict reason for employee review.
+          const conflictReason = res.reason || 'AI detected a possible TIN mismatch'
+          try {
+            await saveUnassignedTranscript(
+              file,
+              { ...parsed.analysis, file_sha256: sha, bound_client_name: target.client_name, bound_client_id: target.client_id || null, conflicts: res.conflicts || [] },
+              intakeSource,
+              employee,
+              conflictReason
+            )
+          } catch (persistErr) {
+            // DB persist failed: fall back to in-memory so the transcript is not silently lost this session.
+            // Return persistFailed: true so the caller skips adding to seenRef — the file will be retried
+            // on the next scan interval, giving another chance to reach Supabase.
+            console.warn('intakeReturnedPdf: could not persist TIN-mismatch to DB, using in-memory fallback:', persistErr?.message)
+            setNeedsReviewMismatch(m => [
+              ...m.filter(x => x.key !== key),
+              {
+                key, fileName: file.name, file, analysis: parsed.analysis,
+                conflictReason,
+                conflicts: res.conflicts || [],
+                boundClientName: target.client_name,
+                boundClientId: target.client_id || null,
+                assignTo: '', queuedAt: Date.now(),
+                persistError: persistErr?.message,
+              },
+            ])
+            return { status: 'needs-review-mismatch', detail: conflictReason, persistFailed: true, persistError: persistErr?.message }
+          }
+          return { status: 'needs-review-mismatch', detail: conflictReason }
         }
-        setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: parsed.analysis, error: res.reason || null, assignTo: '' }])
+        // Matched request but filing failed for another reason — persist to DB inbox.
+        try {
+          await saveUnassignedTranscript(file, { ...parsed.analysis, file_sha256: sha }, intakeSource, employee, res.reason || null)
+        } catch (persistErr) {
+          console.warn('intakeReturnedPdf: could not persist failed-match to DB, using in-memory fallback:', persistErr?.message)
+          setUnmatched(u => [...u.filter(x => x.key !== key), {
+            key, fileName: file.name, file, analysis: parsed.analysis,
+            error: res.reason || null, assignTo: '',
+            persistError: persistErr?.message,
+          }])
+          return { status: 'unmatched', detail: res.reason || 'Could not file', persistFailed: true, persistError: persistErr?.message }
+        }
         return { status: 'unmatched', detail: res.reason || 'Could not file' }
       }
-      // No positive taxpayer (SSN/EIN) match to a pending request: never auto-file — leave it for manual assignment.
-      setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: parsed.analysis, assignTo: '' }])
+      // No positive taxpayer (SSN/EIN) match to a pending request: never auto-file.
+      // Persist to the Unassigned IRS Transcripts inbox (DB-backed, not React state).
+      try {
+        await saveUnassignedTranscript(file, { ...parsed.analysis, file_sha256: sha }, intakeSource, employee)
+      } catch (persistErr) {
+        // DB persist failed: fall back to in-memory for this session so the transcript is not silently lost.
+        // Return persistFailed: true so caller skips seenRef — next scan interval will retry persistence.
+        console.warn('intakeReturnedPdf: could not persist unmatched to DB, using in-memory fallback:', persistErr?.message)
+        setUnmatched(u => [...u.filter(x => x.key !== key), {
+          key, fileName: file.name, file, analysis: parsed.analysis,
+          assignTo: '', persistError: persistErr?.message,
+        }])
+        return { status: 'unmatched', persistFailed: true, persistError: persistErr?.message }
+      }
       return { status: 'unmatched' }
     } catch (err) {
+      // Catastrophic error (parse failed etc.) — fall back to in-memory so the employee sees the failure.
       setUnmatched(u => [...u.filter(x => x.key !== key), { key, fileName: file.name, file, analysis: null, error: err?.message || 'Import failed', assignTo: '' }])
       return { status: 'error', detail: err?.message || 'Import failed' }
     }
@@ -399,7 +454,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     if (!handle || scanBusyRef.current) return
     scanBusyRef.current = true
     setScanning(true)
-    let found = 0, filed = 0
+    let found = 0, filed = 0, inboxed = 0, persistFailed = 0
     try {
       for await (const entry of handle.values()) {
         if (entry.kind !== 'file' || !/\.(pdf|html?)$/i.test(entry.name)) continue
@@ -410,13 +465,27 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
         const openBrowser = requestsRef.current.filter(isOpenBrowserRequest)
         const since = openBrowser.reduce((m, r) => Math.min(m, new Date(r.requested_at || 0).getTime()), Infinity) - 10 * 60 * 1000
         const out = await intakeReturnedPdf(file, key, { since })
-        if (out.status !== 'error') seenRef.current.add(key)
+        // Only mark seen when the transcript was safely stored (filed, duplicate, or persisted to inbox).
+        // If persistFailed, leave it out of seenRef so the next scan interval retries the DB write.
+        if (out.status !== 'error' && !out.persistFailed) seenRef.current.add(key)
         if (out.status === 'filed') filed++
+        else if (out.status === 'unmatched' && !out.persistFailed) inboxed++
+        else if (out.persistFailed) persistFailed++
       }
       setLastScan(new Date())
       await loadRequests()
       if (onImported && filed > 0) onImported()
-      if (manual) flash(found === 0 ? 'Scan complete — no new PDFs in the folder.' : `✅ Scan complete — ${filed} of ${found} new PDF${found === 1 ? '' : 's'} filed automatically.`)
+      if (manual) {
+        if (found === 0) {
+          flash('Scan complete — no new PDFs in the folder.')
+        } else {
+          const parts = []
+          if (filed > 0) parts.push(`${filed} filed`)
+          if (inboxed > 0) parts.push(`${inboxed} sent to inbox`)
+          if (persistFailed > 0) parts.push(`${persistFailed} ⚠ not saved — retrying`)
+          flash(`✅ Scan complete — ${found} new PDF${found === 1 ? '' : 's'}: ${parts.join(', ') || 'no action taken'}.`)
+        }
+      }
     } catch (e) {
       flash('❌ Folder scan failed: ' + (e?.message || 'Unknown error'))
     } finally {
@@ -752,6 +821,72 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
     } finally {
       setSaving(false)
     }
+  }
+
+  if (sorMailboxMode) {
+    const sorSessionActive = popupOpen && [...irsBindingsRef.current.values()].some(b => b.url === IRS_SOR_URL)
+    const pendingSorLocal = unmatched.filter(x => String(x.key || '').startsWith('sor-bridge:'))
+    const mismatchSorLocal = needsReviewMismatch.filter(x => String(x.key || '').startsWith('sor-bridge:'))
+    return (
+      <div data-testid="sor-mailbox-view">
+        <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:14, overflow:'hidden', marginBottom:14 }}>
+          <div style={{ padding:'13px 16px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ fontWeight:800, fontSize:15 }}>SOR — Secure IRS Mailbox</div>
+              <div style={{ color:'var(--t3)', fontSize:11.5, marginTop:3 }}>
+                Receive-only intake for documents delivered by the IRS. IRS / ID.me credentials stay on the IRS site and are never stored by the CRM.
+              </div>
+            </div>
+            <span style={{ background:sorSessionActive ? '#15803d' : '#64748b', color:'#fff', borderRadius:6, padding:'4px 9px', fontSize:10.5, fontWeight:700 }}>
+              {sorSessionActive ? '● SOR session open' : '○ No active SOR session'}
+            </span>
+          </div>
+          <div style={{ padding:'14px 16px' }}>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginBottom:12 }}>
+              <button className="btn" onClick={() => openIrs(IRS_SOR_URL)} data-testid="sor-open-mailbox">📮 Open IRS SOR Mailbox</button>
+              {sorSessionActive && <button className="btn sec" onClick={() => { if (!focusIrsPopup()) { setIrsSessionIds(new Map()); irsBindingsRef.current.clear() } }}>Show SOR window</button>}
+            </div>
+            <div style={{ border:'1px solid var(--line)', borderRadius:10, padding:'11px 13px', background:'var(--s1)', marginBottom:12 }}>
+              <div style={{ fontWeight:800, fontSize:12.5, marginBottom:6 }}>Secure intake status</div>
+              <div style={{ fontSize:11.5, color:'var(--t3)', lineHeight:1.55 }}>
+                <div><strong style={{ color:'var(--t2)' }}>SOR Bridge:</strong> {sorBridgeConnected ? `Connected${sorBridgeVersion ? ` v${sorBridgeVersion}` : ''}` : 'Not detected'}</div>
+                <div><strong style={{ color:'var(--t2)' }}>TaxRes IRS Helper:</strong> {helperConnected ? 'Connected' : 'Not detected'}</div>
+              </div>
+              {!sorBridgeConnected && !helperConnected && <div style={{ marginTop:8, display:'flex', gap:8, flexWrap:'wrap' }}>
+                <a className="btn sec" style={{ fontSize:11 }} href={SOR_BRIDGE_ZIP_URL} download>Download SOR Bridge</a>
+                <a className="btn sec" style={{ fontSize:11 }} href={HELPER_ZIP_URL} download>Download IRS Helper</a>
+              </div>}
+            </div>
+            <div style={{ border:'1px solid var(--line)', borderRadius:10, padding:'11px 13px', background:'var(--s1)' }}>
+              <div style={{ fontWeight:800, fontSize:12.5, marginBottom:6 }}>Browser folder intake</div>
+              <div style={{ fontSize:11.5, color:'var(--t3)', lineHeight:1.55, marginBottom:8 }}>
+                In compatible Chrome/Edge browsers, connect a dedicated IRS transcript folder. Save authorized SOR PDFs there and use Scan Now. Uncertain matches are retained in Unassigned Transcripts.
+              </div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                {!dirName && !savedFolder && <button className="btn sec" onClick={connectFolder}>Connect Download Folder</button>}
+                {!dirName && savedFolder && <button className="btn sec" onClick={reconnectFolder}>Reconnect Folder</button>}
+                {dirName && <button className="btn sec" disabled={scanning} onClick={() => scanFolder(true)}>{scanning ? 'Scanning…' : 'Scan Now'}</button>}
+                <span style={{ fontSize:11, color:'var(--t3)' }}>{dirName ? `Connected: ${dirName}` : 'No folder connected'}</span>
+              </div>
+              {lastScan && <div style={{ marginTop:6, fontSize:10.5, color:'var(--t3)' }}>Last scan: {lastScan.toLocaleTimeString()}</div>}
+            </div>
+          </div>
+        </div>
+
+        {(pendingSorLocal.length > 0 || mismatchSorLocal.length > 0) && (
+          <div style={{ background:'var(--s2)', border:'1px solid #b45309', borderRadius:12, padding:14, marginBottom:14 }}>
+            <div style={{ fontWeight:800, fontSize:12.5, marginBottom:5 }}>SOR documents awaiting safe persistence</div>
+            <div style={{ color:'var(--t3)', fontSize:11.5, lineHeight:1.5 }}>
+              {pendingSorLocal.length + mismatchSorLocal.length} item(s) are visible in this browser session while the persistent inbox write is retried. Do not close this tab until they are stored or filed.
+            </div>
+          </div>
+        )}
+
+        <div style={{ background:'var(--s2)', border:'1px solid var(--line)', borderRadius:12, padding:18, color:'var(--t2)', fontSize:12.5, lineHeight:1.6 }}>
+          Documents that cannot be matched confidently are stored in <strong>Unassigned Transcripts</strong>. Review taxpayer identity there, then explicitly assign, create a client if necessary, or intentionally discard with an audit reason.
+        </div>
+      </div>
+    )
   }
 
   // Derive the single most-actionable reason the CTA is unavailable (used below CTA only)

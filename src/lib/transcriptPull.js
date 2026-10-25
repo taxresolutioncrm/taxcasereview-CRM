@@ -677,3 +677,194 @@ export async function forgetWatchedFolder() {
   try { const db = await handleDb(); const tx = db.transaction(HANDLE_STORE, 'readwrite'); tx.objectStore(HANDLE_STORE).delete('tds') } catch { /* noop */ }
 }
 
+export async function saveUnassignedTranscript(file, analysis, source, receivedBy, conflictReason = null) {
+  if (!file) throw new Error('File is required to save an unassigned transcript.')
+  const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
+  if (tenantErr || !tenantId) throw new Error(`Could not resolve office tenant: ${tenantErr?.message || 'Not signed in'}`)
+
+  // Ensure we have the SHA-256 — compute it once if the caller didn't pass it.
+  const sha = analysis?.file_sha256 || await sha256File(file)
+
+  // Idempotent: if the same PDF bytes are already in the inbox (pending or assigned), return that row id.
+  const { data: existing, error: existErr } = await supabase
+    .from('unassigned_transcripts')
+    .select('id, status')
+    .eq('tenant_id', tenantId)
+    .eq('file_sha256', sha)
+    .maybeSingle()
+  if (existErr && existErr.code !== 'PGRST116') throw new Error(`Duplicate check failed: ${existErr.message}`)
+  if (existing) return existing.id
+
+  const id = crypto.randomUUID()
+  const safeFile = String(file.name || 'transcript.pdf')
+    .replace(/[\\/\r\n]/g, '_')
+    .replace(/[^A-Za-z0-9._ -]/g, '_')
+    .slice(0, 140) || 'transcript.pdf'
+  const filePath = `unassigned/${tenantId}/${id}-${safeFile}`
+
+  // Upload PDF to the documents storage bucket under unassigned/ prefix.
+  const { error: uploadErr } = await supabase.storage
+    .from('documents')
+    .upload(filePath, file, { upsert: false })
+  if (uploadErr) throw new Error(`Unassigned transcript upload failed: ${uploadErr.message}`)
+
+  const now = new Date().toISOString()
+  const auditEntry = { event: 'received', at: now, by: receivedBy || null, source: source || 'unknown' }
+  if (conflictReason) auditEntry.conflict = conflictReason
+
+  const row = {
+    id,
+    tenant_id: tenantId,
+    file_path: filePath,
+    file_name: file.name || safeFile,
+    file_sha256: sha,
+    file_size: file.size ?? null,
+    taxpayer_name: analysis?.taxpayer_name || null,
+    tax_year: analysis?.tax_year || null,
+    transcript_type: analysis?.transcript_type || null,
+    raw_analysis: { ...analysis, file_sha256: sha },
+    intake_source: source || 'unknown',
+    conflict_reason: conflictReason || null,
+    received_by: receivedBy || null,
+    received_at: now,
+    audit_log: [auditEntry],
+  }
+
+  const { error: insertErr } = await supabase.from('unassigned_transcripts').insert(row)
+  if (insertErr) {
+    // Rollback the upload on insert failure.
+    await supabase.storage.from('documents').remove([filePath]).catch(() => {})
+    if (insertErr.code === '23505') return existing?.id || id // concurrent insert — already saved
+    throw new Error(`Could not save unassigned transcript: ${insertErr.message}`)
+  }
+
+  return id
+}
+
+/**
+ * Fetch all pending (unassigned) transcripts for this office, newest first.
+ * Returns an array of unassigned_transcripts rows.
+ */
+export async function loadUnassignedTranscripts() {
+  const { data, error } = await supabase
+    .from('unassigned_transcripts')
+    .select('*')
+    .eq('status', 'pending')
+    .order('received_at', { ascending: false })
+  if (error) throw new Error(`Could not load unassigned inbox: ${error.message}`)
+  return data || []
+}
+
+/**
+ * Assign a pending unassigned transcript to an existing CRM client.
+ * Downloads the stored PDF, files it via storeTranscriptAnalysis, marks the
+ * inbox row as assigned, and cleans up the temporary storage file.
+ *
+ * @param {object} item      - Row from unassigned_transcripts (must have id, file_path, file_name, raw_analysis, file_sha256, audit_log).
+ * @param {string} clientId  - UUID of the target client record.
+ * @param {string} clientName - Display name of the target client.
+ * @param {string} assignedBy - Employee performing the assignment.
+ * @returns {string} The new transcript_analyses row id.
+ */
+export async function assignUnassignedTranscript(item, clientId, clientName, assignedBy) {
+  if (!item?.id) throw new Error('Unassigned transcript row is required.')
+  if (!clientId)  throw new Error('A client must be selected before filing.')
+  if (!clientName) throw new Error('Client name is required.')
+
+  // Download the stored PDF from the unassigned/ path.
+  const { data: fileData, error: dlErr } = await supabase.storage
+    .from('documents')
+    .download(item.file_path)
+  if (dlErr) throw new Error(`Could not retrieve transcript file: ${dlErr.message}`)
+
+  const file = new File([fileData], item.file_name || 'transcript.pdf', { type: 'application/pdf' })
+
+  // File to the client through the standard pipeline.
+  // Pass clientId so storeTranscriptAnalysis resolves by ID (not name ambiguity).
+  const analysisId = await storeTranscriptAnalysis(
+    file,
+    clientName,
+    { ...item.raw_analysis, file_sha256: item.file_sha256 },
+    { clientId }
+  )
+
+  // Mark the inbox row as assigned.
+  const now = new Date().toISOString()
+  const newAudit = [
+    ...(Array.isArray(item.audit_log) ? item.audit_log : []),
+    { event: 'assigned', at: now, by: assignedBy || null, client: clientName, client_id: clientId, analysis_id: analysisId },
+  ]
+  const { error: updateErr } = await supabase
+    .from('unassigned_transcripts')
+    .update({
+      status: 'assigned',
+      assigned_to_client_id: clientId,
+      assigned_to_client_name: clientName,
+      assigned_by: assignedBy || null,
+      assigned_at: now,
+      transcript_analysis_id: analysisId,
+      audit_log: newAudit,
+    })
+    .eq('id', item.id)
+  if (updateErr) {
+    // The transcript was filed successfully; record update failure as a warning in the return value.
+    console.warn('assignUnassignedTranscript: filed OK but inbox row update failed:', updateErr.message)
+  }
+
+  // Best-effort: remove the temporary unassigned/ storage file (now re-stored under transcripts/${clientId}/).
+  await supabase.storage.from('documents').remove([item.file_path]).catch(() => {})
+
+  return analysisId
+}
+
+/**
+ * Discard a pending unassigned transcript (e.g., duplicate from another source,
+ * spam, or otherwise not needed). Records the reason in audit_log; the row is
+ * retained for the audit trail with status = 'discarded'.
+ *
+ * @param {object} item       - Row from unassigned_transcripts.
+ * @param {string} discardedBy - Employee performing the discard.
+ * @param {string} [reason]   - Optional reason for the discard.
+ */
+export async function discardUnassignedTranscript(item, discardedBy, reason = '') {
+  if (!item?.id) throw new Error('Unassigned transcript row is required.')
+
+  const now = new Date().toISOString()
+  const newAudit = [
+    ...(Array.isArray(item.audit_log) ? item.audit_log : []),
+    { event: 'discarded', at: now, by: discardedBy || null, ...(reason ? { reason } : {}) },
+  ]
+  const { error } = await supabase
+    .from('unassigned_transcripts')
+    .update({
+      status: 'discarded',
+      assigned_by: discardedBy || null,
+      assigned_at: now,
+      audit_log: newAudit,
+    })
+    .eq('id', item.id)
+  if (error) throw new Error(`Could not discard transcript: ${error.message}`)
+
+  // Best-effort: remove the storage file for a discarded transcript.
+  await supabase.storage.from('documents').remove([item.file_path]).catch(() => {})
+}
+
+/**
+ * Check whether a SHA-256 is already in the unassigned_transcripts inbox
+ * (pending or assigned). Used by findFiledTranscriptBySha to prevent the
+ * same PDF from being re-processed by the folder scanner.
+ */
+export async function findUnassignedTranscriptBySha(sha) {
+  if (!sha) return null
+  const { data: tenantId, error: tenantErr } = await supabase.rpc('current_tenant_id')
+  if (tenantErr || !tenantId) return null
+  const { data, error } = await supabase
+    .from('unassigned_transcripts')
+    .select('id, status, taxpayer_name')
+    .eq('tenant_id', tenantId)
+    .eq('file_sha256', sha)
+    .limit(1)
+  if (error) return null
+  return data?.[0] || null
+}
+
