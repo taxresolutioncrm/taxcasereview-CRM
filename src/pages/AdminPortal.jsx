@@ -7534,8 +7534,8 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
       if (data?.ok) {
         if (oauthProduct !== selectedPid) selectProduct(oauthProduct)
-        showToast(oauthProduct === 'arcvena'
-          ? 'Arcvena LinkedIn company page connected ✓'
+        showToast((oauthProduct === 'arcvena' || oauthProduct === 'taxres_crm')
+          ? `${oauthProduct === 'arcvena' ? 'Arcvena' : 'TaxRes CRM'} company page verified ✓`
           : `Connected as ${data.name} ✓`)
         load()
       } else {
