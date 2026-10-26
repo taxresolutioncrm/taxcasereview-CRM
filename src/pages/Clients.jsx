@@ -780,11 +780,17 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [previewUrl, setPreviewUrl] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewExpanded, setPreviewExpanded] = useState(false)
+  const [analyzingDocId, setAnalyzingDocId] = useState('')
+  const [docAiSummaries, setDocAiSummaries] = useState({})
   const previewSequence = useRef(0)
   const fileRef = useRef(null)
+  const docLoadRequestRef = useRef(0)
   const canUpload = can('edit','documents')
 
-  useEffect(() => { loadDocs() }, [clientId, clientName, tenantId])
+  useEffect(() => {
+    loadDocs()
+    return () => { docLoadRequestRef.current += 1 }
+  }, [clientId, clientName, tenantId])
   useEffect(() => {
     previewSequence.current += 1
     setSelectedDoc(null)
@@ -846,6 +852,33 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       setTimeout(()=>URL.revokeObjectURL(blobUrl),30000)
     } catch (error) { showToast('Could not download document: '+(error?.message||error)) }
   }
+  async function analyzeClientDocument(doc) {
+    if (!doc?.id || analyzingDocId || !tenantId ||
+        String(doc.tenant_id) !== String(tenantId) ||
+        (clientId && String(doc.client_id) !== String(clientId))) return
+    setAnalyzingDocId(String(doc.id))
+    try {
+      const body = {documentId:doc.id,clientId:doc.client_id||clientId}
+      const {data,error} = await supabase.functions.invoke('document-intelligence',{body})
+      if (error || data?.error || data?.ok === false)
+        throw new Error(data?.error || error?.message || 'AI analysis failed')
+      const {data:runs,error:runError} = await supabase.from('document_ai_runs').select('summary,status')
+        .eq('document_id',String(doc.id)).order('created_at',{ascending:false}).limit(1)
+      if (runError) throw runError
+      const summary = runs?.[0]?.summary || data?.summary || 'Analysis submitted. Review Document Intelligence for results.'
+      setDocAiSummaries(prev=>({...prev,[String(doc.id)]:summary}))
+      showToast?.('Document AI analysis submitted.')
+    } catch (error) {
+      showToast?.('AI Analyze failed: ' + (error?.message || String(error)))
+    } finally {setAnalyzingDocId('')}
+  }
+  const docAiAction = doc => (doc?.storage_path || doc?.file_url) && (
+    <button type="button" className="btn sec" disabled={!!analyzingDocId}
+      onClick={e=>{e.stopPropagation();analyzeClientDocument(doc)}}
+      style={{fontSize:10,padding:'4px 8px'}}>
+      {analyzingDocId===String(doc.id)?'Analyzing…':'✦ AI Analyze'}
+    </button>
+  )
   function previewFrame() {
     if (previewLoading) return <div style={{padding:24}}>Loading secure preview…</div>
     if (!previewUrl) return <div style={{padding:24}}>Secure preview unavailable</div>
@@ -856,11 +889,29 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
 
   async function loadDocs() {
+    const requestId = ++docLoadRequestRef.current
     if (!tenantId) { setDocs([]); return }
-    let q = supabase.from('documents').select('*').eq('tenant_id', tenantId)
-    q = clientId ? q.eq('client_id', String(clientId)) : q.eq('client', clientName)
-    const { data } = await q.order('created_at', { ascending: false })
-    setDocs(data || [])
+    let query = supabase.from('documents').select('*').eq('tenant_id', tenantId)
+    query = clientId ? query.eq('client_id', String(clientId)) : query.eq('client', clientName)
+    query = query.order('created_at', { ascending: false }).order('id', { ascending: false })
+    const pageSize = 500
+    const all = []
+    for (let offset = 0; offset < 100000; offset += pageSize) {
+      const { data, error } = await query.range(offset, offset + pageSize - 1)
+      if (requestId !== docLoadRequestRef.current) return
+      if (error) {
+        showToast?.('Could not load client documents: ' + error.message)
+        return // Do not silently replace a complete list with partial results.
+      }
+      all.push(...(data || []))
+      if (!data || data.length < pageSize) {
+        setDocs(all)
+        return
+      }
+    }
+    if (requestId === docLoadRequestRef.current) {
+      showToast?.('Document limit reached. Contact support to access remaining files.')
+    }
   }
 
   function chooseFiles(fileList) {
@@ -1120,16 +1171,17 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
       {/* Three-pane Documents workspace with independently scrolling folders, files and PDF. */}
       <div data-testid="client-docs-workspace" style={{width:'100%',maxWidth:'100%',overflowX:'auto',overflowY:'hidden'}}>
-      <div style={{display:'grid',gridTemplateColumns:'180px minmax(290px,0.9fr) minmax(370px,1.3fr)',minWidth:840,height:'min(68vh,760px)',minHeight:460,overflow:'hidden'}}>
+      <div style={{display:'grid',gridTemplateColumns:'200px minmax(270px,0.9fr) minmax(370px,1.3fr)',minWidth:840,height:'min(68vh,760px)',minHeight:460,overflow:'hidden'}}>
         {/* Left: folder tree */}
-        <div data-testid="client-docs-folders" style={{width:180,flexShrink:0,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain',borderRight:'1px solid var(--br)',padding:'8px 0',background:'var(--s2)'}}>
+        <div data-testid="client-docs-folders" style={{width:200,flexShrink:0,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain',borderRight:'1px solid var(--br)',padding:'8px 0',background:'var(--s2)'}}>
           <div onClick={()=>setFolder('All')}
             style={{padding:'5px 12px',cursor:'pointer',fontSize:12,fontWeight:folder==='All'?700:400,
               background:folder==='All'?'var(--blt)':'transparent',color:folder==='All'?'var(--b2)':'var(--tx)',
               display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span>🗂️ All</span>
+            <span>🗂️ All Documents</span>
             <span style={{fontSize:10,background:'var(--s3)',borderRadius:10,padding:'0 5px'}}>{docs.length}</span>
           </div>
+          <div style={{padding:'10px 12px 4px',fontSize:9,fontWeight:800,color:'var(--t3)',letterSpacing:'.08em',textTransform:'uppercase'}}>Document folders</div>
           {DOC_FOLDERS.map(f=>(
             <div key={f} onClick={()=>setFolder(f)}
               style={{padding:'7px 14px',cursor:'pointer',fontSize:12.5,fontWeight:folder===f?700:400,
@@ -1144,15 +1196,14 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
 
         <div data-testid="client-docs-list" style={{minWidth:0,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain',background:'var(--sf)',borderRight:'1px solid var(--br)'}}>
-          <div style={{position:'sticky',top:0,zIndex:2,padding:10,background:'var(--s2)',fontWeight:800,fontSize:11}}>Files ({visible.length})</div>
+          <div style={{position:'sticky',top:0,zIndex:2,padding:'8px 10px',background:'var(--s2)',borderBottom:'1px solid var(--br)',fontWeight:800,fontSize:10,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em'}}>Files ({visible.length})</div>
           {visible.map(d=><div key={d.id} onClick={()=>selectPreview(d)} data-testid="client-doc-row"
-            style={{padding:10,borderBottom:'1px solid var(--br)',cursor:'pointer',background:selectedDoc?.id===d.id?'var(--blt)':'transparent'}}>
-            <div title={d.file_name||d.name} style={{whiteSpace:'nowrap',textOverflow:'ellipsis',overflow:'hidden',fontSize:12,fontWeight:700}}>{FILE_EXT_ICON(d.file_name||d.name)} {d.file_name||d.name}</div>
-            <div style={{fontSize:10,color:'var(--t3)',padding:'4px 0'}}>{d.created_at?.slice(0,10)}{d.file_size?' · '+fmt(d.file_size):''}</div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              <button className="btn sec" type="button" onClick={e=>{e.stopPropagation();openClientDoc(d)}}>Open</button>
-              <button className="btn sec" type="button" onClick={e=>{e.stopPropagation();downloadPreview(d)}}>Download</button>
-              <button type="button" onClick={e=>{e.stopPropagation();delDoc(d)}}>Delete</button>
+            style={{display:'grid',gridTemplateColumns:'34px minmax(0,1fr)',gap:9,padding:'10px 11px',borderBottom:'1px solid var(--br)',cursor:'pointer',background:selectedDoc?.id===d.id?'var(--blt)':'transparent'}}>
+            <div style={{fontSize:25,textAlign:'center'}}>{FILE_EXT_ICON(d.file_name||d.name)}</div>
+            <div style={{minWidth:0}}>
+              <div title={d.file_name||d.name} style={{fontSize:12,fontWeight:selectedDoc?.id===d.id?800:600,whiteSpace:'nowrap',textOverflow:'ellipsis',overflow:'hidden',color:selectedDoc?.id===d.id?'var(--b2)':'var(--tx)'}}>{d.file_name||d.name}</div>
+              <div style={{fontSize:10,color:'var(--t3)',marginTop:4,display:'flex',gap:8,flexWrap:'wrap'}}><span>{d.file_size?fmt(d.file_size):''}</span><span>{d.created_at?.slice(0,10)||''}</span></div>
+              <div style={{marginTop:6}}>{docAiAction(d)}</div>
             </div>
           </div>)}
         </div>
@@ -1160,9 +1211,12 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           {!selectedDoc?<div style={{padding:30,color:'var(--t3)'}}>Select a document to preview</div>:<>
             <div style={{padding:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
               <strong title={selectedDoc.file_name||selectedDoc.name} style={{flex:1,minWidth:160,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
-              <button className="btn sec" type="button" onClick={()=>setPreviewExpanded(true)}>Expand Preview ⛶</button>
+              <button className="btn sec" type="button" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>setPreviewExpanded(true)}>Expand Preview ⛶</button>
+              {docAiAction(selectedDoc)}
               <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open ↗</button>
+              <button type="button" onClick={()=>delDoc(selectedDoc)} style={{fontSize:10,padding:"4px 8px",color:"var(--bad)",background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.3)",borderRadius:6}}>Delete</button>
             </div>
+            {docAiSummaries[String(selectedDoc.id)] && <div style={{padding:10,fontSize:12,maxHeight:130,overflowY:"auto"}}><strong>✦ AI Summary</strong><div>{docAiSummaries[String(selectedDoc.id)]}</div></div>}
             <div style={{flex:1,minHeight:0,overflow:'auto',background:'#e5e7eb'}}>{previewFrame()}</div>
           </>}
         </div>
@@ -2393,6 +2447,30 @@ export default function Clients() {
       await logAndRefreshNote(note)
     }
     // Shared stage-change logic — used by both the dropdown and the View Flow modal.
+    // File lifecycle is independent of the pipeline stage and archiving.
+    const updateFileStatus=async(nextStatus)=>{
+      if(!['Active','Inactive'].includes(nextStatus) || nextStatus===(c.status||'Active')) return
+      const previousStatus=c.status||'Active'
+      const {data,error}=await supabase.from('clients')
+        .update({status:nextStatus})
+        .eq('id',c.id)
+        .eq('tenant_id',myTenantId)
+        .select('id,status')
+        .single()
+      if(error || !data){showToast('Could not update file status: '+(error?.message||'Client not found'));return}
+      setDetail(prev=>prev?.id===c.id?{...prev,status:data.status}:prev)
+      setClients(prev=>prev.map(row=>row.id===c.id?{...row,status:data.status}:row))
+      showToast('File marked '+(data.status==='Inactive'?'Not Active':'Active'))
+      const actor=resolveActorName(user,employees)
+      const note='📁 File status changed: '+previousStatus+' → '+data.status
+      const {error:noteErr}=await insertClientNote({clientname:c.name,content:note,created_by:actor,created_at:new Date().toISOString()})
+      if(noteErr)showToast('File status updated, but note logging failed: '+noteErr.message)
+      else {
+        const {data:notesData}=await supabase.from('client_notes').select('*').eq('clientname',c.name).order('created_at',{ascending:false})
+        if(notesData)setRelNotes(notesData)
+      }
+    }
+
     const applyPipelineStage=async(newKey)=>{
       if(newKey===c.pipelineStage) return
       const prevStage=PIPELINE_STAGES.find(p=>p.key===(c.pipelineStage||DEFAULT_PIPELINE_STAGE))
@@ -2490,6 +2568,16 @@ export default function Clients() {
               >
                 {PIPELINE_STAGES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
+              <label style={{display:'inline-flex',alignItems:'center',gap:7,fontSize:12,fontWeight:700,color:'var(--t2)'}}>
+                File Status
+                <select aria-label="File Status" data-testid="client-file-status"
+                  value={c.status==='Inactive'?'Inactive':'Active'}
+                  onChange={e=>updateFileStatus(e.target.value)}
+                  style={{fontSize:13,padding:'6px 10px',borderRadius:8,background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',cursor:'pointer'}}>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Not Active</option>
+                </select>
+              </label>
             </div>
             <div style={{marginTop:8,height:6,background:'var(--s3)',borderRadius:4,overflow:'hidden'}}>
               <div style={{height:'100%',width:`${Math.round(((si+1)/PIPELINE_STAGES.length)*100)}%`,background:'var(--blue)',borderRadius:4,transition:'width .3s'}}/>
