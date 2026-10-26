@@ -67,3 +67,11 @@ test('optional expanded viewer renders in body portal and preserves selected doc
   expect(docs).toContain('downloadPreview(selectedDoc)')
   expect(docs).toContain(".download(storagePath)")
 })
+
+test('Nashville-style AI Analyze controls are scoped to selected tenant document',()=>{
+  expect(docs).toContain("supabase.functions.invoke('document-intelligence'")
+  expect(docs).toContain("String(doc.tenant_id) !== String(tenantId)")
+  expect(docs).toContain('docAiAction(d)')
+  expect(docs).toContain('docAiAction(selectedDoc)')
+  expect(docs).toContain('AI Summary')
+})
