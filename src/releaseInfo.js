@@ -3,6 +3,8 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'IRS TDS portal sign-in presentation and transcript/POA navigation counts polished toward Nashville parity',
+  'Production build release-version verification corrected to read Git revision history accurately',
   'Client Documents now retain an inline three-column folder, file list and preview workspace with optional expanded viewing',
   'Document loading includes deterministic pagination and protection against stale responses when switching clients',
   'Client files have an independent Active / Not Active status selector',
@@ -11,18 +13,18 @@ const IRS_WORKFLOW_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.0',
+  version: '3.2.1',
   releasedAt: '2026-10-26',
-  title: 'TaxRes CRM 3.2 — Documents, Mail and File Status',
+  title: 'TaxRes CRM 3.2.1 — IRS TDS Portal UI and Release Reliability',
   changes: IRS_WORKFLOW_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.0',
+    version: '3.2.1',
     releasedAt: '2026-10-26',
-    title: 'Tax Case Review CRM 3.2 — Documents, Mail and File Status',
+    title: 'Tax Case Review CRM 3.2.1 — IRS TDS Portal UI and Release Reliability',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -44,17 +46,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.0',
+    version: '3.2.1',
     releasedAt: '2026-10-26',
-    title: 'CloudCPA CRM 3.2 — Documents, Mail and File Status',
+    title: 'CloudCPA CRM 3.2.1 — IRS TDS Portal UI and Release Reliability',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.0',
+    version: '3.2.1',
     releasedAt: '2026-10-26',
-    title: 'Centurion Firm CRM 3.2 — Documents, Mail and File Status',
+    title: 'Centurion Firm CRM 3.2.1 — IRS TDS Portal UI and Release Reliability',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
