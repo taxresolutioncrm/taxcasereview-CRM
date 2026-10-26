@@ -2629,11 +2629,16 @@ function EmployeeLookup() {
     if (!q.trim()) return
     setBusy(true)
     setError('')
-    await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null }).then(()=>{}).catch(()=>{})
-    const { data, error } = await supabase.rpc('admin_search_employees', { p_query:q.trim(), p_limit:50 })
-    setBusy(false)
-    if (error) { setError(error.message); setResults([]); return }
-    setResults(Array.isArray(data) ? data : [])
+    try {
+      const { data, error } = await supabase.rpc('admin_search_employees', { p_query:q.trim(), p_limit:50 })
+      if (error) throw error
+      setResults(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError(err?.message || 'Employee lookup could not be completed.')
+      setResults(null)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -2717,7 +2722,7 @@ function AuditLog() {
                   <td style={{ ...S.td,color:'#94a3b8',fontSize:12 }}>{a.admin_email}</td>
                   <td style={{ ...S.td,color:'#e2e8f0' }}>{a.target_name||'—'}</td>
                   <td style={{ ...S.td,color:'#475569',fontSize:11 }}>
-                    {a.detail ? JSON.stringify(a.detail).slice(0,60) : '—'}
+                    {a.detail ? JSON.stringify(a.detail, (key, value) => /token|secret|password|authorization|api.?key|refresh|credential|session/i.test(key) ? '[REDACTED]' : value).slice(0,120) : '—'}
                   </td>
                   <td style={{ ...S.td,color:'#475569' }}>{fmtAgo(a.created_at)}</td>
                 </tr>
@@ -6681,6 +6686,8 @@ const GENERATION_STEPS = [
 function SupportCenterTab({ supabase }) {
   const [tickets, setTickets]       = useState(null)
   const [loading, setLoading]       = useState(true)
+  const [supportError, setSupportError] = useState('')
+  const [showQa, setShowQa]         = useState(false)
   const [filter, setFilter]         = useState('all')       // product_id or 'all'
   const [statusFilter, setStatus]   = useState('all')       // 'Open'|'In Progress'|'Resolved'|'all'
   const [selected, setSelected]     = useState(null)        // selected ticket id
@@ -6707,13 +6714,22 @@ function SupportCenterTab({ supabase }) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.rpc('list_all_product_tickets', {
-      p_product_id: filter === 'all' ? null : filter,
-      p_status: statusFilter === 'all' ? null : statusFilter,
-      p_limit: 100,
-    })
-    setTickets(data || [])
-    setLoading(false)
+    setSupportError('')
+    try {
+      const { data, error } = await supabase.rpc('list_all_product_tickets', {
+        p_product_id: filter === 'all' ? null : filter,
+        p_status: statusFilter === 'all' ? null : statusFilter,
+        p_limit: 100,
+      })
+      if (error) throw error
+      if (!Array.isArray(data)) throw new Error('Support API returned an invalid ticket list')
+      setTickets(data)
+    } catch (err) {
+      setTickets(null)
+      setSupportError(err?.message || 'Support tickets could not be loaded')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { load() }, [filter, statusFilter])
@@ -6794,6 +6810,9 @@ function SupportCenterTab({ supabase }) {
       <div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
           <div style={{ fontSize:17, fontWeight:800, color:'#fff' }}>🎫 Support Center</div>
+          <label style={{fontSize:11,color:'#cbd5e1',display:'flex',alignItems:'center',gap:6}}>
+            <input type="checkbox" checked={showQa} onChange={e=>setShowQa(e.target.checked)} /> Show QA/test tickets
+          </label>
           <div style={{ display:'flex', gap:8 }}>
             <select value={statusFilter} onChange={e=>setStatus(e.target.value)}
               style={{ ...S2.input, width:'auto', padding:'6px 10px', fontSize:12 }}>
@@ -6815,12 +6834,14 @@ function SupportCenterTab({ supabase }) {
 
         <div style={S2.card}>
           {loading ? (
-            <div style={{ padding:24, textAlign:'center', color:'#475569' }}>Loading…</div>
+            <div style={{ padding:24, textAlign:'center', color:'#94a3b8' }}>Loading…</div>
+          ) : supportError ? (
+            <div role="alert" style={{ padding:24,color:'#fca5a5' }}>Support data unavailable: {supportError}. <button type="button" onClick={load}>Retry</button></div>
           ) : !tickets || tickets.length === 0 ? (
             <div style={{ padding:24, textAlign:'center', color:'#475569', fontSize:13 }}>
               No tickets match these filters.
             </div>
-          ) : tickets.map(t => (
+          ) : tickets.filter(t => showQa || !/\b(?:qa\s+closeout|rt\s+acceptance|test\s+ticket)\b/i.test(String(t.subject || ''))).map(t => (
             <div key={t.id}
               onClick={() => openTicket(t)}
               style={{ padding:'12px 18px', borderBottom:'1px solid #1e293b',
