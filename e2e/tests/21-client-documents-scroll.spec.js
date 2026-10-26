@@ -35,7 +35,7 @@ test('long filenames remain on one line and expose full name', () => {
 test('document controls remain accessible on narrow widths', () => {
   expect(docs).toContain("flexWrap:'wrap'")
   expect(docs).toContain('openClientDoc(d)')
-  expect(docs).toContain('delDoc(d)')
+  expect(docs).toContain('downloadPreview(d)')
 })
 test('no storage, tenant, or document mutation changes are required for layout', () => {
   expect(docs).toContain(".eq('tenant_id', tenantId)")
@@ -66,4 +66,12 @@ test('optional expanded viewer renders in body portal and preserves selected doc
   expect(docs).toContain('Open in New Window')
   expect(docs).toContain('downloadPreview(selectedDoc)')
   expect(docs).toContain(".download(storagePath)")
+})
+
+test('Nashville-style AI Analyze controls are scoped to selected tenant document',()=>{
+  expect(docs).toContain("supabase.functions.invoke('document-intelligence'")
+  expect(docs).toContain("String(doc.tenant_id) !== String(tenantId)")
+  expect(docs).toContain('docAiAction(d)')
+  expect(docs).toContain('docAiAction(selectedDoc)')
+  expect(docs).toContain('AI Summary')
 })
