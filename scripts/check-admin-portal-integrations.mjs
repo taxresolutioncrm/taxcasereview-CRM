@@ -8,6 +8,7 @@ const metricsSignal=read('supabase/functions/metrics-signal/index.ts')
 const realtimeMetricsMigration=read('supabase/migrations/romylabs_admin_metrics_realtime.sql')
 const content=read('supabase/functions/content-generator/index.ts')
 const publish=read('supabase/functions/linkedin-publish/index.ts')
+const strictCompanyMigration=read('supabase/migrations/20261026090000_linkedin_company_page_only_taxres_arcvena.sql')
 const scheduler=read('supabase/functions/linkedin-scheduler/index.ts')
 const replenisher=read('supabase/functions/linkedin-queue-replenisher/index.ts')
 const bing=read('supabase/functions/bing-data/index.ts')
@@ -16,6 +17,8 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['TaxRes and Arcvena database publishing never falls back to personal profiles',strictCompanyMigration.includes("v_author:='urn:li:organization:'") && !strictCompanyMigration.includes("v_author:='urn:li:person:'")],
+  ['TaxRes company-page OAuth resolves verified organization ID',publish.includes("const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
   ['portfolio uses live metrics batch',admin.includes("action:'metrics_batch'")&&admin.includes('portfolioCrmStatus')],
   ['portfolio no longer counts static connection labels',!admin.includes("const connectedN = products.filter(p => p.connection === 'connected').length")],
   ['products tab derives connection state from live metrics',admin.includes('function connectionFor(p)')&&admin.includes('productMetricsKey')&&!admin.includes("selected.connection === 'partial'")&&!admin.includes("selected.connection === 'not_connected'")],
