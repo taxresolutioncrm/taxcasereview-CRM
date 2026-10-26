@@ -822,6 +822,30 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       if (requestId === previewSequence.current) setPreviewLoading(false)
     }
   }
+  async function downloadPreview(doc) {
+    if (!doc || !tenantId || String(doc.tenant_id) !== String(tenantId) ||
+        (clientId && String(doc.client_id) !== String(clientId))) {
+      showToast('Document is not authorized for this client')
+      return
+    }
+    const storagePath = doc.storage_path ||
+      (String(doc.file_url||'').startsWith('storage://documents/')
+        ? String(doc.file_url).replace('storage://documents/','') : '')
+    if (!storagePath) { showToast('Download unavailable for this document'); return }
+    try {
+      const {data,error} = await supabase.storage.from('documents')
+        .download(storagePath)
+      if (error || !data) throw error || new Error('Download unavailable')
+      const blobUrl = URL.createObjectURL(data)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = doc.file_name || doc.name || 'document'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),30000)
+    } catch (error) { showToast('Could not download document: '+(error?.message||error)) }
+  }
   function previewFrame() {
     if (previewLoading) return <div style={{padding:24}}>Loading secure preview…</div>
     if (!previewUrl) return <div style={{padding:24}}>Secure preview unavailable</div>
@@ -1127,6 +1151,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <div style={{fontSize:10,color:'var(--t3)',padding:'4px 0'}}>{d.created_at?.slice(0,10)}{d.file_size?' · '+fmt(d.file_size):''}</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
               <button className="btn sec" type="button" onClick={e=>{e.stopPropagation();openClientDoc(d)}}>Open</button>
+              <button className="btn sec" type="button" onClick={e=>{e.stopPropagation();downloadPreview(d)}}>Download</button>
               <button type="button" onClick={e=>{e.stopPropagation();delDoc(d)}}>Delete</button>
             </div>
           </div>)}
@@ -1150,7 +1175,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <div style={{padding:12,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
               <strong style={{flex:1,minWidth:150,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
               <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open in New Window ↗</button>
-              <a className="btn sec" href={previewUrl||undefined} download={selectedDoc.file_name||selectedDoc.name}>Download</a>
+              <button className="btn sec" type="button" onClick={()=>downloadPreview(selectedDoc)}>Download</button>
               <button aria-label="Close expanded preview" className="btn sec" type="button" onClick={()=>setPreviewExpanded(false)}>✕</button>
             </div>
             <div style={{flex:1,minHeight:0,overflow:'auto',background:'#e5e7eb'}}>{previewFrame()}</div>
