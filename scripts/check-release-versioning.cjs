@@ -30,11 +30,11 @@ function git(args) {
 // Compare against the last release-manifest commit, not merely HEAD's parent:
 // a PR can contain several functional commits before its single final version bump.
 // A new shared functionality commit after that bump MUST update releaseInfo.js.
-const manifestCommits = git(['log','--format=%H','-2','--','src/releaseInfo.js']).split('\\n').filter(Boolean)
+const manifestCommits = git(['log','--format=%H','-2','--','src/releaseInfo.js']).split(/\r?\n/).filter(Boolean)
 assert(manifestCommits.length,'Cannot identify the current release manifest commit')
 const mostRecentManifest = manifestCommits[0]
 const afterRelease = git(['diff','--name-only',mostRecentManifest,'HEAD','--','src','public','supabase/functions'])
-  .split('\\n').filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
+  .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
 assert(afterRelease.length===0,
   'Functional files changed after the last release-manifest update without new version and release notes: '+afterRelease.join(', '))
 // A cosmetic edit to release notes cannot substitute for an actual version bump
@@ -42,7 +42,7 @@ assert(afterRelease.length===0,
 if (manifestCommits.length > 1) {
   const olderManifest = manifestCommits[1]
   const changedSincePreviousRelease = git(['diff','--name-only',olderManifest,mostRecentManifest,'--','src','public','supabase/functions'])
-    .split('\\n').filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
+    .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
   if (changedSincePreviousRelease.length) {
     const oldContent = git(['show',olderManifest+':src/releaseInfo.js'])
     const oldVersion = versionFrom(oldContent,'previous release')
