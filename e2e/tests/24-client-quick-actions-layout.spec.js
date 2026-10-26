@@ -1,0 +1,15 @@
+const {test,expect}=require('@playwright/test')
+const fs=require('fs')
+const path=require('path')
+const source=fs.readFileSync(path.resolve(__dirname,'../../src/pages/Clients.jsx'),'utf8')
+test('Quick Actions have usable minimum width without squeezing label letters',()=>{
+ expect(source).toContain("gridTemplateColumns:'repeat(11, minmax(108px,1fr))'")
+ expect(source).toContain('minWidth:1268')
+ expect(source).toContain("wordBreak:'normal'")
+ expect(source).toContain("hyphens:'none'")
+})
+test('Quick Actions do not stretch vertically when neighboring labels wrap',()=>{
+ expect(source).toContain('minHeight:112, maxHeight:112')
+ expect(source).toContain("alignItems:'start'")
+ expect(source).toContain("data-testid=\"client-quick-actions\"")
+})
