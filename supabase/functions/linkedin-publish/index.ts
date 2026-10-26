@@ -20,7 +20,7 @@ async function resolveOrganization(accessToken:string, productId:string){
     headers:{Authorization:`Bearer ${accessToken}`,'X-Restli-Protocol-Version':'2.0.0'}
   })
   const acl=await aclRes.json().catch(()=>({}))
-  if(!aclRes.ok) return {id:null,error:'Unable to read LinkedIn organization admin permissions',detail:acl}
+  if(!aclRes.ok) return {id:null,error:`LinkedIn could not verify company-page admin access (HTTP ${aclRes.status}). Confirm the LinkedIn app has approved r_organization_admin and w_organization_social permissions.`,detail:acl}
   const urns=(acl?.elements||[]).map((x:any)=>String(x?.organization||'')).filter((x:string)=>x.startsWith('urn:li:organization:'))
   const ids=[...new Set(urns.map((u:string)=>u.split(':').pop()).filter(Boolean))] as string[]
   if(known && ids.includes(known)) return {id:known,error:null}
@@ -31,7 +31,7 @@ async function resolveOrganization(accessToken:string, productId:string){
     const name=String(org?.localizedName||org?.name?.localized?.en_US||'')
     if(orgRes.ok && matcher?.test(name)) return {id,error:null}
   }
-  return {id:null,error:`No approved LinkedIn company-page admin target matched ${productId}`,detail:{organization_ids:ids}}
+  return {id:null,error:`LinkedIn did not return a company page administered by this account for ${productId}. Sign in with an administrator of the correct LinkedIn page.`,detail:{organization_ids:ids}}
 }
 
 function json(data: unknown, status = 200) {
