@@ -35,7 +35,7 @@ test('long filenames remain on one line and expose full name', () => {
 test('document controls remain accessible on narrow widths', () => {
   expect(docs).toContain("flexWrap:'wrap'")
   expect(docs).toContain('openClientDoc(d)')
-  expect(docs).toContain('delDoc(d)')
+  expect(docs).toContain('downloadPreview(d)')
 })
 test('no storage, tenant, or document mutation changes are required for layout', () => {
   expect(docs).toContain(".eq('tenant_id', tenantId)")
