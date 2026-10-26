@@ -17,6 +17,7 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['Company-page OAuth requests LinkedIn organization admin read permission',admin.includes('w_organization_social r_organization_admin')],
   ['LinkedIn OAuth validates admin ACL even when scope metadata omitted',publish.includes("requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
   ['LinkedIn reconnect surfaces provider authorization errors',admin.includes("params.get('error_description')") && admin.includes("'LinkedIn connection failed: ' + reason")],
   ['LinkedIn status rejects expired personal profile connection',publish.includes('reconnect_required: expired || (companyPageRequired && !validOrganization)')],
