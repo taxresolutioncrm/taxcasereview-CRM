@@ -7483,6 +7483,15 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const linkedInError = params.get('error')
+    // The OAuth provider may return errors on the original trusted TaxRes host.
+    // Relay to the Admin Portal before removing the query parameters.
+    if (linkedInError && window.location.hostname.toLowerCase() === 'taxrescrm.app') {
+      const bridge = new URL(ADMIN_LINKEDIN_CALLBACK)
+      bridge.searchParams.set('error', linkedInError)
+      bridge.searchParams.set('error_description', params.get('error_description') || linkedInError)
+      window.location.replace(bridge.toString())
+      return
+    }
     if (linkedInError) {
       const reason = params.get('error_description') || linkedInError
       showToast('LinkedIn authorization failed: ' + reason, false)
@@ -7605,7 +7614,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const redirectUri = linkedinRedirectFor(selectedPid)
     sessionStorage.setItem('linkedin_oauth_redirect_uri', redirectUri)
     const scope = (selectedPid === 'arcvena' || selectedPid === 'taxres_crm')
-      ? 'openid profile w_organization_social r_organization_admin'
+      ? 'openid profile w_organization_social rw_organization_admin'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
       response_type: 'code', client_id: LINKEDIN_CLIENT_ID,
