@@ -784,9 +784,13 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [docAiSummaries, setDocAiSummaries] = useState({})
   const previewSequence = useRef(0)
   const fileRef = useRef(null)
+  const docLoadRequestRef = useRef(0)
   const canUpload = can('edit','documents')
 
-  useEffect(() => { loadDocs() }, [clientId, clientName, tenantId])
+  useEffect(() => {
+    loadDocs()
+    return () => { docLoadRequestRef.current += 1 }
+  }, [clientId, clientName, tenantId])
   useEffect(() => {
     previewSequence.current += 1
     setSelectedDoc(null)
@@ -885,11 +889,29 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
 
   async function loadDocs() {
+    const requestId = ++docLoadRequestRef.current
     if (!tenantId) { setDocs([]); return }
-    let q = supabase.from('documents').select('*').eq('tenant_id', tenantId)
-    q = clientId ? q.eq('client_id', String(clientId)) : q.eq('client', clientName)
-    const { data } = await q.order('created_at', { ascending: false })
-    setDocs(data || [])
+    let query = supabase.from('documents').select('*').eq('tenant_id', tenantId)
+    query = clientId ? query.eq('client_id', String(clientId)) : query.eq('client', clientName)
+    query = query.order('created_at', { ascending: false }).order('id', { ascending: false })
+    const pageSize = 500
+    const all = []
+    for (let offset = 0; offset < 100000; offset += pageSize) {
+      const { data, error } = await query.range(offset, offset + pageSize - 1)
+      if (requestId !== docLoadRequestRef.current) return
+      if (error) {
+        showToast?.('Could not load client documents: ' + error.message)
+        return // Do not silently replace a complete list with partial results.
+      }
+      all.push(...(data || []))
+      if (!data || data.length < pageSize) {
+        setDocs(all)
+        return
+      }
+    }
+    if (requestId === docLoadRequestRef.current) {
+      showToast?.('Document limit reached. Contact support to access remaining files.')
+    }
   }
 
   function chooseFiles(fileList) {
