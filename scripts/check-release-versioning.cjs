@@ -17,9 +17,9 @@ assert(!nashvilleBlock.includes('Employee note editing'),'Nashville release note
 assert(!nashvilleBlock.includes('Note editor performance optimization'),'Nashville release notes must not claim TCR note performance work');
 
 const {execFileSync}=require('child_process')
-const semver = v => /^\\d+\\.\\d+\\.\\d+$/.test(v||'')
+const semver = v => /^[0-9]+[.][0-9]+[.][0-9]+$/.test(v||'')
 const versionFrom = (contents, label) => {
-  const found = contents.match(new RegExp("version: '([0-9]+\\\\.[0-9]+\\\\.[0-9]+)'"))
+  const found = contents.match(/version: '([0-9]+[.][0-9]+[.][0-9]+)'/)
   assert(found && semver(found[1]), label + ': missing semantic release version')
   return found[1]
 }
