@@ -82,6 +82,8 @@ Deno.serve(async (req) => {
   if (action === 'oauth_callback') {
     const code         = body.code as string
     const redirect_uri = body.redirect_uri as string
+    const allowedRedirects = new Set(['https://admin.romylabs.com/crm-admin/linkedin/callback', 'https://taxrescrm.app/crm-admin/linkedin/callback'])
+    if (!code || !allowedRedirects.has(redirect_uri)) return json({ ok:false, error:'Invalid LinkedIn authorization code or redirect URL' },400)
     const clientId     = Deno.env.get('LINKEDIN_CLIENT_ID')!
     const clientSecret = Deno.env.get('LINKEDIN_CLIENT_SECRET')!
 
@@ -93,15 +95,17 @@ Deno.serve(async (req) => {
         client_id: clientId, client_secret: clientSecret,
       }),
     })
-    const tokenData = await tokenRes.json()
-    if (!tokenData.access_token) {
-      return json({ ok: false, error: 'Token exchange failed', detail: tokenData }, 400)
+    const tokenData = await tokenRes.json().catch(() => ({}))
+    if (!tokenRes.ok || !tokenData.access_token) {
+      const reason = String(tokenData.error_description || tokenData.error || `HTTP ${tokenRes.status}`)
+      return json({ ok: false, error: `LinkedIn token exchange failed: ${reason}. Verify the authorized redirect URL and retry authorization.`, linkedin_status: tokenRes.status }, 400)
     }
 
     const profileRes = await fetch('https://api.linkedin.com/v2/userinfo', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     })
-    const profile = await profileRes.json()
+    const profile = await profileRes.json().catch(() => ({}))
+    if (!profileRes.ok || !profile.sub) return json({ok:false,error:`LinkedIn identity verification failed (HTTP ${profileRes.status}). Confirm OpenID Connect permissions are enabled.`}, 403)
 
     const grantedScopes = String(tokenData.scope || '')
     const requiresOrganization = ORG_PRODUCTS.has(productId)
@@ -126,7 +130,7 @@ Deno.serve(async (req) => {
       if (!linkedinOrganizationId) return json({ok:false,error:resolved.error || `No verified LinkedIn organization target for ${productId}`},409)
     }
 
-    await supabase.from('linkedin_connections').upsert({
+    const { error: connectionSaveError } = await supabase.from('linkedin_connections').upsert({
       tenant_id: tenantId,
       product_id: productId,
       linkedin_person_id: profile.sub,
@@ -138,6 +142,10 @@ Deno.serve(async (req) => {
       linkedin_organization_id: linkedinOrganizationId,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'tenant_id,product_id' })
+    if (connectionSaveError) {
+      console.error('[linkedin-oauth] connection save failed', { productId, code: connectionSaveError.code, message: connectionSaveError.message })
+      return json({ ok:false, error:'LinkedIn authorized this account but saving the CRM connection failed. No successful connection has been recorded.', reason:connectionSaveError.message },500)
+    }
 
     return json({
       ok: true,
