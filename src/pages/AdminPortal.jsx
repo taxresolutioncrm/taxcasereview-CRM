@@ -7557,7 +7557,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
           body: { action: 'list_posts', limit: 200, product_id: selectedPid }
         }),
       ])
-      setConnection(connData?.connected ? connData : false)
+      setConnection(connData?.ok ? connData : false)
       setPosts(postsData?.posts || [])
     } catch (_) { setConnection(false); setPosts([]) }
     setLoading(false)
@@ -7717,9 +7717,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
   // Status badges for selected product
   const companyPageRequired = selectedPid === 'arcvena' || selectedPid === 'taxres_crm'
-  const companyPageReady = !companyPageRequired || (connection?.connected === true && connection?.publish_target_type === 'ORGANIZATION' && !!connection?.linkedin_organization_id)
+  const companyPageReady = !companyPageRequired || (connection?.connected === true && connection?.publish_target_type === 'ORGANIZATION' && !!connection?.linkedin_organization_id && String(connection?.scopes || '').split(/[ ,]+/).includes('w_organization_social'))
   const autopilotOn = settings?.autopilot === true && connection?.connected === true && companyPageReady
-  const liConnected = connection?.connected === true
+  const liConnected = connection?.connected === true && connection?.expired !== true && (!connection?.expires_at || new Date(connection.expires_at).getTime() > Date.now())
   // Integration status: always 'pending' by default — live connections override in the integration layer
   const seoStatus = 'pending'
   const mktStatus = 'pending'
@@ -7814,7 +7814,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
               color: liConnected && companyPageReady ? '#a5b4fc' : '#ef4444',
               border: `1px solid ${liConnected && companyPageReady ? 'rgba(99,102,241,.3)' : 'rgba(239,68,68,.2)'}`,
             }}>
-              LinkedIn {liConnected ? (companyPageReady ? 'Company Page Connected' : 'Wrong Publish Target') : 'Not Connected'}
+              LinkedIn {liConnected ? (companyPageReady ? 'Company Page Connected' : 'Wrong Publish Target') : connection?.reconnect_required ? 'Reconnect Required' : 'Not Connected'}
             </span>
           )}
           {seoStatus && seoStatus !== 'unknown' && (
