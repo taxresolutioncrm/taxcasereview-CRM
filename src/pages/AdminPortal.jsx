@@ -7862,10 +7862,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
               <div style={{ ...CC2.card, padding:'10px 14px', marginBottom:10 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
                   <span style={{ width:7, height:7, borderRadius:'50%', background:liConnected && companyPageReady ? '#10b981' : '#ef4444', display:'inline-block' }} />
-                  <span style={{ fontSize:11, fontWeight:700, color:liConnected && companyPageReady ? '#10b981' : '#fca5a5' }}>{connection.display_name} {(!liConnected || !companyPageReady) ? '— reconnect required' : ''}</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:liConnected && companyPageReady ? '#10b981' : '#fca5a5' }}>{companyPageRequired && liConnected && companyPageReady ? `${selectedProduct?.name || selectedPid} company page` : connection.display_name} {(!liConnected || !companyPageReady) ? '— reconnect required' : ''}</span>
                 </div>
                 <div style={{ fontSize:10, color:'#475569', marginBottom:4 }}>
-                  Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
+                  {companyPageRequired && companyPageReady && liConnected ? `Verified organization ID: ${connection.linkedin_organization_id} · ` : ''}Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
                 </div>
                 <div style={{ fontSize:9, color:'#64748b', marginBottom:8, lineHeight:1.4 }}>
                   Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
