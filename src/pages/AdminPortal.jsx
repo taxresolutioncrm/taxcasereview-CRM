@@ -7437,7 +7437,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   const LINKEDIN_CLIENT_ID = '788n5oz5zrmb1o'
   const TAXRES_LINKEDIN_REDIRECT_URI = 'https://taxrescrm.app/crm-admin/linkedin/callback'
   const ADMIN_LINKEDIN_CALLBACK = 'https://admin.romylabs.com/crm-admin/linkedin/callback'
-  const linkedinRedirectFor = (pid) => pid === 'arcvena' ? ADMIN_LINKEDIN_CALLBACK : TAXRES_LINKEDIN_REDIRECT_URI
+  const linkedinRedirectFor = (pid) => (pid === 'arcvena' || pid === 'taxres_crm') ? ADMIN_LINKEDIN_CALLBACK : TAXRES_LINKEDIN_REDIRECT_URI
 
   // Derived: the selected product object
   const selectedProduct = products.find(p => p.product_id === selectedPid) || null
@@ -7596,7 +7596,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
     const redirectUri = linkedinRedirectFor(selectedPid)
     sessionStorage.setItem('linkedin_oauth_redirect_uri', redirectUri)
-    const scope = selectedPid === 'arcvena'
+    const scope = (selectedPid === 'arcvena' || selectedPid === 'taxres_crm')
       ? 'openid profile w_organization_social'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
@@ -7716,7 +7716,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   ]
 
   // Status badges for selected product
-  const companyPageRequired = selectedPid === 'arcvena'
+  const companyPageRequired = selectedPid === 'arcvena' || selectedPid === 'taxres_crm'
   const companyPageReady = !companyPageRequired || (connection?.connected === true && connection?.publish_target_type === 'ORGANIZATION' && !!connection?.linkedin_organization_id)
   const autopilotOn = settings?.autopilot === true && connection?.connected === true && companyPageReady
   const liConnected = connection?.connected === true
@@ -7871,7 +7871,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
                   Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
                 </div>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                  {selectedPid === 'arcvena' && connection.publish_target_type !== 'ORGANIZATION' && (
+                  {companyPageRequired && (connection.publish_target_type !== 'ORGANIZATION' || !connection.linkedin_organization_id) && (
                     <button onClick={connectLinkedIn} style={{ ...S.btn('primary'), fontSize:10, padding:'4px 10px' }}>
                       Reconnect Company Page
                     </button>
