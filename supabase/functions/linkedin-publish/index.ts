@@ -7,7 +7,7 @@ const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-const ORG_PRODUCTS = new Set(['arcvena'])
+const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])
 const KNOWN_ORG_IDS: Record<string,string> = { arcvena:'146118085' }
 const ORG_NAME_MATCHERS: Record<string,RegExp> = {
   taxres_crm: /tax\s*res(?:olution)?\s*crm/i,
@@ -118,8 +118,9 @@ Deno.serve(async (req) => {
     let linkedinOrganizationId: string | null = null
     if (requiresOrganization) {
       publishTargetType = 'ORGANIZATION'
-      linkedinOrganizationId = KNOWN_ORG_IDS[productId] || null
-      if (!linkedinOrganizationId) return json({ok:false,error:`No configured LinkedIn organization target for ${productId}`},409)
+      const resolved = await resolveOrganization(tokenData.access_token, productId)
+      linkedinOrganizationId = resolved.id
+      if (!linkedinOrganizationId) return json({ok:false,error:resolved.error || `No verified LinkedIn organization target for ${productId}`},409)
     }
 
     await supabase.from('linkedin_connections').upsert({

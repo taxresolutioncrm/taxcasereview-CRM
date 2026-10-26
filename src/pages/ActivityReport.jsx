@@ -91,6 +91,8 @@ export default function ActivityReport() {
   const [selEntity,  setSelEntity]  = useState('')   // filter by client/lead name
   const [logs,       setLogs]       = useState([])
   const [loading,    setLoading]    = useState(true)
+  const [loadError,  setLoadError]  = useState('')
+  const [truncated,  setTruncated]  = useState(false)
   const [view,       setView]       = useState('summary') // summary | timeline
 
   const canView = ['Super Admin','Admin','Manager'].includes(role)
@@ -112,13 +114,32 @@ export default function ActivityReport() {
 
   async function load() {
     setLoading(true)
-    let q = supabase.from('activity_log').select('*')
-      .gte('created_at', startISO).lte('created_at', endISO)
-      .order('created_at', { ascending: true })
-    if (selEmp !== 'All') q = q.eq('employee_name', selEmp)
-    const { data } = await q
-    setLogs(data || [])
-    setLoading(false)
+    setLoadError('')
+    setTruncated(false)
+    const pageSize = 500
+    const maxRows = 10000
+    const rows = []
+    try {
+      for (let offset = 0; offset < maxRows; offset += pageSize) {
+        let query = supabase.from('activity_log').select('*')
+          .gte('created_at', startISO).lte('created_at', endISO)
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (selEmp !== 'All') query = query.eq('employee_name', selEmp)
+        const { data, error } = await query
+        if (error) throw error
+        rows.push(...(data || []))
+        if (!data || data.length < pageSize) break
+        if (rows.length >= maxRows) setTruncated(true)
+      }
+      setLogs(rows)
+    } catch (error) {
+      setLogs([])
+      setLoadError(error?.message || 'Activity report could not be loaded.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (!canView) return (
@@ -155,6 +176,8 @@ export default function ActivityReport() {
 
   return (
     <div>
+      {loadError && <div role="alert" style={{padding:12,marginBottom:16,borderRadius:8,background:'rgba(239,68,68,.1)',color:'#fecaca'}}>Unable to load activity: {loadError} <button onClick={load} style={{marginLeft:12}}>Retry</button></div>}
+      {truncated && <div role="status" style={{padding:12,marginBottom:16,borderRadius:8,background:'rgba(245,158,11,.1)',color:'#fde68a'}}>Report contains more than 10,000 records. Narrow the date or employee filters for complete totals and exports.</div>}
       {/* Header controls */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 4 }}>

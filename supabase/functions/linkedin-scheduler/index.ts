@@ -134,7 +134,7 @@ Deno.serve(async(req)=>{
         if(pid===ARCVENA_PRODUCT&&String(conn.linkedin_organization_id||'')!=='146118085'){result.products_skipped.push({product_id:pid,reason:'arcvena_company_page_target_not_verified'});continue}
         if(pid===TAXRES_PRODUCT){
           const target=String(conn.publish_target_type||'').toUpperCase()
-          const hasTarget=(target==='PERSON'&&Boolean(conn.linkedin_person_id))||(target==='ORGANIZATION'&&Boolean(conn.linkedin_organization_id))
+          const hasTarget=target==='ORGANIZATION' && Boolean(conn.linkedin_organization_id)
           if(!hasTarget){result.products_skipped.push({product_id:pid,reason:'taxres_publish_target_not_verified'});continue}
         }
         const x=await generate(sb,now,pid);result.generated+=x.created.length;result.quarantined+=x.quarantined.length;result.skipped+=x.skipped;

@@ -8,6 +8,7 @@ const metricsSignal=read('supabase/functions/metrics-signal/index.ts')
 const realtimeMetricsMigration=read('supabase/migrations/romylabs_admin_metrics_realtime.sql')
 const content=read('supabase/functions/content-generator/index.ts')
 const publish=read('supabase/functions/linkedin-publish/index.ts')
+const strictCompanyMigration=read('supabase/migrations/20261026090000_linkedin_company_page_only_taxres_arcvena.sql')
 const scheduler=read('supabase/functions/linkedin-scheduler/index.ts')
 const replenisher=read('supabase/functions/linkedin-queue-replenisher/index.ts')
 const bing=read('supabase/functions/bing-data/index.ts')
@@ -16,6 +17,8 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['TaxRes and Arcvena database publishing never falls back to personal profiles',strictCompanyMigration.includes("v_author:='urn:li:organization:'") && !strictCompanyMigration.includes("v_author:='urn:li:person:'")],
+  ['TaxRes company-page OAuth resolves verified organization ID',publish.includes("const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
   ['portfolio uses live metrics batch',admin.includes("action:'metrics_batch'")&&admin.includes('portfolioCrmStatus')],
   ['portfolio no longer counts static connection labels',!admin.includes("const connectedN = products.filter(p => p.connection === 'connected').length")],
   ['products tab derives connection state from live metrics',admin.includes('function connectionFor(p)')&&admin.includes('productMetricsKey')&&!admin.includes("selected.connection === 'partial'")&&!admin.includes("selected.connection === 'not_connected'")],
@@ -37,10 +40,10 @@ const checks=[
   ['realtime metrics migration uses valid PL/pgSQL delimiters',realtimeMetricsMigration.includes("create or replace function public.romylabs_dispatch_metrics_signal()\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = public, pg_catalog\nas $$")&&!realtimeMetricsMigration.includes("\nas $\nbegin")],
 
   ['product cards never bypass hub proxy',!admin.includes("['camvella', 'arcvena'].includes(product.key)")&&!admin.includes("'apikey':        'eyJ")],
-  ['LinkedIn scopes keep TaxRes member publishing and Arcvena organization publishing',admin.includes("selectedPid === 'arcvena'")&&admin.includes("'openid profile w_organization_social'")&&admin.includes("'openid profile w_member_social'")],
-  ['LinkedIn UI requires company page only for Arcvena',admin.includes("const companyPageRequired = selectedPid === 'arcvena'")&&admin.includes('companyPageReady')],
-  ['publisher requires organization target only for Arcvena',publish.includes("const ORG_PRODUCTS = new Set(['arcvena'])")&&publish.includes("required_scope: 'w_organization_social'")],
-  ['scheduler preserves TaxRes target and Arcvena company-page gate',scheduler.includes('taxres_publish_target_not_verified')&&scheduler.includes('arcvena_company_page_target_not_verified')&&scheduler.includes('verify_internal_cron_token')],
+  ['LinkedIn scopes require organization publishing for TaxRes and Arcvena',admin.includes("selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes("'openid profile w_organization_social'")],
+  ['LinkedIn UI requires company page for TaxRes and Arcvena',admin.includes("const companyPageRequired = selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes('companyPageReady')],
+  ['publisher requires organization target for TaxRes and Arcvena',publish.includes("const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])")&&publish.includes("required_scope: 'w_organization_social'")],
+  ['scheduler requires organization publishing for both company pages',scheduler.includes("const hasTarget=target==='ORGANIZATION' && Boolean(conn.linkedin_organization_id)")&&scheduler.includes('arcvena_company_page_target_not_verified')&&scheduler.includes('verify_internal_cron_token')],
   ['legacy TaxRes replenisher accepts member or organization target',replenisher.includes('publishTargetReady')&&replenisher.includes("targetType==='PERSON'")&&replenisher.includes('publish_target_not_ready')],
   ['database publisher is product scoped',migration.includes("v_post.product_id='arcvena'")&&migration.includes("elsif nullif(v_conn.linkedin_person_id,'') is not null")],
   ['database publisher supports organization and person authors',migration.includes("'urn:li:organization:'||v_conn.linkedin_organization_id")&&migration.includes("'urn:li:person:'||v_conn.linkedin_person_id")],
