@@ -27,6 +27,8 @@ export default function Email() {
   const [attachFolder, setAttachFolder] = useState('Correspondence')
   const [attaching, setAttaching] = useState(null) // attachmentId currently being attached
   const [form, setForm]         = useState(BLANK)
+  const [composeAttachments, setComposeAttachments] = useState([])
+  const composeFileInputRef = useRef(null)
   const [sug, setSug]           = useState([])
   const [saving, setSaving]     = useState(false)
   const [toast, setToast]       = useState('')
@@ -374,9 +376,44 @@ export default function Email() {
     setView('compose')
   }
 
+  function addComposeAttachments(event) {
+    const incoming = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!incoming.length) return
+    const existing = composeAttachments
+    const unique = incoming.filter(file => !existing.some(old => old.name === file.name && old.size === file.size && old.lastModified === file.lastModified))
+    if (unique.some(file => file.size > 2.5 * 1024 * 1024)) {
+      showToast('Each attachment must be 2.5 MB or smaller.')
+      return
+    }
+    if (existing.concat(unique).reduce((sum, file) => sum + file.size, 0) > 4 * 1024 * 1024) {
+      showToast('Email attachments cannot exceed 4 MB combined.')
+      return
+    }
+    setComposeAttachments(prev => [...prev, ...unique])
+  }
+
+  function fileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(new Error('Could not read attachment: ' + file.name))
+      reader.onload = () => {
+        const data = String(reader.result || '').split(',')[1]
+        if (!data && file.size > 0) reject(new Error('Could not encode attachment: ' + file.name))
+        else resolve(data || '')
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
   async function send() {
     if (!form.subject || !form.body) { showToast('Subject and body required'); return }
     if (!form.recipient) { showToast('Recipient email address required to send'); return }
+    if (saving) return
+    if (composeAttachments.length && (form.routeId || isDemoMailbox || isCloudCpaPlatformRelay || (isNashville && m365Connected) || !gmailConnected)) {
+      showToast('Attachments are supported with connected Gmail new messages. This mailbox does not support attachments here; nothing was sent.')
+      return
+    }
     setSaving(true)
     let status = 'Logged'
     let alreadyStored = false
@@ -471,7 +508,12 @@ export default function Email() {
       }
     } else if (gmailConnected) {
       try {
-        await sendGmailEmail(supabase, { to: form.recipient, subject: form.subject, body: form.body, senderEmployeeEmail: user?.email })
+        const attachments = await Promise.all(composeAttachments.map(async file => ({
+          filename:file.name,
+          mimeType:file.type || 'application/octet-stream',
+          base64Data:await fileAsBase64(file),
+        })))
+        await sendGmailEmail(supabase, { to: form.recipient, subject: form.subject, body: form.body, attachments, senderEmployeeEmail: user?.email })
         status = 'Sent'
       } catch (e) {
         setSaving(false)
@@ -514,7 +556,7 @@ export default function Email() {
     }
 
     showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via Stalwart' : isCloudCpaPlatformRelay && status === 'Sent' ? '✅ CloudCPA email sent through the TaxRes platform relay' : isNashville && m365Connected && status === 'Sent' ? '✅ Email sent via Microsoft 365!' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ No connected email provider — this was only saved as a log entry, nothing was emailed')
-    setForm(BLANK); setView('inbox'); load()
+    setForm(BLANK); setComposeAttachments([]); setView('inbox'); load()
   }
 
   async function runMailboxAction(emailIds, action) {
@@ -1414,6 +1456,22 @@ export default function Email() {
 
             <div className="field"><label>Body *</label>
               <textarea value={form.body} onChange={e => fld('body', e.target.value)} rows={14} spellCheck={true} lang="en" style={{ minHeight: 280, fontFamily: 'inherit', lineHeight: 1.7 }} placeholder="Email body…" />
+            </div>
+
+            <div className="field" data-email-compose-attachments>
+              <label>Attachments</label>
+              <input ref={composeFileInputRef} type="file" multiple onChange={addComposeAttachments}
+                aria-label="Choose email attachments" style={{display:'none'}} />
+              <button className="btn sec" type="button" disabled={saving}
+                onClick={()=>composeFileInputRef.current?.click()}>📎 Attach Files</button>
+              <div style={{fontSize:11,color:'var(--t3)',marginTop:6}}>2.5 MB per file, 4 MB combined. Attachments are sent with supported Gmail messages. Unsupported mailbox routes are blocked rather than sending without files.</div>
+              {composeAttachments.map((file,index)=>(
+                <div key={file.name+'-'+file.size+'-'+file.lastModified} style={{display:'flex',alignItems:'center',gap:9,justifyContent:'space-between',padding:'7px 10px',marginTop:7,border:'1px solid var(--br)',borderRadius:7,background:'var(--s2)'}}>
+                  <span title={file.name} style={{fontSize:12,minWidth:0,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>📎 {file.name} ({(file.size/1024).toFixed(0)} KB)</span>
+                  <button type="button" className="btn sec" disabled={saving} aria-label={'Remove attachment '+file.name}
+                    onClick={()=>setComposeAttachments(files=>files.filter((_,i)=>i!==index))}>Remove</button>
+                </div>
+              ))}
             </div>
 
             {/* Signature preview — not part of the editable body, appended automatically on send */}

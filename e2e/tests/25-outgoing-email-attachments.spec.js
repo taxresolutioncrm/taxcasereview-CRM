@@ -1,0 +1,41 @@
+const { test, expect } = require('@playwright/test')
+const fs = require('fs')
+const path = require('path')
+const email = fs.readFileSync(path.resolve(__dirname, '../../src/pages/Email.jsx'), 'utf8')
+const gmail = fs.readFileSync(path.resolve(__dirname, '../../src/lib/gmailUtils.js'), 'utf8')
+
+test('composer accepts multiple selected files and supports individual removal', () => {
+  expect(email).toContain('type="file" multiple')
+  expect(email).toContain('📎 Attach Files')
+  expect(email).toContain('setComposeAttachments(files=>files.filter((_,i)=>i!==index))')
+})
+test('size guards reject oversized individual and aggregate selections before sending', () => {
+  expect(email).toContain('file.size > 2.5 * 1024 * 1024')
+  expect(email).toContain('sum + file.size, 0) > 4 * 1024 * 1024')
+  expect(email).toContain("showToast('Each attachment must be 2.5 MB or smaller.')")
+})
+test('failed file encoding rejects instead of silently discarding an attachment', () => {
+  expect(email).toContain('reader.onerror = () => reject(')
+  expect(email).toContain("reject(new Error('Could not encode attachment:")
+  expect(email).toContain('await Promise.all(composeAttachments.map(')
+})
+test('unsupported mailbox providers fail closed before any network send', () => {
+  const start=email.indexOf('  async function send()')
+  const beforeSend=email.slice(start,email.indexOf('    setSaving(true)',start))
+  expect(beforeSend).toContain('composeAttachments.length &&')
+  expect(beforeSend).toContain('form.routeId')
+  expect(beforeSend).toContain('isCloudCpaPlatformRelay')
+  expect(beforeSend).toContain('!gmailConnected')
+  expect(beforeSend).toContain('nothing was sent.')
+})
+test('Gmail provider sends attachment bytes using existing MIME transport and account identity', () => {
+  expect(email).toContain('attachments, senderEmployeeEmail: user?.email')
+  expect(gmail).toContain('attachments = []')
+  expect(gmail).toContain('multipart/mixed; boundary=')
+  expect(gmail).toContain('Content-Disposition: attachment; filename=')
+})
+test('success clears attachments and failed sending preserves composition', () => {
+  expect(email).toContain('setForm(BLANK); setComposeAttachments([]); setView')
+  expect(email).toContain("showToast('Gmail send failed:")
+  expect(email).toContain('if (saving) return')
+})
