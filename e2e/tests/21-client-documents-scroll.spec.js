@@ -12,7 +12,7 @@ test('documents workspace has a bounded height and horizontal overflow', () => {
   expect(docs).toContain('data-testid="client-docs-workspace"')
   expect(docs).toContain("overflowX:'auto'")
   expect(docs).toContain("height:'min(68vh,760px)'")
-  expect(docs).toContain('minWidth:650')
+  expect(docs).toContain('minWidth:840')
 })
 test('folder sidebar scrolls independently from document list', () => {
   for (const id of ['client-docs-folders', 'client-docs-list']) {
@@ -24,8 +24,8 @@ test('folder sidebar scrolls independently from document list', () => {
   }
 })
 test('document list cannot collapse below usable width', () => {
-  expect(docs).toContain("minWidth:470")
-  expect(docs).toContain("gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))'")
+  expect(docs).toContain("minmax(290px,0.9fr)")
+  expect(docs).toContain("minmax(370px,1.3fr)")
 })
 test('long filenames remain on one line and expose full name', () => {
   expect(docs).toContain("whiteSpace:'nowrap'")
@@ -41,4 +41,28 @@ test('no storage, tenant, or document mutation changes are required for layout',
   expect(docs).toContain(".eq('tenant_id', tenantId)")
   expect(docs).toContain("createSignedUrl(storagePath, 3600)")
   expect(docs).toContain("can('edit','documents')")
+})
+
+test('client Documents retains all three independent panes', () => {
+  expect(docs).toContain('client-docs-folders')
+  expect(docs).toContain('client-docs-list')
+  expect(docs).toContain('client-docs-preview')
+  expect(docs).toContain("display:'grid'")
+})
+test('selected document generates authorized inline signed preview', () => {
+  expect(docs).toContain('selectPreview(d)')
+  expect(docs).toContain("String(doc.tenant_id) !== String(tenantId)")
+  expect(docs).toContain("String(doc.client_id) !== String(clientId)")
+  expect(docs).toContain('createSignedUrl(storagePath,3600)')
+  expect(docs).toContain('previewFrame()')
+})
+test('optional expanded viewer renders in body portal and preserves selected document', () => {
+  expect(source).toContain("import { createPortal } from 'react-dom'")
+  expect(docs).toContain('previewExpanded && createPortal(')
+  expect(docs).toContain('document.body')
+  expect(docs).toContain('Expand Preview')
+  expect(docs).toContain("e.key === 'Escape'")
+  expect(docs).toContain('e.target===e.currentTarget')
+  expect(docs).toContain('Open in New Window')
+  expect(docs).toContain('download={selectedDoc.file_name||selectedDoc.name}')
 })
