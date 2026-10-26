@@ -17,8 +17,9 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
-  ['Company-page OAuth requests LinkedIn organization admin read permission',admin.includes('w_organization_social r_organization_admin')],
+  ['Company-page OAuth requests LinkedIn organization admin read permission',admin.includes('w_organization_social rw_organization_admin')],
   ['LinkedIn OAuth validates admin ACL even when scope metadata omitted',publish.includes("requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
+  ['LinkedIn OAuth errors are bridged from original trusted host',admin.includes("bridge.searchParams.set('error_description', params.get('error_description') || linkedInError)")],
   ['LinkedIn reconnect surfaces provider authorization errors',admin.includes("params.get('error_description')") && admin.includes("'LinkedIn connection failed: ' + reason")],
   ['LinkedIn rejects invalid callback redirect and missing code',publish.includes('allowedRedirects.has(redirect_uri)')],
   ['LinkedIn validates token response and profile identity',publish.includes('!tokenRes.ok || !tokenData.access_token') && publish.includes('!profileRes.ok || !profile.sub')],
