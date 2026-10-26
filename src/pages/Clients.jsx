@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { validateFile } from '../lib/uploadUtils'
 import { formatMoneyInput, parseMoney } from '../lib/money'
 import { PIPELINE_STAGES, DEFAULT_PIPELINE_STAGE, pipelineStageLabel, CASE_SERVICES } from '../lib/caseStatuses'
@@ -775,11 +776,84 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [saving,     setSaving]     = useState(false)
   const [uploadResults,setUploadResults] = useState([])
   const [batchProgress,setBatchProgress] = useState({ done:0, total:0 })
-  const [preview,    setPreview]    = useState(null)
+  const [selectedDoc, setSelectedDoc] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewExpanded, setPreviewExpanded] = useState(false)
+  const previewSequence = useRef(0)
   const fileRef = useRef(null)
   const canUpload = can('edit','documents')
 
   useEffect(() => { loadDocs() }, [clientId, clientName, tenantId])
+  useEffect(() => {
+    previewSequence.current += 1
+    setSelectedDoc(null)
+    setPreviewUrl('')
+    setPreviewExpanded(false)
+  }, [clientId, tenantId])
+  useEffect(() => {
+    if (!previewExpanded) return
+    const onKey = e => { if (e.key === 'Escape') setPreviewExpanded(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [previewExpanded])
+  async function selectPreview(doc) {
+    const requestId = ++previewSequence.current
+    setSelectedDoc(doc)
+    setPreviewUrl('')
+    setPreviewExpanded(false)
+    setPreviewLoading(true)
+    try {
+      if (!tenantId || String(doc.tenant_id) !== String(tenantId) ||
+          (clientId && String(doc.client_id) !== String(clientId))) throw new Error('Document not authorized for this client')
+      const storagePath = doc.storage_path ||
+        (String(doc.file_url||'').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : '')
+      let url = doc.file_url || ''
+      if (storagePath) {
+        const {data,error} = await supabase.storage.from('documents').createSignedUrl(storagePath,3600)
+        if (error || !data?.signedUrl) throw error || new Error('Signed preview unavailable')
+        url = data.signedUrl
+      }
+      if (!url) throw new Error('Document preview unavailable')
+      if (requestId === previewSequence.current) setPreviewUrl(url)
+    } catch (error) {
+      if (requestId === previewSequence.current) showToast('Could not preview document: '+(error?.message||error))
+    } finally {
+      if (requestId === previewSequence.current) setPreviewLoading(false)
+    }
+  }
+  async function downloadPreview(doc) {
+    if (!doc || !tenantId || String(doc.tenant_id) !== String(tenantId) ||
+        (clientId && String(doc.client_id) !== String(clientId))) {
+      showToast('Document is not authorized for this client')
+      return
+    }
+    const storagePath = doc.storage_path ||
+      (String(doc.file_url||'').startsWith('storage://documents/')
+        ? String(doc.file_url).replace('storage://documents/','') : '')
+    if (!storagePath) { showToast('Download unavailable for this document'); return }
+    try {
+      const {data,error} = await supabase.storage.from('documents')
+        .download(storagePath)
+      if (error || !data) throw error || new Error('Download unavailable')
+      const blobUrl = URL.createObjectURL(data)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = doc.file_name || doc.name || 'document'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),30000)
+    } catch (error) { showToast('Could not download document: '+(error?.message||error)) }
+  }
+  function previewFrame() {
+    if (previewLoading) return <div style={{padding:24}}>Loading secure preview…</div>
+    if (!previewUrl) return <div style={{padding:24}}>Secure preview unavailable</div>
+    const name = String(selectedDoc?.file_name||selectedDoc?.name||'').toLowerCase()
+    if (/\.(png|jpe?g|webp|gif)$/.test(name)) return <div style={{height:'100%',overflow:'auto',padding:14,textAlign:'center'}}><img src={previewUrl} alt={name} style={{maxWidth:'100%',height:'auto'}}/></div>
+    return <iframe title={'Preview '+name} src={previewUrl} style={{width:'100%',height:'100%',border:0,background:'#fff'}}/>
+  }
+
 
   async function loadDocs() {
     if (!tenantId) { setDocs([]); return }
@@ -967,9 +1041,9 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const visible = folder === 'All' ? docs : (byFolder[folder] || [])
 
   return (
-    <div className="card" style={{padding:0,overflow:'hidden'}}>
+    <div className="card" style={{padding:0,overflow:'hidden',minWidth:0}}>
       {/* Header */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',borderBottom:'1px solid var(--br)'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8,minWidth:0,padding:'10px 14px',borderBottom:'1px solid var(--br)'}}>
         <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)'}}>
           📁 Documents ({docs.length})
         </div>
@@ -1044,10 +1118,11 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
       )}
 
-      {/* 2-pane layout */}
-      <div style={{display:'flex',minHeight:docs.length>0?200:80}}>
+      {/* Three-pane Documents workspace with independently scrolling folders, files and PDF. */}
+      <div data-testid="client-docs-workspace" style={{width:'100%',maxWidth:'100%',overflowX:'auto',overflowY:'hidden'}}>
+      <div style={{display:'grid',gridTemplateColumns:'180px minmax(290px,0.9fr) minmax(370px,1.3fr)',minWidth:840,height:'min(68vh,760px)',minHeight:460,overflow:'hidden'}}>
         {/* Left: folder tree */}
-        <div style={{width:180,flexShrink:0,borderRight:'1px solid var(--br)',padding:'8px 0',background:'var(--s2)'}}>
+        <div data-testid="client-docs-folders" style={{width:180,flexShrink:0,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain',borderRight:'1px solid var(--br)',padding:'8px 0',background:'var(--s2)'}}>
           <div onClick={()=>setFolder('All')}
             style={{padding:'5px 12px',cursor:'pointer',fontSize:12,fontWeight:folder==='All'?700:400,
               background:folder==='All'?'var(--blt)':'transparent',color:folder==='All'?'var(--b2)':'var(--tx)',
@@ -1068,49 +1143,45 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           ))}
         </div>
 
-        {/* Right: file grid */}
-        <div style={{flex:1,padding:10,overflowY:'auto',maxHeight:400}}>
-          {visible.length===0 ? (
-            <div style={{color:'var(--t3)',fontSize:13,padding:'40px 20px',textAlign:'center'}}>
-              <div style={{fontSize:36,marginBottom:8}}>📁</div>
-              No documents in {folder==='All'?'this client file':folder} yet.
+        <div data-testid="client-docs-list" style={{minWidth:0,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain',background:'var(--sf)',borderRight:'1px solid var(--br)'}}>
+          <div style={{position:'sticky',top:0,zIndex:2,padding:10,background:'var(--s2)',fontWeight:800,fontSize:11}}>Files ({visible.length})</div>
+          {visible.map(d=><div key={d.id} onClick={()=>selectPreview(d)} data-testid="client-doc-row"
+            style={{padding:10,borderBottom:'1px solid var(--br)',cursor:'pointer',background:selectedDoc?.id===d.id?'var(--blt)':'transparent'}}>
+            <div title={d.file_name||d.name} style={{whiteSpace:'nowrap',textOverflow:'ellipsis',overflow:'hidden',fontSize:12,fontWeight:700}}>{FILE_EXT_ICON(d.file_name||d.name)} {d.file_name||d.name}</div>
+            <div style={{fontSize:10,color:'var(--t3)',padding:'4px 0'}}>{d.created_at?.slice(0,10)}{d.file_size?' · '+fmt(d.file_size):''}</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              <button className="btn sec" type="button" onClick={e=>{e.stopPropagation();openClientDoc(d)}}>Open</button>
+              <button className="btn sec" type="button" onClick={e=>{e.stopPropagation();downloadPreview(d)}}>Download</button>
+              <button type="button" onClick={e=>{e.stopPropagation();delDoc(d)}}>Delete</button>
             </div>
-          ) : (
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>
-              {visible.map(d=>(
-                <div key={d.id}
-                  style={{border:'1px solid var(--br)',borderRadius:10,padding:'12px 12px',background:'var(--sf)',
-                    cursor:'pointer',transition:'all .15s ease',position:'relative',boxShadow:'0 1px 2px rgba(0,0,0,.08)'}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--blue)';e.currentTarget.style.transform='translateY(-3px)';e.currentTarget.style.boxShadow='0 8px 16px rgba(0,0,0,.18)'}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--br)';e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 1px 2px rgba(0,0,0,.08)'}}>
-                  <div style={{fontSize:34,textAlign:'center',marginBottom:7}}>{FILE_EXT_ICON(d.file_name||d.name)}</div>
-                  <div style={{fontSize:12,fontWeight:600,lineHeight:1.3,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',
-                    display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>
-                    {d.name}
-                  </div>
-                  <div style={{fontSize:10,color:'var(--t3)',marginBottom:8}}>
-                    {d.created_at?.slice(0,10)}{d.file_size?` · ${fmt(d.file_size)}`:''}
-                  </div>
-                  <div style={{display:'flex',gap:4}}>
-                    {(d.file_url || d.storage_path) && (
-                      <button type="button" onClick={e=>{e.stopPropagation();openClientDoc(d)}}
-                        style={{flex:1,padding:'3px 0',background:'var(--blue)',color:'#fff',border:0,borderRadius:5,
-                          fontSize:9,fontWeight:700,textAlign:'center',cursor:'pointer'}}>
-                        View
-                      </button>
-                    )}
-                    <button onClick={e=>{e.stopPropagation();delDoc(d)}}
-                      style={{padding:'3px 6px',background:'var(--bad)',color:'#fff',border:'none',
-                        borderRadius:5,cursor:'pointer',fontSize:9,fontWeight:700}}>
-                      Del
-                    </button>
-                  </div>
-                </div>
-              ))}
+          </div>)}
+        </div>
+        <div data-testid="client-docs-preview" style={{minWidth:0,minHeight:0,overflow:'hidden',display:'flex',flexDirection:'column',background:'var(--s2)'}}>
+          {!selectedDoc?<div style={{padding:30,color:'var(--t3)'}}>Select a document to preview</div>:<>
+            <div style={{padding:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+              <strong title={selectedDoc.file_name||selectedDoc.name} style={{flex:1,minWidth:160,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
+              <button className="btn sec" type="button" onClick={()=>setPreviewExpanded(true)}>Expand Preview ⛶</button>
+              <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open ↗</button>
             </div>
-          )}
+            <div style={{flex:1,minHeight:0,overflow:'auto',background:'#e5e7eb'}}>{previewFrame()}</div>
+          </>}
         </div>
       </div>
+      </div>
+      {selectedDoc && previewExpanded && createPortal(
+        <div role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setPreviewExpanded(false)}}
+          style={{position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:18,background:'rgba(4,10,22,.78)'}}>
+          <div role="dialog" aria-modal="true" aria-label="Expanded document preview" style={{width:'min(1200px,96vw)',height:'min(900px,94vh)',display:'flex',flexDirection:'column',background:'var(--sf)',borderRadius:12,overflow:'hidden'}}>
+            <div style={{padding:12,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <strong style={{flex:1,minWidth:150,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
+              <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open in New Window ↗</button>
+              <button className="btn sec" type="button" onClick={()=>downloadPreview(selectedDoc)}>Download</button>
+              <button aria-label="Close expanded preview" className="btn sec" type="button" onClick={()=>setPreviewExpanded(false)}>✕</button>
+            </div>
+            <div style={{flex:1,minHeight:0,overflow:'auto',background:'#e5e7eb'}}>{previewFrame()}</div>
+          </div>
+        </div>, document.body
+      )}
     </div>
   )
 }
