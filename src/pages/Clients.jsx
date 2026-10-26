@@ -2393,6 +2393,30 @@ export default function Clients() {
       await logAndRefreshNote(note)
     }
     // Shared stage-change logic — used by both the dropdown and the View Flow modal.
+    // File lifecycle is independent of the pipeline stage and archiving.
+    const updateFileStatus=async(nextStatus)=>{
+      if(!['Active','Inactive'].includes(nextStatus) || nextStatus===(c.status||'Active')) return
+      const previousStatus=c.status||'Active'
+      const {data,error}=await supabase.from('clients')
+        .update({status:nextStatus})
+        .eq('id',c.id)
+        .eq('tenant_id',myTenantId)
+        .select('id,status')
+        .single()
+      if(error || !data){showToast('Could not update file status: '+(error?.message||'Client not found'));return}
+      setDetail(prev=>prev?.id===c.id?{...prev,status:data.status}:prev)
+      setClients(prev=>prev.map(row=>row.id===c.id?{...row,status:data.status}:row))
+      showToast('File marked '+(data.status==='Inactive'?'Not Active':'Active'))
+      const actor=resolveActorName(user,employees)
+      const note='📁 File status changed: '+previousStatus+' → '+data.status
+      const {error:noteErr}=await insertClientNote({clientname:c.name,content:note,created_by:actor,created_at:new Date().toISOString()})
+      if(noteErr)showToast('File status updated, but note logging failed: '+noteErr.message)
+      else {
+        const {data:notesData}=await supabase.from('client_notes').select('*').eq('clientname',c.name).order('created_at',{ascending:false})
+        if(notesData)setRelNotes(notesData)
+      }
+    }
+
     const applyPipelineStage=async(newKey)=>{
       if(newKey===c.pipelineStage) return
       const prevStage=PIPELINE_STAGES.find(p=>p.key===(c.pipelineStage||DEFAULT_PIPELINE_STAGE))
@@ -2490,6 +2514,16 @@ export default function Clients() {
               >
                 {PIPELINE_STAGES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
+              <label style={{display:'inline-flex',alignItems:'center',gap:7,fontSize:12,fontWeight:700,color:'var(--t2)'}}>
+                File Status
+                <select aria-label="File Status" data-testid="client-file-status"
+                  value={c.status==='Inactive'?'Inactive':'Active'}
+                  onChange={e=>updateFileStatus(e.target.value)}
+                  style={{fontSize:13,padding:'6px 10px',borderRadius:8,background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',cursor:'pointer'}}>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Not Active</option>
+                </select>
+              </label>
             </div>
             <div style={{marginTop:8,height:6,background:'var(--s3)',borderRadius:4,overflow:'hidden'}}>
               <div style={{height:'100%',width:`${Math.round(((si+1)/PIPELINE_STAGES.length)*100)}%`,background:'var(--blue)',borderRadius:4,transition:'width .3s'}}/>
