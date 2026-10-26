@@ -155,12 +155,18 @@ Deno.serve(async (req) => {
       .single()
 
     if (error || !data) return json({ ok: true, connected: false })
+    const expired = !data.expires_at || new Date(data.expires_at).getTime() <= Date.now()
+    const scopes = String(data.scopes || '').split(/[ ,]+/).filter(Boolean)
+    const companyPageRequired = ORG_PRODUCTS.has(productId)
+    const validOrganization = data.publish_target_type === 'ORGANIZATION'
+      && Boolean(data.linkedin_organization_id) && scopes.includes('w_organization_social')
     return json({
       ok: true,
-      connected: true,
+      connected: !expired && (!companyPageRequired || validOrganization),
+      reconnect_required: expired || (companyPageRequired && !validOrganization),
       display_name: data.display_name,
       expires_at: data.expires_at,
-      expired: new Date(data.expires_at) < new Date(),
+      expired,
       scopes: data.scopes,
       publish_target_type: data.publish_target_type || 'PERSON',
       linkedin_organization_id: data.linkedin_organization_id || null,
@@ -168,26 +174,28 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'set_publish_target') {
+    // Company-page targets must be verified through LinkedIn OAuth and page-admin
+    // permissions, never accepted from an arbitrary client-supplied organization ID.
+    if (ORG_PRODUCTS.has(productId)) {
+      return json({ ok:false, error:'Reconnect LinkedIn and authorize the company page to update this target.' },409)
+    }
     const targetType = String(body.publish_target_type || '').toUpperCase()
     const organizationId = body.linkedin_organization_id
       ? String(body.linkedin_organization_id).trim()
       : null
-
-    if (!['PERSON', 'ORGANIZATION'].includes(targetType)) {
-      return json({ ok: false, error: 'publish_target_type must be PERSON or ORGANIZATION' }, 400)
+    if (!['PERSON','ORGANIZATION'].includes(targetType)) {
+      return json({ok:false,error:'Invalid publish target'},400)
     }
     if (targetType === 'ORGANIZATION' && !organizationId) {
-      return json({ ok: false, error: 'linkedin_organization_id is required for ORGANIZATION target' }, 400)
+      return json({ok:false,error:'Organization ID required'},400)
     }
-
     const { error } = await supabase.from('linkedin_connections').update({
       publish_target_type: targetType,
       linkedin_organization_id: targetType === 'ORGANIZATION' ? organizationId : null,
       updated_at: new Date().toISOString(),
     }).eq('tenant_id', tenantId).eq('product_id', productId)
-
-    if (error) return json({ ok: false, error: error.message }, 500)
-    return json({ ok: true, publish_target_type: targetType, linkedin_organization_id: targetType === 'ORGANIZATION' ? organizationId : null })
+    if (error) return json({ok:false,error:error.message},500)
+    return json({ok:true,publish_target_type:targetType,linkedin_organization_id:organizationId})
   }
 
   if (action === 'save_draft') {
@@ -244,7 +252,7 @@ Deno.serve(async (req) => {
     // Connection MUST be for this product — no fallback to other products
     const { data: conn, error: connError } = await supabase
       .from('linkedin_connections')
-      .select('access_token, expires_at, linkedin_person_id, publish_target_type, linkedin_organization_id')
+      .select('access_token, expires_at, linkedin_person_id, publish_target_type, linkedin_organization_id, scopes')
       .eq('tenant_id', tenantId)
       .eq('product_id', productId)
       .limit(1).single()
@@ -255,6 +263,13 @@ Deno.serve(async (req) => {
     }
 
     const targetType = conn.publish_target_type || 'PERSON'
+    const grantedScopes = String(conn.scopes || '').split(/[ ,]+/).filter(Boolean)
+    if (ORG_PRODUCTS.has(productId) && !grantedScopes.includes('w_organization_social')) {
+      return json({ok:false,error:'LinkedIn company-page permission missing — reconnect with organization authorization'},409)
+    }
+    if (productId === 'arcvena' && conn.linkedin_organization_id !== KNOWN_ORG_IDS.arcvena) {
+      return json({ok:false,error:'Arcvena company-page target was not verified'},409)
+    }
     if (ORG_PRODUCTS.has(productId) && targetType !== 'ORGANIZATION') {
       return json({ ok:false, error:'Company-page publishing is required for this product. Reconnect LinkedIn with organization permission.' },409)
     }

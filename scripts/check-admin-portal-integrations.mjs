@@ -17,6 +17,9 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['LinkedIn status rejects expired personal profile connection',publish.includes('reconnect_required: expired || (companyPageRequired && !validOrganization)')],
+  ['LinkedIn prevents unverified organization ID updates',publish.includes("if (ORG_PRODUCTS.has(productId)) {") && publish.includes('Reconnect LinkedIn and authorize the company page')],
+  ['LinkedIn publish checks organization permissions',publish.includes("!grantedScopes.includes('w_organization_social')")],
   ['TaxRes and Arcvena database publishing never falls back to personal profiles',strictCompanyMigration.includes("v_author:='urn:li:organization:'") && !strictCompanyMigration.includes("v_author:='urn:li:person:'")],
   ['TaxRes company-page OAuth resolves verified organization ID',publish.includes("const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
   ['portfolio uses live metrics batch',admin.includes("action:'metrics_batch'")&&admin.includes('portfolioCrmStatus')],
