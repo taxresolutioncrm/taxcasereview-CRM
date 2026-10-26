@@ -967,9 +967,9 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const visible = folder === 'All' ? docs : (byFolder[folder] || [])
 
   return (
-    <div className="card" style={{padding:0,overflow:'hidden'}}>
+    <div className="card" style={{padding:0,overflow:'hidden',minWidth:0}}>
       {/* Header */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',borderBottom:'1px solid var(--br)'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8,minWidth:0,padding:'10px 14px',borderBottom:'1px solid var(--br)'}}>
         <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)'}}>
           📁 Documents ({docs.length})
         </div>
@@ -1044,10 +1044,11 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
       )}
 
-      {/* 2-pane layout */}
-      <div style={{display:'flex',minHeight:docs.length>0?200:80}}>
+      {/* Independent folder and document scroll regions; narrow panels scroll horizontally instead of crushing columns. */}
+      <div data-testid="client-docs-workspace" style={{width:'100%',maxWidth:'100%',overflowX:'auto',overflowY:'hidden'}}>
+      <div style={{display:'flex',minWidth:650,height:'min(68vh,760px)',minHeight:460,overflow:'hidden'}}>
         {/* Left: folder tree */}
-        <div style={{width:180,flexShrink:0,borderRight:'1px solid var(--br)',padding:'8px 0',background:'var(--s2)'}}>
+        <div data-testid="client-docs-folders" style={{width:180,flexShrink:0,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain',borderRight:'1px solid var(--br)',padding:'8px 0',background:'var(--s2)'}}>
           <div onClick={()=>setFolder('All')}
             style={{padding:'5px 12px',cursor:'pointer',fontSize:12,fontWeight:folder==='All'?700:400,
               background:folder==='All'?'var(--blt)':'transparent',color:folder==='All'?'var(--b2)':'var(--tx)',
@@ -1069,7 +1070,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
 
         {/* Right: file grid */}
-        <div style={{flex:1,padding:10,overflowY:'auto',maxHeight:400}}>
+        <div data-testid="client-docs-list" style={{flex:'1 1 470px',minWidth:470,minHeight:0,padding:10,overflowY:'auto',overscrollBehaviorY:'contain'}}>
           {visible.length===0 ? (
             <div style={{color:'var(--t3)',fontSize:13,padding:'40px 20px',textAlign:'center'}}>
               <div style={{fontSize:36,marginBottom:8}}>📁</div>
@@ -1085,13 +1086,13 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
                   onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--br)';e.currentTarget.style.transform='';e.currentTarget.style.boxShadow='0 1px 2px rgba(0,0,0,.08)'}}>
                   <div style={{fontSize:34,textAlign:'center',marginBottom:7}}>{FILE_EXT_ICON(d.file_name||d.name)}</div>
                   <div style={{fontSize:12,fontWeight:600,lineHeight:1.3,marginBottom:5,overflow:'hidden',textOverflow:'ellipsis',
-                    display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>
-                    {d.name}
+                    whiteSpace:'nowrap'}}>
+                    <span title={d.file_name||d.name}>{d.name}</span>
                   </div>
                   <div style={{fontSize:10,color:'var(--t3)',marginBottom:8}}>
                     {d.created_at?.slice(0,10)}{d.file_size?` · ${fmt(d.file_size)}`:''}
                   </div>
-                  <div style={{display:'flex',gap:4}}>
+                  <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
                     {(d.file_url || d.storage_path) && (
                       <button type="button" onClick={e=>{e.stopPropagation();openClientDoc(d)}}
                         style={{flex:1,padding:'3px 0',background:'var(--blue)',color:'#fff',border:0,borderRadius:5,
@@ -1110,6 +1111,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   )
