@@ -155,12 +155,18 @@ Deno.serve(async (req) => {
       .single()
 
     if (error || !data) return json({ ok: true, connected: false })
+    const expired = !data.expires_at || new Date(data.expires_at).getTime() <= Date.now()
+    const scopes = String(data.scopes || '').split(/[ ,]+/).filter(Boolean)
+    const companyPageRequired = ORG_PRODUCTS.has(productId)
+    const validOrganization = data.publish_target_type === 'ORGANIZATION'
+      && Boolean(data.linkedin_organization_id) && scopes.includes('w_organization_social')
     return json({
       ok: true,
-      connected: true,
+      connected: !expired && (!companyPageRequired || validOrganization),
+      reconnect_required: expired || (companyPageRequired && !validOrganization),
       display_name: data.display_name,
       expires_at: data.expires_at,
-      expired: new Date(data.expires_at) < new Date(),
+      expired,
       scopes: data.scopes,
       publish_target_type: data.publish_target_type || 'PERSON',
       linkedin_organization_id: data.linkedin_organization_id || null,
