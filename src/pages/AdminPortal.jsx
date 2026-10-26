@@ -7679,11 +7679,18 @@ function LinkedInPublisher({ embeddedMode = false }) {
   async function saveSettings() {
     if (!settings) return
     setSavingSettings(true)
-    await supabase.functions.invoke('linkedin-scheduler', {
-      body: { action: 'save_settings', product_id: selectedPid, settings }
-    })
-    showToast('Settings saved ✓')
-    setSavingSettings(false)
+    try {
+      const { data, error } = await supabase.functions.invoke('linkedin-scheduler', {
+        body: { action: 'save_settings', product_id: selectedPid, settings }
+      })
+      if (error || data?.ok === false) throw error || new Error(data?.error || 'Scheduler rejected settings')
+      showToast('LinkedIn settings saved')
+      await loadSettings()
+    } catch (error) {
+      showToast('LinkedIn settings were not saved: ' + (error?.message || 'unknown error'), false)
+    } finally {
+      setSavingSettings(false)
+    }
   }
 
   async function generateReport() {
@@ -7711,7 +7718,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   // Status badges for selected product
   const companyPageRequired = selectedPid === 'arcvena'
   const companyPageReady = !companyPageRequired || (connection?.connected === true && connection?.publish_target_type === 'ORGANIZATION' && !!connection?.linkedin_organization_id)
-  const autopilotOn = settings?.autopilot === true && companyPageReady
+  const autopilotOn = settings?.autopilot === true && connection?.connected === true && companyPageReady
   const liConnected = connection?.connected === true
   // Integration status: always 'pending' by default — live connections override in the integration layer
   const seoStatus = 'pending'
