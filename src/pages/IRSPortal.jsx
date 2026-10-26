@@ -262,8 +262,11 @@ export default function IRSPortal() {
           </p>
         </div>
         <div className="irs-portal-header-actions">
+          <span className="irs-connection-pill disconnected" title="TDS browser session status is not exposed by this office's backend">
+            <span className="dot" /> IRS Browser Sign-In
+          </span>
           <button
-            className="btn"
+            className="btn pri"
             onClick={() => { const { w } = openIrsPopup(IRS_TDS_URL); if (!w) window.alert(IRS_POPUP_BLOCKED) }}
           >
             Sign in to IRS TDS
@@ -277,8 +280,8 @@ export default function IRSPortal() {
           ['pull', '📄 Pull Transcripts'],
           ['sor', '📮 SOR Mailbox'],
           ['inbox', '📥 Unassigned' + (unassignedCount > 0 ? ` (${unassignedCount})` : '')],
-          ['transcripts', '📊 AI Analysis'],
-          ['poa', '📋 POA / CAF'],
+          ['transcripts', '📊 AI Analysis' + (analyses.length ? ` (${analyses.length})` : '')],
+          ['poa', '📋 POA / CAF' + (poas.length ? ` (${poas.length})` : '')],
           ['history', '🕐 Request History'],
           ['manual', '📁 Manual Upload'],
         ].map(([k, label]) => (
