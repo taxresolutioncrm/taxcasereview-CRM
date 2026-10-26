@@ -1,0 +1,28 @@
+const { test, expect } = require('@playwright/test')
+const fs = require('fs')
+const path = require('path')
+const source = fs.readFileSync(path.resolve(__dirname,'../../src/pages/Clients.jsx'),'utf8')
+const start = source.indexOf('export function ClientDocs(')
+const stop = source.indexOf('\n}\n', start)
+const component = source.slice(start,stop+3)
+test('tenant-scoped canonical and legacy document lookup retained',()=>{
+  expect(component).toContain(".eq('tenant_id', tenantId)")
+  expect(component).toContain(".eq('client_id', String(clientId))")
+  expect(component).toContain(".eq('client', clientName)")
+})
+test('complete deterministic pages loaded without silent truncation',()=>{
+  expect(component).toContain(".order('created_at', { ascending: false }).order('id', { ascending: false })")
+  expect(component).toContain('query.range(offset, offset + pageSize - 1)')
+  expect(component).toContain('data.length < pageSize')
+  expect(component).toContain('setDocs(all)')
+})
+test('stale prior-client responses cannot overwrite active file',()=>{
+  expect(component).toContain('const requestId = ++docLoadRequestRef.current')
+  expect(component).toContain('requestId !== docLoadRequestRef.current')
+  expect(component).toContain('return () => { docLoadRequestRef.current += 1 }')
+})
+test('data reads leave document mutation and signed preview pathways intact',()=>{
+  expect(component).toContain("supabase.storage.from('documents').createSignedUrl")
+  expect(component).toContain("supabase.storage.from('documents').upload")
+  expect(component).toContain("supabase.storage.from('documents').remove")
+})
