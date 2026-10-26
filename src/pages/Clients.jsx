@@ -780,6 +780,8 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [previewUrl, setPreviewUrl] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewExpanded, setPreviewExpanded] = useState(false)
+  const [analyzingDocId, setAnalyzingDocId] = useState('')
+  const [docAiSummaries, setDocAiSummaries] = useState({})
   const previewSequence = useRef(0)
   const fileRef = useRef(null)
   const canUpload = can('edit','documents')
@@ -846,6 +848,33 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       setTimeout(()=>URL.revokeObjectURL(blobUrl),30000)
     } catch (error) { showToast('Could not download document: '+(error?.message||error)) }
   }
+  async function analyzeClientDocument(doc) {
+    if (!doc?.id || analyzingDocId || !tenantId ||
+        String(doc.tenant_id) !== String(tenantId) ||
+        (clientId && String(doc.client_id) !== String(clientId))) return
+    setAnalyzingDocId(String(doc.id))
+    try {
+      const body = {documentId:doc.id,clientId:doc.client_id||clientId}
+      const {data,error} = await supabase.functions.invoke('document-intelligence',{body})
+      if (error || data?.error || data?.ok === false)
+        throw new Error(data?.error || error?.message || 'AI analysis failed')
+      const {data:runs,error:runError} = await supabase.from('document_ai_runs').select('summary,status')
+        .eq('document_id',String(doc.id)).order('created_at',{ascending:false}).limit(1)
+      if (runError) throw runError
+      const summary = runs?.[0]?.summary || data?.summary || 'Analysis submitted. Review Document Intelligence for results.'
+      setDocAiSummaries(prev=>({...prev,[String(doc.id)]:summary}))
+      showToast?.('Document AI analysis submitted.')
+    } catch (error) {
+      showToast?.('AI Analyze failed: ' + (error?.message || String(error)))
+    } finally {setAnalyzingDocId('')}
+  }
+  const docAiAction = doc => (doc?.storage_path || doc?.file_url) && (
+    <button type="button" className="btn sec" disabled={!!analyzingDocId}
+      onClick={e=>{e.stopPropagation();analyzeClientDocument(doc)}}
+      style={{fontSize:10,padding:'4px 8px'}}>
+      {analyzingDocId===String(doc.id)?'Analyzing…':'✦ AI Analyze'}
+    </button>
+  )
   function previewFrame() {
     if (previewLoading) return <div style={{padding:24}}>Loading secure preview…</div>
     if (!previewUrl) return <div style={{padding:24}}>Secure preview unavailable</div>
@@ -1152,10 +1181,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <div style={{minWidth:0}}>
               <div title={d.file_name||d.name} style={{fontSize:12,fontWeight:selectedDoc?.id===d.id?800:600,whiteSpace:'nowrap',textOverflow:'ellipsis',overflow:'hidden',color:selectedDoc?.id===d.id?'var(--b2)':'var(--tx)'}}>{d.file_name||d.name}</div>
               <div style={{fontSize:10,color:'var(--t3)',marginTop:4,display:'flex',gap:8,flexWrap:'wrap'}}><span>{d.file_size?fmt(d.file_size):''}</span><span>{d.created_at?.slice(0,10)||''}</span></div>
-              <div style={{marginTop:6,display:'flex',gap:6,flexWrap:'wrap'}}>
-                <button className="btn sec" type="button" style={{fontSize:10,padding:'4px 8px'}} onClick={e=>{e.stopPropagation();openClientDoc(d)}}>Open</button>
-                <button className="btn sec" type="button" style={{fontSize:10,padding:'4px 8px'}} onClick={e=>{e.stopPropagation();downloadPreview(d)}}>Download</button>
-              </div>
+              <div style={{marginTop:6}}>{docAiAction(d)}</div>
             </div>
           </div>)}
         </div>
@@ -1164,8 +1190,11 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <div style={{padding:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
               <strong title={selectedDoc.file_name||selectedDoc.name} style={{flex:1,minWidth:160,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
               <button className="btn sec" type="button" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>setPreviewExpanded(true)}>Expand Preview ⛶</button>
+              {docAiAction(selectedDoc)}
               <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open ↗</button>
+              <button type="button" onClick={()=>delDoc(selectedDoc)} style={{fontSize:10,padding:"4px 8px",color:"var(--bad)",background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.3)",borderRadius:6}}>Delete</button>
             </div>
+            {docAiSummaries[String(selectedDoc.id)] && <div style={{padding:10,fontSize:12,maxHeight:130,overflowY:"auto"}}><strong>✦ AI Summary</strong><div>{docAiSummaries[String(selectedDoc.id)]}</div></div>}
             <div style={{flex:1,minHeight:0,overflow:'auto',background:'#e5e7eb'}}>{previewFrame()}</div>
           </>}
         </div>
