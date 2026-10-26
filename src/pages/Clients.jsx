@@ -826,7 +826,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     if (previewLoading) return <div style={{padding:24}}>Loading secure preview…</div>
     if (!previewUrl) return <div style={{padding:24}}>Secure preview unavailable</div>
     const name = String(selectedDoc?.file_name||selectedDoc?.name||'').toLowerCase()
-    if (/\\.(png|jpe?g|webp|gif)$/.test(name)) return <div style={{height:'100%',overflow:'auto',padding:14,textAlign:'center'}}><img src={previewUrl} alt={name} style={{maxWidth:'100%',height:'auto'}}/></div>
+    if (/\.(png|jpe?g|webp|gif)$/.test(name)) return <div style={{height:'100%',overflow:'auto',padding:14,textAlign:'center'}}><img src={previewUrl} alt={name} style={{maxWidth:'100%',height:'auto'}}/></div>
     return <iframe title={'Preview '+name} src={previewUrl} style={{width:'100%',height:'100%',border:0,background:'#fff'}}/>
   }
 
