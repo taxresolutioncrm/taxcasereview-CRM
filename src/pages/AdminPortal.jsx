@@ -7482,6 +7482,13 @@ function LinkedInPublisher({ embeddedMode = false }) {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
+    const linkedInError = params.get('error')
+    if (linkedInError) {
+      const reason = params.get('error_description') || linkedInError
+      showToast('LinkedIn authorization failed: ' + reason, false)
+      window.history.replaceState({}, '', window.location.pathname)
+      return
+    }
     if (!code) return
 
     const returnedState = params.get('state') || ''
@@ -7539,8 +7546,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
           : `Connected as ${data.name} ✓`)
         load()
       } else {
-        showToast('LinkedIn connection failed — try again', false)
-        console.error(error || data)
+        const reason = data?.error || error?.message || 'LinkedIn authorization could not be completed'
+        showToast('LinkedIn connection failed: ' + reason, false)
+        console.error('[linkedin-oauth]', error || data)
       }
     }
     attempt()
@@ -7603,7 +7611,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
       response_type: 'code', client_id: LINKEDIN_CLIENT_ID,
       redirect_uri: redirectUri, scope, state,
     })
-    window.location.href = `https://www.linkedin.com/oauth/v2/authorization?${params}`
+    window.location.assign(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`)
   }
 
   async function disconnect() {
