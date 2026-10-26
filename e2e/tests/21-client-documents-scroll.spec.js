@@ -64,5 +64,6 @@ test('optional expanded viewer renders in body portal and preserves selected doc
   expect(docs).toContain("e.key === 'Escape'")
   expect(docs).toContain('e.target===e.currentTarget')
   expect(docs).toContain('Open in New Window')
-  expect(docs).toContain('download={selectedDoc.file_name||selectedDoc.name}')
+  expect(docs).toContain('downloadPreview(selectedDoc)')
+  expect(docs).toContain(".download(storagePath)")
 })
