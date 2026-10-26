@@ -106,10 +106,13 @@ Deno.serve(async (req) => {
     const grantedScopes = String(tokenData.scope || '')
     const requiresOrganization = ORG_PRODUCTS.has(productId)
     const scopeSet = new Set(grantedScopes.split(/[ ,]+/).filter(Boolean))
-    if (requiresOrganization && !scopeSet.has('w_organization_social')) {
+    // LinkedIn may omit `scope` in its access-token response. Verify the
+    // actual company-page administrator role with LinkedIn instead of treating
+    // a missing optional response field as proof of missing permission.
+    if (requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')) {
       return json({
         ok: false,
-        error: `${productId} requires LinkedIn organization posting permission`,
+        error: `${productId} requires LinkedIn organization posting permission. Enable the approved LinkedIn organization publishing product and reconnect.`,
         required_scope: 'w_organization_social',
       }, 403)
     }
@@ -130,7 +133,7 @@ Deno.serve(async (req) => {
       display_name: profile.name || profile.email || 'LinkedIn Account',
       access_token: tokenData.access_token,
       expires_at: new Date(Date.now() + (tokenData.expires_in || 5184000) * 1000).toISOString(),
-      scopes: grantedScopes || (requiresOrganization ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
+      scopes: grantedScopes || (requiresOrganization && linkedinOrganizationId ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
       publish_target_type: publishTargetType,
       linkedin_organization_id: linkedinOrganizationId,
       updated_at: new Date().toISOString(),
