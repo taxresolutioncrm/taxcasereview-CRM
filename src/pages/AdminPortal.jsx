@@ -7437,7 +7437,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
   const LINKEDIN_CLIENT_ID = '788n5oz5zrmb1o'
   const TAXRES_LINKEDIN_REDIRECT_URI = 'https://taxrescrm.app/crm-admin/linkedin/callback'
   const ADMIN_LINKEDIN_CALLBACK = 'https://admin.romylabs.com/crm-admin/linkedin/callback'
-  const linkedinRedirectFor = (pid) => (pid === 'arcvena' || pid === 'taxres_crm') ? ADMIN_LINKEDIN_CALLBACK : TAXRES_LINKEDIN_REDIRECT_URI
+  // Use the original LinkedIn-registered redirect for every product. The original
+  // host forwards the code and state to the authenticated Admin Portal session.
+  const linkedinRedirectFor = (_pid) => TAXRES_LINKEDIN_REDIRECT_URI
 
   // Derived: the selected product object
   const selectedProduct = products.find(p => p.product_id === selectedPid) || null
