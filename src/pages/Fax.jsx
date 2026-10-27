@@ -457,9 +457,10 @@ export default function Fax({ embeddedDocument = null, onClose = null } = {}) {
   }, [logs, filterStatus, search])
 
   return (
-    <div style={{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
+    <div style={embeddedDocument ? {padding:0} : {padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
       {toast && <div className={'toast show '+(toast.type==='err'?'terr':'')}>{toast.msg||toast}</div>}
 
+      {!embeddedDocument && (<>
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16,marginBottom:18,flexWrap:'wrap'}}>
         <div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -663,13 +664,14 @@ export default function Fax({ embeddedDocument = null, onClose = null } = {}) {
         </div>
       )}
 
+      </>)}
       {/* Send Fax Modal */}
       {modal && (
-        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setModal(false)}>
+        <div className="modal-bg open" style={embeddedDocument?{zIndex:20000}:undefined} onClick={e=>{if(e.target===e.currentTarget&&!sending){setModal(false);onClose?.()}}}>
           <div className="modal" style={{width:560}}>
             <div className="mh">
               <span className="mt">📠 Send Fax</span>
-              <button className="xbtn" onClick={()=>setModal(false)}>&times;</button>
+              <button className="xbtn" disabled={sending} onClick={()=>{setModal(false);onClose?.()}}>&times;</button>
             </div>
 
             <div style={{position:'relative'}} className="field"><label>Client (optional)</label>
@@ -737,7 +739,7 @@ export default function Fax({ embeddedDocument = null, onClose = null } = {}) {
               🕐 Every fax is automatically <strong>timestamped</strong> with date, time, sender, recipient, and file — all saved in the client's fax history.
             </div>
 
-            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending}>
+            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending || linkedLoading}>
               {sending ? '📠 Sending…' : '📠 Send Fax'}
             </button>
           </div>
