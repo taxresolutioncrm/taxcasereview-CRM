@@ -3,7 +3,7 @@ import PhoneNumber from '../components/PhoneNumber'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useLocation } from 'react-router-dom'
-import { DOC_FOLDERS } from './Clients'
+import { DOC_FOLDERS } from '../lib/docFolders'
 import ClientLink from '../components/ClientLink'
 
 const BLANK = { to_number:'', from_number:'', client_name:'', subject:'', notes:'' }
@@ -16,12 +16,12 @@ function fmtPhone(v) {
   return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`
 }
 
-export default function Fax() {
+export default function Fax({ embeddedDocument = null, onClose = null } = {}) {
   const { user, myTenantId } = useApp()
   const [logs,     setLogs]     = useState([])
   const [clients,  setClients]  = useState([])
   const [leads,    setLeads]    = useState([])
-  const [modal,    setModal]    = useState(false)
+  const [modal,    setModal]    = useState(Boolean(embeddedDocument))
   const location = useLocation()
   const qp = new URLSearchParams(location.search)
   const [form, setForm] = useState({...BLANK,
@@ -60,7 +60,7 @@ export default function Fax() {
 
 
   useEffect(() => {
-    const intent = location.state?.faxClientDocument
+    const intent = embeddedDocument || location.state?.faxClientDocument
     if (!intent?.documentId || !intent?.clientId || !myTenantId) return
     let cancelled = false
     setModal(true)
@@ -68,25 +68,46 @@ export default function Fax() {
     setLinkedDocument(null)
     setLinkedLoading(true)
     ;(async()=>{
-      const {data,error}=await supabase.from('documents')
-        .select('id,client_id,tenant_id,client,file_name,name,storage_path,file_url')
-        .eq('id',intent.documentId)
-        .eq('client_id',intent.clientId)
-        .eq('tenant_id',myTenantId).maybeSingle()
-      if(cancelled) return
-      const path = String(data?.storage_path || '')
-        || (String(data?.file_url || '').startsWith('storage://documents/')
-          ? String(data.file_url).slice('storage://documents/'.length) : '')
-      if(error || !data || !path) {
-        showToast('Selected document is not an accessible stored client file','err')
-      } else {
-        setLinkedDocument({...data, resolvedStoragePath:path})
-        setForm(prev=>({...prev,client_name:data.client || String(intent.clientName || '')}))
+      try {
+        // Resolve the real client in the authenticated tenant, not route-provided names.
+        const {data: client,error: clientErr}=await supabase.from('clients')
+          .select('id,name,canopy_id,tenant_id')
+          .eq('id',intent.clientId).eq('tenant_id',myTenantId).maybeSingle()
+        if(clientErr || !client) throw new Error('Authorized client record unavailable')
+        const {data: doc,error: docErr}=await supabase.from('documents')
+          .select('id,client_id,canopy_client_id,tenant_id,client,clientname,file_name,name,storage_path,file_url')
+          .eq('id',intent.documentId).eq('tenant_id',myTenantId).maybeSingle()
+        if(docErr || !doc) throw new Error('Document unavailable in this office')
+        const linked=doc.client_id && String(doc.client_id)===String(client.id)
+        const canopy=doc.canopy_client_id && client.canopy_id && String(doc.canopy_client_id)===String(client.canopy_id)
+        const legacy=!doc.client_id && !doc.canopy_client_id && [doc.client,doc.clientname].some(n=>n && String(n)===String(client.name))
+        if(!linked && !canopy && !legacy) throw new Error('Document ownership does not match this client')
+        const stored=String(doc.file_url||'')
+        let path=String(doc.storage_path||'').trim() ||
+          (stored.startsWith('storage://documents/')?stored.slice('storage://documents/'.length):'')
+        if(!path && stored.startsWith('https://')) {
+          try {
+            const u=new URL(stored)
+            const sameOffice=u.hostname===new URL(import.meta.env.VITE_SUPABASE_URL).hostname
+            const match=u.pathname.match(/\\/storage\\/v1\\/object\\/(?:sign|public|authenticated)\\/documents\\/(.+)$/)
+            if(sameOffice && match) path=decodeURIComponent(match[1])
+          } catch { /* not an authenticated office storage link */ }
+        }
+        if(!path || path.startsWith('/') || path.includes('..')) throw new Error('No valid private document storage path')
+        // Authenticate attachment access before enabling Send.
+        const {data: signed,error: signErr}=await supabase.storage.from('documents').createSignedUrl(path,3600)
+        if(signErr || !signed?.signedUrl) throw new Error('Document storage access denied')
+        if(cancelled)return
+        setLinkedDocument({...doc,resolvedStoragePath:path})
+        setForm(prev=>({...prev,client_name:client.name}))
+      } catch(e) {
+        if(!cancelled) showToast('Cannot attach document: '+(e?.message||e),'err')
+      } finally {
+        if(!cancelled)setLinkedLoading(false)
       }
-      setLinkedLoading(false)
-    })().catch(()=>{if(!cancelled){setLinkedLoading(false);showToast('Could not load selected client document','err')}})
+    })()
     return ()=>{cancelled=true}
-  },[location.state?.faxClientDocument?.documentId,myTenantId])
+  },[embeddedDocument?.documentId,embeddedDocument?.clientId,location.state?.faxClientDocument?.documentId,myTenantId])
 
   useEffect(() => {
     load()
@@ -319,6 +340,7 @@ export default function Fax() {
 
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
+    if (linkedLoading) { showToast('Wait for document to finish loading','err'); return }
     if (!file && !linkedDocument) { showToast('Attach or select a document to fax','err'); return }
     setSending(true)
 
@@ -372,7 +394,7 @@ export default function Fax() {
       if (logErr) console.error('Log error:', logErr)
       if (status === 'Pending') {
         showToast(resData?.platform_relay ? '📠 Fax accepted through the TaxRes platform relay — waiting for delivery confirmation' : '📠 Fax accepted — waiting for delivery confirmation')
-        setModal(false); setForm(BLANK); setFile(null); setLinkedDocument(null); load()
+        setModal(false); onClose?.(); setForm(BLANK); setFile(null); setLinkedDocument(null); if(!embeddedDocument) load()
       } else {
         showToast('Error: ' + (resData?.error || invokeErr?.message || 'Check SignalWire credentials in Settings'), 'err')
         load()
