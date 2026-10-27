@@ -2723,7 +2723,7 @@ export default function Clients() {
         <div className="card" style={{marginBottom:12}}>
           <div style={{fontSize:10,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Quick Actions</div>
           <div className="ovx">
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',alignItems:'stretch',gap:10,width:'100%'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(11, minmax(112px, 1fr))',alignItems:'stretch',gap:8,minWidth:1320,width:'100%'}}>
             <ActionBtn color="#0891b2" icon="📅" label="Schedule" sub="Book Appointment" onClick={()=>setBookingClient(c)}/>
             <ActionBtn color="#7c3aed" icon="✅" label="Add Task" sub="Assign Work" onClick={()=>openTaskComposer()}/>
             <ActionBtn color="#dc2626" icon="📠" label="Send Fax" sub="SignalWire Fax" onClick={()=>{setFaxClient(c);setFaxModal(true)}}/>
