@@ -182,16 +182,17 @@ function ActionBtn({color, icon, label, sub, onClick}) {
   return (
     <button onClick={onClick} style={{
       background:color, color:'#fff', border:'none', borderRadius:10,
-      padding:'14px 10px', cursor:'pointer', display:'flex', flexDirection:'column',
-      alignItems:'center', gap:5, fontSize:12.5, fontWeight:700, textAlign:'center',
-      width:'100%', transition:'transform .1s,opacity .1s',
+      padding:'12px 10px', cursor:'pointer', display:'flex', flexDirection:'column',
+      alignItems:'center', justifyContent:'center', gap:5, fontSize:12.5, fontWeight:700, textAlign:'center',
+      width:'100%', minWidth:0, minHeight:102, height:'100%', boxSizing:'border-box',
+      transition:'transform .1s,opacity .1s',
     }}
       onMouseEnter={e=>{e.currentTarget.style.opacity='.85';e.currentTarget.style.transform='translateY(-2px)'}}
       onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.transform=''}}
     >
       <span style={{fontSize:22}}>{icon}</span>
-      <span>{label}</span>
-      {sub && <span style={{fontSize:9.5,opacity:.8,fontWeight:400}}>{sub}</span>}
+      <span style={{maxWidth:'100%',lineHeight:1.25,whiteSpace:'normal',overflowWrap:'normal',wordBreak:'normal'}}>{label}</span>
+      {sub && <span style={{maxWidth:'100%',fontSize:10,opacity:.85,fontWeight:400,lineHeight:1.25,whiteSpace:'normal',overflowWrap:'normal',wordBreak:'normal'}}>{sub}</span>}
     </button>
   )
 }
@@ -2722,7 +2723,7 @@ export default function Clients() {
         <div className="card" style={{marginBottom:12}}>
           <div style={{fontSize:10,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10}}>Quick Actions</div>
           <div className="ovx">
-          <div style={{display:'grid',gridTemplateColumns:'repeat(11, 1fr)',gap:8,minWidth:800}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',alignItems:'stretch',gap:10,width:'100%'}}>
             <ActionBtn color="#0891b2" icon="📅" label="Schedule" sub="Book Appointment" onClick={()=>setBookingClient(c)}/>
             <ActionBtn color="#7c3aed" icon="✅" label="Add Task" sub="Assign Work" onClick={()=>openTaskComposer()}/>
             <ActionBtn color="#dc2626" icon="📠" label="Send Fax" sub="SignalWire Fax" onClick={()=>{setFaxClient(c);setFaxModal(true)}}/>
