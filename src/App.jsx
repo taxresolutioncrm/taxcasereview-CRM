@@ -51,6 +51,22 @@ function lazyWithRecovery(name, importer) {
   })
 }
 
+function LinkedInCallbackBridge() {
+  useEffect(() => {
+    const destination = new URL('https://admin.romylabs.com/crm-admin/linkedin/callback')
+    const incoming = new URLSearchParams(window.location.search)
+    for (const key of ['code', 'state', 'error', 'error_description']) {
+      const value = incoming.get(key)
+      if (value) destination.searchParams.set(key, value)
+    }
+    if (incoming.get('code')) {
+      destination.searchParams.set('oauth_redirect_uri', 'https://taxrescrm.app/crm-admin/linkedin/callback')
+    }
+    window.location.replace(destination.toString())
+  }, [])
+  return <div role="status">Returning to RomyLabs LinkedIn authorization…</div>
+}
+
 function clearBuildRefreshMarker() {
   try {
     const url = new URL(window.location.href)
@@ -514,6 +530,7 @@ function AuthRouter() {
       <Route path="/portal/:id" element={<ClientPortal />} />
       <Route path="/organizer/:id" element={<OrganizerPage />} />
       <Route path="/financial-intake/:id" element={<FinancialIntakePage />} />
+      <Route path="/crm-admin/linkedin/callback" element={<LinkedInCallbackBridge />} />
       <Route path="/crm-admin/*" element={
         window.location.hostname.toLowerCase() === 'admin.romylabs.com' ? (
           <RequireAuth>
