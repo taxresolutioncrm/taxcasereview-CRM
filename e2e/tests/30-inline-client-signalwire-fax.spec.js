@@ -15,3 +15,10 @@ test('fax validates selected document in active tenant and reuses SignalWire',()
  expect(fax).toContain("from '../lib/docFolders'")
  expect(clients).toContain("from '../lib/docFolders'")
 })
+
+test('inline fax presents submission receipt without navigation and checks callback status',()=>{
+  for(const fragment of ['faxReceipt && !modal','refreshFaxReceipt','printFaxReceipt','Retry fax','Return to client','Delivery status','signalwire_fax_id','faxReceipt.status===\'Pending\''])
+    expect(fax).toContain(fragment)
+  expect(fax).toContain("setFaxReceipt({sid:sw_id")
+  expect(fax).not.toContain("setModal(false); onClose?.(); setForm(BLANK)")
+})
