@@ -2,6 +2,7 @@ import fs from 'node:fs'
 
 const read=(p)=>fs.readFileSync(p,'utf8')
 const admin=read('src/pages/AdminPortal.jsx')
+const adminHostGuard=read('public/romylabs-admin-hotfix.js')
 const billing=read('src/components/admin/RomyLabsBilling.jsx')
 const hub=read('supabase/functions/hub-proxy/index.ts')
 const metricsSignal=read('supabase/functions/metrics-signal/index.ts')
@@ -17,6 +18,7 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['Legacy TaxRes redirect exempts LinkedIn callback',adminHostGuard.includes("path !== '/crm-admin/linkedin/callback'")],
   ['LinkedIn OAuth opens separately and keeps workspace available',admin.includes("window.open(authorizationUrl, 'romylabs-linkedin-auth'") && admin.includes("window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete'")],
   ['LinkedIn OAuth shared state expires and is checked across tabs',admin.includes("localStorage.setItem('linkedin_oauth_transaction'") && admin.includes('Date.now() - transaction.createdAt < 10 * 60 * 1000')],
   ['LinkedIn workspace restores drafts and active tab',admin.includes("sessionStorage.getItem('romylabs_li_draft_body')") && admin.includes("sessionStorage.getItem('romylabs_li_active_tab')")],
