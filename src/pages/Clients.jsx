@@ -908,40 +908,27 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   async function loadDocs() {
     const requestId = ++docLoadRequestRef.current
     if (!tenantId) { setDocs([]); return }
-    // Both document identity lanes are needed for older manual files. All reads
-    // remain tenant-scoped, fully paginated and guarded against client switches.
-    const reads = []
-    if (clientId) reads.push(supabase.from('documents').select('*')
-      .eq('tenant_id',tenantId).eq('client_id',String(clientId))
-      .order('created_at',{ascending:false}).order('id',{ascending:false}))
-    if (clientName) reads.push(supabase.from('documents').select('*')
-      .eq('tenant_id',tenantId).eq('client',clientName)
-      .order('created_at',{ascending:false}).order('id',{ascending:false}))
-    if (!reads.length) { setDocs([]); return }
-    const results = await Promise.all(reads.map(async query => {
-      const records = []
-      const pageSize = 500
-      for (let offset=0; offset<100000; offset+=pageSize) {
-        const {data,error} = await query.range(offset,offset+pageSize-1)
-        if (error) return {records,error}
-        records.push(...(data||[]))
-        if (!data || data.length<pageSize) return {records,error:null}
+    let query = supabase.from('documents').select('*').eq('tenant_id', tenantId)
+    query = clientId ? query.eq('client_id', String(clientId)) : query.eq('client', clientName)
+    query = query.order('created_at', { ascending: false }).order('id', { ascending: false })
+    const pageSize = 500
+    const all = []
+    for (let offset = 0; offset < 100000; offset += pageSize) {
+      const { data, error } = await query.range(offset, offset + pageSize - 1)
+      if (requestId !== docLoadRequestRef.current) return
+      if (error) {
+        showToast?.('Could not load client documents: ' + error.message)
+        return // Do not silently replace a complete list with partial results.
       }
-      return {records,error:new Error('Document limit reached; more records may remain')}
-    }))
-    if (requestId !== docLoadRequestRef.current) return
-    const failure = results.find(r=>r.error)?.error
-    if (failure) {
-      showToast?.('Could not load all client documents: '+failure.message)
-      return
+      all.push(...(data || []))
+      if (!data || data.length < pageSize) {
+        setDocs(all)
+        return
+      }
     }
-    const dedup = new Map()
-    for(const result of results) for(const document of result.records) dedup.set(String(document.id),document)
-    const merged = [...dedup.values()].sort((a,b)=>{
-      const dateOrder = String(b.created_at||'').localeCompare(String(a.created_at||''))
-      return dateOrder || String(b.id||'').localeCompare(String(a.id||''))
-    })
-    setDocs(merged)
+    if (requestId === docLoadRequestRef.current) {
+      showToast?.('Document limit reached. Contact support to access remaining files.')
+    }
   }
 
   function chooseFiles(fileList) {
