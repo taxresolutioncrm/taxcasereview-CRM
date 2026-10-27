@@ -7420,7 +7420,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   const [loading, setLoading]         = React.useState(true)
   const [selected, setSelected]       = React.useState(null)
   const [filter, setFilter]           = React.useState('all')
-  const [composing, setComposing]     = React.useState(false)
+  const [composing, setComposing]     = React.useState(() => sessionStorage.getItem('romylabs_li_composing') === '1')
   const [composeBody, setComposeBody] = React.useState(() => sessionStorage.getItem('romylabs_li_draft_body') || '')
   const [composeTitle, setComposeTitle] = React.useState(() => sessionStorage.getItem('romylabs_li_draft_title') || '')
   const [composeCategory, setComposeCategory] = React.useState(() => sessionStorage.getItem('romylabs_li_draft_category') || 'educational')
@@ -7443,6 +7443,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
   // Preserve the workspace if authorization is cancelled or the browser navigates back.
   React.useEffect(() => { sessionStorage.setItem('romylabs_li_active_tab', liTab) }, [liTab])
+  React.useEffect(() => { sessionStorage.setItem('romylabs_li_composing', composing ? '1' : '0') }, [composing])
   React.useEffect(() => {
     sessionStorage.setItem('romylabs_li_draft_body', composeBody)
     sessionStorage.setItem('romylabs_li_draft_title', composeTitle)
@@ -7452,7 +7453,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   React.useEffect(() => {
     const listener = (event) => {
       if (event.origin !== window.location.origin || event.data?.type !== 'romylabs-linkedin-oauth-complete') return
-      if (event.data.product_id) selectProduct(event.data.product_id)
+      if (event.data.product_id && event.data.product_id !== selectedPid) selectProduct(event.data.product_id)
       load()
       showToast(event.data.ok ? 'LinkedIn authorization returned — verifying connection' : `LinkedIn authorization failed: ${event.data.error || 'unknown error'}`, Boolean(event.data.ok))
     }
