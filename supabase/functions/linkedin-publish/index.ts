@@ -20,7 +20,7 @@ async function resolveOrganization(accessToken:string, productId:string){
     headers:{Authorization:`Bearer ${accessToken}`,'X-Restli-Protocol-Version':'2.0.0'}
   })
   const acl=await aclRes.json().catch(()=>({}))
-  if(!aclRes.ok) return {id:null,error:'Unable to read LinkedIn organization admin permissions',detail:acl}
+  if(!aclRes.ok) return {id:null,error:`LinkedIn could not verify company-page admin access (HTTP ${aclRes.status}). Confirm the LinkedIn app has approved r_organization_admin and w_organization_social permissions.`,detail:acl}
   const urns=(acl?.elements||[]).map((x:any)=>String(x?.organization||'')).filter((x:string)=>x.startsWith('urn:li:organization:'))
   const ids=[...new Set(urns.map((u:string)=>u.split(':').pop()).filter(Boolean))] as string[]
   if(known && ids.includes(known)) return {id:known,error:null}
@@ -31,7 +31,7 @@ async function resolveOrganization(accessToken:string, productId:string){
     const name=String(org?.localizedName||org?.name?.localized?.en_US||'')
     if(orgRes.ok && matcher?.test(name)) return {id,error:null}
   }
-  return {id:null,error:`No approved LinkedIn company-page admin target matched ${productId}`,detail:{organization_ids:ids}}
+  return {id:null,error:`LinkedIn did not return a company page administered by this account for ${productId}. Sign in with an administrator of the correct LinkedIn page.`,detail:{organization_ids:ids}}
 }
 
 function json(data: unknown, status = 200) {
@@ -82,6 +82,8 @@ Deno.serve(async (req) => {
   if (action === 'oauth_callback') {
     const code         = body.code as string
     const redirect_uri = body.redirect_uri as string
+    const allowedRedirects = new Set(['https://admin.romylabs.com/crm-admin/linkedin/callback', 'https://taxrescrm.app/crm-admin/linkedin/callback'])
+    if (!code || !allowedRedirects.has(redirect_uri)) return json({ ok:false, error:'Invalid LinkedIn authorization code or redirect URL' },400)
     const clientId     = Deno.env.get('LINKEDIN_CLIENT_ID')!
     const clientSecret = Deno.env.get('LINKEDIN_CLIENT_SECRET')!
 
@@ -93,23 +95,28 @@ Deno.serve(async (req) => {
         client_id: clientId, client_secret: clientSecret,
       }),
     })
-    const tokenData = await tokenRes.json()
-    if (!tokenData.access_token) {
-      return json({ ok: false, error: 'Token exchange failed', detail: tokenData }, 400)
+    const tokenData = await tokenRes.json().catch(() => ({}))
+    if (!tokenRes.ok || !tokenData.access_token) {
+      const reason = String(tokenData.error_description || tokenData.error || `HTTP ${tokenRes.status}`)
+      return json({ ok: false, error: `LinkedIn token exchange failed: ${reason}. Verify the authorized redirect URL and retry authorization.`, linkedin_status: tokenRes.status }, 400)
     }
 
     const profileRes = await fetch('https://api.linkedin.com/v2/userinfo', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     })
-    const profile = await profileRes.json()
+    const profile = await profileRes.json().catch(() => ({}))
+    if (!profileRes.ok || !profile.sub) return json({ok:false,error:`LinkedIn identity verification failed (HTTP ${profileRes.status}). Confirm OpenID Connect permissions are enabled.`}, 403)
 
     const grantedScopes = String(tokenData.scope || '')
     const requiresOrganization = ORG_PRODUCTS.has(productId)
     const scopeSet = new Set(grantedScopes.split(/[ ,]+/).filter(Boolean))
-    if (requiresOrganization && !scopeSet.has('w_organization_social')) {
+    // LinkedIn may omit `scope` in its access-token response. Verify the
+    // actual company-page administrator role with LinkedIn instead of treating
+    // a missing optional response field as proof of missing permission.
+    if (requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')) {
       return json({
         ok: false,
-        error: `${productId} requires LinkedIn organization posting permission`,
+        error: `${productId} requires LinkedIn organization posting permission. Enable the approved LinkedIn organization publishing product and reconnect.`,
         required_scope: 'w_organization_social',
       }, 403)
     }
@@ -123,18 +130,22 @@ Deno.serve(async (req) => {
       if (!linkedinOrganizationId) return json({ok:false,error:resolved.error || `No verified LinkedIn organization target for ${productId}`},409)
     }
 
-    await supabase.from('linkedin_connections').upsert({
+    const { error: connectionSaveError } = await supabase.from('linkedin_connections').upsert({
       tenant_id: tenantId,
       product_id: productId,
       linkedin_person_id: profile.sub,
       display_name: profile.name || profile.email || 'LinkedIn Account',
       access_token: tokenData.access_token,
       expires_at: new Date(Date.now() + (tokenData.expires_in || 5184000) * 1000).toISOString(),
-      scopes: grantedScopes || (requiresOrganization ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
+      scopes: grantedScopes || (requiresOrganization && linkedinOrganizationId ? 'openid,profile,w_organization_social' : 'openid,profile,w_member_social'),
       publish_target_type: publishTargetType,
       linkedin_organization_id: linkedinOrganizationId,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'tenant_id,product_id' })
+    if (connectionSaveError) {
+      console.error('[linkedin-oauth] connection save failed', { productId, code: connectionSaveError.code, message: connectionSaveError.message })
+      return json({ ok:false, error:'LinkedIn authorized this account but saving the CRM connection failed. No successful connection has been recorded.', reason:connectionSaveError.message },500)
+    }
 
     return json({
       ok: true,

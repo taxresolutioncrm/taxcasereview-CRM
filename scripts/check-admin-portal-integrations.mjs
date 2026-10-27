@@ -17,6 +17,13 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['Company-page OAuth requests LinkedIn organization admin read permission',admin.includes('w_organization_social rw_organization_admin')],
+  ['LinkedIn OAuth validates admin ACL even when scope metadata omitted',publish.includes("requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
+  ['LinkedIn OAuth errors are bridged from original trusted host',admin.includes("bridge.searchParams.set('error_description', params.get('error_description') || linkedInError)")],
+  ['LinkedIn reconnect surfaces provider authorization errors',admin.includes("params.get('error_description')") && admin.includes("'LinkedIn connection failed: ' + reason")],
+  ['LinkedIn rejects invalid callback redirect and missing code',publish.includes('allowedRedirects.has(redirect_uri)')],
+  ['LinkedIn validates token response and profile identity',publish.includes('!tokenRes.ok || !tokenData.access_token') && publish.includes('!profileRes.ok || !profile.sub')],
+  ['LinkedIn never reports successful reconnect on failed database upsert',publish.includes('connectionSaveError') && publish.includes('No successful connection has been recorded.')],
   ['LinkedIn status rejects expired personal profile connection',publish.includes('reconnect_required: expired || (companyPageRequired && !validOrganization)')],
   ['LinkedIn prevents unverified organization ID updates',publish.includes("if (ORG_PRODUCTS.has(productId)) {") && publish.includes('Reconnect LinkedIn and authorize the company page')],
   ['LinkedIn publish checks organization permissions',publish.includes("!grantedScopes.includes('w_organization_social')")],
