@@ -17,6 +17,7 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['LinkedIn authorization uses original registered callback for all products',admin.includes('const linkedinRedirectFor = (_pid) => TAXRES_LINKEDIN_REDIRECT_URI') && admin.includes("bridge.searchParams.set('oauth_redirect_uri', TAXRES_LINKEDIN_REDIRECT_URI)")],
   ['Company-page OAuth requests LinkedIn organization admin read permission',admin.includes('w_organization_social rw_organization_admin')],
   ['LinkedIn OAuth validates admin ACL even when scope metadata omitted',publish.includes("requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
   ['LinkedIn OAuth errors are bridged from original trusted host',admin.includes("bridge.searchParams.set('error_description', params.get('error_description') || linkedInError)")],
