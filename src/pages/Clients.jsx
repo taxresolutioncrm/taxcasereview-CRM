@@ -803,6 +803,31 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [previewExpanded])
+  async function resolvePreviewDocumentUrl(doc) {
+    const stored = String(doc?.file_url || '').trim()
+    let storagePath = String(doc?.storage_path || '').trim()
+    if (!storagePath && stored.startsWith('storage://documents/')) storagePath = stored.slice('storage://documents/'.length)
+    if (!storagePath && stored.startsWith('https://')) {
+      try {
+        const u = new URL(stored)
+        const token = '/storage/v1/object/'
+        const at = u.pathname.indexOf(token)
+        if (at >= 0) {
+          const rest = u.pathname.slice(at + token.length)
+          const marker = '/documents/'
+          const pos = rest.indexOf(marker)
+          if (pos >= 0) storagePath = decodeURIComponent(rest.slice(pos + marker.length))
+        }
+      } catch { /* invalid historical link */ }
+    }
+    if (storagePath) {
+      const {data,error} = await supabase.storage.from('documents').createSignedUrl(storagePath,3600)
+      if (error || !data?.signedUrl) throw error || new Error('Stored document is not accessible')
+      return data.signedUrl
+    }
+    if (stored.startsWith('https://')) return stored
+    throw new Error('Document record has no accessible file reference; original signed file must be reattached')
+  }
   async function selectPreview(doc) {
     const requestId = ++previewSequence.current
     setSelectedDoc(doc)
@@ -812,15 +837,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     try {
       if (!tenantId || String(doc.tenant_id) !== String(tenantId) ||
           (clientId && String(doc.client_id) !== String(clientId))) throw new Error('Document not authorized for this client')
-      const storagePath = doc.storage_path ||
-        (String(doc.file_url||'').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : '')
-      let url = doc.file_url || ''
-      if (storagePath) {
-        const {data,error} = await supabase.storage.from('documents').createSignedUrl(storagePath,3600)
-        if (error || !data?.signedUrl) throw error || new Error('Signed preview unavailable')
-        url = data.signedUrl
-      }
-      if (!url) throw new Error('Document preview unavailable')
+      const url = await resolvePreviewDocumentUrl(doc)
       if (requestId === previewSequence.current) setPreviewUrl(url)
     } catch (error) {
       if (requestId === previewSequence.current) showToast('Could not preview document: '+(error?.message||error))
@@ -1052,15 +1069,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     const tab = window.open('about:blank','_blank')
     if (tab) tab.opener = null
     try {
-      let url = doc.file_url || ''
-      const storagePath = doc.storage_path
-        || (String(doc.file_url || '').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : '')
-      if (storagePath) {
-        const { data, error } = await supabase.storage.from('documents').createSignedUrl(storagePath, 3600)
-        if (error || !data?.signedUrl) throw error || new Error('Could not open document')
-        url = data.signedUrl
-      }
-      if (!url) throw new Error('Document file is unavailable')
+      const url = await resolvePreviewDocumentUrl(doc)
       if (tab) tab.location.href = url
       else showToast('Allow pop-ups to open documents')
     } catch (e) {
