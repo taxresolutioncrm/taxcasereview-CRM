@@ -1357,7 +1357,7 @@ export default function Clients() {
     const selected=Array.from(el.querySelectorAll('[data-client-detail-tab]')).find(btn=>btn.dataset.clientDetailTab===detailTab)
     // Only scroll the horizontal list, not the surrounding client page.
     if(selected) {
-      const left=selected.offsetLeft-el.offsetLeft
+      const left=selected.getBoundingClientRect().left-el.getBoundingClientRect().left+el.scrollLeft
       if(left<el.scrollLeft) el.scrollTo({left,behavior:'smooth'})
       else if(left+selected.offsetWidth>el.scrollLeft+el.clientWidth) el.scrollTo({left:left+selected.offsetWidth-el.clientWidth,behavior:'smooth'})
     }
