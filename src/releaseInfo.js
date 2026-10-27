@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Client file tabs have visible left/right scrolling arrows and keep Tax Organizer fully accessible on smaller screens',
   'Fax existing stored client documents from the client Documents preview using the existing outbound fax provider and composer',
   'Reuse private client document storage without downloading or uploading a duplicate file',
   'Client document previews and Open support historic private Supabase file links using fresh short-lived signed URLs',
