@@ -768,6 +768,7 @@ const fmt = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toF
 
 export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast, onLogged }) {
   const { can } = useApp()
+  const navigate = useNavigate()
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
   const [uploading,  setUploading]  = useState(false)
@@ -1220,6 +1221,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           {!selectedDoc?<div style={{padding:30,color:'var(--t3)'}}>Select a document to preview</div>:<>
             <div style={{padding:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
               <strong title={selectedDoc.file_name||selectedDoc.name} style={{flex:1,minWidth:160,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
+              {(selectedDoc.storage_path || selectedDoc.file_url) && <button className="btn sec" type="button" style={{fontSize:10,padding:'5px 8px'}} onClick={()=>navigate('/fax',{state:{faxClientDocument:{documentId:selectedDoc.id,clientId,clientName}}})}>📠 Fax Document</button>}
               <button className="btn sec" type="button" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>setPreviewExpanded(true)}>Expand Preview ⛶</button>
               {docAiAction(selectedDoc)}
               <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open ↗</button>
@@ -1237,6 +1239,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           <div role="dialog" aria-modal="true" aria-label="Expanded document preview" style={{width:'min(1200px,96vw)',height:'min(900px,94vh)',display:'flex',flexDirection:'column',background:'var(--sf)',borderRadius:12,overflow:'hidden'}}>
             <div style={{padding:12,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
               <strong style={{flex:1,minWidth:150,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
+              {(selectedDoc.storage_path || selectedDoc.file_url) && <button className="btn sec" type="button" style={{fontSize:11,padding:'5px 8px'}} onClick={()=>navigate('/fax',{state:{faxClientDocument:{documentId:selectedDoc.id,clientId,clientName}}})}>📠 Fax Document</button>}
               <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open in New Window ↗</button>
               <button className="btn sec" type="button" onClick={()=>downloadPreview(selectedDoc)}>Download</button>
               <button aria-label="Close expanded preview" className="btn sec" type="button" onClick={()=>setPreviewExpanded(false)}>✕</button>
@@ -1342,6 +1345,29 @@ export default function Clients() {
   const [smsSending,  setSmsSending]  = useState(false)
   const [loadingRel,  setLoadingRel]  = useState(false)
   const [detailTab,   setDetailTabRaw] = useState(() => searchParams.get('tab') || 'overview')
+  const clientTabsRef = useRef(null)
+  const [clientTabsScroll, setClientTabsScroll] = useState({left:false,right:false})
+  function syncClientTabsScroll() {
+    const el=clientTabsRef.current
+    if(el) setClientTabsScroll({left:el.scrollLeft>2,right:el.scrollLeft+el.clientWidth<el.scrollWidth-2})
+  }
+  useEffect(()=>{
+    const el=clientTabsRef.current
+    if(!el) return
+    const selected=Array.from(el.querySelectorAll('[data-client-detail-tab]')).find(btn=>btn.dataset.clientDetailTab===detailTab)
+    // Only scroll the horizontal list, not the surrounding client page.
+    if(selected) {
+      const left=selected.getBoundingClientRect().left-el.getBoundingClientRect().left+el.scrollLeft
+      if(left<el.scrollLeft) el.scrollTo({left,behavior:'smooth'})
+      else if(left+selected.offsetWidth>el.scrollLeft+el.clientWidth) el.scrollTo({left:left+selected.offsetWidth-el.clientWidth,behavior:'smooth'})
+    }
+    const refresh=()=>syncClientTabsScroll()
+    const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(refresh)
+    observer?.observe(el)
+    refresh()
+    return ()=>observer?.disconnect()
+  },[detailTab,detail?.id])
+
   function setDetailTab(tab) {
     const el = document.querySelector('.page-content')
     const y = el ? el.scrollTop : 0
@@ -2732,7 +2758,9 @@ export default function Clients() {
                 {/* ── Tabbed Detail Section ─────────────────────────── */}
         <div className="card" style={{padding:0,overflow:'hidden'}}>
           {/* Tab Bar */}
-          <div style={{display:'flex',flexWrap:'nowrap',overflowX:'auto',borderBottom:'1px solid var(--br)',background:'var(--s2)',paddingBottom:2}}>
+          <div style={{display:'flex',alignItems:'stretch',minWidth:0,borderBottom:'1px solid var(--br)',background:'var(--s2)'}}>
+            <button type="button" aria-label="Scroll client tabs left" title="Previous tabs" disabled={!clientTabsScroll.left} onClick={()=>clientTabsRef.current?.scrollBy({left:-290,behavior:'smooth'})} style={{flexShrink:0,padding:'0 10px',border:'none',borderRight:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',opacity:clientTabsScroll.left?1:.35,cursor:clientTabsScroll.left?'pointer':'default'}}>‹</button>
+            <div ref={clientTabsRef} onScroll={syncClientTabsScroll} role="tablist" aria-label="Client file sections" style={{display:'flex',flex:1,minWidth:0,flexWrap:'nowrap',overflowX:'auto',scrollBehavior:'smooth',overscrollBehaviorX:'contain',paddingBottom:2}}>
             {[
               {key:'overview',   icon:'📋', text:'Overview'},
               {key:'notes',      icon:'📝', text:'Notes'},
@@ -2743,12 +2771,12 @@ export default function Clients() {
               {key:'invoices',   icon:'🧾', text:'Invoices'},
               {key:'payments',   icon:'💳', text:'Payments'},
               {key:'cases',      icon:'📁', text:'Cases'},
-              {key:'organizer',  icon:'🧾', text:'Tax-Organizer'},
+              {key:'organizer',  icon:'🧾', text:'Tax Organizer'},
               {key:'activity',   icon:'📋', text:'Activity Report'},
               {key:'calls',      icon:'📞', text:'Calls'},
               {key:'transactions', icon:'💰', text:'Transactions'},
             ].map(t=>(
-              <button key={t.key} onClick={()=>setDetailTab(t.key)}
+              <button key={t.key} type="button" data-client-detail-tab={t.key} role="tab" aria-selected={detailTab===t.key} onClick={()=>setDetailTab(t.key)}
                 style={{display:'inline-flex',alignItems:'center',gap:5,padding:'12px 9px',border:'none',borderBottom:detailTab===t.key?'2px solid var(--blue)':'2px solid transparent',
                   background:'none',cursor:'pointer',fontWeight:detailTab===t.key?700:500,
                   color:detailTab===t.key?'var(--blue)':'var(--t2)',whiteSpace:'nowrap',transition:'all .15s',flexShrink:0}}>
@@ -2756,6 +2784,8 @@ export default function Clients() {
                 <span style={{fontSize:11}}>{t.text}</span>
               </button>
             ))}
+            </div>
+            <button type="button" aria-label="Scroll client tabs right" title="More tabs" disabled={!clientTabsScroll.right} onClick={()=>clientTabsRef.current?.scrollBy({left:290,behavior:'smooth'})} style={{flexShrink:0,padding:'0 10px',border:'none',borderLeft:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',opacity:clientTabsScroll.right?1:.35,cursor:clientTabsScroll.right?'pointer':'default'}}>›</button>
           </div>
 
           {/* Overview Tab */}

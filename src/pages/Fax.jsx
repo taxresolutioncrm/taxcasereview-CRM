@@ -29,6 +29,8 @@ export default function Fax() {
     to_number:   (qp.get('phone') || '').replace(/\D/g,'')
   })
   const [file,     setFile]     = useState(null)
+  const [linkedDocument, setLinkedDocument] = useState(null)
+  const [linkedLoading, setLinkedLoading] = useState(false)
   const [sending,  setSending]  = useState(false)
   const [toast,    setToast]    = useState('')
   const [search,   setSearch]   = useState('')
@@ -56,6 +58,35 @@ export default function Fax() {
     }
   }, [location.search])
 
+
+  useEffect(() => {
+    const intent = location.state?.faxClientDocument
+    if (!intent?.documentId || !intent?.clientId || !myTenantId) return
+    let cancelled = false
+    setModal(true)
+    setFile(null)
+    setLinkedDocument(null)
+    setLinkedLoading(true)
+    ;(async()=>{
+      const {data,error}=await supabase.from('documents')
+        .select('id,client_id,tenant_id,client,file_name,name,storage_path,file_url')
+        .eq('id',intent.documentId)
+        .eq('client_id',intent.clientId)
+        .eq('tenant_id',myTenantId).maybeSingle()
+      if(cancelled) return
+      const path = String(data?.storage_path || '')
+        || (String(data?.file_url || '').startsWith('storage://documents/')
+          ? String(data.file_url).slice('storage://documents/'.length) : '')
+      if(error || !data || !path) {
+        showToast('Selected document is not an accessible stored client file','err')
+      } else {
+        setLinkedDocument({...data, resolvedStoragePath:path})
+        setForm(prev=>({...prev,client_name:data.client || String(intent.clientName || '')}))
+      }
+      setLinkedLoading(false)
+    })().catch(()=>{if(!cancelled){setLinkedLoading(false);showToast('Could not load selected client document','err')}})
+    return ()=>{cancelled=true}
+  },[location.state?.faxClientDocument?.documentId,myTenantId])
 
   useEffect(() => {
     load()
@@ -288,7 +319,7 @@ export default function Fax() {
 
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
-    if (!file) { showToast('Attach a PDF to send by fax. Notes are saved to the CRM log but are not a fax document.','err'); return }
+    if (!file && !linkedDocument) { showToast('Attach or select a document to fax','err'); return }
     setSending(true)
 
     try {
@@ -303,6 +334,15 @@ export default function Fax() {
         const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
         if (signErr || !urlData?.signedUrl) throw new Error('Could not create secure fax link')
         mediaUrl = urlData.signedUrl
+      }
+
+      if (linkedDocument && !file) {
+        storagePath = linkedDocument.resolvedStoragePath
+        // Caller is authorized against the tenant-scoped documents record.
+        // Storage RLS must also allow this employee to sign the private file.
+        const {data: signed, error: signErr} = await supabase.storage.from('documents').createSignedUrl(storagePath,3600)
+        if (signErr || !signed?.signedUrl) throw new Error('Selected document is not accessible for fax')
+        mediaUrl = signed.signedUrl
       }
 
       const toNum   = '+1' + form.to_number.replace(/\D/g,'').slice(-10)
@@ -321,7 +361,7 @@ export default function Fax() {
       const { error: logErr } = await supabase.from('fax_logs').insert([{
         to_number: toNum, from_number: actualFrom,
         client_name: form.client_name, subject: form.subject,
-        notes: form.notes, file_name: file?.name || null,
+        notes: form.notes, file_name: file?.name || linkedDocument?.file_name || linkedDocument?.name || null,
         file_url: storagePath ? `storage://documents/${storagePath}` : mediaUrl, storage_path: storagePath, signalwire_fax_id: sw_id,
         status, sent_by: user?.email || 'Unknown',
         sent_at: new Date().toISOString(),
@@ -332,7 +372,7 @@ export default function Fax() {
       if (logErr) console.error('Log error:', logErr)
       if (status === 'Pending') {
         showToast(resData?.platform_relay ? '📠 Fax accepted through the TaxRes platform relay — waiting for delivery confirmation' : '📠 Fax accepted — waiting for delivery confirmation')
-        setModal(false); setForm(BLANK); setFile(null); load()
+        setModal(false); setForm(BLANK); setFile(null); setLinkedDocument(null); load()
       } else {
         showToast('Error: ' + (resData?.error || invokeErr?.message || 'Check SignalWire credentials in Settings'), 'err')
         load()
@@ -641,11 +681,13 @@ export default function Fax() {
             </div>
 
             <div className="field"><label>Attach PDF / Document</label>
+              {linkedLoading && <div style={{fontSize:12,marginBottom:8}}>Loading selected document…</div>}
+              {linkedDocument && <div style={{padding:10,marginBottom:8,border:'1px solid var(--br)',borderRadius:8,fontSize:12}}>📄 Selected client file: <strong>{linkedDocument.file_name || linkedDocument.name || 'Document'}</strong> <button type="button" className="btn sec" onClick={()=>setLinkedDocument(null)}>Remove</button></div>}
               <div style={{border:'2px dashed var(--br)',borderRadius:8,padding:'20px',textAlign:'center',cursor:'pointer',background:file?'rgba(34,197,94,.06)':'var(--s2)'}}
                 onClick={()=>document.getElementById('fax-file').click()}
                 onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor='var(--blue)'}}
                 onDragLeave={e=>e.currentTarget.style.borderColor='var(--br)'}
-                onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)setFile(f);e.currentTarget.style.borderColor='var(--br)'}}>
+                onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){setFile(f);setLinkedDocument(null)}e.currentTarget.style.borderColor='var(--br)'}}>
                 {file ? (
                   <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center'}}>
                     <span style={{fontSize:22}}>📄</span>
@@ -659,7 +701,7 @@ export default function Fax() {
                     <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>PDF, TIFF, or image files</div>
                   </div>
                 )}
-                <input id="fax-file" type="file" accept=".pdf,.tiff,.tif,.jpg,.png" style={{display:'none'}} onChange={e=>setFile(e.target.files[0])}/>
+                <input id="fax-file" type="file" accept=".pdf,.tiff,.tif,.jpg,.png" style={{display:'none'}} onChange={e=>{setFile(e.target.files[0]);setLinkedDocument(null)}}/>
               </div>
             </div>
 
