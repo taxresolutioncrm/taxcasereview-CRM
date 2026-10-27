@@ -2,6 +2,8 @@ import fs from 'node:fs'
 
 const read=(p)=>fs.readFileSync(p,'utf8')
 const admin=read('src/pages/AdminPortal.jsx')
+const adminHostGuard=read('public/romylabs-admin-hotfix.js')
+const appRouter=read('src/App.jsx')
 const billing=read('src/components/admin/RomyLabsBilling.jsx')
 const hub=read('supabase/functions/hub-proxy/index.ts')
 const metricsSignal=read('supabase/functions/metrics-signal/index.ts')
@@ -17,6 +19,11 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['LinkedIn trusted callback gets explicit React route before /crm-admin catchall',appRouter.indexOf('path="/crm-admin/linkedin/callback"') >= 0 && appRouter.indexOf('path="/crm-admin/linkedin/callback"') < appRouter.indexOf('path="/crm-admin/*"') && appRouter.includes('function LinkedInCallbackBridge()')],
+  ['Legacy TaxRes redirect exempts LinkedIn callback',adminHostGuard.includes("path !== '/crm-admin/linkedin/callback'")],
+  ['LinkedIn OAuth opens separately and keeps workspace available',admin.includes("window.open(authorizationUrl, 'romylabs-linkedin-auth'") && admin.includes("window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete'")],
+  ['LinkedIn OAuth shared state expires and is checked across tabs',admin.includes("localStorage.setItem('linkedin_oauth_transaction'") && admin.includes('Date.now() - transaction.createdAt < 10 * 60 * 1000')],
+  ['LinkedIn workspace restores drafts and active tab',admin.includes("sessionStorage.getItem('romylabs_li_draft_body')") && admin.includes("sessionStorage.getItem('romylabs_li_active_tab')")],
   ['LinkedIn authorization uses original registered callback for all products',admin.includes('const linkedinRedirectFor = (_pid) => TAXRES_LINKEDIN_REDIRECT_URI') && admin.includes("bridge.searchParams.set('oauth_redirect_uri', TAXRES_LINKEDIN_REDIRECT_URI)")],
   ['Company-page OAuth requests LinkedIn organization admin read permission',admin.includes('w_organization_social rw_organization_admin')],
   ['LinkedIn OAuth validates admin ACL even when scope metadata omitted',publish.includes("requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
@@ -51,7 +58,7 @@ const checks=[
   ['realtime metrics migration uses valid PL/pgSQL delimiters',realtimeMetricsMigration.includes("create or replace function public.romylabs_dispatch_metrics_signal()\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = public, pg_catalog\nas $$")&&!realtimeMetricsMigration.includes("\nas $\nbegin")],
 
   ['product cards never bypass hub proxy',!admin.includes("['camvella', 'arcvena'].includes(product.key)")&&!admin.includes("'apikey':        'eyJ")],
-  ['LinkedIn scopes require organization publishing for TaxRes and Arcvena',admin.includes("selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes("'openid profile w_organization_social'")],
+  ['LinkedIn scopes require organization publishing for TaxRes and Arcvena',admin.includes("selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes("'openid profile w_organization_social rw_organization_admin'")],
   ['LinkedIn UI requires company page for TaxRes and Arcvena',admin.includes("const companyPageRequired = selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes('companyPageReady')],
   ['publisher requires organization target for TaxRes and Arcvena',publish.includes("const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])")&&publish.includes("required_scope: 'w_organization_social'")],
   ['scheduler requires organization publishing for both company pages',scheduler.includes("const hasTarget=target==='ORGANIZATION' && Boolean(conn.linkedin_organization_id)")&&scheduler.includes('arcvena_company_page_target_not_verified')&&scheduler.includes('verify_internal_cron_token')],
