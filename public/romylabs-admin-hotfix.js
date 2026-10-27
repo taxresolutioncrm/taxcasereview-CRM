@@ -21,7 +21,7 @@
 
   /* TaxRes is the CRM host. If a stale /crm-admin URL is opened there,
    * recover back to the CRM instead of sending the user to RomyLabs Admin. */
-  if ((host === 'taxrescrm.app' || host === 'www.taxrescrm.app') && path.indexOf('/crm-admin') === 0) {
+  if ((host === 'taxrescrm.app' || host === 'www.taxrescrm.app') && path.indexOf('/crm-admin') === 0 && path !== '/crm-admin/linkedin/callback') {
     window.location.replace('/');
     return;
   }
