@@ -7414,17 +7414,17 @@ function LinkedInPublisher({ embeddedMode = false }) {
   const [selectorOpen, setSelectorOpen] = React.useState(false)
 
   // ── LinkedIn workspace state ───────────────────────────────────────────
-  const [liTab, setLiTab]             = React.useState('queue')
+  const [liTab, setLiTab]             = React.useState(() => sessionStorage.getItem('romylabs_li_active_tab') || 'queue')
   const [connection, setConnection]   = React.useState(null)
   const [posts, setPosts]             = React.useState([])
   const [loading, setLoading]         = React.useState(true)
   const [selected, setSelected]       = React.useState(null)
   const [filter, setFilter]           = React.useState('all')
-  const [composing, setComposing]     = React.useState(false)
-  const [composeBody, setComposeBody] = React.useState('')
-  const [composeTitle, setComposeTitle] = React.useState('')
-  const [composeCategory, setComposeCategory] = React.useState('educational')
-  const [scheduleDate, setScheduleDate] = React.useState('')
+  const [composing, setComposing]     = React.useState(() => sessionStorage.getItem('romylabs_li_composing') === '1')
+  const [composeBody, setComposeBody] = React.useState(() => sessionStorage.getItem('romylabs_li_draft_body') || '')
+  const [composeTitle, setComposeTitle] = React.useState(() => sessionStorage.getItem('romylabs_li_draft_title') || '')
+  const [composeCategory, setComposeCategory] = React.useState(() => sessionStorage.getItem('romylabs_li_draft_category') || 'educational')
+  const [scheduleDate, setScheduleDate] = React.useState(() => sessionStorage.getItem('romylabs_li_draft_schedule') || '')
   const [publishing, setPublishing]   = React.useState(null)
   const [saving, setSaving]           = React.useState(false)
   const [toast, setToast]             = React.useState(null)
@@ -7440,6 +7440,26 @@ function LinkedInPublisher({ embeddedMode = false }) {
   // Use the original LinkedIn-registered redirect for every product. The original
   // host forwards the code and state to the authenticated Admin Portal session.
   const linkedinRedirectFor = (_pid) => TAXRES_LINKEDIN_REDIRECT_URI
+
+  // Preserve the workspace if authorization is cancelled or the browser navigates back.
+  React.useEffect(() => { sessionStorage.setItem('romylabs_li_active_tab', liTab) }, [liTab])
+  React.useEffect(() => { sessionStorage.setItem('romylabs_li_composing', composing ? '1' : '0') }, [composing])
+  React.useEffect(() => {
+    sessionStorage.setItem('romylabs_li_draft_body', composeBody)
+    sessionStorage.setItem('romylabs_li_draft_title', composeTitle)
+    sessionStorage.setItem('romylabs_li_draft_category', composeCategory)
+    sessionStorage.setItem('romylabs_li_draft_schedule', scheduleDate)
+  }, [composeBody, composeTitle, composeCategory, scheduleDate])
+  React.useEffect(() => {
+    const listener = (event) => {
+      if (event.origin !== window.location.origin || event.data?.type !== 'romylabs-linkedin-oauth-complete') return
+      if (event.data.product_id && event.data.product_id !== selectedPid) selectProduct(event.data.product_id)
+      load()
+      showToast(event.data.ok ? 'LinkedIn authorization returned — verifying connection' : `LinkedIn authorization failed: ${event.data.error || 'unknown error'}`, Boolean(event.data.ok))
+    }
+    window.addEventListener('message', listener)
+    return () => window.removeEventListener('message', listener)
+  }, [selectedPid])
 
   // Derived: the selected product object
   const selectedProduct = products.find(p => p.product_id === selectedPid) || null
@@ -7496,6 +7516,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
     }
     if (linkedInError) {
       const reason = params.get('error_description') || linkedInError
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete', ok:false, error:reason }, window.location.origin)
+        window.close()
+      }
       showToast('LinkedIn authorization failed: ' + reason, false)
       window.history.replaceState({}, '', window.location.pathname)
       return
@@ -7513,10 +7537,12 @@ function LinkedInPublisher({ embeddedMode = false }) {
       return
     }
 
-    const expectedState = sessionStorage.getItem('linkedin_oauth_state') || ''
-    const oauthProduct = sessionStorage.getItem('linkedin_oauth_product') || selectedPid
-    const storedRedirectUri = sessionStorage.getItem('linkedin_oauth_redirect_uri') || ''
+    const transaction = (() => { try { return JSON.parse(localStorage.getItem('linkedin_oauth_transaction') || 'null') } catch { return null } })()
+    const expectedState = transaction && Date.now() - transaction.createdAt < 10 * 60 * 1000 ? transaction.state : ''
+    const oauthProduct = transaction?.product || selectedPid
+    const storedRedirectUri = transaction?.redirect || ''
     const oauthRedirectUri = params.get('oauth_redirect_uri') || storedRedirectUri || linkedinRedirectFor(oauthProduct)
+    localStorage.removeItem('linkedin_oauth_transaction')
     sessionStorage.removeItem('linkedin_oauth_state')
     sessionStorage.removeItem('linkedin_oauth_product')
     sessionStorage.removeItem('linkedin_oauth_redirect_uri')
@@ -7556,10 +7582,18 @@ function LinkedInPublisher({ embeddedMode = false }) {
           ? `${oauthProduct === 'arcvena' ? 'Arcvena' : 'TaxRes CRM'} company page verified ✓`
           : `Connected as ${data.name} ✓`)
         load()
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete', ok:true, product_id:oauthProduct }, window.location.origin)
+          window.close()
+        }
       } else {
         const reason = data?.error || error?.message || 'LinkedIn authorization could not be completed'
         showToast('LinkedIn connection failed: ' + reason, false)
         console.error('[linkedin-oauth]', error || data)
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete', ok:false, error:reason, product_id:oauthProduct }, window.location.origin)
+          window.close()
+        }
       }
     }
     attempt()
@@ -7611,6 +7645,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
   function connectLinkedIn() {
     const state = crypto.randomUUID() + crypto.randomUUID()
+    localStorage.setItem('linkedin_oauth_transaction', JSON.stringify({state, product:selectedPid, redirect:linkedinRedirectFor(selectedPid), createdAt:Date.now()}))
     sessionStorage.setItem('linkedin_oauth_state', state)
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
     const redirectUri = linkedinRedirectFor(selectedPid)
@@ -7622,7 +7657,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
       response_type: 'code', client_id: LINKEDIN_CLIENT_ID,
       redirect_uri: redirectUri, scope, state,
     })
-    window.location.assign(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`)
+    const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
+    // OAuth stays in a separate window so Back never destroys the user's CRM workspace.
+    const popup = window.open(authorizationUrl, 'romylabs-linkedin-auth', 'popup=yes,width=680,height=760')
+    if (!popup) window.location.assign(authorizationUrl)
   }
 
   async function disconnect() {
