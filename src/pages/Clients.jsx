@@ -1429,6 +1429,7 @@ export default function Clients() {
     if (!clientId) return
     setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:true})
     const { data, error } = await supabase.functions.invoke('client-sensitive', { body:{ action:'capability', client_id:String(clientId) } })
+    if (sensitiveClientRef.current !== clientId) return
     if (error || data?.error) {
       setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:false})
       return
