@@ -1346,11 +1346,6 @@ export default function Clients() {
   const [loadingRel,  setLoadingRel]  = useState(false)
   const [detailTab,   setDetailTabRaw] = useState(() => searchParams.get('tab') || 'overview')
   const clientTabsRef = useRef(null)
-  const [clientTabsScroll, setClientTabsScroll] = useState({left:false,right:false})
-  function syncClientTabsScroll() {
-    const el=clientTabsRef.current
-    if(el) setClientTabsScroll({left:el.scrollLeft>2,right:el.scrollLeft+el.clientWidth<el.scrollWidth-2})
-  }
   useEffect(()=>{
     const el=clientTabsRef.current
     if(!el) return
@@ -1361,11 +1356,6 @@ export default function Clients() {
       if(left<el.scrollLeft) el.scrollTo({left,behavior:'smooth'})
       else if(left+selected.offsetWidth>el.scrollLeft+el.clientWidth) el.scrollTo({left:left+selected.offsetWidth-el.clientWidth,behavior:'smooth'})
     }
-    const refresh=()=>syncClientTabsScroll()
-    const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(refresh)
-    observer?.observe(el)
-    refresh()
-    return ()=>observer?.disconnect()
   },[detailTab,detail?.id])
 
   function setDetailTab(tab) {
@@ -2758,9 +2748,8 @@ export default function Clients() {
                 {/* ── Tabbed Detail Section ─────────────────────────── */}
         <div className="card" style={{padding:0,overflow:'hidden'}}>
           {/* Tab Bar */}
-          <div style={{display:'flex',alignItems:'stretch',minWidth:0,borderBottom:'1px solid var(--br)',background:'var(--s2)'}}>
-            <button type="button" aria-label="Scroll client tabs left" title="Previous tabs" disabled={!clientTabsScroll.left} onClick={()=>clientTabsRef.current?.scrollBy({left:-290,behavior:'smooth'})} style={{flexShrink:0,padding:'0 10px',border:'none',borderRight:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',opacity:clientTabsScroll.left?1:.35,cursor:clientTabsScroll.left?'pointer':'default'}}>‹</button>
-            <div ref={clientTabsRef} onScroll={syncClientTabsScroll} role="tablist" aria-label="Client file sections" style={{display:'flex',flex:1,minWidth:0,flexWrap:'nowrap',overflowX:'auto',scrollBehavior:'smooth',overscrollBehaviorX:'contain',paddingBottom:2}}>
+          <div style={{minWidth:0,borderBottom:'1px solid var(--br)',background:'var(--s2)'}}>
+            <div ref={clientTabsRef} role="tablist" aria-label="Client file sections" className="client-detail-tabs-scroll" style={{display:'flex',minWidth:0,flexWrap:'nowrap',overflowX:'auto',overflowY:'hidden',scrollBehavior:'smooth',overscrollBehaviorX:'contain',paddingBottom:3}}>
             {[
               {key:'overview',   icon:'📋', text:'Overview'},
               {key:'notes',      icon:'📝', text:'Notes'},
@@ -2785,7 +2774,7 @@ export default function Clients() {
               </button>
             ))}
             </div>
-            <button type="button" aria-label="Scroll client tabs right" title="More tabs" disabled={!clientTabsScroll.right} onClick={()=>clientTabsRef.current?.scrollBy({left:290,behavior:'smooth'})} style={{flexShrink:0,padding:'0 10px',border:'none',borderLeft:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',opacity:clientTabsScroll.right?1:.35,cursor:clientTabsScroll.right?'pointer':'default'}}>›</button>
+
           </div>
 
           {/* Overview Tab */}
