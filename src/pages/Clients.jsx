@@ -1356,11 +1356,6 @@ export default function Clients() {
       if(left<el.scrollLeft) el.scrollTo({left,behavior:'smooth'})
       else if(left+selected.offsetWidth>el.scrollLeft+el.clientWidth) el.scrollTo({left:left+selected.offsetWidth-el.clientWidth,behavior:'smooth'})
     }
-    const refresh=()=>syncClientTabsScroll()
-    const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(refresh)
-    observer?.observe(el)
-    refresh()
-    return ()=>observer?.disconnect()
   },[detailTab,detail?.id])
 
   function setDetailTab(tab) {
