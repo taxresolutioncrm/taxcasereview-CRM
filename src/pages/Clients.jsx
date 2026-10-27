@@ -1294,6 +1294,10 @@ export default function Clients() {
     clientId:null, canReveal:false, ssnMasked:'', spouseSsnMasked:'',
     ssnFull:'', spouseSsnFull:'', revealed:false, loading:false,
   })
+  const [visibleSsnFields, setVisibleSsnFields] = useState({taxpayer:false, spouse:false})
+  const ssnHideTimer = useRef(null)
+  const sensitiveClientRef = useRef(null)
+  useEffect(() => () => clearTimeout(ssnHideTimer.current), [])
   const [saving,    setSaving]    = useState(false)
   const [toast,     setToast]     = useState('')
   const [detail,    setDetail]    = useState(null)
@@ -1425,6 +1429,7 @@ export default function Clients() {
     if (!clientId) return
     setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:true})
     const { data, error } = await supabase.functions.invoke('client-sensitive', { body:{ action:'capability', client_id:String(clientId) } })
+    if (sensitiveClientRef.current !== clientId) return
     if (error || data?.error) {
       setSensitiveInfo({clientId,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:false})
       return
@@ -1442,6 +1447,9 @@ export default function Clients() {
   }
 
   useEffect(() => {
+    sensitiveClientRef.current = detail?.id || null
+    clearTimeout(ssnHideTimer.current)
+    setVisibleSsnFields({taxpayer:false,spouse:false})
     if (detail?.id) loadSensitiveCapability(detail.id)
     else setSensitiveInfo({clientId:null,canReveal:false,ssnMasked:'',spouseSsnMasked:'',ssnFull:'',spouseSsnFull:'',revealed:false,loading:false})
   }, [detail?.id])
@@ -1452,32 +1460,64 @@ export default function Clients() {
     return data || {}
   }
 
-  async function revealClientSsn(clientId) {
-    if (!sensitiveInfo.canReveal) return
-    if (sensitiveInfo.revealed) {
-      setSensitiveInfo(prev=>({...prev,revealed:false,ssnFull:'',spouseSsnFull:''}))
+  const validFullSsn = value => /^\\d{9}$/.test(String(value||'').replace(/\\D/g,''))
+  const formattedFullSsn = value => String(value||'').replace(/\\D/g,'').replace(/^(\\d{3})(\\d{2})(\\d{4})$/, '$1-$2-$3')
+
+  async function toggleClientSsn(clientId, field) {
+    if (!sensitiveInfo.canReveal || sensitiveInfo.clientId !== clientId || !['taxpayer','spouse'].includes(field)) return
+    if (visibleSsnFields[field]) {
+      setVisibleSsnFields(prev=>({...prev,[field]:false}))
+      if (!visibleSsnFields[field==='taxpayer'?'spouse':'taxpayer']) {
+        clearTimeout(ssnHideTimer.current)
+        setSensitiveInfo(prev=>({...prev,ssnFull:'',spouseSsnFull:'',revealed:false}))
+      }
       return
     }
     setSensitiveInfo(prev=>({...prev,loading:true}))
     try {
       const data=await readSensitive(clientId,'profile_reveal')
-      setSensitiveInfo(prev=>({...prev,loading:false,revealed:true,ssnFull:data.ssn||'',spouseSsnFull:data.spouse_ssn||''}))
-    } catch (e) {
-      setSensitiveInfo(prev=>({...prev,loading:false,revealed:false,ssnFull:'',spouseSsnFull:''}))
-      showToast(e?.message || 'Full SSN access denied')
+      if (sensitiveClientRef.current !== clientId) return
+      const value=field==='taxpayer'?data.ssn:data.spouse_ssn
+      if (!validFullSsn(value)) { showToast('Complete SSN is unavailable'); return }
+      setSensitiveInfo(prev=>({...prev,ssnFull:data.ssn||'',spouseSsnFull:data.spouse_ssn||'',revealed:true}))
+      setVisibleSsnFields(prev=>({...prev,[field]:true}))
+      clearTimeout(ssnHideTimer.current)
+      ssnHideTimer.current=setTimeout(()=>{
+        setVisibleSsnFields({taxpayer:false,spouse:false})
+        setSensitiveInfo(prev=>({...prev,ssnFull:'',spouseSsnFull:'',revealed:false}))
+      },30000)
+    } catch(e) {
+      if (sensitiveClientRef.current===clientId) showToast(e?.message||'Full SSN access denied')
+    } finally {
+      if (sensitiveClientRef.current===clientId) setSensitiveInfo(prev=>({...prev,loading:false}))
     }
   }
 
-  async function copyClientSsn(clientId) {
-    if (!sensitiveInfo.canReveal) return
+  async function copyClientSsn(clientId, field='taxpayer') {
+    if (!sensitiveInfo.canReveal || sensitiveInfo.clientId!==clientId || !['taxpayer','spouse'].includes(field)) return
     try {
       const data=await readSensitive(clientId,'profile_copy')
-      if (!data.ssn) { showToast('No SSN on file'); return }
-      await navigator.clipboard.writeText(data.ssn)
-      showToast('SSN copied')
-    } catch (e) {
-      showToast(e?.message || 'Full SSN access denied')
-    }
+      if (sensitiveClientRef.current !== clientId) return
+      const value=field==='taxpayer'?data.ssn:data.spouse_ssn
+      if (!validFullSsn(value)) { showToast('Complete SSN is unavailable'); return }
+      await navigator.clipboard.writeText(formattedFullSsn(value))
+      showToast((field==='spouse'?'Spouse SSN':'SSN')+' copied — clear your clipboard after use')
+    } catch(e) { if(sensitiveClientRef.current===clientId) showToast(e?.message||'Clipboard access blocked or SSN access denied') }
+  }
+
+  function ssnControl(clientId, field) {
+    const correctClient = sensitiveInfo.clientId===clientId
+    const masked = field==='taxpayer'?sensitiveInfo.ssnMasked:sensitiveInfo.spouseSsnMasked
+    const value = field==='taxpayer'?sensitiveInfo.ssnFull:sensitiveInfo.spouseSsnFull
+    const available = /^\\*{3}-\\*{2}-\\d{4}$/.test(masked||'')
+    const revealed = correctClient && visibleSsnFields[field] && validFullSsn(value)
+    return <span style={{display:'inline-flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+      <span style={{fontFamily:'monospace',fontVariantNumeric:'tabular-nums'}}>{!correctClient||sensitiveInfo.loading?'Loading…':revealed?formattedFullSsn(value):available?masked:'Not available'}</span>
+      {correctClient && available && sensitiveInfo.canReveal && <>
+        <button type="button" className="btn sec" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>toggleClientSsn(clientId,field)}>{revealed?'Hide':'Show'}</button>
+        <button type="button" className="btn sec" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>copyClientSsn(clientId,field)}>Copy</button>
+      </>}
+    </span>
   }
 
   useEffect(() => {
@@ -3388,22 +3428,13 @@ export default function Clients() {
             {/* Taxpayer Info (+ Dependents, merged into one card) */}
             <div className="card">
               <div style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)',marginBottom:10}}>🔒 Taxpayer Info</div>
-              <div style={{display:'flex',borderBottom:'1px solid var(--br)',padding:'7px 0',gap:12,alignItems:'center'}}>
-                <div style={{minWidth:130,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:'var(--t3)'}}>SSN</div>
-                <div style={{flex:1,fontSize:13,color:'var(--tx)',fontFamily:'monospace'}}>
-                  {sensitiveInfo.loading ? 'Loading…' : (sensitiveInfo.revealed ? (sensitiveInfo.ssnFull||'—') : (sensitiveInfo.ssnMasked||'—'))}
-                </div>
-                {sensitiveInfo.canReveal&&<>
-                  <button className="btn sec" style={{fontSize:9,padding:'3px 7px'}} onClick={()=>revealClientSsn(c.id)}>{sensitiveInfo.revealed?'Hide':'Show'}</button>
-                  <button className="btn sec" style={{fontSize:9,padding:'3px 7px'}} onClick={()=>copyClientSsn(c.id)}>Copy SSN</button>
-                </>}
-              </div>
+              <DR label="SSN" val={ssnControl(c.id,'taxpayer')}/>
               <DR label="EIN"           val={c.ein}/>
               <DR label="Date of Birth" val={c.dob}/>
               <DR label="Filing Status" val={c.filingStatus}/>
               <DR label="Spouse Name"   val={c.spouseName}/>
               <DR label="Spouse DOB"    val={c.spouseDob}/>
-              <DR label="Spouse SSN"    val={sensitiveInfo.revealed&&sensitiveInfo.canReveal?sensitiveInfo.spouseSsnFull:sensitiveInfo.spouseSsnMasked}/>
+              <DR label="Spouse SSN" val={ssnControl(c.id,'spouse')}/>
 
               {deps.length>0&&(
                 <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--br)'}}>
