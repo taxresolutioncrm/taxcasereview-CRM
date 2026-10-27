@@ -17,6 +17,9 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['LinkedIn OAuth opens separately and keeps workspace available',admin.includes("window.open(authorizationUrl, 'romylabs-linkedin-auth'") && admin.includes("window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete'")],
+  ['LinkedIn OAuth shared state expires and is checked across tabs',admin.includes("localStorage.setItem('linkedin_oauth_transaction'") && admin.includes('Date.now() - transaction.createdAt < 10 * 60 * 1000')],
+  ['LinkedIn workspace restores drafts and active tab',admin.includes("sessionStorage.getItem('romylabs_li_draft_body')") && admin.includes("sessionStorage.getItem('romylabs_li_active_tab')")],
   ['LinkedIn authorization uses original registered callback for all products',admin.includes('const linkedinRedirectFor = (_pid) => TAXRES_LINKEDIN_REDIRECT_URI') && admin.includes("bridge.searchParams.set('oauth_redirect_uri', TAXRES_LINKEDIN_REDIRECT_URI)")],
   ['Company-page OAuth requests LinkedIn organization admin read permission',admin.includes('w_organization_social rw_organization_admin')],
   ['LinkedIn OAuth validates admin ACL even when scope metadata omitted',publish.includes("requiresOrganization && grantedScopes && !scopeSet.has('w_organization_social')") && publish.includes('resolveOrganization(tokenData.access_token, productId)')],
