@@ -1251,6 +1251,10 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           </div>
         </div>, document.body
       )}
+      {faxIntent && createPortal(
+        <Fax embeddedDocument={faxIntent} onClose={()=>setFaxIntent(null)} />,
+        document.body
+      )}
     </div>
   )
 }
