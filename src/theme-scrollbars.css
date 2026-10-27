@@ -10,3 +10,28 @@
 .client-roster-scroll::-webkit-scrollbar-thumb { background: var(--blue, #1A7FD4); border-radius: 3px; }
 .client-roster-scroll::-webkit-scrollbar-thumb:hover { background: var(--blue, #1A7FD4); }
 .client-roster-scroll { scrollbar-width: thin; scrollbar-color: var(--blue, #1A7FD4) var(--s2, #152840); }
+
+/* Client-file tab slider — uses the signed-in office's theme tokens. */
+.client-detail-tabs-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: var(--blue) var(--s2);
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+.client-detail-tabs-scroll::-webkit-scrollbar { height: 9px; }
+.client-detail-tabs-scroll::-webkit-scrollbar-track {
+  background: var(--s2);
+  border-top: 1px solid var(--br);
+  border-radius: 999px;
+}
+.client-detail-tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--blue);
+  border: 2px solid var(--s2);
+  border-radius: 999px;
+}
+.client-detail-tabs-scroll::-webkit-scrollbar-thumb:hover { background: var(--b2, var(--blue)); }
+.client-detail-tabs-scroll::-webkit-scrollbar-corner { background: var(--s2); }
+.client-detail-tabs-scroll [role="tab"]:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -3px;
+}
