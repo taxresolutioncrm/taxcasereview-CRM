@@ -1151,7 +1151,7 @@ export default function TranscriptPull({ clientNames = [], clients = [], poas = 
       </div>
 
       {/* ── Request form ─────────────────────────────────────────────────────── */}
-      <div style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
+      <div className="irs-transcript-request-form" style={{ background: 'var(--s2)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
         <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--line)' }}>
           <div style={{ fontWeight: 700, fontSize: 13 }}>Request Transcripts</div>
         </div>

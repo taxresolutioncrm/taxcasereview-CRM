@@ -519,3 +519,84 @@
 .irs-portal .irs-help-guide-steps strong { color: var(--tx); font-size: 12.5px; }
 .irs-portal .irs-help-guide-note button { color: var(--blue); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; font: inherit; font-weight: 700; }
 @media(max-width:700px) { .irs-portal .irs-help-guide-steps { grid-template-columns: 1fr; } }
+
+/* ── Practitioner form refinement: isolated to the IRS Portal ── */
+.irs-portal .irs-transcript-request-form {
+  background: var(--sf) !important;
+  border-color: var(--br) !important;
+  box-shadow: 0 3px 18px rgba(0, 0, 0, .08);
+}
+.irs-portal .irs-transcript-request-form > div:first-child {
+  padding: 17px 20px !important;
+  background: var(--s2);
+  border-color: var(--br) !important;
+}
+.irs-portal .irs-transcript-request-form > div:first-child > div {
+  font-size: 15px !important;
+  letter-spacing: -.01em;
+}
+.irs-portal .irs-transcript-request-form > div:nth-child(2) {
+  padding: 22px 20px 24px !important;
+}
+.irs-portal .irs-transcript-request-form label {
+  font-size: 12px !important;
+  color: var(--t2) !important;
+  font-weight: 700 !important;
+  margin-bottom: 8px !important;
+}
+.irs-portal .irs-transcript-request-form input:not([type="checkbox"]),
+.irs-portal .irs-transcript-request-form select,
+.irs-portal .irs-transcript-request-form textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  background: var(--s2) !important;
+  color: var(--tx) !important;
+  border: 1px solid var(--br) !important;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  outline: none;
+}
+.irs-portal .irs-transcript-request-form textarea { min-height: 76px !important; }
+.irs-portal .irs-transcript-request-form input::placeholder,
+.irs-portal .irs-transcript-request-form textarea::placeholder { color: var(--t3); opacity: 1; }
+.irs-portal .irs-transcript-request-form input:focus,
+.irs-portal .irs-transcript-request-form select:focus,
+.irs-portal .irs-transcript-request-form textarea:focus {
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 3px var(--blt);
+}
+.irs-portal .irs-transcript-request-form select option { background: var(--sf); color: var(--tx); }
+.irs-portal .irs-transcript-request-form button[aria-pressed] {
+  min-height: 36px;
+  padding: 8px 13px !important;
+  background: var(--s2) !important;
+  border: 1px solid var(--br) !important;
+  color: var(--t2) !important;
+  border-radius: 9px !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+.irs-portal .irs-transcript-request-form button[aria-pressed="true"] {
+  background: var(--blt) !important;
+  color: var(--blue) !important;
+  border-color: var(--blue) !important;
+}
+.irs-portal .irs-transcript-request-form button[aria-pressed]:hover {
+  border-color: var(--blue) !important;
+}
+.irs-portal .irs-transcript-request-form button:focus-visible,
+.irs-portal .irs-tab-btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.irs-portal .irs-transcript-request-form .btn:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 768px) {
+  .irs-portal .irs-transcript-request-form > div:nth-child(2) { padding: 16px !important; }
+  .irs-portal .irs-transcript-request-form > div:first-child { padding: 14px 16px !important; }
+}
+
+
