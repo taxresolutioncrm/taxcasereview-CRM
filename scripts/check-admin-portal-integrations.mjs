@@ -3,6 +3,7 @@ import fs from 'node:fs'
 const read=(p)=>fs.readFileSync(p,'utf8')
 const admin=read('src/pages/AdminPortal.jsx')
 const adminHostGuard=read('public/romylabs-admin-hotfix.js')
+const appRouter=read('src/App.jsx')
 const billing=read('src/components/admin/RomyLabsBilling.jsx')
 const hub=read('supabase/functions/hub-proxy/index.ts')
 const metricsSignal=read('supabase/functions/metrics-signal/index.ts')
@@ -18,6 +19,7 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['LinkedIn trusted callback gets explicit React route before /crm-admin catchall',appRouter.indexOf('path="/crm-admin/linkedin/callback"') >= 0 && appRouter.indexOf('path="/crm-admin/linkedin/callback"') < appRouter.indexOf('path="/crm-admin/*"') && appRouter.includes('function LinkedInCallbackBridge()')],
   ['Legacy TaxRes redirect exempts LinkedIn callback',adminHostGuard.includes("path !== '/crm-admin/linkedin/callback'")],
   ['LinkedIn OAuth opens separately and keeps workspace available',admin.includes("window.open(authorizationUrl, 'romylabs-linkedin-auth'") && admin.includes("window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete'")],
   ['LinkedIn OAuth shared state expires and is checked across tabs',admin.includes("localStorage.setItem('linkedin_oauth_transaction'") && admin.includes('Date.now() - transaction.createdAt < 10 * 60 * 1000')],
