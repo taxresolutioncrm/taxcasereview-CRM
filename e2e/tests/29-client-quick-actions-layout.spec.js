@@ -1,0 +1,11 @@
+const {test,expect}=require('@playwright/test')
+const fs=require('fs'),path=require('path')
+const src=fs.readFileSync(path.resolve(__dirname,'../../src/pages/Clients.jsx'),'utf8')
+test('quick action layout grows to fit labels and wraps responsively',()=>{
+  expect(src).toContain("gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 140px), 1fr))'")
+  expect(src).not.toContain("gridTemplateColumns:'repeat(11, 1fr)'")
+  expect(src).toContain("minHeight:102")
+  expect(src).toContain("overflowWrap:'normal'")
+  for(const label of ['Schedule','Add Task','Send Fax','E-Signature','Pre-Fill 8821/2848','Pre-Fill State POA','Addendum','Rewrite','Client Portal','Tax Organizer','AI Call'])
+    expect(src).toContain('label="'+label+'"')
+})
