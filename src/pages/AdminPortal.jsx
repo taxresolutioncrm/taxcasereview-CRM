@@ -7459,7 +7459,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     }
     window.addEventListener('message', listener)
     return () => window.removeEventListener('message', listener)
-  }, [])
+  }, [selectedPid])
 
   // Derived: the selected product object
   const selectedProduct = products.find(p => p.product_id === selectedPid) || null
