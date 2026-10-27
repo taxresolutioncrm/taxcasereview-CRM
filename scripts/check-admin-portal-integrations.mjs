@@ -54,7 +54,7 @@ const checks=[
   ['realtime metrics migration uses valid PL/pgSQL delimiters',realtimeMetricsMigration.includes("create or replace function public.romylabs_dispatch_metrics_signal()\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = public, pg_catalog\nas $$")&&!realtimeMetricsMigration.includes("\nas $\nbegin")],
 
   ['product cards never bypass hub proxy',!admin.includes("['camvella', 'arcvena'].includes(product.key)")&&!admin.includes("'apikey':        'eyJ")],
-  ['LinkedIn scopes require organization publishing for TaxRes and Arcvena',admin.includes("selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes("'openid profile w_organization_social'")],
+  ['LinkedIn scopes require organization publishing for TaxRes and Arcvena',admin.includes("selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes("'openid profile w_organization_social rw_organization_admin'")],
   ['LinkedIn UI requires company page for TaxRes and Arcvena',admin.includes("const companyPageRequired = selectedPid === 'arcvena' || selectedPid === 'taxres_crm'")&&admin.includes('companyPageReady')],
   ['publisher requires organization target for TaxRes and Arcvena',publish.includes("const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])")&&publish.includes("required_scope: 'w_organization_social'")],
   ['scheduler requires organization publishing for both company pages',scheduler.includes("const hasTarget=target==='ORGANIZATION' && Boolean(conn.linkedin_organization_id)")&&scheduler.includes('arcvena_company_page_target_not_verified')&&scheduler.includes('verify_internal_cron_token')],
