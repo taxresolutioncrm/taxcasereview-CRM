@@ -51,7 +51,7 @@ const checks=[
   ['State POA quick action is wired',clients.includes('label="Pre-Fill State POA"')&&clients.includes('sendStatePOA')&&clients.includes('setPoaModal(true)')],
   ['Addendum quick action is wired',clients.includes('label="Addendum"')&&clients.includes('sendAddendumForSignature')&&clients.includes('sendAddendum')],
   ['Addendum fails closed unless its secure PDF link exists',docUtils.includes('Could not create secure addendum link')&&docUtils.includes('storage_path: path')],
-  ['Rewrite quick action is preserved in the expanded 11-button row',clients.includes('label="Rewrite"')&&clients.includes('sub="Default → New Plan"')&&clients.includes("repeat(11, 1fr)")],
+  ['Rewrite quick action is preserved in responsive Quick Actions row',clients.includes('label="Rewrite"')&&clients.includes('sub="Default → New Plan"')&&clients.includes("repeat(auto-fit, minmax(min(100%, 140px), 1fr))")],
   ['AI Government Call quick action is present in the 11-button row',clients.includes('label="AI Call"')&&clients.includes('sub="IRS / State Agent"')&&clients.includes('setAiGovClient(c)')],
   ['Rewrite saves new plan terms and increments rewrite history',clients.includes('async function saveRewritePlan()')&&clients.includes('contractFee: fee')&&clients.includes('payment_plan_changes: nextChanges')],
   ['Rewrite preserves services as arrays across TaxRes-family schemas',clients.includes('services:Array.isArray(c.services)?c.services:[]')&&clients.includes('services: plan.services')&&!clients.includes("JSON.parse(c.services||'[]')")],
