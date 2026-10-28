@@ -468,7 +468,7 @@ ${safeLogo ? `<img src="${safeLogo}" alt="${dispName}" style="max-height:56px;ma
                          borderRadius:7,border:'1px solid var(--br)',background:'var(--bg)',color:'var(--tx)'}}/>
               <button onClick={sendInviteEmail} disabled={emailSending||!emailTo.trim()}
                 style={{background:'#16a34a',color:'#fff',border:0,borderRadius:8,
-                         padding:'10px 16px',fontWeight:700,opacity:emailSending||!emailTo.trim()?.55:1}}>
+                         padding:'10px 16px',fontWeight:700,opacity:(emailSending || !emailTo.trim()) ? .55 : 1}}>
                 {emailSending?'Sending…':'Send invite'}
               </button>
             </div>
