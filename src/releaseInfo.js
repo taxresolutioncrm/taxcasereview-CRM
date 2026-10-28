@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Release accountability finalized for IRS/state Fax Document actions, inline client fax, SignalWire callback updates and sales/client dashboard cards',
   'IRS and State form cards support inline SignalWire Fax Document actions with the selected client and accurate form descriptions',
   'Client document fax composer stays over the active client record and validates office/document ownership',
   'Dashboard displays Recent Leads to authorized sales staff and Recent Clients to non-sales roles',
@@ -29,18 +30,18 @@ const IRS_WORKFLOW_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.12',
+  version: '3.2.13',
   releasedAt: '2026-10-28',
-  title: 'TaxRes CRM 3.2.12 — Forms Fax & Dashboard Roles',
+  title: 'TaxRes CRM 3.2.13 — Forms Fax Release Certification',
   changes: IRS_WORKFLOW_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.12',
+    version: '3.2.13',
     releasedAt: '2026-10-28',
-    title: 'Tax Case Review CRM 3.2.12 — Forms Fax & Dashboard Roles',
+    title: 'Tax Case Review CRM 3.2.13 — Forms Fax Release Certification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -62,17 +63,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.12',
+    version: '3.2.13',
     releasedAt: '2026-10-28',
-    title: 'CloudCPA CRM 3.2.12 — Forms Fax & Dashboard Roles',
+    title: 'CloudCPA CRM 3.2.13 — Forms Fax Release Certification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.12',
+    version: '3.2.13',
     releasedAt: '2026-10-28',
-    title: 'Centurion Firm CRM 3.2.12 — Forms Fax & Dashboard Roles',
+    title: 'Centurion Firm CRM 3.2.13 — Forms Fax Release Certification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
