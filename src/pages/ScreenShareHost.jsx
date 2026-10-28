@@ -39,6 +39,8 @@ export default function ScreenShareHost() {
   const [unread,        setUnread]        = useState(0)
   const [recording,     setRecording]     = useState(false)
   const [recDuration,   setRecDuration]   = useState(0)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const meetingRef = useRef(null)
 
   const chatEndRef   = useRef(null)
   const bcRef        = useRef(null)
@@ -52,6 +54,19 @@ export default function ScreenShareHost() {
   const recTimerRef  = useRef(null)
   const recStartRef  = useRef(null)
   const recordingRef = useRef(false)   // mirrors recording state for callbacks
+
+  useEffect(() => {
+    const handleFullscreen = () => setIsFullscreen(document.fullscreenElement === meetingRef.current)
+    document.addEventListener('fullscreenchange',handleFullscreen)
+    return () => document.removeEventListener('fullscreenchange',handleFullscreen)
+  }, [])
+
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await meetingRef.current?.requestFullscreen?.()
+    } catch (e) { console.warn('Fullscreen unavailable',e) }
+  }
 
   useEffect(() => { if (showChat) { setUnread(0); chatEndRef.current?.scrollIntoView({ behavior:'smooth' }) } }, [chatMsgs, showChat])
   useEffect(() => () => { vbg.stopLoop(); clearInterval(recTimerRef.current) }, [])
@@ -354,11 +369,11 @@ export default function ScreenShareHost() {
         html, body, #root { width: 100%; height: 100%; overflow: hidden; background: #000; }
       `}</style>
 
-      <div style={{ width:'100%', height:'100%', background:'#000', position:'relative',
+      <div ref={meetingRef} style={{ width:'100%', height:'100%', background:'#000', position:'relative',
                     display:'flex', flexDirection:'column', overflow:'hidden', fontFamily:'Arial,sans-serif' }}>
 
         {/* Screen share area */}
-        <div style={{ flex:1, minHeight:0, position:'relative', background:'#000' }}>
+        <div onDoubleClick={()=>void toggleFullscreen()} style={{ flex:1, minHeight:0, position:'relative', background:'#000' }}>
           {sharing && screenStream
             ? <StreamVideo stream={screenStream} muted fit="contain" />
             : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center',
@@ -391,12 +406,17 @@ export default function ScreenShareHost() {
             )}
           </div>
 
-          {/* End session — top right */}
-          <button onClick={endSession}
-            style={{ position:'absolute', top:12, right:12, background:'#dc2626', border:'none',
-                     borderRadius:7, padding:'7px 16px', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:13 }}>
-            End session
-          </button>
+          {/* Meeting controls — preserve existing end-session handler */}
+          <div style={{ position:'absolute', top:12, right:12, zIndex:30, display:'flex', gap:8 }}>
+            <button onClick={()=>void toggleFullscreen()}
+              style={{ background:'rgba(15,23,42,.88)', border:'1px solid rgba(255,255,255,.25)',
+                       borderRadius:7, padding:'7px 12px', color:'#fff', cursor:'pointer', fontWeight:700 }}>
+              {isFullscreen ? '↙ Exit full screen' : '⛶ Full screen'}
+            </button>
+            <button onClick={endSession}
+              style={{ background:'#dc2626', border:'none', borderRadius:7, padding:'7px 16px', color:'#fff',
+                       cursor:'pointer', fontWeight:700, fontSize:13 }}>End session</button>
+          </div>
 
           {/* Background picker */}
           {showBgPanel && (
@@ -408,8 +428,23 @@ export default function ScreenShareHost() {
           )}
         </div>
 
-        {/* Camera strip — dynamic tile size based on count */}
-        {(() => {
+        {/* Presentation-first camera layout; keep gallery when not sharing */}
+        {sharing ? (
+          <div style={{position:'absolute',left:12,bottom:72,zIndex:25,display:'flex',gap:8,
+                       maxWidth:'calc(100% - 24px)',overflowX:'auto',padding:2}}>
+            {allCams.map(({key,name,stream,muted,mirror},index)=>(
+              <div key={key} style={{width:index===0?190:150,height:index===0?128:100,
+                                    borderRadius:10,overflow:'hidden',background:'#1e293b',
+                                    position:'relative',flexShrink:0,border:'1px solid rgba(255,255,255,.25)',
+                                    boxShadow:'0 12px 30px rgba(0,0,0,.45)'}}>
+                {stream ? <StreamVideo stream={stream} muted={muted} mirror={mirror} fit="cover" />
+                  : <div style={{height:'100%',display:'grid',placeItems:'center'}}>📷</div>}
+                <div style={{position:'absolute',bottom:4,left:6,fontSize:10,color:'#fff',
+                             background:'rgba(0,0,0,.7)',padding:'2px 6px',borderRadius:4}}>{name}</div>
+              </div>
+            ))}
+          </div>
+        ) : (() => {
           const count = allCams.length
           const tileW = count <= 2 ? 280 : count <= 4 ? 200 : 160
           const tileH = count <= 2 ? 210 : count <= 4 ? 150 : 120
