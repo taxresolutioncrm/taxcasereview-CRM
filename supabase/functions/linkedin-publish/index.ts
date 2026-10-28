@@ -16,12 +16,12 @@ const ORG_NAME_MATCHERS: Record<string,RegExp> = {
 
 async function resolveOrganization(accessToken:string, productId:string){
   const known=KNOWN_ORG_IDS[productId]
-  const aclRes=await fetch('https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED',{
-    headers:{Authorization:`Bearer ${accessToken}`,'X-Restli-Protocol-Version':'2.0.0'}
+  const aclRes=await fetch('https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=100',{
+    headers:{Authorization:`Bearer ${accessToken}`,'X-Restli-Protocol-Version':'2.0.0','Linkedin-Version':'202610'}
   })
   const acl=await aclRes.json().catch(()=>({}))
   if(!aclRes.ok) return {id:null,error:`LinkedIn could not verify company-page admin access (HTTP ${aclRes.status}). Confirm the LinkedIn app has approved r_organization_admin and w_organization_social permissions.`,detail:acl}
-  const urns=(acl?.elements||[]).map((x:any)=>String(x?.organization||'')).filter((x:string)=>x.startsWith('urn:li:organization:'))
+  const urns=(acl?.elements||[]).map((x:any)=>String(x?.organizationTarget||x?.organization||'')).filter((x:string)=>x.startsWith('urn:li:organization:'))
   const ids=[...new Set(urns.map((u:string)=>u.split(':').pop()).filter(Boolean))] as string[]
   if(known && ids.includes(known)) return {id:known,error:null}
   const matcher=ORG_NAME_MATCHERS[productId]
