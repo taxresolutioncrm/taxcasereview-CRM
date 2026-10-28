@@ -425,75 +425,85 @@ ${safeLogo ? `<img src="${safeLogo}" alt="${dispName}" style="max-height:56px;ma
         }
       </div>
 
-      {/* Invite link */}
-      <div style={{ background: 'var(--s1)', border: '1px solid var(--br)', borderRadius: 10,
-                    padding: '14px 16px', marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase',
-                      letterSpacing: '.05em', marginBottom: 8 }}>Participant invite link</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, fontSize: 12, color: 'var(--t2)', fontFamily: 'monospace',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        background: 'var(--bg)', border: '1px solid var(--br)',
-                        borderRadius: 6, padding: '8px 10px' }}>
-            {joinUrl}
+      {/* Accessible invitation card, retaining office-branded sendInviteEmail */}
+      <section style={{background:'var(--s1)',border:'1px solid var(--br)',borderRadius:12,
+                       padding:18,marginBottom:16,minWidth:0}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',
+                     gap:12,flexWrap:'wrap',marginBottom:16}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:800,textTransform:'uppercase',letterSpacing:'.06em',
+                         color:'var(--t3)',marginBottom:5}}>Participant invite</div>
+            <strong style={{fontSize:16}}>Bring your team into this live session</strong>
+            <p style={{color:'var(--t3)',fontSize:12,marginTop:6}}>Copy the join link or email it to participants.</p>
           </div>
-          <button onClick={copyLink}
-            style={{ background: copied ? '#16a34a' : '#2563eb', border: 'none', borderRadius: 8,
-                     padding: '8px 16px', color: '#fff', fontWeight: 700, fontSize: 13,
-                     cursor: 'pointer', flexShrink: 0, transition: 'background .2s' }}>
-            {copied ? '✓ Copied!' : '📋 Copy'}
+          <span style={{border:'1px solid var(--br)',borderRadius:999,padding:'5px 12px',
+                        fontSize:12,whiteSpace:'nowrap'}}>{participants} connected</span>
+        </div>
+        <div style={{display:'flex',alignItems:'stretch',flexWrap:'wrap',gap:10,minWidth:0}}>
+          <div title={joinUrl} style={{flex:'1 1 240px',minWidth:0,overflow:'hidden',
+                         background:'var(--bg)',border:'1px solid var(--br)',borderRadius:8,
+                         padding:'9px 12px'}}>
+            <div style={{fontSize:10,color:'var(--t3)',fontWeight:800,marginBottom:4}}>JOIN LINK</div>
+            <div style={{fontSize:12,overflow:'hidden',textOverflow:'ellipsis',
+                         whiteSpace:'nowrap',fontFamily:'monospace'}}>{joinUrl}</div>
+          </div>
+          <button onClick={copyLink} style={{background:copied?'#16a34a':'#2563eb',
+                    color:'#fff',border:0,borderRadius:8,padding:'10px 14px',fontWeight:700,cursor:'pointer'}}>
+            {copied?'✓ Copied':'📋 Copy link'}
           </button>
-          <button onClick={() => setEmailOpen(o => !o)}
-            style={{ background: emailOpen ? 'var(--s3)' : '#7c3aed', border: 'none', borderRadius: 8,
-                     padding: '8px 16px', color: '#fff', fontWeight: 700, fontSize: 13,
-                     cursor: 'pointer', flexShrink: 0 }}>
-            ✉️ Email
+          <button onClick={()=>setEmailOpen(v=>!v)} style={{background:'#7c3aed',
+                    color:'#fff',border:0,borderRadius:8,padding:'10px 14px',fontWeight:700,cursor:'pointer'}}>
+            ✉ Email invite
           </button>
         </div>
-
         {emailOpen && (
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type="email"
-              value={emailTo}
-              onChange={e => setEmailTo(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') sendInviteEmail() }}
-              placeholder="name@firm.com — separate multiple with commas"
-              style={{ flex: 1, fontSize: 13, padding: '9px 11px', borderRadius: 6,
-                       border: '1px solid var(--br)', background: 'var(--bg)', color: 'var(--tx)' }} />
-            <button onClick={sendInviteEmail} disabled={emailSending || !emailTo.trim()}
-              style={{ background: '#16a34a', border: 'none', borderRadius: 8, padding: '9px 18px',
-                       color: '#fff', fontWeight: 700, fontSize: 13, flexShrink: 0,
-                       cursor: emailSending || !emailTo.trim() ? 'not-allowed' : 'pointer',
-                       opacity: emailSending || !emailTo.trim() ? .55 : 1 }}>
-              {emailSending ? 'Sending…' : 'Send invite'}
-            </button>
+          <div style={{marginTop:16}}>
+            <div style={{fontSize:12,fontWeight:700,marginBottom:4}}>Email participants</div>
+            <p style={{fontSize:12,color:'var(--t3)',marginBottom:9}}>Separate multiple email addresses with commas.</p>
+            <div style={{display:'flex',flexWrap:'wrap',gap:9}}>
+              <input type="text" value={emailTo} onChange={e=>setEmailTo(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter')sendInviteEmail()}}
+                placeholder="name@firm.com, teammate@firm.com"
+                style={{flex:'1 1 230px',minWidth:0,fontSize:13,padding:'10px 12px',
+                         borderRadius:7,border:'1px solid var(--br)',background:'var(--bg)',color:'var(--tx)'}}/>
+              <button onClick={sendInviteEmail} disabled={emailSending||!emailTo.trim()}
+                style={{background:'#16a34a',color:'#fff',border:0,borderRadius:8,
+                         padding:'10px 16px',fontWeight:700,opacity:emailSending||!emailTo.trim()?.55:1}}>
+                {emailSending?'Sending…':'Send invite'}
+              </button>
+            </div>
           </div>
         )}
-
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--t3)' }}>
-          Share in Chat, email, or SMS. Anyone who clicks joins instantly — no account needed.
+      </section>
+      {/* Connected participant presence, using existing WebRTC membership */}
+      <section style={{background:'var(--s1)',border:'1px solid var(--br)',borderRadius:12,padding:18}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,
+                     flexWrap:'wrap',marginBottom:13}}>
+          <div><div style={{fontSize:11,fontWeight:800,color:'var(--t3)',textTransform:'uppercase'}}>Connected participants</div>
+            <strong>{participants===0?'Waiting for participants':participants+' participant'+(participants===1?'':'s')+' online'}</strong>
+          </div>
+          <span style={{borderRadius:999,background:'var(--bg)',padding:'7px 13px',fontWeight:700}}>{participants}</span>
         </div>
-      </div>
-
-      {/* Participant list */}
-      <div style={{ background: 'var(--s1)', border: '1px solid var(--br)', borderRadius: 10, padding: '14px 16px' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase',
-                      letterSpacing: '.05em', marginBottom: 10 }}>
-          Connected participants ({participants})
-        </div>
-        {participants === 0
-          ? <div style={{ color: 'var(--t3)', fontSize: 13 }}>No one has joined yet.</div>
-          : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {ss.webrtc.members.filter(n => !n.endsWith('(view)') && n !== myName).map(n => (
-                <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--tx)' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }}/>
-                  {n}
+        {participants===0
+          ? <div style={{display:'flex',alignItems:'center',gap:14,padding:'15px 4px',color:'var(--t3)'}}>
+              <span style={{fontSize:30}}>👥</span>
+              <div><strong style={{color:'var(--tx)'}}>No one has joined yet</strong>
+                <p style={{fontSize:12,marginTop:4}}>Send the invite link above. Participants will appear as they connect.</p>
+              </div>
+            </div>
+          : <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {ss.webrtc.members.filter(n=>!n.endsWith('(view)')&&n!==myName).map(n=>(
+                <div key={n} style={{display:'flex',alignItems:'center',gap:11,padding:8,borderRadius:8,
+                                     background:'var(--bg)'}}>
+                  <span style={{height:34,width:34,borderRadius:'50%',display:'grid',placeItems:'center',
+                                background:'var(--s3)',fontSize:12,fontWeight:800}}>
+                    {n.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase()}
+                  </span>
+                  <div><strong style={{fontSize:13}}>{n}</strong><div style={{fontSize:11,color:'#16a34a'}}>● Connected to session</div></div>
                 </div>
               ))}
-            </div>
-        }
-      </div>
+            </div>}
+      </section>
     </div>
   )
 }
