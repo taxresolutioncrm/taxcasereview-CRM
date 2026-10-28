@@ -732,7 +732,8 @@ function InlineOrganizerForm({ client, onClose, showToast, tenantId }) {
 }
 
 // ── Canopy-style Document Manager for a specific client ──────────────────────
-export const DOC_FOLDERS = ['IRS Docs','Tax Returns','Agreements','POA & Forms','Transcripts','Correspondence','Financial Statements','E-Signatures','Call Recording','Other']
+export { DOC_FOLDERS } from '../lib/docFolders'
+import { DOC_FOLDERS } from '../lib/docFolders'
 const QUICK_TASK_TITLES = ['Request transcripts from IRS','Follow up with client','Prepare & send POA (2848/8821)','Call IRS for account status','Draft engagement letter','Collect financial documents','File tax return','Submit installment agreement','Prepare Offer in Compromise','Follow up on offer','Request wage & income transcripts','Schedule consultation','Send resolution options','Collect payment / trade']
 // WIP summary widget shown in the client Overview tab
 // WIP stats shown on Overview — read-only, no button
