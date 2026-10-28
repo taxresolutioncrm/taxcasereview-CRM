@@ -33,6 +33,8 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
   const [linkedDocument, setLinkedDocument] = useState(null)
   const [linkedLoading, setLinkedLoading] = useState(false)
   const [sending,  setSending]  = useState(false)
+  const [receipt, setReceipt] = useState(null)
+  const [refreshingReceipt,setRefreshingReceipt] = useState(false)
   const [toast,    setToast]    = useState('')
   const [search,   setSearch]   = useState('')
   const [filterStatus, setFilter] = useState('Received')
@@ -340,6 +342,35 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
     setSugg([]); setShowSug(false)
   }
 
+  async function refreshReceipt() {
+    if (!receipt?.sid || !myTenantId) return
+    setRefreshingReceipt(true)
+    try {
+      const {data,error}=await supabase.from('fax_logs')
+        .select('status,error_msg,sent_at,client_name,file_name,subject,to_number,from_number,signalwire_fax_id')
+        .eq('tenant_id',myTenantId).eq('signalwire_fax_id',receipt.sid)
+        .order('created_at',{ascending:false}).limit(1).maybeSingle()
+      if(error) throw error
+      if(data) setReceipt(prev=>({...prev,...data}))
+    }catch(e){showToast('Unable to refresh delivery status: '+e.message,'err')}
+    finally{setRefreshingReceipt(false)}
+  }
+
+  function downloadReceipt() {
+    if(!receipt)return
+    const esc = v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+    const fields=[['Status',receipt.status],['Client',receipt.client_name],['Subject',receipt.subject],
+      ['Document',receipt.file_name],['Recipient',receipt.to_number],['Sender',receipt.from_number],
+      ['Submitted at',receipt.sent_at],['SignalWire transmission ID',receipt.sid],
+      ['Failure reason',receipt.error_msg||'—']]
+    const html='<html><head><meta charset="utf-8"><title>Fax transmission confirmation</title></head><body><h1>Fax transmission confirmation</h1><dl>'+
+      fields.map(([k,v])=>'<dt><b>'+esc(k)+'</b></dt><dd>'+esc(v)+'</dd>').join('')+
+      '</dl><p>Pending means submitted for transmission, not proof of delivery. Delivery status follows the SignalWire callback.</p></body></html>'
+    const url=URL.createObjectURL(new Blob([html],{type:'text/html'}))
+    const a=document.createElement('a');a.href=url;a.download='fax-confirmation-'+String(receipt.sid||'pending')+'.html'
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+  }
+
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
     if (linkedLoading) { showToast('Wait for the client document to finish loading','err'); return }
@@ -396,8 +427,14 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
 
       if (logErr) console.error('Log error:', logErr)
       if (status === 'Pending') {
+        if (embeddedForm || embeddedDocument) {
+          setReceipt({sid:sw_id,status:'Pending',to_number:toNum,from_number:actualFrom,
+            client_name:form.client_name,subject:form.subject,
+            file_name:file?.name || linkedDocument?.file_name || linkedDocument?.name || '',
+            sent_at:new Date().toISOString(),error_msg:null})
+        }
         showToast(resData?.platform_relay ? '📠 Fax accepted through the TaxRes platform relay — waiting for delivery confirmation' : '📠 Fax accepted — waiting for delivery confirmation')
-        setModal(false); onClose?.(); setForm(BLANK); setFile(null); setLinkedDocument(null); if(!embeddedForm && !embeddedDocument) load()
+        setModal(false); if(!embeddedForm && !embeddedDocument){setForm(BLANK);setFile(null);setLinkedDocument(null);load()}
       } else {
         showToast('Error: ' + (resData?.error || invokeErr?.message || 'Check SignalWire credentials in Settings'), 'err')
         load()
@@ -668,6 +705,22 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
       )}
 
       </>)}
+      {(embeddedForm || embeddedDocument) && receipt && !modal && (
+        <div className="modal-bg open" style={{zIndex:20000}}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Fax confirmation" style={{width:560,padding:20}}>
+            <h3>📠 Fax confirmation</h3>
+            <p><strong>{receipt.status}</strong> — {receipt.status==='Delivered'?'SignalWire confirmed delivery':receipt.status==='Failed'?'Transmission failed':'Accepted for transmission; delivery not yet confirmed'}</p>
+            <p>Client: {receipt.client_name}<br/>Document: {receipt.file_name}<br/>Subject: {receipt.subject}<br/>To: {receipt.to_number}<br/>From: {receipt.from_number}<br/>Submitted: {receipt.sent_at}<br/>SignalWire ID: {receipt.sid||'Not returned'}</p>
+            {receipt.error_msg && <p role="alert">{receipt.error_msg}</p>}
+            <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+              <button className="btn sec" disabled={refreshingReceipt} onClick={refreshReceipt}>{refreshingReceipt?'Checking…':'Refresh delivery status'}</button>
+              <button className="btn sec" onClick={downloadReceipt}>Download receipt</button>
+              {receipt.status==='Failed' && <button className="btn sec" onClick={()=>{setReceipt(null);setModal(true)}}>Retry fax</button>}
+              <button className="btn pri" onClick={()=>{setReceipt(null);onClose?.()}}>Return to client</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Send Fax Modal */}
       {modal && (
         <div className="modal-bg open" style={(embeddedForm||embeddedDocument)?{zIndex:20000}:undefined} onClick={e=>{if(e.target===e.currentTarget){setModal(false);onClose?.()}}}>
