@@ -69,21 +69,34 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
     setLinkedDocument(null)
     setLinkedLoading(true)
     ;(async()=>{
-      const {data,error}=await supabase.from('documents')
-        .select('id,client_id,tenant_id,client,file_name,name,storage_path,file_url')
-        .eq('id',intent.documentId)
-        .eq('client_id',intent.clientId)
-        .eq('tenant_id',myTenantId).maybeSingle()
-      if(cancelled) return
-      const path = String(data?.storage_path || '')
-        || (String(data?.file_url || '').startsWith('storage://documents/')
-          ? String(data.file_url).slice('storage://documents/'.length) : '')
-      if(error || !data || !path) {
-        showToast('Selected document is not an accessible stored client file','err')
-      } else {
-        setLinkedDocument({...data, resolvedStoragePath:path})
-        setForm(prev=>({...prev,client_name:data.client || String(intent.clientName || '')}))
+      const {data: client,error: clientError}=await supabase.from('clients')
+        .select('id,name,canopy_id,tenant_id')
+        .eq('id',intent.clientId).eq('tenant_id',myTenantId).maybeSingle()
+      if(clientError || !client) throw new Error('Client not authorized in this office')
+      const {data: doc,error: docError}=await supabase.from('documents')
+        .select('id,client_id,canopy_client_id,tenant_id,client,clientname,file_name,name,storage_path,file_url')
+        .eq('id',intent.documentId).eq('tenant_id',myTenantId).maybeSingle()
+      if(docError || !doc) throw new Error('Document not accessible in this office')
+      const direct=doc.client_id && String(doc.client_id)===String(client.id)
+      const canopy=doc.canopy_client_id && client.canopy_id && String(doc.canopy_client_id)===String(client.canopy_id)
+      const legacy=!doc.client_id && !doc.canopy_client_id && [doc.client,doc.clientname].some(n=>n && String(n)===String(client.name))
+      if(!direct && !canopy && !legacy) throw new Error('Document does not belong to selected client')
+      const fileUrl=String(doc.file_url||'')
+      let path=String(doc.storage_path||'').trim() ||
+        (fileUrl.startsWith('storage://documents/')?fileUrl.slice('storage://documents/'.length):'')
+      if(!path && fileUrl.startsWith('https://')) {
+        try {
+          const parsed=new URL(fileUrl)
+          const match=parsed.pathname.match(new RegExp('^/storage/v1/object/(?:sign|public|authenticated)/documents/(.+)$'))
+          if(parsed.hostname===new URL(import.meta.env.VITE_SUPABASE_URL).hostname && match) path=decodeURIComponent(match[1])
+        } catch { /* unsupported external storage link */ }
       }
+      if(!path || path.startsWith('/') || path.includes('..')) throw new Error('Invalid private file path')
+      const {data: signed,error: signErr}=await supabase.storage.from('documents').createSignedUrl(path,3600)
+      if(signErr || !signed?.signedUrl) throw new Error('Document storage access denied')
+      if(cancelled)return
+      setLinkedDocument({...doc,resolvedStoragePath:path})
+      setForm(prev=>({...prev,client_name:client.name}))
       setLinkedLoading(false)
     })().catch(()=>{if(!cancelled){setLinkedLoading(false);showToast('Could not load selected client document','err')}})
     return ()=>{cancelled=true}
