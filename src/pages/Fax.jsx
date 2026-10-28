@@ -383,6 +383,7 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
       const actualFrom = resData?.from || fromNum || null
 
       const { error: logErr } = await supabase.from('fax_logs').insert([{
+        tenant_id: myTenantId, client_id: embeddedForm?.clientId || embeddedDocument?.clientId || null,
         to_number: toNum, from_number: actualFrom,
         client_name: form.client_name, subject: form.subject,
         notes: form.notes, file_name: file?.name || linkedDocument?.file_name || linkedDocument?.name || null,
