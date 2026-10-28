@@ -3,7 +3,7 @@ import PhoneNumber from '../components/PhoneNumber'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useLocation } from 'react-router-dom'
-import { DOC_FOLDERS } from './Clients'
+import { DOC_FOLDERS } from '../lib/docFolders'
 import ClientLink from '../components/ClientLink'
 
 const BLANK = { to_number:'', from_number:'', client_name:'', subject:'', notes:'' }
