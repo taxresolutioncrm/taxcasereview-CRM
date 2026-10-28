@@ -3,6 +3,8 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Training invitation panel polish, responsive join link, Copy Link and Email Invite controls',
+  'Training host screen-share canvas prioritizes presentation with floating cameras and browser fullscreen',
   'All eleven Quick Actions remain in original order and fit the client-file width without clipping or a forced minimum row width',
   'Quick Actions restored to their original eleven-button order on one horizontally scrollable row, with readable compact labels',
   'Client Quick Actions now fit available width with readable labels and compact responsive tiles while preserving all eleven actions',
@@ -24,18 +26,18 @@ const IRS_WORKFLOW_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.9',
+  version: '3.2.11',
   releasedAt: '2026-10-26',
-  title: 'TaxRes CRM 3.2.9 — Fit All Client Quick Actions',
+  title: 'TaxRes CRM 3.2.11 — Fit All Client Quick Actions',
   changes: IRS_WORKFLOW_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.9',
+    version: '3.2.11',
     releasedAt: '2026-10-26',
-    title: 'Tax Case Review CRM 3.2.9 — Fit All Client Quick Actions',
+    title: 'Tax Case Review CRM 3.2.11 — Fit All Client Quick Actions',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -57,17 +59,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.9',
+    version: '3.2.11',
     releasedAt: '2026-10-26',
-    title: 'CloudCPA CRM 3.2.9 — Fit All Client Quick Actions',
+    title: 'CloudCPA CRM 3.2.11 — Fit All Client Quick Actions',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.9',
+    version: '3.2.11',
     releasedAt: '2026-10-26',
-    title: 'Centurion Firm CRM 3.2.9 — Fit All Client Quick Actions',
+    title: 'Centurion Firm CRM 3.2.11 — Fit All Client Quick Actions',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
