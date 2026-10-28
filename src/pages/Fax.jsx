@@ -91,7 +91,7 @@ export default function Fax({ embeddedDocument = null, onClose = null } = {}) {
           try {
             const u=new URL(stored)
             const sameOffice=u.hostname===new URL(import.meta.env.VITE_SUPABASE_URL).hostname
-            const match=u.pathname.match(/\\/storage\\/v1\\/object\\/(?:sign|public|authenticated)\\/documents\\/(.+)$/)
+            const match=u.pathname.match(new RegExp('^/storage/v1/object/(?:sign|public|authenticated)/documents/(.+)$'))
             if(sameOffice && match) path=decodeURIComponent(match[1])
           } catch { /* not an authenticated office storage link */ }
         }
