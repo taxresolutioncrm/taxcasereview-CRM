@@ -356,6 +356,12 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
     finally{setRefreshingReceipt(false)}
   }
 
+  useEffect(() => {
+    if (!receipt?.sid || receipt.status !== 'Pending') return
+    const timer=setInterval(() => { void refreshReceipt() },12000)
+    return () => clearInterval(timer)
+  },[receipt?.sid,receipt?.status,myTenantId])
+
   function downloadReceipt() {
     if(!receipt)return
     const esc = v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
