@@ -3,7 +3,7 @@ import PhoneNumber from '../components/PhoneNumber'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useLocation } from 'react-router-dom'
-import { DOC_FOLDERS } from './Clients'
+import { DOC_FOLDERS } from '../lib/docFolders'
 import ClientLink from '../components/ClientLink'
 
 const BLANK = { to_number:'', from_number:'', client_name:'', subject:'', notes:'' }
@@ -16,12 +16,12 @@ function fmtPhone(v) {
   return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`
 }
 
-export default function Fax() {
+export default function Fax({ embeddedDocument = null, onClose = null } = {}) {
   const { user, myTenantId } = useApp()
   const [logs,     setLogs]     = useState([])
   const [clients,  setClients]  = useState([])
   const [leads,    setLeads]    = useState([])
-  const [modal,    setModal]    = useState(false)
+  const [modal,    setModal]    = useState(Boolean(embeddedDocument))
   const location = useLocation()
   const qp = new URLSearchParams(location.search)
   const [form, setForm] = useState({...BLANK,
@@ -32,6 +32,8 @@ export default function Fax() {
   const [linkedDocument, setLinkedDocument] = useState(null)
   const [linkedLoading, setLinkedLoading] = useState(false)
   const [sending,  setSending]  = useState(false)
+  const [faxReceipt, setFaxReceipt] = useState(null)
+  const [receiptLoading, setReceiptLoading] = useState(false)
   const [toast,    setToast]    = useState('')
   const [search,   setSearch]   = useState('')
   const [filterStatus, setFilter] = useState('Received')
@@ -60,7 +62,7 @@ export default function Fax() {
 
 
   useEffect(() => {
-    const intent = location.state?.faxClientDocument
+    const intent = embeddedDocument || location.state?.faxClientDocument
     if (!intent?.documentId || !intent?.clientId || !myTenantId) return
     let cancelled = false
     setModal(true)
@@ -68,25 +70,46 @@ export default function Fax() {
     setLinkedDocument(null)
     setLinkedLoading(true)
     ;(async()=>{
-      const {data,error}=await supabase.from('documents')
-        .select('id,client_id,tenant_id,client,file_name,name,storage_path,file_url')
-        .eq('id',intent.documentId)
-        .eq('client_id',intent.clientId)
-        .eq('tenant_id',myTenantId).maybeSingle()
-      if(cancelled) return
-      const path = String(data?.storage_path || '')
-        || (String(data?.file_url || '').startsWith('storage://documents/')
-          ? String(data.file_url).slice('storage://documents/'.length) : '')
-      if(error || !data || !path) {
-        showToast('Selected document is not an accessible stored client file','err')
-      } else {
-        setLinkedDocument({...data, resolvedStoragePath:path})
-        setForm(prev=>({...prev,client_name:data.client || String(intent.clientName || '')}))
+      try {
+        // Resolve the real client in the authenticated tenant, not route-provided names.
+        const {data: client,error: clientErr}=await supabase.from('clients')
+          .select('id,name,canopy_id,tenant_id')
+          .eq('id',intent.clientId).eq('tenant_id',myTenantId).maybeSingle()
+        if(clientErr || !client) throw new Error('Authorized client record unavailable')
+        const {data: doc,error: docErr}=await supabase.from('documents')
+          .select('id,client_id,canopy_client_id,tenant_id,client,clientname,file_name,name,storage_path,file_url')
+          .eq('id',intent.documentId).eq('tenant_id',myTenantId).maybeSingle()
+        if(docErr || !doc) throw new Error('Document unavailable in this office')
+        const linked=doc.client_id && String(doc.client_id)===String(client.id)
+        const canopy=doc.canopy_client_id && client.canopy_id && String(doc.canopy_client_id)===String(client.canopy_id)
+        const legacy=!doc.client_id && !doc.canopy_client_id && [doc.client,doc.clientname].some(n=>n && String(n)===String(client.name))
+        if(!linked && !canopy && !legacy) throw new Error('Document ownership does not match this client')
+        const stored=String(doc.file_url||'')
+        let path=String(doc.storage_path||'').trim() ||
+          (stored.startsWith('storage://documents/')?stored.slice('storage://documents/'.length):'')
+        if(!path && stored.startsWith('https://')) {
+          try {
+            const u=new URL(stored)
+            const sameOffice=u.hostname===new URL(import.meta.env.VITE_SUPABASE_URL).hostname
+            const match=u.pathname.match(new RegExp('^/storage/v1/object/(?:sign|public|authenticated)/documents/(.+)$'))
+            if(sameOffice && match) path=decodeURIComponent(match[1])
+          } catch { /* not an authenticated office storage link */ }
+        }
+        if(!path || path.startsWith('/') || path.includes('..')) throw new Error('No valid private document storage path')
+        // Authenticate attachment access before enabling Send.
+        const {data: signed,error: signErr}=await supabase.storage.from('documents').createSignedUrl(path,3600)
+        if(signErr || !signed?.signedUrl) throw new Error('Document storage access denied')
+        if(cancelled)return
+        setLinkedDocument({...doc,resolvedStoragePath:path})
+        setForm(prev=>({...prev,client_name:client.name}))
+      } catch(e) {
+        if(!cancelled) showToast('Cannot attach document: '+(e?.message||e),'err')
+      } finally {
+        if(!cancelled)setLinkedLoading(false)
       }
-      setLinkedLoading(false)
-    })().catch(()=>{if(!cancelled){setLinkedLoading(false);showToast('Could not load selected client document','err')}})
+    })()
     return ()=>{cancelled=true}
-  },[location.state?.faxClientDocument?.documentId,myTenantId])
+  },[embeddedDocument?.documentId,embeddedDocument?.clientId,location.state?.faxClientDocument?.documentId,myTenantId])
 
   useEffect(() => {
     load()
@@ -317,8 +340,40 @@ export default function Fax() {
     setSugg([]); setShowSug(false)
   }
 
+  async function refreshFaxReceipt() {
+    if (!faxReceipt?.sid || !myTenantId) return
+    setReceiptLoading(true)
+    try {
+      const { data, error } = await supabase.from('fax_logs')
+        .select('status,error_msg,sent_at,created_at,signalwire_fax_id,to_number,from_number,file_name,client_name')
+        .eq('tenant_id',myTenantId).eq('signalwire_fax_id',faxReceipt.sid)
+        .order('created_at',{ascending:false}).limit(1).maybeSingle()
+      if (error) throw error
+      if (data) setFaxReceipt(prev=>({...prev,...data}))
+    } catch (e) { showToast('Could not refresh fax delivery status: '+e.message,'err') }
+    finally { setReceiptLoading(false) }
+  }
+
+  function printFaxReceipt() {
+    if (!faxReceipt) return
+    const r = faxReceipt
+    const escapeText = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+    const lines = [
+      ['Delivery status',r.status],['Client',r.client_name],['Document',r.file_name],
+      ['To',r.to_number],['From',r.from_number],
+      ['Submitted',r.sent_at],['SignalWire Fax ID',r.sid],
+      ['Failure details',r.error_msg || '—']
+    ]
+    const markup = '<!doctype html><html><head><title>Fax confirmation</title><meta charset="utf-8"><style>body{font:14px Arial;padding:32px;color:#111}h1{font-size:22px}dl{display:grid;grid-template-columns:170px auto;gap:12px}dt{font-weight:bold}footer{margin-top:28px;color:#555}</style></head><body><h1>Fax confirmation</h1><dl>'+lines.map(([k,v])=>'<dt>'+escapeText(k)+'</dt><dd>'+escapeText(v)+'</dd>').join('')+'</dl><footer>Pending means accepted for processing, not delivered. Delivery status reflects the most recently verified SignalWire callback.</footer></body></html>'
+    const blob = new Blob([markup],{type:'text/html'})
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a'); link.href=url; link.download='fax-confirmation-'+(r.sid||'pending')+'.html'
+    document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+  }
+
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
+    if (linkedLoading) { showToast('Wait for document to finish loading','err'); return }
     if (!file && !linkedDocument) { showToast('Attach or select a document to fax','err'); return }
     setSending(true)
 
@@ -371,8 +426,9 @@ export default function Fax() {
 
       if (logErr) console.error('Log error:', logErr)
       if (status === 'Pending') {
+        setFaxReceipt({sid:sw_id,status:'Pending',to_number:toNum,from_number:actualFrom,client_name:form.client_name,file_name:file?.name || linkedDocument?.file_name || linkedDocument?.name || '',sent_at:new Date().toISOString(),error_msg:null})
         showToast(resData?.platform_relay ? '📠 Fax accepted through the TaxRes platform relay — waiting for delivery confirmation' : '📠 Fax accepted — waiting for delivery confirmation')
-        setModal(false); setForm(BLANK); setFile(null); setLinkedDocument(null); load()
+        setModal(false); if(!embeddedDocument) load()
       } else {
         showToast('Error: ' + (resData?.error || invokeErr?.message || 'Check SignalWire credentials in Settings'), 'err')
         load()
@@ -435,9 +491,10 @@ export default function Fax() {
   }, [logs, filterStatus, search])
 
   return (
-    <div style={{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
+    <div style={embeddedDocument ? {padding:0} : {padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
       {toast && <div className={'toast show '+(toast.type==='err'?'terr':'')}>{toast.msg||toast}</div>}
 
+      {!embeddedDocument && (<>
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16,marginBottom:18,flexWrap:'wrap'}}>
         <div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -641,13 +698,30 @@ export default function Fax() {
         </div>
       )}
 
+      </>)}
+      {embeddedDocument && faxReceipt && !modal && (
+        <div className="modal-bg open" style={{zIndex:20000}}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Fax confirmation" style={{width:560,padding:22}}>
+            <h3>📠 Fax confirmation</h3>
+            <p><strong>Status: {faxReceipt.status}</strong> {faxReceipt.status==='Pending'?'— accepted for processing; delivery not yet confirmed.':faxReceipt.status==='Delivered'?'— SignalWire reports delivery.':'— delivery was not completed.'}</p>
+            <p>Client: {faxReceipt.client_name || '—'}<br/>Document: {faxReceipt.file_name || '—'}<br/>To: {faxReceipt.to_number}<br/>From: {faxReceipt.from_number}<br/>Submitted: {faxReceipt.sent_at}<br/>SignalWire ID: {faxReceipt.sid || 'Unavailable'}</p>
+            {faxReceipt.error_msg && <p role="alert">{faxReceipt.error_msg}</p>}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button className="btn sec" onClick={refreshFaxReceipt} disabled={receiptLoading}>{receiptLoading?'Checking…':'Refresh delivery status'}</button>
+              <button className="btn sec" onClick={printFaxReceipt}>Download confirmation</button>
+              {faxReceipt.status==='Failed' && <button className="btn sec" onClick={()=>{setFaxReceipt(null);setModal(true)}}>Retry fax</button>}
+              <button className="btn pri" onClick={()=>{setFaxReceipt(null);onClose?.()}}>Return to client</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Send Fax Modal */}
       {modal && (
-        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setModal(false)}>
+        <div className="modal-bg open" style={embeddedDocument?{zIndex:20000}:undefined} onClick={e=>{if(e.target===e.currentTarget&&!sending){setModal(false);onClose?.()}}}>
           <div className="modal" style={{width:560}}>
             <div className="mh">
               <span className="mt">📠 Send Fax</span>
-              <button className="xbtn" onClick={()=>setModal(false)}>&times;</button>
+              <button className="xbtn" disabled={sending} onClick={()=>{setModal(false);onClose?.()}}>&times;</button>
             </div>
 
             <div style={{position:'relative'}} className="field"><label>Client (optional)</label>
@@ -715,7 +789,7 @@ export default function Fax() {
               🕐 Every fax is automatically <strong>timestamped</strong> with date, time, sender, recipient, and file — all saved in the client's fax history.
             </div>
 
-            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending}>
+            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending || linkedLoading}>
               {sending ? '📠 Sending…' : '📠 Send Fax'}
             </button>
           </div>
