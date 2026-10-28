@@ -329,6 +329,7 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
 
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
+    if (linkedLoading) { showToast('Wait for the client document to finish loading','err'); return }
     if (!file && !linkedDocument) { showToast('Attach or select a document to fax','err'); return }
     setSending(true)
 
@@ -727,7 +728,7 @@ export default function Fax({ embeddedForm = null, embeddedDocument = null, onCl
               🕐 Every fax is automatically <strong>timestamped</strong> with date, time, sender, recipient, and file — all saved in the client's fax history.
             </div>
 
-            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending}>
+            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending || linkedLoading}>
               {sending ? '📠 Sending…' : '📠 Send Fax'}
             </button>
           </div>
