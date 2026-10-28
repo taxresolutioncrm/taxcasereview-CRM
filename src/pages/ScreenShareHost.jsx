@@ -444,7 +444,7 @@ export default function ScreenShareHost() {
               </div>
             ))}
           </div>
-        ) : {(() => {
+        ) : (() => {
           const count = allCams.length
           const tileW = count <= 2 ? 280 : count <= 4 ? 200 : 160
           const tileH = count <= 2 ? 210 : count <= 4 ? 150 : 120
@@ -467,7 +467,7 @@ export default function ScreenShareHost() {
               ))}
             </div>
           )
-        })()}}
+        })()}
 
         {/* Controls bar */}
         <div style={{ height:60, background:'rgba(15,23,42,.95)', borderTop:'1px solid rgba(255,255,255,.08)',
