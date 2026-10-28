@@ -428,10 +428,11 @@ ${safeLogo ? `<img src="${safeLogo}" alt="${dispName}" style="max-height:56px;ma
       {/* Invite link */}
       <div style={{ background: 'var(--s1)', border: '1px solid var(--br)', borderRadius: 10,
                     padding: '14px 16px', marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase',
-                      letterSpacing: '.05em', marginBottom: 8 }}>Participant invite link</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, fontSize: 12, color: 'var(--t2)', fontFamily: 'monospace',
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--tx)',
+                      marginBottom: 8 }}>Participant Invite</div>
+        <div style={{ fontSize:12, color:'var(--t3)', marginBottom:10 }}>Invite participants into this live session · {participants} connected</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap:'wrap' }}>
+          <div title={joinUrl} style={{ flex:'1 1 180px', minWidth:0, fontSize: 12, color: 'var(--t2)', fontFamily: 'monospace',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         background: 'var(--bg)', border: '1px solid var(--br)',
                         borderRadius: 6, padding: '8px 10px' }}>
@@ -441,25 +442,27 @@ ${safeLogo ? `<img src="${safeLogo}" alt="${dispName}" style="max-height:56px;ma
             style={{ background: copied ? '#16a34a' : '#2563eb', border: 'none', borderRadius: 8,
                      padding: '8px 16px', color: '#fff', fontWeight: 700, fontSize: 13,
                      cursor: 'pointer', flexShrink: 0, transition: 'background .2s' }}>
-            {copied ? '✓ Copied!' : '📋 Copy'}
+            {copied ? '✓ Copied' : '📋 Copy Link'}
           </button>
           <button onClick={() => setEmailOpen(o => !o)}
             style={{ background: emailOpen ? 'var(--s3)' : '#7c3aed', border: 'none', borderRadius: 8,
                      padding: '8px 16px', color: '#fff', fontWeight: 700, fontSize: 13,
                      cursor: 'pointer', flexShrink: 0 }}>
-            ✉️ Email
+            ✉️ Email Invite
           </button>
         </div>
 
         {emailOpen && (
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap:'wrap' }}>
             <input
-              type="email"
+              type="text"
+              inputMode="email"
+              aria-label="Invite email recipients"
               value={emailTo}
               onChange={e => setEmailTo(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') sendInviteEmail() }}
               placeholder="name@firm.com — separate multiple with commas"
-              style={{ flex: 1, fontSize: 13, padding: '9px 11px', borderRadius: 6,
+              style={{ flex:'1 1 220px', minWidth:0, fontSize: 13, padding: '9px 11px', borderRadius: 6,
                        border: '1px solid var(--br)', background: 'var(--bg)', color: 'var(--tx)' }} />
             <button onClick={sendInviteEmail} disabled={emailSending || !emailTo.trim()}
               style={{ background: '#16a34a', border: 'none', borderRadius: 8, padding: '9px 18px',
@@ -483,7 +486,7 @@ ${safeLogo ? `<img src="${safeLogo}" alt="${dispName}" style="max-height:56px;ma
           Connected participants ({participants})
         </div>
         {participants === 0
-          ? <div style={{ color: 'var(--t3)', fontSize: 13 }}>No one has joined yet.</div>
+          ? <div style={{ color: 'var(--t3)', fontSize: 13, padding:'14px 4px' }}><strong style={{ display:'block', color:'var(--tx)', marginBottom:6 }}>Waiting for participants</strong>No one has joined yet. Share the invite link above to bring participants into this session.</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {ss.webrtc.members.filter(n => !n.endsWith('(view)') && n !== myName).map(n => (
                 <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--tx)' }}>
