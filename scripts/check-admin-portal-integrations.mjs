@@ -19,6 +19,7 @@ const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queu
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
 
 const checks=[
+  ['LinkedIn company-page ACL uses versioned REST and both supported organization fields',publish.includes('/rest/organizationAcls?q=roleAssignee') && publish.includes('x?.organizationTarget||x?.organization') && publish.includes("'Linkedin-Version':'202610'")],
   ['LinkedIn trusted callback gets explicit React route before /crm-admin catchall',appRouter.indexOf('path="/crm-admin/linkedin/callback"') >= 0 && appRouter.indexOf('path="/crm-admin/linkedin/callback"') < appRouter.indexOf('path="/crm-admin/*"') && appRouter.includes('function LinkedInCallbackBridge()')],
   ['Legacy TaxRes redirect exempts LinkedIn callback',adminHostGuard.includes("path !== '/crm-admin/linkedin/callback'")],
   ['LinkedIn OAuth opens separately and keeps workspace available',admin.includes("window.open(authorizationUrl, 'romylabs-linkedin-auth'") && admin.includes("window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete'")],
