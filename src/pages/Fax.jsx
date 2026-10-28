@@ -16,12 +16,12 @@ function fmtPhone(v) {
   return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`
 }
 
-export default function Fax({ embeddedForm = null, onClose = null } = {}) {
+export default function Fax({ embeddedForm = null, embeddedDocument = null, onClose = null } = {}) {
   const { user, myTenantId } = useApp()
   const [logs,     setLogs]     = useState([])
   const [clients,  setClients]  = useState([])
   const [leads,    setLeads]    = useState([])
-  const [modal,    setModal]    = useState(Boolean(embeddedForm))
+  const [modal,    setModal]    = useState(false)
   const location = useLocation()
   const qp = new URLSearchParams(location.search)
   const [form, setForm] = useState({...BLANK,
@@ -61,7 +61,7 @@ export default function Fax({ embeddedForm = null, onClose = null } = {}) {
 
 
   useEffect(() => {
-    const intent = location.state?.faxClientDocument
+    const intent = embeddedDocument || location.state?.faxClientDocument
     if (!intent?.documentId || !intent?.clientId || !myTenantId) return
     let cancelled = false
     setModal(true)
@@ -87,10 +87,10 @@ export default function Fax({ embeddedForm = null, onClose = null } = {}) {
       setLinkedLoading(false)
     })().catch(()=>{if(!cancelled){setLinkedLoading(false);showToast('Could not load selected client document','err')}})
     return ()=>{cancelled=true}
-  },[location.state?.faxClientDocument?.documentId,myTenantId])
+  },[embeddedDocument?.documentId,location.state?.faxClientDocument?.documentId,myTenantId])
 
   useEffect(() => {
-    if (embeddedForm) return
+    if (embeddedForm || embeddedDocument) return
     load()
     const channel = supabase.channel('fax-log-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, () => load())
@@ -119,7 +119,7 @@ export default function Fax({ embeddedForm = null, onClose = null } = {}) {
     if (!embeddedForm?.clientId || !myTenantId) return
     let active = true
     supabase.from('clients').select('id,name,tenant_id').eq('id',embeddedForm.clientId).eq('tenant_id',myTenantId).maybeSingle()
-      .then(({data,error})=>{if(!active)return; if(error||!data){showToast('Client not authorized for this office','err');setModal(false);onClose?.()} else {setForm(prev=>({...prev,client_name:data.name,subject:embeddedForm.subject||''}))}})
+      .then(({data,error})=>{if(!active)return; if(error||!data){showToast('Client not authorized for this office','err');setModal(false);onClose?.()} else {setForm(prev=>({...prev,client_name:data.name,subject:embeddedForm.subject||''}));setModal(true)}})
     return ()=>{active=false}
   },[embeddedForm?.clientId,myTenantId])
 
@@ -382,7 +382,7 @@ export default function Fax({ embeddedForm = null, onClose = null } = {}) {
       if (logErr) console.error('Log error:', logErr)
       if (status === 'Pending') {
         showToast(resData?.platform_relay ? '📠 Fax accepted through the TaxRes platform relay — waiting for delivery confirmation' : '📠 Fax accepted — waiting for delivery confirmation')
-        setModal(false); onClose?.(); setForm(BLANK); setFile(null); setLinkedDocument(null); if(!embeddedForm) load()
+        setModal(false); onClose?.(); setForm(BLANK); setFile(null); setLinkedDocument(null); if(!embeddedForm && !embeddedDocument) load()
       } else {
         showToast('Error: ' + (resData?.error || invokeErr?.message || 'Check SignalWire credentials in Settings'), 'err')
         load()
@@ -445,10 +445,10 @@ export default function Fax({ embeddedForm = null, onClose = null } = {}) {
   }, [logs, filterStatus, search])
 
   return (
-    <div style={embeddedForm?{padding:0}:{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
+    <div style={(embeddedForm||embeddedDocument)?{padding:0}:{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
       {toast && <div className={'toast show '+(toast.type==='err'?'terr':'')}>{toast.msg||toast}</div>}
 
-      {!embeddedForm && (<>
+      {!embeddedForm && !embeddedDocument && (<>
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16,marginBottom:18,flexWrap:'wrap'}}>
         <div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -655,7 +655,7 @@ export default function Fax({ embeddedForm = null, onClose = null } = {}) {
       </>)}
       {/* Send Fax Modal */}
       {modal && (
-        <div className="modal-bg open" style={embeddedForm?{zIndex:20000}:undefined} onClick={e=>{if(e.target===e.currentTarget){setModal(false);onClose?.()}}}>
+        <div className="modal-bg open" style={(embeddedForm||embeddedDocument)?{zIndex:20000}:undefined} onClick={e=>{if(e.target===e.currentTarget){setModal(false);onClose?.()}}}>
           <div className="modal" style={{width:560}}>
             <div className="mh">
               <span className="mt">📠 Send Fax</span>
