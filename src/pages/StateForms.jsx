@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom'
+import Fax from './Fax'
 import { useState, useEffect, useRef } from 'react'
 import { useFirm } from '../lib/useFirm'
 import { useSearchParams } from 'react-router-dom'
@@ -71,6 +73,7 @@ function generateEngagementLetter(){printBase('Engagement Letter',`<p>Dear Clien
 function generatePOALetter(){printBase('Power of Attorney Cover Letter',`<p><b>Internal Revenue Service</b></p><p><b>Re: Form 2848 — Taxpayer: _____________________________</b></p><p>Enclosed is a completed Form 2848 authorizing <b>${firmName()}</b> to represent the above-named taxpayer.</p><div style="border-left:3px solid #1A7FD4;padding-left:16px;margin:16px 0"><b>${firmName()}</b><br/>${FIRM.address}<br/>Email: ${firmEmail()}</div>${sigBlock('','Authorized Representative — ' + firmName())}`)}
 
 export default function StateForms() {
+  const [faxForm,setFaxForm] = useState(null)
   const [searchParams] = useSearchParams()
   const { user, myTenantId } = useApp()
   const [search, setSearch]               = useState('')
@@ -419,7 +422,7 @@ export default function StateForms() {
                 <span style={{ background: 'var(--blue)', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{f.state}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx)', lineHeight: 1.3 }}>{f.label}</span>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap:'wrap' }}>
                 <a href={f.url} target="_blank" rel="noreferrer" style={{ flex: 1, textDecoration: 'none' }}>
                   <button className="btn sec" style={{ width: '100%', fontSize: 11, padding: '5px 8px', justifyContent: 'center' }}>
                     📄 Blank
@@ -442,6 +445,9 @@ export default function StateForms() {
                   ✍️ E-Sign
                 </button>
               </div>
+              <button type="button" className="btn sec" disabled={!selectedClient}
+                onClick={()=>selectedClient&&setFaxForm({clientId:selectedClient.id,clientName:selectedClient.name,subject:f.state+' '+f.num+' — '+f.label})}
+                style={{width:'100%',marginTop:7,justifyContent:'center',fontSize:11}}>📠 Fax Document</button>
               {!selectedClient && (
                 <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 4, textAlign: 'center' }}>Select a client above to pre-fill</div>
               )}
@@ -450,6 +456,7 @@ export default function StateForms() {
         </div>
       </div>
 
+      {faxForm && createPortal(<Fax embeddedForm={faxForm} onClose={()=>setFaxForm(null)}/>,document.body)}
       {/* Document Templates */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="ch"><span className="ct">Document Templates</span><span style={{fontSize:12,color:'var(--t2)'}}>Opens print-ready PDF window</span></div>

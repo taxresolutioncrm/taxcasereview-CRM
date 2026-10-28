@@ -80,21 +80,27 @@ serve(async (req) => {
       const nextStatus = delivered ? 'Delivered' : failed ? 'Failed' : 'Pending'
       const errorCode = params.get('ErrorCode') || params.get('ErrorMessage') || null
 
-      const { data: updated, error: updateError } = await supabase
-        .from('fax_logs')
-        .update({
-          status: nextStatus,
-          error_msg: failed ? (errorCode || rawStatus) : null,
-        })
-        .eq('tenant_id', tenantId)
-        .eq('signalwire_fax_id', faxSid)
-        .select('id')
-      if (updateError) {
-        console.error('[receive-fax] outbound status update failed:', updateError.message)
-        return new Response('', { status: 500 })
+      // The provider callback can arrive before the browser persists the
+      // tenant-scoped outbound log. Retry briefly; return non-2xx if absent,
+      // never falsely acknowledge a delivery state that was not recorded.
+      let updated: {id:string}[] | null = null
+      for (const delay of [0,500,1500,3000]) {
+        if(delay) await new Promise(resolve=>setTimeout(resolve,delay))
+        const result = await supabase
+          .from('fax_logs')
+          .update({status:nextStatus,error_msg:failed?(errorCode||rawStatus):null})
+          .eq('tenant_id',tenantId).eq('signalwire_fax_id',faxSid)
+          .select('id')
+        if(result.error) {
+          console.error('[receive-fax] outbound status update failed:',result.error.message)
+          return new Response('',{status:500})
+        }
+        updated=result.data
+        if(updated?.length)break
       }
-      if (!updated?.length) {
-        console.warn('[receive-fax] outbound status arrived before log row existed', { tenantId, faxSid, rawStatus })
+      if(!updated?.length) {
+        console.warn('[receive-fax] callback could not match outbound fax log',{tenantId,faxSid,rawStatus})
+        return new Response('',{status:503})
       }
       return new Response('', { status: 200 })
     }

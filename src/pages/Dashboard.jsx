@@ -348,9 +348,11 @@ export default function Dashboard() {
   const isTaxAdvisor  = role === 'Tax Advisor'
   const isTaxAssociate = role === 'Tax Associate'
   const isManager     = role === 'Manager'
-  // Tax Associate/Manager work client files day-to-day, so "recent" should
-  // surface clients, not leads. Tax Advisor never sees Clients at all.
-  const showRecentClients = isTaxAssociate || isManager
+  // Show lead activity only for explicitly sales-oriented roles with lead access.
+  // Non-sales staff (including administrators) see their authorized clients.
+  const salesRole = ['Tax Advisor','Sales Rep','Sales Manager'].includes(role)
+    || (role === 'Manager' && can('view','leads') && !can('view','clients'))
+  const showRecentClients = !salesRole || !can('view','leads')
 
   // ── Drag-and-drop dashboard layout ──────────────────────────────────────────
 
@@ -636,7 +638,7 @@ export default function Dashboard() {
             }
           </div>
         ) : (
-          /* Recent Leads — Tax Advisor sees only their own assigned leads */
+          /* Recent Leads — authorized sales roles only; backend RLS still applies */
           <div className="card">
             <div className="ch">
               <span className="ct">👤 Recent Leads{isTaxAdvisor ? ' — Yours' : ''}</span>

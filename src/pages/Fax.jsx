@@ -3,7 +3,7 @@ import PhoneNumber from '../components/PhoneNumber'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useLocation } from 'react-router-dom'
-import { DOC_FOLDERS } from './Clients'
+import { DOC_FOLDERS } from '../lib/docFolders'
 import ClientLink from '../components/ClientLink'
 
 const BLANK = { to_number:'', from_number:'', client_name:'', subject:'', notes:'' }
@@ -16,7 +16,7 @@ function fmtPhone(v) {
   return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`
 }
 
-export default function Fax() {
+export default function Fax({ embeddedForm = null, embeddedDocument = null, onClose = null } = {}) {
   const { user, myTenantId } = useApp()
   const [logs,     setLogs]     = useState([])
   const [clients,  setClients]  = useState([])
@@ -25,13 +25,16 @@ export default function Fax() {
   const location = useLocation()
   const qp = new URLSearchParams(location.search)
   const [form, setForm] = useState({...BLANK,
-    client_name: qp.get('client') || '',
+    client_name: embeddedForm?.clientName || qp.get('client') || '',
+    subject: embeddedForm?.subject || '',
     to_number:   (qp.get('phone') || '').replace(/\D/g,'')
   })
   const [file,     setFile]     = useState(null)
   const [linkedDocument, setLinkedDocument] = useState(null)
   const [linkedLoading, setLinkedLoading] = useState(false)
   const [sending,  setSending]  = useState(false)
+  const [receipt, setReceipt] = useState(null)
+  const [refreshingReceipt,setRefreshingReceipt] = useState(false)
   const [toast,    setToast]    = useState('')
   const [search,   setSearch]   = useState('')
   const [filterStatus, setFilter] = useState('Received')
@@ -60,7 +63,7 @@ export default function Fax() {
 
 
   useEffect(() => {
-    const intent = location.state?.faxClientDocument
+    const intent = embeddedDocument || location.state?.faxClientDocument
     if (!intent?.documentId || !intent?.clientId || !myTenantId) return
     let cancelled = false
     setModal(true)
@@ -68,27 +71,41 @@ export default function Fax() {
     setLinkedDocument(null)
     setLinkedLoading(true)
     ;(async()=>{
-      const {data,error}=await supabase.from('documents')
-        .select('id,client_id,tenant_id,client,file_name,name,storage_path,file_url')
-        .eq('id',intent.documentId)
-        .eq('client_id',intent.clientId)
-        .eq('tenant_id',myTenantId).maybeSingle()
-      if(cancelled) return
-      const path = String(data?.storage_path || '')
-        || (String(data?.file_url || '').startsWith('storage://documents/')
-          ? String(data.file_url).slice('storage://documents/'.length) : '')
-      if(error || !data || !path) {
-        showToast('Selected document is not an accessible stored client file','err')
-      } else {
-        setLinkedDocument({...data, resolvedStoragePath:path})
-        setForm(prev=>({...prev,client_name:data.client || String(intent.clientName || '')}))
+      const {data: client,error: clientError}=await supabase.from('clients')
+        .select('id,name,canopy_id,tenant_id')
+        .eq('id',intent.clientId).eq('tenant_id',myTenantId).maybeSingle()
+      if(clientError || !client) throw new Error('Client not authorized in this office')
+      const {data: doc,error: docError}=await supabase.from('documents')
+        .select('id,client_id,canopy_client_id,tenant_id,client,clientname,file_name,name,storage_path,file_url')
+        .eq('id',intent.documentId).eq('tenant_id',myTenantId).maybeSingle()
+      if(docError || !doc) throw new Error('Document not accessible in this office')
+      const direct=doc.client_id && String(doc.client_id)===String(client.id)
+      const canopy=doc.canopy_client_id && client.canopy_id && String(doc.canopy_client_id)===String(client.canopy_id)
+      const legacy=!doc.client_id && !doc.canopy_client_id && [doc.client,doc.clientname].some(n=>n && String(n)===String(client.name))
+      if(!direct && !canopy && !legacy) throw new Error('Document does not belong to selected client')
+      const fileUrl=String(doc.file_url||'')
+      let path=String(doc.storage_path||'').trim() ||
+        (fileUrl.startsWith('storage://documents/')?fileUrl.slice('storage://documents/'.length):'')
+      if(!path && fileUrl.startsWith('https://')) {
+        try {
+          const parsed=new URL(fileUrl)
+          const match=parsed.pathname.match(new RegExp('^/storage/v1/object/(?:sign|public|authenticated)/documents/(.+)$'))
+          if(parsed.hostname===new URL(import.meta.env.VITE_SUPABASE_URL).hostname && match) path=decodeURIComponent(match[1])
+        } catch { /* unsupported external storage link */ }
       }
+      if(!path || path.startsWith('/') || path.includes('..')) throw new Error('Invalid private file path')
+      const {data: signed,error: signErr}=await supabase.storage.from('documents').createSignedUrl(path,3600)
+      if(signErr || !signed?.signedUrl) throw new Error('Document storage access denied')
+      if(cancelled)return
+      setLinkedDocument({...doc,resolvedStoragePath:path})
+      setForm(prev=>({...prev,client_name:client.name}))
       setLinkedLoading(false)
     })().catch(()=>{if(!cancelled){setLinkedLoading(false);showToast('Could not load selected client document','err')}})
     return ()=>{cancelled=true}
-  },[location.state?.faxClientDocument?.documentId,myTenantId])
+  },[embeddedDocument?.documentId,location.state?.faxClientDocument?.documentId,myTenantId])
 
   useEffect(() => {
+    if (embeddedForm || embeddedDocument) return
     load()
     const channel = supabase.channel('fax-log-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fax_logs' }, () => load())
@@ -112,6 +129,14 @@ export default function Fax() {
       if (defaultFrom) setForm(prev => prev.from_number ? prev : { ...prev, from_number: defaultFrom.replace(/\D/g,'') })
     }
   }
+
+  useEffect(() => {
+    if (!embeddedForm?.clientId || !myTenantId) return
+    let active = true
+    supabase.from('clients').select('id,name,tenant_id').eq('id',embeddedForm.clientId).eq('tenant_id',myTenantId).maybeSingle()
+      .then(({data,error})=>{if(!active)return; if(error||!data){showToast('Client not authorized for this office','err');setModal(false);onClose?.()} else {setForm(prev=>({...prev,client_name:data.name,subject:embeddedForm.subject||''}));setModal(true)}})
+    return ()=>{active=false}
+  },[embeddedForm?.clientId,myTenantId])
 
   function showToast(msg,type='ok') { setToast({msg,type}); setTimeout(()=>setToast(''),4000) }
   function fld(k,v) { setForm(f=>({...f,[k]:v})) }
@@ -317,8 +342,44 @@ export default function Fax() {
     setSugg([]); setShowSug(false)
   }
 
+  async function refreshReceipt() {
+    if (!receipt?.sid || !myTenantId) return
+    setRefreshingReceipt(true)
+    try {
+      const {data,error}=await supabase.from('fax_logs')
+        .select('status,error_msg,sent_at,client_name,file_name,subject,to_number,from_number,signalwire_fax_id')
+        .eq('tenant_id',myTenantId).eq('signalwire_fax_id',receipt.sid)
+        .order('created_at',{ascending:false}).limit(1).maybeSingle()
+      if(error) throw error
+      if(data) setReceipt(prev=>({...prev,...data}))
+    }catch(e){showToast('Unable to refresh delivery status: '+e.message,'err')}
+    finally{setRefreshingReceipt(false)}
+  }
+
+  useEffect(() => {
+    if (!receipt?.sid || receipt.status !== 'Pending') return
+    const timer=setInterval(() => { void refreshReceipt() },12000)
+    return () => clearInterval(timer)
+  },[receipt?.sid,receipt?.status,myTenantId])
+
+  function downloadReceipt() {
+    if(!receipt)return
+    const esc = v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+    const fields=[['Status',receipt.status],['Client',receipt.client_name],['Subject',receipt.subject],
+      ['Document',receipt.file_name],['Recipient',receipt.to_number],['Sender',receipt.from_number],
+      ['Submitted at',receipt.sent_at],['SignalWire transmission ID',receipt.sid],
+      ['Failure reason',receipt.error_msg||'—']]
+    const html='<html><head><meta charset="utf-8"><title>Fax transmission confirmation</title></head><body><h1>Fax transmission confirmation</h1><dl>'+
+      fields.map(([k,v])=>'<dt><b>'+esc(k)+'</b></dt><dd>'+esc(v)+'</dd>').join('')+
+      '</dl><p>Pending means submitted for transmission, not proof of delivery. Delivery status follows the SignalWire callback.</p></body></html>'
+    const url=URL.createObjectURL(new Blob([html],{type:'text/html'}))
+    const a=document.createElement('a');a.href=url;a.download='fax-confirmation-'+String(receipt.sid||'pending')+'.html'
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+  }
+
   async function sendFax() {
     if (!form.to_number) { showToast('Recipient fax number required','err'); return }
+    if (linkedLoading) { showToast('Wait for the client document to finish loading','err'); return }
     if (!file && !linkedDocument) { showToast('Attach or select a document to fax','err'); return }
     setSending(true)
 
@@ -359,6 +420,7 @@ export default function Fax() {
       const actualFrom = resData?.from || fromNum || null
 
       const { error: logErr } = await supabase.from('fax_logs').insert([{
+        tenant_id: myTenantId, client_id: embeddedForm?.clientId || embeddedDocument?.clientId || null,
         to_number: toNum, from_number: actualFrom,
         client_name: form.client_name, subject: form.subject,
         notes: form.notes, file_name: file?.name || linkedDocument?.file_name || linkedDocument?.name || null,
@@ -371,8 +433,14 @@ export default function Fax() {
 
       if (logErr) console.error('Log error:', logErr)
       if (status === 'Pending') {
+        if (embeddedForm || embeddedDocument) {
+          setReceipt({sid:sw_id,status:'Pending',to_number:toNum,from_number:actualFrom,
+            client_name:form.client_name,subject:form.subject,
+            file_name:file?.name || linkedDocument?.file_name || linkedDocument?.name || '',
+            sent_at:new Date().toISOString(),error_msg:null})
+        }
         showToast(resData?.platform_relay ? '📠 Fax accepted through the TaxRes platform relay — waiting for delivery confirmation' : '📠 Fax accepted — waiting for delivery confirmation')
-        setModal(false); setForm(BLANK); setFile(null); setLinkedDocument(null); load()
+        setModal(false); if(!embeddedForm && !embeddedDocument){setForm(BLANK);setFile(null);setLinkedDocument(null);load()}
       } else {
         showToast('Error: ' + (resData?.error || invokeErr?.message || 'Check SignalWire credentials in Settings'), 'err')
         load()
@@ -435,9 +503,10 @@ export default function Fax() {
   }, [logs, filterStatus, search])
 
   return (
-    <div style={{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
+    <div style={(embeddedForm||embeddedDocument)?{padding:0}:{padding:'20px 24px',maxWidth:1400,margin:'0 auto'}}>
       {toast && <div className={'toast show '+(toast.type==='err'?'terr':'')}>{toast.msg||toast}</div>}
 
+      {!embeddedForm && !embeddedDocument && (<>
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16,marginBottom:18,flexWrap:'wrap'}}>
         <div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -641,13 +710,30 @@ export default function Fax() {
         </div>
       )}
 
+      </>)}
+      {(embeddedForm || embeddedDocument) && receipt && !modal && (
+        <div className="modal-bg open" style={{zIndex:20000}}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Fax confirmation" style={{width:560,padding:20}}>
+            <h3>📠 Fax confirmation</h3>
+            <p><strong>{receipt.status}</strong> — {receipt.status==='Delivered'?'SignalWire confirmed delivery':receipt.status==='Failed'?'Transmission failed':'Accepted for transmission; delivery not yet confirmed'}</p>
+            <p>Client: {receipt.client_name}<br/>Document: {receipt.file_name}<br/>Subject: {receipt.subject}<br/>To: {receipt.to_number}<br/>From: {receipt.from_number}<br/>Submitted: {receipt.sent_at}<br/>SignalWire ID: {receipt.sid||'Not returned'}</p>
+            {receipt.error_msg && <p role="alert">{receipt.error_msg}</p>}
+            <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+              <button className="btn sec" disabled={refreshingReceipt} onClick={refreshReceipt}>{refreshingReceipt?'Checking…':'Refresh delivery status'}</button>
+              <button className="btn sec" onClick={downloadReceipt}>Download receipt</button>
+              {receipt.status==='Failed' && <button className="btn sec" onClick={()=>{setReceipt(null);setModal(true)}}>Retry fax</button>}
+              <button className="btn pri" onClick={()=>{setReceipt(null);onClose?.()}}>Return to client</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Send Fax Modal */}
       {modal && (
-        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setModal(false)}>
+        <div className="modal-bg open" style={(embeddedForm||embeddedDocument)?{zIndex:20000}:undefined} onClick={e=>{if(e.target===e.currentTarget){setModal(false);onClose?.()}}}>
           <div className="modal" style={{width:560}}>
             <div className="mh">
               <span className="mt">📠 Send Fax</span>
-              <button className="xbtn" onClick={()=>setModal(false)}>&times;</button>
+              <button className="xbtn" onClick={()=>{setModal(false);onClose?.()}}>&times;</button>
             </div>
 
             <div style={{position:'relative'}} className="field"><label>Client (optional)</label>
@@ -715,7 +801,7 @@ export default function Fax() {
               🕐 Every fax is automatically <strong>timestamped</strong> with date, time, sender, recipient, and file — all saved in the client's fax history.
             </div>
 
-            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending}>
+            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:12,fontSize:15,fontWeight:700}} onClick={sendFax} disabled={sending || linkedLoading}>
               {sending ? '📠 Sending…' : '📠 Send Fax'}
             </button>
           </div>

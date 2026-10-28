@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom'
+import Fax from './Fax'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useFirm } from '../lib/useFirm'
@@ -248,6 +250,7 @@ function generatePOALetter() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function IrsForms() {
+  const [faxForm,setFaxForm] = useState(null)
   const { user } = useApp()
   const [items, setItems]   = useState([])
   const [modal, setModal]   = useState(false)
@@ -458,6 +461,11 @@ export default function IrsForms() {
                   ✏️ Pre-fill
                 </button>
               </div>
+              <button type="button" className="btn sec" disabled={!selectedClientId}
+                onClick={()=>{const c=clients.find(x=>x.id===selectedClientId); if(c)setFaxForm({clientId:c.id,clientName:c.name,subject:'IRS Form '+f.num+' — '+f.label})}}
+                style={{width:'100%',marginTop:7,justifyContent:'center',fontSize:11}}>
+                📠 Fax Document
+              </button>
             </div>
           ))}
         </div>
@@ -622,6 +630,7 @@ export default function IrsForms() {
           </div>
         </div>
       )}
+      {faxForm && createPortal(<Fax embeddedForm={faxForm} onClose={()=>setFaxForm(null)}/>,document.body)}
       {/* ── IRS Form Filler Modal ─────────────────────────────────────── */}
       {fillerClient && (
         <IRSFormFiller

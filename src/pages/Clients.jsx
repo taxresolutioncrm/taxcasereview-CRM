@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import Fax from './Fax'
 import { validateFile } from '../lib/uploadUtils'
 import { formatMoneyInput, parseMoney } from '../lib/money'
 import { PIPELINE_STAGES, DEFAULT_PIPELINE_STAGE, pipelineStageLabel, CASE_SERVICES } from '../lib/caseStatuses'
@@ -731,7 +732,8 @@ function InlineOrganizerForm({ client, onClose, showToast, tenantId }) {
 }
 
 // ── Canopy-style Document Manager for a specific client ──────────────────────
-export const DOC_FOLDERS = ['IRS Docs','Tax Returns','Agreements','POA & Forms','Transcripts','Correspondence','Financial Statements','E-Signatures','Call Recording','Other']
+export { DOC_FOLDERS } from '../lib/docFolders'
+import { DOC_FOLDERS } from '../lib/docFolders'
 const QUICK_TASK_TITLES = ['Request transcripts from IRS','Follow up with client','Prepare & send POA (2848/8821)','Call IRS for account status','Draft engagement letter','Collect financial documents','File tax return','Submit installment agreement','Prepare Offer in Compromise','Follow up on offer','Request wage & income transcripts','Schedule consultation','Send resolution options','Collect payment / trade']
 // WIP summary widget shown in the client Overview tab
 // WIP stats shown on Overview — read-only, no button
@@ -769,7 +771,7 @@ const fmt = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toF
 
 export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast, onLogged }) {
   const { can } = useApp()
-  const navigate = useNavigate()
+  const [faxIntent, setFaxIntent] = useState(null)
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
   const [uploading,  setUploading]  = useState(false)
@@ -1222,7 +1224,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           {!selectedDoc?<div style={{padding:30,color:'var(--t3)'}}>Select a document to preview</div>:<>
             <div style={{padding:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
               <strong title={selectedDoc.file_name||selectedDoc.name} style={{flex:1,minWidth:160,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
-              {(selectedDoc.storage_path || selectedDoc.file_url) && <button className="btn sec" type="button" style={{fontSize:10,padding:'5px 8px'}} onClick={()=>navigate('/fax',{state:{faxClientDocument:{documentId:selectedDoc.id,clientId,clientName}}})}>📠 Fax Document</button>}
+              {(selectedDoc.storage_path || selectedDoc.file_url) && <button className="btn sec" type="button" style={{fontSize:10,padding:'5px 8px'}} onClick={()=>setFaxIntent({documentId:selectedDoc.id,clientId,clientName})}>📠 Fax Document</button>}
               <button className="btn sec" type="button" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>setPreviewExpanded(true)}>Expand Preview ⛶</button>
               {docAiAction(selectedDoc)}
               <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open ↗</button>
@@ -1240,7 +1242,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           <div role="dialog" aria-modal="true" aria-label="Expanded document preview" style={{width:'min(1200px,96vw)',height:'min(900px,94vh)',display:'flex',flexDirection:'column',background:'var(--sf)',borderRadius:12,overflow:'hidden'}}>
             <div style={{padding:12,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
               <strong style={{flex:1,minWidth:150,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{selectedDoc.file_name||selectedDoc.name}</strong>
-              {(selectedDoc.storage_path || selectedDoc.file_url) && <button className="btn sec" type="button" style={{fontSize:11,padding:'5px 8px'}} onClick={()=>navigate('/fax',{state:{faxClientDocument:{documentId:selectedDoc.id,clientId,clientName}}})}>📠 Fax Document</button>}
+              {(selectedDoc.storage_path || selectedDoc.file_url) && <button className="btn sec" type="button" style={{fontSize:11,padding:'5px 8px'}} onClick={()=>setFaxIntent({documentId:selectedDoc.id,clientId,clientName})}>📠 Fax Document</button>}
               <button className="btn sec" type="button" onClick={()=>openClientDoc(selectedDoc)}>Open in New Window ↗</button>
               <button className="btn sec" type="button" onClick={()=>downloadPreview(selectedDoc)}>Download</button>
               <button aria-label="Close expanded preview" className="btn sec" type="button" onClick={()=>setPreviewExpanded(false)}>✕</button>
@@ -1249,7 +1251,8 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           </div>
         </div>, document.body
       )}
-    </div>
+
+      {faxIntent && createPortal(<Fax embeddedDocument={faxIntent} onClose={()=>setFaxIntent(null)} />,document.body)}    </div>
   )
 }
 
