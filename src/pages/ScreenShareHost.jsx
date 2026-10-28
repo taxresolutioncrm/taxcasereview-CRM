@@ -40,6 +40,20 @@ export default function ScreenShareHost() {
   const [recording,     setRecording]     = useState(false)
   const [recDuration,   setRecDuration]   = useState(0)
 
+  const [fullscreen, setFullscreen] = useState(false)
+  const meetingCanvasRef = useRef(null)
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === meetingCanvasRef.current)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await meetingCanvasRef.current?.requestFullscreen()
+    } catch (err) { console.warn('Meeting fullscreen unavailable', err) }
+  }
+
   const chatEndRef   = useRef(null)
   const bcRef        = useRef(null)
   const vbg          = useVideoBackground()
@@ -354,11 +368,11 @@ export default function ScreenShareHost() {
         html, body, #root { width: 100%; height: 100%; overflow: hidden; background: #000; }
       `}</style>
 
-      <div style={{ width:'100%', height:'100%', background:'#000', position:'relative',
+      <div ref={meetingCanvasRef} style={{ width:'100%', height:'100%', background:'#000', position:'relative',
                     display:'flex', flexDirection:'column', overflow:'hidden', fontFamily:'Arial,sans-serif' }}>
 
         {/* Screen share area */}
-        <div style={{ flex:1, minHeight:0, position:'relative', background:'#000' }}>
+        <div onDoubleClick={sharing ? toggleFullscreen : undefined} style={{ flex:1, minHeight:0, position:'relative', background:'#000' }}>
           {sharing && screenStream
             ? <StreamVideo stream={screenStream} muted fit="contain" />
             : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center',
@@ -391,6 +405,11 @@ export default function ScreenShareHost() {
             )}
           </div>
 
+          {/* Fullscreen operates on the entire meeting canvas. */}
+          <button onClick={toggleFullscreen} style={{ position:'absolute', top:12, right:135, zIndex:12, background:'rgba(15,23,42,.85)', border:'1px solid #475569', borderRadius:7, padding:'7px 12px', color:'#fff', cursor:'pointer', fontWeight:700, fontSize:12 }}>
+            {fullscreen ? 'Exit full screen' : 'Full screen'}
+          </button>
+
           {/* End session — top right */}
           <button onClick={endSession}
             style={{ position:'absolute', top:12, right:12, background:'#dc2626', border:'none',
@@ -411,11 +430,12 @@ export default function ScreenShareHost() {
         {/* Camera strip — dynamic tile size based on count */}
         {(() => {
           const count = allCams.length
-          const tileW = count <= 2 ? 280 : count <= 4 ? 200 : 160
-          const tileH = count <= 2 ? 210 : count <= 4 ? 150 : 120
+          const tileW = sharing ? (count <= 2 ? 145 : 118) : count <= 2 ? 280 : count <= 4 ? 200 : 160
+          const tileH = sharing ? (count <= 2 ? 108 : 90) : count <= 2 ? 210 : count <= 4 ? 150 : 120
           return (
-            <div style={{ display:'flex', gap:8, padding:'8px 12px', background:'rgba(0,0,0,.85)',
-                          flexShrink:0, overflowX:'auto', borderTop:'1px solid rgba(255,255,255,.06)' }}>
+            <div style={{ display:'flex', gap:8, padding:'8px 12px', background:sharing ? 'rgba(0,0,0,.55)' : 'rgba(0,0,0,.85)',
+                          flexShrink:0, overflowX:'auto', borderTop:'1px solid rgba(255,255,255,.06)',
+                          ...(sharing ? { position:'absolute', left:12, bottom:76, zIndex:20, maxWidth:'min(70vw,560px)', borderRadius:10 } : {}) }}>
               {allCams.map(({ key, name, stream, muted, mirror }) => (
                 <div key={key} style={{ width:tileW, height:tileH, borderRadius:8, overflow:'hidden',
                                         background:'#1e293b', position:'relative', flexShrink:0 }}>
