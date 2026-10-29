@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useCall } from '../context/CallContext'
 import AIGovernmentCallModal from '../components/calling/AIGovernmentCallModal'
-import { formatGovernmentNumber } from '../lib/governmentCallRecipes'
+import { formatGovernmentNumber, getGovernmentCallPurpose } from '../lib/governmentCallRecipes'
 
 const ACTIVE=['created','dialing','navigating','holding','human_detected','takeover_requested','human_joined']
 const LABELS={created:'Preparing',dialing:'Dialing',navigating:'Navigating IVR',holding:'Waiting / On Hold',human_detected:'Representative Connected',takeover_requested:'Joining Staff',human_joined:'Human Takeover',completed:'Completed',failed:'Failed',cancelled:'Cancelled'}
@@ -22,6 +22,10 @@ export default function AIGovernmentCalls(){
   const [sessions,setSessions]=useState([])
   const [events,setEvents]=useState({})
   const [showStart,setShowStart]=useState(false)
+  const [showBatch,setShowBatch]=useState(false)
+  const [batchCount,setBatchCount]=useState(3)
+  const [batchType,setBatchType]=useState('irs-investigation')
+  const [batchBusy,setBatchBusy]=useState(false)
   const [toast,setToast]=useState('')
   const [,setNowTick]=useState(0)
   const [busyId,setBusyId]=useState(null)
@@ -54,6 +58,29 @@ export default function AIGovernmentCalls(){
   },[user?.email])
 
   const active=useMemo(()=>sessions.filter(x=>ACTIVE.includes(x.status)),[sessions])
+  async function launchBatch(){
+    if(batchBusy)return
+    setBatchBusy(true)
+    const purpose=batchType==='irs-business'?'Business':batchType==='irs-investigation'?'Personal':'Personal & Business'
+    let started=0
+    try{
+      for(let n=0;n<batchCount;n++){
+        const purposeKey=batchType==='mixed'?(n%2===0?'irs-investigation':'irs-business'):batchType
+        const recipe=getGovernmentCallPurpose(purposeKey)
+        const {data,error}=await supabase.functions.invoke('ai-government-call-start',{body:{
+          purpose_key:purposeKey,agency:recipe.agency,destination_number:recipe.phone,
+          objective:recipe.objective,
+          route_hints:recipe.routeHints,
+        }})
+        if(error||!data?.ok)throw new Error(data?.error||error?.message||'Call could not start')
+        started++
+      }
+      showToast(started+' separate IRS '+purpose.toLowerCase()+' calls started. Select TAKE OVER NOW on whichever reaches a representative.')
+      setShowBatch(false)
+      await load()
+    }catch(e){showToast(started+' calls started; launch stopped: '+(e?.message||e));await load()}
+    finally{setBatchBusy(false)}
+  }
   async function takeover(s){
     if(calling){showToast('Finish the current browser call before taking over this AI call.');return}
     setBusyId(s.id)
@@ -78,7 +105,8 @@ export default function AIGovernmentCalls(){
         <div style={{fontSize:22,fontWeight:900}}>🤖 AI Government Calls</div>
         <div style={{fontSize:12,color:'var(--t3)',marginTop:3}}>TaxRes navigates government auto attendants and hold queues, then hands the live representative to staff.</div>
       </div>
-      <button className="btn pri" style={{marginLeft:'auto'}} onClick={()=>setShowStart(true)}>＋ Start AI Call</button>
+      <button className="btn sec" style={{marginLeft:'auto'}} onClick={()=>setShowBatch(true)}>☎ Launch Multiple IRS Calls</button>
+      <button className="btn pri" onClick={()=>setShowStart(true)}>＋ Start AI Call</button>
     </div>
 
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10,marginBottom:16}}>
@@ -105,6 +133,7 @@ export default function AIGovernmentCalls(){
                 </div>
                 <div style={{fontSize:12,color:'var(--t2)',marginTop:5}}>{s.agency} · {formatGovernmentNumber(s.destination_number)} · {s.purpose_key}</div>
                 <div style={{fontSize:11,color:'var(--t3)',marginTop:5,lineHeight:1.5}}>{s.objective}</div>
+                {s.last_action==='callback_offered'&&<div role="status" style={{marginTop:9,padding:'9px 12px',background:'var(--s2)',border:'1px solid var(--warn)',borderRadius:8,fontSize:12,fontWeight:700}}>☎ IRS callback option detected — not booked. Staff must confirm the callback option and verify the return number. Continue monitoring this call.</div>}
                 {s.last_prompt&&<div style={{marginTop:9,padding:'8px 10px',background:'var(--s2)',borderRadius:7,fontSize:11,color:'var(--t2)'}}>
                   <strong>AI heard:</strong> “{s.last_prompt.slice(0,280)}{s.last_prompt.length>280?'…':''}”
                 </div>}
@@ -131,6 +160,23 @@ export default function AIGovernmentCalls(){
         })}
       </div>}
 
+    {showBatch&&<div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&!batchBusy&&setShowBatch(false)}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Launch parallel IRS calls" style={{maxWidth:480,width:'95vw'}}>
+        <div className="mh"><span className="mt">Multiple IRS Practitioner Calls</span><button className="xbtn" disabled={batchBusy} onClick={()=>setShowBatch(false)}>×</button></div>
+        <p style={{fontSize:12,color:'var(--t2)'}}>Launch independent outbound calls and monitor each queue. Each call may incur provider charges. Only one can be joined in your browser at once. Use separate sessions for personal and business queues.</p>
+        <div className="field"><label>IRS queue</label><select value={batchType} onChange={e=>setBatchType(e.target.value)} disabled={batchBusy}>
+          <option value="irs-investigation">Personal / individual accounts</option><option value="irs-business">Business accounts</option><option value="mixed">Personal and business (alternating)</option>
+        </select></div>
+        <div className="field"><label>Number of separate calls</label><select value={batchCount} onChange={e=>setBatchCount(Number(e.target.value))} disabled={batchBusy}>
+          <option value={2}>2 calls</option><option value={3}>3 calls</option>
+        </select></div>
+        <p style={{fontSize:11,color:'var(--t3)'}}>Calls are initiated separately. If an IRS callback is offered, the agent must not treat that as a connected call; callback return handling is not yet certified.</p>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:14}}>
+          <button className="btn sec" disabled={batchBusy} onClick={()=>setShowBatch(false)}>Cancel</button>
+          <button className="btn pri" disabled={batchBusy} onClick={launchBatch}>{batchBusy?'Starting calls…':'Start '+batchCount+' IRS Calls'}</button>
+        </div>
+      </div>
+    </div>}
     {showStart&&<AIGovernmentCallModal client={null} onClose={()=>setShowStart(false)} onStarted={load} showToast={showToast}/>}
   </div>
 }
