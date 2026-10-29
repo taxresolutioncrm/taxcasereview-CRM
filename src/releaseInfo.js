@@ -3,6 +3,9 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Use canonical practitioner-line routing for mixed personal/business parallel queues',
+  'Scope inbound AI takeover lookup and conference claim to the receiving office tenant',
+  'Gate multi-call safety and callback-offer regression checks during CI',
   'Launch two or three independent IRS personal or business practitioner-line sessions and choose which live representative to join',
   'Detect IRS callback offers and mark them as unconfirmed until a staff member verifies the callback and return number',
   'LinkedIn personal-profile publishing restored for TaxRes CRM using w_member_social scope',
