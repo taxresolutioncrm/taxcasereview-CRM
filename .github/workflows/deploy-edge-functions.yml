@@ -5,6 +5,11 @@ name: Deploy Supabase Edge Functions
 # changes in one commit are all deployed; there is no first-match/elif gap.
 on:
   workflow_dispatch:
+    inputs:
+      function:
+        description: 'Edge function name to deploy (e.g. hub-proxy, linkedin-publish). Leave blank to auto-detect from last commit diff.'
+        required: false
+        type: string
 
 permissions:
   contents: read
