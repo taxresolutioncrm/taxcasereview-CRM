@@ -1780,46 +1780,59 @@ export default function Clients() {
     return safe
   }
 
+  // Guard against partial writes, misleading success and same-name navigation.
+  const verifiedClientKeys = ['name','street','city','state','zip','phone','phone2','ein','dob',
+    'biz_street','biz_city','biz_state','biz_zip','spouseName','spouseSsn','ssn']
+  function mismatchedClientFields(saved,payload) {
+    return verifiedClientKeys.filter(key=>Object.prototype.hasOwnProperty.call(payload,key) &&
+      String(saved[key] ?? '') !== String(payload[key] ?? ''))
+  }
+
   async function save() {
     if (!form.name.trim()){showToast('Name is required');return}
     setSaving(true)
-    if (!myTenantId) { showToast('Office tenant is not resolved yet.'); setSaving(false); return }
-    const payload = {...buildPayload(form), tenant_id: myTenantId, created_at:new Date().toISOString()}
-    const { error } = await supabase.from('clients').insert([payload])
-    setSaving(false)
-    if (error){showToast('Error: '+error.message);return}
-    showToast('✅ Client added!')
-    const actorC = resolveActorName(user, employees)
-    await triggerWorkflow('client_created', 'client', form.name, actorC).catch(()=>{})
-    await logActivity(supabase,{employeeName:actorC,action:'client_created',category:'client',description:`Added client: ${form.name}`,entityName:form.name}).catch(()=>{})
-    setModal(false); setForm(BLANK)
-    // Reload then navigate straight into the new client's detail
-    const { data: allClients } = await supabase.from('clients')
-      .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
-      .eq('tenant_id', myTenantId)
-      .or('archived.eq.true,deleted_at.is.null')
-      .order('name', { ascending: true })
-    if (allClients) setClients(allClients)
-    const newest = allClients?.find(c => c.name === form.name)
-    if (newest) { setDetail(newest); loadRelated(newest.name); navigate('/clients/' + newest.id, { replace: false }) }
+    if (!myTenantId){showToast('Office tenant is not resolved yet.');setSaving(false);return}
+    const payload={...buildPayload(form),tenant_id:myTenantId,created_at:new Date().toISOString()}
+    try {
+      const {data:created,error}=await supabase.from('clients').insert([payload]).select('*').single()
+      if(error||!created){showToast('Client was not saved: '+(error?.message||'No record returned'));return}
+      const missing=mismatchedClientFields(created,payload)
+      setDetail(created)
+      loadRelated(created.name,created.id)
+      navigate('/clients/'+created.id,{replace:false})
+      setModal(false);setForm(BLANK)
+      load()
+      if(missing.length){
+        showToast('Client created, but saved fields did not match: '+missing.join(', ')+'. Review this record; do not create a duplicate.')
+        return
+      }
+      showToast('✅ Client added!')
+      const actorC=resolveActorName(user,employees)
+      await triggerWorkflow('client_created','client',created.name,actorC).catch(()=>{})
+      await logActivity(supabase,{employeeName:actorC,action:'client_created',category:'client',description:'Added client: '+created.name,entityName:created.name}).catch(()=>{})
+    } catch(e){showToast('Client creation could not be verified: '+(e?.message||e))}
+    finally{setSaving(false)}
   }
 
   async function saveEdit() {
+    if(!myTenantId){showToast('Office tenant is not resolved yet.');return}
     setSaving(true)
-    const before = clients.find(cl=>cl.id===form.id) || detail
-    const payload = buildPayload(form)
-    const { error } = await supabase.from('clients').update(payload).eq('tenant_id', myTenantId).eq('id',form.id)
-    setSaving(false)
-    if (error){showToast('Error: '+error.message);return}
-    showToast('✅ Saved!')
-    setEditModal(false)
-    const {data}=await supabase.from('clients').select('*').eq('tenant_id', myTenantId).eq('id',form.id).single()
-    if (data){setDetail(data);loadRelated(data.name)}
-    load()
-    if (data) {
-      const changes = summarizeFieldChanges(before, data)
-      if (changes.length) { await logAction(data.name, `✏️ Updated: ${changes.join(', ')}`); loadRelated(data.name) }
-    }
+    const before=detail
+    const payload=buildPayload(form)
+    try{
+      const {data,error}=await supabase.from('clients').update(payload)
+        .eq('tenant_id',myTenantId).eq('id',form.id).select('*').single()
+      if(error||!data){showToast('Client update failed: '+(error?.message||'No updated record returned'));return}
+      const missing=mismatchedClientFields(data,payload)
+      if(missing.length){showToast('Saved data verification failed: '+missing.join(', ')+'. Reopen this client before making another change.');return}
+      setDetail(data);loadRelated(data.name,data.id)
+      setEditModal(false)
+      showToast('✅ Saved!')
+      load()
+      const changes=summarizeFieldChanges(before,data)
+      if(changes.length){await logAction(data.name,'✏️ Updated: '+changes.join(', '));loadRelated(data.name,data.id)}
+    } catch(e){showToast('Client update could not be verified: '+(e?.message||e))}
+    finally{setSaving(false)}
   }
 
   // Clients are archived, never permanently deleted — this hides them from
@@ -2370,11 +2383,16 @@ export default function Clients() {
     setInstallmentLoading(false)
   }
 
-  function openEdit(c) {
+  async function openEdit(c) {
+    if(!myTenantId){showToast('Office tenant is not resolved yet.');return}
+    const {data:fullClient,error}=await supabase.from('clients').select('*')
+      .eq('tenant_id',myTenantId).eq('id',c.id).single()
+    if(error||!fullClient){showToast('Cannot load full client for editing: '+(error?.message||'Record unavailable'));return}
+    c=fullClient
     const deps=parseDependents(c.dependents)
     const filingReqs=parseDependents(c.filingRequirements)
     let dobM='',dobD='',dobY=''
-    if (c.dob){const p=c.dob.split('/');if(p.length===3){dobM=p[0];dobD=p[1];dobY=p[2]}}
+    if(c.dob){const p=c.dob.split('/');if(p.length===3){dobM=p[0];dobD=p[1];dobY=p[2]}}
     setForm({...BLANK,...c,office_label:c.office_label||officeOptions[0]||FIRM.name||'',dobM,dobD,dobY,dependents:deps,filingRequirements:filingReqs,ssn:'',spouseSsn:''})
     setEditModal(true)
   }
@@ -2388,7 +2406,7 @@ export default function Clients() {
     navigate(`/clients/${c.id}${qs ? `?${qs}` : ''}`, { replace: false })
     // If opened from the list (narrow columns), upgrade to full row in background
     if (!opts.full) {
-      supabase.from('clients').select('*').eq('id', c.id).single().then(({ data }) => {
+      supabase.from('clients').select('*').eq('tenant_id',myTenantId).eq('id', c.id).single().then(({ data }) => {
         if (data) setDetail(data)
       })
     }
