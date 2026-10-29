@@ -62,9 +62,29 @@ function LinkedInCallbackBridge() {
     if (incoming.get('code')) {
       destination.searchParams.set('oauth_redirect_uri', 'https://taxrescrm.app/crm-admin/linkedin/callback')
     }
+    if (window.location.hostname.toLowerCase() === 'admin.romylabs.com') {
+      // The popup may not have the authenticated Admin Portal session. Return
+      // the short-lived code to its same-origin opener, which validates state
+      // and performs the token exchange using its existing authenticated session.
+      const opener = window.opener
+      if (opener && !opener.closed) {
+        opener.postMessage({
+          type: 'romylabs-linkedin-oauth-code',
+          code: incoming.get('code') || '',
+          state: incoming.get('state') || '',
+          error: incoming.get('error') || '',
+          error_description: incoming.get('error_description') || '',
+          oauth_redirect_uri: incoming.get('oauth_redirect_uri') || '',
+        }, window.location.origin)
+        window.close()
+        return
+      }
+      // No opener means no stateful transaction. Never exchange an unverified code.
+      return
+    }
     window.location.replace(destination.toString())
   }, [])
-  return <div role="status">Returning to RomyLabs LinkedIn authorization…</div>
+  return <div role="status">Returning to RomyLabs LinkedIn authorization… If this window stays open, return to the Admin Portal and reconnect.</div>
 }
 
 function clearBuildRefreshMarker() {
@@ -530,15 +550,7 @@ function AuthRouter() {
       <Route path="/portal/:id" element={<ClientPortal />} />
       <Route path="/organizer/:id" element={<OrganizerPage />} />
       <Route path="/financial-intake/:id" element={<FinancialIntakePage />} />
-      <Route path="/crm-admin/linkedin/callback" element={
-        window.location.hostname.toLowerCase() === 'admin.romylabs.com' ? (
-          <RequireAuth>
-            <Suspense fallback={<div style={{minHeight:'100vh',background:'#0d0c1a'}}/>}>
-              <AdminPortalGuard />
-            </Suspense>
-          </RequireAuth>
-        ) : <LinkedInCallbackBridge />
-      } />
+      <Route path="/crm-admin/linkedin/callback" element={<LinkedInCallbackBridge />} />
       <Route path="/crm-admin/*" element={
         window.location.hostname.toLowerCase() === 'admin.romylabs.com' ? (
           <RequireAuth>
