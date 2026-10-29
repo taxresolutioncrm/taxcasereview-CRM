@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { useCall } from '../context/CallContext'
 import AIGovernmentCallModal from '../components/calling/AIGovernmentCallModal'
-import { formatGovernmentNumber } from '../lib/governmentCallRecipes'
+import { formatGovernmentNumber, getGovernmentCallPurpose } from '../lib/governmentCallRecipes'
 
 const ACTIVE=['created','dialing','navigating','holding','human_detected','takeover_requested','human_joined']
 const LABELS={created:'Preparing',dialing:'Dialing',navigating:'Navigating IVR',holding:'Waiting / On Hold',human_detected:'Representative Connected',takeover_requested:'Joining Staff',human_joined:'Human Takeover',completed:'Completed',failed:'Failed',cancelled:'Cancelled'}
@@ -61,15 +61,16 @@ export default function AIGovernmentCalls(){
   async function launchBatch(){
     if(batchBusy)return
     setBatchBusy(true)
-    const purpose=batchType==='irs-business'?'Business':'Personal'
+    const purpose=batchType==='irs-business'?'Business':batchType==='irs-investigation'?'Personal':'Personal & Business'
     let started=0
     try{
       for(let n=0;n<batchCount;n++){
+        const purposeKey=batchType==='mixed'?(n%2===0?'irs-investigation':'irs-business'):batchType
+        const recipe=getGovernmentCallPurpose(purposeKey)
         const {data,error}=await supabase.functions.invoke('ai-government-call-start',{body:{
-          purpose_key:batchType,agency:'IRS',destination_number:'8668604259',
-          objective:'Reach a live IRS '+purpose.toLowerCase()+' practitioner representative. Navigate the IVR and hold queue; offer human takeover when connected.',
-          route_hints:[{intent:'English',digit:'1'},{intent:'Practitioner Priority Service',digit:'2'},
-            ...(batchType==='irs-business'?[{intent:'Business taxpayer account',digit:'4'}]:[])],
+          purpose_key:purposeKey,agency:recipe.agency,destination_number:recipe.phone,
+          objective:recipe.objective,
+          route_hints:recipe.routeHints,
         }})
         if(error||!data?.ok)throw new Error(data?.error||error?.message||'Call could not start')
         started++
@@ -162,9 +163,9 @@ export default function AIGovernmentCalls(){
     {showBatch&&<div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&!batchBusy&&setShowBatch(false)}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Launch parallel IRS calls" style={{maxWidth:480,width:'95vw'}}>
         <div className="mh"><span className="mt">Multiple IRS Practitioner Calls</span><button className="xbtn" disabled={batchBusy} onClick={()=>setShowBatch(false)}>×</button></div>
-        <p style={{fontSize:12,color:'var(--t2)'}}>Launch independent outbound calls and monitor each queue. Each call may incur provider charges. Only one can be joined in your browser at once.</p>
+        <p style={{fontSize:12,color:'var(--t2)'}}>Launch independent outbound calls and monitor each queue. Each call may incur provider charges. Only one can be joined in your browser at once. Use separate sessions for personal and business queues.</p>
         <div className="field"><label>IRS queue</label><select value={batchType} onChange={e=>setBatchType(e.target.value)} disabled={batchBusy}>
-          <option value="irs-investigation">Personal / individual accounts</option><option value="irs-business">Business accounts</option>
+          <option value="irs-investigation">Personal / individual accounts</option><option value="irs-business">Business accounts</option><option value="mixed">Personal and business (alternating)</option>
         </select></div>
         <div className="field"><label>Number of separate calls</label><select value={batchCount} onChange={e=>setBatchCount(Number(e.target.value))} disabled={batchBusy}>
           <option value={2}>2 calls</option><option value={3}>3 calls</option>
