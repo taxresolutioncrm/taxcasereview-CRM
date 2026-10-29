@@ -1,0 +1,71 @@
+name: TCR Tenant Audit - ROMYLABS
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: mpxgxfqdbquzkrvvejkh
+    steps:
+      - name: Discover all tenants
+        shell: bash
+        run: |
+          python3 - <<'PY' >/tmp/q.json
+          import json
+          q=r'''
+          select jsonb_build_object(
+            'all_tenants', (
+              select coalesce(jsonb_agg(jsonb_build_object(
+                'id', t.id, 'name', t.name, 'subdomain', t.subdomain,
+                'plan', t.plan, 'active', t.active, 'created_at', t.created_at::text
+              ) order by t.name), '[]'::jsonb)
+              from tenants t
+            ),
+            'rls_status', (
+              select coalesce(jsonb_agg(jsonb_build_object(
+                'table', schemaname||'.'||tablename,
+                'rls_enabled', rowsecurity::text,
+                'policies', (
+                  select coalesce(jsonb_agg(jsonb_build_object(
+                    'name', policyname, 'cmd', cmd, 'qual', qual
+                  )), '[]'::jsonb)
+                  from pg_policies p2
+                  where p2.schemaname = pg_tables.schemaname
+                    and p2.tablename = pg_tables.tablename
+                )
+              )), '[]'::jsonb)
+              from pg_tables
+              where schemaname = 'public'
+              and tablename in ('leads','clients','cases','documents','payments','invoices',
+                'sms_messages','call_recordings','employees','payrollruns','time_off_requests',
+                'payment_methods','fax_logs','voicemails','chat_messages','calevents','tasks',
+                'deadlines','esigns')
+            ),
+            'security_definer_fns', (
+              select count(*) from information_schema.routines
+              where routine_schema = 'public'
+              and routine_definition ilike '%security definer%'
+            ),
+            'documents_bucket_public', (
+              select public from storage.buckets where name = 'documents'
+            ),
+            'firmAssets_bucket_public', (
+              select public from storage.buckets where name = 'firm-assets'
+            ),
+            'avatars_bucket_public', (
+              select public from storage.buckets where name = 'avatars'
+            )
+          ) as audit
+          '''
+          print(json.dumps({'query': q}))
+          PY
+          curl --fail-with-body -sS \
+            -X POST \
+            "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/q.json
