@@ -7,7 +7,11 @@ const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-const ORG_PRODUCTS = new Set(['arcvena', 'taxres_crm'])
+// taxres_crm publishes from the user's personal LinkedIn profile (w_member_social).
+// Its company-page publishing destination will be added as a separate product ID
+// once the LinkedIn app has w_organization_social approved for that brand.
+// arcvena must post to the Arcvena company page (org ID 146118085).
+const ORG_PRODUCTS = new Set(['arcvena'])
 const KNOWN_ORG_IDS: Record<string,string> = { arcvena:'146118085' }
 const ORG_NAME_MATCHERS: Record<string,RegExp> = {
   taxres_crm: /tax\s*res(?:olution)?\s*crm/i,
