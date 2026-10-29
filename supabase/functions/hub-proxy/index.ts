@@ -382,14 +382,16 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
       })
     }
-    const batchBudgetMs = 3000
+    // Camvella's endpoint calculates multiple live counts and may legitimately need
+    // more than the standard 3s batch budget; do not mark it disconnected prematurely.
+    const standardBatchBudgetMs = 3000
     const pairs = await Promise.all(requested.map(async productKey => [
       productKey,
       await Promise.race([
         fetchProductMetrics(productKey),
         new Promise(resolve => setTimeout(() => resolve({
           status:504,data:null,error:`${productKey} metrics exceeded batch budget`
-        }), batchBudgetMs)),
+        }), productKey === 'camvella' ? 11000 : standardBatchBudgetMs)),
       ]),
     ] as const))
     return new Response(JSON.stringify({
