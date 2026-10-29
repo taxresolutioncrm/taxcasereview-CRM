@@ -132,6 +132,7 @@ export default function AIGovernmentCalls(){
                 </div>
                 <div style={{fontSize:12,color:'var(--t2)',marginTop:5}}>{s.agency} · {formatGovernmentNumber(s.destination_number)} · {s.purpose_key}</div>
                 <div style={{fontSize:11,color:'var(--t3)',marginTop:5,lineHeight:1.5}}>{s.objective}</div>
+                {s.last_action==='callback_offered'&&<div role="status" style={{marginTop:9,padding:'9px 12px',background:'var(--s2)',border:'1px solid var(--warn)',borderRadius:8,fontSize:12,fontWeight:700}}>☎ IRS callback option detected — not booked. Staff must confirm the callback option and verify the return number. Continue monitoring this call.</div>}
                 {s.last_prompt&&<div style={{marginTop:9,padding:'8px 10px',background:'var(--s2)',borderRadius:7,fontSize:11,color:'var(--t2)'}}>
                   <strong>AI heard:</strong> “{s.last_prompt.slice(0,280)}{s.last_prompt.length>280?'…':''}”
                 </div>}
