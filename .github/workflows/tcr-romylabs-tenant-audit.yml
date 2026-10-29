@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -11,6 +11,8 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       PROJECT_REF: mpxgxfqdbquzkrvvejkh
     steps:
+      - uses: actions/checkout@v4
+
       - name: Tenant and table inventory
         shell: bash
         run: |
@@ -29,9 +31,9 @@ jobs:
           curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q1.json | tee /tmp/audit_result1.json
+            --data-binary @/tmp/q1.json | tee /tmp/r1.json
 
-      - name: LinkedIn settings only
+      - name: LinkedIn settings
         shell: bash
         run: |
           set -euo pipefail
@@ -43,7 +45,7 @@ jobs:
           curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q2.json | tee /tmp/audit_result2.json || echo "STEP2_FAILED" >> /tmp/audit_result2.json
+            --data-binary @/tmp/q2.json | tee /tmp/r2.json || echo '{"error":"linkedin_settings query failed"}' > /tmp/r2.json
 
       - name: LinkedIn posts state
         shell: bash
@@ -57,7 +59,7 @@ jobs:
           curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q3.json | tee /tmp/audit_result3.json || echo "STEP3_FAILED" >> /tmp/audit_result3.json
+            --data-binary @/tmp/q3.json | tee /tmp/r3.json || echo '{"error":"linkedin_posts query failed"}' > /tmp/r3.json
 
       - name: Cross-tenant isolation check
         shell: bash
@@ -84,11 +86,18 @@ jobs:
           curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q4.json | tee /tmp/audit_result4.json
+            --data-binary @/tmp/q4.json | tee /tmp/r4.json
 
-      - name: Upload all audit results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: tcr-romylabs-tenant-audit
-          path: /tmp/audit_result*.json
+      - name: Commit audit results to repo
+        shell: bash
+        run: |
+          mkdir -p .audit-output
+          cp /tmp/r1.json .audit-output/tenants.json
+          cp /tmp/r2.json .audit-output/linkedin-settings.json
+          cp /tmp/r3.json .audit-output/linkedin-posts.json
+          cp /tmp/r4.json .audit-output/cross-tenant.json
+          git config user.email "audit-bot@romylabs.com"
+          git config user.name "ROMYLABS Audit Bot"
+          git add .audit-output/
+          git commit -m "audit: live tenant data $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "No changes"
+          git push
