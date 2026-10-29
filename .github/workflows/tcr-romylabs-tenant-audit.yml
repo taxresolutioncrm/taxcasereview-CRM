@@ -11,47 +11,59 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       PROJECT_REF: mpxgxfqdbquzkrvvejkh
     steps:
-      - name: Discover all tenants
+      - name: Discover all tenants and RLS status
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY' >/tmp/q.json
           import json
-          q=r"""
+          q=r'''
           select jsonb_build_object(
-            'tenants',(select coalesce(jsonb_agg(jsonb_build_object('id',id::text,'name',name,'subdomain',subdomain,'plan',plan,'active',active) order by name),'[]'::jsonb) from tenants),
-            'doc_bucket_public',(select public from storage.buckets where name='documents'),
-            'firm_assets_public',(select public from storage.buckets where name='firm-assets'),
-            'avatars_public',(select public from storage.buckets where name='avatars'),
-            'rls_on_tables',(select jsonb_object_agg(tablename,rowsecurity::text) from pg_tables where schemaname='public' and tablename in ('leads','clients','cases','documents','payments','invoices','sms_messages','call_recordings','employees','payrollruns','time_off_requests','payment_methods','fax_logs','voicemails','chat_messages','esigns','tasks','deadlines','call_logs','sms_logs')),
-            'open_rls_count',(select count(*) from pg_policies where schemaname='public' and qual='true')
-          ) as audit
-          """
+            'tenants',(select coalesce(jsonb_agg(to_jsonb(t) order by t.name),'[]'::jsonb) from (select id::text,name,subdomain,plan,active from tenants) t),
+            'doc_bucket',(select to_jsonb(b) from storage.buckets b where b.name='documents'),
+            'firm_assets_bucket',(select to_jsonb(b) from storage.buckets b where b.name='firm-assets'),
+            'avatars_bucket',(select to_jsonb(b) from storage.buckets b where b.name='avatars'),
+            'rls_leads',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='leads'),
+            'rls_clients',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='clients'),
+            'rls_cases',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='cases'),
+            'rls_documents',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='documents'),
+            'rls_employees',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='employees'),
+            'rls_payments',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='payments'),
+            'rls_sms',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='sms_messages'),
+            'open_rls_count',(select count(*) from pg_policies where schemaname='public' and qual='true'),
+            'linkedin_settings',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'autopilot',autopilot)),'[]'::jsonb) from linkedin_settings)
+          ) as audit;
+          '''
           print(json.dumps({'query':q}))
           PY
-          curl --fail-with-body -sS -X POST \
-            "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+          curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q.json
+            --data-binary @/tmp/q.json | tee /tmp/audit_result.json
 
-      - name: Check LinkedIn state
+      - name: Check LinkedIn post state
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY' >/tmp/q2.json
           import json
-          q=r"""
+          q=r'''
           select jsonb_build_object(
-            'linkedin_settings',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'autopilot',autopilot)),'[]'::jsonb) from linkedin_settings),
-            'linkedin_posts_by_status',(select jsonb_object_agg(status,cnt) from (select status, count(*) as cnt from linkedin_posts group by status) s),
-            'stale_publishing',(select count(*) from linkedin_posts where status='publishing' and updated_at < now() - interval '1 hour')
-          ) as audit
-          """
+            'linkedin_posts_by_status',(select coalesce(jsonb_agg(jsonb_build_object('status',status,'cnt',cnt)),'[]'::jsonb) from (select status, count(*) as cnt from linkedin_posts group by status) s),
+            'stale_publishing',(select count(*) from linkedin_posts where status='publishing' and updated_at < now() - interval '1 hour'),
+            'next_scheduled',(select min(scheduled_for)::text from linkedin_posts where status='approved' and autopilot=true and scheduled_for > now())
+          ) as audit;
+          '''
           print(json.dumps({'query':q}))
           PY
-          curl --fail-with-body -sS -X POST \
-            "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+          curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q2.json
+            --data-binary @/tmp/q2.json | tee /tmp/audit_result2.json
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tcr-romylabs-tenant-audit
+          path: /tmp/audit_result*.json
