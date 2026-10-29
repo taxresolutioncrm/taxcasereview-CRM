@@ -4,6 +4,7 @@
 
 const IRS_WORKFLOW_CHANGES = [
   'Launch two or three independent IRS personal or business practitioner-line sessions and choose which live representative to join',
+  'Detect IRS callback offers and mark them as unconfirmed until a staff member verifies the callback and return number',
   'LinkedIn personal-profile publishing restored for TaxRes CRM using w_member_social scope',
   'LinkedIn scope corrected for Arcvena company-page: r_organization_admin (rw_organization_admin is not a valid LinkedIn v2 scope)',
   'LinkedIn Admin Portal connection badge shows Profile Connected for personal-profile products and Company Page Connected for org products',
