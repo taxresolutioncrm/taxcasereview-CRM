@@ -11,7 +11,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       PROJECT_REF: mpxgxfqdbquzkrvvejkh
     steps:
-      - name: Discover all tenants and table RLS status
+      - name: Discover all tenants
         shell: bash
         run: |
           set -euo pipefail
@@ -19,11 +19,8 @@ jobs:
           import json
           q=r'''
           select jsonb_build_object(
-            'tenants',(select coalesce(jsonb_agg(to_jsonb(t) order by t.name),'[]'::jsonb) from (select id::text,name,subdomain,plan,active from tenants) t),
-            'rls_status',(select coalesce(jsonb_agg(jsonb_build_object('table',tablename,'rls',rowsecurity::text) order by tablename),'[]'::jsonb) from pg_tables where schemaname='public'),
-            'open_rls_policies',(select coalesce(jsonb_agg(jsonb_build_object('table',tablename,'policy',policyname,'qual',qual) order by tablename),'[]'::jsonb) from pg_policies where schemaname='public' and qual='true'),
-            'linkedin_settings',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'autopilot',autopilot)),'[]'::jsonb) from linkedin_settings),
-            'public_tables',(select coalesce(jsonb_agg(table_name order by table_name),'[]'::jsonb) from information_schema.tables where table_schema='public' and table_type='BASE TABLE')
+            'tenant_columns',(select jsonb_agg(column_name order by ordinal_position) from information_schema.columns where table_schema='public' and table_name='tenants'),
+            'tenant_sample',(select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb) from (select * from public.tenants limit 50) t)
           ) as audit;
           '''
           print(json.dumps({'query':q}))
@@ -32,26 +29,6 @@ jobs:
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/q.json | tee /tmp/audit_result.json
-
-      - name: Check LinkedIn post state
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY' >/tmp/q2.json
-          import json
-          q=r'''
-          select jsonb_build_object(
-            'linkedin_posts_by_status',(select coalesce(jsonb_agg(jsonb_build_object('status',status,'cnt',cnt)),'[]'::jsonb) from (select status, count(*) as cnt from linkedin_posts group by status) s),
-            'stale_publishing',(select count(*) from linkedin_posts where status='publishing' and updated_at < now() - interval '1 hour'),
-            'next_scheduled',(select min(scheduled_for)::text from linkedin_posts where status='approved' and autopilot=true and scheduled_for > now())
-          ) as audit;
-          '''
-          print(json.dumps({'query':q}))
-          PY
-          curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q2.json | tee /tmp/audit_result2.json
 
       - name: Upload audit results
         uses: actions/upload-artifact@v4
