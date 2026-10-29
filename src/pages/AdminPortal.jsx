@@ -7451,11 +7451,39 @@ function LinkedInPublisher({ embeddedMode = false }) {
     sessionStorage.setItem('romylabs_li_draft_schedule', scheduleDate)
   }, [composeBody, composeTitle, composeCategory, scheduleDate])
   React.useEffect(() => {
-    const listener = (event) => {
-      if (event.origin !== window.location.origin || event.data?.type !== 'romylabs-linkedin-oauth-complete') return
-      if (event.data.product_id && event.data.product_id !== selectedPid) selectProduct(event.data.product_id)
-      load()
-      showToast(event.data.ok ? 'LinkedIn authorization returned — verifying connection' : `LinkedIn authorization failed: ${event.data.error || 'unknown error'}`, Boolean(event.data.ok))
+    const listener = async (event) => {
+      if (event.origin !== window.location.origin || event.source === window || event.data?.type !== 'romylabs-linkedin-oauth-code') return
+      const result = event.data
+      const transaction = (() => { try { return JSON.parse(localStorage.getItem('linkedin_oauth_transaction') || 'null') } catch { return null } })()
+      if (!transaction || Date.now() - Number(transaction.createdAt) > 10 * 60 * 1000 || transaction.state !== result.state) {
+        showToast('LinkedIn authorization rejected: expired or invalid state. Reconnect.', false)
+        return
+      }
+      const product = transaction.product
+      const expectedRedirect = linkedinRedirectFor(product)
+      if (transaction.redirect !== expectedRedirect || (result.oauth_redirect_uri && result.oauth_redirect_uri !== expectedRedirect)) {
+        showToast('LinkedIn redirect mismatch; reconnect.', false)
+        return
+      }
+      localStorage.removeItem('linkedin_oauth_transaction')
+      if (result.error || !result.code) {
+        showToast('LinkedIn authorization failed: ' + (result.error_description || result.error || 'Missing authorization code'), false)
+        return
+      }
+      try {
+        const {data, error} = await supabase.functions.invoke('linkedin-publish', {
+          body:{action:'oauth_callback',code:result.code,redirect_uri:expectedRedirect,state:result.state,product_id:product}
+        })
+        if (error || !data?.ok) {
+          showToast('LinkedIn connection failed: ' + (data?.error || error?.message || 'Token exchange failed'), false)
+          return
+        }
+        showToast(data.publish_target_type === 'ORGANIZATION' ? 'Company page connected ✓' : 'Personal profile connected ✓')
+        if (product !== selectedPid) selectProduct(product)
+        else load()
+      } catch (e) {
+        showToast('LinkedIn connection failed: ' + (e?.message || 'Unexpected error'), false)
+      }
     }
     window.addEventListener('message', listener)
     return () => window.removeEventListener('message', listener)
