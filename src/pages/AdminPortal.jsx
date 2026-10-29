@@ -7486,7 +7486,17 @@ function LinkedInPublisher({ embeddedMode = false }) {
       }
     }
     window.addEventListener('message', listener)
-    return () => window.removeEventListener('message', listener)
+    // LinkedIn can isolate a popup using Cross-Origin-Opener-Policy. Keep
+    // an authenticated same-origin channel as the popup callback fallback.
+    const channel = typeof BroadcastChannel !== 'undefined'
+      ? new BroadcastChannel('romylabs-linkedin-oauth') : null
+    if (channel) channel.onmessage = (event) => listener({
+      origin:window.location.origin, source:null, data:event.data,
+    })
+    return () => {
+      window.removeEventListener('message', listener)
+      channel?.close()
+    }
   }, [selectedPid])
 
   // Derived: the selected product object
