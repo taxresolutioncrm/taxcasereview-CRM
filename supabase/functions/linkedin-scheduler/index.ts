@@ -112,7 +112,24 @@ Deno.serve(async(req)=>{
   const action=input.action||'run',now=new Date();
   try{
     if(action==='get_settings'){const productId=input.product_id||TAXRES_PRODUCT;const {data}=await sb.from('linkedin_settings').select('*').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).maybeSingle();return response({ok:true,settings:{...(data||{}),autopilot:data?.autopilot??false,timezone:data?.timezone||TIMEZONE},content_library_available:Boolean(LIBRARIES[productId]?.length)})}
-    if(action==='save_settings'){const productId=input.product_id||TAXRES_PRODUCT;const {error}=await sb.from('linkedin_settings').upsert({tenant_id:ADMIN_TENANT,product_id:productId,...(input.settings||{}),timezone:TIMEZONE,updated_at:now.toISOString()},{onConflict:'tenant_id,product_id'});if(error)throw error;return response({ok:true,autopilot:input.settings?.autopilot??false})}
+    if(action==='save_settings'){
+      const productId=String(input.product_id||TAXRES_PRODUCT)
+      const enabled=input.settings?.autopilot===true
+      if(enabled){
+        if(!LIBRARIES[productId])return response({ok:false,error:'product_specific_content_library_not_ready',product_id:productId},409)
+        const {data:conn,error:connError}=await sb.from('linkedin_connections')
+          .select('expires_at,publish_target_type,linkedin_person_id,linkedin_organization_id')
+          .eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).maybeSingle()
+        if(connError)return response({ok:false,error:'linkedin_connection_check_failed'},503)
+        const org=String(conn?.publish_target_type||'').toUpperCase()==='ORGANIZATION'&&Boolean(conn?.linkedin_organization_id)
+        const person=String(conn?.publish_target_type||'').toUpperCase()==='PERSON'&&Boolean(conn?.linkedin_person_id)
+        const valid=Boolean(conn&&new Date(conn.expires_at)>now&&(productId===ARCVENA_PRODUCT?org&&String(conn.linkedin_organization_id)==='146118085':productId===TAXRES_PRODUCT?(org||person):org))
+        if(!valid)return response({ok:false,error:'verified_linkedin_publishing_destination_required',product_id:productId},409)
+      }
+      const {error}=await sb.from('linkedin_settings').upsert({tenant_id:ADMIN_TENANT,product_id:productId,...(input.settings||{}),timezone:TIMEZONE,updated_at:now.toISOString()},{onConflict:'tenant_id,product_id'})
+      if(error)throw error
+      return response({ok:true,autopilot:enabled})
+    }
     if(action==='get_health'){const {data,error}=await sb.rpc('get_linkedin_health');if(error)throw error;return response({ok:true,health:data})}
     if(action==='send_alert'){if(!input.subject||!input.html)return response({ok:false,error:'subject_and_html_required'},400);await alert(sb,String(input.subject),String(input.html));return response({ok:true})}
     if(action==='next_slots')return response({ok:true,slots:slots(now,8)})
@@ -134,7 +151,7 @@ Deno.serve(async(req)=>{
         if(pid===ARCVENA_PRODUCT&&String(conn.linkedin_organization_id||'')!=='146118085'){result.products_skipped.push({product_id:pid,reason:'arcvena_company_page_target_not_verified'});continue}
         if(pid===TAXRES_PRODUCT){
           const target=String(conn.publish_target_type||'').toUpperCase()
-          const hasTarget=target==='ORGANIZATION' && Boolean(conn.linkedin_organization_id)
+          const hasTarget=(target==='PERSON' && Boolean(conn.linkedin_person_id)) || (target==='ORGANIZATION' && Boolean(conn.linkedin_organization_id))
           if(!hasTarget){result.products_skipped.push({product_id:pid,reason:'taxres_publish_target_not_verified'});continue}
         }
         const x=await generate(sb,now,pid);result.generated+=x.created.length;result.quarantined+=x.quarantined.length;result.skipped+=x.skipped;
