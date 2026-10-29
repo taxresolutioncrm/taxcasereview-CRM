@@ -88,8 +88,18 @@ Deno.serve(async (req) => {
     const redirect_uri = body.redirect_uri as string
     const allowedRedirects = new Set(['https://admin.romylabs.com/crm-admin/linkedin/callback', 'https://taxrescrm.app/crm-admin/linkedin/callback'])
     if (!code || !allowedRedirects.has(redirect_uri)) return json({ ok:false, error:'Invalid LinkedIn authorization code or redirect URL' },400)
-    const clientId     = Deno.env.get('LINKEDIN_CLIENT_ID')!
-    const clientSecret = Deno.env.get('LINKEDIN_CLIENT_SECRET')!
+    // LinkedIn codes are bound to the application and exact redirect used to authorize.
+    // Never exchange an Arcvena code using the TaxRes app credentials.
+    const app = productId === 'arcvena'
+      ? { clientId:'78qm6ur34krhzr', secret:Deno.env.get('ARCVENA_LINKEDIN_CLIENT_SECRET'), redirect:'https://admin.romylabs.com/crm-admin/linkedin/callback' }
+      : productId === 'taxres_crm'
+      ? { clientId:'788n5oz5zrmb1o', secret:Deno.env.get('LINKEDIN_CLIENT_SECRET'), redirect:'https://taxrescrm.app/crm-admin/linkedin/callback' }
+      : null
+    if (!app) return json({ok:false,error:'LinkedIn application not configured for this product'},400)
+    if (redirect_uri !== app.redirect) return json({ok:false,error:'LinkedIn redirect does not match the registered application callback'},400)
+    if (!app.secret) return json({ok:false,error:'LinkedIn application server credentials are not configured'},503)
+    const clientId = app.clientId
+    const clientSecret = app.secret
 
     const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
