@@ -240,8 +240,10 @@ export default function IRSPortal() {
     const path = `poa/${(poaForm.clientName || 'unknown').replace(/[^A-Za-z0-9 _-]/g, '')}/${Date.now()}-${file.name}`
     const { error } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
     if (error) { alert('Upload failed: ' + error.message); return }
-    const { data: u } = supabase.storage.from('documents').getPublicUrl(path)
-    pf('fileUrl', u?.publicUrl || '')
+    // SECURITY: documents bucket is PRIVATE — must use createSignedUrl, not getPublicUrl
+    const { data: u, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 60 * 60 * 24 * 7) // 7 days
+    if (signErr) { alert('Failed to generate file URL: ' + signErr.message); return }
+    pf('fileUrl', u?.signedUrl || '')
   }
 
   async function deletePoa(id) {
