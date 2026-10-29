@@ -66,20 +66,28 @@ function LinkedInCallbackBridge() {
       // The popup may not have the authenticated Admin Portal session. Return
       // the short-lived code to its same-origin opener, which validates state
       // and performs the token exchange using its existing authenticated session.
+      const payload = {
+        type: 'romylabs-linkedin-oauth-code',
+        code: incoming.get('code') || '',
+        state: incoming.get('state') || '',
+        error: incoming.get('error') || '',
+        error_description: incoming.get('error_description') || '',
+        oauth_redirect_uri: incoming.get('oauth_redirect_uri') || '',
+      }
       const opener = window.opener
       if (opener && !opener.closed) {
-        opener.postMessage({
-          type: 'romylabs-linkedin-oauth-code',
-          code: incoming.get('code') || '',
-          state: incoming.get('state') || '',
-          error: incoming.get('error') || '',
-          error_description: incoming.get('error_description') || '',
-          oauth_redirect_uri: incoming.get('oauth_redirect_uri') || '',
-        }, window.location.origin)
-        window.close()
+        opener.postMessage(payload, window.location.origin)
+      } else if (typeof BroadcastChannel !== 'undefined') {
+        // LinkedIn's cross-origin COOP policy can sever window.opener. A
+        // same-origin channel returns the code to the existing signed-in tab.
+        const channel = new BroadcastChannel('romylabs-linkedin-oauth')
+        channel.postMessage(payload)
+        channel.close()
+      } else {
+        // Never exchange an OAuth code here without its originating state.
         return
       }
-      // No opener means no stateful transaction. Never exchange an unverified code.
+      window.close()
       return
     }
     window.location.replace(destination.toString())
