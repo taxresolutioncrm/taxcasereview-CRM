@@ -1819,6 +1819,9 @@ export default function Clients() {
     setSaving(true)
     const before=detail
     const payload=buildPayload(form)
+    // Masked sensitive fields are deliberately blank on edit; never interpret
+    // that blank as an instruction to erase an existing SSN.
+    for(const field of ['ssn','spouseSsn']) if(!form[field]) delete payload[field]
     try{
       const {data,error}=await supabase.from('clients').update(payload)
         .eq('tenant_id',myTenantId).eq('id',form.id).select('*').single()
