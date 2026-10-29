@@ -12,6 +12,7 @@ async function decide(prompt:string,session:any){
   const lower=prompt.toLowerCase()
   if(!prompt.trim()) return {action:'wait',confidence:0.5,reason:'No speech result'}
   if(/(thank you for calling|your call is important|please continue to hold|estimated wait|next available|high call volume|please stay on the line|hold for the next)/i.test(prompt)) return {action:'wait',confidence:.94,reason:'Queue or recorded announcement'}
+  if(/(we can call you back|would you like (us|a representative) to call you back|press .* for a callback|request a callback|receive a callback|callback option|call-back option)/i.test(prompt)) return {action:'callback_offer',confidence:.98,reason:'IRS callback option offered; manual confirmation required'}
   if(/(my name is|badge number|id number|how may i help|how can i help|who am i speaking|internal revenue service.*this is|department of revenue.*this is)/i.test(prompt)) return {action:'human',confidence:.98,reason:'Conversational representative greeting'}
 
   if(!GROQ) return {action:'unknown',confidence:0,reason:'AI classifier unavailable'}
@@ -25,7 +26,7 @@ async function decide(prompt:string,session:any){
           'You route outbound calls through US government auto attendants for an authorized tax professional.',
           'You NEVER discuss taxpayer facts, authenticate a taxpayer, claim to be the practitioner, or speak substantively to a live representative.',
           'Your only jobs are: identify an IVR menu choice that advances the stated objective; recognize queue/hold announcements; recognize a live human representative; otherwise wait.',
-          'Return ONLY strict JSON: {"action":"press"|"wait"|"human"|"unknown","digit":null|"0"-"9"|"*"|"#","confidence":0-1,"reason":"short"}',
+          'Return ONLY strict JSON: {"action":"press"|"wait"|"human"|"callback_offer"|"unknown","digit":null|"0"-"9"|"*"|"#","confidence":0-1,"reason":"short"}',
           'Only return press when the prompt itself clearly states an option matching the objective or a known route hint. Never guess a digit.',
           'Return human only for conversational language indicating an actual representative is speaking, not a recorded menu.'
         ].join('\n')},
@@ -39,7 +40,7 @@ async function decide(prompt:string,session:any){
   try{
     const m=raw.match(/\{[\s\S]*\}/)
     const parsed=JSON.parse(m?m[0]:raw)
-    const action=['press','wait','human','unknown'].includes(parsed.action)?parsed.action:'unknown'
+    const action=['press','wait','human','callback_offer','unknown'].includes(parsed.action)?parsed.action:'unknown'
     const digit=/^[0-9*#]$/.test(String(parsed.digit||''))?String(parsed.digit):null
     const confidence=Math.max(0,Math.min(1,Number(parsed.confidence)||0))
     if(action==='press'&&(!digit||confidence<.82)) return {action:'unknown',confidence,reason:'Press confidence below threshold'}
@@ -78,6 +79,16 @@ serve(async req=>{
   const now=new Date().toISOString()
   const baseUpdate:any={last_prompt:prompt.slice(0,4000),last_action:choice.action,confidence:Number(choice.confidence||0)*100,updated_at:now}
   let event:any={tenant_id:session.tenant_id,session_id:id,event_type:choice.action,prompt_text:prompt.slice(0,4000),action:choice.action,confidence:Number(choice.confidence||0)*100,meta:{reason:choice.reason}}
+
+  if(choice.action==='callback_offer'){
+    // A callback is not yet registered: the IRS may require a number,
+    // verification, or explicit confirmation. Never assume a return is booked.
+    baseUpdate.status='holding'
+    baseUpdate.last_action='callback_offered'
+    await db.from('ai_government_call_sessions').update(baseUpdate).eq('id',id)
+    await db.from('ai_government_call_events').insert({...event,event_type:'callback_offered',action:'needs_staff_confirmation'})
+    return xml(gather(self))
+  }
 
   if(choice.action==='human'){
     baseUpdate.status='human_detected';baseUpdate.human_detected_at=now
