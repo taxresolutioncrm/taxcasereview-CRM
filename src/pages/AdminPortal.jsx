@@ -7434,12 +7434,12 @@ function LinkedInPublisher({ embeddedMode = false }) {
   const [selectedReport, setSelectedReport] = React.useState(null)
   const [nextSlots, setNextSlots]     = React.useState([])
 
-  const LINKEDIN_CLIENT_ID = '788n5oz5zrmb1o'
+  const LINKEDIN_CLIENT_IDS = { taxres_crm: '788n5oz5zrmb1o', arcvena: '78qm6ur34krhzr' }
   const TAXRES_LINKEDIN_REDIRECT_URI = 'https://taxrescrm.app/crm-admin/linkedin/callback'
   const ADMIN_LINKEDIN_CALLBACK = 'https://admin.romylabs.com/crm-admin/linkedin/callback'
   // Use the original LinkedIn-registered redirect for every product. The original
   // host forwards the code and state to the authenticated Admin Portal session.
-  const linkedinRedirectFor = (_pid) => TAXRES_LINKEDIN_REDIRECT_URI
+  const linkedinRedirectFor = (pid) => pid === 'arcvena' ? ADMIN_LINKEDIN_CALLBACK : TAXRES_LINKEDIN_REDIRECT_URI
 
   // Preserve the workspace if authorization is cancelled or the browser navigates back.
   React.useEffect(() => { sessionStorage.setItem('romylabs_li_active_tab', liTab) }, [liTab])
@@ -7578,9 +7578,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
 
       if (data?.ok) {
         if (oauthProduct !== selectedPid) selectProduct(oauthProduct)
-        showToast((oauthProduct === 'arcvena' || oauthProduct === 'taxres_crm')
-          ? `${oauthProduct === 'arcvena' ? 'Arcvena' : 'TaxRes CRM'} company page verified ✓`
-          : `Connected as ${data.name} ✓`)
+        showToast(data.publish_target_type === 'ORGANIZATION' ? `${oauthProduct} company page verified ✓` : `Personal profile connected as ${data.name} ✓`)
         load()
         if (window.opener && !window.opener.closed) {
           window.opener.postMessage({ type:'romylabs-linkedin-oauth-complete', ok:true, product_id:oauthProduct }, window.location.origin)
@@ -7656,10 +7654,18 @@ function LinkedInPublisher({ embeddedMode = false }) {
     // LinkedIn app has w_organization_social approved for that brand.
     // rw_organization_admin is not a valid LinkedIn v2 scope; use r_organization_admin.
     const scope = selectedPid === 'arcvena'
-      ? 'openid profile w_organization_social r_organization_admin'
+      ? 'w_member_social'
       : 'openid profile w_member_social'
+    if (!LINKEDIN_CLIENT_IDS[selectedPid]) {
+      showToast('This CRM does not have a configured LinkedIn application yet.', false)
+      return
+    }
+    if (selectedPid === 'arcvena') {
+      showToast('Arcvena company-page publishing requires LinkedIn approval of w_organization_social. Its app currently only shows personal-profile permission.', false)
+      return
+    }
     const params = new URLSearchParams({
-      response_type: 'code', client_id: LINKEDIN_CLIENT_ID,
+      response_type: 'code', client_id: LINKEDIN_CLIENT_IDS[selectedPid],
       redirect_uri: redirectUri, scope, state,
     })
     const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
