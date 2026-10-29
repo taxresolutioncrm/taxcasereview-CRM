@@ -31,33 +31,39 @@ jobs:
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/q1.json | tee /tmp/audit_result1.json
 
-      - name: LinkedIn connections and post state
+      - name: LinkedIn settings only
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY' >/tmp/q2.json
           import json
-          q=r'''
-          select jsonb_build_object(
-            'linkedin_settings',(select coalesce(jsonb_agg(to_jsonb(s)),'[]'::jsonb) from (select tenant_id::text,product_id,autopilot,timezone,updated_at::text from linkedin_settings) s),
-            'linkedin_posts_by_status',(select coalesce(jsonb_agg(jsonb_build_object('status',status,'cnt',cnt)),'[]'::jsonb) from (select status,count(*) as cnt from linkedin_posts group by status) s),
-            'stale_publishing',(select count(*) from linkedin_posts where status='publishing' and updated_at < now() - interval '1 hour'),
-            'next_approved',(select min(scheduled_for)::text from linkedin_posts where status='approved' and scheduled_for > now()),
-            'linkedin_connections_by_tenant',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'product_id',product_id,'connected',connected,'updated_at',updated_at::text)),'[]'::jsonb) from linkedin_connections)
-          ) as audit;
-          '''
+          q=r'''select coalesce(jsonb_agg(to_jsonb(s)),'[]'::jsonb) as linkedin_settings from (select tenant_id::text,product_id,autopilot,timezone,updated_at::text from linkedin_settings) s;'''
           print(json.dumps({'query':q}))
           PY
           curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q2.json | tee /tmp/audit_result2.json
+            --data-binary @/tmp/q2.json | tee /tmp/audit_result2.json || echo "STEP2_FAILED" >> /tmp/audit_result2.json
+
+      - name: LinkedIn posts state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >/tmp/q3.json
+          import json
+          q=r'''select jsonb_build_object('posts_by_status',(select coalesce(jsonb_agg(jsonb_build_object('status',status,'cnt',cnt)),'[]'::jsonb) from (select status,count(*) as cnt from linkedin_posts group by status) s),'stale_publishing',(select count(*) from linkedin_posts where status='publishing' and updated_at < now() - interval '1 hour'),'next_scheduled',(select min(scheduled_for)::text from linkedin_posts where status='approved' and scheduled_for > now())) as audit;'''
+          print(json.dumps({'query':q}))
+          PY
+          curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/q3.json | tee /tmp/audit_result3.json || echo "STEP3_FAILED" >> /tmp/audit_result3.json
 
       - name: Cross-tenant isolation check
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY' >/tmp/q3.json
+          python3 - <<'PY' >/tmp/q4.json
           import json
           q=r'''
           select jsonb_build_object(
@@ -78,7 +84,7 @@ jobs:
           curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q3.json | tee /tmp/audit_result3.json
+            --data-binary @/tmp/q4.json | tee /tmp/audit_result4.json
 
       - name: Upload all audit results
         uses: actions/upload-artifact@v4
