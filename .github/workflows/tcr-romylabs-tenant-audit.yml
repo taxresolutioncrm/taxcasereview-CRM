@@ -11,7 +11,7 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       PROJECT_REF: mpxgxfqdbquzkrvvejkh
     steps:
-      - name: Discover all tenants and RLS status
+      - name: Discover all tenants and table RLS status
         shell: bash
         run: |
           set -euo pipefail
@@ -20,18 +20,10 @@ jobs:
           q=r'''
           select jsonb_build_object(
             'tenants',(select coalesce(jsonb_agg(to_jsonb(t) order by t.name),'[]'::jsonb) from (select id::text,name,subdomain,plan,active from tenants) t),
-            'doc_bucket',(select to_jsonb(b) from storage.buckets b where b.name='documents'),
-            'firm_assets_bucket',(select to_jsonb(b) from storage.buckets b where b.name='firm-assets'),
-            'avatars_bucket',(select to_jsonb(b) from storage.buckets b where b.name='avatars'),
-            'rls_leads',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='leads'),
-            'rls_clients',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='clients'),
-            'rls_cases',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='cases'),
-            'rls_documents',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='documents'),
-            'rls_employees',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='employees'),
-            'rls_payments',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='payments'),
-            'rls_sms',(select rowsecurity::text from pg_tables where schemaname='public' and tablename='sms_messages'),
-            'open_rls_count',(select count(*) from pg_policies where schemaname='public' and qual='true'),
-            'linkedin_settings',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'autopilot',autopilot)),'[]'::jsonb) from linkedin_settings)
+            'rls_status',(select coalesce(jsonb_agg(jsonb_build_object('table',tablename,'rls',rowsecurity::text) order by tablename),'[]'::jsonb) from pg_tables where schemaname='public'),
+            'open_rls_policies',(select coalesce(jsonb_agg(jsonb_build_object('table',tablename,'policy',policyname,'qual',qual) order by tablename),'[]'::jsonb) from pg_policies where schemaname='public' and qual='true'),
+            'linkedin_settings',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'autopilot',autopilot)),'[]'::jsonb) from linkedin_settings),
+            'public_tables',(select coalesce(jsonb_agg(table_name order by table_name),'[]'::jsonb) from information_schema.tables where table_schema='public' and table_type='BASE TABLE')
           ) as audit;
           '''
           print(json.dumps({'query':q}))
