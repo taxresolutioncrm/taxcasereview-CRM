@@ -7650,8 +7650,13 @@ function LinkedInPublisher({ embeddedMode = false }) {
     sessionStorage.setItem('linkedin_oauth_product', selectedPid)
     const redirectUri = linkedinRedirectFor(selectedPid)
     sessionStorage.setItem('linkedin_oauth_redirect_uri', redirectUri)
-    const scope = (selectedPid === 'arcvena' || selectedPid === 'taxres_crm')
-      ? 'openid profile w_organization_social rw_organization_admin'
+    // arcvena must post as its LinkedIn company page — org scope required.
+    // taxres_crm publishes from the personal profile of the authorizing user;
+    // the company-page destination is a separate future product ID once the
+    // LinkedIn app has w_organization_social approved for that brand.
+    // rw_organization_admin is not a valid LinkedIn v2 scope; use r_organization_admin.
+    const scope = selectedPid === 'arcvena'
+      ? 'openid profile w_organization_social r_organization_admin'
       : 'openid profile w_member_social'
     const params = new URLSearchParams({
       response_type: 'code', client_id: LINKEDIN_CLIENT_ID,
@@ -7773,7 +7778,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
   ]
 
   // Status badges for selected product
-  const companyPageRequired = selectedPid === 'arcvena' || selectedPid === 'taxres_crm'
+  // Only arcvena requires a company-page connection; taxres_crm publishes from
+  // the authorizing user's personal profile until its company page is ready.
+  const companyPageRequired = selectedPid === 'arcvena'
   const companyPageReady = !companyPageRequired || (connection?.connected === true && connection?.publish_target_type === 'ORGANIZATION' && !!connection?.linkedin_organization_id && String(connection?.scopes || '').split(/[ ,]+/).includes('w_organization_social'))
   const autopilotOn = settings?.autopilot === true && connection?.connected === true && companyPageReady
   const liConnected = connection?.connected === true && connection?.expired !== true && (!connection?.expires_at || new Date(connection.expires_at).getTime() > Date.now())
@@ -7871,7 +7878,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
               color: liConnected && companyPageReady ? '#a5b4fc' : '#ef4444',
               border: `1px solid ${liConnected && companyPageReady ? 'rgba(99,102,241,.3)' : 'rgba(239,68,68,.2)'}`,
             }}>
-              LinkedIn {liConnected ? (companyPageReady ? 'Company Page Connected' : 'Wrong Publish Target') : connection?.reconnect_required ? 'Reconnect Required' : 'Not Connected'}
+              LinkedIn {liConnected ? (companyPageRequired ? (companyPageReady ? 'Company Page Connected' : 'Wrong Publish Target') : 'Profile Connected') : connection?.reconnect_required ? 'Reconnect Required' : 'Not Connected'}
             </span>
           )}
           {seoStatus && seoStatus !== 'unknown' && (
@@ -7919,10 +7926,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
               <div style={{ ...CC2.card, padding:'10px 14px', marginBottom:10 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
                   <span style={{ width:7, height:7, borderRadius:'50%', background:liConnected && companyPageReady ? '#10b981' : '#ef4444', display:'inline-block' }} />
-                  <span style={{ fontSize:11, fontWeight:700, color:liConnected && companyPageReady ? '#10b981' : '#fca5a5' }}>{companyPageRequired && liConnected && companyPageReady ? `${selectedProduct?.name || selectedPid} company page` : connection.display_name} {(!liConnected || !companyPageReady) ? '— reconnect required' : ''}</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:liConnected && companyPageReady ? '#10b981' : '#fca5a5' }}>{companyPageRequired && liConnected && companyPageReady ? `${selectedProduct?.name || selectedPid} company page` : connection.display_name} {(!liConnected || (companyPageRequired && !companyPageReady)) ? '— reconnect required' : ''}</span>
                 </div>
                 <div style={{ fontSize:10, color:'#475569', marginBottom:4 }}>
-                  {companyPageRequired && companyPageReady && liConnected ? `Verified organization ID: ${connection.linkedin_organization_id} · ` : ''}Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
+                  {companyPageRequired && companyPageReady && liConnected ? `Verified organization ID: ${connection.linkedin_organization_id} · ` : ''}{!companyPageRequired && liConnected ? 'Personal profile · ' : ''}Publishing token expires {new Date(connection.expires_at).toLocaleDateString()}
                 </div>
                 <div style={{ fontSize:9, color:'#64748b', marginBottom:8, lineHeight:1.4 }}>
                   Scope: {connection.scopes || 'publishing only'} · LinkedIn direct messages are not included in this connection.
