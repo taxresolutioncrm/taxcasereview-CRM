@@ -31,7 +31,7 @@ jobs:
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/q1.json | tee /tmp/audit_result1.json
 
-      - name: LinkedIn and document state
+      - name: LinkedIn connections and post state
         shell: bash
         run: |
           set -euo pipefail
@@ -39,10 +39,11 @@ jobs:
           import json
           q=r'''
           select jsonb_build_object(
-            'linkedin_settings',(select coalesce(jsonb_agg(to_jsonb(s)),'[]'::jsonb) from (select tenant_id::text,autopilot,updated_at::text from linkedin_settings) s),
+            'linkedin_settings',(select coalesce(jsonb_agg(to_jsonb(s)),'[]'::jsonb) from (select tenant_id::text,product_id,autopilot,timezone,updated_at::text from linkedin_settings) s),
             'linkedin_posts_by_status',(select coalesce(jsonb_agg(jsonb_build_object('status',status,'cnt',cnt)),'[]'::jsonb) from (select status,count(*) as cnt from linkedin_posts group by status) s),
             'stale_publishing',(select count(*) from linkedin_posts where status='publishing' and updated_at < now() - interval '1 hour'),
-            'next_approved',(select min(scheduled_for)::text from linkedin_posts where status='approved' and autopilot=true and scheduled_for > now())
+            'next_approved',(select min(scheduled_for)::text from linkedin_posts where status='approved' and scheduled_for > now()),
+            'linkedin_connections_by_tenant',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'product_id',product_id,'connected',connected,'updated_at',updated_at::text)),'[]'::jsonb) from linkedin_connections)
           ) as audit;
           '''
           print(json.dumps({'query':q}))
@@ -52,7 +53,7 @@ jobs:
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/q2.json | tee /tmp/audit_result2.json
 
-      - name: Employee counts and lead pipeline by tenant
+      - name: Cross-tenant isolation check
         shell: bash
         run: |
           set -euo pipefail
@@ -64,7 +65,12 @@ jobs:
             'leads_by_tenant',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'cnt',cnt,'latest',latest::text)),'[]'::jsonb) from (select tenant_id,count(*) as cnt,max(created_at) as latest from leads group by tenant_id) s),
             'clients_by_tenant',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'cnt',cnt)),'[]'::jsonb) from (select tenant_id,count(*) as cnt from clients group by tenant_id) s),
             'cases_by_tenant',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'cnt',cnt)),'[]'::jsonb) from (select tenant_id,count(*) as cnt from cases group by tenant_id) s),
-            'documents_by_tenant',(select coalesce(jsonb_agg(jsonb_build_object('tenant_id',tenant_id::text,'cnt',cnt)),'[]'::jsonb) from (select tenant_id,count(*) as cnt from documents group by tenant_id) s)
+            'leads_null_tenant',(select count(*) from leads where tenant_id is null),
+            'clients_null_tenant',(select count(*) from clients where tenant_id is null),
+            'cases_null_tenant',(select count(*) from cases where tenant_id is null),
+            'total_leads',(select count(*) from leads),
+            'total_clients',(select count(*) from clients),
+            'total_cases',(select count(*) from cases)
           ) as audit;
           '''
           print(json.dumps({'query':q}))
@@ -73,33 +79,6 @@ jobs:
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/q3.json | tee /tmp/audit_result3.json
-
-      - name: Cross-tenant isolation spot check
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY' >/tmp/q4.json
-          import json
-          q=r'''
-          select jsonb_build_object(
-            'leads_with_null_tenant',(select count(*) from leads where tenant_id is null),
-            'clients_with_null_tenant',(select count(*) from clients where tenant_id is null),
-            'cases_with_null_tenant',(select count(*) from cases where tenant_id is null),
-            'documents_with_null_tenant',(select count(*) from documents where tenant_id is null),
-            'employees_with_null_tenant',(select count(*) from employees where tenant_id is null),
-            'payments_with_null_tenant',(select count(*) from payments where tenant_id is null),
-            'total_leads',(select count(*) from leads),
-            'total_clients',(select count(*) from clients),
-            'total_cases',(select count(*) from cases),
-            'total_payments',(select count(*) from payments)
-          ) as audit;
-          '''
-          print(json.dumps({'query':q}))
-          PY
-          curl --fail-with-body -sS -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H 'Content-Type: application/json' \
-            --data-binary @/tmp/q4.json | tee /tmp/audit_result4.json
 
       - name: Upload all audit results
         uses: actions/upload-artifact@v4
