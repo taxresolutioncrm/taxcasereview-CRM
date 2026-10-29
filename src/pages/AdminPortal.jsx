@@ -7526,7 +7526,11 @@ function LinkedInPublisher({ embeddedMode = false }) {
         // RomyLabs is the corporate parent, not a romylabs_products row. Keep it
         // as a first-class LinkedIn workspace without polluting the product registry.
         const corporate = { product_id:'romylabs', name:'RomyLabs Corporate', active:true, lifecycle:'corporate', public:true }
-        const active = [corporate, ...registryActive.filter(p => p.product_id !== 'romylabs')]
+        // Separate destinations: the legacy taxres_crm token belongs to a PERSON,
+        // never label it as the business page.
+        const personal = { product_id:'taxres_crm', name:'My Personal LinkedIn (TaxRes legacy)', active:true, lifecycle:'personal', public:false }
+        const business = { product_id:'taxres_biz', name:'TaxRes Biz', active:true, lifecycle:'business', public:true }
+        const active = [corporate, personal, business, ...registryActive.filter(p => !['romylabs','taxres_crm','taxres_biz'].includes(p.product_id))]
         setProducts(active)
         // Validate stored pid against active products
         if (active.length && !active.find(p => p.product_id === selectedPid)) {
@@ -7680,6 +7684,10 @@ function LinkedInPublisher({ embeddedMode = false }) {
   }, [liTab, selectedPid])
 
   function connectLinkedIn() {
+    if (selectedPid === 'taxres_biz') {
+      showToast('TaxRes Biz needs LinkedIn approval of w_organization_social before its company page can connect. Your personal profile remains separate.', false)
+      return
+    }
     const state = crypto.randomUUID() + crypto.randomUUID()
     localStorage.setItem('linkedin_oauth_transaction', JSON.stringify({state, product:selectedPid, redirect:linkedinRedirectFor(selectedPid), createdAt:Date.now()}))
     sessionStorage.setItem('linkedin_oauth_state', state)
@@ -7824,7 +7832,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   // Status badges for selected product
   // Only arcvena requires a company-page connection; taxres_crm publishes from
   // the authorizing user's personal profile until its company page is ready.
-  const companyPageRequired = selectedPid === 'arcvena'
+  const companyPageRequired = selectedPid === 'arcvena' || selectedPid === 'taxres_biz'
   const companyPageReady = !companyPageRequired || (connection?.connected === true && connection?.publish_target_type === 'ORGANIZATION' && !!connection?.linkedin_organization_id && String(connection?.scopes || '').split(/[ ,]+/).includes('w_organization_social'))
   const autopilotOn = settings?.autopilot === true && connection?.connected === true && companyPageReady
   const liConnected = connection?.connected === true && connection?.expired !== true && (!connection?.expires_at || new Date(connection.expires_at).getTime() > Date.now())
