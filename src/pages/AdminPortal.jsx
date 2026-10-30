@@ -7704,10 +7704,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
       showToast('This CRM does not have a configured LinkedIn application yet.', false)
       return
     }
-    if (selectedPid === 'arcvena') {
-      showToast('Arcvena company-page publishing requires LinkedIn approval of w_organization_social. Its app currently only shows personal-profile permission.', false)
-      return
-    }
+    // Do not hide organization authorization behind a frontend-only warning.
+    // The provider will reject unapproved scopes; the backend still rejects
+    // missing organization permission and unverified company-page ownership.
     const params = new URLSearchParams({
       response_type: 'code', client_id: LINKEDIN_CLIENT_IDS[selectedPid],
       redirect_uri: redirectUri, scope, state,
