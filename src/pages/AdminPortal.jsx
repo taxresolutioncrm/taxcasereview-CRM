@@ -7434,7 +7434,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
   const [selectedReport, setSelectedReport] = React.useState(null)
   const [nextSlots, setNextSlots]     = React.useState([])
 
-  const LINKEDIN_CLIENT_IDS = { taxres_crm: '788n5oz5zrmb1o', arcvena: '78qm6ur34krhzr' }
+  const LINKEDIN_CLIENT_IDS = { taxres_crm: '788n5oz5zrmb1o', taxres_biz: '788n5oz5zrmb1o', arcvena: '78qm6ur34krhzr' }
   const TAXRES_LINKEDIN_REDIRECT_URI = 'https://taxrescrm.app/crm-admin/linkedin/callback'
   const ADMIN_LINKEDIN_CALLBACK = 'https://admin.romylabs.com/crm-admin/linkedin/callback'
   // Use the original LinkedIn-registered redirect for every product. The original
@@ -7684,10 +7684,6 @@ function LinkedInPublisher({ embeddedMode = false }) {
   }, [liTab, selectedPid])
 
   function connectLinkedIn() {
-    if (selectedPid === 'taxres_biz') {
-      showToast('TaxRes Biz needs LinkedIn approval of w_organization_social before its company page can connect. Your personal profile remains separate.', false)
-      return
-    }
     const state = crypto.randomUUID() + crypto.randomUUID()
     localStorage.setItem('linkedin_oauth_transaction', JSON.stringify({state, product:selectedPid, redirect:linkedinRedirectFor(selectedPid), createdAt:Date.now()}))
     sessionStorage.setItem('linkedin_oauth_state', state)
@@ -7699,15 +7695,11 @@ function LinkedInPublisher({ embeddedMode = false }) {
     // the company-page destination is a separate future product ID once the
     // LinkedIn app has w_organization_social approved for that brand.
     // rw_organization_admin is not a valid LinkedIn v2 scope; use r_organization_admin.
-    const scope = selectedPid === 'arcvena'
-      ? 'w_member_social'
+    const scope = selectedPid === 'taxres_biz' || selectedPid === 'arcvena'
+      ? 'openid profile w_organization_social r_organization_admin'
       : 'openid profile w_member_social'
     if (!LINKEDIN_CLIENT_IDS[selectedPid]) {
       showToast('This CRM does not have a configured LinkedIn application yet.', false)
-      return
-    }
-    if (selectedPid === 'arcvena') {
-      showToast('Arcvena company-page publishing requires LinkedIn approval of w_organization_social. Its app currently only shows personal-profile permission.', false)
       return
     }
     const params = new URLSearchParams({
