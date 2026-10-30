@@ -10,7 +10,7 @@ export default function AdminBookingAlerts() {
   const load = useCallback(async () => {
     const {data,error:queryError} = await supabase
       .from('romylabs_booking_alerts')
-      .select('booking_id,product_id,lead_name,lead_email,appointment_type,appointment_date,appointment_time,booked_at,acknowledged_at')
+      .select('booking_id,product_id,lead_name,lead_email,appointment_type,appointment_date,appointment_time,booked_at,acknowledged_at,notification_submission_id,notification_submitted_at,notification_last_error')
       .is('acknowledged_at',null)
       .order('booked_at',{ascending:false}).limit(100)
     if (queryError) { setError('Booking alerts unavailable — check database migration and access.'); return }
@@ -46,6 +46,10 @@ export default function AdminBookingAlerts() {
                 <strong>{(item.product_id||'').replaceAll('_',' ').toUpperCase()} — {item.lead_name}</strong>
                 <div style={{color:'#cbd5e1'}}>{item.appointment_type} · {item.appointment_date} {item.appointment_time} ET</div>
                 {item.lead_email && <a href={'mailto:'+item.lead_email} style={{color:'#93c5fd'}}>{item.lead_email}</a>}
+                <div style={{fontSize:11,color:item.notification_submission_id?'#86efac':'#fbbf24',marginTop:4}}>
+                  {item.notification_submission_id ? 'Mail submitted to Stalwart (inbox delivery not yet verified)' : 'Mail submission not confirmed — review lead now'}
+                  {item.notification_last_error ? ' · Last error: '+item.notification_last_error : ''}
+                </div>
               </div>
               <button type="button" onClick={()=>acknowledge(item.booking_id)}
                 style={{background:'#334155',border:'1px solid #64748b',padding:'6px 10px',borderRadius:6,color:'#fff',cursor:'pointer',fontSize:12}}>
