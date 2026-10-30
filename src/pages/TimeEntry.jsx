@@ -331,13 +331,13 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
               <div style={{ gridColumn: '1/-1', position: 'relative' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.05em' }}>Client *</label>
                 <input value={clientSearch} onChange={e => { setClientSearch(e.target.value); fld('client_name', e.target.value); fld('client_id', ''); setShowClientDrop(true) }}
-                  onFocus={() => setShowClientDrop(true)} onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
+                  onFocus={() => { if (!form.client_id) setShowClientDrop(true) }} onBlur={() => setShowClientDrop(false)}
                   placeholder="Search clients…"
                   style={{ width: '100%', padding: '8px 10px', background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 7, color: 'var(--tx)', fontSize: 13, boxSizing: 'border-box' }} />
                 {showClientDrop && clientFiltered.length > 0 && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--s2)', border: '1px solid var(--br)', borderRadius: 8, zIndex: 50, maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
                     {clientFiltered.map(c => (
-                      <div key={c.id} onMouseDown={() => { fld('client_id', c.id); fld('client_name', c.name); setClientSearch(c.name); setShowClientDrop(false) }}
+                      <div key={c.id} onMouseDown={e => { e.preventDefault(); fld('client_id', c.id); fld('client_name', c.name); setClientSearch(c.name); setShowClientDrop(false) }}
                         style={{ padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--tx)' }}
                         onMouseEnter={e => e.target.style.background = 'var(--s3)'}
                         onMouseLeave={e => e.target.style.background = ''}>
