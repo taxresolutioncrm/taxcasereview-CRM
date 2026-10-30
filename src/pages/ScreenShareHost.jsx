@@ -425,34 +425,33 @@ export default function ScreenShareHost() {
                 segStatus={vbg.segStatus} onSelect={handleBgSelect} />
             </div>
           )}
+          {/* Floating participant video tiles — overlay the shared presentation,
+              rather than shrinking the shared screen with a separate fixed camera strip. */}
+          <div aria-label="Live participant videos" style={{
+            position:'absolute', bottom:12, left:12, right:showChat ? 328 : 12,
+            display:'flex', gap:8, alignItems:'flex-end', overflowX:'auto',
+            pointerEvents:'none', zIndex:4, maxWidth:'100%'
+          }}>
+            {allCams.map(({ key, name, stream, muted, mirror }) => (
+              <div key={key} style={{
+                width:'clamp(110px, 17vw, 210px)', aspectRatio:'4 / 3',
+                minWidth:110, flexShrink:0, position:'relative', overflow:'hidden',
+                border:'1px solid rgba(255,255,255,.22)', borderRadius:12,
+                background:'#1e293b', boxShadow:'0 8px 24px rgba(0,0,0,.6)',
+                pointerEvents:'auto'
+              }}>
+                {stream
+                  ? <StreamVideo stream={stream} muted={muted} mirror={mirror} fit="cover" />
+                  : <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',color:'#94a3b8'}}>📷</div>}
+                <span style={{
+                  position:'absolute',bottom:6,left:7,right:7,color:'#fff',fontSize:11,
+                  fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                  textShadow:'0 1px 3px #000',pointerEvents:'none'
+                }}>{name}</span>
+              </div>
+            ))}
+          </div>
         </div>
-
-        {/* Camera strip — dynamic tile size based on count */}
-        {(() => {
-          const count = allCams.length
-          const tileW = sharing ? (count <= 2 ? 145 : 118) : count <= 2 ? 280 : count <= 4 ? 200 : 160
-          const tileH = sharing ? (count <= 2 ? 108 : 90) : count <= 2 ? 210 : count <= 4 ? 150 : 120
-          return (
-            <div style={{ display:'flex', gap:8, padding:'8px 12px', background:sharing ? 'rgba(0,0,0,.55)' : 'rgba(0,0,0,.85)',
-                          flexShrink:0, overflowX:'auto', borderTop:'1px solid rgba(255,255,255,.06)',
-                          ...(sharing ? { position:'absolute', left:12, bottom:76, zIndex:20, maxWidth:'min(70vw,560px)', borderRadius:10 } : {}) }}>
-              {allCams.map(({ key, name, stream, muted, mirror }) => (
-                <div key={key} style={{ width:tileW, height:tileH, borderRadius:8, overflow:'hidden',
-                                        background:'#1e293b', position:'relative', flexShrink:0 }}>
-                  {stream
-                    ? <StreamVideo stream={stream} muted={muted} mirror={mirror} fit="cover" />
-                    : <div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center' }}>
-                        <span style={{ fontSize:22, opacity:.3 }}>📷</span>
-                      </div>}
-                  <div style={{ position:'absolute',bottom:4,left:6,fontSize:10,color:'#e2e8f0',
-                                background:'rgba(0,0,0,.65)',borderRadius:3,padding:'1px 5px',fontWeight:600 }}>
-                    {name}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        })()}
 
         {/* Controls bar */}
         <div style={{ height:60, background:'rgba(15,23,42,.95)', borderTop:'1px solid rgba(255,255,255,.08)',

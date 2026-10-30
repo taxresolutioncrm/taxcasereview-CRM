@@ -164,7 +164,7 @@ const NewOffice = lazyWithRecovery('NewOffice', () => import('./pages/NewOffice'
 const AdminConsole = lazyWithRecovery('AdminConsole', () => import('./pages/AdminConsole'))
 const ImpersonateGate = lazyWithRecovery('ImpersonateGate', () => import('./pages/ImpersonateGate'))
 const AdminPortalGuard = lazyWithRecovery('AdminPortalGuard', () => import('./pages/AdminPortalGuard'))
-const Training = lazyWithRecovery('Training', () => import('./pages/Training'))
+const Training = lazyWithRecovery('TrainingHub', () => import('./pages/TrainingHub'))
 const Manual   = lazyWithRecovery('Manual', () => import('./pages/Manual'))
 const Support = lazyWithRecovery('Support', () => import('./pages/Support'))
 
