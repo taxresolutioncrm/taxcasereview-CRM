@@ -89,7 +89,7 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.20',
+    version: '3.2.19',
     releasedAt: '2026-10-30',
     title: 'CloudCPA CRM 3.2.19 — Training Center & Floating Video Tiles',
     changes: TRAINING_RELEASE_CHANGES,
@@ -97,7 +97,7 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.19',
+    version: '3.2.20',
     releasedAt: '2026-10-30',
     title: 'Centurion Firm CRM 3.2.20 — Gmail Draft Recovery, Client Links & Log Time',
     changes: EMAIL_PARITY_CHANGES,
