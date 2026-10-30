@@ -4,6 +4,8 @@
 
 const IRS_WORKFLOW_CHANGES = [
   'All RomyLabs public demo bookings now create durable central Admin Portal alerts, independent of email delivery',
+  'Business demo owner alerts use the registered RomyLabs Stalwart sender with audited submission and visible failures',
+  'Booking identity includes all 11 active products and legacy PoolVerge URL alias',
   'Product demos are calendar-branded by their requested business instead of the TaxRes scheduling tenant',
   'TaxRes Biz company-page OAuth and verification added as a separate destination from the personal LinkedIn profile',
   'Arcvena LinkedIn organization authorization requests identity and page-admin scopes',
