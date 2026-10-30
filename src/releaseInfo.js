@@ -48,20 +48,27 @@ const TRAINING_RELEASE_CHANGES = [
   ...IRS_WORKFLOW_CHANGES,
 ]
 
+const EMAIL_PARITY_CHANGES = [
+  'Gmail compose, reply and forward messages have independent browser-local draft recovery per employee and office',
+  'Email reading links directly to the client profile when a unique exact email address matches',
+  'Client Overview Log Time shortcut appears directly below IRS / State status and opens existing Time & Billing',
+  ...TRAINING_RELEASE_CHANGES,
+]
+
 const DEFAULT_RELEASE = {
-  version: '3.2.19',
+  version: '3.2.20',
   releasedAt: '2026-10-30',
-  title: 'TaxRes CRM 3.2.19 — Training Center & Floating Video Tiles',
-  changes: TRAINING_RELEASE_CHANGES,
+  title: 'TaxRes CRM 3.2.20 — Gmail Draft Recovery, Client Links & Log Time',
+  changes: EMAIL_PARITY_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.19',
+    version: '3.2.20',
     releasedAt: '2026-10-30',
-    title: 'Tax Case Review CRM 3.2.19 — Training Center & Floating Video Tiles',
-    changes: TRAINING_RELEASE_CHANGES,
+    title: 'Tax Case Review CRM 3.2.20 — Gmail Draft Recovery, Client Links & Log Time',
+    changes: EMAIL_PARITY_CHANGES,
   },
 
   // TaxRes administrative/default office
@@ -90,10 +97,10 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.19',
+    version: '3.2.20',
     releasedAt: '2026-10-30',
-    title: 'Centurion Firm CRM 3.2.19 — Training Center & Floating Video Tiles',
-    changes: TRAINING_RELEASE_CHANGES,
+    title: 'Centurion Firm CRM 3.2.20 — Gmail Draft Recovery, Client Links & Log Time',
+    changes: EMAIL_PARITY_CHANGES,
   },
 }
 

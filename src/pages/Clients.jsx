@@ -1340,6 +1340,7 @@ export default function Clients() {
   const [addingNote,  setAddingNote]  = useState(false)
   const [relTasks,    setRelTasks]    = useState([])
   const [clientTaskFilter, setClientTaskFilter] = useState('all') // 'all' | 'active' | 'completed'
+  const [logTimeRequest, setLogTimeRequest] = useState(0)
   const [taskSubTab,  setTaskSubTab]  = useState('tasks') // 'tasks' | 'time'
   const [clientSectionOverride, setClientSectionOverride] = useState({})
   const [relInvoices, setRelInvoices] = useState([])
@@ -2665,6 +2666,12 @@ export default function Clients() {
                 )}
               </div>
             </div>
+            {/* TCR, TaxRes and Centurion only; CloudCPA and Nashville are out of scope. */}
+            {['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'].includes(FIRM.tenantId) && (
+            <div style={{marginTop:12,display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button type="button" className="btn sec" style={{padding:'8px 14px',fontSize:13,fontWeight:700}} onClick={()=>{setDetailTab('tasks');setTaskSubTab('time');setLogTimeRequest(n=>n+1)}}>⏱ Log Time</button>
+            </div>
+            )}
           </div>
 
           {/* Case Pipeline Flow Modal */}
@@ -3306,7 +3313,7 @@ export default function Clients() {
               {/* Time & Billing sub-tab */}
               {taskSubTab==='time'&&(
                 <ErrorBoundary>
-                  <TimeEntry clientId={c.id} clientName={c.name} embed />
+                  <TimeEntry clientId={c.id} clientName={c.name} embed newEntryRequest={logTimeRequest} />
                 </ErrorBoundary>
               )}
             </div>

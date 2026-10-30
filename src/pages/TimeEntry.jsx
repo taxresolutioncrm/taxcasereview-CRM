@@ -21,7 +21,7 @@ const BLANK = {
 function fmt(n) { return formatMoney(Number(n || 0)) }
 function fmtH(h) { return `${Number(h || 0).toFixed(2)}h` }
 
-export default function TimeEntry({ clientId, clientName, embed = false }) {
+export default function TimeEntry({ clientId, clientName, embed = false, newEntryRequest = 0 }) {
   const [searchParams] = useSearchParams()
   const { user, employeeName, showToast } = useApp()
 
@@ -94,6 +94,12 @@ export default function TimeEntry({ clientId, clientName, embed = false }) {
     setEditId(null)
     setShowForm(true)
   }
+
+  // Client Overview shortcut requests a fresh entry with this client's ID.
+  // Do not run on initial mount, so the existing Time tab remains unchanged.
+  useEffect(() => {
+    if (newEntryRequest > 0) openNew()
+  }, [newEntryRequest])
 
   function openEdit(e) {
     setForm({

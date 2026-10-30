@@ -66,6 +66,47 @@ export default function Email() {
   const [signature, setSignature] = useState({ text: '', logoUrl: '' })
   const { lastSyncAt, syncing, lastError, syncNow } = useGmailSync()
   const { user, myTenantId, employeeName } = useApp()
+  // Draft recovery is browser-local; Gmail remains the sending transport.
+  // Browser-local draft recovery is scoped to the authenticated employee and office.
+  // Each message gets its own identity, so unrelated replies cannot overwrite drafts.
+  const draftScope = user?.id && myTenantId ? 'tcr_email_drafts:v2:' + myTenantId + ':' + user.id : ''
+  const [activeDraftId, setActiveDraftId] = useState(() => crypto.randomUUID())
+  const [savedDrafts, setSavedDrafts] = useState({})
+  const [draftStorageState, setDraftStorageState] = useState('idle')
+  useEffect(() => {
+    if (!draftScope) { setSavedDrafts({}); return }
+    try { setSavedDrafts(JSON.parse(localStorage.getItem(draftScope) || '{}')); setDraftStorageState('ready') }
+    catch { setSavedDrafts({}); setDraftStorageState('unavailable') }
+  }, [draftScope])
+  useEffect(() => {
+    if (!['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'].includes(myTenantId) || !draftScope || view !== 'compose' || ![form.recipient,form.subject,form.body].some(x => String(x || '').trim())) return
+    const entry = { form, id: activeDraftId, savedAt: new Date().toISOString(), attachmentNames: composeAttachments.map(x=>x.name) }
+    try {
+      const next = { ...JSON.parse(localStorage.getItem(draftScope) || '{}'), [activeDraftId]: entry }
+      localStorage.setItem(draftScope, JSON.stringify(next))
+      setSavedDrafts(next)
+      setDraftStorageState('saved')
+    } catch { setDraftStorageState('unavailable') }
+  }, [draftScope, activeDraftId, form, composeAttachments, view])
+  function discardRecoveredDraft(id) {
+    if (!draftScope) return
+    try {
+      const next = { ...savedDrafts }
+      delete next[id]
+      localStorage.setItem(draftScope, JSON.stringify(next))
+      setSavedDrafts(next)
+      if (activeDraftId === id) { setActiveDraftId(crypto.randomUUID()); setForm(BLANK); setComposeAttachments([]) }
+    } catch { setDraftStorageState('unavailable') }
+  }
+  function restoreRecoveredDraft(entry) {
+    setActiveDraftId(entry.id)
+    setForm({ ...BLANK, ...entry.form })
+    setComposeAttachments([])
+    setDraftStorageState(entry.attachmentNames?.length ? 'attachments' : 'restored')
+    setView('compose')
+  }
+  function startFreshDraft() { setActiveDraftId(crypto.randomUUID()); setForm(BLANK); setComposeAttachments([]); setView('compose') }
+  const draftFeatureEnabled = ['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'].includes(myTenantId)
   const userEmailLower = user?.email?.toLowerCase() || ''
   const isDemoMailbox = userEmailLower === 'demo@taxrescrm.net'
   const CLOUDCPA_TENANT_ID = 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae'
@@ -288,6 +329,15 @@ export default function Email() {
   }
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3500) }
+
+  // Exact, unique client email matching only. No subject/name guessing.
+  function linkedClientForEmail(email) {
+    if (!draftFeatureEnabled || !email) return null
+    const addresses = [email.from_address,email.sender,email.recipient,email.to_address,email.client_email]
+      .filter(Boolean).flatMap(value => String(value).toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || [])
+    const matches = clients.filter(c => c.email && addresses.includes(String(c.email).trim().toLowerCase()))
+    return matches.length === 1 ? matches[0] : null
+  }
 
   // Match an inbound email's sender address against known clients/leads by
   // email, purely to suggest who an attachment probably belongs to —
@@ -556,6 +606,7 @@ export default function Email() {
     }
 
     showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via Stalwart' : isCloudCpaPlatformRelay && status === 'Sent' ? '✅ CloudCPA email sent through the TaxRes platform relay' : isNashville && m365Connected && status === 'Sent' ? '✅ Email sent via Microsoft 365!' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ No connected email provider — this was only saved as a log entry, nothing was emailed')
+    if (status === 'Sent' && draftScope && draftFeatureEnabled) discardRecoveredDraft(activeDraftId)
     setForm(BLANK); setComposeAttachments([]); setView('inbox'); load()
   }
 
@@ -779,6 +830,7 @@ export default function Email() {
       productId: email?.product_id || '',
       ...(isNashville ? { m365MessageId: email?.m365_message_id || '' } : {})
     })
+    setActiveDraftId('reply:' + (email?.message_id || email?.id || crypto.randomUUID()))
     setView('compose')
   }
 
@@ -797,6 +849,7 @@ export default function Email() {
       body: `\n\n---------- Forwarded message ----------\nFrom: ${from}\nDate: ${when}\nSubject: ${email?.subject || ''}\n\n${originalBody}`,
       productId: email?.product_id || ''
     })
+    setActiveDraftId('forward:' + (email?.message_id || email?.id || crypto.randomUUID()))
     setView('compose')
   }
 
@@ -1013,11 +1066,23 @@ export default function Email() {
       {/* ── Left sidebar ── */}
       <div className="email-sidebar" style={{ width: 220, flexShrink: 0, background: 'var(--nav)', borderRight: '1px solid var(--br)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 14px 10px' }}>
-          <button className="btn pri" style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }} onClick={() => { setForm(BLANK); setView('compose') }}>
+          <button className="btn pri" style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }} onClick={startFreshDraft}>
             ✏️ Compose
           </button>
         </div>
 
+      {draftFeatureEnabled && view !== 'compose' && Object.values(savedDrafts).length > 0 && (
+        <div role="region" aria-label="Recover unfinished emails" style={{padding:'10px 16px',background:'var(--s1)',borderBottom:'1px solid var(--br)'}}>
+          <strong style={{fontSize:13}}>Unfinished email drafts — saved in this browser</strong>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>
+            {Object.values(savedDrafts).map(d => <div key={d.id} style={{display:'flex',alignItems:'center',gap:7,padding:7,border:'1px solid var(--br)',borderRadius:7}}>
+              <span style={{fontSize:12}}>{d.form?.subject || '(No subject)'}</span>
+              <button type="button" className="btn sec" onClick={()=>restoreRecoveredDraft(d)}>Restore Draft</button>
+              <button type="button" className="btn sec" onClick={()=>discardRecoveredDraft(d.id)}>Discard Draft</button>
+            </div>)}
+          </div>
+        </div>
+      )}
         {/* Email provider connect banner */}
         {isDemoMailbox ? (
           <div style={{ margin: '0 10px 10px', padding: '8px 12px', background: 'rgba(34,197,94,.12)', borderRadius: 8, border: '1px solid rgba(34,197,94,.3)', fontSize: 11, fontWeight: 700, color: 'var(--ok)' }}>
@@ -1314,6 +1379,10 @@ export default function Email() {
                     <div>
                       <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--tx)', marginBottom: 6 }}>{selected.subject}</div>
                       <div style={{ fontSize: 13, color: 'var(--t3)' }}>From: {selected.clientName || selected.clientname || selected.from_address || selected.sender || 'Unknown'} {selected.from_address ? `<${selected.from_address}>` : ''}</div>
+                      {linkedClientForEmail(selected) && <div style={{marginTop:9,display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,fontSize:12}}>
+                        <strong>Client: {linkedClientForEmail(selected).name}</strong>
+                        <a href={'/clients/' + encodeURIComponent(linkedClientForEmail(selected).id)} style={{color:'var(--blue)',fontWeight:800}}>Open Client Profile →</a>
+                      </div>}
                       {selected.received_mailbox && <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 2 }}>Received by: <strong style={{ color:'var(--blue)' }}>{selected.received_mailbox}</strong>{selected.assigned_to ? ` · Assigned to ${selected.assigned_to}` : ' · Unassigned'}</div>}
                       <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 2 }}>{selected.created_at ? new Date(selected.created_at).toLocaleString() : ''}</div>
                     </div>
@@ -1322,7 +1391,7 @@ export default function Email() {
                       {TRIAGE.filter(t => t !== (selected.triage || 'Inbox') && t !== 'Sent').map(t => (
                         <button key={t} className="btn sec" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => moveTriage(selected.id, t)}>→ {t}</button>
                       ))}
-                      <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => { const replyRecipient = selected.from_address || selected.sender || selected.recipient; const replySubject = String(selected.subject || '').toLowerCase().startsWith('re:') ? selected.subject : 'Re: ' + (selected.subject || ''); setForm({ ...BLANK, clientName: selected.clientName || selected.clientname || replyRecipient, recipient: replyRecipient || '', subject: replySubject, routeId: selected.route_id || '', replyFrom: selected.reply_from || selected.received_mailbox || '', threadId: selected.thread_id || '', inReplyTo: selected.message_id || '', references: selected.references_header || '', productId: selected.product_id || '', ...(isNashville ? { m365MessageId: selected.m365_message_id || '' } : {}) }); setView('compose') }}>↩ Reply</button>
+                      <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => { const replyRecipient = selected.from_address || selected.sender || selected.recipient; const replySubject = String(selected.subject || '').toLowerCase().startsWith('re:') ? selected.subject : 'Re: ' + (selected.subject || ''); setForm({ ...BLANK, clientName: selected.clientName || selected.clientname || replyRecipient, recipient: replyRecipient || '', subject: replySubject, routeId: selected.route_id || '', replyFrom: selected.reply_from || selected.received_mailbox || '', threadId: selected.thread_id || '', inReplyTo: selected.message_id || '', references: selected.references_header || '', productId: selected.product_id || '', ...(isNashville ? { m365MessageId: selected.m365_message_id || '' } : {}) }); setActiveDraftId('reply:' + (selected.message_id || selected.id || crypto.randomUUID())); setView('compose') }}>↩ Reply</button>
                       <button className="btn" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600, background: 'var(--blue)', color: '#fff', border: 'none' }} onClick={() => markUnread(selected)}>● Mark as New</button>
                       {triageFilter === 'Archive'
                         ? <button className="btn del" style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }} onClick={() => permanentlyDeleteEmail(selected.id)}>🗑 Delete</button>
@@ -1419,6 +1488,7 @@ export default function Email() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
               <button className="btn" onClick={() => setView('inbox')}>← Back</button>
               <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--tx)' }}>New Email</div>
+              {draftFeatureEnabled && <span role="status" style={{fontSize:11,color:draftStorageState==='unavailable'?'var(--bad)':'var(--t3)'}}>{draftStorageState==='unavailable'?'Draft NOT saved — browser storage unavailable':draftStorageState==='saved'?'Saved in this browser':draftStorageState==='attachments'?'Draft restored — reattach files: ' + (savedDrafts[activeDraftId]?.attachmentNames || []).join(', '):draftStorageState==='restored'?'Draft restored':'Draft auto-save enabled'}</span>}
             </div>
 
             <div className="field" style={{ position: 'relative' }}>
