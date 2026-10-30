@@ -78,7 +78,7 @@ export default function Email() {
     catch { setSavedDrafts({}); setDraftStorageState('unavailable') }
   }, [draftScope])
   useEffect(() => {
-    if (!draftScope || view !== 'compose' || ![form.recipient,form.subject,form.body].some(x => String(x || '').trim())) return
+    if (!['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'].includes(myTenantId) || !draftScope || view !== 'compose' || ![form.recipient,form.subject,form.body].some(x => String(x || '').trim())) return
     const entry = { form, id: activeDraftId, savedAt: new Date().toISOString(), attachmentNames: composeAttachments.map(x=>x.name) }
     try {
       const next = { ...JSON.parse(localStorage.getItem(draftScope) || '{}'), [activeDraftId]: entry }
@@ -328,6 +328,15 @@ export default function Email() {
   }
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3500) }
+
+  // Exact, unique client email matching only. No subject/name guessing.
+  function linkedClientForEmail(email) {
+    if (!draftFeatureEnabled || !email) return null
+    const addresses = [email.from_address,email.sender,email.recipient,email.to_address,email.client_email]
+      .filter(Boolean).flatMap(value => String(value).toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}/g) || [])
+    const matches = clients.filter(c => c.email && addresses.includes(String(c.email).trim().toLowerCase()))
+    return matches.length === 1 ? matches[0] : null
+  }
 
   // Match an inbound email's sender address against known clients/leads by
   // email, purely to suggest who an attachment probably belongs to —
@@ -1369,6 +1378,10 @@ export default function Email() {
                     <div>
                       <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--tx)', marginBottom: 6 }}>{selected.subject}</div>
                       <div style={{ fontSize: 13, color: 'var(--t3)' }}>From: {selected.clientName || selected.clientname || selected.from_address || selected.sender || 'Unknown'} {selected.from_address ? `<${selected.from_address}>` : ''}</div>
+                      {linkedClientForEmail(selected) && <div style={{marginTop:9,display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,fontSize:12}}>
+                        <strong>Client: {linkedClientForEmail(selected).name}</strong>
+                        <a href={'/clients/' + encodeURIComponent(linkedClientForEmail(selected).id)} style={{color:'var(--blue)',fontWeight:800}}>Open Client Profile →</a>
+                      </div>}
                       {selected.received_mailbox && <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 2 }}>Received by: <strong style={{ color:'var(--blue)' }}>{selected.received_mailbox}</strong>{selected.assigned_to ? ` · Assigned to ${selected.assigned_to}` : ' · Unassigned'}</div>}
                       <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 2 }}>{selected.created_at ? new Date(selected.created_at).toLocaleString() : ''}</div>
                     </div>
