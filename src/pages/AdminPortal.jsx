@@ -7694,9 +7694,9 @@ function LinkedInPublisher({ embeddedMode = false }) {
     // taxres_crm publishes from the personal profile of the authorizing user;
     // the company-page destination is a separate future product ID once the
     // LinkedIn app has w_organization_social approved for that brand.
-    // rw_organization_admin is not a valid LinkedIn v2 scope; use r_organization_admin.
+    // Community Management requires approved w_organization_social and rw_organization_admin.
     const scope = selectedPid === 'taxres_biz' || selectedPid === 'arcvena'
-      ? 'openid profile w_organization_social r_organization_admin'
+      ? 'openid profile w_organization_social rw_organization_admin'
       : 'openid profile w_member_social'
     if (!LINKEDIN_CLIENT_IDS[selectedPid]) {
       showToast('This CRM does not have a configured LinkedIn application yet.', false)
