@@ -86,3 +86,22 @@ begin
   return v_result;
 end;
 $function$;
+
+-- Correct previously misbranded online demos, including the missed Camvella lead.
+-- Do not change the appointment date, time, contact, tenant, or booking token.
+update public.calevents
+set title = (case product_id
+  when 'romylabs' then '[RomyLabs]'
+  when 'camvella' then '[Camvella]'
+  when 'arcvena' then '[Arcvena]'
+  when 'bocasync' then '[BocaSync]'
+  when 'groundivo' then '[GroundIVO]'
+  when 'oculivo' then '[Oculivo]'
+  when 'restore_relay' then '[Restore Relay]'
+  when 'pool_crm' then '[PoolVerge]'
+  when 'barbers_salons' then '[Barbers & Salons CRM]'
+  when 'health_insurance' then '[Health Insurance Agency CRM]'
+  else '[TaxRes CRM]' end) || substr(title,length('[TaxRes CRM]')+1)
+where source='online' and title like '[TaxRes CRM] %'
+  and product_id in ('romylabs','camvella','arcvena','bocasync','groundivo',
+                     'oculivo','restore_relay','pool_crm','barbers_salons','health_insurance');
