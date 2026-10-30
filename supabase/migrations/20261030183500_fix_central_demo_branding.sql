@@ -26,7 +26,8 @@ declare
   v_firm_name text;
 begin
   v_product := lower(trim(coalesce(p_product, '')));
-  if v_product not in ('taxres_crm','romylabs','camvella','arcvena','bocasync','groundivo','oculivo','restore_relay') then
+  if v_product in ('aquagrid','poolverge') then v_product := 'pool_crm'; end if;
+  if v_product not in ('taxres_crm','romylabs','camvella','arcvena','bocasync','groundivo','oculivo','restore_relay','pool_crm','barbers_salons','health_insurance') then
     v_product := 'taxres_crm';
   end if;
 
@@ -55,6 +56,9 @@ begin
     when 'groundivo' then '[GroundIVO]'
     when 'oculivo' then '[Oculivo]'
     when 'restore_relay' then '[Restore Relay]'
+    when 'pool_crm' then '[PoolVerge]'
+    when 'barbers_salons' then '[Barbers & Salons CRM]'
+    when 'health_insurance' then '[Health Insurance Agency CRM]'
     else case when coalesce(trim(v_firm_name),'') <> ''
       then '[' || trim(v_firm_name) || ']'
       else '[TaxRes CRM]' end
