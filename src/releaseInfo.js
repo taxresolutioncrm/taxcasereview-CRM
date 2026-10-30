@@ -40,20 +40,26 @@ const IRS_WORKFLOW_CHANGES = [
   'IRS TDS/SOR workflow retains local-file cleanup safeguards and in-app instructions',
 ]
 
+const TRAINING_RELEASE_CHANGES = [
+  'Training Center adds eight self-paced lessons, knowledge checks, and browser-local employee progress tracking',
+  'Live training restores floating participant camera tiles over screen sharing while preserving session controls',
+  ...IRS_WORKFLOW_CHANGES,
+]
+
 const DEFAULT_RELEASE = {
-  version: '3.2.17',
-  releasedAt: '2026-10-29',
-  title: 'TaxRes CRM 3.2.17 — IRS POA File Security Fix & LinkedIn OAuth Routing Fix',
-  changes: IRS_WORKFLOW_CHANGES,
+  version: '3.2.18',
+  releasedAt: '2026-10-30',
+  title: 'TaxRes CRM 3.2.18 — Training Center & Floating Video Tiles',
+  changes: TRAINING_RELEASE_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.17',
-    releasedAt: '2026-10-29',
-    title: 'Tax Case Review CRM 3.2.17 — IRS POA File Security Fix & LinkedIn OAuth Routing Fix',
-    changes: IRS_WORKFLOW_CHANGES,
+    version: '3.2.18',
+    releasedAt: '2026-10-30',
+    title: 'Tax Case Review CRM 3.2.18 — Training Center & Floating Video Tiles',
+    changes: TRAINING_RELEASE_CHANGES,
   },
 
   // TaxRes administrative/default office
@@ -74,18 +80,18 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.17',
-    releasedAt: '2026-10-29',
-    title: 'CloudCPA CRM 3.2.17 — IRS POA File Security Fix & LinkedIn OAuth Routing Fix',
-    changes: IRS_WORKFLOW_CHANGES,
+    version: '3.2.18',
+    releasedAt: '2026-10-30',
+    title: 'CloudCPA CRM 3.2.18 — Training Center & Floating Video Tiles',
+    changes: TRAINING_RELEASE_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.17',
-    releasedAt: '2026-10-29',
-    title: 'Centurion Firm CRM 3.2.17 — IRS POA File Security Fix & LinkedIn OAuth Routing Fix',
-    changes: IRS_WORKFLOW_CHANGES,
+    version: '3.2.18',
+    releasedAt: '2026-10-30',
+    title: 'Centurion Firm CRM 3.2.18 — Training Center & Floating Video Tiles',
+    changes: TRAINING_RELEASE_CHANGES,
   },
 }
 
