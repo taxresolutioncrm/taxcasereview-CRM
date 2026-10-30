@@ -17,12 +17,12 @@ const PRODUCT_BRANDS: any = {
   camvella: { name: 'Camvella', email: 'romy@camvella.com' },
   arcvena: { name: 'Arcvena', email: 'romy@arcvena.com' },
   bocasync: { name: 'BocaSync', email: 'romy@bocasync.com' },
-  groundivo: { name: 'GroundIVO', email: 'info@romylabs.com' },
-  oculivo: { name: 'Oculivo', email: 'info@romylabs.com' },
-  restore_relay: { name: 'Restore Relay', email: 'info@romylabs.com' },
-  pool_crm: { name: 'PoolVerge', email: 'info@romylabs.com' },
-  barbers_salons: { name: 'Barbers & Salons CRM', email: 'info@romylabs.com' },
-  health_insurance: { name: 'Health Insurance Agency CRM', email: 'info@romylabs.com' },
+  groundivo: { name: 'GroundIVO', email: 'romy@romylabs.com' },
+  oculivo: { name: 'Oculivo', email: 'romy@romylabs.com' },
+  restore_relay: { name: 'Restore Relay', email: 'romy@romylabs.com' },
+  pool_crm: { name: 'PoolVerge', email: 'romy@romylabs.com' },
+  barbers_salons: { name: 'Barbers & Salons CRM', email: 'romy@romylabs.com' },
+  health_insurance: { name: 'Health Insurance Agency CRM', email: 'romy@romylabs.com' },
 }
 const safe = (v: any) => String(v ?? '').replace(/[\r\n]+/g, ' ').trim()
 const esc = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
