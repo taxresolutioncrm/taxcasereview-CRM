@@ -20,6 +20,8 @@ assert.ok(book.includes("booking_firm_notification"),'firm notification must be 
 assert.ok(book.includes("booking_confirmation"),'client confirmation must be requested')
 assert.ok(cfg.includes("productParam === 'aquagrid'"),'Legacy PoolVerge alias missing')
 assert.ok(mail.includes("booking_token"),'mail must validate booking token')
+assert.ok(mail.includes("romylabs_stalwart_transport_for_product"),'Internal bookings must use RomyLabs Stalwart')
+assert.ok(mail.includes("notification_submission_id"),'Stalwart submission must be auditable')
 assert.ok(mail.includes("camvella: { name: 'Camvella', email: 'romy@camvella.com' }"),'Camvella booking mailbox routing must not regress')
 assert.ok(migration.includes("after insert or update of product_id,status"),'durable booking trigger missing')
 assert.ok(migration.includes("on conflict (booking_id) do nothing"),'idempotent recent booking backfill missing')
