@@ -11,10 +11,11 @@ const cors = {
 // Its company-page publishing destination will be added as a separate product ID
 // once the LinkedIn app has w_organization_social approved for that brand.
 // arcvena must post to the Arcvena company page (org ID 146118085).
-const ORG_PRODUCTS = new Set(['arcvena'])
+const ORG_PRODUCTS = new Set(['arcvena', 'taxres_biz'])
 const KNOWN_ORG_IDS: Record<string,string> = { arcvena:'146118085' }
 const ORG_NAME_MATCHERS: Record<string,RegExp> = {
   taxres_crm: /tax\s*res(?:olution)?\s*crm/i,
+  taxres_biz: /tax\s*res(?:olution)?\s*crm/i,
   arcvena: /arcvena/i,
 }
 
@@ -92,7 +93,7 @@ Deno.serve(async (req) => {
     // Never exchange an Arcvena code using the TaxRes app credentials.
     const app = productId === 'arcvena'
       ? { clientId:'78qm6ur34krhzr', secret:Deno.env.get('ARCVENA_LINKEDIN_CLIENT_SECRET'), redirect:'https://admin.romylabs.com/crm-admin/linkedin/callback' }
-      : productId === 'taxres_crm'
+      : productId === 'taxres_crm' || productId === 'taxres_biz'
       ? { clientId:'788n5oz5zrmb1o', secret:Deno.env.get('LINKEDIN_CLIENT_SECRET'), redirect:'https://taxrescrm.app/crm-admin/linkedin/callback' }
       : null
     if (!app) return json({ok:false,error:'LinkedIn application not configured for this product'},400)
