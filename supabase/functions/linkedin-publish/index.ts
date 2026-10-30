@@ -15,6 +15,7 @@ const ORG_PRODUCTS = new Set(['arcvena', 'taxres_biz'])
 const KNOWN_ORG_IDS: Record<string,string> = { arcvena:'146118085' }
 const ORG_NAME_MATCHERS: Record<string,RegExp> = {
   taxres_crm: /tax\s*res(?:olution)?\s*crm/i,
+  taxres_biz: /tax\s*res(?:olution)?\s*crm/i,
   arcvena: /arcvena/i,
 }
 
