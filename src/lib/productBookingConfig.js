@@ -121,6 +121,27 @@ export const PRODUCT_BOOKING_CONFIGS = {
     fromName:      'Restore Relay CRM',
     inactive:      false,
   },
+  pool_crm: {
+    key: 'pool_crm', name: 'PoolVerge', logo: '', favicon: '', logoAlt: 'PoolVerge',
+    headline: 'Schedule a PoolVerge Demo',
+    types: ['PoolVerge Product Demo', 'Pool Service Operations Consultation', 'Follow-Up Call'],
+    calendarLabel: '[PoolVerge]', notifyEmail: 'info@romylabs.com',
+    replyTo: 'info@romylabs.com', fromName: 'PoolVerge', inactive: false,
+  },
+  barbers_salons: {
+    key: 'barbers_salons', name: 'Barbers & Salons CRM', logo: '', favicon: '',
+    logoAlt: 'Barbers & Salons CRM', headline: 'Schedule a Salon CRM Demo',
+    types: ['Product Demo', 'Salon Operations Consultation', 'Follow-Up Call'],
+    calendarLabel: '[Barbers & Salons CRM]', notifyEmail: 'info@romylabs.com',
+    replyTo: 'info@romylabs.com', fromName: 'Barbers & Salons CRM', inactive: false,
+  },
+  health_insurance: {
+    key: 'health_insurance', name: 'Health Insurance Agency CRM', logo: '', favicon: '',
+    logoAlt: 'Health Insurance Agency CRM', headline: 'Schedule a Health Insurance CRM Demo',
+    types: ['Product Demo', 'Agency Operations Consultation', 'Follow-Up Call'],
+    calendarLabel: '[Health Insurance Agency CRM]', notifyEmail: 'info@romylabs.com',
+    replyTo: 'info@romylabs.com', fromName: 'Health Insurance Agency CRM', inactive: false,
+  },
   groundivo: {
     key:           'groundivo',
     name:          'GroundIVO',
@@ -143,7 +164,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
  * Inactive products → taxres_crm (never expose an inactive product's booking page).
  */
 export function resolveProductConfig(productParam) {
-  const cfg = PRODUCT_BOOKING_CONFIGS[productParam]
+  const canonical = productParam === 'aquagrid' || productParam === 'poolverge' ? 'pool_crm' : productParam
+  const cfg = PRODUCT_BOOKING_CONFIGS[canonical]
   if (!cfg || cfg.inactive) return PRODUCT_BOOKING_CONFIGS.taxres_crm
   return cfg
 }
@@ -158,6 +180,9 @@ export const PRODUCT_BADGE_COLORS = {
   arcvena:    { bg: '#1a0a2e', text: '#a78bfa', label: 'Arcvena'    },
   bocasync:   { bg: '#1a2e1a', text: '#34d399', label: 'BocaSync'   },
   groundivo:  { bg: '#17351f', text: '#9bdc34', label: 'GroundIVO'  },
+  pool_crm: { bg:'#144c56',text:'#5eead4',label:'PoolVerge' },
+  barbers_salons: { bg:'#4a224f',text:'#f0abfc',label:'Barbers & Salons CRM' },
+  health_insurance: { bg:'#173452',text:'#93c5fd',label:'Health Insurance Agency CRM' },
   oculivo:     { bg: '#312e81', text: '#67e8f9', label: 'Oculivo'    },
   restore_relay: { bg: '#164e63', text: '#f59e0b', label: 'Restore Relay' },
 }
