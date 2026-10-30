@@ -60,8 +60,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
     headline:      'Schedule a Camvella Demo',
     types:         ['Product Demo', 'HOA / Community Management Consultation', 'Follow-Up Call'],
     calendarLabel: '[Camvella]',
-    notifyEmail:   'info@romylabs.com',   // CENTRALIZED_FALLBACK — update to camvella mailbox when ready
-    replyTo:       'info@romylabs.com',   // CENTRALIZED_FALLBACK
+    notifyEmail:   'romy@camvella.com',
+    replyTo:       'romy@camvella.com',
     fromName:      'Camvella',
     inactive:      false,
   },
@@ -74,8 +74,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
     headline:      'Schedule an Arcvena Demo',
     types:         ['Product Demo', 'Field Service Consultation', 'Follow-Up Call'],
     calendarLabel: '[Arcvena]',
-    notifyEmail:   'info@romylabs.com',   // CENTRALIZED_FALLBACK — update to arcvena mailbox when ready
-    replyTo:       'info@romylabs.com',   // CENTRALIZED_FALLBACK
+    notifyEmail:   'romy@arcvena.com',
+    replyTo:       'romy@arcvena.com',
     fromName:      'Arcvena',
     inactive:      false,
   },
@@ -88,8 +88,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
     headline:      'Schedule a BocaSync Demo',
     types:         ['BocaSync Product Demo', 'Dental Practice Consultation', 'BocaSync Follow-Up Call'],
     calendarLabel: '[BocaSync]',
-    notifyEmail:   'info@romylabs.com',   // CENTRALIZED_FALLBACK
-    replyTo:       'info@romylabs.com',   // CENTRALIZED_FALLBACK
+    notifyEmail:   'romy@bocasync.com',
+    replyTo:       'romy@bocasync.com',
     fromName:      'BocaSync',
     inactive:      false,
   },
