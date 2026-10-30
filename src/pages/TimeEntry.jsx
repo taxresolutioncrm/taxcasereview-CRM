@@ -1,4 +1,5 @@
 // TimeEntry — full Canopy-parity billing time entry page.
+// Client dropdown closes on selection and blur while retaining the selected database ID.
 // Accessed from: Clients detail tab "Time" + global sidebar under Billing.
 // Entries attach to a CLIENT (required), optional task link.
 // Per-activity rates; rate is snapshotted at entry time.
