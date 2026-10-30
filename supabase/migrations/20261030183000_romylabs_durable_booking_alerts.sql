@@ -10,6 +10,11 @@ create table if not exists public.romylabs_booking_alerts (
   appointment_time text,
   booked_at timestamptz not null,
   acknowledged_at timestamptz,
+  followup_status text not null default 'new' check (followup_status in ('new','acknowledged','contacted','completed')),
+  contacted_at timestamptz,
+  completed_at timestamptz,
+  contact_outcome text,
+  assigned_to text not null default 'RomyLabs Admin',
   notification_submission_id text,
   notification_submitted_at timestamptz,
   notification_last_error text,
@@ -54,3 +59,18 @@ from public.calevents
 where source='online' and booking_token is not null and product_id is not null
   and created_at >= now() - interval '14 days'
 on conflict (booking_id) do nothing;
+
+-- An acknowledgement is not a completed follow-up.
+create index if not exists romylabs_booking_followup_idx on public.romylabs_booking_alerts(followup_status,booked_at desc);
+create or replace function public.guard_romylabs_booking_followup() returns trigger language plpgsql set search_path=public as $$
+begin
+ if new.followup_status in ('contacted','completed') and (new.contacted_at is null or nullif(trim(coalesce(new.contact_outcome,'')),'') is null) then
+  raise exception 'Contact timestamp and outcome required';
+ end if;
+ if new.followup_status='completed' and old.followup_status not in ('contacted','completed') then
+  raise exception 'Record contact before completing follow-up';
+ end if;
+ return new;
+end $$;
+drop trigger if exists guard_romylabs_booking_followup on public.romylabs_booking_alerts;
+create trigger guard_romylabs_booking_followup before update on public.romylabs_booking_alerts for each row execute function public.guard_romylabs_booking_followup();
