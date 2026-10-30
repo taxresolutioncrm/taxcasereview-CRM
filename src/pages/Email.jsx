@@ -66,6 +66,7 @@ export default function Email() {
   const [signature, setSignature] = useState({ text: '', logoUrl: '' })
   const { lastSyncAt, syncing, lastError, syncNow } = useGmailSync()
   const { user, myTenantId, employeeName } = useApp()
+  // Draft recovery is browser-local; Gmail remains the sending transport.
   // Browser-local draft recovery is scoped to the authenticated employee and office.
   // Each message gets its own identity, so unrelated replies cannot overwrite drafts.
   const draftScope = user?.id && myTenantId ? 'tcr_email_drafts:v2:' + myTenantId + ':' + user.id : ''
