@@ -1,3 +1,4 @@
+import AdminBookingAlerts from '../components/AdminBookingAlerts'
 // AdminPortal — TaxRes CRM founder/admin shell.
 // Only renders for romy@taxrescrm.net. Full platform control:
 // impersonation, per-office deep dive, billing, provisioning,
@@ -8471,6 +8472,7 @@ export default function AdminPortal() {
             style={{flex:1,border:'none',width:'100%',background:'#0f172a'}}
             allow="clipboard-read; clipboard-write" />
         </div>}
+        <AdminBookingAlerts />
         <Suspense fallback={<Spinner/>}>
           <Routes>
             <Route path="/command-center" element={<AdminRouteErrorBoundary><CommandCenter/></AdminRouteErrorBoundary>}/>
