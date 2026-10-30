@@ -1062,6 +1062,14 @@ export default function Email() {
         </div>
       )}
 
+      {/* ── Left sidebar ── */}
+      <div className="email-sidebar" style={{ width: 220, flexShrink: 0, background: 'var(--nav)', borderRight: '1px solid var(--br)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px 14px 10px' }}>
+          <button className="btn pri" style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }} onClick={startFreshDraft}>
+            ✏️ Compose
+          </button>
+        </div>
+
       {draftFeatureEnabled && view !== 'compose' && Object.values(savedDrafts).length > 0 && (
         <div role="region" aria-label="Recover unfinished emails" style={{padding:'10px 16px',background:'var(--s1)',borderBottom:'1px solid var(--br)'}}>
           <strong style={{fontSize:13}}>Unfinished email drafts — saved in this browser</strong>
@@ -1074,14 +1082,6 @@ export default function Email() {
           </div>
         </div>
       )}
-      {/* ── Left sidebar ── */}
-      <div className="email-sidebar" style={{ width: 220, flexShrink: 0, background: 'var(--nav)', borderRight: '1px solid var(--br)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '16px 14px 10px' }}>
-          <button className="btn pri" style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }} onClick={startFreshDraft}>
-            ✏️ Compose
-          </button>
-        </div>
-
         {/* Email provider connect banner */}
         {isDemoMailbox ? (
           <div style={{ margin: '0 10px 10px', padding: '8px 12px', background: 'rgba(34,197,94,.12)', borderRadius: 8, border: '1px solid rgba(34,197,94,.3)', fontSize: 11, fontWeight: 700, color: 'var(--ok)' }}>
