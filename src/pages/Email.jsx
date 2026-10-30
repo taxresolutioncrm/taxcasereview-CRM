@@ -101,7 +101,7 @@ export default function Email() {
     setActiveDraftId(entry.id)
     setForm({ ...BLANK, ...entry.form })
     setComposeAttachments([])
-    setDraftStorageState('restored')
+    setDraftStorageState(entry.attachmentNames?.length ? 'attachments' : 'restored')
     setView('compose')
   }
   function startFreshDraft() { setActiveDraftId(crypto.randomUUID()); setForm(BLANK); setComposeAttachments([]); setView('compose') }
@@ -333,7 +333,7 @@ export default function Email() {
   function linkedClientForEmail(email) {
     if (!draftFeatureEnabled || !email) return null
     const addresses = [email.from_address,email.sender,email.recipient,email.to_address,email.client_email]
-      .filter(Boolean).flatMap(value => String(value).toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}/g) || [])
+      .filter(Boolean).flatMap(value => String(value).toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || [])
     const matches = clients.filter(c => c.email && addresses.includes(String(c.email).trim().toLowerCase()))
     return matches.length === 1 ? matches[0] : null
   }
@@ -1487,7 +1487,7 @@ export default function Email() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
               <button className="btn" onClick={() => setView('inbox')}>← Back</button>
               <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--tx)' }}>New Email</div>
-              {draftFeatureEnabled && <span role="status" style={{fontSize:11,color:draftStorageState==='unavailable'?'var(--bad)':'var(--t3)'}}>{draftStorageState==='unavailable'?'Draft NOT saved — browser storage unavailable':draftStorageState==='saved'?'Saved in this browser':draftStorageState==='restored'?'Draft restored — reattach files if needed':'Draft auto-save enabled'}</span>}
+              {draftFeatureEnabled && <span role="status" style={{fontSize:11,color:draftStorageState==='unavailable'?'var(--bad)':'var(--t3)'}}>{draftStorageState==='unavailable'?'Draft NOT saved — browser storage unavailable':draftStorageState==='saved'?'Saved in this browser':draftStorageState==='attachments'?'Draft restored — reattach files: ' + (savedDrafts[activeDraftId]?.attachmentNames || []).join(', '):draftStorageState==='restored'?'Draft restored':'Draft auto-save enabled'}</span>}
             </div>
 
             <div className="field" style={{ position: 'relative' }}>
