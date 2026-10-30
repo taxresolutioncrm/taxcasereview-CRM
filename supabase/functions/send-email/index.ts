@@ -210,6 +210,7 @@ serve(async (req) => {
     }
 
     let { to, subject, html, text, attachments, tenant_id, from_email, from_name } = body
+    let bookingProductId = '', bookingRecordId = ''
     const requestOrigin = safe(req.headers.get('origin')).toLowerCase()
     const isAdminPortalOrigin = requestOrigin === 'https://admin.romylabs.com'
 
@@ -467,11 +468,12 @@ serve(async (req) => {
         html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px"><div style="font-size:18px;font-weight:800;color:#1d4ed8;margin-bottom:16px">${esc(brandName)}</div><p><strong>${esc(session.employee_name || reqRow.employee_name || 'Employee')}</strong> requested ${esc(typ.toUpperCase())} time off.</p><p>${esc(start)} to ${esc(end)} (${esc(reqRow.days ?? days)} day${Number(reqRow.days ?? days) === 1 ? '' : 's'})</p><p style="font-size:12px;color:#64748b">Review and approve or deny it in the CRM under Time Off.</p></div>`
       } else {
         if (!BOOKING_KINDS.has(body.kind) || !body.booking_token) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-        const { data: ev, error: evErr } = await admin.from('calevents').select('booking_token,clientName,eventType,date,time,contact_email,tenant_id,product_id,status').eq('booking_token', String(body.booking_token)).maybeSingle()
+        const { data: ev, error: evErr } = await admin.from('calevents').select('id,booking_token,clientName,eventType,date,time,contact_email,tenant_id,product_id,status').eq('booking_token', String(body.booking_token)).maybeSingle()
         if (evErr || !ev) return new Response(JSON.stringify({ error: 'Invalid booking token' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
         tenant_id = ev.tenant_id; attachments = []
         const { data: ts } = await admin.from('settings').select('name,firmname,email,firmemail,smtp_email,tenant_id').eq('tenant_id', tenant_id).maybeSingle()
         const product = String(ev.product_id || 'taxres_crm'), pb = PRODUCT_BRANDS[product]
+        bookingProductId = product; bookingRecordId = String(ev.id)
         const brandName = pb?.name || ts?.name || ts?.firmname || 'TaxRes CRM', reply = pb?.email || ts?.email || ts?.firmemail || ts?.smtp_email || 'romy@taxrescrm.net'
         from_name = brandName; from_email = reply
         const n = esc(ev.clientName || 'there'), typ = esc(ev.eventType || 'Appointment'), d = String(ev.date), t = String(ev.time).slice(0, 5), when = esc(whenLong(d, t))
@@ -492,6 +494,51 @@ serve(async (req) => {
     }
 
     if (!to || !subject || (!html && !text)) return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+    // RomyLabs business demo alerts use the registered Stalwart platform sender.
+    // The customer confirmation stays on its already-working path. There is no
+    // implicit Gmail fallback that would conceal a failed mailbox delivery.
+    if (body.kind === 'booking_firm_notification' && bookingProductId && bookingProductId !== 'taxres_crm') {
+      const {data:transport, error:transportError} = await admin.rpc('romylabs_stalwart_transport_for_product', {
+        p_product_key:'romylabs',
+      })
+      if (transportError || !transport?.ok || !transport.username || !transport.password) {
+        console.error('[booking-alert] Stalwart sender unavailable', {product:bookingProductId,reason:transport?.error||transportError?.message||'not_configured'})
+        return new Response(JSON.stringify({error:'RomyLabs Stalwart booking-alert sender unavailable; booking was recorded in the Admin Portal'}), {
+          status:503, headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+      try {
+        const submission = await sendViaStalwartJmap({
+          host:safe(transport.host || 'mail.taxrescrm.net'),
+          username:safe(transport.username),
+          password:String(transport.password),
+          fromAddress:safe(transport.from_address || transport.username).toLowerCase(),
+          fromName:'RomyLabs Booking Alerts — ' + safe(from_name || bookingProductId),
+          replyTo:safe(from_email || transport.from_address).toLowerCase(),
+          to:safe(to).toLowerCase(),
+          subject:'[' + safe(from_name || bookingProductId) + '] ' + safe(subject),
+          html:html ? String(html) : undefined,
+          text:text ? String(text) : undefined,
+        })
+        const {error:auditError} = await admin.from('romylabs_booking_alerts')
+          .update({notification_submission_id:submission.submissionId,notification_submitted_at:new Date().toISOString(),notification_last_error:null})
+          .eq('booking_id',bookingRecordId)
+        if (auditError) console.error('[booking-alert] delivery audit write failed',{booking:bookingRecordId,detail:auditError.message})
+        return new Response(JSON.stringify({success:true,via:'romylabs_stalwart_booking_alert',submission_id:submission.submissionId}), {
+          headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      } catch(e) {
+        const detail=e instanceof Error?e.message:'Stalwart submission failed'
+        console.error('[booking-alert] Stalwart submission failed',{product:bookingProductId,detail})
+        await admin.from('romylabs_booking_alerts')
+          .update({notification_last_error:detail}).eq('booking_id',bookingRecordId)
+        return new Response(JSON.stringify({error:'RomyLabs booking notification could not be submitted to Stalwart; booking remains recorded'}), {
+          status:502,headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+    }
+
     let q = admin.from('settings').select('*'); if (tenant_id) q = q.eq('tenant_id', tenant_id); else q = q.limit(1)
     const { data: ts } = await q.maybeSingle()
 
