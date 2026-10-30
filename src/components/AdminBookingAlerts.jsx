@@ -48,6 +48,8 @@ export default function AdminBookingAlerts() {
     if(error){setError('Unable to complete task.');return}
     await load()
   }
+  const overdue = items.filter(item => item.followup_status==='new' && Date.now()-new Date(item.booked_at).getTime() > 15*60*1000).length
+  const awaitingContact = items.filter(item => ['new','acknowledged'].includes(item.followup_status)).length
   return (
     <section aria-label="New demo booking alerts" style={{padding:'8px 16px',background:items.length?'#261b12':'#151b29',borderBottom:'1px solid #3b4454',color:'#f1f5f9'}}>
       <button type="button" onClick={()=>setExpanded(value=>!value)}
@@ -55,6 +57,7 @@ export default function AdminBookingAlerts() {
         {items.length ? '🔔 ' + items.length + ' open demo follow-up' + (items.length===1?'':'s') + ' — review tasks' : '🔔 Demo booking alerts'}
         <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{expanded?'Hide':'Show'}</span>
       </button>
+      {items.length>0 && <div role="status" style={{fontSize:12,padding:'4px 0',color:overdue?'#fca5a5':'#cbd5e1'}}>Needs contact: {awaitingContact} · Overdue acknowledgement (15m): {overdue} · Total open: {items.length}</div>}
       {error && <div role="alert" style={{color:'#fca5a5',fontSize:12}}>{error}</div>}
       {expanded && (items.length ? (
         <div style={{maxHeight:290,overflowY:'auto',display:'grid',gap:8,padding:'7px 0'}}>
