@@ -7698,7 +7698,7 @@ function LinkedInPublisher({ embeddedMode = false }) {
     const scope = selectedPid === 'taxres_biz'
       ? 'openid profile w_organization_social r_organization_admin'
       : selectedPid === 'arcvena'
-      ? 'w_organization_social r_organization_admin'
+      ? 'openid profile w_organization_social r_organization_admin'
       : 'openid profile w_member_social'
     if (!LINKEDIN_CLIENT_IDS[selectedPid]) {
       showToast('This CRM does not have a configured LinkedIn application yet.', false)
