@@ -10,6 +10,9 @@ create table if not exists public.romylabs_booking_alerts (
   appointment_time text,
   booked_at timestamptz not null,
   acknowledged_at timestamptz,
+  notification_submission_id text,
+  notification_submitted_at timestamptz,
+  notification_last_error text,
   created_at timestamptz not null default now()
 );
 create index if not exists romylabs_booking_alerts_pending_idx
