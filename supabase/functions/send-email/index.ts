@@ -499,6 +499,18 @@ serve(async (req) => {
     // The customer confirmation stays on its already-working path. There is no
     // implicit Gmail fallback that would conceal a failed mailbox delivery.
     if (body.kind === 'booking_firm_notification' && bookingProductId && bookingProductId !== 'taxres_crm') {
+      const {data:alertRecord,error:alertReadError} = await admin.from('romylabs_booking_alerts')
+        .select('notification_submission_id').eq('booking_id',bookingRecordId).maybeSingle()
+      if (alertReadError || !alertRecord) {
+        console.error('[booking-alert] durable alert missing before email submission',{booking:bookingRecordId})
+        return new Response(JSON.stringify({error:'Booking alert record is unavailable; do not claim delivery'}),{
+          status:503,headers:{...corsHeaders,'Content-Type':'application/json'},
+        })
+      }
+      if (alertRecord.notification_submission_id) return new Response(
+        JSON.stringify({success:true,already_submitted:true,via:'romylabs_stalwart_booking_alert'}),
+        {headers:{...corsHeaders,'Content-Type':'application/json'}},
+      )
       const {data:transport, error:transportError} = await admin.rpc('romylabs_stalwart_transport_for_product', {
         p_product_key:'romylabs',
       })
