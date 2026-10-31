@@ -8473,7 +8473,6 @@ export default function AdminPortal() {
             style={{flex:1,border:'none',width:'100%',background:'#0f172a'}}
             allow="clipboard-read; clipboard-write" />
         </div>}
-        <AdminBookingAlerts />
         <Suspense fallback={<Spinner/>}>
           <Routes>
             <Route path="/command-center" element={<AdminRouteErrorBoundary><CommandCenter/></AdminRouteErrorBoundary>}/>
