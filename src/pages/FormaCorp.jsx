@@ -435,7 +435,7 @@ export default function FormaCorp() {
       if (caseError || !existingCase) throw new Error('Case is not accessible in this office: ' + (caseError?.message || 'Not found'))
       const blob = await buildFlArticlesPdf(c)
       const fileName = (isFloridaCorporation(c) ? 'Articles-of-Incorporation' : 'Articles-of-Organization') + '-' + Date.now() + '.pdf'
-      const path = 'formacorp/' + c.id + '/' + fileName
+      const path = tenantId + '/formacorp/' + c.id + '/' + fileName
       const {error: uploadError} = await supabase.storage.from('documents').upload(path, blob, {upsert:false,contentType:'application/pdf'})
       if (uploadError) throw new Error('Storage upload denied: ' + uploadError.message)
       storedPath = path
