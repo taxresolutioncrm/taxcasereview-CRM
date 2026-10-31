@@ -415,6 +415,29 @@ export default function FormaCorp() {
     }
   }
 
+  // Save a durable copy of the generated packet inside the existing FormaCorp vault.
+  // The upload is explicit: Preview never writes files or charges the user.
+  async function saveArticlesToVault(c) {
+    if (pdfBusy) return
+    const missing = floridaMissing(c)
+    if (missing.length) { openFloridaEdit(c, missing); return }
+    setPdfBusy(true)
+    try {
+      const blob = await buildFlArticlesPdf(c)
+      const fileName = (isFloridaCorporation(c) ? 'Articles-of-Incorporation' : 'Articles-of-Organization') + '-' + Date.now() + '.pdf'
+      const path = 'formacorp/' + c.id + '/filing-packets/' + fileName
+      const {error: uploadError} = await supabase.storage.from('documents').upload(path, blob, {upsert:false,contentType:'application/pdf'})
+      if (uploadError) throw uploadError
+      const {error: indexError} = await supabase.from('formacorp_documents').insert([{
+        case_id:c.id, document_type:'Florida Articles — Draft', file_name:fileName,
+        storage_path:path, source:'FormaCorp',
+      }])
+      if (indexError) throw new Error('PDF saved but document index failed. Do not regenerate blindly: ' + indexError.message)
+      showToast('✅ Draft Articles saved in FormaCorp Documents. This is not a state submission.')
+    } catch (error) { showToast('Articles were not fully archived: '+(error?.message || error), 'err') }
+    finally { setPdfBusy(false) }
+  }
+
   useEffect(() => {
     if (new URLSearchParams(location.search).get('new') === '1') {
       setDetail(null)
@@ -959,6 +982,7 @@ export default function FormaCorp() {
               {!hasStateFilingFunds(c) && <span style={{fontSize:11,color:'var(--warn)',padding:'7px 10px',border:'1px solid var(--br)',borderRadius:7}}>State fee unpaid — pay directly through official Sunbiz filing; no FormaCorp Stripe charge</span>}
               {hasStateFilingFunds(c) && <span className="bdg bg" style={{alignSelf:'center'}}>Government funds recorded</span>}
               <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
+              <button className="btn sm" onClick={()=>saveArticlesToVault(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Saving…':'💾 Save Draft Articles to Documents'}</button>
               {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
               {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Prepare Filing Packet</button>}
               {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Continue Filing Preparation</button>}
