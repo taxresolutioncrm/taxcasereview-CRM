@@ -62,7 +62,7 @@ export default function AdminBookingAlerts({workspace=false}) {
     const status=draft.followup_status
     if(!['new','acknowledged','contacted','completed'].includes(status)){setError('Choose a valid task status.');return}
     if(['contacted','completed'].includes(status) && (!item.contacted_at||!item.contact_outcome?.trim())){
-      setError('Log a contact activity before setting this task to Contacted or Done.');return
+      setError('Please log the contact details first using Log activity / Update status, then save this task status.');setActivityEditor(item.booking_id);setExpandedTask(item.booking_id);return
     }
     // The database requires contact first; only previously contacted tasks can be completed.
     if(status==='completed' && item.followup_status!=='contacted' && item.followup_status!=='completed'){
@@ -215,8 +215,8 @@ export default function AdminBookingAlerts({workspace=false}) {
                   <select aria-label={'Task status for '+item.lead_name} value={drafts[item.booking_id]?.followup_status||item.followup_status} onChange={e=>setDrafts(d=>({...d,[item.booking_id]:{...d[item.booking_id],followup_status:e.target.value}}))} style={{...fieldBase,width:185}}>
                     <option value="new">Open</option>
                     <option value="acknowledged">In progress</option>
-                    <option value="contacted" disabled={!item.contacted_at}>Contacted</option>
-                    <option value="completed" disabled={!item.contacted_at||!['contacted','completed'].includes(item.followup_status)}>Done / Closed</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="completed">Done / Closed</option>
                   </select>
                 </label>
                 <button type="button" disabled={savingTask===item.booking_id} style={{...buttonBase,background:'#312e81',borderColor:'#818cf8'}} onClick={()=>saveTask(item)}>{savingTask===item.booking_id?'Saving…':'Save changes'}</button>
