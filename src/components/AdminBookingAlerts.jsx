@@ -57,45 +57,80 @@ export default function AdminBookingAlerts({workspace=false}) {
   }
   const overdue = items.filter(item => item.followup_status!=='completed' && new Date(item.followup_due_at||item.booked_at).getTime() < Date.now()).length
   const awaitingContact = items.filter(item => ['new','acknowledged'].includes(item.followup_status)).length
+  const buttonBase={border:'1px solid #374151',background:'#1e293b',color:'#e2e8f0',fontSize:13,fontWeight:650,padding:'9px 13px',borderRadius:9,cursor:'pointer',whiteSpace:'nowrap'}
+  const fieldBase={background:'#0b1221',border:'1px solid #475569',color:'#f8fafc',padding:'10px 11px',borderRadius:9,fontSize:13,maxWidth:'100%'}
   return (
-    <section aria-label="New demo booking alerts" style={{padding:'8px 16px',background:items.length?'#261b12':'#151b29',borderBottom:'1px solid #3b4454',color:'#f1f5f9'}}>
-      <button type="button" onClick={()=>setExpanded(value=>!value)}
-        style={{border:'none',background:'transparent',color:'inherit',cursor:'pointer',fontSize:13,fontWeight:700,padding:'5px 0'}}>
-        {items.length ? '🔔 ' + items.length + ' open demo follow-up' + (items.length===1?'':'s') + ' — review tasks' : '🔔 Demo booking alerts'}
-        <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{expanded?'Hide':'Show'}</span>
-      </button>
-      {items.length>0 && <div role="status" style={{fontSize:12,padding:'4px 0',color:overdue?'#fca5a5':'#cbd5e1'}}>Needs contact: {awaitingContact} · Overdue tasks: {overdue} · Total open: {items.length}</div>}
-      {expanded && <div style={{padding:'6px 0'}}><label style={{fontSize:12}}><input type="checkbox" checked={showCompleted} onChange={e=>setShowCompleted(e.target.checked)}/> Include completed follow-ups</label></div>}
-      {error && <div role="alert" style={{color:'#fca5a5',fontSize:12}}>{error}</div>}
+    <section aria-label="Demo Leads and Tasks" style={{background:workspace?'transparent':'#151b29',color:'#f1f5f9',padding:workspace?0:'12px 16px',width:'100%',boxSizing:'border-box'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap',marginBottom:18}}>
+        <div>
+          <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+            <span style={{fontSize:15,fontWeight:750}}>Follow-up queue</span>
+            <span style={{fontSize:12,fontWeight:700,background:'#283347',border:'1px solid #42516b',borderRadius:99,padding:'4px 10px',color:'#e2e8f0'}}>{items.filter(item=>item.followup_status!=='completed').length} open</span>
+          </div>
+          <div style={{fontSize:13,color:'#94a3b8',marginTop:6}}>All incoming demo leads remain here until their follow-up is complete.</div>
+        </div>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#cbd5e1',cursor:'pointer',padding:'8px 0'}}>
+          <input type="checkbox" checked={showCompleted} onChange={e=>setShowCompleted(e.target.checked)} style={{accentColor:'#818cf8',width:16,height:16}}/>
+          Include completed follow-ups
+        </label>
+      </div>
+      <div role="status" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:12,marginBottom:20}}>
+        {[
+          ['Open follow-ups',items.filter(item=>item.followup_status!=='completed').length,'#e2e8f0'],
+          ['Needs contact',awaitingContact,'#fbbf24'],
+          ['Overdue tasks',overdue,overdue?'#fca5a5':'#86efac']
+        ].map(([label,value,color])=><div key={label} style={{background:'#151c2d',border:'1px solid #283449',borderRadius:13,padding:'15px 18px'}}>
+          <div style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>{label}</div>
+          <div style={{fontSize:26,fontWeight:800,color,marginTop:5,lineHeight:1.2}}>{value}</div>
+        </div>)}
+      </div>
+      {error && <div role="alert" style={{border:'1px solid #7f1d1d',background:'#3b1820',color:'#fecaca',padding:12,borderRadius:9,marginBottom:14,fontSize:13}}>{error}</div>}
       {(workspace || expanded) && (items.length ? (
-        <div style={{maxHeight:290,overflowY:'auto',display:'grid',gap:8,padding:'7px 0'}}>
-          {items.map(item=>(
-            <div key={item.booking_id} style={{display:'flex',flexWrap:'wrap',gap:10,justifyContent:'space-between',alignItems:'center',background:'#111827',padding:'10px 12px',borderRadius:8}}>
-              <div style={{fontSize:12}}>
-                <strong>{(item.product_id||'').replaceAll('_',' ').toUpperCase()} — {item.lead_name}</strong>
-                <div style={{color:'#cbd5e1'}}>{item.appointment_type} · {item.appointment_date} {item.appointment_time} ET</div>
-                {item.lead_email && <a href={'mailto:'+item.lead_email} style={{color:'#93c5fd'}}>{item.lead_email}</a>}
-                <div style={{fontSize:11,color:'#fbbf24',marginTop:4}}>Assigned: {item.assigned_to} · {item.followup_status} · {item.contact_outcome || 'Contact required'}</div>
-                {editingTask===item.booking_id && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8,alignItems:'center',fontSize:12}}>
-                  <label>Assigned to <input aria-label={'Assigned owner for '+item.lead_name} defaultValue={item.assigned_to||''} key={item.booking_id+'owner'+item.assigned_to} onBlur={e=>{const owner=e.target.value.trim();if(owner&&owner!==item.assigned_to)void updateTask(item.booking_id,{assigned_to:owner})}} style={{background:'#0f172a',border:'1px solid #475569',color:'white',padding:5,borderRadius:5,width:155}}/></label>
-                  <label>Due <input aria-label={'Follow-up deadline for '+item.lead_name} type="datetime-local" defaultValue={item.followup_due_at?new Date(item.followup_due_at).toLocaleString('sv-SE',{timeZone:'America/New_York'}).slice(0,16).replace(' ','T'):''} key={item.booking_id+'due'+item.followup_due_at} onBlur={e=>{if(e.target.value)void updateTask(item.booking_id,{followup_due_at:new Date(e.target.value).toISOString()})}} style={{background:'#0f172a',border:'1px solid #475569',color:'white',padding:5,borderRadius:5}}/></label>
-                  <span style={{color:new Date(item.followup_due_at).getTime()<Date.now()&&item.followup_status!=='completed'?'#fca5a5':'#94a3b8'}}>{new Date(item.followup_due_at).getTime()<Date.now()&&item.followup_status!=='completed'?'OVERDUE':'On track'}</span>
-                </div>}
-                <div style={{fontSize:11,color:item.notification_submission_id?'#86efac':'#fbbf24',marginTop:4}}>
-                  {item.notification_submission_id ? 'Mail submitted to Stalwart (inbox delivery not yet verified)' : 'Mail submission not confirmed — review lead now'}
-                  {item.notification_last_error ? ' · Last error: '+item.notification_last_error : ''}
+        <div style={{display:'grid',gap:13}}>
+          {items.map(item=>{
+            const isOverdue=item.followup_status!=='completed' && new Date(item.followup_due_at||item.booked_at).getTime()<Date.now()
+            return <article key={item.booking_id} style={{background:'#131c2d',border:'1px solid #2d3950',borderRadius:14,padding:'18px 20px',display:'grid',gap:15,minWidth:0}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:15,flexWrap:'wrap'}}>
+                <div style={{minWidth:0,flex:'1 1 300px'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}}>
+                    <strong style={{fontSize:16,color:'#f8fafc'}}>{item.lead_name}</strong>
+                    <span style={{fontSize:11,fontWeight:750,letterSpacing:'.04em',padding:'5px 9px',borderRadius:7,background:'#29335d',color:'#c7d2fe'}}>{(item.product_id||'').replaceAll('_',' ').toUpperCase()}</span>
+                    <span style={{fontSize:11,fontWeight:750,padding:'5px 9px',borderRadius:7,background:isOverdue?'#46242c':'#24364a',color:isOverdue?'#fca5a5':'#93c5fd'}}>{isOverdue?'Overdue':item.followup_status.replaceAll('_',' ')}</span>
+                  </div>
+                  <div style={{fontSize:13,color:'#aebdd0',marginTop:9}}>{item.appointment_type} · {item.appointment_date} · {item.appointment_time} ET</div>
+                  <div style={{fontSize:13,marginTop:8}}>{item.lead_email && <a href={'mailto:'+item.lead_email} style={{color:'#93c5fd',textDecoration:'underline',overflowWrap:'anywhere'}}>{item.lead_email}</a>}</div>
+                </div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                  {item.followup_status==='new' && <button type="button" style={buttonBase} onClick={()=>acknowledge(item.booking_id)}>Acknowledge</button>}
+                  <button type="button" style={{...buttonBase,background:'#312e81',borderColor:'#6366f1',color:'#eef2ff'}} onClick={()=>setEditingTask(editingTask===item.booking_id?null:item.booking_id)}>{editingTask===item.booking_id?'Close editor':'Edit task'}</button>
+                  <button type="button" style={{...buttonBase,background:'#164e63',borderColor:'#0891b2',color:'#ecfeff'}} onClick={()=>markContacted(item)}>Record contact</button>
+                  {item.followup_status==='contacted' && <button type="button" style={{...buttonBase,background:'#14532d',borderColor:'#16a34a',color:'#dcfce7'}} onClick={()=>complete(item)}>Complete</button>}
                 </div>
               </div>
-              <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                {item.followup_status==='new' && <button type="button" onClick={()=>acknowledge(item.booking_id)}>Acknowledge</button>}
-                <button type="button" onClick={()=>setEditingTask(editingTask===item.booking_id?null:item.booking_id)}>{editingTask===item.booking_id?'Close editor':'Edit task'}</button>
-                <button type="button" onClick={()=>markContacted(item)}>Record contact</button>
-                {item.followup_status==='contacted' && <button type="button" onClick={()=>complete(item)}>Complete</button>}
+              <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:12,color:'#cbd5e1',borderTop:'1px solid #273348',paddingTop:12}}>
+                <span><strong style={{color:'#94a3b8'}}>Assigned:</strong> {item.assigned_to||'Unassigned'}</span>
+                <span style={{color:'#475569'}}>·</span>
+                <span><strong style={{color:'#94a3b8'}}>Status:</strong> {item.followup_status}</span>
+                <span style={{color:'#475569'}}>·</span>
+                <span><strong style={{color:'#94a3b8'}}>Outcome:</strong> {item.contact_outcome||'Contact required'}</span>
               </div>
-            </div>
-          ))}
+              {editingTask===item.booking_id && <div style={{display:'flex',flexWrap:'wrap',gap:15,alignItems:'end',padding:15,background:'#0d1729',border:'1px solid #30405c',borderRadius:11}}>
+                <label style={{display:'grid',gap:7,fontSize:12,color:'#cbd5e1',fontWeight:650}}>Assigned to
+                  <input aria-label={'Assigned owner for '+item.lead_name} defaultValue={item.assigned_to||''} key={item.booking_id+'owner'+item.assigned_to} onBlur={e=>{const owner=e.target.value.trim();if(owner&&owner!==item.assigned_to)void updateTask(item.booking_id,{assigned_to:owner})}} style={{...fieldBase,width:205}}/>
+                </label>
+                <label style={{display:'grid',gap:7,fontSize:12,color:'#cbd5e1',fontWeight:650}}>Follow-up deadline
+                  <input aria-label={'Follow-up deadline for '+item.lead_name} type="datetime-local" defaultValue={item.followup_due_at?new Date(item.followup_due_at).toLocaleString('sv-SE',{timeZone:'America/New_York'}).slice(0,16).replace(' ','T'):''} key={item.booking_id+'due'+item.followup_due_at} onBlur={e=>{if(e.target.value)void updateTask(item.booking_id,{followup_due_at:new Date(e.target.value).toISOString()})}} style={{...fieldBase,width:230}}/>
+                </label>
+                <span style={{fontSize:12,color:isOverdue?'#fca5a5':'#86efac',paddingBottom:10}}>{isOverdue?'● Overdue':'● On track'}</span>
+              </div>}
+              <div style={{fontSize:12,color:item.notification_submission_id?'#86efac':'#fbbf24'}}>
+                {item.notification_submission_id ? 'Mail submitted to Stalwart (inbox delivery not yet verified)' : 'Mail submission not confirmed — review lead now'}
+                {item.notification_last_error ? ' · Last error: '+item.notification_last_error : ''}
+              </div>
+            </article>
+          })}
         </div>
-      ) : <div style={{fontSize:12,color:'#94a3b8'}}>No outstanding demo follow-ups.</div>)}
+      ) : <div style={{fontSize:13,color:'#94a3b8',background:'#151c2d',border:'1px solid #283449',padding:24,borderRadius:13}}>No outstanding demo follow-ups.</div>)}
     </section>
   )
 }
