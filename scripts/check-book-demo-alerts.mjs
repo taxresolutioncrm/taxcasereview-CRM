@@ -51,4 +51,6 @@ assert.ok(alert.includes("romylabs_record_booking_activity"),'Contact actions mu
 assert.ok(alert.includes("romylabs_booking_activities"),'Contact timeline must query persisted activity')
 assert.ok(alert.includes("View activity history"),'Activity timeline disclosure missing')
 assert.ok(alert.includes("Save activity"),'Contact logging must use a named save action')
+assert.ok(alert.includes('aria-expanded={expandedTask===item.booking_id}'),'Each follow-up must have an accessible expand toggle')
+assert.ok(alert.includes('expandedTask===item.booking_id && <>'),'Actions and activity details must stay collapsed until requested')
 console.log('PASS — 11 central booking products, labels, mail invocation, durable alerts and Admin Portal visibility')
