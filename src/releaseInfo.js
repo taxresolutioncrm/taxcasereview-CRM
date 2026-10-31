@@ -61,6 +61,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Tasks queue defaults to compact expandable lead rows with all contact controls retained',
   'Task lead cards expose current contact status and a clearly labeled activity logging action',
   'Demo lead activity timeline records timestamped emails, calls, outcomes and next follow-up without losing previous contact notes',
   'Demo Tasks metric cards filter follow-ups by open, needs-contact and overdue status',
