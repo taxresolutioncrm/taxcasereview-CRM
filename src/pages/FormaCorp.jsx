@@ -422,20 +422,37 @@ export default function FormaCorp() {
     const missing = floridaMissing(c)
     if (missing.length) { openFloridaEdit(c, missing); return }
     setPdfBusy(true)
+    let storedPath = null
+    let indexed = false
     try {
+      const {data: tenantId, error: tenantError} = await supabase.rpc('current_tenant_id')
+      if (tenantError || !tenantId) throw new Error('Cannot verify active office. ' + (tenantError?.message || 'Sign in again.'))
+      if (String(tenantId) !== String(c.tenant_id)) {
+        throw new Error('This case belongs to another office. Switch to the correct office before saving documents.')
+      }
+      const {data: existingCase,error:caseError} = await supabase.from('formacorp')
+        .select('id,tenant_id').eq('id',c.id).eq('tenant_id',tenantId).single()
+      if (caseError || !existingCase) throw new Error('Case is not accessible in this office: ' + (caseError?.message || 'Not found'))
       const blob = await buildFlArticlesPdf(c)
       const fileName = (isFloridaCorporation(c) ? 'Articles-of-Incorporation' : 'Articles-of-Organization') + '-' + Date.now() + '.pdf'
-      const path = 'formacorp/' + c.id + '/filing-packets/' + fileName
+      const path = tenantId + '/formacorp/' + c.id + '/' + fileName
       const {error: uploadError} = await supabase.storage.from('documents').upload(path, blob, {upsert:false,contentType:'application/pdf'})
-      if (uploadError) throw uploadError
-      const {error: indexError} = await supabase.from('formacorp_documents').insert([{
-        case_id:c.id, document_type:'Florida Articles — Draft', file_name:fileName,
-        storage_path:path, source:'FormaCorp',
+      if (uploadError) throw new Error('Storage upload denied: ' + uploadError.message)
+      storedPath = path
+      const {error:indexError} = await supabase.from('formacorp_documents').insert([{
+        tenant_id:tenantId, case_id:c.id, document_type:'Florida Articles — Draft',
+        file_name:fileName, storage_path:path, source:'FormaCorp',
       }])
-      if (indexError) throw new Error('PDF saved but document index failed. Do not regenerate blindly: ' + indexError.message)
+      if (indexError) throw new Error('Document index denied: ' + indexError.message)
+      indexed = true
       showToast('✅ Draft Articles saved in FormaCorp Documents. This is not a state submission.')
-    } catch (error) { showToast('Articles were not fully archived: '+(error?.message || error), 'err') }
-    finally { setPdfBusy(false) }
+    } catch (error) {
+      if (storedPath && !indexed) {
+        const {error:cleanupError} = await supabase.storage.from('documents').remove([storedPath])
+        if (cleanupError) console.error('[FormaCorp] Draft cleanup failed',cleanupError)
+      }
+      showToast('Articles not archived: '+(error?.message || error), 'err')
+    } finally { setPdfBusy(false) }
   }
 
   useEffect(() => {
