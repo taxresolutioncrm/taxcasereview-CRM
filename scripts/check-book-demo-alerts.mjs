@@ -38,4 +38,7 @@ assert.ok(dueMigration.includes('followup_due_at'),'Task due date migration miss
 assert.ok(alert.includes('assigned_to:owner'),'Owner reassignment action missing')
 assert.ok(alert.includes('followup_due_at:new Date'),'Task deadline editing missing')
 assert.ok(alert.includes('Include completed follow-ups'),'Completed history not available')
+assert.ok(shell.includes("path:'/crm-admin/tasks'"),'Admin sidebar Tasks tab missing')
+assert.ok(shell.includes('<Route path="/tasks"'),'Admin Tasks page route missing')
+assert.ok(alert.includes('workspace=false'),'Task workspace display mode missing')
 console.log('PASS — 11 central booking products, labels, mail invocation, durable alerts and Admin Portal visibility')
