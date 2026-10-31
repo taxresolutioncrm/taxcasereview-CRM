@@ -75,7 +75,8 @@ if (manifestCommits.length > 1) {
       : process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF_NAME?.startsWith('sandbox/')
         ? git(['diff','--name-only','origin/main','HEAD','--','src','public','supabase/functions']).split(/\r?\n/).filter(Boolean)
         : changedSincePreviousRelease
-    const adminOnlyRelease = scopedFiles.length>0 && scopedFiles.every(file => adminOnlyFiles.has(file))
+    const scopedFunctionalFiles = scopedFiles.filter(file => file !== 'src/releaseInfo.js')
+    const adminOnlyRelease = scopedFunctionalFiles.length>0 && scopedFunctionalFiles.every(file => adminOnlyFiles.has(file))
     if (!adminOnlyRelease) {
       for (const office of ['Tax Case Review','CloudCPA','Centurion Firm']) {
         const section = release.slice(release.indexOf('// '+office))
