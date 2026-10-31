@@ -80,20 +80,26 @@ const FORMACORP_PREPARATION_CHANGES = [
   ...ADMIN_DEMO_TASK_CHANGES,
 ]
 
+const FORMACORP_VAULT_FIX_CHANGES = [
+  'FormaCorp drafts now archive to tenant-prefixed storage after confirming the case belongs to the active office',
+  'Partial failed document archives are cleaned up without weakening storage access controls',
+  ...IRS_WORKFLOW_CHANGES,
+]
+
 const DEFAULT_RELEASE = {
-  version: '3.2.27',
+  version: '3.2.28',
   releasedAt: '2026-10-31',
   title: 'RomyLabs Admin Portal 3.2.27 — Visible Contact Activity and Status',
-  changes: ADMIN_DEMO_TASK_CHANGES,
+  changes: FORMACORP_VAULT_FIX_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.23',
+    version: '3.2.28',
     releasedAt: '2026-10-30',
     title: 'Tax Case Review CRM 3.2.23 — Shared FormaCorp Safe Filing Preparation',
-    changes: FORMACORP_PREPARATION_CHANGES,
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // TaxRes administrative/default office
@@ -114,18 +120,18 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.23',
+    version: '3.2.28',
     releasedAt: '2026-10-30',
     title: 'CloudCPA CRM 3.2.23 — Shared FormaCorp Safe Filing Preparation',
-    changes: FORMACORP_PREPARATION_CHANGES,
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.23',
+    version: '3.2.28',
     releasedAt: '2026-10-30',
     title: 'Centurion Firm CRM 3.2.23 — Shared FormaCorp Safe Filing Preparation',
-    changes: FORMACORP_PREPARATION_CHANGES,
+    changes: IRS_WORKFLOW_CHANGES,
   },
 }
 
