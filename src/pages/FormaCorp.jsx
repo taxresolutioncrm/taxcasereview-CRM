@@ -635,7 +635,7 @@ export default function FormaCorp() {
       if (!ok) return
       // The office can finish preparation and preserve the case without leaving the CRM.
       // Final state submission stays a separate, explicit action to avoid accidental payments.
-      showToast('✅ Filing packet saved in FormaCorp. Submit on Sunbiz only when ready, then record the receipt here.')
+      showToast('✅ Filing preparation status saved. Preview the Articles before submitting through Sunbiz; record the state receipt afterward.')
       return
     }
 
@@ -961,7 +961,7 @@ export default function FormaCorp() {
               <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
               {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
               {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Prepare Filing Packet</button>}
-              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Filing Packet Prepared</button>}
+              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Continue Filing Preparation</button>}
               {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <>
                 <a className="btn sm" href="https://efile.sunbiz.org/llc_file.html" target="_self" style={{textDecoration:'none'}}>🏛 Open Official Sunbiz Filing</a>
                 <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>
