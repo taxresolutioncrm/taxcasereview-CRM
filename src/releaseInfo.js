@@ -61,6 +61,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'All task status dropdown options remain selectable; contact-required transitions show actionable validation',
   'Demo Tasks Edit task includes task status Open, In progress, Contacted and Done / Closed with validation and explicit Save',
   'Tasks queue defaults to compact expandable lead rows with all contact controls retained',
   'Task lead cards expose current contact status and a clearly labeled activity logging action',
@@ -90,9 +91,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.29',
+  version: '3.2.30',
   releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.29 — Editable Task Status',
+  title: 'RomyLabs Admin Portal 3.2.30 — Selectable Task Statuses',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
