@@ -92,8 +92,8 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 const DEFAULT_RELEASE = {
   version: '3.2.29',
   releasedAt: '2026-10-31',
-  title: 'TaxRes 3.2.28 — FormaCorp Archive RLS Fix',
-  changes: FORMACORP_VAULT_FIX_CHANGES,
+  title: 'RomyLabs Admin Portal 3.2.29 — Editable Task Status',
+  changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
