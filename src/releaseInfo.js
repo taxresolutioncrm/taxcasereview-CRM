@@ -60,6 +60,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin Portal demo follow-up banner removed from shared page header; task controls remain on dedicated Tasks tab',
   'Task edit panel JSX and prebuild checks corrected before release certification',
   'RomyLabs Admin Portal adds a dedicated Demo Leads & Tasks page with editable ownership and follow-up deadlines',
   'Demo follow-ups remain visible until contact is recorded and can be reviewed after completion',
@@ -67,9 +68,9 @@ const ADMIN_DEMO_TASK_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.22',
+  version: '3.2.23',
   releasedAt: '2026-10-30',
-  title: 'RomyLabs Admin Portal 3.2.22 — Demo Lead Tasks, Ownership & Deadlines',
+  title: 'RomyLabs Admin Portal 3.2.23 — Tasks Page Without Duplicate Banner',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
