@@ -157,7 +157,7 @@ export default function AdminBookingAlerts({workspace=false}) {
                   <input aria-label={'Assigned owner for '+item.lead_name} value={drafts[item.booking_id]?.assigned_to||''} onChange={e=>setDrafts(d=>({...d,[item.booking_id]:{...d[item.booking_id],assigned_to:e.target.value}}))} style={{...fieldBase,width:205}}/>
                 </label>
                 <label style={{display:'grid',gap:7,fontSize:12,color:'#cbd5e1',fontWeight:650}}>Follow-up date
-                  <input aria-label={'Follow-up date for '+item.lead_name} type="date" value={drafts[item.booking_id]?.date||''} onChange={e=>setDrafts(d=>({...d,[item.booking_id]:{...d[item.booking_id],date:e.target.value}}))} style={{...fieldBase,width:190,colorScheme:'dark'}}/>
+                  <input aria-label={'Follow-up date for '+item.lead_name} type="date" onClick={e=>e.currentTarget.showPicker?.()} value={drafts[item.booking_id]?.date||''} onChange={e=>setDrafts(d=>({...d,[item.booking_id]:{...d[item.booking_id],date:e.target.value}}))} style={{...fieldBase,width:190,colorScheme:'dark'}}/>
                 </label>
                 <label style={{display:'grid',gap:7,fontSize:12,color:'#cbd5e1',fontWeight:650}}>Time
                   <input aria-label={'Follow-up time for '+item.lead_name} type="time" value={drafts[item.booking_id]?.time||''} onChange={e=>setDrafts(d=>({...d,[item.booking_id]:{...d[item.booking_id],time:e.target.value}}))} style={{...fieldBase,width:145,colorScheme:'dark'}}/>
