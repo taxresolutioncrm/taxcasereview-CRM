@@ -30,10 +30,16 @@ function git(args) {
 // Compare against the last release-manifest commit, not merely HEAD's parent:
 // a PR can contain several functional commits before its single final version bump.
 // A new shared functionality commit after that bump MUST update releaseInfo.js.
-const manifestCommits = git(['log','--format=%H','-2','--','src/releaseInfo.js']).split(/\r?\n/).filter(Boolean)
+// PR builds checkout GitHub's synthetic merge commit. Its first parent is main,
+// which may contain unrelated changes after this PR updated its manifest.
+// Validate the PR's second-parent tip instead of treating base changes as PR changes.
+const effectiveHead = process.env.GITHUB_EVENT_NAME === 'pull_request'
+  ? git(['rev-parse','HEAD^2'])
+  : 'HEAD'
+const manifestCommits = git(['log','--format=%H','-2',effectiveHead,'--','src/releaseInfo.js']).split(/\r?\n/).filter(Boolean)
 assert(manifestCommits.length,'Cannot identify the current release manifest commit')
 const mostRecentManifest = manifestCommits[0]
-const afterRelease = git(['diff','--name-only',mostRecentManifest,'HEAD','--','src','public','supabase/functions'])
+const afterRelease = git(['diff','--name-only',mostRecentManifest,effectiveHead,'--','src,'public','supabase/functions'])
   .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
 assert(afterRelease.length===0,
   'Functional files changed after the last release-manifest update without new version and release notes: '+afterRelease.join(', '))
