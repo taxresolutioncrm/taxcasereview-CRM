@@ -625,6 +625,7 @@ const NAV = [
   { path:'/crm-admin',                label:'Overview',        icon:'📊' },
   { path:'/crm-admin/email',          label:'Email',           icon:'📧' },
   { path:'/crm-admin/calendar',       label:'Calendar',        icon:'📅' },
+  { path:'/crm-admin/tasks',          label:'Tasks',           icon:'✅' },
   { path:'/crm-admin/command-center', label:'Command Center',  icon:'⚡' },
   { path:'/crm-admin/traffic',        label:'Traffic Coverage', icon:'🌐' },
   { path:'/crm-admin/vault',          label:'Credential Vault', icon:'🔐' },
@@ -8498,6 +8499,7 @@ export default function AdminPortal() {
             <Route path="/email"          element={<div/>}/>
             <Route path="/dialer"         element={<AdminRouteErrorBoundary><AdminDialer/></AdminRouteErrorBoundary>}/>
             <Route path="/calendar"       element={<AdminRouteErrorBoundary><AdminCalendar/></AdminRouteErrorBoundary>}/>
+            <Route path="/tasks"          element={<AdminRouteErrorBoundary><div style={{padding:20}}><h1 style={{color:"#f1f5f9",fontSize:24,margin:"0 0 8px"}}>Demo Leads & Tasks</h1><p style={{color:"#94a3b8",margin:"0 0 16px"}}>Manage assigned demo follow-ups, deadlines, contact outcomes and completed tasks across RomyLabs products.</p><AdminBookingAlerts workspace /></div></AdminRouteErrorBoundary>}/>
             <Route path="/meet"           element={<AdminRouteErrorBoundary><AdminTraining/></AdminRouteErrorBoundary>}/>
             <Route path="/training"       element={<AdminRouteErrorBoundary><AdminTraining/></AdminRouteErrorBoundary>}/>
             <Route path="/chat"           element={<AdminRouteErrorBoundary><AdminChatPage/></AdminRouteErrorBoundary>}/>
