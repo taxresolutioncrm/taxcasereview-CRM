@@ -60,6 +60,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Task edit panel JSX and prebuild checks corrected before release certification',
   'RomyLabs Admin Portal adds a dedicated Demo Leads & Tasks page with editable ownership and follow-up deadlines',
   'Demo follow-ups remain visible until contact is recorded and can be reviewed after completion',
   ...EMAIL_PARITY_CHANGES,
