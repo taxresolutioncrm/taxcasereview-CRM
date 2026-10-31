@@ -633,7 +633,7 @@ export default function FormaCorp() {
         stage:'State Filing',
       }, 'Ready for official Sunbiz filing — no payment collected by FormaCorp', 'Standard Sunbiz online filing selected; state submission/payment is not yet confirmed')
       if (!ok) return
-      window.open('https://efile.sunbiz.org/llc_file.html', '_blank', 'noopener,noreferrer')
+      window.location.assign('https://efile.sunbiz.org/llc_file.html')
       showToast('Complete the state filing and pay only on Sunbiz. Return to record the state receipt.')
       return
     }
