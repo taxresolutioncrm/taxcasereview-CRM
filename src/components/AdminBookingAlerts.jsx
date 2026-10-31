@@ -80,7 +80,7 @@ export default function AdminBookingAlerts({workspace=false}) {
                   <label>Assigned to <input aria-label={'Assigned owner for '+item.lead_name} defaultValue={item.assigned_to||''} key={item.booking_id+'owner'+item.assigned_to} onBlur={e=>{const owner=e.target.value.trim();if(owner&&owner!==item.assigned_to)void updateTask(item.booking_id,{assigned_to:owner})}} style={{background:'#0f172a',border:'1px solid #475569',color:'white',padding:5,borderRadius:5,width:155}}/></label>
                   <label>Due <input aria-label={'Follow-up deadline for '+item.lead_name} type="datetime-local" defaultValue={item.followup_due_at?new Date(item.followup_due_at).toLocaleString('sv-SE',{timeZone:'America/New_York'}).slice(0,16).replace(' ','T'):''} key={item.booking_id+'due'+item.followup_due_at} onBlur={e=>{if(e.target.value)void updateTask(item.booking_id,{followup_due_at:new Date(e.target.value).toISOString()})}} style={{background:'#0f172a',border:'1px solid #475569',color:'white',padding:5,borderRadius:5}}/></label>
                   <span style={{color:new Date(item.followup_due_at).getTime()<Date.now()&&item.followup_status!=='completed'?'#fca5a5':'#94a3b8'}}>{new Date(item.followup_due_at).getTime()<Date.now()&&item.followup_status!=='completed'?'OVERDUE':'On track'}</span>
-                </div>
+                </div>}
                 <div style={{fontSize:11,color:item.notification_submission_id?'#86efac':'#fbbf24',marginTop:4}}>
                   {item.notification_submission_id ? 'Mail submitted to Stalwart (inbox delivery not yet verified)' : 'Mail submission not confirmed — review lead now'}
                   {item.notification_last_error ? ' · Last error: '+item.notification_last_error : ''}
