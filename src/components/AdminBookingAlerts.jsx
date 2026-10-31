@@ -9,6 +9,7 @@ export default function AdminBookingAlerts({workspace=false}) {
   const [expanded, setExpanded] = useState(workspace)
   const [showCompleted, setShowCompleted] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
+  const [expandedTask,setExpandedTask]=useState(null)
   const [taskFilter, setTaskFilter] = useState('open')
   const [drafts, setDrafts] = useState({})
   const [savingTask, setSavingTask] = useState(null)
@@ -157,24 +158,29 @@ export default function AdminBookingAlerts({workspace=false}) {
         <div style={{display:'grid',gap:13}}>
           {filteredItems.map(item=>{
             const isOverdue=item.followup_status!=='completed' && new Date(item.followup_due_at||item.booked_at).getTime()<Date.now()
-            return <article key={item.booking_id} style={{background:'#131c2d',border:'1px solid #2d3950',borderRadius:14,padding:'18px 20px',display:'grid',gap:15,minWidth:0}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:15,flexWrap:'wrap'}}>
+            return <article key={item.booking_id} style={{background:'#131c2d',border:'1px solid #2d3950',borderRadius:12,padding:'11px 15px',display:'grid',gap:expandedTask===item.booking_id?12:0,minWidth:0}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,flexWrap:'wrap'}}>
                 <div style={{minWidth:0,flex:'1 1 300px'}}>
                   <div style={{display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}}>
-                    <strong style={{fontSize:16,color:'#f8fafc'}}>{item.lead_name}</strong>
+                    <strong style={{fontSize:14,color:'#f8fafc'}}>{item.lead_name}</strong>
                     <span style={{fontSize:11,fontWeight:750,letterSpacing:'.04em',padding:'5px 9px',borderRadius:7,background:'#29335d',color:'#c7d2fe'}}>{(item.product_id||'').replaceAll('_',' ').toUpperCase()}</span>
                     <span style={{fontSize:11,fontWeight:750,padding:'5px 9px',borderRadius:7,background:isOverdue?'#46242c':'#24364a',color:isOverdue?'#fca5a5':'#93c5fd'}}>{isOverdue?'Overdue':item.followup_status.replaceAll('_',' ')}</span>
                   </div>
-                  <div style={{fontSize:13,color:'#aebdd0',marginTop:9}}>{item.appointment_type} · {item.appointment_date} · {item.appointment_time} ET</div>
-                  <div style={{fontSize:13,marginTop:8}}>{item.lead_email && <a href={'mailto:'+item.lead_email} style={{color:'#93c5fd',textDecoration:'underline',overflowWrap:'anywhere'}}>{item.lead_email}</a>}</div>
+                  <div style={{fontSize:12,color:'#aebdd0',marginTop:4}}>{item.appointment_type} · {item.appointment_date} · {item.appointment_time} ET</div>
+                  {expandedTask===item.booking_id && <div style={{fontSize:13,marginTop:8}}>{item.lead_email && <a href={'mailto:'+item.lead_email} style={{color:'#93c5fd',textDecoration:'underline',overflowWrap:'anywhere'}}>{item.lead_email}</a>}</div>}
                 </div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                  <span style={{fontSize:12,color:'#94a3b8'}}>{item.assigned_to||'Unassigned'}</span>
+                  <button type="button" aria-expanded={expandedTask===item.booking_id} onClick={()=>setExpandedTask(expandedTask===item.booking_id?null:item.booking_id)} style={{...buttonBase,padding:'7px 11px',background:'#253250',borderColor:'#536585'}}>{expandedTask===item.booking_id?'Hide details':'View details'}</button>
+                  {expandedTask===item.booking_id && <>
                   {item.followup_status==='new' && <button type="button" style={buttonBase} onClick={()=>acknowledge(item.booking_id)}>Acknowledge</button>}
                   <button type="button" style={{...buttonBase,background:'#312e81',borderColor:'#6366f1',color:'#eef2ff'}} onClick={()=>startEditing(item)}>{editingTask===item.booking_id?'Close editor':'Edit task'}</button>
                   <button type="button" style={{...buttonBase,background:'#164e63',borderColor:'#0891b2',color:'#ecfeff'}} onClick={()=>markContacted(item)}>{activityEditor===item.booking_id?'Recording activity':'Log activity / Update status'}</button>
                   {item.followup_status==='contacted' && <button type="button" style={{...buttonBase,background:'#14532d',borderColor:'#16a34a',color:'#dcfce7'}} onClick={()=>complete(item)}>Complete</button>}
+                  </>}
                 </div>
               </div>
+              {expandedTask===item.booking_id && <>
               <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:12,color:'#cbd5e1',borderTop:'1px solid #273348',paddingTop:12}}>
                 <span><strong style={{color:'#94a3b8'}}>Assigned:</strong> {item.assigned_to||'Unassigned'}</span>
                 <span style={{color:'#475569'}}>·</span>
@@ -231,6 +237,7 @@ export default function AdminBookingAlerts({workspace=false}) {
                 {item.notification_submission_id ? 'Mail submitted to Stalwart (inbox delivery not yet verified)' : 'Mail submission not confirmed — review lead now'}
                 {item.notification_last_error ? ' · Last error: '+item.notification_last_error : ''}
               </div>
+              </>}
             </article>
           })}
         </div>
