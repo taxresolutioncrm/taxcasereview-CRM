@@ -60,6 +60,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Demo lead activity timeline records timestamped emails, calls, outcomes and next follow-up without losing previous contact notes',
   'Demo Tasks metric cards filter follow-ups by open, needs-contact and overdue status',
   'Edit Task exposes a clickable calendar picker and time selector with explicit Save and Cancel',
   'Dedicated Tasks page redesigned with responsive follow-up cards, overdue summaries and styled editor controls',
@@ -79,9 +80,9 @@ const FORMACORP_PREPARATION_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.25',
+  version: '3.2.26',
   releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.25 — Task Calendar and KPI Filters',
+  title: 'RomyLabs Admin Portal 3.2.26 — Contact History and Status Tracking',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
