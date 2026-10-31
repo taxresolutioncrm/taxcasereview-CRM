@@ -66,11 +66,18 @@ const ADMIN_DEMO_TASK_CHANGES = [
   ...EMAIL_PARITY_CHANGES,
 ]
 
+const FORMACORP_PREPARATION_CHANGES = [
+  'FormaCorp records Florida formation intake and explicitly archives generated draft Articles to the existing document vault',
+  'Standard Florida filings do not charge through CRM Stripe; unreconciled previous payment attempts block duplicate payment paths',
+  'Filing preparation is distinguished from confirmed state submission and acceptance',
+  ...ADMIN_DEMO_TASK_CHANGES,
+]
+
 const DEFAULT_RELEASE = {
-  version: '3.2.22',
-  releasedAt: '2026-10-30',
-  title: 'RomyLabs Admin Portal 3.2.22 — Demo Lead Tasks, Ownership & Deadlines',
-  changes: ADMIN_DEMO_TASK_CHANGES,
+  version: '3.2.23',
+  releasedAt: '2026-10-31',
+  title: 'TaxRes 3.2.23 — FormaCorp Filing Packet Preparation & Payment Safety',
+  changes: FORMACORP_PREPARATION_CHANGES,
 }
 
 const OFFICE_RELEASES = {
