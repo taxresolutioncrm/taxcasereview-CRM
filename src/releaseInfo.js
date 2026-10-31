@@ -59,20 +59,27 @@ const EMAIL_PARITY_CHANGES = [
   ...TRAINING_RELEASE_CHANGES,
 ]
 
+const FORMACORP_SAFE_FILING_CHANGES = [
+  'FormaCorp saves Florida formation intake and filing preparation in the existing case without automatically charging or submitting',
+  'Standard Florida filing requires an explicit official Sunbiz submission with receipt reconciliation; prepaid fax remains separate',
+  'Duplicate payment attempts or recorded funds block new standard filing preparation until reconciled',
+  ...EMAIL_PARITY_CHANGES,
+]
+
 const DEFAULT_RELEASE = {
-  version: '3.2.21',
+  version: '3.2.22',
   releasedAt: '2026-10-30',
-  title: 'TaxRes CRM 3.2.21 — Gmail Draft Recovery, Client Links & Log Time',
-  changes: EMAIL_PARITY_CHANGES,
+  title: 'TaxRes CRM 3.2.22 — FormaCorp Filing Preparation & Payment Safety',
+  changes: FORMACORP_SAFE_FILING_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.21',
+    version: '3.2.22',
     releasedAt: '2026-10-30',
-    title: 'Tax Case Review CRM 3.2.21 — Gmail Draft Recovery, Client Links & Log Time',
-    changes: EMAIL_PARITY_CHANGES,
+    title: 'Tax Case Review CRM 3.2.22 — FormaCorp Filing Preparation & Payment Safety',
+    changes: FORMACORP_SAFE_FILING_CHANGES,
   },
 
   // TaxRes administrative/default office
@@ -101,10 +108,10 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.21',
+    version: '3.2.22',
     releasedAt: '2026-10-30',
-    title: 'Centurion Firm CRM 3.2.21 — Gmail Draft Recovery, Client Links & Log Time',
-    changes: EMAIL_PARITY_CHANGES,
+    title: 'Centurion Firm CRM 3.2.22 — FormaCorp Filing Preparation & Payment Safety',
+    changes: FORMACORP_SAFE_FILING_CHANGES,
   },
 }
 
