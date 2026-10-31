@@ -100,7 +100,7 @@ const OFFICE_RELEASES = {
     version: '3.2.28',
     releasedAt: '2026-10-30',
     title: 'CRM 3.2.28 — FormaCorp Archive RLS Fix',
-    changes: FORMACORP_VAULT_FIX_CHANGES,
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // TaxRes administrative/default office
@@ -124,7 +124,7 @@ const OFFICE_RELEASES = {
     version: '3.2.28',
     releasedAt: '2026-10-30',
     title: 'CRM 3.2.28 — FormaCorp Archive RLS Fix',
-    changes: FORMACORP_VAULT_FIX_CHANGES,
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
@@ -132,7 +132,7 @@ const OFFICE_RELEASES = {
     version: '3.2.28',
     releasedAt: '2026-10-30',
     title: 'CRM 3.2.28 — FormaCorp Archive RLS Fix',
-    changes: FORMACORP_VAULT_FIX_CHANGES,
+    changes: IRS_WORKFLOW_CHANGES,
   },
 }
 
