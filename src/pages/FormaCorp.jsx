@@ -633,8 +633,9 @@ export default function FormaCorp() {
         stage:'State Filing',
       }, 'Ready for official Sunbiz filing — no payment collected by FormaCorp', 'Standard Sunbiz online filing selected; state submission/payment is not yet confirmed')
       if (!ok) return
-      window.location.assign('https://efile.sunbiz.org/llc_file.html')
-      showToast('Complete the state filing and pay only on Sunbiz. Return to record the state receipt.')
+      // The office can finish preparation and preserve the case without leaving the CRM.
+      // Final state submission stays a separate, explicit action to avoid accidental payments.
+      showToast('✅ Filing packet saved in FormaCorp. Submit on Sunbiz only when ready, then record the receipt here.')
       return
     }
 
@@ -959,9 +960,12 @@ export default function FormaCorp() {
               {hasStateFilingFunds(c) && <span className="bdg bg" style={{alignSelf:'center'}}>Government funds recorded</span>}
               <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
               {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
-              {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>🏛 Start Official Sunbiz Filing</button>}
-              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>🏛 Continue Official Sunbiz Filing</button>}
-              {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>}
+              {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Prepare Filing Packet</button>}
+              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Filing Packet Prepared</button>}
+              {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <>
+                <a className="btn sm" href="https://efile.sunbiz.org/llc_file.html" target="_self" style={{textDecoration:'none'}}>🏛 Open Official Sunbiz Filing</a>
+                <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>
+              </>}
               {c.fl_filing_status==='Submitted to Florida' && <button className="btn sm" onClick={()=>markFloridaReview(c)}>⏳ Mark Under Review</button>}
               {['Submitted to Florida','Under State Review'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>approveFlorida(c)}>✅ Record Approval</button>}
               {['Submitted to Florida','Under State Review'].includes(c.fl_filing_status) && <button className="btn sm" onClick={()=>rejectFlorida(c)}>⚠️ Record Rejection</button>}
@@ -974,7 +978,7 @@ export default function FormaCorp() {
 
             <details open style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--br)'}}>
               <summary style={{cursor:'pointer',fontSize:11,fontWeight:700}}>Florida submission inside FormaCorp</summary>
-              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Standard online filings open official Sunbiz; only the separate prepaid Sunbiz account workflow uses fax. Never pay both through FormaCorp and Sunbiz.</div>
+              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Prepare and save all details inside FormaCorp. The optional final state filing goes through official Sunbiz; afterward record the receipt here. No charge is initiated from the standard Florida preparation workflow.</div>
               <div style={{fontSize:11,fontWeight:700,margin:'10px 0 6px'}}>Prepaid Sunbiz E-File / Fax submission</div>
               <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>For a frequent-filer Sunbiz account: generate the official Electronic Filing Cover Sheet in Sunbiz, attach it with the signed Articles, enter the fax number printed on that cover sheet, and FormaCorp will combine the PDFs and send the filing through the CRM fax service. Unsigned Articles are blocked. The prepaid Sunbiz account must already have enough funds for the state to process the filing.</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
