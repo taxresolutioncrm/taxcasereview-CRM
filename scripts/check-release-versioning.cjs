@@ -53,10 +53,16 @@ if (manifestCommits.length > 1) {
     const [nm,nni,np] = currentVersion.split('.').map(Number)
     assert(nm>om || (nm===om && (nni>oni || (nni===oni && np>op))),
       'Version must increase, not simply change')
-    for (const office of ['Tax Case Review','CloudCPA','Centurion Firm']) {
-      const section = release.slice(release.indexOf('// '+office))
-      assert(section && section.includes("version: '"+currentVersion+"'"),
-        office+' must explicitly carry this release version')
+    // Admin Portal booking/task UI is independently scoped: do not force a
+    // release bump for unrelated customer offices when their code did not change.
+    const adminOnlyFiles = new Set(['src/components/AdminBookingAlerts.jsx','src/pages/AdminPortal.jsx'])
+    const adminOnlyRelease = changedSincePreviousRelease.every(file => adminOnlyFiles.has(file))
+    if (!adminOnlyRelease) {
+      for (const office of ['Tax Case Review','CloudCPA','Centurion Firm']) {
+        const section = release.slice(release.indexOf('// '+office))
+        assert(section && section.includes("version: '"+currentVersion+"'"),
+          office+' must explicitly carry this release version')
+      }
     }
     assert(release.includes("changes: IRS_WORKFLOW_CHANGES"),
       'Functional changes require recorded release notes for offices')
