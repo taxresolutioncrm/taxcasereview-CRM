@@ -13,6 +13,11 @@ export default function AdminBookingAlerts({workspace=false}) {
   const [drafts, setDrafts] = useState({})
   const [savingTask, setSavingTask] = useState(null)
   const [saveNotice, setSaveNotice] = useState('')
+  const [activityEditor,setActivityEditor]=useState(null)
+  const [activityDraft,setActivityDraft]=useState({type:'email_sent',notes:'',nextDate:'',nextTime:''})
+  const [history,setHistory]=useState({})
+  const [historyOpen,setHistoryOpen]=useState(null)
+  const [submittingActivity,setSubmittingActivity]=useState(false)
   const load = useCallback(async () => {
     const {data,error:queryError} = await supabase
       .from('romylabs_booking_alerts')
@@ -69,16 +74,36 @@ export default function AdminBookingAlerts({workspace=false}) {
     if (error) {setError('Could not acknowledge booking. Try again.');return}
     await load()
   }
+  const activityTypes=[['email_sent','Email Sent'],['called_no_answer','Called — No Answer'],['voicemail_left','Voicemail Left'],['spoke_with_lead','Spoke With Lead'],['awaiting_response','Awaiting Response'],['followup_scheduled','Follow-Up Scheduled'],['other','Other']]
+  async function showHistory(id){
+    if(historyOpen===id){setHistoryOpen(null);return}
+    const {data,error:readError}=await supabase.from('romylabs_booking_activities').select('id,activity_type,notes,created_at').eq('booking_id',id).order('created_at',{ascending:false}).limit(100)
+    if(readError){setError('Unable to load contact history: '+readError.message);return}
+    setHistory(old=>({...old,[id]:data||[]}))
+    setHistoryOpen(id)
+  }
   async function markContacted(item) {
-    const outcome = window.prompt('Contact outcome / next action for ' + item.lead_name)
-    if (!outcome?.trim()) return
-    const {error} = await supabase.from('romylabs_booking_alerts').update({
-      followup_status:'contacted',
-      acknowledged_at:item.acknowledged_at || new Date().toISOString(),
-      contacted_at:new Date().toISOString(),
-      contact_outcome:outcome.trim()
-    }).eq('booking_id',item.booking_id)
-    if(error){setError('Unable to save contact outcome. Task remains open.');return}
+    setActivityEditor(item.booking_id)
+    setActivityDraft({type:'email_sent',notes:'',nextDate:'',nextTime:''})
+    setError('')
+  }
+  async function recordActivity(item){
+    if(!activityDraft.notes.trim()){setError('Enter what happened before saving this activity.');return}
+    let nextFollowup=null
+    if(activityDraft.nextDate || activityDraft.nextTime){
+      if(!activityDraft.nextDate||!activityDraft.nextTime){setError('Choose both a follow-up date and time.');return}
+      const due=new Date(activityDraft.nextDate+'T'+activityDraft.nextTime)
+      if(Number.isNaN(due.getTime())){setError('Choose a valid follow-up date and time.');return}
+      nextFollowup=due.toISOString()
+    }
+    setSubmittingActivity(true)
+    const {error:writeError}=await supabase.rpc('romylabs_record_booking_activity',{p_booking_id:item.booking_id,p_activity_type:activityDraft.type,p_notes:activityDraft.notes.trim(),p_next_followup:nextFollowup})
+    setSubmittingActivity(false)
+    if(writeError){setError('Could not record activity: '+writeError.message);return}
+    setActivityEditor(null)
+    setSaveNotice('Contact activity saved with timestamp.')
+    const {data,error:readError}=await supabase.from('romylabs_booking_activities').select('id,activity_type,notes,created_at').eq('booking_id',item.booking_id).order('created_at',{ascending:false}).limit(100)
+    if(!readError){setHistory(old=>({...old,[item.booking_id]:data||[]}));setHistoryOpen(item.booking_id)}
     await load()
   }
   async function complete(item) {
@@ -150,7 +175,8 @@ export default function AdminBookingAlerts({workspace=false}) {
                 <span style={{color:'#475569'}}>·</span>
                 <span><strong style={{color:'#94a3b8'}}>Status:</strong> {item.followup_status}</span>
                 <span style={{color:'#475569'}}>·</span>
-                <span><strong style={{color:'#94a3b8'}}>Outcome:</strong> {item.contact_outcome||'Contact required'}</span>
+                <span><strong style={{color:'#94a3b8'}}>Last contact:</strong> {item.contact_outcome||'Contact required'}</span>
+                {item.contacted_at && <span style={{color:'#94a3b8'}}>{new Date(item.contacted_at).toLocaleString()}</span>}
               </div>
               {editingTask===item.booking_id && <div style={{display:'flex',flexWrap:'wrap',gap:15,alignItems:'end',padding:15,background:'#0d1729',border:'1px solid #30405c',borderRadius:11}}>
                 <label style={{display:'grid',gap:7,fontSize:12,color:'#cbd5e1',fontWeight:650}}>Assigned to
@@ -166,6 +192,35 @@ export default function AdminBookingAlerts({workspace=false}) {
                 <button type="button" style={buttonBase} onClick={()=>setEditingTask(null)}>Cancel</button>
                 <span style={{fontSize:12,color:isOverdue?'#fca5a5':'#86efac',paddingBottom:10}}>{isOverdue?'● Overdue':'● On track'}</span>
               </div>}
+              {activityEditor===item.booking_id && <div style={{display:'grid',gap:12,padding:16,background:'#0d1729',border:'1px solid #30405c',borderRadius:11}}>
+                <strong style={{fontSize:14}}>Record contact activity</strong>
+                <label style={{display:'grid',gap:5,fontSize:12}}>Contact status
+                  <select aria-label="Contact status" value={activityDraft.type} onChange={e=>setActivityDraft(v=>({...v,type:e.target.value}))} style={fieldBase}>{activityTypes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+                </label>
+                <label style={{display:'grid',gap:5,fontSize:12}}>What happened?
+                  <textarea aria-label="Contact notes" rows={3} maxLength={4000} value={activityDraft.notes} onChange={e=>setActivityDraft(v=>({...v,notes:e.target.value}))} placeholder="Example: Sent introduction email, awaiting reply" style={{...fieldBase,resize:'vertical'}}/>
+                </label>
+                <div style={{display:'flex',flexWrap:'wrap',alignItems:'end',gap:12}}>
+                  <label style={{display:'grid',gap:5,fontSize:12}}>Next follow-up date (optional)
+                    <input type="date" aria-label="Next follow-up date" value={activityDraft.nextDate} onClick={e=>e.currentTarget.showPicker?.()} onChange={e=>setActivityDraft(v=>({...v,nextDate:e.target.value}))} style={{...fieldBase,colorScheme:'dark'}}/>
+                  </label>
+                  <label style={{display:'grid',gap:5,fontSize:12}}>Time
+                    <input type="time" aria-label="Next follow-up time" value={activityDraft.nextTime} onChange={e=>setActivityDraft(v=>({...v,nextTime:e.target.value}))} style={{...fieldBase,colorScheme:'dark'}}/>
+                  </label>
+                  <button type="button" disabled={submittingActivity} onClick={()=>recordActivity(item)} style={{...buttonBase,background:'#164e63',borderColor:'#0891b2'}}>{submittingActivity?'Saving…':'Save activity'}</button>
+                  <button type="button" style={buttonBase} onClick={()=>setActivityEditor(null)}>Cancel</button>
+                </div>
+              </div>}
+              <div>
+                <button type="button" onClick={()=>showHistory(item.booking_id)} style={buttonBase}>{historyOpen===item.booking_id?'Hide history':'View activity history'}</button>
+                {historyOpen===item.booking_id && <ol aria-label={'Activity history for '+item.lead_name} style={{paddingLeft:24,color:'#cbd5e1',fontSize:13}}>
+                  {(history[item.booking_id]||[]).length===0 && <li>No recorded activities yet.</li>}
+                  {(history[item.booking_id]||[]).map(entry=><li key={entry.id} style={{margin:'9px 0'}}>
+                    <strong>{activityTypes.find(x=>x[0]===entry.activity_type)?.[1]||entry.activity_type}</strong> · {new Date(entry.created_at).toLocaleString()}
+                    <div style={{marginTop:4,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{entry.notes}</div>
+                  </li>)}
+                </ol>}
+              </div>
               <div style={{fontSize:12,color:item.notification_submission_id?'#86efac':'#fbbf24'}}>
                 {item.notification_submission_id ? 'Mail submitted to Stalwart (inbox delivery not yet verified)' : 'Mail submission not confirmed — review lead now'}
                 {item.notification_last_error ? ' · Last error: '+item.notification_last_error : ''}
