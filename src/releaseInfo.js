@@ -60,6 +60,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'TaxRes booking page retains its TaxRes favicon when tenant public metadata loads',
   'Admin Portal demo follow-up banner removed from shared page header; task controls remain on dedicated Tasks tab',
   'Task edit panel JSX and prebuild checks corrected before release certification',
   'RomyLabs Admin Portal adds a dedicated Demo Leads & Tasks page with editable ownership and follow-up deadlines',
