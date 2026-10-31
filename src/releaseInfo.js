@@ -61,6 +61,7 @@ const EMAIL_PARITY_CHANGES = [
 
 const FORMACORP_SAFE_FILING_CHANGES = [
   'FormaCorp saves Florida formation intake and filing preparation in the existing case without automatically charging or submitting',
+  'Generate Florida Articles and explicitly archive dated draft PDFs to the existing FormaCorp Documents vault',
   'Standard Florida filing requires an explicit official Sunbiz submission with receipt reconciliation; prepaid fax remains separate',
   'Duplicate payment attempts or recorded funds block new standard filing preparation until reconciled',
   ...EMAIL_PARITY_CHANGES,
