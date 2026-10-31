@@ -8,6 +8,7 @@ export default function AdminBookingAlerts() {
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [showCompleted, setShowCompleted] = useState(false)
+  const [editingTask, setEditingTask] = useState(null)
   const load = useCallback(async () => {
     const {data,error:queryError} = await supabase
       .from('romylabs_booking_alerts')
@@ -75,7 +76,7 @@ export default function AdminBookingAlerts() {
                 <div style={{color:'#cbd5e1'}}>{item.appointment_type} · {item.appointment_date} {item.appointment_time} ET</div>
                 {item.lead_email && <a href={'mailto:'+item.lead_email} style={{color:'#93c5fd'}}>{item.lead_email}</a>}
                 <div style={{fontSize:11,color:'#fbbf24',marginTop:4}}>Assigned: {item.assigned_to} · {item.followup_status} · {item.contact_outcome || 'Contact required'}</div>
-                <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8,alignItems:'center',fontSize:12}}>
+                {editingTask===item.booking_id && <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8,alignItems:'center',fontSize:12}}>
                   <label>Assigned to <input aria-label={'Assigned owner for '+item.lead_name} defaultValue={item.assigned_to||''} key={item.booking_id+'owner'+item.assigned_to} onBlur={e=>{const owner=e.target.value.trim();if(owner&&owner!==item.assigned_to)void updateTask(item.booking_id,{assigned_to:owner})}} style={{background:'#0f172a',border:'1px solid #475569',color:'white',padding:5,borderRadius:5,width:155}}/></label>
                   <label>Due <input aria-label={'Follow-up deadline for '+item.lead_name} type="datetime-local" defaultValue={item.followup_due_at?new Date(item.followup_due_at).toLocaleString('sv-SE',{timeZone:'America/New_York'}).slice(0,16).replace(' ','T'):''} key={item.booking_id+'due'+item.followup_due_at} onBlur={e=>{if(e.target.value)void updateTask(item.booking_id,{followup_due_at:new Date(e.target.value).toISOString()})}} style={{background:'#0f172a',border:'1px solid #475569',color:'white',padding:5,borderRadius:5}}/></label>
                   <span style={{color:new Date(item.followup_due_at).getTime()<Date.now()&&item.followup_status!=='completed'?'#fca5a5':'#94a3b8'}}>{new Date(item.followup_due_at).getTime()<Date.now()&&item.followup_status!=='completed'?'OVERDUE':'On track'}</span>
@@ -87,6 +88,7 @@ export default function AdminBookingAlerts() {
               </div>
               <div style={{display:'flex',gap:6,alignItems:'center'}}>
                 {item.followup_status==='new' && <button type="button" onClick={()=>acknowledge(item.booking_id)}>Acknowledge</button>}
+                <button type="button" onClick={()=>setEditingTask(editingTask===item.booking_id?null:item.booking_id)}>{editingTask===item.booking_id?'Close editor':'Edit task'}</button>
                 <button type="button" onClick={()=>markContacted(item)}>Record contact</button>
                 {item.followup_status==='contacted' && <button type="button" onClick={()=>complete(item)}>Complete</button>}
               </div>
