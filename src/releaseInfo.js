@@ -3,8 +3,6 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
-  'RomyLabs Admin Portal adds a dedicated Demo Leads & Tasks page with editable ownership and follow-up deadlines',
-  'Demo follow-ups remain visible until contact is recorded and can be reviewed after completion',
   'All RomyLabs public demo bookings now create durable central Admin Portal alerts, independent of email delivery',
   'Business demo owner alerts use the registered RomyLabs Stalwart sender with audited submission and visible failures',
   'Booking identity includes all 11 active products and legacy PoolVerge URL alias',
@@ -61,11 +59,17 @@ const EMAIL_PARITY_CHANGES = [
   ...TRAINING_RELEASE_CHANGES,
 ]
 
+const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs Admin Portal adds a dedicated Demo Leads & Tasks page with editable ownership and follow-up deadlines',
+  'Demo follow-ups remain visible until contact is recorded and can be reviewed after completion',
+  ...EMAIL_PARITY_CHANGES,
+]
+
 const DEFAULT_RELEASE = {
   version: '3.2.22',
   releasedAt: '2026-10-30',
-  title: 'TaxRes CRM 3.2.22 — Demo Lead Tasks, Ownership & Deadlines',
-  changes: EMAIL_PARITY_CHANGES,
+  title: 'RomyLabs Admin Portal 3.2.22 — Demo Lead Tasks, Ownership & Deadlines',
+  changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
