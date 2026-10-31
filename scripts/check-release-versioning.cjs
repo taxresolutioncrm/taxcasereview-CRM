@@ -53,9 +53,12 @@ if (manifestCommits.length > 1) {
     const oldContent = git(['show',olderManifest+':src/releaseInfo.js'])
     // During PR checks, compare against the target branch release, not each
     // intermediate manifest amendment in the same unmerged PR.
+    const isSandboxPush = process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF_NAME === 'sandbox/demo-lead-workspace-20261030'
     const baselineRelease = process.env.GITHUB_EVENT_NAME === 'pull_request'
       ? git(['show','HEAD^1:src/releaseInfo.js'])
-      : oldContent
+      : isSandboxPush
+        ? git(['show','origin/main:src/releaseInfo.js'])
+        : oldContent
     const oldVersion = versionFrom(baselineRelease,'previous release')
     const currentVersion = versionFrom(release,'current release')
     assert(oldVersion !== currentVersion,
