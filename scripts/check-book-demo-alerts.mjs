@@ -43,4 +43,8 @@ assert.ok(alert.includes('Include completed follow-ups'),'Completed history not 
 assert.ok(shell.includes("path:'/crm-admin/tasks'"),'Admin sidebar Tasks tab missing')
 assert.ok(shell.includes('<Route path="/tasks"'),'Admin Tasks page route missing')
 assert.ok(alert.includes('workspace=false'),'Task workspace display mode missing')
+assert.ok(alert.includes("onClick={()=>setTaskFilter(filter)}"),'Task metric cards must filter the follow-up list')
+assert.ok(alert.includes("type=\"date\" onClick={e=>e.currentTarget.showPicker?.()}"),'Task deadline must provide a clickable calendar')
+assert.ok(alert.includes("type=\"time\""),'Task deadline time picker missing')
+assert.ok(alert.includes("onClick={()=>saveTask(item)}"),'Explicit Save changes action missing')
 console.log('PASS — 11 central booking products, labels, mail invocation, durable alerts and Admin Portal visibility')
