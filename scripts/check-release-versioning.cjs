@@ -69,7 +69,7 @@ if (manifestCommits.length > 1) {
       'Version must increase, not simply change')
     // Admin Portal booking/task UI is independently scoped: do not force a
     // release bump for unrelated customer offices when their code did not change.
-    const adminOnlyFiles = new Set(['src/components/AdminBookingAlerts.jsx','src/pages/AdminPortal.jsx'])
+    const adminOnlyFiles = new Set(['src/components/AdminBookingAlerts.jsx','src/pages/AdminPortal.jsx','src/pages/BookAppointment.jsx'])
     const scopedFiles = process.env.GITHUB_EVENT_NAME === 'pull_request'
       ? git(['diff','--name-only','HEAD^1','HEAD^2','--','src','public','supabase/functions']).split(/\r?\n/).filter(Boolean)
       : process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF_NAME?.startsWith('sandbox/')
