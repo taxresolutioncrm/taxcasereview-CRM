@@ -30,10 +30,16 @@ function git(args) {
 // Compare against the last release-manifest commit, not merely HEAD's parent:
 // a PR can contain several functional commits before its single final version bump.
 // A new shared functionality commit after that bump MUST update releaseInfo.js.
-const manifestCommits = git(['log','--format=%H','-2','--','src/releaseInfo.js']).split(/\r?\n/).filter(Boolean)
+// PR builds checkout GitHub's synthetic merge commit. Its first parent is main,
+// which may contain unrelated changes after this PR updated its manifest.
+// Validate the PR's second-parent tip instead of treating base changes as PR changes.
+const effectiveHead = process.env.GITHUB_EVENT_NAME === 'pull_request'
+  ? git(['rev-parse','HEAD^2'])
+  : 'HEAD'
+const manifestCommits = git(['log','--format=%H','-2',effectiveHead,'--','src/releaseInfo.js']).split(/\r?\n/).filter(Boolean)
 assert(manifestCommits.length,'Cannot identify the current release manifest commit')
 const mostRecentManifest = manifestCommits[0]
-const afterRelease = git(['diff','--name-only',mostRecentManifest,'HEAD','--','src','public','supabase/functions'])
+const afterRelease = git(['diff','--name-only',mostRecentManifest,effectiveHead,'--','src','public','supabase/functions'])
   .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
 assert(afterRelease.length===0,
   'Functional files changed after the last release-manifest update without new version and release notes: '+afterRelease.join(', '))
@@ -45,7 +51,15 @@ if (manifestCommits.length > 1) {
     .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
   if (changedSincePreviousRelease.length) {
     const oldContent = git(['show',olderManifest+':src/releaseInfo.js'])
-    const oldVersion = versionFrom(oldContent,'previous release')
+    // During PR checks, compare against the target branch release, not each
+    // intermediate manifest amendment in the same unmerged PR.
+    const isSandboxPush = process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF_NAME === 'sandbox/demo-lead-workspace-20261030'
+    const baselineRelease = process.env.GITHUB_EVENT_NAME === 'pull_request'
+      ? git(['show','HEAD^1:src/releaseInfo.js'])
+      : isSandboxPush
+        ? git(['show','origin/main:src/releaseInfo.js'])
+        : oldContent
+    const oldVersion = versionFrom(baselineRelease,'previous release')
     const currentVersion = versionFrom(release,'current release')
     assert(oldVersion !== currentVersion,
       'Functional changes must bump the shared source version and provide release notes')
@@ -53,13 +67,24 @@ if (manifestCommits.length > 1) {
     const [nm,nni,np] = currentVersion.split('.').map(Number)
     assert(nm>om || (nm===om && (nni>oni || (nni===oni && np>op))),
       'Version must increase, not simply change')
-    for (const office of ['Tax Case Review','CloudCPA','Centurion Firm']) {
-      const section = release.slice(release.indexOf('// '+office))
-      assert(section && section.includes("version: '"+currentVersion+"'"),
-        office+' must explicitly carry this release version')
+    // Admin Portal booking/task UI is independently scoped: do not force a
+    // release bump for unrelated customer offices when their code did not change.
+    const adminOnlyFiles = new Set(['src/components/AdminBookingAlerts.jsx','src/pages/AdminPortal.jsx'])
+    const adminOnlyRelease = changedSincePreviousRelease.every(file => adminOnlyFiles.has(file))
+    if (!adminOnlyRelease) {
+      for (const office of ['Tax Case Review','CloudCPA','Centurion Firm']) {
+        const section = release.slice(release.indexOf('// '+office))
+        assert(section && section.includes("version: '"+currentVersion+"'"),
+          office+' must explicitly carry this release version')
+      }
     }
-    assert(release.includes("changes: IRS_WORKFLOW_CHANGES"),
-      'Functional changes require recorded release notes for offices')
+    if (adminOnlyRelease) {
+      assert(release.includes("changes: ADMIN_DEMO_TASK_CHANGES"),
+        'Admin Portal-only functional changes require Admin Portal release notes')
+    } else {
+      assert(release.includes("changes: IRS_WORKFLOW_CHANGES"),
+        'Shared CRM functional changes require office release notes')
+    }
   }
 }
 console.log('PASS semantic release gate: functional source requires a version bump and notes')

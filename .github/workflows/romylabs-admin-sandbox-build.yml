@@ -1,0 +1,30 @@
+name: RomyLabs Admin Portal sandbox build diagnostics
+on:
+  push:
+    branches:
+      - sandbox/demo-lead-workspace-20261030
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+jobs:
+  build-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Validate demo lead workflow
+        run: node scripts/check-book-demo-alerts.mjs
+      - name: Cloudflare-equivalent frontend build
+        run: npm run build
+      - name: Confirm emitted build marker
+        run: test -s dist/taxres-build.json
