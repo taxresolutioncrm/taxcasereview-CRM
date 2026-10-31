@@ -3,10 +3,10 @@ import { supabase } from '../lib/supabase'
 
 // Durable, server-recorded new booking alerts. Never depends on email or the tab
 // being open when a visitor books an appointment.
-export default function AdminBookingAlerts() {
+export default function AdminBookingAlerts({workspace=false}) {
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(workspace)
   const [showCompleted, setShowCompleted] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
   const load = useCallback(async () => {
@@ -67,7 +67,7 @@ export default function AdminBookingAlerts() {
       {items.length>0 && <div role="status" style={{fontSize:12,padding:'4px 0',color:overdue?'#fca5a5':'#cbd5e1'}}>Needs contact: {awaitingContact} · Overdue tasks: {overdue} · Total open: {items.length}</div>}
       {expanded && <div style={{padding:'6px 0'}}><label style={{fontSize:12}}><input type="checkbox" checked={showCompleted} onChange={e=>setShowCompleted(e.target.checked)}/> Include completed follow-ups</label></div>}
       {error && <div role="alert" style={{color:'#fca5a5',fontSize:12}}>{error}</div>}
-      {expanded && (items.length ? (
+      {(workspace || expanded) && (items.length ? (
         <div style={{maxHeight:290,overflowY:'auto',display:'grid',gap:8,padding:'7px 0'}}>
           {items.map(item=>(
             <div key={item.booking_id} style={{display:'flex',flexWrap:'wrap',gap:10,justifyContent:'space-between',alignItems:'center',background:'#111827',padding:'10px 12px',borderRadius:8}}>
