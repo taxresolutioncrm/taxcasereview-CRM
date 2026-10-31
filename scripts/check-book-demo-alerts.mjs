@@ -16,6 +16,7 @@ for (const key of keys) {
   assert.match(brand,new RegExp(key==='taxres_crm'?'\\[TaxRes CRM\\]':key==='restore_relay'?'\\[Restore Relay\\]':key==='romylabs'?'\\[RomyLabs\\]':key==='camvella'?'\\[Camvella\\]':key==='arcvena'?'\\[Arcvena\\]':key==='bocasync'?'\\[BocaSync\\]':key==='oculivo'?'\\[Oculivo\\]' :key==='groundivo'?'\\[GroundIVO\\]':key==='pool_crm'?'\\[PoolVerge\\]':key==='barbers_salons'?'\\[Barbers & Salons CRM\\]':'\\[Health Insurance Agency CRM\\]'),'Missing calendar brand: '+key)
 }
 assert.ok(book.includes("booking_create_product"),'booking writes must persist product identity')
+assert.ok(book.includes("productCfg.key==='taxres_crm'?productCfg.favicon:(data.logo_url||productCfg.favicon)"),'TaxRes booking favicon must not be overridden by tenant logo metadata')
 assert.ok(book.includes("booking_firm_notification"),'firm notification must be requested')
 assert.ok(book.includes("booking_confirmation"),'client confirmation must be requested')
 assert.ok(cfg.includes("productParam === 'aquagrid'"),'Legacy PoolVerge alias missing')
