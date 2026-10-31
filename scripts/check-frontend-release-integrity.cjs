@@ -9,7 +9,7 @@ const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
 assert(app.includes('const TAXRES_FAMILY_BUILD = __TAXRES_BUILD__'), 'App must use generated build ID')
 assert(vite.includes('CF_PAGES_COMMIT_SHA'), 'Vite must derive build ID from Cloudflare commit SHA')
-assert(vite.includes("writeFileSync('dist/taxres-build.json'"), 'Build must emit fresh taxres-build.json')
+assert(vite.includes("fileName: 'taxres-build.json'") && vite.includes('this.emitFile(') && vite.includes('generateBundle()'), 'Build marker must be emitted as a Rollup asset without direct dist filesystem writes')
 assert(prebuild.includes('check-ai-file-picker'), 'AI file-picker guard must run in prebuild')
 assert(!app.includes("window.setInterval(check, 60_000)"), 'Active CRM work must not be auto-reloaded on a timer')
 assert(!app.includes("document.addEventListener('visibilitychange', onVisible)"), 'Returning to a Chrome tab must not trigger a build reload')
