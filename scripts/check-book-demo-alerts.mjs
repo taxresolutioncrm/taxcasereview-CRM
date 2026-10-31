@@ -53,4 +53,8 @@ assert.ok(alert.includes("View activity history"),'Activity timeline disclosure 
 assert.ok(alert.includes("Save activity"),'Contact logging must use a named save action')
 assert.ok(alert.includes('aria-expanded={expandedTask===item.booking_id}'),'Each follow-up must have an accessible expand toggle')
 assert.ok(alert.includes('expandedTask===item.booking_id && <>'),'Actions and activity details must stay collapsed until requested')
+assert.ok(alert.includes('Task status for '),'Editable task status selector missing')
+assert.ok(alert.includes('followup_status:status'),'Status save must persist to existing booking alert record')
+assert.ok(alert.includes('Done / Closed'),'Completed task option missing')
+assert.ok(alert.includes('Log a contact activity before'),'Contact-first completion safeguard missing')
 console.log('PASS — 11 central booking products, labels, mail invocation, durable alerts and Admin Portal visibility')
