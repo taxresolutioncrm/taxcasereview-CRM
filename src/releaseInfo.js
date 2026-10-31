@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp draft Articles now save under the verified tenant folder, respecting existing document storage security',
   'All RomyLabs public demo bookings now create durable central Admin Portal alerts, independent of email delivery',
   'Business demo owner alerts use the registered RomyLabs Stalwart sender with audited submission and visible failures',
   'Booking identity includes all 11 active products and legacy PoolVerge URL alias',
@@ -91,7 +92,7 @@ const OFFICE_RELEASES = {
     version: '3.2.25',
     releasedAt: '2026-10-30',
     title: 'Tax Case Review 3.2.25 — FormaCorp Vault Fix',
-    changes: VAULT_FIX_CHANGES,
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // TaxRes administrative/default office
@@ -114,16 +115,16 @@ const OFFICE_RELEASES = {
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
     version: '3.2.25',
     releasedAt: '2026-10-30',
-    title: 'CloudCPA CRM 3.2.23 — Shared FormaCorp Safe Filing Preparation',
-    changes: VAULT_FIX_CHANGES,
+    title: 'CloudCPA CRM 3.2.25 — FormaCorp Vault Fix',
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
     version: '3.2.25',
     releasedAt: '2026-10-30',
-    title: 'Centurion Firm CRM 3.2.23 — Shared FormaCorp Safe Filing Preparation',
-    changes: VAULT_FIX_CHANGES,
+    title: 'Centurion Firm CRM 3.2.25 — FormaCorp Vault Fix',
+    changes: IRS_WORKFLOW_CHANGES,
   },
 }
 
