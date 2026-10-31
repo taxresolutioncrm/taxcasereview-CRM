@@ -7,6 +7,12 @@ create table if not exists public.romylabs_booking_activities (
  created_at timestamptz not null default now(),
  created_by uuid not null default auth.uid()
 );
+-- Preserve any prior recorded outcome as the first historical activity.
+insert into public.romylabs_booking_activities (booking_id,activity_type,notes,created_at,created_by)
+select a.booking_id,'other',a.contact_outcome,a.contacted_at, '00000000-0000-0000-0000-000000000000'::uuid
+from public.romylabs_booking_alerts a
+where a.contacted_at is not null and length(trim(coalesce(a.contact_outcome,'')))>0
+and not exists (select 1 from public.romylabs_booking_activities h where h.booking_id=a.booking_id);
 create index if not exists romylabs_booking_activities_lookup on public.romylabs_booking_activities(booking_id,created_at desc);
 alter table public.romylabs_booking_activities enable row level security;
 create policy "Platform admins can read demo activities" on public.romylabs_booking_activities for select to authenticated using (coalesce(public._is_platform_admin(),false));
