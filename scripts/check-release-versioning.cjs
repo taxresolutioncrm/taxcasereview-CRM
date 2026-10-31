@@ -39,7 +39,7 @@ const effectiveHead = process.env.GITHUB_EVENT_NAME === 'pull_request'
 const manifestCommits = git(['log','--format=%H','-2',effectiveHead,'--','src/releaseInfo.js']).split(/\r?\n/).filter(Boolean)
 assert(manifestCommits.length,'Cannot identify the current release manifest commit')
 const mostRecentManifest = manifestCommits[0]
-const afterRelease = git(['diff','--name-only',mostRecentManifest,effectiveHead,'--','src,'public','supabase/functions'])
+const afterRelease = git(['diff','--name-only',mostRecentManifest,effectiveHead,'--','src','public','supabase/functions'])
   .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
 assert(afterRelease.length===0,
   'Functional files changed after the last release-manifest update without new version and release notes: '+afterRelease.join(', '))
