@@ -47,6 +47,7 @@ export default function AdminBookingAlerts({workspace=false}) {
     const pad=n=>String(n).padStart(2,'0')
     setDrafts(previous=>({...previous,[item.booking_id]:{
       assigned_to:item.assigned_to||'',
+      followup_status:item.followup_status,
       date:local.getFullYear()+'-'+pad(local.getMonth()+1)+'-'+pad(local.getDate()),
       time:pad(local.getHours())+':'+pad(local.getMinutes())
     }}))
@@ -58,15 +59,26 @@ export default function AdminBookingAlerts({workspace=false}) {
     if(!draft?.assigned_to?.trim()||!draft.date||!draft.time){setError('Enter an owner, date and time before saving.');return}
     const due=new Date(draft.date+'T'+draft.time)
     if(Number.isNaN(due.getTime())){setError('Choose a valid follow-up date and time.');return}
+    const status=draft.followup_status
+    if(!['new','acknowledged','contacted','completed'].includes(status)){setError('Choose a valid task status.');return}
+    if(['contacted','completed'].includes(status) && (!item.contacted_at||!item.contact_outcome?.trim())){
+      setError('Log a contact activity before setting this task to Contacted or Done.');return
+    }
+    // The database requires contact first; only previously contacted tasks can be completed.
+    if(status==='completed' && item.followup_status!=='contacted' && item.followup_status!=='completed'){
+      setError('Record contact and set the task to Contacted before marking it Done.');return
+    }
     setSavingTask(item.booking_id)
-    const {data,error:writeError}=await supabase.from('romylabs_booking_alerts').update({
-      assigned_to:draft.assigned_to.trim(),followup_due_at:due.toISOString()
-    }).eq('booking_id',item.booking_id).select('booking_id,assigned_to,followup_due_at').single()
+    const fields={assigned_to:draft.assigned_to.trim(),followup_due_at:due.toISOString(),
+      followup_status:status,
+      acknowledged_at:status!=='new'?(item.acknowledged_at||new Date().toISOString()):item.acknowledged_at,
+      completed_at:status==='completed'?(item.completed_at||new Date().toISOString()):null}
+    const {data,error:writeError}=await supabase.from('romylabs_booking_alerts').update(fields).eq('booking_id',item.booking_id).select('booking_id,assigned_to,followup_due_at,followup_status').single()
     setSavingTask(null)
     if(writeError||!data){setError('Could not save task: '+(writeError?.message||'No updated record returned'));return}
     setError('')
     setEditingTask(null)
-    setSaveNotice('Follow-up updated successfully.')
+    setSaveNotice('Task status and follow-up saved successfully.')
     await load()
   }
   async function acknowledge(id) {
@@ -198,6 +210,14 @@ export default function AdminBookingAlerts({workspace=false}) {
                 </label>
                 <label style={{display:'grid',gap:7,fontSize:12,color:'#cbd5e1',fontWeight:650}}>Time
                   <input aria-label={'Follow-up time for '+item.lead_name} type="time" value={drafts[item.booking_id]?.time||''} onChange={e=>setDrafts(d=>({...d,[item.booking_id]:{...d[item.booking_id],time:e.target.value}}))} style={{...fieldBase,width:145,colorScheme:'dark'}}/>
+                </label>
+                <label style={{display:'grid',gap:7,fontSize:12,color:'#cbd5e1',fontWeight:650}}>Task status
+                  <select aria-label={'Task status for '+item.lead_name} value={drafts[item.booking_id]?.followup_status||item.followup_status} onChange={e=>setDrafts(d=>({...d,[item.booking_id]:{...d[item.booking_id],followup_status:e.target.value}}))} style={{...fieldBase,width:185}}>
+                    <option value="new">Open</option>
+                    <option value="acknowledged">In progress</option>
+                    <option value="contacted" disabled={!item.contacted_at}>Contacted</option>
+                    <option value="completed" disabled={!item.contacted_at||!['contacted','completed'].includes(item.followup_status)}>Done / Closed</option>
+                  </select>
                 </label>
                 <button type="button" disabled={savingTask===item.booking_id} style={{...buttonBase,background:'#312e81',borderColor:'#818cf8'}} onClick={()=>saveTask(item)}>{savingTask===item.booking_id?'Saving…':'Save changes'}</button>
                 <button type="button" style={buttonBase} onClick={()=>setEditingTask(null)}>Cancel</button>
