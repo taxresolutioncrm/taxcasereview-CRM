@@ -75,15 +75,20 @@ export default function AdminBookingAlerts({workspace=false}) {
     await load()
   }
   const activityTypes=[['email_sent','Email Sent'],['called_no_answer','Called — No Answer'],['voicemail_left','Voicemail Left'],['spoke_with_lead','Spoke With Lead'],['awaiting_response','Awaiting Response'],['followup_scheduled','Follow-Up Scheduled'],['other','Other']]
-  async function showHistory(id){
-    if(historyOpen===id){setHistoryOpen(null);return}
+  async function loadHistory(id){
     const {data,error:readError}=await supabase.from('romylabs_booking_activities').select('id,activity_type,notes,created_at').eq('booking_id',id).order('created_at',{ascending:false}).limit(100)
     if(readError){setError('Unable to load contact history: '+readError.message);return}
     setHistory(old=>({...old,[id]:data||[]}))
+  }
+  async function showHistory(id){
+    if(historyOpen===id){setHistoryOpen(null);return}
+    await loadHistory(id)
     setHistoryOpen(id)
   }
   async function markContacted(item) {
     setActivityEditor(item.booking_id)
+    setHistoryOpen(item.booking_id)
+    void loadHistory(item.booking_id)
     setActivityDraft({type:'email_sent',notes:'',nextDate:'',nextTime:''})
     setError('')
   }
@@ -166,7 +171,7 @@ export default function AdminBookingAlerts({workspace=false}) {
                 <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
                   {item.followup_status==='new' && <button type="button" style={buttonBase} onClick={()=>acknowledge(item.booking_id)}>Acknowledge</button>}
                   <button type="button" style={{...buttonBase,background:'#312e81',borderColor:'#6366f1',color:'#eef2ff'}} onClick={()=>startEditing(item)}>{editingTask===item.booking_id?'Close editor':'Edit task'}</button>
-                  <button type="button" style={{...buttonBase,background:'#164e63',borderColor:'#0891b2',color:'#ecfeff'}} onClick={()=>markContacted(item)}>Record contact</button>
+                  <button type="button" style={{...buttonBase,background:'#164e63',borderColor:'#0891b2',color:'#ecfeff'}} onClick={()=>markContacted(item)}>{activityEditor===item.booking_id?'Recording activity':'Log activity / Update status'}</button>
                   {item.followup_status==='contacted' && <button type="button" style={{...buttonBase,background:'#14532d',borderColor:'#16a34a',color:'#dcfce7'}} onClick={()=>complete(item)}>Complete</button>}
                 </div>
               </div>
@@ -175,7 +180,7 @@ export default function AdminBookingAlerts({workspace=false}) {
                 <span style={{color:'#475569'}}>·</span>
                 <span><strong style={{color:'#94a3b8'}}>Status:</strong> {item.followup_status}</span>
                 <span style={{color:'#475569'}}>·</span>
-                <span><strong style={{color:'#94a3b8'}}>Last contact:</strong> {item.contact_outcome||'Contact required'}</span>
+                <span><strong style={{color:'#94a3b8'}}>Last contact:</strong> <strong style={{color:item.contacted_at?'#86efac':'#fbbf24'}}>{item.contact_outcome||'No contact recorded'}</strong></span>
                 {item.contacted_at && <span style={{color:'#94a3b8'}}>{new Date(item.contacted_at).toLocaleString()}</span>}
               </div>
               {editingTask===item.booking_id && <div style={{display:'flex',flexWrap:'wrap',gap:15,alignItems:'end',padding:15,background:'#0d1729',border:'1px solid #30405c',borderRadius:11}}>
@@ -192,8 +197,9 @@ export default function AdminBookingAlerts({workspace=false}) {
                 <button type="button" style={buttonBase} onClick={()=>setEditingTask(null)}>Cancel</button>
                 <span style={{fontSize:12,color:isOverdue?'#fca5a5':'#86efac',paddingBottom:10}}>{isOverdue?'● Overdue':'● On track'}</span>
               </div>}
+              <div style={{fontSize:13,color:'#cbd5e1',display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}><strong>Contact activity</strong><span style={{color:'#94a3b8'}}>{item.contacted_at?'Last updated '+new Date(item.contacted_at).toLocaleString():'No contact logged yet — use Log activity / Update status to record an email, call, or conversation.'}</span></div>
               {activityEditor===item.booking_id && <div style={{display:'grid',gap:12,padding:16,background:'#0d1729',border:'1px solid #30405c',borderRadius:11}}>
-                <strong style={{fontSize:14}}>Record contact activity</strong>
+                <strong style={{fontSize:14}}>Log contact activity and update lead status</strong>
                 <label style={{display:'grid',gap:5,fontSize:12}}>Contact status
                   <select aria-label="Contact status" value={activityDraft.type} onChange={e=>setActivityDraft(v=>({...v,type:e.target.value}))} style={fieldBase}>{activityTypes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
                 </label>
