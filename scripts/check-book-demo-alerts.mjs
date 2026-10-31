@@ -16,6 +16,7 @@ for (const key of keys) {
   assert.match(brand,new RegExp(key==='taxres_crm'?'\\[TaxRes CRM\\]':key==='restore_relay'?'\\[Restore Relay\\]':key==='romylabs'?'\\[RomyLabs\\]':key==='camvella'?'\\[Camvella\\]':key==='arcvena'?'\\[Arcvena\\]':key==='bocasync'?'\\[BocaSync\\]':key==='oculivo'?'\\[Oculivo\\]' :key==='groundivo'?'\\[GroundIVO\\]':key==='pool_crm'?'\\[PoolVerge\\]':key==='barbers_salons'?'\\[Barbers & Salons CRM\\]':'\\[Health Insurance Agency CRM\\]'),'Missing calendar brand: '+key)
 }
 assert.ok(book.includes("booking_create_product"),'booking writes must persist product identity')
+assert.ok(book.includes("productCfg.key==='taxres_crm'?productCfg.favicon:(data.logo_url||productCfg.favicon)"),'TaxRes booking favicon must not be overridden by tenant logo metadata')
 assert.ok(book.includes("booking_firm_notification"),'firm notification must be requested')
 assert.ok(book.includes("booking_confirmation"),'client confirmation must be requested')
 assert.ok(cfg.includes("productParam === 'aquagrid'"),'Legacy PoolVerge alias missing')
@@ -26,7 +27,8 @@ assert.ok(mail.includes("camvella: { name: 'Camvella', email: 'romy@camvella.com
 assert.ok(migration.includes("after insert or update of product_id,status"),'durable booking trigger missing')
 assert.ok(migration.includes("on conflict (booking_id) do nothing"),'idempotent recent booking backfill missing')
 assert.ok(alert.includes("acknowledged_at"),'in-app review state missing')
-assert.ok(shell.includes('<AdminBookingAlerts />'),'Admin Portal booking alerts not mounted')
+assert.ok(shell.includes('<AdminBookingAlerts workspace />'),'Demo alerts must be mounted within the Tasks workspace')
+assert.ok(!shell.includes('<AdminBookingAlerts />'),'Global booking alert banner must not cover other Admin Portal pages')
 assert.ok(migration.includes('followup_status text not null'),'Demo follow-up lifecycle missing')
 assert.ok(migration.includes('contact_outcome'),'Contact outcome data missing')
 assert.ok(migration.includes('guard_romylabs_booking_followup'),'Completion guard missing')
