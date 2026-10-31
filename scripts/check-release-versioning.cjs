@@ -51,7 +51,12 @@ if (manifestCommits.length > 1) {
     .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
   if (changedSincePreviousRelease.length) {
     const oldContent = git(['show',olderManifest+':src/releaseInfo.js'])
-    const oldVersion = versionFrom(oldContent,'previous release')
+    // During PR checks, compare against the target branch release, not each
+    // intermediate manifest amendment in the same unmerged PR.
+    const baselineRelease = process.env.GITHUB_EVENT_NAME === 'pull_request'
+      ? git(['show','HEAD^1:src/releaseInfo.js'])
+      : oldContent
+    const oldVersion = versionFrom(baselineRelease,'previous release')
     const currentVersion = versionFrom(release,'current release')
     assert(oldVersion !== currentVersion,
       'Functional changes must bump the shared source version and provide release notes')
