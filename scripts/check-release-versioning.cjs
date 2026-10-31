@@ -71,9 +71,9 @@ if (manifestCommits.length > 1) {
     // release bump for unrelated customer offices when their code did not change.
     const adminOnlyFiles = new Set(['src/components/AdminBookingAlerts.jsx','src/pages/AdminPortal.jsx'])
     const scopedFiles = process.env.GITHUB_EVENT_NAME === 'pull_request'
-      ? git(['diff','--name-only','HEAD^1','HEAD^2','--','src','public','supabase/functions']).split(/\\r?\\n/).filter(Boolean)
+      ? git(['diff','--name-only','HEAD^1','HEAD^2','--','src','public','supabase/functions']).split(/\r?\n/).filter(Boolean)
       : process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF_NAME?.startsWith('sandbox/')
-        ? git(['diff','--name-only','origin/main','HEAD','--','src','public','supabase/functions']).split(/\\r?\\n/).filter(Boolean)
+        ? git(['diff','--name-only','origin/main','HEAD','--','src','public','supabase/functions']).split(/\r?\n/).filter(Boolean)
         : changedSincePreviousRelease
     const adminOnlyRelease = scopedFiles.length>0 && scopedFiles.every(file => adminOnlyFiles.has(file))
     if (!adminOnlyRelease) {
