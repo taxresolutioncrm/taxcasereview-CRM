@@ -81,7 +81,7 @@ const VAULT_FIX_CHANGES = ['FormaCorp verifies office before document archive an
 const DEFAULT_RELEASE = {
   version: '3.2.25',
   releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.24 — Tasks UI and TaxRes Booking Favicon',
+  title: 'TaxRes 3.2.25 — FormaCorp Vault Fix',
   changes: VAULT_FIX_CHANGES,
 }
 
@@ -90,7 +90,7 @@ const OFFICE_RELEASES = {
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
     version: '3.2.25',
     releasedAt: '2026-10-30',
-    title: 'Tax Case Review CRM 3.2.23 — Shared FormaCorp Safe Filing Preparation',
+    title: 'Tax Case Review 3.2.25 — FormaCorp Vault Fix',
     changes: VAULT_FIX_CHANGES,
   },
 
