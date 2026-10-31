@@ -818,6 +818,27 @@ export default function FormaCorp() {
     'EIN Application':'#06b6d4','Operating Agreement':'#ec4899','Bank Account Setup':'#f97316',
     'Compliance & Maintenance':'#14b8a6','Complete':'#22c55e' }
 
+  // Shared modal must render in both the case detail and list views.
+  const editCaseModal = (modal && (
+        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setModal(false)}>
+          <div className="modal" style={{width:580,maxHeight:'90vh',overflowY:'auto'}}>
+            <div className="mh"><span className="mt">🏢 {modal==='edit'?'Edit':'New'} Formation Case</span><button className="xbtn" onClick={()=>setModal(false)}>&times;</button></div>
+            <div style={{position:'relative'}} className="field"><label>Client *</label><input value={form.client_name} onChange={e=>searchClient(e.target.value)} placeholder="Search client…"/>{showSug && sugg.length>0 && <div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--sf)',border:'1px solid var(--br)',borderRadius:6,zIndex:50,maxHeight:160,overflowY:'auto'}}>{sugg.map(c=><div key={c.id} onClick={()=>chooseClient(c)} style={{padding:'8px 12px',cursor:'pointer',fontSize:13}} onMouseEnter={e=>e.currentTarget.style.background='var(--s2)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>{c.name}</div>)}</div>}</div>
+            <div className="fg2"><div className="field"><label>Entity Name *</label><input value={form.entity_name} onChange={e=>{fld('entity_name',e.target.value);checkNameSoon(e.target.value,form.state)}} placeholder="e.g. Smith Holdings LLC"/><NameCheckStatus state={form.state} name={form.entity_name} check={nameCheck}/></div><div className="field"><label>Entity Type *</label><select value={form.entity_type} onChange={e=>fld('entity_type',e.target.value)}>{ENTITY_TYPES.map(t=><option key={t}>{t}</option>)}</select></div></div>
+            <div className="fg2"><div className="field"><label>State of Formation</label><select value={form.state} onChange={e=>{fld('state',e.target.value);checkNameSoon(form.entity_name,e.target.value)}}>{STATES.map(s=><option key={s}>{s}</option>)}</select></div><div className="field"><label>Formation Date</label><input type="date" value={form.formation_date || ''} onChange={e=>fld('formation_date',e.target.value)}/></div></div>
+            <div className="field"><label>Owners / Members (names & %)</label><input value={form.owners || ''} onChange={e=>fld('owners',e.target.value)} placeholder="e.g. John Smith 60%, Jane Smith 40%"/></div>
+            <div className="field"><label>Registered Agent</label><input value={form.registered_agent || ''} onChange={e=>fld('registered_agent',e.target.value)} placeholder="Name or company"/></div>
+            <div className="field"><label>Business Purpose</label><input value={form.business_purpose || ''} onChange={e=>fld('business_purpose',e.target.value)} placeholder="e.g. Tax resolution consulting services"/></div>
+            <FloridaFilingFields value={form} onChange={fld}/>
+            <div className="fg2"><div className="field"><label>EIN (if obtained)</label><input value={form.ein || ''} onChange={e=>fld('ein',e.target.value)} placeholder="XX-XXXXXXX"/></div><div className="field"><label>State Filing Number</label><input value={form.state_file_num || ''} onChange={e=>fld('state_file_num',e.target.value)} placeholder="State-issued #"/></div></div>
+            <div className="fg2"><div className="field"><label>Formation Fee</label><input type="text" inputMode="decimal" value={formatMoneyInput(form.fee)} onChange={e=>fld('fee',parseMoney(e.target.value))} placeholder="0.00"/></div><div className="field"><label>Stage</label><select value={form.stage} onChange={e=>fld('stage',e.target.value)}>{STAGES.map(s=><option key={s}>{s}</option>)}</select></div></div>
+            <div className="field"><label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!form.fee_paid} onChange={e=>fld('fee_paid',e.target.checked)} style={{width:'auto'}}/>Fee Paid</label></div>
+            <div className="field"><label>Notes</label><textarea value={form.notes || ''} onChange={e=>fld('notes',e.target.value)} rows={3} style={{width:'100%',resize:'vertical',padding:'8px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:13,fontFamily:'inherit'}}/></div>
+            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:10}} onClick={save} disabled={saving}>{saving ? 'Saving…' : modal==='edit' ? '💾 Update Case' : '🏢 Create Formation Case'}</button>
+          </div>
+        </div>
+      ))
+
   if (detail) {
     const c = cases.find(x=>x.id===detail.id) || detail
     const stageIdx = STAGES.indexOf(c.stage)
@@ -999,6 +1020,7 @@ export default function FormaCorp() {
         )}
 
         {feePaymentCase && <FormaCorpStateFeeModal caseRecord={feePaymentCase} amount={Number(stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0)} onClose={()=>setFeePaymentCase(null)} onPaid={async(data)=>{ const paid=Number(data?.amount || stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0); const wasFlorida=isFloridaFormable(feePaymentCase); setFeePaymentCase(null); showToast('✅ Government filing funds collected'); await load(); setDetail(d=>d?({...d,state_fee_payment_status:'received',fee_paid:true,state_fee_collected_amount:paid,...(wasFlorida?{fl_payment_status:'received'}:{})}):d) }}/>}
+        {editCaseModal}
         {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>This cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
       </div>
     )
@@ -1046,25 +1068,7 @@ export default function FormaCorp() {
 
       {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>Cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
 
-      {modal && (
-        <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setModal(false)}>
-          <div className="modal" style={{width:580,maxHeight:'90vh',overflowY:'auto'}}>
-            <div className="mh"><span className="mt">🏢 {modal==='edit'?'Edit':'New'} Formation Case</span><button className="xbtn" onClick={()=>setModal(false)}>&times;</button></div>
-            <div style={{position:'relative'}} className="field"><label>Client *</label><input value={form.client_name} onChange={e=>searchClient(e.target.value)} placeholder="Search client…"/>{showSug && sugg.length>0 && <div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--sf)',border:'1px solid var(--br)',borderRadius:6,zIndex:50,maxHeight:160,overflowY:'auto'}}>{sugg.map(c=><div key={c.id} onClick={()=>chooseClient(c)} style={{padding:'8px 12px',cursor:'pointer',fontSize:13}} onMouseEnter={e=>e.currentTarget.style.background='var(--s2)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>{c.name}</div>)}</div>}</div>
-            <div className="fg2"><div className="field"><label>Entity Name *</label><input value={form.entity_name} onChange={e=>{fld('entity_name',e.target.value);checkNameSoon(e.target.value,form.state)}} placeholder="e.g. Smith Holdings LLC"/><NameCheckStatus state={form.state} name={form.entity_name} check={nameCheck}/></div><div className="field"><label>Entity Type *</label><select value={form.entity_type} onChange={e=>fld('entity_type',e.target.value)}>{ENTITY_TYPES.map(t=><option key={t}>{t}</option>)}</select></div></div>
-            <div className="fg2"><div className="field"><label>State of Formation</label><select value={form.state} onChange={e=>{fld('state',e.target.value);checkNameSoon(form.entity_name,e.target.value)}}>{STATES.map(s=><option key={s}>{s}</option>)}</select></div><div className="field"><label>Formation Date</label><input type="date" value={form.formation_date || ''} onChange={e=>fld('formation_date',e.target.value)}/></div></div>
-            <div className="field"><label>Owners / Members (names & %)</label><input value={form.owners || ''} onChange={e=>fld('owners',e.target.value)} placeholder="e.g. John Smith 60%, Jane Smith 40%"/></div>
-            <div className="field"><label>Registered Agent</label><input value={form.registered_agent || ''} onChange={e=>fld('registered_agent',e.target.value)} placeholder="Name or company"/></div>
-            <div className="field"><label>Business Purpose</label><input value={form.business_purpose || ''} onChange={e=>fld('business_purpose',e.target.value)} placeholder="e.g. Tax resolution consulting services"/></div>
-            <FloridaFilingFields value={form} onChange={fld}/>
-            <div className="fg2"><div className="field"><label>EIN (if obtained)</label><input value={form.ein || ''} onChange={e=>fld('ein',e.target.value)} placeholder="XX-XXXXXXX"/></div><div className="field"><label>State Filing Number</label><input value={form.state_file_num || ''} onChange={e=>fld('state_file_num',e.target.value)} placeholder="State-issued #"/></div></div>
-            <div className="fg2"><div className="field"><label>Formation Fee</label><input type="text" inputMode="decimal" value={formatMoneyInput(form.fee)} onChange={e=>fld('fee',parseMoney(e.target.value))} placeholder="0.00"/></div><div className="field"><label>Stage</label><select value={form.stage} onChange={e=>fld('stage',e.target.value)}>{STAGES.map(s=><option key={s}>{s}</option>)}</select></div></div>
-            <div className="field"><label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}><input type="checkbox" checked={!!form.fee_paid} onChange={e=>fld('fee_paid',e.target.checked)} style={{width:'auto'}}/>Fee Paid</label></div>
-            <div className="field"><label>Notes</label><textarea value={form.notes || ''} onChange={e=>fld('notes',e.target.value)} rows={3} style={{width:'100%',resize:'vertical',padding:'8px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:13,fontFamily:'inherit'}}/></div>
-            <button className="btn pri" style={{width:'100%',justifyContent:'center',padding:10}} onClick={save} disabled={saving}>{saving ? 'Saving…' : modal==='edit' ? '💾 Update Case' : '🏢 Create Formation Case'}</button>
-          </div>
-        </div>
-      )}
+      {editCaseModal}
 
       {wizard && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>
