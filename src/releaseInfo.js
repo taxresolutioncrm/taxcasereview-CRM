@@ -60,6 +60,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Demo lead task queue defaults to compact rows; expand a lead to access contact actions, notes and history',
   'Task lead cards expose current contact status and a clearly labeled activity logging action',
   'Demo lead activity timeline records timestamped emails, calls, outcomes and next follow-up without losing previous contact notes',
   'Demo Tasks metric cards filter follow-ups by open, needs-contact and overdue status',
@@ -81,9 +82,9 @@ const FORMACORP_PREPARATION_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.27',
+  version: '3.2.28',
   releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.27 — Visible Contact Activity and Status',
+  title: 'RomyLabs Admin Portal 3.2.28 — Compact Scalable Tasks Queue',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
