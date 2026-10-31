@@ -56,5 +56,7 @@ assert.ok(alert.includes('expandedTask===item.booking_id && <>'),'Actions and ac
 assert.ok(alert.includes('Task status for '),'Editable task status selector missing')
 assert.ok(alert.includes('followup_status:status'),'Status save must persist to existing booking alert record')
 assert.ok(alert.includes('Done / Closed'),'Completed task option missing')
-assert.ok(alert.includes('Log a contact activity before'),'Contact-first completion safeguard missing')
+assert.ok(alert.includes('Please log the contact details first using Log activity / Update status'),'Contact-first completion safeguard missing')
+assert.ok(alert.includes('<option value="contacted">Contacted</option>'),'Contacted option must be selectable')
+assert.ok(alert.includes('<option value="completed">Done / Closed</option>'),'Done option must be selectable')
 console.log('PASS — 11 central booking products, labels, mail invocation, durable alerts and Admin Portal visibility')
