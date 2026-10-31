@@ -47,4 +47,8 @@ assert.ok(alert.includes("onClick={()=>setTaskFilter(filter)}"),'Task metric car
 assert.ok(alert.includes("type=\"date\" onClick={e=>e.currentTarget.showPicker?.()}"),'Task deadline must provide a clickable calendar')
 assert.ok(alert.includes("type=\"time\""),'Task deadline time picker missing')
 assert.ok(alert.includes("onClick={()=>saveTask(item)}"),'Explicit Save changes action missing')
+assert.ok(alert.includes("romylabs_record_booking_activity"),'Contact actions must write through transaction')
+assert.ok(alert.includes("romylabs_booking_activities"),'Contact timeline must query persisted activity')
+assert.ok(alert.includes("View activity history"),'Activity timeline disclosure missing')
+assert.ok(alert.includes("Save activity"),'Contact logging must use a named save action')
 console.log('PASS — 11 central booking products, labels, mail invocation, durable alerts and Admin Portal visibility')
