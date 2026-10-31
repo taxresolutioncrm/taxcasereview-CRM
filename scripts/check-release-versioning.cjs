@@ -64,8 +64,13 @@ if (manifestCommits.length > 1) {
           office+' must explicitly carry this release version')
       }
     }
-    assert(release.includes("changes: IRS_WORKFLOW_CHANGES"),
-      'Functional changes require recorded release notes for offices')
+    if (adminOnlyRelease) {
+      assert(release.includes("changes: ADMIN_DEMO_TASK_CHANGES"),
+        'Admin Portal-only functional changes require Admin Portal release notes')
+    } else {
+      assert(release.includes("changes: IRS_WORKFLOW_CHANGES"),
+        'Shared CRM functional changes require office release notes')
+    }
   }
 }
 console.log('PASS semantic release gate: functional source requires a version bump and notes')
