@@ -61,6 +61,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Demo Tasks Edit task includes task status Open, In progress, Contacted and Done / Closed with validation and explicit Save',
   'Tasks queue defaults to compact expandable lead rows with all contact controls retained',
   'Task lead cards expose current contact status and a clearly labeled activity logging action',
   'Demo lead activity timeline records timestamped emails, calls, outcomes and next follow-up without losing previous contact notes',
@@ -89,10 +90,10 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.28',
+  version: '3.2.29',
   releasedAt: '2026-10-31',
-  title: 'TaxRes 3.2.28 — FormaCorp Archive RLS Fix',
-  changes: FORMACORP_VAULT_FIX_CHANGES,
+  title: 'RomyLabs Admin Portal 3.2.29 — Editable Task Status',
+  changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
