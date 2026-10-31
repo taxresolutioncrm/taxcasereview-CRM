@@ -3,6 +3,8 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'RomyLabs Admin Portal adds a dedicated Demo Leads & Tasks page with editable ownership and follow-up deadlines',
+  'Demo follow-ups remain visible until contact is recorded and can be reviewed after completion',
   'All RomyLabs public demo bookings now create durable central Admin Portal alerts, independent of email delivery',
   'Business demo owner alerts use the registered RomyLabs Stalwart sender with audited submission and visible failures',
   'Booking identity includes all 11 active products and legacy PoolVerge URL alias',
@@ -60,18 +62,18 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.21',
+  version: '3.2.22',
   releasedAt: '2026-10-30',
-  title: 'TaxRes CRM 3.2.21 — Gmail Draft Recovery, Client Links & Log Time',
+  title: 'TaxRes CRM 3.2.22 — Demo Lead Tasks, Ownership & Deadlines',
   changes: EMAIL_PARITY_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.21',
+    version: '3.2.22',
     releasedAt: '2026-10-30',
-    title: 'Tax Case Review CRM 3.2.21 — Gmail Draft Recovery, Client Links & Log Time',
+    title: 'Tax Case Review CRM 3.2.22 — Gmail Draft Recovery, Client Links & Log Time',
     changes: EMAIL_PARITY_CHANGES,
   },
 
@@ -101,9 +103,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.21',
+    version: '3.2.22',
     releasedAt: '2026-10-30',
-    title: 'Centurion Firm CRM 3.2.21 — Gmail Draft Recovery, Client Links & Log Time',
+    title: 'Centurion Firm CRM 3.2.22 — Gmail Draft Recovery, Client Links & Log Time',
     changes: EMAIL_PARITY_CHANGES,
   },
 }
