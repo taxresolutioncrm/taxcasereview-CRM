@@ -60,6 +60,9 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Dedicated Tasks page redesigned with responsive follow-up cards, overdue summaries and styled editor controls',
+  'Removed the duplicate global booking banner from Admin Portal pages',
+  'TaxRes demo booking tab icon remains TaxRes-branded when public tenant metadata loads',
   'Task edit panel JSX and prebuild checks corrected before release certification',
   'RomyLabs Admin Portal adds a dedicated Demo Leads & Tasks page with editable ownership and follow-up deadlines',
   'Demo follow-ups remain visible until contact is recorded and can be reviewed after completion',
@@ -74,10 +77,10 @@ const FORMACORP_PREPARATION_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.23',
+  version: '3.2.24',
   releasedAt: '2026-10-31',
-  title: 'TaxRes 3.2.23 — FormaCorp Filing Packet Preparation & Payment Safety',
-  changes: FORMACORP_PREPARATION_CHANGES,
+  title: 'RomyLabs Admin Portal 3.2.24 — Tasks UI and TaxRes Booking Favicon',
+  changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
