@@ -60,6 +60,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Demo Tasks metric cards filter follow-ups by open, needs-contact and overdue status',
+  'Edit Task exposes a clickable calendar picker and time selector with explicit Save and Cancel',
   'Dedicated Tasks page redesigned with responsive follow-up cards, overdue summaries and styled editor controls',
   'Removed the duplicate global booking banner from Admin Portal pages',
   'TaxRes demo booking tab icon remains TaxRes-branded when public tenant metadata loads',
@@ -77,9 +79,9 @@ const FORMACORP_PREPARATION_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.24',
+  version: '3.2.25',
   releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.24 — Tasks UI and TaxRes Booking Favicon',
+  title: 'RomyLabs Admin Portal 3.2.25 — Task Calendar and KPI Filters',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
