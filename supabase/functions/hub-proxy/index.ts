@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
         const fallbackSecret = hubSecret
         // Camvella accepts either support or hub credentials; send the hub credential
         // even when a possibly stale product-specific support secret is configured.
-        if (productKey === 'camvella') productHeaders['x-hub-secret'] = fallbackSecret
+        if (productKey === 'camvella' && !supportSecret) return { status:503, data:null, error:'Camvella support secret missing in central proxy' }
         if (productKey === 'arcvena') {
           if (supportSecret) productHeaders['x-arcvena-support-secret'] = supportSecret
           else productHeaders['x-hub-secret'] = fallbackSecret
@@ -263,6 +263,7 @@ Deno.serve(async (req) => {
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout))
       const productData = await productRes.json().catch(() => null)
+      if (productKey === 'camvella' && (!productRes.ok || productData?.ok === false)) console.error('Camvella metrics response', productRes.status, String(productData?.error || 'unspecified').slice(0,180))
       const productError = productRes.ok && productData?.ok !== false
         ? null
         : (productData?.error || `Metrics request failed (${productRes.status})`)
