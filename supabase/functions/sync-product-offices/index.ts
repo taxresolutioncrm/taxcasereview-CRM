@@ -8,7 +8,7 @@ const cors={
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}})
 
 const ENDPOINTS:Record<string,string>={
-  camvella:'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/platform-metrics',
+  camvella:'https://vgflyyazjvsdtoecvega.supabase.co/functions/v1/platform-metrics',
   arcvena:'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/platform-metrics',
   bocasync:'https://zmejbkttzvaqzzbmjclz.supabase.co/functions/v1/platform-metrics',
   groundivo:'https://ydhmlphyvjgryefuwzyq.supabase.co/functions/v1/platform-metrics',
