@@ -61,6 +61,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Camvella proxy uses its dedicated support credential and reports actionable downstream errors without leaking secrets',
   'Central hub-proxy routes Camvella metrics to its dedicated Supabase project; requires separately configured matching credentials',
   'All task status dropdown options remain selectable; contact-required transitions show actionable validation',
   'Demo Tasks Edit task includes task status Open, In progress, Contacted and Done / Closed with validation and explicit Save',
@@ -92,9 +93,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.31',
+  version: '3.2.32',
   releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.31 — Camvella Metrics Routing',
+  title: 'RomyLabs Admin Portal 3.2.32 — Camvella Metrics Authentication',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
