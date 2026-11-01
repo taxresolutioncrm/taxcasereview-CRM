@@ -93,10 +93,13 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.32',
-  releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.32 — Camvella Metrics Authentication',
-  changes: ADMIN_DEMO_TASK_CHANGES,
+  version: '3.2.33',
+  releasedAt: '2026-11-01',
+  title: 'RomyLabs Admin Portal 3.2.33 — Camvella Dedicated Project Cutover',
+  changes: [
+    'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
+    ...ADMIN_DEMO_TASK_CHANGES,
+  ],
 }
 
 const OFFICE_RELEASES = {
