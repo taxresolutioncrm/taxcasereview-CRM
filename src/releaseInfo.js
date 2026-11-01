@@ -61,6 +61,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Central hub-proxy routes Camvella metrics to its dedicated Supabase project; requires separately configured matching credentials',
   'All task status dropdown options remain selectable; contact-required transitions show actionable validation',
   'Demo Tasks Edit task includes task status Open, In progress, Contacted and Done / Closed with validation and explicit Save',
   'Tasks queue defaults to compact expandable lead rows with all contact controls retained',
@@ -91,9 +92,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.30',
+  version: '3.2.31',
   releasedAt: '2026-10-31',
-  title: 'RomyLabs Admin Portal 3.2.30 — Selectable Task Statuses',
+  title: 'RomyLabs Admin Portal 3.2.31 — Camvella Metrics Routing',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
