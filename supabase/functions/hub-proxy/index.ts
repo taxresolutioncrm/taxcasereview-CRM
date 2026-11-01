@@ -42,7 +42,7 @@ const PRODUCT_ENDPOINTS: Record<string, string> = {
   nashville:         'https://ydrvncdedgjtcprczwpu.supabase.co/functions/v1/platform-metrics',
   cloudcpa:          'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=cloudcpa',
   demo:              'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=demo',
-  camvella:          'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/platform-metrics',
+  camvella:          'https://vgflyyazjvsdtoecvega.supabase.co/functions/v1/platform-metrics',
   arcvena:           'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/platform-metrics',
   bocasync:          'https://zmejbkttzvaqzzbmjclz.supabase.co/functions/v1/platform-metrics',
   groundivo:         'https://ydhmlphyvjgryefuwzyq.supabase.co/functions/v1/platform-metrics',
