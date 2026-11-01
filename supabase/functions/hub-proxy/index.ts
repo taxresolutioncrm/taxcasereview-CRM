@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
         const fallbackSecret = hubSecret
         // Camvella accepts either support or hub credentials; send the hub credential
         // even when a possibly stale product-specific support secret is configured.
-        if (productKey === 'camvella') productHeaders['x-hub-secret'] = fallbackSecret
+        if (productKey === 'camvella' && supportSecret) productHeaders['x-romylabs-support-secret'] = supportSecret
         if (productKey === 'arcvena') {
           if (supportSecret) productHeaders['x-arcvena-support-secret'] = supportSecret
           else productHeaders['x-hub-secret'] = fallbackSecret
