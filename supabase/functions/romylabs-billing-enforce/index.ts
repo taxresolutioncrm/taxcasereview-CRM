@@ -5,7 +5,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 type Action = 'suspend' | 'restore'
 
 const REMOTE_ENDPOINTS: Record<string,string> = {
-  camvella: 'https://fjqywulzsyfyzitneazb.supabase.co/functions/v1/romylabs-entitlement',
+  camvella: 'https://vgflyyazjvsdtoecvega.supabase.co/functions/v1/romylabs-entitlement',
   arcvena: 'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/romylabs-entitlement',
   bocasync: 'https://zmejbkttzvaqzzbmjclz.supabase.co/functions/v1/romylabs-entitlement',
   // GroundIVO intentionally excluded until its recovery/stabilization freeze is lifted.
