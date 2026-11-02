@@ -29,9 +29,11 @@ serve(async req=>{
     if(!name||!(/^[A-Z0-9_-]{3,24}$/).test(code)||!(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).test(adminEmail))return respond({error:'Valid office, code and admin email required'},400)
     // Require the new office admin to already have a verified Auth identity.
     // Avoid creating a partially provisioned tenant by sending an invitation first.
-    const {data:pending,error:pendingError}=await admin.from('centurion_pending_office_admins').select('user_id').eq('email',adminEmail).maybeSingle()
-    if(pendingError||!pending?.user_id)return respond({error:'Verify and stage the new admin identity before provisioning'},409)
-    const {data:id,error:createError}=await admin.rpc('centurion_create_office',{p_code:code,p_name:name,p_admin_user:pending.user_id})
+    const adminId=String(body.admin_user_id||'')
+    if(!(/^[a-f0-9-]{36}$/i).test(adminId))return respond({error:'Verified admin account ID required'},409)
+    const {data:adminIdentity,error:identityError}=await admin.auth.admin.getUserById(adminId)
+    if(identityError||!adminIdentity?.user?.email_confirmed_at||adminIdentity.user.email?.toLowerCase()!==adminEmail)return respond({error:'Administrator identity must be verified first'},409)
+    const {data:id,error:createError}=await admin.rpc('centurion_create_office',{p_code:code,p_name:name,p_admin_user:adminId})
     if(createError)return respond({error:createError.message},409)
     return respond({tenant_id:id,tenant_code:code,status:'created',note:'Office created in Centurion dedicated project'})
   }catch{return respond({error:'Office provisioning failed'},500)}
