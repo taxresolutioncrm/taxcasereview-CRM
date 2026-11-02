@@ -45,7 +45,7 @@ BEGIN
 END $;
 INSERT INTO public.centurion_office_memberships(user_id,tenant_id,role)
 SELECT au.id,e.tenant_id,
- CASE WHEN lower(coalesce(e.access,e.role,'')) IN ('admin','super admin') THEN 'admin' ELSE 'staff' END
+ CASE WHEN lower(coalesce(e.access,e.role,''))='super admin' THEN 'owner' WHEN lower(coalesce(e.access,e.role,''))='admin' THEN 'admin' ELSE 'staff' END
 FROM auth.users au JOIN public.employees e
 ON lower(trim(au.email))=lower(trim(e.email))
 WHERE e.tenant_id IS NOT NULL AND lower(coalesce(e.status,''))='active'
@@ -57,6 +57,13 @@ WHERE m.active AND NOT EXISTS (
  WHERE other.user_id=m.user_id AND other.tenant_id<>m.tenant_id AND other.active
 )
 ON CONFLICT(user_id) DO NOTHING;
+-- A dedicated platform owner must have an existing Auth account.
+DO $
+BEGIN
+ IF NOT EXISTS (
+   SELECT 1 FROM public.centurion_office_memberships WHERE role='owner' AND active
+ ) THEN RAISE EXCEPTION 'No verified Centurion Super Admin login to bootstrap office owner'; END IF;
+END $;
 -- Enforce existing authenticated-user continuity before replacing resolver.
 DO $
 DECLARE n_missing integer;
