@@ -187,8 +187,11 @@ serve(async (req) => {
     const {error: membershipError} = await admin
       .from("centurion_office_memberships")
       .upsert({user_id: invitedUserId, tenant_id: tenantId, role:"staff", active:true},
-              {onConflict:"user_id,tenant_id"});
+              {onConflict:"user_id,tenant_id",ignoreDuplicates:true});
     if (membershipError) return reply({error:"Office access could not be assigned"},500);
+    const {data: effectiveMember,error: effectiveError} = await admin.from("centurion_office_memberships")
+      .select("active").eq("user_id",invitedUserId).eq("tenant_id",tenantId).maybeSingle();
+    if (effectiveError||!effectiveMember?.active) return reply({error:"Office membership is inactive"},403);
     const {data: selected, error: selectedError} = await admin
       .from("centurion_active_offices").select("tenant_id")
       .eq("user_id",invitedUserId).maybeSingle();
