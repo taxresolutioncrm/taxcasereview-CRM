@@ -1,3 +1,27 @@
-# Centurion dedicated multi-office cutover
+# Centurion dedicated SaaS tenant cutover
 
-Centurion operational records remain in the dedicated Supabase project. TCR retains an administrative listing only. The dedicated project currently uses a fixed office resolver and a fixed-office invite function; neither is safe for multiple offices. No migrations or releases should occur until membership-based tenant access and negative cross-office tests pass.
+## Separation contract
+- Dedicated Centurion Supabase project is authoritative for operational users, clients, cases, documents and communications.
+- TCR's TRC-004 tenant remains a control-plane record; no cross-project record copying or silent dual writes.
+- Nashville and TCR production tenant logic are out of scope.
+- All new offices share the Centurion project, not its existing TRC-004 tenant ID.
+
+## Verified blockers (2026-11-01)
+1. Dedicated project current_tenant_id() returns a constant Centurion office UUID.
+2. Dedicated invite-employee Edge Function uses a fixed TENANT_ID and fixed brand.
+3. Dedicated project lists send-email, send-sms, send-fax and invite-employee; provision-tenant is absent.
+4. Dedicated project has one existing office and 103 public tables with RLS; policies on clients, documents and employees rely on current_tenant_id().
+
+## Mandatory dependency order (do not skip)
+1. Build explicit auth-user-to-tenant memberships and a per-user selected tenant; default deny without a verified active membership.
+2. Backfill and verify all existing Centurion users against their real auth identities *before* replacing the old resolver. Avoid client-editable user metadata.
+3. Replace current_tenant_id() with a membership-checked resolver, and run authenticated positive/negative access checks.
+4. Make all dedicated-project Edge Functions require the selected office, enforce permissions and derive branding/provider configuration per office.
+5. Add a server-verified native office provisioner: create tenant, settings, admin membership, invitation, brand and audit event transactionally/idempotently; never create a new Supabase project by default.
+6. Verify storage prefix policies, private document downloads, invites, SMS/email/fax, tenant switching, callbacks, billing, audit logs and office suspension.
+7. Verify TCR's administrative Centurion entry does not cause operational dual-writes.
+8. Test with a sandbox second tenant and two test identities; prove client/doc/employee/email access denies across offices in both directions; restore baseline.
+9. Run security/performance advisors and release checks; only then seek explicit deploy.
+
+## Release guard
+Do not run the staged SQL on production, merge a migration into the shared TCR deployment pipeline, or create a customer office until the cross-office denial tests are green.
