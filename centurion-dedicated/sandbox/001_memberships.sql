@@ -30,7 +30,7 @@ CREATE POLICY centurion_active_office_self_read ON public.centurion_active_offic
 -- Backfill only existing Supabase Auth identities matching exactly one active
 -- Centurion employee record. Uninvited employees have no auth user yet and
 -- must continue through the established invitation process.
-DO $
+DO $$
 BEGIN
   IF EXISTS (
     SELECT lower(trim(email)) FROM public.employees
@@ -42,7 +42,7 @@ BEGIN
     ON lower(trim(au.email))=lower(trim(e.email))
     WHERE lower(coalesce(e.status,''))='active' AND e.tenant_id IS NULL
   ) THEN RAISE EXCEPTION 'Active authenticated employee missing tenant'; END IF;
-END $;
+END $$;
 INSERT INTO public.centurion_office_memberships(user_id,tenant_id,role)
 SELECT au.id,e.tenant_id,
  CASE WHEN lower(coalesce(e.access,e.role,''))='super admin' THEN 'owner' WHEN lower(coalesce(e.access,e.role,''))='admin' THEN 'admin' ELSE 'staff' END
@@ -58,14 +58,14 @@ WHERE m.active AND NOT EXISTS (
 )
 ON CONFLICT(user_id) DO NOTHING;
 -- A dedicated platform owner must have an existing Auth account.
-DO $
+DO $$
 BEGIN
  IF NOT EXISTS (
    SELECT 1 FROM public.centurion_office_memberships WHERE role='owner' AND active
  ) THEN RAISE EXCEPTION 'No verified Centurion Super Admin login to bootstrap office owner'; END IF;
-END $;
+END $$;
 -- Enforce existing authenticated-user continuity before replacing resolver.
-DO $
+DO $$
 DECLARE n_missing integer;
 BEGIN
  SELECT count(*) INTO n_missing FROM auth.users au
@@ -74,7 +74,7 @@ BEGIN
   SELECT 1 FROM public.centurion_active_offices x WHERE x.user_id=au.id
  );
  IF n_missing>0 THEN RAISE EXCEPTION '% active logins lack selected office',n_missing; END IF;
-END $;
+END $$;
 CREATE OR REPLACE FUNCTION public.centurion_select_office(p_tenant_id uuid)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
