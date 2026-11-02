@@ -27,8 +27,47 @@ DROP POLICY IF EXISTS centurion_active_office_self_read ON public.centurion_acti
 CREATE POLICY centurion_active_office_self_read ON public.centurion_active_offices
  FOR SELECT TO authenticated USING (user_id = (select auth.uid()));
 
--- Deliberately no automatic email-only backfill: reconcile actual auth.users IDs
--- and verified existing Centurion employees before cutover.
+-- Backfill only existing Supabase Auth identities matching exactly one active
+-- Centurion employee record. Uninvited employees have no auth user yet and
+-- must continue through the established invitation process.
+DO $
+BEGIN
+  IF EXISTS (
+    SELECT lower(trim(email)) FROM public.employees
+    WHERE lower(coalesce(status,''))='active' AND email IS NOT NULL
+    GROUP BY lower(trim(email)) HAVING count(*) > 1
+  ) THEN RAISE EXCEPTION 'Duplicate active employee email: manual reconciliation required'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM auth.users au JOIN public.employees e
+    ON lower(trim(au.email))=lower(trim(e.email))
+    WHERE lower(coalesce(e.status,''))='active' AND e.tenant_id IS NULL
+  ) THEN RAISE EXCEPTION 'Active authenticated employee missing tenant'; END IF;
+END $;
+INSERT INTO public.centurion_office_memberships(user_id,tenant_id,role)
+SELECT au.id,e.tenant_id,
+ CASE WHEN lower(coalesce(e.access,e.role,'')) IN ('admin','super admin') THEN 'admin' ELSE 'staff' END
+FROM auth.users au JOIN public.employees e
+ON lower(trim(au.email))=lower(trim(e.email))
+WHERE e.tenant_id IS NOT NULL AND lower(coalesce(e.status,''))='active'
+ON CONFLICT(user_id,tenant_id) DO NOTHING;
+INSERT INTO public.centurion_active_offices(user_id,tenant_id)
+SELECT m.user_id,m.tenant_id FROM public.centurion_office_memberships m
+WHERE m.active AND NOT EXISTS (
+ SELECT 1 FROM public.centurion_office_memberships other
+ WHERE other.user_id=m.user_id AND other.tenant_id<>m.tenant_id AND other.active
+)
+ON CONFLICT(user_id) DO NOTHING;
+-- Enforce existing authenticated-user continuity before replacing resolver.
+DO $
+DECLARE n_missing integer;
+BEGIN
+ SELECT count(*) INTO n_missing FROM auth.users au
+ JOIN public.employees e ON lower(trim(au.email))=lower(trim(e.email))
+ WHERE lower(coalesce(e.status,''))='active' AND NOT EXISTS (
+  SELECT 1 FROM public.centurion_active_offices x WHERE x.user_id=au.id
+ );
+ IF n_missing>0 THEN RAISE EXCEPTION '% active logins lack selected office',n_missing; END IF;
+END $;
 CREATE OR REPLACE FUNCTION public.centurion_select_office(p_tenant_id uuid)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
