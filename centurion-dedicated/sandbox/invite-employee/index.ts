@@ -180,6 +180,25 @@ serve(async (req) => {
       return reply({ error: "Secure invitation token unavailable" }, 500);
     }
 
+    // Employee invitation must establish authorization in the same office.
+    // Auth admin.generateLink returns the actual Supabase user identity.
+    const invitedUserId = generated?.user?.id || authUser?.id;
+    if (!invitedUserId) return reply({error:"Auth identity unavailable"},500);
+    const {error: membershipError} = await admin
+      .from("centurion_office_memberships")
+      .upsert({user_id: invitedUserId, tenant_id: tenantId, role:"staff", active:true},
+              {onConflict:"user_id,tenant_id"});
+    if (membershipError) return reply({error:"Office access could not be assigned"},500);
+    const {data: selected, error: selectedError} = await admin
+      .from("centurion_active_offices").select("tenant_id")
+      .eq("user_id",invitedUserId).maybeSingle();
+    if (selectedError) return reply({error:"Office selection verification failed"},500);
+    if (!selected) {
+      const {error: selectError} = await admin.from("centurion_active_offices")
+        .insert({user_id:invitedUserId,tenant_id:tenantId});
+      if (selectError) return reply({error:"Office selection could not be initialized"},500);
+    }
+
     const link =
       `${ORIGIN}/family-password?token_hash=` +
       encodeURIComponent(hash) +
