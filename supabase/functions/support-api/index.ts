@@ -412,7 +412,7 @@ async function handleAddReply(
 
 const SYSTEM_MAIL_KINDS_BY_PRODUCT: Record<string, Set<string>> = {
   arcvena: new Set(['auth_invite', 'auth_access', 'auth_recovery']),
-  restore_relay: new Set(['booking_invite', 'booking_confirmation', 'booking_office_notification']),
+  restore_relay: new Set(['booking_invite', 'booking_confirmation', 'booking_office_notification', 'training_invite', 'client_meeting_invite']),
 }
 const SYSTEM_MAIL_BRAND_BY_PRODUCT: Record<string, { name: string; forbidden: string[] }> = {
   arcvena: {
