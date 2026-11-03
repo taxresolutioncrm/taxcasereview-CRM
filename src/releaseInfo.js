@@ -3,7 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
-  'Centurion dedicated CRM adds an office administration interface backed by authenticated tenant membership checks',
+  'Centurion dedicated CRM stages native office administration, verified administrator invitations, and tenant-scoped communications',
   'FormaCorp draft Articles archive enforces tenant-scoped storage paths and active-office access',
   'All RomyLabs public demo bookings now create durable central Admin Portal alerts, independent of email delivery',
   'Business demo owner alerts use the registered RomyLabs Stalwart sender with audited submission and visible failures',
