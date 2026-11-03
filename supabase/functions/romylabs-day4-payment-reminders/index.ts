@@ -29,8 +29,8 @@ const sameMonth=(value:string,year:number,month:number)=>{
 // Use the existing authenticated RomyLabs Stalwart/JMAP transport; no paid
 // transactional-mail service or new mailbox credentials are required.
 async function sendViaStalwart(db:any,recipient:string,subject:string,html:string){
-  const {data:transport,error:transportError}=await db.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'romylabs'})
-  if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('RomyLabs Stalwart transport unavailable')
+  const {data:transport,error:transportError}=await db.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'taxres_crm'})
+  if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('TaxRes Stalwart transport unavailable')
   const host=String(transport.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
   const from=String(transport.from_address||transport.username).toLowerCase()
   const auth='Basic '+btoa(String(transport.username)+':'+String(transport.password))
@@ -53,7 +53,7 @@ async function sendViaStalwart(db:any,recipient:string,subject:string,html:strin
   const sentBox=boxes.find((v:any)=>v.role==='sent')
   if(!identity?.id||!drafts?.id||!sentBox?.id)throw new Error('Stalwart sender identity or Drafts/Sent unavailable')
   const draft={
-    from:[{email:from,name:'RomyLabs Billing'}],
+    from:[{email:from,name:'System Reminder'}],
     to:[{email:recipient}],
     replyTo:[{email:from}],
     subject,
@@ -161,7 +161,7 @@ Deno.serve(async(req:Request)=>{
       '<p>Our records do not yet show full payment of the <strong>'+escapeHtml(subject.split(' — ').slice(-1)[0])+
       '</strong> RomyLabs subscription. The remaining amount is <strong>'+dollars(Math.max(0,account.monthly_amount_cents-paidNow))+'</strong>.</p>'+
       '<p>Please arrange payment at your earliest convenience. If you have already paid, please reply with the date or confirmation so we can reconcile our records.</p>'+
-      '<p>Thank you,<br><strong>RomyLabs Billing</strong></p></div>'
+      '<p>Thank you,<br><strong>System Reminder</strong><br>TaxRes</p></div>'
     try{
       const submissionId=await sendViaStalwart(db,email,subject,html)
       await db.from('romylabs_day4_payment_reminders').update({
