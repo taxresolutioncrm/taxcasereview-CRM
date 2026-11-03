@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 type Account = {
   id: string; account_name: string; billing_email: string|null;
-  monthly_amount_cents: number; status: string
+  monthly_amount_cents: number; status: string; product_key: string
 }
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{
   status,headers:{'content-type':'application/json','cache-control':'no-store'},
@@ -18,6 +18,12 @@ const monthInfo=(value:Date)=>{
   }).formatToParts(value).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]))
   return {year:parts.year,month:parts.month,day:parts.day,hour:parts.hour}
 }
+const PRODUCT_BRANDS:Record<string,string> = {
+  taxres_crm:'TaxRes CRM', romylabs:'RomyLabs', arcvena:'Arcvena',
+  camvella:'Camvella', bocasync:'BocaSync', restore_relay:'Restore Relay',
+  pool_crm:'PoolVerge', oculivo:'Oculivo', groundivo:'GroundIVO',
+  barbers_salons:'Barbers & Salons CRM', health_insurance:'Health Insurance CRM',
+}
 const sameMonth=(value:string,year:number,month:number)=>{
   const d=new Date(value)
   if(!Number.isFinite(d.getTime()))return false
@@ -26,11 +32,11 @@ const sameMonth=(value:string,year:number,month:number)=>{
 }
 
 
-// Use the existing authenticated RomyLabs Stalwart/JMAP transport; no paid
-// transactional-mail service or new mailbox credentials are required.
-async function sendViaStalwart(db:any,recipient:string,subject:string,html:string){
-  const {data:transport,error:transportError}=await db.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'taxres_crm'})
-  if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('TaxRes Stalwart transport unavailable')
+// Dedicated product-specific, nonpersonal Stalwart sender only.
+// Missing verified sender => no send, never fall back to an owner's mailbox.
+async function sendViaStalwart(db:any,productKey:string,recipient:string,subject:string,html:string,brand:string){
+  const {data:transport,error:transportError}=await db.rpc('romylabs_system_reminder_transport',{p_product_key:productKey})
+  if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('Private system sender not configured for '+productKey)
   const host=String(transport.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
   const from=String(transport.from_address||transport.username).toLowerCase()
   const auth='Basic '+btoa(String(transport.username)+':'+String(transport.password))
@@ -53,7 +59,7 @@ async function sendViaStalwart(db:any,recipient:string,subject:string,html:strin
   const sentBox=boxes.find((v:any)=>v.role==='sent')
   if(!identity?.id||!drafts?.id||!sentBox?.id)throw new Error('Stalwart sender identity or Drafts/Sent unavailable')
   const draft={
-    from:[{email:from,name:'System Reminder'}],
+    from:[{email:from,name:brand+' System Reminder'}],
     to:[{email:recipient}],
     replyTo:[{email:from}],
     subject,
@@ -91,13 +97,15 @@ Deno.serve(async(req:Request)=>{
 
   const period=clock.year+'-'+String(clock.month).padStart(2,'0')+'-01'
   const {data:accounts,error:accountError}=await db.from('romylabs_billing_accounts')
-    .select('id,account_name,billing_email,monthly_amount_cents,status')
+    .select('id,account_name,billing_email,monthly_amount_cents,status,product_key')
     .in('status',['active','past_due'])
   if(accountError)return json({error:'Account lookup failed'},500)
   const outcomes:Array<Record<string,unknown>>=[]
   for(const account of (accounts||[]) as Account[]){
     if(account.monthly_amount_cents<=0)continue
     const email=String(account.billing_email||'').trim()
+    const brand=PRODUCT_BRANDS[account.product_key]
+    if(!brand){outcomes.push({account_id:account.id,result:'unregistered_product_sender'});continue}
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
       outcomes.push({account_id:account.id,result:'missing_valid_billing_email'})
       continue
@@ -152,18 +160,18 @@ Deno.serve(async(req:Request)=>{
       continue
     }
 
-    const subject='Payment reminder — '+account.account_name+' — '+new Intl.DateTimeFormat('en-US',{
+    const subject=brand+' payment reminder — '+account.account_name+' — '+new Intl.DateTimeFormat('en-US',{
       month:'long',year:'numeric',timeZone:'America/New_York',
     }).format(now)
     const html='<div style="font-family:Arial,sans-serif;max-width:620px">'+
       '<h2>Monthly subscription payment reminder</h2>'+
       '<p>Hello '+escapeHtml(account.account_name)+',</p>'+
       '<p>Our records do not yet show full payment of the <strong>'+escapeHtml(subject.split(' — ').slice(-1)[0])+
-      '</strong> RomyLabs subscription. The remaining amount is <strong>'+dollars(Math.max(0,account.monthly_amount_cents-paidNow))+'</strong>.</p>'+
+      '</strong> '+escapeHtml(brand)+' subscription. The remaining amount is <strong>'+dollars(Math.max(0,account.monthly_amount_cents-paidNow))+'</strong>.</p>'+
       '<p>Please arrange payment at your earliest convenience. If you have already paid, please reply with the date or confirmation so we can reconcile our records.</p>'+
-      '<p>Thank you,<br><strong>System Reminder</strong><br>TaxRes</p></div>'
+      '<p>Thank you,<br><strong>'+escapeHtml(brand)+' System Reminder</strong></p></div>'
     try{
-      const submissionId=await sendViaStalwart(db,email,subject,html)
+      const submissionId=await sendViaStalwart(db,account.product_key,email,subject,html,brand)
       await db.from('romylabs_day4_payment_reminders').update({
         status:'sent',sent_at:new Date().toISOString(),last_error:null,
         provider_message_id:'stalwart:'+submissionId,attempts:queued.attempts?Number(queued.attempts)+1:1,
