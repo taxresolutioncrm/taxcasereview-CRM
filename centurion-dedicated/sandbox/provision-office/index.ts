@@ -23,23 +23,35 @@ serve(async req=>{
     const {data:membership,error:memberError}=await admin.from('centurion_office_memberships').select('role,active').eq('user_id',user.id).eq('tenant_id',office).maybeSingle()
     if(memberError||!membership?.active||membership.role!=='owner')return respond({error:'Platform owner access required'},403)
     const body=await req.json().catch(()=>({}))
-    const name=String(body.firm_name||'').trim().slice(0,150)
-    const code=String(body.tenant_code||'').trim().toUpperCase()
+    const action=String(body.action||'create')
     const adminEmail=String(body.admin_email||'').trim().toLowerCase()
-    if(!name||!(/^[A-Z0-9_-]{3,24}$/).test(code)||!(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).test(adminEmail))return respond({error:'Valid office, code and admin email required'},400)
-    // Require the new office admin to already have a verified Auth identity.
-    // Avoid creating a partially provisioned tenant by sending an invitation first.
-    // Resolve existing, verified admin by email on the server; never trust a
-    // browser-supplied Auth user ID or make owners search for UUIDs.
-    let verifiedAdminId: string | null = null
-    for (let page=1;page<=20 && !verifiedAdminId;page++) {
+    if(!(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/).test(adminEmail))
+      return respond({error:'Valid administrator email required'},400)
+    // Lookup is server-side and bounded; never trust client-supplied identity IDs.
+    let existingAdmin: {id:string,email_confirmed_at?:string|null} | null=null
+    for(let page=1;page<=20 && !existingAdmin;page++){
       const {data:users,error:listError}=await admin.auth.admin.listUsers({page,perPage:100})
-      if(listError)return respond({error:'Admin identity lookup failed'},500)
-      const match=(users?.users||[]).find(x=>x.email?.toLowerCase()===adminEmail && x.email_confirmed_at)
-      if(match)verifiedAdminId=match.id
+      if(listError)return respond({error:'Identity lookup unavailable'},500)
+      existingAdmin=(users?.users||[]).find(x=>x.email?.toLowerCase()===adminEmail)||null
       if((users?.users||[]).length<100)break
     }
-    if(!verifiedAdminId)return respond({error:'The new office administrator must first verify their Centurion login email'},409)
+    if(action==='invite_admin'){
+      if(existingAdmin?.email_confirmed_at)return respond({ok:true,status:'verified',admin_email:adminEmail})
+      if(existingAdmin)return respond({ok:true,status:'pending_verification',admin_email:adminEmail})
+      const {error:inviteError}=await admin.auth.admin.inviteUserByEmail(adminEmail,{
+        redirectTo:allowedOrigin+'/login'
+      })
+      if(inviteError)return respond({error:'Invitation could not be sent: '+inviteError.message},409)
+      return respond({ok:true,status:'invited',admin_email:adminEmail})
+    }
+    if(action!=='create')return respond({error:'Unsupported action'},400)
+    const name=String(body.firm_name||'').trim().slice(0,150)
+    const code=String(body.tenant_code||'').trim().toUpperCase()
+    if(!name||!(/^[A-Z0-9_-]{3,24}$/).test(code))
+      return respond({error:'Valid office name and code required'},400)
+    if(!existingAdmin?.email_confirmed_at)
+      return respond({error:'Administrator must first confirm the Centurion invitation email'},409)
+    const verifiedAdminId=existingAdmin.id
     const {data:id,error:createError}=await admin.rpc('centurion_create_office',{p_code:code,p_name:name,p_admin_user:verifiedAdminId,p_owner_user:user.id})
     if(createError)return respond({error:createError.message},409)
     return respond({tenant_id:id,tenant_code:code,status:'created',note:'Office created in Centurion dedicated project'})
