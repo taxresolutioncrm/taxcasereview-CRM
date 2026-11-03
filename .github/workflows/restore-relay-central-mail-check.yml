@@ -19,4 +19,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
       - run: node scripts/check-restore-relay-stalwart-relay.mjs
+      - run: deno check supabase/functions/support-api/index.ts
+      - name: Verify pinned HMAC implementation
+        run: |
+          deno eval "import { hmac } from 'npm:@noble/hashes@1.8.0/hmac.js'; import { sha256 } from 'npm:@noble/hashes@1.8.0/sha2.js'; const e=new TextEncoder(); const got=Array.from(hmac(sha256,e.encode('key'),e.encode('The quick brown fox jumps over the lazy dog'))).map(x=>x.toString(16).padStart(2,'0')).join(''); if(got!=='f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8') throw new Error('HMAC test vector mismatch'); console.log('PASS HMAC-SHA256 runtime vector')"
