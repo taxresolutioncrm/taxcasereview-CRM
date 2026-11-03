@@ -22,6 +22,23 @@ where m.product_id='taxres_crm' and m.tenant_id is not null
 order by m.created_at
 limit 1;
 
+-- PoolVerge already has a nonpersonal Stalwart credential. Make the matching
+-- product-scoped route available without inventing any mailbox or credentials.
+insert into public.romylabs_mailboxes
+  (email_address,product_id,tenant_id,display_name,outbound_from,inbox_owner,active)
+select 'info@poolverge.com','pool_crm',null,'PoolVerge System Reminder',
+       'info@poolverge.com','info@poolverge.com',true
+where exists (
+  select 1 from public.credential_vault_entries c
+  where c.product_id='pool_crm'
+    and lower(trim(c.username))='info@poolverge.com'
+    and lower(coalesce(c.service,'')) like 'stalwart%'
+)
+and not exists (
+  select 1 from public.romylabs_mailboxes m
+  where m.product_id='pool_crm' and lower(m.outbound_from)='info@poolverge.com'
+);
+
 create or replace function public.romylabs_system_reminder_transport(p_product_key text)
 returns jsonb
 language plpgsql
