@@ -11,6 +11,7 @@ export default function CenturionOffices() {
   const [owner, setOwner] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [inviting, setInviting] = useState(false)
   const [form, setForm] = useState({ firm_name:'', tenant_code:'', admin_email:'' })
   const [created, setCreated] = useState(null)
 
@@ -39,6 +40,22 @@ export default function CenturionOffices() {
     const { error } = await supabase.rpc('centurion_select_office', { p_tenant_id:tenantId })
     if (error) { showToast('Cannot select office: ' + error.message, 'err'); return }
     window.location.assign('/')
+  }
+  async function inviteAdministrator() {
+    if (!owner || inviting || !form.admin_email.trim()) {
+      showToast('Enter the administrator email first', 'err')
+      return
+    }
+    setInviting(true)
+    try {
+      const {data,error}=await supabase.functions.invoke('centurion-provision-office',{
+        body:{action:'invite_admin',admin_email:form.admin_email.trim().toLowerCase()}
+      })
+      if(error || data?.error) showToast(data?.error || error?.message || 'Invitation failed','err')
+      else if(data?.status==='verified') showToast('Administrator already has a verified Centurion login')
+      else if(data?.status==='pending_verification') showToast('Invitation is pending; ask the administrator to confirm the email')
+      else showToast('Centurion invitation sent. Create the office after their email is verified.')
+    } finally { setInviting(false) }
   }
   async function createOffice(event) {
     event.preventDefault()
@@ -79,12 +96,15 @@ export default function CenturionOffices() {
       </section>
       {owner && <section className="card" style={{padding:20}}>
         <h2 style={{fontSize:17,marginBottom:12}}>Add Office</h2>
-        <p style={{color:'var(--t3)',fontSize:13,marginBottom:16}}>The new administrator must first have a verified login in Centurion. Creating an office never creates another Supabase project.</p>
+        <p style={{color:'var(--t3)',fontSize:13,marginBottom:16}}>Invite the new administrator first, then create the office once their email is confirmed. Creating an office never creates another Supabase project.</p>
         <form onSubmit={createOffice} style={{display:'grid',gap:14}}>
           <label>Office name<input required maxLength={150} value={form.firm_name} onChange={e=>setForm(v=>({...v,firm_name:e.target.value}))} placeholder="New Tax Office" /></label>
           <label>Unique office code<input required minLength={3} maxLength={24} pattern="[A-Za-z0-9_-]+" value={form.tenant_code} onChange={e=>setForm(v=>({...v,tenant_code:e.target.value}))} placeholder="NEWOFFICE" /></label>
           <label>Verified administrator email<input required type="email" value={form.admin_email} onChange={e=>setForm(v=>({...v,admin_email:e.target.value}))} placeholder="admin@newfirm.com" /></label>
-          <button className="btn pri" type="submit" disabled={saving}>{saving ? 'Creating office…' : 'Create Office'}</button>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button className="btn sec" type="button" disabled={inviting || saving} onClick={inviteAdministrator}>{inviting ? "Sending invitation…" : "Invite Administrator"}</button>
+            <button className="btn pri" type="submit" disabled={saving || inviting}>{saving ? "Creating office…" : "Create Office"}</button>
+          </div>
         </form>
         {created && <p style={{marginTop:16,color:'var(--ok)'}}>Created {created.tenant_code}. Office ID: {created.tenant_id}</p>}
       </section>}
