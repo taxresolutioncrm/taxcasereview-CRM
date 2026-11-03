@@ -71,15 +71,20 @@ Deno.serve(async req=>{
   if(!lookupError&&existing?.id)return json({ok:true,already_received:true,notification_submitted:!!existing.notification_submission_id})
  }
  if(error||!lead?.id){console.error('[oculivo-demo-intake] lead database insert failed',error?.code||'unknown');return json({ok:false,error:'Lead could not be saved'},503)}
- try{
-  const submissionId=await submitStalwartEmail(admin,{name,email,practice,specialty,locations},String(lead.id))
-  await admin.from('romylabs_demo_requests').update({notification_submission_id:submissionId,notification_submitted_at:new Date().toISOString(),notification_last_error:null}).eq('id',lead.id)
-  return json({ok:true,notification_submitted:true})
- }catch(e){
-  const detail=e instanceof Error?e.message:'Notification failed'
-  console.error('[oculivo-demo-intake] email submission pending',detail)
-  await admin.from('romylabs_demo_requests').update({notification_last_error:detail.slice(0,250)}).eq('id',lead.id)
-  // Lead is durably saved and a follow-up task is visible even when mail fails.
-  return json({ok:true,notification_submitted:false})
+ const notifyAndAudit=async()=>{
+  try{
+   const submissionId=await submitStalwartEmail(admin,{name,email,practice,specialty,locations},String(lead.id))
+   await admin.from('romylabs_demo_requests').update({notification_submission_id:submissionId,notification_submitted_at:new Date().toISOString(),notification_last_error:null}).eq('id',lead.id)
+  }catch(e){
+   const detail=e instanceof Error?e.message:'Notification failed'
+   console.error('[oculivo-demo-intake] email submission pending',detail)
+   await admin.from('romylabs_demo_requests').update({notification_last_error:detail.slice(0,250)}).eq('id',lead.id)
+  }
  }
+ // A lead is successfully received as soon as the database insert commits.
+ // Stalwart submission is separate and audited; never block visitor confirmation on mail latency.
+ const runtime=(globalThis as unknown as {EdgeRuntime?:{waitUntil(task:Promise<void>):void}}).EdgeRuntime
+ if(runtime?.waitUntil){runtime.waitUntil(notifyAndAudit());return json({ok:true,notification_submitted:false})}
+ await notifyAndAudit()
+ return json({ok:true,notification_submitted:false})
 })
