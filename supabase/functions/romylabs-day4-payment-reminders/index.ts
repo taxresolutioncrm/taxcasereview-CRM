@@ -2,8 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 type Account = {
   id: string; account_name: string; billing_email: string|null;
-  monthly_amount_cents: number; status: string; auto_invoice: boolean;
-  billing_day: number
+  monthly_amount_cents: number; status: string
 }
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{
   status,headers:{'content-type':'application/json','cache-control':'no-store'},
@@ -92,12 +91,12 @@ Deno.serve(async(req:Request)=>{
 
   const period=clock.year+'-'+String(clock.month).padStart(2,'0')+'-01'
   const {data:accounts,error:accountError}=await db.from('romylabs_billing_accounts')
-    .select('id,account_name,billing_email,monthly_amount_cents,status,auto_invoice,billing_day')
+    .select('id,account_name,billing_email,monthly_amount_cents,status')
     .in('status',['active','past_due'])
   if(accountError)return json({error:'Account lookup failed'},500)
   const outcomes:Array<Record<string,unknown>>=[]
   for(const account of (accounts||[]) as Account[]){
-    if(!account.auto_invoice||account.billing_day>3||account.monthly_amount_cents<=0)continue
+    if(account.monthly_amount_cents<=0)continue
     const email=String(account.billing_email||'').trim()
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
       outcomes.push({account_id:account.id,result:'missing_valid_billing_email'})
