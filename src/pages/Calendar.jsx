@@ -27,6 +27,9 @@ const COLOR_MAP = {
 
 const DAYS  = ['SUN','MON','TUE','WED','THU','FRI','SAT']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const ADMIN_CALENDAR_PRODUCTS = Object.values(PRODUCT_BOOKING_CONFIGS)
+  .filter(product => !product.inactive)
+  .sort((a,b) => a.name.localeCompare(b.name))
 
 function productIdentity(ev) {
   const byId = ev?.product_id ? PRODUCT_BOOKING_CONFIGS[ev.product_id] : null
@@ -86,7 +89,7 @@ export default function Calendar() {
   const [form, setForm] = useState({
     title: '', clientName: '', client_id: '', assignedTo: isRomyLabsAdmin ? adminCalendarOwner : '', date: '', time: '',
     endTime: '', eventType: 'Consultation Call', color: 'bb',
-    notes: '', recurring: 'none', status: 'scheduled'
+    notes: '', recurring: 'none', status: 'scheduled', ...(isRomyLabsAdmin ? { product_id: 'romylabs' } : {})
   })
 
   // Escape .page-content padding
@@ -252,6 +255,7 @@ export default function Calendar() {
 
   async function saveEvent() {
     if (!form.title || !form.date) { showToast('Title and date required'); return }
+    if (isRomyLabsAdmin && !PRODUCT_BOOKING_CONFIGS[form.product_id]) { showToast('Select a valid CRM / product'); return }
     setSaving(true)
     let payload = { ...form, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : form.assignedTo, ...(isRomyLabsAdmin ? { product_id: form.product_id || 'romylabs' } : {}), updated_at: new Date().toISOString() }
     let error
@@ -293,7 +297,7 @@ export default function Calendar() {
         await supabase.from('client_notes').insert({ clientname: form.clientName, text: noteText, author: actorCal, visible_to_client: false }).catch(()=>{})
       }
     }
-    setShowForm(false); setForm({ title:'',clientName:'',client_id:'',assignedTo:isRomyLabsAdmin ? adminCalendarOwner : '',date:'',time:'',endTime:'',eventType:'Consultation Call',color:'bb',notes:'',recurring:'none',status:'scheduled' })
+    setShowForm(false); setForm({ title:'',clientName:'',client_id:'',assignedTo:isRomyLabsAdmin ? adminCalendarOwner : '',date:'',time:'',endTime:'',eventType:'Consultation Call',color:'bb',notes:'',recurring:'none',status:'scheduled', ...(isRomyLabsAdmin ? { product_id:'romylabs' } : {}) })
     load()
   }
 
@@ -383,13 +387,14 @@ export default function Calendar() {
       title: '', date: date.toISOString().slice(0, 10),
       time: `${String(d.getHours()).padStart(2,'0')}:00`,
       assignedTo: isRomyLabsAdmin ? adminCalendarOwner : '',
+      ...(isRomyLabsAdmin ? { product_id: 'romylabs' } : {}),
       id: undefined
     }))
     setShowForm(true); setDayMenuPos(null); setDayMenuDate(null)
   }
 
   function openEditForm(ev) {
-    setForm({ ...ev, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : (ev.assignedTo || '') })
+    setForm({ ...ev, ...(isRomyLabsAdmin ? { product_id: ev.product_id || 'romylabs' } : {}), assignedTo: isRomyLabsAdmin ? adminCalendarOwner : (ev.assignedTo || '') })
     setShowForm(true); setSelectedEvent(null)
   }
 
@@ -773,6 +778,14 @@ export default function Calendar() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {isRomyLabsAdmin && (
+                <div><label style={lbl} htmlFor="admin-calendar-product">CRM / Product *</label>
+                  <select id="admin-calendar-product" style={inp} value={form.product_id || 'romylabs'} onChange={e => fld('product_id', e.target.value)}>
+                    {ADMIN_CALENDAR_PRODUCTS.map(product => <option key={product.key} value={product.key}>{product.name}</option>)}
+                  </select>
+                  <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 5 }}>This determines which CRM name and logo appear on the calendar.</div>
+                </div>
+              )}
               <div><label style={lbl}>Title *</label>
                 <input style={inp} value={form.title} onChange={e => fld('title', e.target.value)} autoFocus />
               </div>
