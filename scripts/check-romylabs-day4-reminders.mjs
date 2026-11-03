@@ -9,6 +9,7 @@ assert(code.includes("clock.day!==4||clock.hour<9||clock.hour>=12"), 'Fourth-of-
 assert(code.includes("timeZone:'America/New_York'"), 'Eastern time zone missing')
 assert(code.includes("verify_internal_cron_token"), 'Server-side cron auth missing')
 assert(code.includes("romylabs_billing_accounts"), 'Must use central SaaS accounts')
+assert(!code.includes('account.billing_day')&&!code.includes('account.auto_invoice'), 'All paying offices must be eligible regardless of invoicing mode')
 assert(code.includes("romylabs_subscription_payments"), 'Must check actual received office payments')
 assert(code.includes("romylabs_invoices"), 'Must check settled invoice status')
 assert(code.includes("romylabs_day4_payment_reminders"), 'Idempotency outbox missing')
