@@ -2,6 +2,7 @@
 -- Preserve them as durable, admin-only follow-up tasks without inventing calevents.
 create table if not exists public.romylabs_demo_requests (
   id uuid primary key default gen_random_uuid(),
+  request_key uuid not null unique,
   product_id text not null default 'oculivo' check (product_id='oculivo'),
   source text not null default 'oculivo.com',
   lead_name text not null check (length(trim(lead_name)) between 1 and 120),
