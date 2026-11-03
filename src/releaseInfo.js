@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'RomyLabs Admin Portal meeting reminders show 30, 15 and 5-minute in-app pop-ups with optional desktop notifications when the portal is open',
   'RomyLabs Admin calendar displays legacy admin-owned appointments missing a product tag, with new events tagged to the correct product',
   'Restore Relay central support HMAC verification no longer uses the Edge WebCrypto path that EarlyDrop-hung live training mail before Stalwart submission',
   'Restore Relay live training and client-meeting email invites now use the central Stalwart/JMAP vault relay instead of Brevo acceptance',
@@ -65,6 +66,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin Portal reminder module resolves its Supabase client correctly in the nested component bundle',
+  'Calendar reminders now appear throughout the Admin Portal at 30, 15 and 5 minutes before each meeting (desktop notifications optional)',
   'Admin calendar restores missing historic RomyLabs appointments and records product identity on new events',
   'Camvella proxy uses its dedicated support credential and reports actionable downstream errors without leaking secrets',
   'Central hub-proxy routes Camvella metrics to its dedicated Supabase project; requires separately configured matching credentials',
@@ -98,9 +101,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.37',
+  version: '3.2.38',
   releasedAt: '2026-11-03',
-  title: 'RomyLabs Admin Portal 3.2.37 — Restore Relay Mail Relay Runtime Fix',
+  title: 'RomyLabs Admin Portal 3.2.38 — Meeting Reminders',
   changes: [
     'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
     ...ADMIN_DEMO_TASK_CHANGES,
@@ -110,9 +113,9 @@ const DEFAULT_RELEASE = {
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.37',
+    version: '3.2.38',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.37 — RomyLabs Admin Calendar Visibility Fix',
+    title: 'CRM 3.2.38 — Admin Meeting Reminders',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -134,17 +137,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.37',
+    version: '3.2.38',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.37 — RomyLabs Admin Calendar Visibility Fix',
+    title: 'CRM 3.2.38 — Admin Meeting Reminders',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.37',
+    version: '3.2.38',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.37 — RomyLabs Admin Calendar Visibility Fix',
+    title: 'CRM 3.2.38 — Admin Meeting Reminders',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }

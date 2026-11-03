@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 import AdminPortal from './AdminPortal'
+import AdminMeetingReminders from '../components/admin/AdminMeetingReminders'
 
 const PLATFORM_OWNER_EMAILS = new Set([
   'info@romylabs.com',
@@ -107,5 +108,5 @@ export default function AdminPortalGuard() {
   if (checking) return null
   if (!authorized) return <Navigate to="/" replace />
   if (!portalReady) return <div style={{minHeight:'100vh',background:'#0d0c1a'}} />
-  return <AdminPortal />
+  return <><AdminPortal /><AdminMeetingReminders /></>
 }
