@@ -24,6 +24,89 @@ const PRODUCT_BRANDS:Record<string,string> = {
   pool_crm:'PoolVerge', oculivo:'Oculivo', groundivo:'GroundIVO',
   barbers_salons:'Barbers & Salons CRM', health_insurance:'Health Insurance CRM',
 }
+
+const BRAND_ASSET_ORIGIN='https://taxrescrm.app'
+const BRAND_LOGO_FILES:Record<string,string>={
+  taxres_crm:'taxrescrm-logo.png',
+  arcvena:'arcvena-logo.png',
+  bocasync:'bocasync-logo.svg',
+  camvella:'camvella-logo.svg',
+  restore_relay:'restore-relay-logo.svg',
+  romylabs:'romylabs-logo.png',
+  oculivo:'oculivo-logo.svg',
+  groundivo:'groundivo-logo.svg',
+}
+const BRAND_DEFAULTS:Record<string,{website:string;accent:string}>={
+  taxres_crm:{website:'https://taxrescrm.net',accent:'#2563EB'},
+  arcvena:{website:'https://www.arcvena.com',accent:'#00C2FF'},
+  bocasync:{website:'https://bocasync.com',accent:'#1596A6'},
+  camvella:{website:'https://www.camvella.com',accent:'#0F766E'},
+  restore_relay:{website:'https://restorerelay.com',accent:'#C2410C'},
+  romylabs:{website:'https://romylabs.com',accent:'#7256D5'},
+  oculivo:{website:'https://oculivo.com',accent:'#7C3AED'},
+  groundivo:{website:'https://groundivo.com',accent:'#16A34A'},
+  pool_crm:{website:'https://poolverge.com',accent:'#14B8A6'},
+}
+type BrandDetails={name:string;logoUrl:string;website:string;accent:string}
+const safeHttps=(value:unknown)=>{
+  try{const url=new URL(String(value||''));return url.protocol==='https:'?url.href:''}
+  catch{return ''}
+}
+const brandFor=(productKey:string,registry:any):BrandDetails|null=>{
+  const defaults=BRAND_DEFAULTS[productKey]
+  const name=PRODUCT_BRANDS[productKey]
+  if(!name)return null
+  // Prefer the registered CRM's own logo, then a file confirmed in the
+  // published CRM asset bundle. Never borrow another product's logo.
+  const logo=safeHttps(registry?.logo_url)||
+    (BRAND_LOGO_FILES[productKey]?BRAND_ASSET_ORIGIN+'/'+BRAND_LOGO_FILES[productKey]:'')
+  const website=safeHttps(registry?.marketing_url)||defaults?.website||''
+  const accent=/^#[0-9a-f]{6}$/i.test(String(registry?.accent_color||''))
+    ?String(registry.accent_color):defaults?.accent||'#334155'
+  if(!logo||!website)return null
+  return {name,logoUrl:logo,website,accent}
+}
+const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthLabel:string,amountCents:number):string=>{
+  const name=escapeHtml(brand.name)
+  const office=escapeHtml(accountName)
+  const month=escapeHtml(monthLabel)
+  const website=escapeHtml(brand.website)
+  const logo=escapeHtml(brand.logoUrl)
+  const accent=escapeHtml(brand.accent)
+  const amount=dollars(Math.max(0,amountCents))
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1"></head>'+
+    '<body style="margin:0;padding:0;background:#f0f3f9;color:#19253b;font-family:Arial,Helvetica,sans-serif">'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f0f3f9">'+
+    '<tr><td align="center" style="padding:32px 14px 40px">'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e1e7f0">'+
+    '<tr><td style="background:#101f3b;padding:23px 32px;border-bottom:4px solid '+accent+'">'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>'+
+    '<td style="vertical-align:middle"><img src="'+logo+'" width="170" style="display:block;max-width:170px;max-height:65px;width:auto;height:auto;border:0" alt="'+name+' logo"></td>'+
+    '<td align="right" style="color:#d7e3f9;font-size:11px;letter-spacing:1.2px;font-weight:700;vertical-align:middle">BILLING NOTICE</td>'+
+    '</tr></table></td></tr>'+
+    '<tr><td style="padding:34px 36px 12px">'+
+    '<div style="font-size:12px;font-weight:700;color:'+accent+';letter-spacing:1.3px">MONTHLY SUBSCRIPTION</div>'+
+    '<h1 style="margin:12px 0 13px;font-size:27px;line-height:1.26;color:#16243e">A friendly payment reminder</h1>'+
+    '<p style="font-size:15px;line-height:1.7;color:#41516b;margin:0 0 16px">Hello '+office+',</p>'+
+    '<p style="font-size:15px;line-height:1.7;color:#41516b;margin:0 0 20px">Our records do not yet reflect full payment for your <strong>'+month+'</strong> '+name+' subscription.</p>'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f8fd;border:1px solid #e0e8f5;border-radius:12px">'+
+    '<tr><td style="padding:20px 22px">'+
+    '<div style="font-size:11px;font-weight:700;letter-spacing:1.1px;color:#61718b">REMAINING BALANCE</div>'+
+    '<div style="font-size:34px;line-height:1.3;font-weight:800;color:#16243e;padding-top:4px">'+amount+'</div>'+
+    '<div style="font-size:12px;color:#65758d;margin-top:7px">'+month+' &middot; '+name+'</div>'+
+    '</td></tr></table>'+
+    '<p style="font-size:15px;line-height:1.7;color:#41516b;margin:22px 0 14px">Please arrange payment through your existing payment method. If you have already paid, please reply with the payment date or confirmation so we can update our records.</p>'+
+    '<p style="font-size:14px;line-height:1.6;color:#56667d;margin:0 0 24px">Thank you for being part of '+name+'.</p>'+
+    '<p style="font-size:14px;line-height:1.6;color:#24354f;margin:0 0 14px"><strong>'+name+' Billing Team</strong></p>'+
+    '</td></tr>'+
+    '<tr><td style="padding:22px 36px 26px;background:#f8fafd;border-top:1px solid #e8edf5">'+
+    '<p style="font-size:13px;font-weight:700;color:#2f425f;margin:0 0 6px">'+name+'</p>'+
+    '<a href="'+website+'" style="font-size:13px;color:'+accent+';text-decoration:none">'+website+'</a>'+
+    '<p style="font-size:11px;line-height:1.6;color:#6d7c91;margin:14px 0 0">This is an automated billing reminder from '+name+'. No payment is processed through this email. Please do not share passwords or sensitive financial details by email.</p>'+
+    '</td></tr></table></td></tr></table></body></html>'
+}
+
 const sameMonth=(value:string,year:number,month:number)=>{
   const d=new Date(value)
   if(!Number.isFinite(d.getTime()))return false
@@ -160,16 +243,26 @@ Deno.serve(async(req:Request)=>{
       continue
     }
 
-    const subject=brand+' payment reminder — '+account.account_name+' — '+new Intl.DateTimeFormat('en-US',{
+    const monthLabel=new Intl.DateTimeFormat('en-US',{
       month:'long',year:'numeric',timeZone:'America/New_York',
     }).format(now)
-    const html='<div style="font-family:Arial,sans-serif;max-width:620px">'+
-      '<h2>Monthly subscription payment reminder</h2>'+
-      '<p>Hello '+escapeHtml(account.account_name)+',</p>'+
-      '<p>Our records do not yet show full payment of the <strong>'+escapeHtml(subject.split(' — ').slice(-1)[0])+
-      '</strong> '+escapeHtml(brand)+' subscription. The remaining amount is <strong>'+dollars(Math.max(0,account.monthly_amount_cents-paidNow))+'</strong>.</p>'+
-      '<p>Please arrange payment at your earliest convenience. If you have already paid, please reply with the date or confirmation so we can reconcile our records.</p>'+
-      '<p>Thank you,<br><strong>'+escapeHtml(brand)+' System Reminder</strong></p></div>'
+    const {data:product,error:brandError}=await db.from('romylabs_products')
+      .select('name,logo_url,marketing_url,accent_color')
+      .eq('product_id',account.product_key).maybeSingle()
+    if(brandError){
+      await db.from('romylabs_day4_payment_reminders')
+        .update({status:'pending',last_error:'CRM brand lookup failed'}).eq('id',claim.id)
+      outcomes.push({account_id:account.id,result:'brand_lookup_failed'});continue
+    }
+    const brandDetails=brandFor(account.product_key,product)
+    if(!brandDetails){
+      await db.from('romylabs_day4_payment_reminders')
+        .update({status:'pending',last_error:'CRM logo or website not configured'}).eq('id',claim.id)
+      outcomes.push({account_id:account.id,result:'missing_branded_email_assets'});continue
+    }
+    const subject=brandDetails.name+' payment reminder — '+account.account_name+' — '+monthLabel
+    const html=renderBrandedPaymentReminder(brandDetails,account.account_name,monthLabel,
+      account.monthly_amount_cents-paidNow)
     try{
       const submissionId=await sendViaStalwart(db,account.product_key,email,subject,html,brand)
       await db.from('romylabs_day4_payment_reminders').update({
