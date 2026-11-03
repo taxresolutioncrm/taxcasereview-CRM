@@ -82,7 +82,7 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e1e7f0">'+
     '<tr><td style="background:#101f3b;padding:23px 32px;border-bottom:4px solid '+accent+'">'+
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>'+
-    '<td style="vertical-align:middle"><img src="'+logo+'" width="170" style="display:block;max-width:170px;max-height:65px;width:auto;height:auto;border:0" alt="'+name+' logo"></td>'+
+    '<td style="vertical-align:middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#ffffff;border-radius:9px;padding:10px 14px"><img src="'+logo+'" width="170" style="display:block;max-width:170px;max-height:65px;width:auto;height:auto;border:0" alt="'+name+' logo"></td></tr></table></td>'+
     '<td align="right" style="color:#d7e3f9;font-size:11px;letter-spacing:1.2px;font-weight:700;vertical-align:middle">BILLING NOTICE</td>'+
     '</tr></table></td></tr>'+
     '<tr><td style="padding:34px 36px 12px">'+
