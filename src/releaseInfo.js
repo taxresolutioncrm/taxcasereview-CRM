@@ -65,6 +65,10 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Oculivo website demo requests create durable Admin Portal follow-up tasks without requiring a scheduled appointment',
+  'Oculivo demo lead notifications use the existing RomyLabs Stalwart relay with submission tracking and visible failures',
+  'Oculivo demo lead submissions remain deduplicated across browser retries',
+  'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
   'Admin calendar restores missing historic RomyLabs appointments and records product identity on new events',
   'Camvella proxy uses its dedicated support credential and reports actionable downstream errors without leaking secrets',
   'Central hub-proxy routes Camvella metrics to its dedicated Supabase project; requires separately configured matching credentials',
@@ -98,13 +102,10 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.37',
-  releasedAt: '2026-11-03',
-  title: 'RomyLabs Admin Portal 3.2.37 — Restore Relay Mail Relay Runtime Fix',
-  changes: [
-    'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
-    ...ADMIN_DEMO_TASK_CHANGES,
-  ],
+  version: '3.3.0',
+  releasedAt: 'Pending production deployment',
+  title: 'RomyLabs Admin Portal 3.3.0 — Oculivo Native Demo Leads',
+  changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
