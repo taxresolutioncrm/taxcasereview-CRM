@@ -39,7 +39,7 @@ check('unscoped users RLS is removed',
   users.includes("auth.jwt() ->> 'email'"))
 check('new-office handler checks real Auth identity and owner membership',
   edge.includes('auth.getUser(token)')&&edge.includes("membership.role!=='owner'")&&
-  edge.includes('verifiedAdminId')&&edge.includes('p_owner_user:user.id'))
+  edge.includes('verifiedAdminId')&&edge.includes('p_owner_user:user.id')&&edge.includes("action==='invite_admin'"))
 check('invitations use active selected office and preserve existing permissions',
   invite.includes('current_tenant_id')&&invite.includes('centurion_office_memberships')&&
   invite.includes('ignoreDuplicates:true'))
@@ -55,7 +55,7 @@ for(const method of ['send-email','send-sms','send-fax']){
 check('Centurion-only native Add Office route',
   app.includes('rkniemzmivnuhpdwkduc.supabase.co')&&
   app.includes('<CenturionOffices /> : <NewOffice />')&&
-  page.includes("centurion-provision-office")&&page.includes('centurion_select_office'))
+  page.includes("centurion-provision-office")&&page.includes('centurion_select_office')&&page.includes("Invite Administrator"))
 check('navigation is not exposed on TCR app',
   nav.includes('centurionOnly: true')&&nav.includes('!SUPABASE_URL.includes'))
 console.log('Centurion multi-tenant source-contract checks PASS. Signed-in RLS tests still required.')
