@@ -68,6 +68,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Office payment reminders use the existing RomyLabs Stalwart JMAP mailbox, without Brevo or an additional paid mail provider',
   'Office subscription reminder checks the current-month paid ledger before sending on the fourth at 9 AM Eastern, avoiding duplicates and paid accounts',
   'Admin calendar Create and Edit Event now include a CRM/Product selector sourced from active booking products; unrelated CRMs remain unchanged',
   'Admin Portal reminder module resolves its Supabase client correctly in the nested component bundle',
