@@ -1,0 +1,195 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const FAMILY_PASSWORD_PAGE='https://centurionfirm.taxrescrm.app/family-password'
+const CENTURION_TENANT='8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'
+const SYSTEM_MAIL_RELAY='https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/centurion-system-mail-relay'
+const CENTRAL_APP_ORIGIN='https://taxrescrm.app'
+const DEFAULT_BRAND_NAME='Centurion Firm'
+const DEFAULT_LOGO_URL='https://centurionfirm.taxrescrm.app/centurion-logo.svg'
+const corsHeaders={
+  'Access-Control-Allow-Origin':'*',
+  'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods':'POST, OPTIONS',
+}
+const safe=(v:unknown)=>String(v??'').trim()
+function absoluteAssetUrl(v:unknown){
+  const raw=safe(v)
+  if(!raw) return DEFAULT_LOGO_URL
+  if(/^https?:\/\//i.test(raw) || /^data:/i.test(raw)) return raw
+  try { return new URL(raw, CENTRAL_APP_ORIGIN).href } catch (_) { return DEFAULT_LOGO_URL }
+}
+const esc=(v:unknown)=>safe(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+
+async function findAuthUser(admin:any,email:string){
+  const {data,error}=await admin.rpc('taxres_auth_user_by_email',{target_email:email})
+  if(error) throw error
+  return Array.isArray(data)&&data.length ? data[0] : null
+}
+
+function accessEmailHtml(opts:{name:string,brandName:string,logoUrl:string,link:string,kind:'invite'|'recovery'}){
+  const brand=esc(opts.brandName||DEFAULT_BRAND_NAME)
+  const heading=opts.kind==='invite'?`Set up your ${brand} password`:`Reset your ${brand} password`
+  const intro=opts.kind==='invite'
+    ? `Your ${brand} CRM access is ready. Use the secure button below to create your password.`
+    : `Use the secure button below to reset your ${brand} CRM password.`
+  const button=opts.kind==='invite'?'Set Up Password':'Reset Password'
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#162235">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:32px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff;border:1px solid #e4eaf1;border-radius:14px;overflow:hidden">
+<tr><td style="background:#0b2136;padding:26px 32px;text-align:center"><img src="${esc(opts.logoUrl)}" alt="${brand}" style="max-width:220px;max-height:72px;width:auto;height:auto;display:inline-block"></td></tr>
+<tr><td style="padding:34px 36px 10px"><div style="font-size:22px;font-weight:700;color:#10243a;margin-bottom:14px">${heading}</div>
+<div style="font-size:15px;line-height:1.65;color:#4b5f73">Hi ${esc(opts.name||'there')},</div>
+<div style="font-size:15px;line-height:1.65;color:#4b5f73;margin-top:8px">${intro}</div></td></tr>
+<tr><td style="padding:20px 36px 24px;text-align:center"><a href="${esc(opts.link)}" style="display:inline-block;background:#1A7FD4;color:#fff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 24px;border-radius:8px">${button}</a></td></tr>
+<tr><td style="padding:0 36px 28px"><div style="font-size:13px;line-height:1.6;color:#718096">For your security, use the button above to choose your password. Office access remains permission-based and isolated.</div>
+<div style="font-size:12px;line-height:1.55;color:#94a3b8;margin-top:18px">If the button does not open, copy and paste this link into your browser:<br><span style="word-break:break-all;color:#5c6f82">${esc(opts.link)}</span></div></td></tr>
+<tr><td style="border-top:1px solid #e9eef4;padding:18px 36px 22px;text-align:center"><div style="font-size:12px;color:#8795a5">${brand}</div><div style="font-size:11px;color:#a4afbb;margin-top:5px">This is an automated security email. Please do not forward it.</div></td></tr>
+</table></td></tr></table></body></html>`
+}
+
+serve(async(req)=>{
+  if(req.method==='OPTIONS') return new Response('ok',{headers:corsHeaders})
+  const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json','Cache-Control':'no-store'}})
+  if(req.method!=='POST') return json({error:'POST only'},405)
+
+  try{
+    const url=Deno.env.get('SUPABASE_URL')||''
+    const anon=Deno.env.get('SUPABASE_ANON_KEY')||''
+    const service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||''
+    if(!url||!anon||!service) return json({error:'Server configuration missing'},500)
+
+    const authHeader=req.headers.get('Authorization')||''
+    if(!authHeader.toLowerCase().startsWith('bearer ')) return json({error:'Missing authorization'},401)
+    const caller=createClient(url,anon,{global:{headers:{Authorization:authHeader}},auth:{persistSession:false,autoRefreshToken:false}})
+    const token=authHeader.replace(/^Bearer\s+/i,'')
+    const {data:{user},error:userErr}=await caller.auth.getUser(token)
+    if(userErr||!user?.email) return json({error:'Invalid session'},401)
+
+    const {data:tenantId,error:tenantErr}=await caller.rpc('current_tenant_id')
+    if(tenantErr||tenantId!==CENTURION_TENANT) return json({error:'Invalid Centurion office context'},403)
+
+    const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}})
+    const {data:callerEmployee}=await admin.from('employees')
+      .select('id,status,perm_hr,role,access')
+      .eq('tenant_id',tenantId)
+      .ilike('email',user.email)
+      .limit(1).maybeSingle()
+
+    const active=callerEmployee&&safe(callerEmployee.status||'Active').toLowerCase()==='active'
+    const superAdmin=safe(callerEmployee?.access||callerEmployee?.role).toLowerCase()==='super admin'
+    if(!active||(!superAdmin&&Number(callerEmployee?.perm_hr||0)<2)) return json({error:'Employee invite permission denied'},403)
+
+    const body=await req.json().catch(()=>({}))
+    const email=safe(body.email).toLowerCase()
+    const requestedName=safe(body.name)
+    const via=['email','text','both'].includes(safe(body.via).toLowerCase())?safe(body.via).toLowerCase():'email'
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({error:'Valid employee email is required'},400)
+
+    const {data:employee}=await admin.from('employees')
+      .select('id,email,name,phone,status,tenant_id')
+      .eq('tenant_id',tenantId)
+      .ilike('email',email)
+      .limit(1).maybeSingle()
+    if(!employee) return json({error:'Employee must exist in this office before an invite can be sent'},409)
+    if(safe(employee.status||'Active').toLowerCase()!=='active') return json({error:'Employee is not active'},409)
+
+    const {data:otherEmployee}=await admin.from('employees')
+      .select('tenant_id')
+      .ilike('email',email)
+      .neq('tenant_id',tenantId)
+      .limit(1).maybeSingle()
+    if(otherEmployee) return json({error:'This email already belongs to another office'},409)
+
+    const {data:tenant}=await admin.from('tenants').select('tenant_code,firm_name,logo_url').eq('id',tenantId).maybeSingle()
+    const {data:settings}=await admin.from('settings').select('name,firmname,logourl,email,firmemail').eq('tenant_id',tenantId).maybeSingle()
+    const firmName=DEFAULT_BRAND_NAME
+    const logoUrl=DEFAULT_LOGO_URL
+    const officeReplyTo=''
+    const existing=await findAuthUser(admin,email)
+    const kind:'invite'|'recovery'=existing?'recovery':'invite'
+
+    if(existing&&!existing.email_confirmed_at){
+      const {error:confirmErr}=await admin.auth.admin.updateUserById(existing.id,{email_confirm:true})
+      if(confirmErr) return json({error:'Could not prepare existing employee login: '+confirmErr.message},500)
+    }
+
+    const linkArgs:any = kind === 'invite'
+      ? { type:'invite', email, options:{ data:{ name:requestedName||employee.name||email.split('@')[0] } } }
+      : { type:'recovery', email }
+    const {data:linkData,error:linkErr}=await admin.auth.admin.generateLink(linkArgs)
+    if(linkErr) return json({error:'Could not prepare employee access: '+linkErr.message},400)
+    const tokenHash=linkData?.properties?.hashed_token||linkData?.properties?.hashedToken||''
+    if(!tokenHash) return json({error:'Could not prepare employee access token'},500)
+
+    const office='centurion'
+    const accessLink=`${FAMILY_PASSWORD_PAGE}?token_hash=${encodeURIComponent(tokenHash)}&type=${kind}&office=${encodeURIComponent(office)}`
+    const html=accessEmailHtml({name:requestedName||employee.name||'',brandName:firmName,logoUrl,link:accessLink,kind})
+    let emailOk=false, textOk=false
+    let emailError='', textError=''
+
+    if(via==='email'||via==='both'){
+      const relaySecret=Deno.env.get('CENTURION_SYSTEM_MAIL_RELAY_SECRET')||''
+      if(!relaySecret) return json({error:'Centurion centralized TaxRes mail relay secret is not configured'},503)
+      const emailRes=await fetch(SYSTEM_MAIL_RELAY,{
+        method:'POST',
+        headers:{'x-system-mail-secret':relaySecret,'Content-Type':'application/json'},
+        body:JSON.stringify({kind:'employee_access',to:email,subject:kind==='invite'?`Set up your ${firmName} password`:`Reset your ${firmName} password`,html})
+      })
+      const emailBody=await emailRes.json().catch(()=>({}))
+      emailOk=!!(emailRes.ok&&emailBody?.success)
+      if(!emailOk) emailError=safe(emailBody?.error||`TaxRes central mail returned ${emailRes.status}`)
+    }
+
+    if(via==='text'||via==='both'){
+      if(!safe(employee.phone)){
+        textError='Employee phone number is required for text delivery'
+      }else{
+        const smsRes=await fetch(`${url}/functions/v1/send-sms`,{
+          method:'POST',
+          headers:{Authorization:authHeader,apikey:anon,'Content-Type':'application/json'},
+          body:JSON.stringify({
+            to:employee.phone,
+            body:`${firmName}: ${kind==='invite'?'Set up':'Reset'} your CRM password: ${accessLink}`
+          })
+        })
+        const smsBody=await smsRes.json().catch(()=>({}))
+        textOk=!!(smsRes.ok&&smsBody?.success)
+        if(!textOk) textError=safe(smsBody?.error||`SMS transport returned ${smsRes.status}`)
+      }
+    }
+
+    const requestedSucceeded=(via==='email'&&emailOk)||(via==='text'&&textOk)||(via==='both'&&emailOk&&textOk)
+    const partialSucceeded=(via==='both'&&(emailOk||textOk))
+    if(!requestedSucceeded&&!partialSucceeded){
+      return json({
+        ok:true,
+        invited:kind==='invite',
+        already_exists:!!existing,
+        mode:kind,
+        delivery:'manual',
+        access_link:accessLink,
+        email,
+        employee_id:employee.id,
+        warning:[emailError,textError].filter(Boolean).join(' · ')||'Delivery transport unavailable'
+      })
+    }
+
+    return json({
+      ok:true,
+      invited:kind==='invite',
+      already_exists:!!existing,
+      reset_sent:kind==='recovery',
+      mode:kind,
+      delivery:via==='both'?(emailOk&&textOk?'both':emailOk?'email':'text'):via,
+      email,
+      employee_id:employee.id,
+      auth_user_id:existing?.id||linkData?.user?.id||null,
+      access_link:accessLink,
+      warning:via==='both'&&!(emailOk&&textOk)?[emailError,textError].filter(Boolean).join(' · '):null
+    })
+  }catch(e){
+    console.error('[invite-employee]',e)
+    return json({error:String((e as Error)?.message||e)},500)
+  }
+})
