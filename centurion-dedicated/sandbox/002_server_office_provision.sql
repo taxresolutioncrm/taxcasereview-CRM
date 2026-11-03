@@ -29,8 +29,36 @@ BEGIN
  INSERT INTO public.centurion_office_memberships(user_id,tenant_id,role)
  VALUES (p_owner_user,v_id,'owner')
  ON CONFLICT (user_id,tenant_id) DO UPDATE SET role='owner', active=true;
+ -- Both identities need office-local employee records. Otherwise login succeeds
+ -- but the CRM has no staff profile and renders an empty workspace.
+ INSERT INTO public.employees(tenant_id,name,email,role,access,status,
+   perm_clients,perm_billing,perm_schedule,perm_documents,perm_reports,
+   perm_hr,perm_settings,perm_irs,perm_comms,perm_leads)
+ SELECT v_id,coalesce(nullif(trim(old.name),''),split_part(au.email,'@',1)),au.email,
+   CASE WHEN p_admin_user=p_owner_user THEN 'Super Admin' ELSE 'Admin' END,
+   CASE WHEN p_admin_user=p_owner_user THEN 'Super Admin' ELSE 'Admin' END,
+   'Active',3,3,3,3,3,3,3,3,3,3
+ FROM auth.users au
+ LEFT JOIN LATERAL (
+  SELECT e.name FROM public.employees e
+  WHERE lower(trim(e.email))=lower(trim(au.email)) LIMIT 1
+ ) old ON true
+ WHERE au.id=p_admin_user;
+ IF p_admin_user<>p_owner_user THEN
+   INSERT INTO public.employees(tenant_id,name,email,role,access,status,
+     perm_clients,perm_billing,perm_schedule,perm_documents,perm_reports,
+     perm_hr,perm_settings,perm_irs,perm_comms,perm_leads)
+   SELECT v_id,coalesce(nullif(trim(old.name),''),split_part(au.email,'@',1)),au.email,
+     'Super Admin','Super Admin','Active',3,3,3,3,3,3,3,3,3,3
+   FROM auth.users au
+   LEFT JOIN LATERAL (
+     SELECT e.name FROM public.employees e
+     WHERE lower(trim(e.email))=lower(trim(au.email)) LIMIT 1
+   ) old ON true
+   WHERE au.id=p_owner_user;
+ END IF;
  RETURN v_id;
-END $$;
+END $;
 REVOKE ALL ON FUNCTION public.centurion_create_office(text,text,uuid,uuid)
  FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.centurion_create_office(text,text,uuid,uuid)
