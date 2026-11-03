@@ -28,6 +28,8 @@
 //   • No secrets in logs
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { hmac } from 'npm:@noble/hashes@1.8.0/hmac.js'
+import { sha256 } from 'npm:@noble/hashes@1.8.0/sha2.js'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -87,29 +89,23 @@ function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0
 }
 
-// Hex-encode a Uint8Array
-function toHex(buf: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buf))
+// Hex-encode bytes.
+function toHex(buf: Uint8Array): string {
+  return Array.from(buf)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
 }
 
-// Compute HMAC-SHA256(key, message) → hex string
-async function hmacSHA256(keyStr: string, message: string): Promise<string> {
-  const enc = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw', enc.encode(keyStr), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
-  return toHex(sig)
-}
-
-// Verify HMAC with constant-time comparison
+// Verify HMAC with a synchronous audited implementation. The hosted Edge runtime
+// has shown rare EarlyDrop hangs inside WebCrypto HMAC verification; keeping this
+// step synchronous prevents the central relay from stalling before mail transport.
 async function verifyHMAC(keyStr: string, message: string, expectedHex: string): Promise<boolean> {
-  const actual   = await hmacSHA256(keyStr, message)
-  const enc      = new TextEncoder()
-  const actualB  = enc.encode(actual)
-  const expectedB = enc.encode(expectedHex.toLowerCase())
+  const expected = expectedHex.toLowerCase().trim()
+  if (!/^[0-9a-f]{64}$/.test(expected)) return false
+  const enc = new TextEncoder()
+  const actual = toHex(hmac(sha256, enc.encode(keyStr), enc.encode(message)))
+  const actualB = enc.encode(actual)
+  const expectedB = enc.encode(expected)
   return timingSafeEqual(actualB, expectedB)
 }
 
