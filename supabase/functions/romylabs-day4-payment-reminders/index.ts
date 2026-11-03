@@ -83,15 +83,21 @@ Deno.serve(async(req:Request)=>{
     if(queued.status==='sent'){outcomes.push({account_id:account.id,result:'already_sent'});continue}
     if(queued.status==='sending'&&queued.last_attempt_at&&
       now.getTime()-new Date(queued.last_attempt_at).getTime()<20*60_000)continue
-    const {data:claim}=await db.from('romylabs_day4_payment_reminders')
+    let claimQuery=db.from('romylabs_day4_payment_reminders')
       .update({status:'sending',last_attempt_at:now.toISOString(),recipient:email,amount_cents:due})
-      .eq('id',queued.id).eq('status',queued.status).select('id').maybeSingle()
+      .eq('id',queued.id).eq('status',queued.status)
+    if(queued.status==='sending')claimQuery=claimQuery.eq('last_attempt_at',queued.last_attempt_at)
+    const {data:claim}=await claimQuery.select('id').maybeSingle()
     if(!claim)continue
 
     // Check again after claim to avoid emailing offices that paid while job ran.
-    const {data:latest}=await db.from('romylabs_subscription_payments')
+    const {data:latest,error:latestError}=await db.from('romylabs_subscription_payments')
       .select('amount_cents,paid_at').eq('account_id',account.id)
       .eq('status','succeeded').gte('paid_at',period)
+    if(latestError){
+      await db.from('romylabs_day4_payment_reminders').update({status:'pending',last_error:'payment recheck failed'}).eq('id',claim.id)
+      outcomes.push({account_id:account.id,result:'payment_recheck_failed'});continue
+    }
     const paidNow=(latest||[]).filter(p=>p.paid_at&&sameMonth(p.paid_at,clock.year,clock.month))
       .reduce((sum,p)=>sum+Number(p.amount_cents||0),0)
     if(paidNow>=account.monthly_amount_cents){
