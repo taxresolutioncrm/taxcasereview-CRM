@@ -1,6 +1,27 @@
 -- Dedicated private system sender for RomyLabs office subscription reminders.
 -- Fail closed when a CRM has no registered nonpersonal mailbox and vault credential.
 -- Does not modify the existing general-purpose Stalwart transport RPC.
+-- The TaxRes vault already contains info@taxrescrm.net, but the existing
+-- active mail routes used a personal outbound address. Register the verified
+-- generic mailbox without modifying any other TaxRes mail route.
+insert into public.romylabs_mailboxes
+  (email_address,product_id,tenant_id,display_name,outbound_from,inbox_owner,active)
+select 'info@taxrescrm.net','taxres_crm',m.tenant_id,'TaxRes System Reminder',
+       'info@taxrescrm.net','info@taxrescrm.net',true
+from public.romylabs_mailboxes m
+where m.product_id='taxres_crm' and m.tenant_id is not null
+  and exists (
+    select 1 from public.credential_vault_entries c
+    where c.product_id='taxres_crm' and lower(trim(c.username))='info@taxrescrm.net'
+      and lower(coalesce(c.service,'')) like 'stalwart%'
+  )
+  and not exists (
+    select 1 from public.romylabs_mailboxes x
+    where lower(x.email_address)='info@taxrescrm.net'
+  )
+order by m.created_at
+limit 1;
+
 create or replace function public.romylabs_system_reminder_transport(p_product_key text)
 returns jsonb
 language plpgsql
