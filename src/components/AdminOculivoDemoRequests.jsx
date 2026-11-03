@@ -86,7 +86,7 @@ export default function AdminOculivoDemoRequests() {
           <label style={{display:'block',fontSize:12,color:'#cbd5e1',marginTop:12}}>Contact outcome
             <textarea style={{...field,minHeight:64,resize:'vertical'}} maxLength={2000} value={draft.contact_outcome??item.contact_outcome??''} onChange={e=>update('contact_outcome',e.target.value)} placeholder="When contacted, note the result before completing"/>
           </label>
-          <button type="button" disabled={saving===item.id||!drafts[item.id]} style={{...btn,marginTop:12,opacity:saving===item.id?.6:1}} onClick={()=>void save(item)}>{saving===item.id?'Saving…':'Save follow-up'}</button>
+          <button type="button" disabled={saving===item.id||!drafts[item.id]} style={{...btn,marginTop:12,opacity:saving===item.id ? .6 : 1}} onClick={()=>void save(item)}>{saving===item.id?'Saving…':'Save follow-up'}</button>
         </article>
       })}
     </div>}
