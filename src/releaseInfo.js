@@ -70,6 +70,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'PoolVerge reuses its registered generic mailbox for office billing notices, while products without verified nonpersonal mailboxes remain blocked',
   'TaxRes now registers its existing generic info@ sender for system billing reminders without altering personal mailbox routes',
   'System payment notices are branded per CRM, use only a secure service-only mail transport, and are withheld if the CRM has no verified nonpersonal sender',
   'System Reminder <TaxRes sender> is used for monthly SaaS office payment notices, rather than the RomyLabs mail identity',
