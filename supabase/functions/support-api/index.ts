@@ -410,7 +410,20 @@ async function handleAddReply(
 // authenticate to this API with HMAC. Reuse that trust boundary instead of
 // copying mailbox passwords into product databases or browsers.
 
-const SYSTEM_MAIL_KINDS = new Set(['auth_invite', 'auth_access', 'auth_recovery'])
+const SYSTEM_MAIL_KINDS_BY_PRODUCT: Record<string, Set<string>> = {
+  arcvena: new Set(['auth_invite', 'auth_access', 'auth_recovery']),
+  restore_relay: new Set(['booking_invite', 'booking_confirmation', 'booking_office_notification']),
+}
+const SYSTEM_MAIL_BRAND_BY_PRODUCT: Record<string, { name: string; forbidden: string[] }> = {
+  arcvena: {
+    name: 'Arcvena',
+    forbidden: ['Tax Case Review', 'TaxRes CRM', 'Nashville Tax Solutions', 'CloudCPA', 'Restore Relay'],
+  },
+  restore_relay: {
+    name: 'Restore Relay',
+    forbidden: ['Tax Case Review', 'TaxRes CRM', 'Nashville Tax Solutions', 'CloudCPA', 'Arcvena', 'Camvella', 'BocaSync'],
+  },
+}
 const MAX_SYSTEM_SUBJECT_LEN = 300
 const MAX_SYSTEM_HTML_LEN = 200_000
 
@@ -559,16 +572,18 @@ async function handleSendSystemEmail(
   product: string,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  // Keep this endpoint narrow. It exists specifically so the Arcvena project can
-  // use the already-registered Arcvena Stalwart identity in the central vault.
-  if (product !== 'arcvena') return authError()
+  // Keep this endpoint narrow. Product backends use their existing HMAC support
+  // credential while the centrally vaulted Stalwart/JMAP password stays here.
+  const allowedKinds = SYSTEM_MAIL_KINDS_BY_PRODUCT[product]
+  const brand = SYSTEM_MAIL_BRAND_BY_PRODUCT[product]
+  if (!allowedKinds || !brand) return authError()
 
   const kind = cleanHeader(body.kind).toLowerCase()
   const to = cleanHeader(body.to).toLowerCase()
   const subject = cleanHeader(body.subject)
   const html = String(body.html ?? '')
 
-  if (!SYSTEM_MAIL_KINDS.has(kind)) return validationError('Unsupported system mail kind')
+  if (!allowedKinds.has(kind)) return validationError('Unsupported system mail kind')
   if (!validEmailAddress(to)) return validationError('A valid recipient email is required')
   if (!subject || subject.length > MAX_SYSTEM_SUBJECT_LEN) {
     return validationError('System email subject is invalid')
@@ -579,17 +594,16 @@ async function handleSendSystemEmail(
 
   // Prevent this highly privileged relay from being repurposed for unrelated
   // mail or another RomyLabs product.
-  if (!/arcvena/i.test(subject + '\n' + html)) {
-    return validationError('Arcvena branding is required')
+  if (!(subject + '\n' + html).toLowerCase().includes(brand.name.toLowerCase())) {
+    return validationError(brand.name + ' branding is required')
   }
-  const forbiddenBrands = ['Tax Case Review', 'TaxRes CRM', 'Nashville Tax Solutions', 'CloudCPA']
-  if (forbiddenBrands.some(brand => subject.includes(brand) || html.includes(brand))) {
+  if (brand.forbidden.some(otherBrand => subject.includes(otherBrand) || html.includes(otherBrand))) {
     return validationError('Foreign branding is not allowed')
   }
 
   const { data: transport, error: transportError } = await supabase.rpc(
     'romylabs_stalwart_transport_for_product',
-    { p_product_key: 'arcvena' },
+    { p_product_key: product },
   )
   if (
     transportError ||
@@ -600,10 +614,11 @@ async function handleSendSystemEmail(
     !transport?.from_address
   ) {
     console.error(
-      'support-api Arcvena system mail transport unavailable:',
+      'support-api system mail transport unavailable:',
+      product,
       transportError?.message || transport?.error || 'incomplete transport',
     )
-    return jsonResp({ error: 'Arcvena system mail transport is unavailable' }, 503)
+    return jsonResp({ error: brand.name + ' system mail transport is unavailable' }, 503)
   }
 
   try {
@@ -612,7 +627,7 @@ async function handleSendSystemEmail(
       username: cleanHeader(transport.username),
       password: String(transport.password),
       fromAddress: cleanHeader(transport.from_address).toLowerCase(),
-      fromName: 'Arcvena',
+      fromName: brand.name,
       to,
       subject,
       html,
@@ -626,10 +641,11 @@ async function handleSendSystemEmail(
     })
   } catch (error) {
     console.error(
-      'support-api Arcvena Stalwart send failed:',
+      'support-api Stalwart send failed:',
+      product,
       error instanceof Error ? error.message : String(error),
     )
-    return jsonResp({ error: 'Arcvena Stalwart delivery failed' }, 502)
+    return jsonResp({ error: brand.name + ' Stalwart delivery failed' }, 502)
   }
 }
 
