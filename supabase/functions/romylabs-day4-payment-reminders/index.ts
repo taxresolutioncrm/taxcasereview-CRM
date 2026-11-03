@@ -26,6 +26,57 @@ const sameMonth=(value:string,year:number,month:number)=>{
   return p.year===year&&p.month===month
 }
 
+
+// Use the existing authenticated RomyLabs Stalwart/JMAP transport; no paid
+// transactional-mail service or new mailbox credentials are required.
+async function sendViaStalwart(db:any,recipient:string,subject:string,html:string){
+  const {data:transport,error:transportError}=await db.rpc('romylabs_stalwart_transport_for_product',{p_product_key:'romylabs'})
+  if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('RomyLabs Stalwart transport unavailable')
+  const host=String(transport.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
+  const from=String(transport.from_address||transport.username).toLowerCase()
+  const auth='Basic '+btoa(String(transport.username)+':'+String(transport.password))
+  const sessionRes=await fetch('https://'+host+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
+  if(!sessionRes.ok)throw new Error('Stalwart session HTTP '+sessionRes.status)
+  const session=await sessionRes.json()
+  const accountId=session.primaryAccounts?.['urn:ietf:params:jmap:mail']||Object.keys(session.accounts||{})[0]
+  if(!accountId||!session.apiUrl)throw new Error('Stalwart session missing account')
+  const apiUrl=String(session.apiUrl).replace('{accountId}','')
+  const metaRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+    methodCalls:[['Identity/get',{accountId},'i0'],['Mailbox/get',{accountId,properties:['id','name','role']},'m0']],
+  })})
+  if(!metaRes.ok)throw new Error('Stalwart mailbox lookup HTTP '+metaRes.status)
+  const meta=await metaRes.json()
+  const identities=meta.methodResponses?.find((v:any)=>v?.[0]==='Identity/get')?.[1]?.list||[]
+  const boxes=meta.methodResponses?.find((v:any)=>v?.[0]==='Mailbox/get')?.[1]?.list||[]
+  const identity=identities.find((v:any)=>String(v.email||'').toLowerCase()===from)
+  const drafts=boxes.find((v:any)=>v.role==='drafts')
+  const sentBox=boxes.find((v:any)=>v.role==='sent')
+  if(!identity?.id||!drafts?.id||!sentBox?.id)throw new Error('Stalwart sender identity or Drafts/Sent unavailable')
+  const draft={
+    from:[{email:from,name:'RomyLabs Billing'}],
+    to:[{email:recipient}],
+    replyTo:[{email:from}],
+    subject,
+    mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},
+    bodyValues:{body:{value:html,charset:'utf-8'}},
+    htmlBody:[{partId:'body',type:'text/html'}],
+  }
+  const submitRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+    methodCalls:[
+      ['Email/set',{accountId,create:{draft}},'e0'],
+      ['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},
+        onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sentBox.id]:true,'keywords/$draft':null}}},'s0'],
+    ],
+  })})
+  if(!submitRes.ok)throw new Error('Stalwart submission HTTP '+submitRes.status)
+  const result=await submitRes.json()
+  const submission=result.methodResponses?.find((v:any)=>v?.[0]==='EmailSubmission/set')?.[1]
+  if(submission?.notCreated?.sendIt||!submission?.created?.sendIt?.id)throw new Error('Stalwart did not accept submission')
+  return String(submission.created.sendIt.id)
+}
+
 Deno.serve(async(req:Request)=>{
   if(req.method!=='POST')return json({error:'Method not allowed'},405)
   const db=createClient(Deno.env.get('SUPABASE_URL')||'',Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'',{
@@ -38,9 +89,6 @@ Deno.serve(async(req:Request)=>{
   if(authError||authorized!==true)return json({error:'Unauthorized'},401)
   const now=new Date(),clock=monthInfo(now)
   if(clock.day!==4||clock.hour<9||clock.hour>=12)return json({ok:true,skipped:'outside the 4th, 9–12 Eastern'})
-  const brevoKey=Deno.env.get('BREVO_API_KEY')
-  const fromEmail=Deno.env.get('ROMYLABS_BILLING_FROM_EMAIL')||'billing@romylabs.com'
-  if(!brevoKey)return json({error:'BREVO_API_KEY not configured; no reminders were sent'},503)
 
   const period=clock.year+'-'+String(clock.month).padStart(2,'0')+'-01'
   const {data:accounts,error:accountError}=await db.from('romylabs_billing_accounts')
@@ -77,7 +125,7 @@ Deno.serve(async(req:Request)=>{
     },{onConflict:'account_id,period_month',ignoreDuplicates:true})
     // Claim pending or stale-in-progress reminders exactly once.
     const {data:queued,error:queueError}=await db.from('romylabs_day4_payment_reminders')
-      .select('id,status,last_attempt_at').eq('account_id',account.id)
+      .select('id,status,last_attempt_at,attempts').eq('account_id',account.id)
       .eq('period_month',period).maybeSingle()
     if(queueError||!queued){outcomes.push({account_id:account.id,result:'outbox_error'});continue}
     if(queued.status==='sent'){outcomes.push({account_id:account.id,result:'already_sent'});continue}
@@ -116,22 +164,16 @@ Deno.serve(async(req:Request)=>{
       '<p>Please arrange payment at your earliest convenience. If you have already paid, please reply with the date or confirmation so we can reconcile our records.</p>'+
       '<p>Thank you,<br><strong>RomyLabs Billing</strong></p></div>'
     try{
-      const response=await fetch('https://api.brevo.com/v3/smtp/email',{
-        method:'POST',headers:{'api-key':brevoKey,'content-type':'application/json'},
-        body:JSON.stringify({sender:{name:'RomyLabs Billing',email:fromEmail},
-          to:[{email,name:account.account_name}],subject,htmlContent:html}),
-      })
-      if(!response.ok)throw new Error('Email provider HTTP '+response.status)
-      const payload=await response.json().catch(()=>({}))
+      const submissionId=await sendViaStalwart(db,email,subject,html)
       await db.from('romylabs_day4_payment_reminders').update({
         status:'sent',sent_at:new Date().toISOString(),last_error:null,
-        provider_message_id:String(payload.messageId||''),attempts:1,
+        provider_message_id:'stalwart:'+submissionId,attempts:queued.attempts?Number(queued.attempts)+1:1,
       }).eq('id',claim.id)
       outcomes.push({account_id:account.id,result:'sent'})
     }catch(error){
       const message=String(error instanceof Error?error.message:error)
       await db.from('romylabs_day4_payment_reminders').update({
-        status:'pending',last_error:message,attempts:1,
+        status:'pending',last_error:message,attempts:Number(queued.attempts||0)+1,
       }).eq('id',claim.id)
       outcomes.push({account_id:account.id,result:'send_failed'})
     }
