@@ -54,6 +54,8 @@ Deno.serve(async req=>{
  try{const raw=await req.text();if(raw.length>8192)return json({ok:false,error:'Payload too large'},413);body=JSON.parse(raw)}
  catch{return json({ok:false,error:'Invalid JSON'},400)}
  if(body?.product!=='oculivo'||body?.event!=='demo_request'||body?.source!=='oculivo.com'||!body?.consent)return json({ok:false,error:'Invalid Oculivo lead event'},400)
+ const requestKey=clean(body.request_id,36)
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))return json({ok:false,error:'Invalid request ID'},400)
  const c=body.contact||{}
  const name=clean(c.name,120),email=clean(c.email,254).toLowerCase(),practice=clean(c.practice,160),specialty=clean(c.specialty,40),locations=clean(c.locations,12),notes=clean(c.message,900)
  if(!name||!practice||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!['optometry','ophthalmology','optical','multi-specialty','other'].includes(specialty)||!['1','2-5','6+'].includes(locations))return json({ok:false,error:'Invalid contact details'},400)
@@ -62,8 +64,12 @@ Deno.serve(async req=>{
  const admin=createClient(url,key,{auth:{persistSession:false}})
  const attribution=body.attribution&&typeof body.attribution==='object'&&!Array.isArray(body.attribution)?Object.fromEntries(['utm_source','utm_medium','utm_campaign','landing_path'].map(k=>[k,clean(body.attribution[k],120)])):{}
  const {data:lead,error}=await admin.from('romylabs_demo_requests').insert({
-   product_id:'oculivo',source:'oculivo.com',lead_name:name,lead_email:email,practice_name:practice,specialty,locations,notes,attribution
+   request_key:requestKey,product_id:'oculivo',source:'oculivo.com',lead_name:name,lead_email:email,practice_name:practice,specialty,locations,notes,attribution
  }).select('id').single()
+ if(error?.code==='23505'){
+  const {data:existing,error:lookupError}=await admin.from('romylabs_demo_requests').select('id,notification_submission_id').eq('request_key',requestKey).maybeSingle()
+  if(!lookupError&&existing?.id)return json({ok:true,already_received:true,notification_submitted:!!existing.notification_submission_id})
+ }
  if(error||!lead?.id){console.error('[oculivo-demo-intake] lead database insert failed',error?.code||'unknown');return json({ok:false,error:'Lead could not be saved'},503)}
  try{
   const submissionId=await submitStalwartEmail(admin,{name,email,practice,specialty,locations},String(lead.id))
