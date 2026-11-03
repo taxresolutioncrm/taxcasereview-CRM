@@ -2,7 +2,7 @@
 -- Service-role-only creation. Called by a dedicated Edge Function which
 -- independently checks caller JWT, owner membership and selected office.
 CREATE OR REPLACE FUNCTION public.centurion_create_office(
- p_code text, p_name text, p_admin_user uuid
+ p_code text, p_name text, p_admin_user uuid, p_owner_user uuid
 ) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=''
 AS $$
 DECLARE v_id uuid;
@@ -13,6 +13,10 @@ BEGIN
  THEN RAISE EXCEPTION 'Office name/code required'; END IF;
  IF p_admin_user IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id=p_admin_user)
  THEN RAISE EXCEPTION 'Validated administrator required'; END IF;
+ IF p_owner_user IS NULL OR NOT EXISTS (
+   SELECT 1 FROM public.centurion_office_memberships
+   WHERE user_id=p_owner_user AND active AND role='owner'
+ ) THEN RAISE EXCEPTION 'Verified platform owner required'; END IF;
  IF EXISTS(SELECT 1 FROM public.tenants WHERE lower(tenant_code)=lower(trim(p_code)))
  THEN RAISE EXCEPTION 'Office code already in use'; END IF;
  INSERT INTO public.tenants(tenant_code,firm_name,status,plan_tier)
@@ -22,9 +26,12 @@ BEGIN
  VALUES ('tenant_' || replace(v_id::text,'-',''),v_id,trim(p_name),trim(p_name));
  INSERT INTO public.centurion_office_memberships(user_id,tenant_id,role)
  VALUES (p_admin_user,v_id,'admin');
+ INSERT INTO public.centurion_office_memberships(user_id,tenant_id,role)
+ VALUES (p_owner_user,v_id,'owner')
+ ON CONFLICT (user_id,tenant_id) DO UPDATE SET role='owner', active=true;
  RETURN v_id;
 END $$;
-REVOKE ALL ON FUNCTION public.centurion_create_office(text,text,uuid)
+REVOKE ALL ON FUNCTION public.centurion_create_office(text,text,uuid,uuid)
  FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.centurion_create_office(text,text,uuid)
+GRANT EXECUTE ON FUNCTION public.centurion_create_office(text,text,uuid,uuid)
  TO service_role;
