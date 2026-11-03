@@ -17,6 +17,38 @@ assert(code.includes("sameMonth("), 'Must check payment month')
 assert(code.includes("paidNow>=account.monthly_amount_cents"), 'Must re-check payment before sending')
 assert(code.includes("sendViaStalwart"), 'Must use Stalwart transport')
 assert(code.includes("romylabs_system_reminder_transport"), 'Must resolve a private sender per product')
+assert(code.includes('renderBrandedPaymentReminder('), 'CRM branded email template missing')
+assert(code.includes('BRAND_LOGO_FILES'), 'Published product logo registry missing')
+// Every product logo must be a real, product-specific asset committed to this repository.
+// Never allow a generated stand-in or another CRM's logo to pass certification.
+const officialAssets = {
+  taxres_crm:'taxrescrm-logo.png',
+  arcvena:'arcvena-logo.png',
+  bocasync:'bocasync-logo.svg',
+  camvella:'camvella-logo.svg',
+  restore_relay:'restore-relay-logo.svg',
+  romylabs:'romylabs-logo.png',
+  oculivo:'oculivo-logo.svg',
+  groundivo:'groundivo-logo.svg',
+}
+for(const [product,file] of Object.entries(officialAssets)){
+  assert(fs.existsSync('public/'+file), 'Official CRM logo asset missing: '+product+' '+file)
+  assert(code.includes(product+":'"+file+"'"), 'Wrong branded logo mapping: '+product)
+}
+assert(!code.includes('placeholder-logo'), 'Placeholder logos are prohibited')
+
+for(const key of ['taxres_crm','arcvena','bocasync','camvella','restore_relay','romylabs','oculivo','groundivo']){
+  assert(code.includes(key+" :" ) || code.includes(key+":'"), 'Brand asset missing for '+key)
+}
+assert(code.includes('romylabs_products'), 'Per-CRM registry branding lookup missing')
+assert(code.includes('missing_branded_email_assets'), 'Unbranded products must be blocked')
+assert(code.includes('brandFor(account.product_key,product)'), 'Brand must match account product')
+assert(code.includes('alt="\'+name+\' logo'), 'Accessible logo required in email')
+assert(code.includes('REMAINING BALANCE'), 'Balance card missing')
+assert(code.includes('automated billing reminder'), 'Automated reminder footer missing')
+assert(code.includes('Please arrange payment through your existing payment method'), 'Must preserve off-platform payment arrangement')
+assert(!code.includes('romy@'), 'Do not expose personal mail identities in branded email')
+
 assert(code.includes("p_product_key:productKey"), 'Must pass office product key, not a fixed product')
 assert(code.includes("name:brand+' System Reminder'"), 'Must brand sender by CRM')
 assert(code.includes("product_key"), 'Must query office product')

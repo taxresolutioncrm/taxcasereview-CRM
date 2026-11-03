@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'RomyLabs office payment reminder emails now render the correct CRM logo, brand colors, website, responsive balance summary and system-sender details; unbranded or personal-sender notices remain blocked',
   'Monthly office subscription reminders use CRM-specific verified nonpersonal system mailboxes and never fall back to a personal email identity',
   'RomyLabs office payment reminders now send using TaxRes email with System Reminder as the sender display name',
   'RomyLabs office subscription billing checks outstanding monthly payments after the third and sends one audited morning reminder to each unpaid billing account',
@@ -113,9 +114,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.41',
+  version: '3.2.42',
   releasedAt: '2026-11-03',
-  title: 'RomyLabs Admin Portal 3.2.41 — TaxRes System Reminder Sender',
+  title: 'RomyLabs Admin Portal 3.2.42 — TaxRes System Reminder Sender',
   changes: [
     'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
     ...ADMIN_DEMO_TASK_CHANGES,
@@ -125,9 +126,9 @@ const DEFAULT_RELEASE = {
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.41',
+    version: '3.2.42',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.41 — Admin Meeting Reminders',
+    title: 'CRM 3.2.42 — Admin Meeting Reminders',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -149,17 +150,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.41',
+    version: '3.2.42',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.41 — Admin Meeting Reminders',
+    title: 'CRM 3.2.42 — Admin Meeting Reminders',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.41',
+    version: '3.2.42',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.41 — Admin Meeting Reminders',
+    title: 'CRM 3.2.42 — Admin Meeting Reminders',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
