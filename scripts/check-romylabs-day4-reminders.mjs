@@ -27,6 +27,7 @@ assert(privateSql.includes("romylabs_system_reminder_transport"), 'Dedicated res
 assert(privateSql.includes("revoke all on function public.romylabs_system_reminder_transport(text) from public,anon,authenticated"), 'Resolver must be server-only')
 assert(privateSql.includes("private_sender_unavailable"), 'Private sender must fail closed')
 assert(privateSql.includes("'info@taxrescrm.net','taxres_crm'"), 'Register TaxRes nonpersonal mailbox')
+assert(privateSql.includes("'info@poolverge.com','pool_crm'"), 'Register verified PoolVerge nonpersonal sender')
 assert(privateSql.includes("from_address',v_sender"), 'Return selected nonpersonal address')
 assert(privateSql.includes("lower(trim(m.outbound_from))=lower(trim(c.username))"), 'Sender must match a product mailbox')
 assert(privateSql.includes("^(info|support|billing|notifications|no-reply|noreply|system|reminders)@"), 'Reject personal sender names')
