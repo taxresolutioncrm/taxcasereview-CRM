@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase } from '../../lib/supabase'
 
 // Runs once in the authenticated RomyLabs Admin shell, not just on /calendar.
 // Browser-local wall-clock comparison keeps calendar HH:mm values in America/New_York,
