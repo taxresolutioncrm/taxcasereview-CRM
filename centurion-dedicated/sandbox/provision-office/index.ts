@@ -29,11 +29,18 @@ serve(async req=>{
     if(!name||!(/^[A-Z0-9_-]{3,24}$/).test(code)||!(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).test(adminEmail))return respond({error:'Valid office, code and admin email required'},400)
     // Require the new office admin to already have a verified Auth identity.
     // Avoid creating a partially provisioned tenant by sending an invitation first.
-    const adminId=String(body.admin_user_id||'')
-    if(!(/^[a-f0-9-]{36}$/i).test(adminId))return respond({error:'Verified admin account ID required'},409)
-    const {data:adminIdentity,error:identityError}=await admin.auth.admin.getUserById(adminId)
-    if(identityError||!adminIdentity?.user?.email_confirmed_at||adminIdentity.user.email?.toLowerCase()!==adminEmail)return respond({error:'Administrator identity must be verified first'},409)
-    const {data:id,error:createError}=await admin.rpc('centurion_create_office',{p_code:code,p_name:name,p_admin_user:adminId})
+    // Resolve existing, verified admin by email on the server; never trust a
+    // browser-supplied Auth user ID or make owners search for UUIDs.
+    let verifiedAdminId: string | null = null
+    for (let page=1;page<=20 && !verifiedAdminId;page++) {
+      const {data:users,error:listError}=await admin.auth.admin.listUsers({page,perPage:100})
+      if(listError)return respond({error:'Admin identity lookup failed'},500)
+      const match=(users?.users||[]).find(x=>x.email?.toLowerCase()===adminEmail && x.email_confirmed_at)
+      if(match)verifiedAdminId=match.id
+      if((users?.users||[]).length<100)break
+    }
+    if(!verifiedAdminId)return respond({error:'The new office administrator must first verify their Centurion login email'},409)
+    const {data:id,error:createError}=await admin.rpc('centurion_create_office',{p_code:code,p_name:name,p_admin_user:verifiedAdminId})
     if(createError)return respond({error:createError.message},409)
     return respond({tenant_id:id,tenant_code:code,status:'created',note:'Office created in Centurion dedicated project'})
   }catch{return respond({error:'Office provisioning failed'},500)}
