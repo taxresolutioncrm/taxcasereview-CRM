@@ -47,6 +47,7 @@ const routeToManual = {
   '/reports':'reports',
   '/workflows':'workflows',
   '/settings':'settings',
+  '/new-office':'settings', // Dedicated Centurion project only; central office onboarding remains separate
   '/training':'training',
   '/manual':'manual-about',
 }

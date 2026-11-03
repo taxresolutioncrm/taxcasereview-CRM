@@ -1,6 +1,6 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { supabase } from './lib/supabase'
+import { supabase, SUPABASE_URL } from './lib/supabase'
 import { Suspense, lazy, useEffect } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import { CallProvider } from './context/CallContext'
@@ -161,6 +161,7 @@ const AuthCallback = lazyWithRecovery('AuthCallback', () => import('./pages/Auth
 const QuickBooksCallback  = lazyWithRecovery('QuickBooksCallback', () => import('./pages/QuickBooksCallback'))
 const XeroCallback = lazyWithRecovery('XeroCallback', () => import('./pages/XeroCallback'))
 const NewOffice = lazyWithRecovery('NewOffice', () => import('./pages/NewOffice'))
+const CenturionOffices = lazyWithRecovery('CenturionOffices', () => import('./pages/CenturionOffices'))
 const AdminConsole = lazyWithRecovery('AdminConsole', () => import('./pages/AdminConsole'))
 const ImpersonateGate = lazyWithRecovery('ImpersonateGate', () => import('./pages/ImpersonateGate'))
 const AdminPortalGuard = lazyWithRecovery('AdminPortalGuard', () => import('./pages/AdminPortalGuard'))
@@ -369,7 +370,7 @@ function Shell() {
             <Route path="/fax"         element={<Guard section="fax"><Fax /></Guard>} />
             <Route path="/workflows"   element={<Guard section="workflows"><Workflows /></Guard>} />
             <Route path="/timeentry"   element={<Guard section="payments"><TimeEntry /></Guard>} />
-            <Route path="/new-office"  element={<NewOffice />} />
+            <Route path="/new-office"  element={SUPABASE_URL.includes("rkniemzmivnuhpdwkduc.supabase.co") ? <CenturionOffices /> : <NewOffice />} />
             <Route path="/admin"       element={<AdminConsole />} />
             <Route path="/training"    element={<Training />} />
             <Route path="/manual"      element={<Manual />} />

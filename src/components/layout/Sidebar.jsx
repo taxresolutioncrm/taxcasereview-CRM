@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
-import { supabase } from '../../lib/supabase'
+import { supabase, SUPABASE_URL } from '../../lib/supabase'
 import { FIRM } from '../../lib/firmBranding'
 import { OPEN_STATUSES } from '../../lib/caseStatuses'
 import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
@@ -122,6 +122,7 @@ const SECTIONS = [
       { path: '/reports',   icon: BarIcon,     label: 'Reports',       section: 'reports' },
       { path: '/workflows', icon: GearIcon,    label: 'Workflows',     section: 'workflows' },
       { path: '/settings',  icon: GearIcon,    label: 'Settings',      section: 'settings' },
+      { path: '/new-office', icon: GearIcon, label: 'Centurion Offices', section: null, centurionOnly: true },
     ]
   },
   {
@@ -697,6 +698,7 @@ export default function Sidebar() {
 
             {/* Items — only show when open */}
             {isOpen && section.items.map(item => {
+              if (item.centurionOnly && !SUPABASE_URL.includes('rkniemzmivnuhpdwkduc.supabase.co')) return null
               const requiredPlan = item.section && ROUTE_PLAN_MINIMUM[item.section]
               const tierLocked = requiredPlan && !planAtLeast(planTier, requiredPlan)
               if (item.section && !can('view', item.section) && !tierLocked) return null

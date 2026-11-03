@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Centurion dedicated CRM stages native office administration, verified administrator invitations, and tenant-scoped communications',
   'FormaCorp draft Articles archive enforces tenant-scoped storage paths and active-office access',
   'All RomyLabs public demo bookings now create durable central Admin Portal alerts, independent of email delivery',
   'Business demo owner alerts use the registered RomyLabs Stalwart sender with audited submission and visible failures',
@@ -93,9 +94,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.33',
+  version: '3.2.34',
   releasedAt: '2026-11-01',
-  title: 'RomyLabs Admin Portal 3.2.33 — Camvella Dedicated Project Cutover',
+  title: 'RomyLabs Admin Portal 3.2.34 — Centurion Multi-Office Staging',
   changes: [
     'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
     ...ADMIN_DEMO_TASK_CHANGES,
@@ -105,9 +106,9 @@ const DEFAULT_RELEASE = {
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.33',
+    version: '3.2.34',
     releasedAt: '2026-11-01',
-    title: 'CRM 3.2.33 — Camvella Dedicated Project Integration Cutover',
+    title: 'CRM 3.2.34 — Centurion Multi-Office Staging',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -129,17 +130,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.33',
+    version: '3.2.34',
     releasedAt: '2026-11-01',
-    title: 'CRM 3.2.33 — Camvella Dedicated Project Integration Cutover',
+    title: 'CRM 3.2.34 — Centurion Multi-Office Staging',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.33',
+    version: '3.2.34',
     releasedAt: '2026-11-01',
-    title: 'CRM 3.2.33 — Camvella Dedicated Project Integration Cutover',
+    title: 'CRM 3.2.34 — Centurion Multi-Office Staging',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
