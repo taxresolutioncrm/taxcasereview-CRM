@@ -40,7 +40,7 @@ serve(async req=>{
       if((users?.users||[]).length<100)break
     }
     if(!verifiedAdminId)return respond({error:'The new office administrator must first verify their Centurion login email'},409)
-    const {data:id,error:createError}=await admin.rpc('centurion_create_office',{p_code:code,p_name:name,p_admin_user:verifiedAdminId})
+    const {data:id,error:createError}=await admin.rpc('centurion_create_office',{p_code:code,p_name:name,p_admin_user:verifiedAdminId,p_owner_user:user.id})
     if(createError)return respond({error:createError.message},409)
     return respond({tenant_id:id,tenant_code:code,status:'created',note:'Office created in Centurion dedicated project'})
   }catch{return respond({error:'Office provisioning failed'},500)}
