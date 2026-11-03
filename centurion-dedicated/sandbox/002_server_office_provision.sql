@@ -18,6 +18,8 @@ BEGIN
  INSERT INTO public.tenants(tenant_code,firm_name,status,plan_tier)
  VALUES(upper(trim(p_code)),trim(p_name),'trial','starter')
  RETURNING id INTO v_id;
+ INSERT INTO public.settings(id,tenant_id,name,firmname)
+ VALUES ('tenant_' || replace(v_id::text,'-',''),v_id,trim(p_name),trim(p_name));
  INSERT INTO public.centurion_office_memberships(user_id,tenant_id,role)
  VALUES (p_admin_user,v_id,'admin');
  RETURN v_id;
