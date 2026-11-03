@@ -68,6 +68,7 @@ const ADMIN_DEMO_TASK_CHANGES = [
   'Oculivo website demo requests create durable Admin Portal follow-up tasks without requiring a scheduled appointment',
   'Oculivo demo lead notifications use the existing RomyLabs Stalwart relay with submission tracking and visible failures',
   'Oculivo demo lead submissions remain deduplicated across browser retries',
+  'Oculivo form confirmations acknowledge durable lead storage while Stalwart notification submissions run separately with audited status',
   'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
   'Admin calendar restores missing historic RomyLabs appointments and records product identity on new events',
   'Camvella proxy uses its dedicated support credential and reports actionable downstream errors without leaking secrets',
