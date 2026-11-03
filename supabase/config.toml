@@ -267,3 +267,7 @@ verify_jwt = true
 
 [functions.client-sensitive]
 verify_jwt = true
+
+# Oculivo website server-to-server lead intake (function validates private bearer secret).
+[functions.oculivo-demo-intake]
+verify_jwt = false
