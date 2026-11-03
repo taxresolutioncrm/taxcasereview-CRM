@@ -253,7 +253,7 @@ export default function Calendar() {
   async function saveEvent() {
     if (!form.title || !form.date) { showToast('Title and date required'); return }
     setSaving(true)
-    let payload = { ...form, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : form.assignedTo, updated_at: new Date().toISOString() }
+    let payload = { ...form, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : form.assignedTo, ...(isRomyLabsAdmin ? { product_id: form.product_id || 'romylabs' } : {}), updated_at: new Date().toISOString() }
     let error
     // Retry loop: strip unknown columns if PostgREST rejects them (same pattern as Clients.jsx)
     for (let attempt = 0; attempt < 12; attempt++) {
