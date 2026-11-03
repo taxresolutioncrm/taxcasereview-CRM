@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Restore Relay central support HMAC verification no longer uses the Edge WebCrypto path that EarlyDrop-hung live training mail before Stalwart submission',
   'Restore Relay live training and client-meeting email invites now use the central Stalwart/JMAP vault relay instead of Brevo acceptance',
   'Restore Relay booking mail is authorized through the central RomyLabs Stalwart/JMAP vault relay instead of duplicating mailbox credentials in the product project',
   'FormaCorp draft Articles archive enforces tenant-scoped storage paths and active-office access',
@@ -95,9 +96,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.35',
+  version: '3.2.36',
   releasedAt: '2026-11-03',
-  title: 'RomyLabs Admin Portal 3.2.35 — Restore Relay Training Mail Relay',
+  title: 'RomyLabs Admin Portal 3.2.36 — Restore Relay Mail Relay Runtime Fix',
   changes: [
     'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
     ...ADMIN_DEMO_TASK_CHANGES,
@@ -107,9 +108,9 @@ const DEFAULT_RELEASE = {
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.35',
+    version: '3.2.36',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.35 — Restore Relay Central Mail Relay',
+    title: 'CRM 3.2.36 — Restore Relay Central Mail Relay',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -131,17 +132,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.35',
+    version: '3.2.36',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.35 — Restore Relay Central Mail Relay',
+    title: 'CRM 3.2.36 — Restore Relay Central Mail Relay',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.35',
+    version: '3.2.36',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.35 — Restore Relay Central Mail Relay',
+    title: 'CRM 3.2.36 — Restore Relay Central Mail Relay',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
