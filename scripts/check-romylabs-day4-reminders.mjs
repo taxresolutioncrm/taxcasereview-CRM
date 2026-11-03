@@ -19,6 +19,24 @@ assert(code.includes("sendViaStalwart"), 'Must use Stalwart transport')
 assert(code.includes("romylabs_system_reminder_transport"), 'Must resolve a private sender per product')
 assert(code.includes('renderBrandedPaymentReminder('), 'CRM branded email template missing')
 assert(code.includes('BRAND_LOGO_FILES'), 'Published product logo registry missing')
+// Every product logo must be a real, product-specific asset committed to this repository.
+// Never allow a generated stand-in or another CRM's logo to pass certification.
+const officialAssets = {
+  taxres_crm:'taxrescrm-logo.png',
+  arcvena:'arcvena-logo.png',
+  bocasync:'bocasync-logo.svg',
+  camvella:'camvella-logo.svg',
+  restore_relay:'restore-relay-logo.svg',
+  romylabs:'romylabs-logo.png',
+  oculivo:'oculivo-logo.svg',
+  groundivo:'groundivo-logo.svg',
+}
+for(const [product,file] of Object.entries(officialAssets)){
+  assert(fs.existsSync('public/'+file), 'Official CRM logo asset missing: '+product+' '+file)
+  assert(code.includes(product+":'"+file+"'"), 'Wrong branded logo mapping: '+product)
+}
+assert(!code.includes('placeholder-logo'), 'Placeholder logos are prohibited')
+
 for(const key of ['taxres_crm','arcvena','bocasync','camvella','restore_relay','romylabs','oculivo','groundivo']){
   assert(code.includes(key+" :" ) || code.includes(key+":'"), 'Brand asset missing for '+key)
 }
