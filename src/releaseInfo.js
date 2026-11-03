@@ -66,6 +66,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin Portal reminder module resolves its Supabase client correctly in the nested component bundle',
   'Calendar reminders now appear throughout the Admin Portal at 30, 15 and 5 minutes before each meeting (desktop notifications optional)',
   'Admin calendar restores missing historic RomyLabs appointments and records product identity on new events',
   'Camvella proxy uses its dedicated support credential and reports actionable downstream errors without leaking secrets',
