@@ -472,6 +472,12 @@ async function loadPlatformOfficeRowsFresh() {
     })
   }
 
+  // Do not display Nashville's legacy TaxRes registry entry.
+  for (let i=rows.length-1;i>=0;i--) {
+    if (rows[i].product === 'taxres_crm' &&
+        String(rows[i].source_id || rows[i].id) === NASH_TENANT) rows.splice(i,1)
+  }
+
   // Final revenue overlay: every product/office gets subscription collections
   // exclusively from the central RomyLabs billing ledger. This prevents an
   // office's own client revenue from ever appearing as RomyLabs collections.
