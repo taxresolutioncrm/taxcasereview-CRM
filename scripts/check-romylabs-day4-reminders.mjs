@@ -1,0 +1,24 @@
+import fs from 'node:fs'
+import assert from 'node:assert/strict'
+import { transform } from 'esbuild'
+
+const code = fs.readFileSync('supabase/functions/romylabs-day4-payment-reminders/index.ts', 'utf8')
+const migration = fs.readFileSync('supabase/migrations/20261103220000_romylabs_day4_office_payment_reminders.sql','utf8')
+await transform(code, { loader:'ts', target:'es2022' })
+assert(code.includes("clock.day!==4||clock.hour<9||clock.hour>=12"), 'Fourth-of-month morning gate missing')
+assert(code.includes("timeZone:'America/New_York'"), 'Eastern time zone missing')
+assert(code.includes("verify_internal_cron_token"), 'Server-side cron auth missing')
+assert(code.includes("romylabs_billing_accounts"), 'Must use central SaaS accounts')
+assert(code.includes("romylabs_subscription_payments"), 'Must check actual received office payments')
+assert(code.includes("romylabs_invoices"), 'Must check settled invoice status')
+assert(code.includes("romylabs_day4_payment_reminders"), 'Idempotency outbox missing')
+assert(code.includes("sameMonth("), 'Must check payment month')
+assert(code.includes("paidNow>=account.monthly_amount_cents"), 'Must re-check payment before sending')
+assert(code.includes("sendViaStalwart"), 'Must use Stalwart transport')
+assert(!code.includes('BREVO_API_KEY')&&!code.includes('api.brevo.com'),'No external Brevo provider')
+assert(!code.includes('suspension_pending')&&!code.includes('auto_suspend'),'Early reminder cannot suspend office')
+assert(migration.includes('unique(account_id,period_month)'), 'Per-account per-month uniqueness missing')
+assert(migration.includes('romylabs-office-day4-payment-reminders'), 'Named cron missing')
+assert(migration.includes("'tcr_internal_cron_token'"), 'Existing Vault cron token not used')
+assert(migration.includes("*/15 13-16 4 * *"), 'Fourth-day retry window missing')
+console.log('PASS RomyLabs office reminder: Edge TypeScript syntax, time zone, auth, Stalwart, payment guards, uniqueness, cron')
