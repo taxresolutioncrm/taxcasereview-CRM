@@ -268,6 +268,33 @@ serve(async req=>{
       return error?json({error:'Unable to register outbound call'},500):json({ok:true,id:data.id})
     }
 
+    // Provider-native recording for the direct call. This does not add a second
+    // call leg or change media routing. Errors never place the callee on hold.
+    if(action==='direct_outbound_record'){
+      const id=String(body?.id||'')
+      const callId=String(body?.call_id||'')
+      if(!/^[0-9a-f-]{36}$/i.test(id)||!/^[0-9a-f-]{36}$/i.test(callId))return json({error:'Invalid direct call identifiers'},400)
+      const {data:row,error:findErr}=await db.from('outbound_calls').select('id,status,provider_call_sid')
+        .eq('tenant_id',TENANT).eq('id',id).in('status',['pending','ringing','connected']).limit(1).maybeSingle()
+      if(findErr||!row)return json({error:'Direct outbound call not found'},404)
+      if(row.provider_call_sid===callId)return json({ok:true,already_registered:true})
+      if(row.provider_call_sid&&row.provider_call_sid!==callId)return json({error:'Different provider call already registered'},409)
+      const creds=await romylabsSignalWireCredentials()
+      if(!creds?.sw_space_url||!creds.sw_project_id||!creds.sw_api_token)return json({error:'Recording credentials unavailable'},503)
+      const provider=await fetch('https://'+String(creds.sw_space_url).replace(/^https?:\\/\\//,'').replace(/\\/$/,'')+'/api/calling/calls',{
+        method:'POST',headers:{Authorization:'Basic '+btoa(creds.sw_project_id+':'+creds.sw_api_token),'Content-Type':'application/json'},
+        body:JSON.stringify({command:'calling.record',id:callId,params:{
+          control_id:'romylabs-direct-'+id.slice(0,8),
+          record:{audio:{direction:'both',format:'mp3',stereo:true,max_length:0,initial_timeout:0,end_silence_timeout:0,terminators:''}}
+        }})
+      })
+      if(!provider.ok){console.error('[direct-outbound] recording rejected',provider.status);return json({error:'Provider recording request failed',status:provider.status},502)}
+      const {error:updErr}=await db.from('outbound_calls').update({provider_call_sid:callId})
+        .eq('id',id).eq('tenant_id',TENANT).neq('status','completed')
+      if(updErr)return json({error:'Recording started but audit update failed'},500)
+      return json({ok:true,recording_requested:true})
+    }
+
     if(action==='direct_outbound_state'){
       const id=String(body?.id||'')
       const state=String(body?.status||'')
