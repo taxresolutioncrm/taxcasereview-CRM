@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp now supports Florida AMBR authorized-member designation, registered-agent address reuse and a full signed filing review before handoff',
   'FormaCorp Florida LLC, profit corporation and nonprofit cases link to their official Sunbiz filing forms in the same browser window',
   'FormaCorp prepaid fax transport is separate from verified state submission and does not falsely mark government payment',
   'FormaCorp prepaid filing packets enforce active-office tenant isolation and failed upload cleanup',
