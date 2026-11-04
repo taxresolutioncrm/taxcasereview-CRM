@@ -74,6 +74,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs outbound calls hold the destination in conference waiting audio until the browser agent joins and automatically releases that wait on bridge connection',
   'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
   'Oculivo website demo requests create an admin follow-up task independently of scheduled appointments',
   'Oculivo demo lead notifications use the existing Stalwart transport, with submission IDs and visible errors',
@@ -123,9 +124,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.45',
+  version: '3.2.46',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.45 — Official Branded Billing Emails',
+  title: 'RomyLabs Admin Portal 3.2.46 — Outbound Call Bridge Recovery',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
