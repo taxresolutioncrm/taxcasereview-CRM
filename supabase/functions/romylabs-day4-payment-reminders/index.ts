@@ -83,7 +83,8 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
   const office=escapeHtml(accountName)
   const month=escapeHtml(monthLabel)
   const website=escapeHtml(brand.website)
-  const logo='cid:'+emailLogoCid(brand.productKey)
+  const EMAIL_LOGO_CID=emailLogoCid(brand.productKey)
+  const logo='cid:'+EMAIL_LOGO_CID
   const iconOnly=brand.name==='BocaSync'||brand.name==='PoolVerge'
   const logoWidth=iconOnly?56:170
   const logoHeight=iconOnly?56:65
@@ -137,6 +138,7 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
   const {data:transport,error:transportError}=await db.rpc('romylabs_system_reminder_transport',{p_product_key:productKey})
   if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('Private system sender not configured for '+productKey)
   const host=String(transport.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
+  const EMAIL_LOGO_CID=emailLogoCid(productKey)
   const from=String(transport.from_address||transport.username).trim().toLowerCase()
   if(!/^(info|support|billing|notifications|no-reply|noreply|system|reminders)@/i.test(from))
     throw new Error('Personal mailbox cannot send system reminders')
@@ -221,7 +223,7 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
     '--'+related,
     'Content-Type: image/png; name="official-crm-logo.png"',
     'Content-Transfer-Encoding: base64',
-    'Content-ID: <'+emailLogoCid(productKey)+'>',
+    'Content-ID: <'+EMAIL_LOGO_CID+'>',
     'Content-Disposition: inline; filename="official-crm-logo.png"',
     '',
     lines64(rawLogo),
