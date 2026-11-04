@@ -71,6 +71,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
   'Oculivo website demo requests create an admin follow-up task independently of scheduled appointments',
   'Oculivo demo lead notifications use the existing Stalwart transport, with submission IDs and visible errors',
   'Browser retries retain a single Oculivo lead record through an idempotent request key',
@@ -121,10 +122,7 @@ const DEFAULT_RELEASE = {
   version: '3.2.43',
   releasedAt: 'Pending production deployment',
   title: 'RomyLabs Admin Portal 3.2.43 — Oculivo Native Demo Leads',
-  changes: [
-    'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
-    ...ADMIN_DEMO_TASK_CHANGES,
-  ],
+  changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
