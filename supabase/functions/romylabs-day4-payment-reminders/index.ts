@@ -30,12 +30,12 @@ const EMAIL_LOGO_CID='billing-logo@romylabs.system'
 const BRAND_LOGO_FILES:Record<string,string>={
   taxres_crm:'taxrescrm-logo.png',
   arcvena:'arcvena-logo.png',
-  bocasync:'bocasync-logo.svg',
-  camvella:'camvella-logo.svg',
-  restore_relay:'restore-relay-logo.svg',
+  bocasync:'bocasync-logo.png',
+  camvella:'camvella-logo.png',
+  restore_relay:'restore-relay-logo.png',
   romylabs:'romylabs-logo.png',
-  oculivo:'oculivo-logo.svg',
-  groundivo:'groundivo-logo.svg',
+  oculivo:'oculivo-logo.png',
+  groundivo:'groundivo-logo.png',
 }
 const BRAND_DEFAULTS:Record<string,{website:string;accent:string}>={
   taxres_crm:{website:'https://taxrescrm.net',accent:'#2563EB'},
