@@ -744,25 +744,6 @@ async function handleSendSystemEmail(
   }
 
   try {
-    if (product === 'restore_relay') {
-      const gmailMessageId = await sendSystemMailViaGmail({
-        supabase,
-        fromName: 'Restore Relay',
-        replyTo: cleanHeader(transport.from_address).toLowerCase() || 'info@restorerelay.com',
-        to,
-        subject,
-        html,
-      })
-
-      return jsonResp({
-        ok: true,
-        provider: 'GMAIL_OAUTH',
-        from: 'central-gmail',
-        reply_to: cleanHeader(transport.from_address).toLowerCase() || 'info@restorerelay.com',
-        message_id: gmailMessageId,
-      })
-    }
-
     const submissionId = await sendSystemMailViaStalwart({
       host: cleanHeader(transport.host),
       username: cleanHeader(transport.username),
