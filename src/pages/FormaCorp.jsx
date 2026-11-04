@@ -540,7 +540,7 @@ export default function FormaCorp() {
       : plan === 'Full Service'
         ? ['State Filing','EIN','Operating Agreement','Banking','Compliance','S-Corp Election','Registered Agent','Company Changes']
         : ['State Filing','EIN','Operating Agreement','Banking','Compliance']
-    const due = wForm.state==='FL' ? `${new Date().getFullYear()+1}-05-01` : null
+    const due = wForm.state==='FL' ? `${Number((wForm.effective_date || new Date().toISOString().slice(0,10)).slice(0,4))+1}-05-01` : null
     const { error:lifecycleErr } = await supabase.from('formacorp_lifecycle').insert([{
       case_id:data.id,
       service_plan:plan,
@@ -781,7 +781,14 @@ export default function FormaCorp() {
     try {
       const packet = await buildFlFaxPacket(flSubmit.coverSheet, flSubmit.signedArticles)
       const filename = `FL-Filing-${(c.entity_name||'LLC').replace(/[^A-Za-z0-9]+/g,'-')}-${Date.now()}.pdf`
-      const path = `formacorp/${c.id}/${filename}`
+      const {data: tenantId, error: tenantError} = await supabase.rpc('current_tenant_id')
+      if (tenantError || !tenantId || String(tenantId) !== String(c.tenant_id)) {
+        throw new Error('This case is not in the currently authorized office.')
+      }
+      const {data: verified, error: caseError} = await supabase.from('formacorp')
+        .select('id').eq('id', c.id).eq('tenant_id', tenantId).single()
+      if (caseError || !verified) throw new Error('Cannot verify this formation case in the active office.')
+      const path = `${tenantId}/formacorp/${c.id}/${filename}`
       const { error: uploadErr } = await supabase.storage.from('documents').upload(path, packet, {upsert:false,contentType:'application/pdf'})
       if (uploadErr) throw uploadErr
       const { data:u, error:signErr } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
@@ -792,16 +799,10 @@ export default function FormaCorp() {
       if (faxErr) throw faxErr
       if (!fax?.success) throw new Error(fax?.error || 'Fax provider rejected the filing')
       await updateFloridaCase(c, {
-        fl_filing_status:'Submitted to Florida',
+        fl_filing_status:'Filing Queue',
         fl_submission_method:'prepaid_fax',
-        fl_tracking_number:fax.sid || c.fl_tracking_number || '',
-        fl_submitted_at:new Date().toISOString(),
-        fl_payment_status:'state_account',
-        state_fee_payment_status:'received',
-        state_fee_payment_reference:c.state_fee_payment_reference || c.fl_payment_reference || '',
-        fee_paid:true,
         stage:'State Filing',
-      }, '📠 Florida filing fax submitted', `Submitted through Prepaid Sunbiz E-File fax via ${fax.provider || 'fax provider'}`)
+      }, '📠 Fax accepted by provider. Confirm Sunbiz receipt and payment before recording state submission.', `Fax transport accepted by ${fax.provider || 'fax provider'} (fax reference ${fax.sid || 'not returned'}); state acceptance and government fee are not verified`)
     } catch (e) {
       console.error('[FormaCorp] Florida fax filing failed', e)
       showToast('Florida filing fax failed: '+(e?.message || e), 'err')
@@ -968,7 +969,7 @@ export default function FormaCorp() {
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:10}}>
               <div>
                 <div className="stitle">☀️ Florida Formation Fulfillment</div>
-                <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>One intake → authorization → state submission → approval → EIN/compliance.</div>
+                <div style={{fontSize:11,color:'var(--t3)',marginTop:3}}>One intake → authorization → official Sunbiz filing → verified state receipt → approval → EIN/compliance.</div>
               </div>
               <span className={`bdg ${c.fl_filing_status==='Approved / Active'?'bg':c.fl_filing_status==='Action Required'?'br':'bb'}`} style={{fontSize:10}}>{c.fl_filing_status || 'Draft'}</span>
             </div>
@@ -1004,7 +1005,7 @@ export default function FormaCorp() {
               {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Prepare Filing Packet</button>}
               {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Continue Filing Preparation</button>}
               {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <>
-                <a className="btn sm" href="https://efile.sunbiz.org/llc_file.html" target="_self" style={{textDecoration:'none'}}>🏛 Open Official Sunbiz Filing</a>
+                <a className="btn sm" href={isFloridaCorporation(c) ? 'https://efile.sunbiz.org/profit_file.html' : 'https://efile.sunbiz.org/llc_file.html'} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>🏛 Open Official {isFloridaCorporation(c) ? 'Corporation' : 'LLC'} Filing</a>
                 <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>
               </>}
               {c.fl_filing_status==='Submitted to Florida' && <button className="btn sm" onClick={()=>markFloridaReview(c)}>⏳ Mark Under Review</button>}
@@ -1019,7 +1020,7 @@ export default function FormaCorp() {
 
             <details open style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--br)'}}>
               <summary style={{cursor:'pointer',fontSize:11,fontWeight:700}}>Florida submission inside FormaCorp</summary>
-              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Prepare and save all details inside FormaCorp. The optional final state filing goes through official Sunbiz; afterward record the receipt here. No charge is initiated from the standard Florida preparation workflow.</div>
+              <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Prepare and save all details inside FormaCorp. The final standard state filing and government payment take place on official Sunbiz; record the official state receipt after payment. A fax-provider delivery reference is not proof that Florida accepted or paid for a filing.</div>
               <div style={{fontSize:11,fontWeight:700,margin:'10px 0 6px'}}>Prepaid Sunbiz E-File / Fax submission</div>
               <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>For a frequent-filer Sunbiz account: generate the official Electronic Filing Cover Sheet in Sunbiz, attach it with the signed Articles, enter the fax number printed on that cover sheet, and FormaCorp will combine the PDFs and send the filing through the CRM fax service. Unsigned Articles are blocked. The prepaid Sunbiz account must already have enough funds for the state to process the filing.</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -1120,7 +1121,7 @@ export default function FormaCorp() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:10}}>
           {filtered.map(c=><div key={c.id} className="card" style={{padding:'14px 16px',cursor:'pointer',borderTop:`3px solid ${stageColor[c.stage]||'var(--br)'}`}} onClick={()=>setDetail(c)} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow=`0 6px 20px ${stageColor[c.stage]}22`}} onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=''}}>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontSize:14,fontWeight:800,marginBottom:2}}>{c.entity_name}</div><div style={{fontSize:12,color:'var(--t3)'}}><ClientLink name={c.client_name} /></div></div><span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:stageColor[c.stage]+'22',color:stageColor[c.stage],border:`1px solid ${stageColor[c.stage]}44`,fontWeight:600,whiteSpace:'nowrap'}}>{c.stage}</span></div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}{isFloridaFormable(c) && floridaMissing(c).length===0 && <span className="bdg bg" style={{fontSize:10}}>FL Filing Ready</span>}</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}{isFloridaFormable(c) && floridaSubmissionMissing(c).length===0 && <span className="bdg bg" style={{fontSize:10}}>FL Packet Ready</span>}</div>
             <div style={{display:'flex',gap:3,marginTop:10,alignItems:'center'}}>{STAGES.map((s,i)=><div key={s} style={{flex:1,height:4,borderRadius:2,background:i<=STAGES.indexOf(c.stage)?stageColor[c.stage]:'var(--s3)'}}/>)}</div>
             <div style={{fontSize:9,color:'var(--t3)',marginTop:3}}>Step {STAGES.indexOf(c.stage)+1} of {STAGES.length}: {c.stage}</div>
           </div>)}
