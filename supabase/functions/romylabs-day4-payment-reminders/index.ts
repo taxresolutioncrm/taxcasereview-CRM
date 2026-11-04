@@ -156,7 +156,7 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
     throw new Error('Company billing logo, website or signature mismatch')
   // TaxRes must never contain RomyLabs anywhere in visible message content.
   // Hidden email identifiers use the TaxRes domain, not the platform domain.
-  if(productKey==='taxres_crm'&&/romylabs|romy@/i.test([subject,html,brand,logoUrl,from].join(' ')))
+  if(productKey==='taxres_crm'&&/romylabs|romy\x40/i.test([subject,html,brand,logoUrl,from].join(' ')))
     throw new Error('TaxRes-only branding guard: prohibited parent-company or personal reference')
   const auth='Basic '+btoa(String(transport.username)+':'+String(transport.password))
   const sessionRes=await fetch('https://'+host+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
