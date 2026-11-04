@@ -26,6 +26,8 @@ jobs:
         run: node scripts/check-book-demo-alerts.mjs
       - name: Validate SaaS office payment reminder backend
         run: node scripts/check-romylabs-day4-reminders.mjs
+      - name: Validate RomyLabs phone conference flow
+        run: node tests/romylabs-phone-flow.test.mjs
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker
