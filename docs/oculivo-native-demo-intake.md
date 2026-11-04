@@ -19,7 +19,8 @@ This change adds a **separate** lead pipeline for Oculivo website contact reques
 - Migration: `supabase/migrations/20261103_oculivo_demo_requests.sql`
 - Edge Function: `supabase/functions/oculivo-demo-intake/index.ts`, `verify_jwt=false` **with server-side bearer secret validation**
 - Supabase function secret: `OCULIVO_LEAD_WEBHOOK_SECRET` (same value as the Cloudflare Worker secret, never committed).
-- Oculivo site Worker variable: `OCULIVO_LEAD_WEBHOOK_URL=https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/oculivo-demo-intake`
+- Oculivo site Worker defaults to `https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/oculivo-demo-intake`; optional `OCULIVO_LEAD_WEBHOOK_URL` overrides it only for authorized staging/migration. This public URL does not need a secret.
+- Cloudflare `oculivo-site` Worker requires one private secret named `OCULIVO_LEAD_WEBHOOK_SECRET`; add the identical value in Admin Supabase Edge Function secrets. Wrangler now refuses deploy if the Worker secret is missing.
 - Admin route: `/crm-admin/tasks` now displays `AdminOculivoDemoRequests` above existing scheduled booking alerts.
 - Existing provider: Stalwart via `romylabs_stalwart_transport_for_product('romylabs')`; no new email provider.
 - Admin audit: `notification_submission_id` means Stalwart accepted an email submission; it does **not** certify delivery to the inbox.
