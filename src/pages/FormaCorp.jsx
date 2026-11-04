@@ -778,6 +778,8 @@ export default function FormaCorp() {
     if (!flSubmit.signedArticles) { showToast('Attach the signed Florida Articles PDF. FormaCorp will not fax an unsigned filing.', 'err'); return }
     if (!flSubmit.prepaidFundsConfirmed) { showToast('Confirm the Prepaid Sunbiz E-File Account has sufficient funds for this filing.', 'err'); return }
     setFlSubmit(x=>({...x,busy:true}))
+    let packetPath = null
+    let faxAccepted = false
     try {
       const packet = await buildFlFaxPacket(flSubmit.coverSheet, flSubmit.signedArticles)
       const filename = `FL-Filing-${(c.entity_name||'LLC').replace(/[^A-Za-z0-9]+/g,'-')}-${Date.now()}.pdf`
@@ -791,6 +793,7 @@ export default function FormaCorp() {
       const path = `${tenantId}/formacorp/${c.id}/${filename}`
       const { error: uploadErr } = await supabase.storage.from('documents').upload(path, packet, {upsert:false,contentType:'application/pdf'})
       if (uploadErr) throw uploadErr
+      packetPath = path
       const { data:u, error:signErr } = await supabase.storage.from('documents').createSignedUrl(path, 3600)
       if (signErr || !u?.signedUrl) throw signErr || new Error('Could not create secure filing packet URL')
       const { data:fax, error:faxErr } = await supabase.functions.invoke('send-fax', {
@@ -798,6 +801,7 @@ export default function FormaCorp() {
       })
       if (faxErr) throw faxErr
       if (!fax?.success) throw new Error(fax?.error || 'Fax provider rejected the filing')
+      faxAccepted = true
       await updateFloridaCase(c, {
         fl_filing_status:'Filing Queue',
         fl_submission_method:'prepaid_fax',
@@ -805,6 +809,10 @@ export default function FormaCorp() {
       }, '📠 Fax accepted by provider. Confirm Sunbiz receipt and payment before recording state submission.', `Fax transport accepted by ${fax.provider || 'fax provider'} (fax reference ${fax.sid || 'not returned'}); state acceptance and government fee are not verified`)
     } catch (e) {
       console.error('[FormaCorp] Florida fax filing failed', e)
+      if (packetPath && !faxAccepted) {
+        const {error: cleanupError} = await supabase.storage.from('documents').remove([packetPath])
+        if (cleanupError) console.error('[FormaCorp] Fax packet cleanup failed', cleanupError)
+      }
       showToast('Florida filing fax failed: '+(e?.message || e), 'err')
     } finally {
       setFlSubmit(x=>({...x,busy:false}))
@@ -1005,7 +1013,7 @@ export default function FormaCorp() {
               {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Prepare Filing Packet</button>}
               {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Continue Filing Preparation</button>}
               {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <>
-                <a className="btn sm" href={isFloridaCorporation(c) ? 'https://efile.sunbiz.org/profit_file.html' : 'https://efile.sunbiz.org/llc_file.html'} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>🏛 Open Official {isFloridaCorporation(c) ? 'Corporation' : 'LLC'} Filing</a>
+                <a className="btn sm" href={c.entity_type === 'Non-Profit 501(c)(3)' ? 'https://efile.sunbiz.org/np_file.html' : isFloridaCorporation(c) ? 'https://efile.sunbiz.org/profit_file.html' : 'https://efile.sunbiz.org/llc_file.html'} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>🏛 Open Official {isFloridaCorporation(c) ? 'Corporation' : 'LLC'} Filing</a>
                 <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>
               </>}
               {c.fl_filing_status==='Submitted to Florida' && <button className="btn sm" onClick={()=>markFloridaReview(c)}>⏳ Mark Under Review</button>}
