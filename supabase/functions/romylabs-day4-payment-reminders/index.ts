@@ -36,6 +36,7 @@ const BRAND_LOGO_FILES:Record<string,string>={
   romylabs:'romylabs-logo.png',
   oculivo:'oculivo-logo.png',
   groundivo:'groundivo-logo.png',
+  pool_crm:'poolverge-official-mark.png',
 }
 const BRAND_DEFAULTS:Record<string,{website:string;accent:string}>={
   taxres_crm:{website:'https://taxrescrm.net',accent:'#2563EB'},
@@ -73,6 +74,10 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
   const month=escapeHtml(monthLabel)
   const website=escapeHtml(brand.website)
   const logo='cid:'+EMAIL_LOGO_CID
+  const iconOnly=brand.name==='BocaSync'||brand.name==='PoolVerge'
+  const logoWidth=iconOnly?56:170
+  const logoHeight=iconOnly?56:65
+  const brandLockup=iconOnly?'<span style="font-size:19px;font-weight:800;color:#102a47;padding-left:13px;vertical-align:middle">'+name+'</span>':''
   const accent=escapeHtml(brand.accent)
   const amount=dollars(Math.max(0,amountCents))
   return '<!doctype html><html lang="en"><head><meta charset="utf-8">'+
@@ -83,7 +88,7 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e1e7f0">'+
     '<tr><td style="background:#101f3b;padding:23px 32px;border-bottom:4px solid '+accent+'">'+
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>'+
-    '<td style="vertical-align:middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#ffffff;border-radius:9px;padding:10px 14px"><img src="'+logo+'" width="170" height="65" style="display:block;max-width:170px;width:auto;height:auto;max-height:65px;border:0;outline:none;text-decoration:none" alt="'+name+' logo"></td></tr></table></td>'+
+    '<td style="vertical-align:middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#ffffff;border-radius:9px;padding:10px 14px"><img src="'+logo+'" width="'+logoWidth+'" height="'+logoHeight+'" style="display:inline-block;width:auto;height:auto;max-height:'+logoHeight+'px;max-width:'+logoWidth+'px;border:0;outline:none;text-decoration:none;vertical-align:middle" alt="'+name+' logo">'+brandLockup+'</td></tr></table></td>'+
     '<td align="right" style="color:#d7e3f9;font-size:11px;letter-spacing:1.2px;font-weight:700;vertical-align:middle">BILLING NOTICE</td>'+
     '</tr></table></td></tr>'+
     '<tr><td style="padding:34px 36px 12px">'+
