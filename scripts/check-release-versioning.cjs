@@ -48,10 +48,15 @@ assert(afterRelease.length===0,
 // A later merge that only repairs build scripts must not be charged with
 // functional changes introduced by a prior production release. Still enforce
 // the bump if this exact production merge changes any functional source.
-const isNonfunctionalMainPush = process.env.GITHUB_EVENT_NAME === 'push'
-  && process.env.GITHUB_REF_NAME === 'main'
-  && !git(['diff','--name-only','HEAD^1','HEAD','--','src','public','supabase/functions']).trim()
-if (manifestCommits.length > 1 && !isNonfunctionalMainPush) {
+const productionReleaseCandidateDiff = process.env.GITHUB_EVENT_NAME === 'pull_request'
+  ? git(['diff','--name-only','HEAD^1','HEAD^2','--','src','public','supabase/functions'])
+  : process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF_NAME === 'main'
+    ? git(['diff','--name-only','HEAD^1','HEAD','--','src','public','supabase/functions'])
+    : null
+// Do not re-test version bumps from old release history when this PR/push
+// changes only verification scripts (and no CRM functional code).
+const isNonfunctionalReleaseCandidate = productionReleaseCandidateDiff!==null && !productionReleaseCandidateDiff.trim()
+if (manifestCommits.length > 1 && !isNonfunctionalReleaseCandidate) {
   const olderManifest = manifestCommits[1]
   const changedSincePreviousRelease = git(['diff','--name-only',olderManifest,mostRecentManifest,'--','src','public','supabase/functions'])
     .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
