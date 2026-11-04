@@ -67,7 +67,8 @@ assert.deepEqual(pickRomyBridge({from:ROMY,to:ROMY,answeredInbound:null,outbound
 // A customer answering first must never be counted as the agent bridge.
 const outboundLegSource=readFileSync(new URL('../supabase/functions/outbound-leg/index.ts', import.meta.url),'utf8')
 assert.match(outboundLegSource,/startConferenceOnEnter="false"/)
-assert.match(outboundLegSource,/waitUrl=/)
+assert.doesNotMatch(outboundLegSource,/waitUrl=|hold-music/)
+// Use SignalWire's default wait media, never the Tax Case Review-branded hold prompt.
 const outboundConf=new Conference('outbound-agent-first')
 const outboundCustomer=outboundConf.join('outbound-customer',false)
 assert.equal(outboundConf.started,false)
