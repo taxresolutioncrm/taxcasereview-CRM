@@ -18,26 +18,43 @@ assert(code.includes("paidNow>=account.monthly_amount_cents"), 'Must re-check pa
 assert(code.includes("sendViaStalwart"), 'Must use Stalwart transport')
 assert(code.includes("romylabs_system_reminder_transport"), 'Must resolve a private sender per product')
 assert(code.includes('renderBrandedPaymentReminder('), 'CRM branded email template missing')
+assert(code.includes("const logo='cid:'+EMAIL_LOGO_CID"), 'Official logo must be CID-embedded, not hotlinked')
+assert(code.includes('rawLogo[0]===137')&&code.includes('rawLogo[7]===10'), 'Official PNG magic verification missing')
+assert(code.includes('session.uploadUrl'), 'JMAP MIME upload required')
+assert(code.includes("'Content-Type: multipart/related; boundary="), 'MIME HTML and logo must be multipart/related')
+assert(code.includes("'Content-Disposition: inline; filename="), 'Inline MIME logo required')
+assert(code.includes("['Email/import'"), 'Must import prebuilt MIME to avoid Stalwart inline attachment bug')
+assert(code.includes("'Content-Type':'message/rfc822'"), 'Must upload a raw MIME message')
+assert(code.includes("'Content-ID: <'+EMAIL_LOGO_CID+'>'"), 'Inline logo must use matching Content-ID')
+assert(code.includes("if(!isPng||rawLogo.byteLength>2*1024*1024)"), 'Invalid or huge logos must block email')
+assert(code.includes("Personal mailbox cannot send system reminders"), 'Send must reject personal sender')
+assert(code.includes('#d8eaff'), 'Approved pale blue balance treatment missing')
+assert(code.includes('font-weight:800;color:#101c32 !important'), 'Approved dark bold heading missing')
+assert(!code.includes("const logo=escapeHtml(brand.logoUrl)"), 'Remote linked logos must not render directly in email')
+
 assert(code.includes('BRAND_LOGO_FILES'), 'Published product logo registry missing')
 // Every product logo must be a real, product-specific asset committed to this repository.
 // Never allow a generated stand-in or another CRM's logo to pass certification.
 const officialAssets = {
   taxres_crm:'taxrescrm-logo.png',
   arcvena:'arcvena-logo.png',
-  bocasync:'bocasync-logo.svg',
-  camvella:'camvella-logo.svg',
-  restore_relay:'restore-relay-logo.svg',
+  bocasync:'bocasync-logo.png',
+  camvella:'camvella-logo.png',
+  restore_relay:'restore-relay-logo.png',
   romylabs:'romylabs-logo.png',
-  oculivo:'oculivo-logo.svg',
-  groundivo:'groundivo-logo.svg',
+  oculivo:'oculivo-logo.png',
+  groundivo:'groundivo-logo.png',
+  pool_crm:'poolverge-official-mark.png',
 }
 for(const [product,file] of Object.entries(officialAssets)){
-  assert(fs.existsSync('public/'+file), 'Official CRM logo asset missing: '+product+' '+file)
+  const png=fs.readFileSync('public/'+file)
+  assert(png.length>64 && png.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'Official CRM PNG invalid: '+product)
+  assert(png.length<2*1024*1024, 'Official CRM PNG too large: '+product)
   assert(code.includes(product+":'"+file+"'"), 'Wrong branded logo mapping: '+product)
 }
 assert(!code.includes('placeholder-logo'), 'Placeholder logos are prohibited')
 
-for(const key of ['taxres_crm','arcvena','bocasync','camvella','restore_relay','romylabs','oculivo','groundivo']){
+for(const key of ['taxres_crm','arcvena','bocasync','camvella','restore_relay','romylabs','oculivo','groundivo','pool_crm']){
   assert(code.includes(key+" :" ) || code.includes(key+":'"), 'Brand asset missing for '+key)
 }
 assert(code.includes('romylabs_products'), 'Per-CRM registry branding lookup missing')
@@ -50,7 +67,7 @@ assert(code.includes('Please arrange payment through your existing payment metho
 assert(!code.includes('romy@'), 'Do not expose personal mail identities in branded email')
 
 assert(code.includes("p_product_key:productKey"), 'Must pass office product key, not a fixed product')
-assert(code.includes("name:brand+' System Reminder'"), 'Must brand sender by CRM')
+assert(code.includes("'From: \"'+header(brand)+' System Reminder\" <'+from+'>'"), 'Must brand RFC822 sender by CRM')
 assert(code.includes("product_key"), 'Must query office product')
 assert(code.includes("unregistered_product_sender"), 'Must fail closed for unregistered products')
 assert(!code.includes("p_product_key:'taxres_crm'")&&!code.includes("p_product_key:'romylabs'"), 'No fixed sender')
