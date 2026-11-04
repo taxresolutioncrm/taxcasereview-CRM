@@ -62,6 +62,17 @@ const ended={status:'answered'};assert.equal(complete(ended),true);assert.equal(
 
 assert.deepEqual(pickRomyBridge({from:ROMY,to:ROMY,answeredInbound:null,outbound:{conference_name:'outbound-123'}}),{kind:'outbound',conference:'outbound-123',startConferenceOnEnter:true})
 
+// The outbound destination must wait for the browser agent before the conference starts.
+// A customer answering first must never be counted as the agent bridge.
+const outboundConf=new Conference('outbound-agent-first')
+const outboundCustomer=outboundConf.join('outbound-customer',false)
+assert.equal(outboundConf.started,false)
+assert.equal(outboundCustomer.onHold,true)
+const outboundAgent=outboundConf.join('browser-agent',true)
+assert.equal(outboundConf.started,true)
+assert.equal(outboundCustomer.onHold,false)
+assert.equal(outboundAgent.onHold,false)
+
 const ivr={'1':'RomyLabs Sales','2':'RomyLabs Support','3':'RomyLabs Billing','4':'Representative','5':'Voicemail'}
 assert.deepEqual(Object.keys(ivr),['1','2','3','4','5']);assert.equal(ivr['4'],'Representative');assert.equal(ivr['5'],'Voicemail')
 
@@ -89,6 +100,7 @@ console.log(JSON.stringify({
   T7_no_answer_race_safe:'PASS',
   T8_hangup_completion:'PASS',
   T9_outbound_bridge_preserved:'PASS',
+  T9b_outbound_customer_released_on_agent_join:'PASS',
   T10_ivr_menu_1_to_5:'PASS',
   T11_demo_sms_filtered:'PASS',
   T12_refresh_rejoin_same_conference:'PASS',
