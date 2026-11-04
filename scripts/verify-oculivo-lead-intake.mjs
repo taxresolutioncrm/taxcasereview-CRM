@@ -15,6 +15,7 @@ check(config.includes('[functions.oculivo-demo-intake]\nverify_jwt = false')&&ed
 check(edge.includes("body?.product!=='oculivo'")&&edge.includes("body?.source!=='oculivo.com'"),'Endpoint is locked to Oculivo product/source')
 check(edge.includes("from('romylabs_demo_requests').insert")&&edge.includes("if(error||!lead?.id)"),'Intake is saved durably before returning success')
 check(edge.includes("romylabs_stalwart_transport_for_product")&&edge.includes("notification_submission_id"),'Existing Stalwart email used and delivery status audited')
+check(edge.includes('oculivo-website-logo.png')&&edge.includes('New private demo request')&&edge.includes('https://taxrescrm.app/crm-admin/tasks'),'Oculivo alerts use official logo and a direct Admin Portal follow-up link')
 check(edge.includes('notification_last_error')&&edge.includes('notification_submitted:false'),'Lead remains actionable when email submission fails')
 check(admin.includes('AdminOculivoDemoRequests')&&admin.includes('<AdminOculivoDemoRequests/>'),'Admin Portal tasks route includes Oculivo native leads')
 check(panel.includes('followup_status')&&panel.includes('contact_outcome')&&panel.includes('notification_submission_id'),'Lead UI has task status, contact outcome and mail audit')
