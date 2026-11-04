@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { transformSync } from 'esbuild'
 
 const ROMY = '+15614206999'
 const ADMIN_TENANT = 'a0000000-0000-0000-0000-000000000001'
@@ -65,6 +66,24 @@ assert.deepEqual(pickRomyBridge({from:ROMY,to:ROMY,answeredInbound:null,outbound
 
 // The outbound destination must wait for the browser agent before the conference starts.
 // A customer answering first must never be counted as the agent bridge.
+// Direct outbound must place exactly one browser-to-PSTN leg, never originate
+// a server customer call plus a browser self-dial or conference.
+const callContextSource=readFileSync(new URL('../src/context/CallContext.jsx', import.meta.url),'utf8')
+const phoneStateSource=readFileSync(new URL('../supabase/functions/romylabs-phone-state/index.ts', import.meta.url),'utf8')
+transformSync(phoneStateSource,{loader:'ts'}) // fail the sandbox if the Edge Function cannot parse
+transformSync(callContextSource,{loader:'jsx'})
+const directStart=callContextSource.match(/if \(phoneContext === 'romylabs'\) \{\s*\/\/ Direct RELAY[\s\S]*?\n    \}\n\n    \/\/ Recorded-outbound path/)?.[0]||''
+assert(directStart,'RomyLabs direct outbound path missing')
+assert.match(directStart,/destinationNumber,\s*callerNumber:callerNumberRef\.current/)
+assert.doesNotMatch(directStart,/start-outbound-call|conferenceName|destinationNumber: callerNumberRef\.current/)
+assert.match(callContextSource,/if \(directOutboundRef\.current\) \{\s*const call=directOutboundCallRef\.current/)
+assert.match(callContextSource,/await call\.unhold\(\)/)
+assert.match(callContextSource,/await call\.hold\(\)/)
+assert.match(phoneStateSource,/action==='direct_outbound_start'/)
+assert.match(phoneStateSource,/action==='direct_outbound_state'/)
+assert.match(phoneStateSource,/action==='direct_outbound_record'/)
+assert.doesNotMatch(phoneStateSource.slice(phoneStateSource.indexOf("if(action==='direct_outbound_start')"),phoneStateSource.indexOf("if(action==='direct_outbound_record')")) ,/Calls\.json|Conferences\.json/)
+
 const outboundLegSource=readFileSync(new URL('../supabase/functions/outbound-leg/index.ts', import.meta.url),'utf8')
 assert.match(outboundLegSource,/startConferenceOnEnter="false"/)
 assert.doesNotMatch(outboundLegSource,/waitUrl=|hold-music/)
@@ -106,6 +125,8 @@ console.log(JSON.stringify({
   T8_hangup_completion:'PASS',
   T9_outbound_bridge_preserved:'PASS',
   T9b_outbound_customer_released_on_agent_join:'PASS',
+  T9c_direct_browser_to_PSTN_no_conference:'PASS',
+  T9d_provider_hold_unhold_and_recording:'PASS',
   T10_ivr_menu_1_to_5:'PASS',
   T11_demo_sms_filtered:'PASS',
   T12_refresh_rejoin_same_conference:'PASS',
