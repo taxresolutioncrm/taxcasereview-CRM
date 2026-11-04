@@ -26,15 +26,17 @@ const PRODUCT_BRANDS:Record<string,string> = {
 }
 
 const BRAND_ASSET_ORIGIN='https://taxrescrm.app'
+const EMAIL_LOGO_CID='billing-logo@romylabs.system'
 const BRAND_LOGO_FILES:Record<string,string>={
   taxres_crm:'taxrescrm-logo.png',
   arcvena:'arcvena-logo.png',
-  bocasync:'bocasync-logo.svg',
-  camvella:'camvella-logo.svg',
-  restore_relay:'restore-relay-logo.svg',
+  bocasync:'bocasync-logo.png',
+  camvella:'camvella-logo.png',
+  restore_relay:'restore-relay-logo.png',
   romylabs:'romylabs-logo.png',
-  oculivo:'oculivo-logo.svg',
-  groundivo:'groundivo-logo.svg',
+  oculivo:'oculivo-logo.png',
+  groundivo:'groundivo-logo.png',
+  pool_crm:'poolverge-official-mark.png',
 }
 const BRAND_DEFAULTS:Record<string,{website:string;accent:string}>={
   taxres_crm:{website:'https://taxrescrm.net',accent:'#2563EB'},
@@ -71,7 +73,11 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
   const office=escapeHtml(accountName)
   const month=escapeHtml(monthLabel)
   const website=escapeHtml(brand.website)
-  const logo=escapeHtml(brand.logoUrl)
+  const logo='cid:'+EMAIL_LOGO_CID
+  const iconOnly=brand.name==='BocaSync'||brand.name==='PoolVerge'
+  const logoWidth=iconOnly?56:170
+  const logoHeight=iconOnly?56:65
+  const brandLockup=iconOnly?'<span style="font-size:19px;font-weight:800;color:#102a47;padding-left:13px;vertical-align:middle">'+name+'</span>':''
   const accent=escapeHtml(brand.accent)
   const amount=dollars(Math.max(0,amountCents))
   return '<!doctype html><html lang="en"><head><meta charset="utf-8">'+
@@ -82,28 +88,28 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e1e7f0">'+
     '<tr><td style="background:#101f3b;padding:23px 32px;border-bottom:4px solid '+accent+'">'+
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>'+
-    '<td style="vertical-align:middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#ffffff;border-radius:9px;padding:10px 14px"><img src="'+logo+'" width="170" style="display:block;max-width:170px;max-height:65px;width:auto;height:auto;border:0" alt="'+name+' logo"></td></tr></table></td>'+
+    '<td style="vertical-align:middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#ffffff;border-radius:9px;padding:10px 14px"><img src="'+logo+'" width="'+logoWidth+'" height="'+logoHeight+'" style="display:inline-block;width:auto;height:auto;max-height:'+logoHeight+'px;max-width:'+logoWidth+'px;border:0;outline:none;text-decoration:none;vertical-align:middle" alt="'+name+' logo">'+brandLockup+'</td></tr></table></td>'+
     '<td align="right" style="color:#d7e3f9;font-size:11px;letter-spacing:1.2px;font-weight:700;vertical-align:middle">BILLING NOTICE</td>'+
     '</tr></table></td></tr>'+
     '<tr><td style="padding:34px 36px 12px">'+
     '<div style="font-size:12px;font-weight:700;color:'+accent+';letter-spacing:1.3px">MONTHLY SUBSCRIPTION</div>'+
-    '<h1 style="margin:12px 0 13px;font-size:27px;line-height:1.26;color:#16243e">A friendly payment reminder</h1>'+
-    '<p style="font-size:15px;line-height:1.7;color:#41516b;margin:0 0 16px">Hello '+office+',</p>'+
-    '<p style="font-size:15px;line-height:1.7;color:#41516b;margin:0 0 20px">Our records do not yet reflect full payment for your <strong>'+month+'</strong> '+name+' subscription.</p>'+
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f8fd;border:1px solid #e0e8f5;border-radius:12px">'+
+    '<h1 style="margin:12px 0 13px;font-size:28px;line-height:1.26;font-weight:800;color:#101c32 !important">A friendly payment reminder</h1>'+
+    '<p style="font-size:16px;line-height:1.7;color:#243149 !important;margin:0 0 16px">Hello '+office+',</p>'+
+    '<p style="font-size:16px;line-height:1.7;color:#243149 !important;margin:0 0 20px">Our records do not yet reflect full payment for your <strong>'+month+'</strong> '+name+' subscription.</p>'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#d8eaff;border:1px solid #d5e6fa;border-radius:12px">'+
     '<tr><td style="padding:20px 22px">'+
-    '<div style="font-size:11px;font-weight:700;letter-spacing:1.1px;color:#61718b">REMAINING BALANCE</div>'+
-    '<div style="font-size:34px;line-height:1.3;font-weight:800;color:#16243e;padding-top:4px">'+amount+'</div>'+
+    '<div style="font-size:12px;font-weight:700;letter-spacing:1.1px;color:#0d488d">REMAINING BALANCE</div>'+
+    '<div style="font-size:36px;line-height:1.3;font-weight:800;color:#101c32 !important;padding-top:4px">'+amount+'</div>'+
     '<div style="font-size:12px;color:#65758d;margin-top:7px">'+month+' &middot; '+name+'</div>'+
     '</td></tr></table>'+
-    '<p style="font-size:15px;line-height:1.7;color:#41516b;margin:22px 0 14px">Please arrange payment through your existing payment method. If you have already paid, please reply with the payment date or confirmation so we can update our records.</p>'+
+    '<p style="font-size:16px;line-height:1.7;color:#243149 !important;margin:22px 0 14px">Please arrange payment through your existing payment method. If you have already paid, please reply with the payment date or confirmation so we can update our records.</p>'+
     '<p style="font-size:14px;line-height:1.6;color:#56667d;margin:0 0 24px">Thank you for being part of '+name+'.</p>'+
-    '<p style="font-size:14px;line-height:1.6;color:#24354f;margin:0 0 14px"><strong>'+name+' Billing Team</strong></p>'+
+    '<p style="font-size:15px;line-height:1.6;color:#101c32;margin:0 0 14px"><strong>'+name+' Billing Team</strong></p>'+
     '</td></tr>'+
-    '<tr><td style="padding:22px 36px 26px;background:#f8fafd;border-top:1px solid #e8edf5">'+
-    '<p style="font-size:13px;font-weight:700;color:#2f425f;margin:0 0 6px">'+name+'</p>'+
-    '<a href="'+website+'" style="font-size:13px;color:'+accent+';text-decoration:none">'+website+'</a>'+
-    '<p style="font-size:11px;line-height:1.6;color:#6d7c91;margin:14px 0 0">This is an automated billing reminder from '+name+'. No payment is processed through this email. Please do not share passwords or sensitive financial details by email.</p>'+
+    '<tr><td style="padding:22px 36px 26px;background:#edf0f5;border-top:1px solid #e8edf5;text-align:center">'+
+    '<p style="font-size:15px;font-weight:800;color:#101c32;margin:0 0 6px;text-align:center">'+name+'</p>'+
+    '<a href="'+website+'" style="font-size:14px;color:'+accent+';text-decoration:underline">'+website+'</a>'+
+    '<p style="font-size:12px;line-height:1.6;color:#50617a;margin:14px 0 0;text-align:center">This is an automated billing reminder from '+name+'. No payment is processed through this email. Please do not share passwords or sensitive financial details by email.</p>'+
     '</td></tr></table></td></tr></table></body></html>'
 }
 
@@ -117,11 +123,13 @@ const sameMonth=(value:string,year:number,month:number)=>{
 
 // Dedicated product-specific, nonpersonal Stalwart sender only.
 // Missing verified sender => no send, never fall back to an owner's mailbox.
-async function sendViaStalwart(db:any,productKey:string,recipient:string,subject:string,html:string,brand:string){
+async function sendViaStalwart(db:any,productKey:string,recipient:string,subject:string,html:string,brand:string,logoUrl:string){
   const {data:transport,error:transportError}=await db.rpc('romylabs_system_reminder_transport',{p_product_key:productKey})
   if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('Private system sender not configured for '+productKey)
   const host=String(transport.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
   const from=String(transport.from_address||transport.username).toLowerCase()
+  if(!/^(info|support|billing|notifications|no-reply|noreply|system|reminders)@/i.test(from))
+    throw new Error('Personal mailbox cannot send system reminders')
   const auth='Basic '+btoa(String(transport.username)+':'+String(transport.password))
   const sessionRes=await fetch('https://'+host+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
   if(!sessionRes.ok)throw new Error('Stalwart session HTTP '+sessionRes.status)
@@ -141,20 +149,90 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
   const drafts=boxes.find((v:any)=>v.role==='drafts')
   const sentBox=boxes.find((v:any)=>v.role==='sent')
   if(!identity?.id||!drafts?.id||!sentBox?.id)throw new Error('Stalwart sender identity or Drafts/Sent unavailable')
-  const draft={
-    from:[{email:from,name:brand+' System Reminder'}],
-    to:[{email:recipient}],
-    replyTo:[{email:from}],
-    subject,
-    mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},
-    bodyValues:{body:{value:html,charset:'utf-8'}},
-    htmlBody:[{partId:'body',type:'text/html'}],
+  // Download the committed brand asset and embed its actual bytes in the email.
+  // Do not rely on hotlinked image loading, SVG display, or an invented logo.
+  const logoResponse=await fetch(logoUrl,{redirect:'follow'})
+  if(!logoResponse.ok)throw new Error('Official CRM logo unavailable HTTP '+logoResponse.status)
+  const rawLogo=new Uint8Array(await logoResponse.arrayBuffer())
+  const isPng=rawLogo.length>=24 && rawLogo[0]===137 && rawLogo[1]===80 &&
+    rawLogo[2]===78 && rawLogo[3]===71 && rawLogo[4]===13 &&
+    rawLogo[5]===10 && rawLogo[6]===26 && rawLogo[7]===10
+  if(!isPng||rawLogo.byteLength>2*1024*1024)
+    throw new Error('Official logo must be a valid PNG smaller than 2MB; no reminder sent')
+  // The MIME structure is created explicitly: multipart/alternative containing
+  // multipart/related(HTML + official inline PNG). Some Stalwart versions put
+  // JMAP Email/set inline attachments into multipart/mixed, breaking cid images.
+  const bytes64=(data:Uint8Array)=>{
+    let binary=''
+    for(let i=0;i<data.length;i+=16384)binary+=String.fromCharCode(...data.subarray(i,i+16384))
+    return btoa(binary)
   }
+  const lines64=(data:Uint8Array)=>bytes64(data).match(/.{1,76}/g)?.join('\r\n')||''
+  const encodeText=(value:string)=>lines64(new TextEncoder().encode(value))
+  const header=(value:string)=>value.replace(/[\r\n]/g,' ')
+  const alt='alt_'+crypto.randomUUID().replaceAll('-','')
+  const related='rel_'+crypto.randomUUID().replaceAll('-','')
+  const plaintext=html.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim()
+  const mime=[
+    'From: "'+header(brand)+' System Reminder" <'+from+'>',
+    'To: <'+recipient+'>',
+    'Reply-To: <'+from+'>',
+    'Subject: '+header(subject),
+    'Date: '+new Date().toUTCString(),
+    'Message-ID: <'+crypto.randomUUID()+'@romylabs.com>',
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/alternative; boundary="'+alt+'"',
+    '',
+    '--'+alt,
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    encodeText(plaintext),
+    '--'+alt,
+    'Content-Type: multipart/related; boundary="'+related+'"',
+    '',
+    '--'+related,
+    'Content-Type: text/html; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    encodeText(html),
+    '--'+related,
+    'Content-Type: image/png; name="official-crm-logo.png"',
+    'Content-Transfer-Encoding: base64',
+    'Content-ID: <'+EMAIL_LOGO_CID+'>',
+    'Content-Disposition: inline; filename="official-crm-logo.png"',
+    '',
+    lines64(rawLogo),
+    '--'+related+'--',
+    '--'+alt+'--',
+    '',
+  ].join('\r\n')
+  const uploadUrl=String(session.uploadUrl||'').replace('{accountId}',encodeURIComponent(accountId))
+  if(!uploadUrl.startsWith('https://'))throw new Error('Stalwart JMAP upload endpoint unavailable')
+  const uploadResponse=await fetch(uploadUrl,{
+    method:'POST',
+    headers:{Authorization:auth,'Content-Type':'message/rfc822'},
+    body:new TextEncoder().encode(mime),
+  })
+  if(!uploadResponse.ok)throw new Error('Stalwart MIME upload HTTP '+uploadResponse.status)
+  const uploaded=await uploadResponse.json()
+  if(!uploaded.blobId||!uploaded.size)throw new Error('Stalwart did not return MIME blob')
+  const importRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail'],
+    methodCalls:[['Email/import',{accountId,emails:{
+      reminder:{blobId:uploaded.blobId,mailboxIds:{[drafts.id]:true},keywords:{'$draft':true}},
+    }},'i1']],
+  })})
+  if(!importRes.ok)throw new Error('Stalwart MIME import HTTP '+importRes.status)
+  const importedResult=await importRes.json()
+  const importData=importedResult.methodResponses?.find((v:any)=>v?.[0]==='Email/import')?.[1]
+  if(importData?.notCreated?.reminder||!importData?.created?.reminder?.id)
+    throw new Error('Stalwart rejected MIME import')
+  const emailId=String(importData.created.reminder.id)
   const submitRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({
     using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
     methodCalls:[
-      ['Email/set',{accountId,create:{draft}},'e0'],
-      ['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},
+      ['EmailSubmission/set',{accountId,create:{sendIt:{emailId,identityId:identity.id}},
         onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sentBox.id]:true,'keywords/$draft':null}}},'s0'],
     ],
   })})
@@ -264,7 +342,7 @@ Deno.serve(async(req:Request)=>{
     const html=renderBrandedPaymentReminder(brandDetails,account.account_name,monthLabel,
       account.monthly_amount_cents-paidNow)
     try{
-      const submissionId=await sendViaStalwart(db,account.product_key,email,subject,html,brand)
+      const submissionId=await sendViaStalwart(db,account.product_key,email,subject,html,brandDetails.name,brandDetails.logoUrl)
       await db.from('romylabs_day4_payment_reminders').update({
         status:'sent',sent_at:new Date().toISOString(),last_error:null,
         provider_message_id:'stalwart:'+submissionId,attempts:queued.attempts?Number(queued.attempts)+1:1,

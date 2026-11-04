@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Official embedded CID PNG logos and corrected dark/navy email styling now render for nine CRM brands in the RomyLabs office payment reminder system',
   'RomyLabs office payment reminder emails now render the correct CRM logo, brand colors, website, responsive balance summary and system-sender details; unbranded or personal-sender notices remain blocked',
   'Monthly office subscription reminders use CRM-specific verified nonpersonal system mailboxes and never fall back to a personal email identity',
   'RomyLabs office payment reminders now send using TaxRes email with System Reminder as the sender display name',
@@ -120,9 +121,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.43',
+  version: '3.2.44',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.43 — Oculivo Native Demo Leads',
+  title: 'RomyLabs Admin Portal 3.2.44 — Oculivo Native Demo Leads',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
