@@ -78,7 +78,7 @@
     "check-admin-portal-version": "node scripts/check-admin-portal-version.cjs",
     "check-taxres-irs-inbox-guidance": "node scripts/check-taxres-irs-inbox-guidance.cjs",
     "check-time-entry-client-picker": "node scripts/check-time-entry-client-picker.mjs",
-    "check-oculivo-lead-intake": "node scripts/verify-oculivo-lead-intake.mjs"
+    "check-oculivo-lead-intake": "node scripts/verify-oculivo-lead-intake.mjs && node scripts/test-oculivo-demo-intake.mjs"
   },
   "dependencies": {
     "@signalwire/js": "^1.5.0",
