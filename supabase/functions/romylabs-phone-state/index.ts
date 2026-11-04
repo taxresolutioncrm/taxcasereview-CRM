@@ -281,7 +281,7 @@ serve(async req=>{
       if(row.provider_call_sid&&row.provider_call_sid!==callId)return json({error:'Different provider call already registered'},409)
       const creds=await romylabsSignalWireCredentials()
       if(!creds?.sw_space_url||!creds.sw_project_id||!creds.sw_api_token)return json({error:'Recording credentials unavailable'},503)
-      const provider=await fetch('https://'+String(creds.sw_space_url).replace(/^https?:\\/\\//,'').replace(/\\/$/,'')+'/api/calling/calls',{
+      const provider=await fetch('https://'+String(creds.sw_space_url).replace(/^https?:\/\//,'').replace(/\/$/,'')+'/api/calling/calls',{
         method:'POST',headers:{Authorization:'Basic '+btoa(creds.sw_project_id+':'+creds.sw_api_token),'Content-Type':'application/json'},
         body:JSON.stringify({command:'calling.record',id:callId,params:{
           control_id:'romylabs-direct-'+id.slice(0,8),
