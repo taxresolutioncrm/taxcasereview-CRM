@@ -3,7 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
-  'Outbound conference waits for the browser agent to join and uses provider-native waiting audio, never another CRM's hold prompt',
+  'Outbound conference waits for the browser agent to join and uses provider-native waiting audio, never a hold prompt branded to a different CRM',
   'Invoice-issued, payment-reminder and final-notice billing emails now use their CRM-specific official sender, logo, domain and signature; mismatched credentials block sending',
   'Every SaaS billing email is locked to its own CRM logo, website, signature, mailbox domain, and private MIME identifiers; no cross-company fallbacks',
   'Official embedded CID PNG logos and corrected dark/navy email styling now render for nine CRM brands in the RomyLabs office payment reminder system',
