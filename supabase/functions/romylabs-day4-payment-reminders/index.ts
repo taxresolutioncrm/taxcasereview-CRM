@@ -67,14 +67,12 @@ const brandFor=(productKey:string,registry:any):BrandDetails|null=>{
   if(!name)return null
   // Prefer the registered CRM's own logo, then a file confirmed in the
   // published CRM asset bundle. Never borrow another product's logo.
-  // TaxRes is externally customer-facing: never accept another product's
-  // marketing URL or remote logo registered by mistake in the central catalog.
-  const logo=productKey==='taxres_crm'
-    ? BRAND_ASSET_ORIGIN+'/taxrescrm-logo.png'
-    : safeHttps(registry?.logo_url)||(BRAND_LOGO_FILES[productKey]?BRAND_ASSET_ORIGIN+'/'+BRAND_LOGO_FILES[productKey]:'')
-  const website=productKey==='taxres_crm'?'https://taxrescrm.net':safeHttps(registry?.marketing_url)||defaults?.website||''
-  const accent=/^#[0-9a-f]{6}$/i.test(String(registry?.accent_color||''))
-    ?String(registry.accent_color):defaults?.accent||'#334155'
+  // Billing is exclusively company-branded, not dynamically overridden by
+  // central registry values (which may belong to a parent or another tenant).
+  const logoFile=BRAND_LOGO_FILES[productKey]
+  const logo=logoFile ? BRAND_ASSET_ORIGIN+'/'+logoFile : ''
+  const website=defaults?.website||''
+  const accent=defaults?.accent||'#334155'
   if(!logo||!website||!MAIL_DOMAINS[productKey])return null
   return {productKey,name,logoUrl:logo,website,accent}
 }
@@ -149,11 +147,17 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
       from!==String(transport.username).trim().toLowerCase()||
       brand!==PRODUCT_BRANDS[productKey])
     throw new Error('Cross-product sender or branding rejected')
-  if(productKey==='taxres_crm'){
-    const visible=[recipient,subject,html,brand,logoUrl,from].join(' ')
-    if(/romylabs|romy@/i.test(visible)||logoUrl!==BRAND_ASSET_ORIGIN+'/taxrescrm-logo.png')
-      throw new Error('TaxRes-only branding guard: prohibited parent-company or personal reference')
-  }
+  // Strictly reject cross-company branding for every billing product.
+  const officialLogo=BRAND_ASSET_ORIGIN+'/'+BRAND_LOGO_FILES[productKey]
+  const productWebsite=BRAND_DEFAULTS[productKey]?.website
+  if(logoUrl!==officialLogo||!productWebsite||
+     !html.includes(escapeHtml(productWebsite))||
+     !html.includes(escapeHtml(PRODUCT_BRANDS[productKey]+' Billing Team')))
+    throw new Error('Company billing logo, website or signature mismatch')
+  // TaxRes must never contain RomyLabs anywhere in visible message content.
+  // Hidden email identifiers use the TaxRes domain, not the platform domain.
+  if(productKey==='taxres_crm'&&/romylabs|romy@/i.test([subject,html,brand,logoUrl,from].join(' ')))
+    throw new Error('TaxRes-only branding guard: prohibited parent-company or personal reference')
   const auth='Basic '+btoa(String(transport.username)+':'+String(transport.password))
   const sessionRes=await fetch('https://'+host+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
   if(!sessionRes.ok)throw new Error('Stalwart session HTTP '+sessionRes.status)
