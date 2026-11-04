@@ -110,6 +110,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   // RomyLabs-only direct outbound WebRTC call. No conference, second provider leg or self-dial.
   const directOutboundRef = useRef(false)
   const directOutboundCallRef = useRef(null)
+  const [directOutbound, setDirectOutbound] = useState(false)
+  const [directConnected, setDirectConnected] = useState(false)
 
   async function toggleHold() {
     if (directOutboundRef.current) {
@@ -511,6 +513,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             directOutboundCallRef.current = call
             liveCallRef.current = call
             setOnHold(false)
+            setDirectConnected(true)
             if (activeOutboundCallIdRef.current) {
               supabase.functions.invoke('romylabs-phone-state', {
                 body:{action:'direct_outbound_state',id:activeOutboundCallIdRef.current,status:'connected'}
@@ -536,6 +539,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             entityType: m?.entityType || null,
           })
         }
+        if (call.state === 'held' && directOutboundRef.current) setOnHold(true)
         if (call.state === 'hangup' || call.state === 'destroy') {
           activeCallRef.current = null
           setIncomingCall(null)
@@ -1067,6 +1071,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       // destination leg, self-dial, artificial conference or automatic hold.
       directOutboundRef.current = true
       directOutboundCallRef.current = null
+      setDirectOutbound(true)
+      setDirectConnected(false)
       activeConferenceRef.current = null
       setCanTransfer(false)
       void (async()=>{
@@ -1075,7 +1081,10 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             body:{action:'direct_outbound_start',destination_number:destinationNumber,display_name:lead.name||lead.clientName||destinationNumber}
           })
           if(error||!data?.ok||!data?.id) throw new Error(data?.error||error?.message||'Unable to log outbound call')
-          if(!uiStartedRef.current||!directOutboundRef.current) return
+          if(!uiStartedRef.current||!directOutboundRef.current) {
+            await supabase.functions.invoke('romylabs-phone-state',{body:{action:'direct_outbound_state',id:data.id,status:'completed'}})
+            return
+          }
           activeOutboundCallIdRef.current=data.id
           // The SDK originates exactly ONE customer-facing PSTN call.
           const call=await relayRef.current.newCall({
@@ -1209,6 +1218,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     if (directOutbound) {
       directOutboundRef.current=false
       directOutboundCallRef.current=null
+      setDirectOutbound(false)
+      setDirectConnected(false)
       if (directAuditId) {
         const {error}=await supabase.functions.invoke('romylabs-phone-state',{
           body:{action:'direct_outbound_state',id:directAuditId,status:'completed'}
@@ -1442,6 +1453,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     OUTCOMES, formatTime,
     answerIncoming, declineIncoming, startCall, joinAIGovernmentCall, endCall, cancelCall,
     muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer,
+    directOutbound, directConnected,
     sendDTMF: (digit) => {
       if (activeCallRef.current?.dtmf) {
         console.log('[DTMF] sending digit:', digit, 'via call object:', activeCallRef.current)
