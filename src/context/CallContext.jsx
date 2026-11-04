@@ -107,8 +107,28 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   // inbound, the client's leg on outbound.
   const transferableCallsidRef = useRef(null)
   const [holdBusy, setHoldBusy] = useState(false)
+  // RomyLabs-only direct outbound WebRTC call. No conference, second provider leg or self-dial.
+  const directOutboundRef = useRef(false)
+  const directOutboundCallRef = useRef(null)
 
   async function toggleHold() {
+    if (directOutboundRef.current) {
+      const call=directOutboundCallRef.current
+      if (!call || holdBusy) return
+      setHoldBusy(true)
+      try {
+        if (onHold) {
+          if (typeof call.unhold !== 'function') throw new Error('Resume is not supported by the active call')
+          await call.unhold()
+        } else {
+          if (typeof call.hold !== 'function') throw new Error('Hold is not supported by the active call')
+          await call.hold()
+        }
+        setOnHold(!onHold)
+      } catch(e) { showCallToast('Call hold control failed: '+(e?.message||e)) }
+      finally { setHoldBusy(false) }
+      return
+    }
     const conf = activeConferenceRef.current
     if (!conf || holdBusy) return
     setHoldBusy(true)
@@ -125,6 +145,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   }
 
   async function transferCall(target) {
+    if (directOutboundRef.current) return {error:'Transfer is not supported on direct outbound calls'}
     // Blind transfer: redirect the CALLER's leg away from our conference.
     // 'extension' -> re-parks them in a fresh conference and rings the
     // target agent's browser through the normal extension machinery
@@ -154,6 +175,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   }
 
   async function addParticipant(number) {
+    if (directOutboundRef.current) return {error:'Add Caller is not supported on direct outbound calls'}
     const conf = activeConferenceRef.current
     if (!conf) return { error: 'No active call' }
     const { data, error } = await supabase.functions.invoke('call-add-participant', {
@@ -485,6 +507,16 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
         if (call.state === 'active') {
           activeCallRef.current = call  // always update ref so DTMF works
           stopRingback()               // stop ringback when call connects
+          if (directOutboundRef.current) {
+            directOutboundCallRef.current = call
+            liveCallRef.current = call
+            setOnHold(false)
+            if (activeOutboundCallIdRef.current) {
+              supabase.functions.invoke('romylabs-phone-state', {
+                body:{action:'direct_outbound_state',id:activeOutboundCallIdRef.current,status:'connected'}
+              }).then(({error})=>error&&console.error('[direct-outbound] status update',error))
+            }
+          }
         }
         if (call.state === 'active' && !uiStartedRef.current) {
           uiStartedRef.current = true
@@ -509,6 +541,11 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           setIncomingCall(null)
           setIncomingMatch(null)
           stopRing()
+          if (directOutboundRef.current && directOutboundCallRef.current === call) {
+            if (pageUnloadingRef.current) return
+            if (await finalizeCallEnd({alreadyHungUp:true,skipConferenceKill:true})) handleRemoteHangup()
+            return
+          }
           if (liveCallRef.current === call) {
             // The SDK uses hangup/destroy for BOTH a real far-end hangup and
             // a lost browser/WebSocket leg. Never kill the provider conference
@@ -1000,6 +1037,10 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     const digits = lead.phone?.replace(/\D/g, '')
     if (!digits) { showCallToast('No phone number to call.'); return false }
     const destinationNumber = digits.length === 10 ? `+1${digits}` : `+${digits}`
+    if (phoneContext==='romylabs' && !/^\\+\\d{10,15}$/.test(String(callerNumberRef.current||''))) {
+      showCallToast('RomyLabs caller ID is not ready. No call was placed.')
+      return false
+    }
 
     uiStartedRef.current = true
     activeInboundCallsidRef.current = null
@@ -1019,6 +1060,42 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       matchCallerToRecord(lead.phone).then(m => {
         if (m) setActive(prev => (prev === lead ? { ...lead, name: m.name, id: m.id, entityType: m.entityType } : prev))
       })
+    }
+
+    if (phoneContext === 'romylabs') {
+      // Direct RELAY browser -> destination. There is no server-initiated
+      // destination leg, self-dial, artificial conference or automatic hold.
+      directOutboundRef.current = true
+      directOutboundCallRef.current = null
+      activeConferenceRef.current = null
+      setCanTransfer(false)
+      void (async()=>{
+        try {
+          const {data,error}=await supabase.functions.invoke('romylabs-phone-state',{
+            body:{action:'direct_outbound_start',destination_number:destinationNumber,display_name:lead.name||lead.clientName||destinationNumber}
+          })
+          if(error||!data?.ok||!data?.id) throw new Error(data?.error||error?.message||'Unable to log outbound call')
+          if(!uiStartedRef.current||!directOutboundRef.current) return
+          activeOutboundCallIdRef.current=data.id
+          // The SDK originates exactly ONE customer-facing PSTN call.
+          const call=await relayRef.current.newCall({
+            destinationNumber,
+            callerNumber:callerNumberRef.current,
+          })
+          if(!call) throw new Error('SignalWire did not start the direct call')
+          if(!uiStartedRef.current||!directOutboundRef.current){ call.hangup?.();return }
+          directOutboundCallRef.current=call
+          liveCallRef.current=call
+          activeCallRef.current=call
+          setMuted(false)
+          setOnHold(false)
+        }catch(err){
+          console.error('[direct-outbound] call creation failed',err)
+          showCallToast('Call failed: '+(err?.message||err))
+          await cancelCall()
+        }
+      })()
+      return true
     }
 
     // Recorded-outbound path: start-outbound-call originates the real leg
@@ -1111,6 +1188,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     // Kill the provider conference BEFORE tearing down the browser leg.
     // Hanging up the agent/browser leg first can strand the remote party alone
     // in the conference (audibly on hold) if the SDK hangup promise stalls.
+    const directOutbound=directOutboundRef.current
+    const directAuditId=directOutbound?activeOutboundCallIdRef.current:null
     const conf = activeConferenceRef.current
     if (conf && !skipConferenceKill) {
       const providerEnded = await endConferenceWithRetry(conf)
@@ -1127,6 +1206,16 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     }
     liveCallRef.current = null
     activeCallRef.current = null
+    if (directOutbound) {
+      directOutboundRef.current=false
+      directOutboundCallRef.current=null
+      if (directAuditId) {
+        const {error}=await supabase.functions.invoke('romylabs-phone-state',{
+          body:{action:'direct_outbound_state',id:directAuditId,status:'completed'}
+        })
+        if(error)console.error('[direct-outbound] completion audit failed',error)
+      }
+    }
 
     clearPersistedCallSession()
     const aiGovSessionId = activeAIGovSessionRef.current
