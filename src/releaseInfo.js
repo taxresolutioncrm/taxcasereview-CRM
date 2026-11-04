@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Actual outgoing reminder MIME is now imported as multipart/alternative plus multipart/related inline official PNG, avoiding the Stalwart Email/set CID attachment rendering bug',
   'TaxRes payment reminder styling now matches the approved bold dark navy and blue balance design with centered footer; official PNG is attached inline by CID, not a broken external hotlink',
   'Office billing reminder logo bytes are now embedded into email via JMAP CID attachment, restoring visible official CRM branding with darker typography and stronger approved balance colors; missing PNG logo blocks sending',
   'RomyLabs office payment reminder emails now render the correct CRM logo, brand colors, website, responsive balance summary and system-sender details; unbranded or personal-sender notices remain blocked',
