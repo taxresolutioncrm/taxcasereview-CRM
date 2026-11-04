@@ -74,6 +74,7 @@ const ADMIN_DEMO_TASK_CHANGES = [
   'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
   'Oculivo website demo requests create an admin follow-up task independently of scheduled appointments',
   'Oculivo demo lead notifications use the existing Stalwart transport, with submission IDs and visible errors',
+  'Oculivo lead alerts use official Oculivo branding, practice details and the Admin Portal task link',
   'Browser retries retain a single Oculivo lead record through an idempotent request key',
   'Only a successfully stored demo request is acknowledged to the website; notification failure does not discard the lead',
   'PoolVerge reuses its registered generic mailbox for office billing notices, while products without verified nonpersonal mailboxes remain blocked',
