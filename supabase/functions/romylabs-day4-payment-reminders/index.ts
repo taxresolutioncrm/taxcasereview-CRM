@@ -26,7 +26,14 @@ const PRODUCT_BRANDS:Record<string,string> = {
 }
 
 const BRAND_ASSET_ORIGIN='https://taxrescrm.app'
-const EMAIL_LOGO_CID='billing-logo@romylabs.system'
+// Every on-the-wire identity, including hidden CID and Message-ID headers,
+// belongs to the selected CRM; a platform-domain fallback is prohibited.
+const MAIL_DOMAINS:Record<string,string>={
+  taxres_crm:'taxrescrm.net',arcvena:'arcvena.com',bocasync:'bocasync.com',
+  camvella:'camvella.com',restore_relay:'restorerelay.com',romylabs:'romylabs.com',
+  oculivo:'oculivo.com',groundivo:'groundivo.com',pool_crm:'poolverge.com',
+}
+const emailLogoCid=(key:string)=>'billing-logo@'+MAIL_DOMAINS[key]
 const BRAND_LOGO_FILES:Record<string,string>={
   taxres_crm:'taxrescrm-logo.png',
   arcvena:'arcvena-logo.png',
@@ -49,7 +56,7 @@ const BRAND_DEFAULTS:Record<string,{website:string;accent:string}>={
   groundivo:{website:'https://groundivo.com',accent:'#16A34A'},
   pool_crm:{website:'https://poolverge.com',accent:'#14B8A6'},
 }
-type BrandDetails={name:string;logoUrl:string;website:string;accent:string}
+type BrandDetails={productKey:string;name:string;logoUrl:string;website:string;accent:string}
 const safeHttps=(value:unknown)=>{
   try{const url=new URL(String(value||''));return url.protocol==='https:'?url.href:''}
   catch{return ''}
@@ -60,19 +67,21 @@ const brandFor=(productKey:string,registry:any):BrandDetails|null=>{
   if(!name)return null
   // Prefer the registered CRM's own logo, then a file confirmed in the
   // published CRM asset bundle. Never borrow another product's logo.
-  const logo=safeHttps(registry?.logo_url)||
-    (BRAND_LOGO_FILES[productKey]?BRAND_ASSET_ORIGIN+'/'+BRAND_LOGO_FILES[productKey]:'')
-  const website=safeHttps(registry?.marketing_url)||defaults?.website||''
-  const accent=/^#[0-9a-f]{6}$/i.test(String(registry?.accent_color||''))
-    ?String(registry.accent_color):defaults?.accent||'#334155'
-  if(!logo||!website)return null
-  return {name,logoUrl:logo,website,accent}
+  // Billing is exclusively company-branded, not dynamically overridden by
+  // central registry values (which may belong to a parent or another tenant).
+  const logoFile=BRAND_LOGO_FILES[productKey]
+  const logo=logoFile ? BRAND_ASSET_ORIGIN+'/'+logoFile : ''
+  const website=defaults?.website||''
+  const accent=defaults?.accent||'#334155'
+  if(!logo||!website||!MAIL_DOMAINS[productKey])return null
+  return {productKey,name,logoUrl:logo,website,accent}
 }
 const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthLabel:string,amountCents:number):string=>{
   const name=escapeHtml(brand.name)
   const office=escapeHtml(accountName)
   const month=escapeHtml(monthLabel)
   const website=escapeHtml(brand.website)
+  const EMAIL_LOGO_CID=emailLogoCid(brand.productKey)
   const logo='cid:'+EMAIL_LOGO_CID
   const iconOnly=brand.name==='BocaSync'||brand.name==='PoolVerge'
   const logoWidth=iconOnly?56:170
@@ -127,9 +136,28 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
   const {data:transport,error:transportError}=await db.rpc('romylabs_system_reminder_transport',{p_product_key:productKey})
   if(transportError||!transport?.ok||!transport.username||!transport.password)throw new Error('Private system sender not configured for '+productKey)
   const host=String(transport.host||'mail.taxrescrm.net').replace(/^https?:\/\//,'').replace(/\/$/,'')
-  const from=String(transport.from_address||transport.username).toLowerCase()
+  const EMAIL_LOGO_CID=emailLogoCid(productKey)
+  const from=String(transport.from_address||transport.username).trim().toLowerCase()
   if(!/^(info|support|billing|notifications|no-reply|noreply|system|reminders)@/i.test(from))
     throw new Error('Personal mailbox cannot send system reminders')
+  // A working mailbox belonging to another CRM is not a valid fallback.
+  // Even a valid generic sender must belong to the selected product domain.
+  const domain=MAIL_DOMAINS[productKey]
+  if(!domain||!from.endsWith('@'+domain)||
+      from!==String(transport.username).trim().toLowerCase()||
+      brand!==PRODUCT_BRANDS[productKey])
+    throw new Error('Cross-product sender or branding rejected')
+  // Strictly reject cross-company branding for every billing product.
+  const officialLogo=BRAND_ASSET_ORIGIN+'/'+BRAND_LOGO_FILES[productKey]
+  const productWebsite=BRAND_DEFAULTS[productKey]?.website
+  if(logoUrl!==officialLogo||!productWebsite||
+     !html.includes(escapeHtml(productWebsite))||
+     !html.includes(escapeHtml(PRODUCT_BRANDS[productKey]+' Billing Team')))
+    throw new Error('Company billing logo, website or signature mismatch')
+  // TaxRes must never contain RomyLabs anywhere in visible message content.
+  // Hidden email identifiers use the TaxRes domain, not the platform domain.
+  if(productKey==='taxres_crm'&&/romylabs|romy\x40/i.test([subject,html,brand,logoUrl,from].join(' ')))
+    throw new Error('TaxRes-only branding guard: prohibited parent-company or personal reference')
   const auth='Basic '+btoa(String(transport.username)+':'+String(transport.password))
   const sessionRes=await fetch('https://'+host+'/.well-known/jmap',{headers:{Authorization:auth,Accept:'application/json'}})
   if(!sessionRes.ok)throw new Error('Stalwart session HTTP '+sessionRes.status)
@@ -179,7 +207,7 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
     'Reply-To: <'+from+'>',
     'Subject: '+header(subject),
     'Date: '+new Date().toUTCString(),
-    'Message-ID: <'+crypto.randomUUID()+'@romylabs.com>',
+    'Message-ID: <'+crypto.randomUUID()+'@'+domain+'>',
     'MIME-Version: 1.0',
     'Content-Type: multipart/alternative; boundary="'+alt+'"',
     '',
