@@ -3,7 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
-  'Outbound conference now waits for the browser agent to join before starting two-way audio, preventing the destination from being stranded in conference waiting audio',
+  'Outbound conference waits for the browser agent to join and uses provider-native waiting audio, never another CRM's hold prompt',
   'Invoice-issued, payment-reminder and final-notice billing emails now use their CRM-specific official sender, logo, domain and signature; mismatched credentials block sending',
   'Every SaaS billing email is locked to its own CRM logo, website, signature, mailbox domain, and private MIME identifiers; no cross-company fallbacks',
   'Official embedded CID PNG logos and corrected dark/navy email styling now render for nine CRM brands in the RomyLabs office payment reminder system',
@@ -75,7 +75,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
-  'RomyLabs outbound calls hold the destination in conference waiting audio until the browser agent joins and automatically releases that wait on bridge connection',
+  'RomyLabs outbound calls use provider-native conference waiting until the browser agent joins, then automatically start two-way audio',
   'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
   'Oculivo website demo requests create an admin follow-up task independently of scheduled appointments',
   'Oculivo demo lead notifications use the existing Stalwart transport, with submission IDs and visible errors',
