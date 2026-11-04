@@ -744,6 +744,24 @@ async function handleSendSystemEmail(
   }
 
   try {
+    if (product === 'restore_relay' && (kind === 'training_invite' || kind === 'client_meeting_invite')) {
+      const gmailMessageId = await sendSystemMailViaGmail({
+        supabase,
+        fromName: 'Restore Relay',
+        replyTo: 'info@restorerelay.com',
+        to,
+        subject,
+        html,
+      })
+      return jsonResp({
+        ok: true,
+        provider: 'GMAIL_OAUTH',
+        from: 'Restore Relay',
+        reply_to: 'info@restorerelay.com',
+        message_id: gmailMessageId,
+      })
+    }
+
     const submissionId = await sendSystemMailViaStalwart({
       host: cleanHeader(transport.host),
       username: cleanHeader(transport.username),
