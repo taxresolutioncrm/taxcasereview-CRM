@@ -111,6 +111,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const directOutboundRef = useRef(false)
   const directOutboundCallRef = useRef(null)
   const directRecordRequestedRef = useRef(false)
+  // Reject late responses from cancelled/replaced dial attempts.
+  const directOutboundAttemptRef = useRef(0)
   const [directOutbound, setDirectOutbound] = useState(false)
   const [directConnected, setDirectConnected] = useState(false)
 
@@ -1079,6 +1081,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       // Direct RELAY browser -> destination. There is no server-initiated
       // destination leg, self-dial, artificial conference or automatic hold.
       directOutboundRef.current = true
+      const directAttempt = ++directOutboundAttemptRef.current
       directOutboundCallRef.current = null
       directRecordRequestedRef.current=false
       setDirectOutbound(true)
@@ -1091,7 +1094,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             body:{action:'direct_outbound_start',destination_number:destinationNumber,display_name:lead.name||lead.clientName||destinationNumber}
           })
           if(error||!data?.ok||!data?.id) throw new Error(data?.error||error?.message||'Unable to log outbound call')
-          if(!uiStartedRef.current||!directOutboundRef.current) {
+          if(!uiStartedRef.current||!directOutboundRef.current||directAttempt!==directOutboundAttemptRef.current) {
             await supabase.functions.invoke('romylabs-phone-state',{body:{action:'direct_outbound_state',id:data.id,status:'completed'}})
             return
           }
@@ -1102,7 +1105,11 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             callerNumber:callerNumberRef.current,
           })
           if(!call) throw new Error('SignalWire did not start the direct call')
-          if(!uiStartedRef.current||!directOutboundRef.current){ call.hangup?.();return }
+          if(!uiStartedRef.current||!directOutboundRef.current||directAttempt!==directOutboundAttemptRef.current){
+            call.hangup?.()
+            await supabase.functions.invoke('romylabs-phone-state',{body:{action:'direct_outbound_state',id:data.id,status:'completed'}})
+            return
+          }
           directOutboundCallRef.current=call
           liveCallRef.current=call
           activeCallRef.current=call
@@ -1227,6 +1234,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     activeCallRef.current = null
     if (directOutbound) {
       directOutboundRef.current=false
+      directOutboundAttemptRef.current++
       directOutboundCallRef.current=null
       directRecordRequestedRef.current=false
       setDirectOutbound(false)
