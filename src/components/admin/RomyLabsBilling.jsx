@@ -10,8 +10,15 @@ const th = {padding:'10px 14px',fontSize:10,fontWeight:800,color:'#475569',textT
 const td = {padding:'11px 14px',fontSize:12,borderBottom:'1px solid rgba(99,102,241,.07)',color:'#94a3b8'}
 const input = {width:'100%',boxSizing:'border-box',padding:'9px 10px',borderRadius:8,border:'1px solid rgba(99,102,241,.25)',background:'#11101d',color:'#e2e8f0',fontSize:13,outline:'none'}
 const label = {display:'block',fontSize:10,fontWeight:800,color:'#64748b',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:5}
+// Source of truth: active central CRM registry; this complete fallback avoids
+// silently hiding products if a read-only registry lookup is temporarily down.
 const PRODUCT_OPTIONS = [
-  ['taxres_crm','TaxRes CRM'],['camvella','Camvella'],['arcvena','Arcvena'],['bocasync','BocaSync'],['groundivo','GroundIVO'],['oculivo','Oculivo'],['restore_relay','Restore Relay']
+  ['taxres_crm','TaxRes CRM'],['camvella','Camvella'],['arcvena','Arcvena'],
+  ['bocasync','BocaSync'],['groundivo','GroundIVO'],['oculivo','Oculivo'],
+  ['restore_relay','Restore Relay'],['pool_crm','PoolVerge'],
+  ['barbers_salons','Barbers & Salons CRM'],
+  ['health_insurance','Health Insurance Agency CRM'],['phl_land_care','PHL Land Care CRM'],
+  ['romylabs','RomyLabs']
 ]
 const todayLocal = () => {
   const d = new Date(); const off = d.getTimezoneOffset(); return new Date(d.getTime()-off*60000).toISOString().slice(0,10)
@@ -24,6 +31,7 @@ export default function RomyLabsBilling() {
   const [filter,setFilter] = useState('all')
   const [selected,setSelected] = useState(null)
   const [tenants,setTenants] = useState([])
+  const [products,setProducts] = useState(PRODUCT_OPTIONS)
   const [paymentOpen,setPaymentOpen] = useState(false)
   const [payment,setPayment] = useState(blankPayment)
   const [saving,setSaving] = useState(false)
@@ -34,15 +42,23 @@ export default function RomyLabsBilling() {
 
   const load = useCallback(async()=>{
     setError('')
-    const [{data:payload,error:e},{data:tenantPayload,error:tenantError}] = await Promise.all([
+    const [{data:payload,error:e},{data:tenantPayload,error:tenantError},{data:productPayload,error:productError}] = await Promise.all([
       supabase.rpc('romylabs_billing_dashboard'),
-      supabase.rpc('admin_tenant_overview')
+      supabase.rpc('admin_tenant_overview'),
+      supabase.from('romylabs_products').select('product_id,name').order('name')
     ])
     if(e){setError(e.message);setData(null);return null}
     const nextData = payload || {accounts:[],invoices:[],payments:[],events:[]}
     setData(nextData)
     setSelected(current => current ? (nextData.accounts || []).find(a=>a.id===current.id) || current : current)
     if(!tenantError) setTenants(Array.isArray(tenantPayload)?tenantPayload:[])
+    // Existing billing accounts are also in scope, even if the office has a
+    // separate Supabase project and is absent from this project's tenants.
+    if(!productError && Array.isArray(productPayload) && productPayload.length){
+      const names = new Map([...PRODUCT_OPTIONS,...productPayload.map(p=>[p.product_id,p.name])])
+      for (const a of nextData.accounts || []) if(a.product_key && !names.has(a.product_key)) names.set(a.product_key,a.product_key)
+      setProducts([...names.entries()].filter(([id])=>id).sort((a,b)=>a[1].localeCompare(b[1])))
+    }
     return nextData
   },[])
   useEffect(()=>{load()},[load])
@@ -77,6 +93,26 @@ export default function RomyLabsBilling() {
   const accountInvoices = selected ? invoices.filter(i=>i.account_id===selected.id) : []
   const accountPayments = selected ? payments.filter(p=>p.account_id===selected.id) : []
   const accountEvents = selected ? events.filter(e=>e.account_id===selected.id) : []
+  const officeOptions = useMemo(()=>{
+    const candidates = new Map()
+    for(const a of accounts){
+      if(a.product_key!==payment.product_key||!a.external_tenant_id) continue
+      candidates.set(String(a.external_tenant_id),{
+        id:String(a.external_tenant_id),name:a.account_name,account:a,
+        note:'Billing account'
+      })
+    }
+    if(payment.product_key==='taxres_crm'){
+      for(const t of tenants){
+        if(!t.id||t.tenant_code==='DEMO') continue
+        const id=String(t.id)
+        if(!candidates.has(id)) candidates.set(id,{
+          id,name:t.firm_name||t.tenant_code||id,tenant:t,note:'TaxRes office'
+        })
+      }
+    }
+    return [...candidates.values()].sort((a,b)=>a.name.localeCompare(b.name))
+  },[accounts,tenants,payment.product_key])
   const kpis = [
     ['Monthly Recurring',money(data?.mrr_cents),'#10b981'],
     ['Past Due',money(data?.past_due_cents),'#f59e0b'],
@@ -90,10 +126,24 @@ export default function RomyLabsBilling() {
     return {...next,amount:seats>0&&rate>0?(seats*rate).toFixed(2):next.amount}
   }
   const chooseTenant = id => {
-    const t = tenants.find(x=>x.id===id)
-    if(!t){setPayment(p=>({...p,external_tenant_id:id}));return}
-    setPayment(p=>recalc({...p,external_tenant_id:t.id,account_name:t.firm_name||'',billing_email:t.primary_contact_email||p.billing_email,seat_count:t.billing_seats||p.seat_count||t.employee_count||'',per_seat_rate:t.per_seat_rate||p.per_seat_rate||''}))
+    const option=officeOptions.find(o=>o.id===String(id))
+    const account=option?.account
+    if(account){
+      // Never overwrite existing billing rates or payer with a local office
+      // directory record, especially for separately hosted Nashville.
+      setPayment(p=>recalc({...p,external_tenant_id:String(account.external_tenant_id),
+        account_name:account.account_name,billing_email:account.billing_email||'',
+        seat_count:account.seat_count||'',per_seat_rate:Number(account.per_seat_amount_cents||0)/100}))
+      return
+    }
+    const t=option?.tenant
+    setPayment(p=>t?recalc({...p,external_tenant_id:String(t.id),
+      account_name:t.firm_name||'',billing_email:t.primary_contact_email||'',
+      seat_count:t.billing_seats||t.employee_count||'',per_seat_rate:t.per_seat_rate||''})
+      :({...blankPayment,product_key:p.product_key,paid_date:p.paid_date,provider:p.provider}))
   }
+  const chooseProduct = key => setPayment(p=>({...blankPayment,product_key:key,paid_date:p.paid_date,provider:p.provider}))
+
   const openPayment = account => {
     setNotice('')
     setError('')
@@ -188,8 +238,15 @@ export default function RomyLabsBilling() {
     {paymentOpen && <div style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={e=>e.target===e.currentTarget&&setPaymentOpen(false)}><form onSubmit={savePayment} style={{width:620,maxWidth:'96vw',maxHeight:'92vh',overflowY:'auto',background:'#0f0e1a',border:'1px solid rgba(99,102,241,.28)',borderRadius:16,padding:24,boxShadow:'0 24px 80px rgba(0,0,0,.55)'}}><div style={{display:'flex',justifyContent:'space-between',gap:12,marginBottom:20}}><div><div style={{fontSize:20,fontWeight:900,color:'#fff'}}>Record Manual Payment</div><div style={{fontSize:12,color:'#64748b',marginTop:4}}>Zelle, ACH, check, wire, cash, or another offline payment.</div></div><button type="button" onClick={()=>setPaymentOpen(false)} style={{background:'none',border:0,color:'#64748b',fontSize:22,cursor:'pointer'}}>✕</button></div>
       {error && <div role="alert" style={{marginBottom:14,padding:12,borderRadius:9,background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.35)',color:'#fecaca',fontSize:12,fontWeight:700}}>Payment error: {error}</div>}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-        <Field title="Product"><select value={payment.product_key} onChange={e=>setPayment(p=>({...p,product_key:e.target.value}))} style={input}>{PRODUCT_OPTIONS.map(([v,n])=><option key={v} value={v}>{n}</option>)}</select></Field>
-        {payment.product_key==='taxres_crm'?<Field title="TaxRes Office"><select value={payment.external_tenant_id} onChange={e=>chooseTenant(e.target.value)} style={input}><option value="">Select office…</option>{tenants.filter(t=>t.tenant_code!=='DEMO').map(t=><option key={t.id} value={t.id}>{t.firm_name}</option>)}</select></Field>:<Field title="Tenant / Practice ID"><input value={payment.external_tenant_id} onChange={e=>setPayment(p=>({...p,external_tenant_id:e.target.value}))} style={input}/></Field>}
+        <Field title="Product"><select value={payment.product_key} onChange={e=>chooseProduct(e.target.value)} style={input}>{products.map(([v,n])=><option key={v} value={v}>{n}</option>)}</select></Field>
+        <Field title={payment.product_key==='taxres_crm'?'TaxRes Office':'CRM Office / Practice'}>
+          <select value={officeOptions.some(o=>o.id===String(payment.external_tenant_id))?payment.external_tenant_id:''} onChange={e=>chooseTenant(e.target.value)} style={input}>
+            <option value="">Select existing office…</option>
+            {officeOptions.map(o=><option key={o.id} value={o.id}>{o.name} · {o.note}</option>)}
+          </select>
+          {payment.product_key!=='taxres_crm'&&<input aria-label="New office / practice ID" placeholder="Or enter a new office / practice ID" value={payment.external_tenant_id} onChange={e=>setPayment(p=>({...p,external_tenant_id:e.target.value}))} style={{...input,marginTop:7}}/>}
+          {payment.product_key==='taxres_crm'&&officeOptions.length===0&&<div style={{fontSize:11,color:'#fbbf24',marginTop:6}}>No offices found. Refresh billing accounts.</div>}
+        </Field>
         <Field title="Account Name"><input value={payment.account_name} onChange={e=>setPayment(p=>({...p,account_name:e.target.value}))} style={input}/></Field>
         <Field title="Billing Email"><input type="email" value={payment.billing_email} onChange={e=>setPayment(p=>({...p,billing_email:e.target.value}))} style={input}/></Field>
         <Field title="Purchased Seats"><input type="number" min="1" value={payment.seat_count} onChange={e=>setPayment(p=>recalc({...p,seat_count:e.target.value}))} style={input}/></Field>
