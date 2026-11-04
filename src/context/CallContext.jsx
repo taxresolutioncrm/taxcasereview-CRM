@@ -556,7 +556,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           setIncomingCall(null)
           setIncomingMatch(null)
           stopRing()
-          if (directOutboundRef.current && directOutboundCallRef.current === call) {
+          if (directOutboundRef.current && directOutboundCallRef.current &&
+              (directOutboundCallRef.current === call || (call?.id && directOutboundCallRef.current.id === call.id))) {
             if (pageUnloadingRef.current) return
             if (await finalizeCallEnd({alreadyHungUp:true,skipConferenceKill:true})) handleRemoteHangup()
             return
