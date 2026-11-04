@@ -154,32 +154,80 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
     rawLogo[5]===10 && rawLogo[6]===26 && rawLogo[7]===10
   if(!isPng||rawLogo.byteLength>2*1024*1024)
     throw new Error('Official logo must be a valid PNG smaller than 2MB; no reminder sent')
+  // The MIME structure is created explicitly: multipart/alternative containing
+  // multipart/related(HTML + official inline PNG). Some Stalwart versions put
+  // JMAP Email/set inline attachments into multipart/mixed, breaking cid images.
+  const bytes64=(data:Uint8Array)=>{
+    let binary=''
+    for(let i=0;i<data.length;i+=16384)binary+=String.fromCharCode(...data.subarray(i,i+16384))
+    return btoa(binary)
+  }
+  const lines64=(data:Uint8Array)=>bytes64(data).match(/.{1,76}/g)?.join('\r\n')||''
+  const encodeText=(value:string)=>lines64(new TextEncoder().encode(value))
+  const header=(value:string)=>value.replace(/[\r\n]/g,' ')
+  const alt='alt_'+crypto.randomUUID().replaceAll('-','')
+  const related='rel_'+crypto.randomUUID().replaceAll('-','')
+  const plaintext=html.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim()
+  const mime=[
+    'From: "'+header(brand)+' System Reminder" <'+from+'>',
+    'To: <'+recipient+'>',
+    'Reply-To: <'+from+'>',
+    'Subject: '+header(subject),
+    'Date: '+new Date().toUTCString(),
+    'Message-ID: <'+crypto.randomUUID()+'@romylabs.com>',
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/alternative; boundary="'+alt+'"',
+    '',
+    '--'+alt,
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    encodeText(plaintext),
+    '--'+alt,
+    'Content-Type: multipart/related; boundary="'+related+'"',
+    '',
+    '--'+related,
+    'Content-Type: text/html; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    encodeText(html),
+    '--'+related,
+    'Content-Type: image/png; name="official-crm-logo.png"',
+    'Content-Transfer-Encoding: base64',
+    'Content-ID: <'+EMAIL_LOGO_CID+'>',
+    'Content-Disposition: inline; filename="official-crm-logo.png"',
+    '',
+    lines64(rawLogo),
+    '--'+related+'--',
+    '--'+alt+'--',
+    '',
+  ].join('\r\n')
   const uploadUrl=String(session.uploadUrl||'').replace('{accountId}',encodeURIComponent(accountId))
   if(!uploadUrl.startsWith('https://'))throw new Error('Stalwart JMAP upload endpoint unavailable')
   const uploadResponse=await fetch(uploadUrl,{
     method:'POST',
-    headers:{Authorization:auth,'Content-Type':'image/png'},
-    body:rawLogo,
+    headers:{Authorization:auth,'Content-Type':'message/rfc822'},
+    body:new TextEncoder().encode(mime),
   })
-  if(!uploadResponse.ok)throw new Error('Stalwart logo upload HTTP '+uploadResponse.status)
+  if(!uploadResponse.ok)throw new Error('Stalwart MIME upload HTTP '+uploadResponse.status)
   const uploaded=await uploadResponse.json()
-  if(!uploaded.blobId||!uploaded.size)throw new Error('Stalwart did not return a logo blob')
-  const draft={
-    attachments:[{blobId:uploaded.blobId,type:'image/png',name:'official-crm-logo.png',
-      size:uploaded.size,cid:EMAIL_LOGO_CID,disposition:'inline'}],
-    from:[{email:from,name:brand+' System Reminder'}],
-    to:[{email:recipient}],
-    replyTo:[{email:from}],
-    subject,
-    mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},
-    bodyValues:{body:{value:html,charset:'utf-8'}},
-    htmlBody:[{partId:'body',type:'text/html'}],
-  }
+  if(!uploaded.blobId||!uploaded.size)throw new Error('Stalwart did not return MIME blob')
+  const importRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({
+    using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail'],
+    methodCalls:[['Email/import',{accountId,emails:{
+      reminder:{blobId:uploaded.blobId,mailboxIds:{[drafts.id]:true},keywords:{'$draft':true}},
+    }},'i1']],
+  })})
+  if(!importRes.ok)throw new Error('Stalwart MIME import HTTP '+importRes.status)
+  const importedResult=await importRes.json()
+  const importData=importedResult.methodResponses?.find((v:any)=>v?.[0]==='Email/import')?.[1]
+  if(importData?.notCreated?.reminder||!importData?.created?.reminder?.id)
+    throw new Error('Stalwart rejected MIME import')
+  const emailId=String(importData.created.reminder.id)
   const submitRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify({
     using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
     methodCalls:[
-      ['Email/set',{accountId,create:{draft}},'e0'],
-      ['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},
+      ['EmailSubmission/set',{accountId,create:{sendIt:{emailId,identityId:identity.id}},
         onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sentBox.id]:true,'keywords/$draft':null}}},'s0'],
     ],
   })})
