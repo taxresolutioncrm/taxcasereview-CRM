@@ -1037,7 +1037,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     const digits = lead.phone?.replace(/\D/g, '')
     if (!digits) { showCallToast('No phone number to call.'); return false }
     const destinationNumber = digits.length === 10 ? `+1${digits}` : `+${digits}`
-    if (phoneContext==='romylabs' && !/^\\+\\d{10,15}$/.test(String(callerNumberRef.current||''))) {
+    if (phoneContext==='romylabs' && !/^\+\d{10,15}$/.test(String(callerNumberRef.current||''))) {
       showCallToast('RomyLabs caller ID is not ready. No call was placed.')
       return false
     }
