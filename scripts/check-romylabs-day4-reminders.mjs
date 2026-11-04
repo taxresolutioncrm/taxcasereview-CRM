@@ -18,6 +18,16 @@ assert(code.includes("paidNow>=account.monthly_amount_cents"), 'Must re-check pa
 assert(code.includes("sendViaStalwart"), 'Must use Stalwart transport')
 assert(code.includes("romylabs_system_reminder_transport"), 'Must resolve a private sender per product')
 assert(code.includes('renderBrandedPaymentReminder('), 'CRM branded email template missing')
+assert(code.includes("const logo='cid:'+EMAIL_LOGO_CID"), 'Official logo must be CID-embedded, not hotlinked')
+assert(code.includes('rawLogo[0]===137')&&code.includes('rawLogo[7]===10'), 'Official PNG magic verification missing')
+assert(code.includes('session.uploadUrl'), 'JMAP logo upload required')
+assert(code.includes("disposition:'inline'"), 'Logo attachment must be inline')
+assert(code.includes("if(!isPng||rawLogo.byteLength>2*1024*1024)"), 'Invalid or huge logos must block email')
+assert(code.includes("Personal mailbox cannot send system reminders"), 'Send must reject personal sender')
+assert(code.includes('#d8eaff'), 'Approved pale blue balance treatment missing')
+assert(code.includes('font-weight:800;color:#101c32 !important'), 'Approved dark bold heading missing')
+assert(!code.includes("const logo=escapeHtml(brand.logoUrl)"), 'Remote linked logos must not render directly in email')
+
 assert(code.includes('BRAND_LOGO_FILES'), 'Published product logo registry missing')
 // Every product logo must be a real, product-specific asset committed to this repository.
 // Never allow a generated stand-in or another CRM's logo to pass certification.
