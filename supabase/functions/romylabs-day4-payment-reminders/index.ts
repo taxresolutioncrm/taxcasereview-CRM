@@ -93,18 +93,18 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
     '<p style="font-size:16px;line-height:1.7;color:#243149 !important;margin:0 0 20px">Our records do not yet reflect full payment for your <strong>'+month+'</strong> '+name+' subscription.</p>'+
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#d8eaff;border:1px solid #d5e6fa;border-radius:12px">'+
     '<tr><td style="padding:20px 22px">'+
-    '<div style="font-size:11px;font-weight:700;letter-spacing:1.1px;color:#61718b">REMAINING BALANCE</div>'+
+    '<div style="font-size:12px;font-weight:700;letter-spacing:1.1px;color:#0d488d">REMAINING BALANCE</div>'+
     '<div style="font-size:36px;line-height:1.3;font-weight:800;color:#101c32 !important;padding-top:4px">'+amount+'</div>'+
     '<div style="font-size:12px;color:#65758d;margin-top:7px">'+month+' &middot; '+name+'</div>'+
     '</td></tr></table>'+
     '<p style="font-size:16px;line-height:1.7;color:#243149 !important;margin:22px 0 14px">Please arrange payment through your existing payment method. If you have already paid, please reply with the payment date or confirmation so we can update our records.</p>'+
     '<p style="font-size:14px;line-height:1.6;color:#56667d;margin:0 0 24px">Thank you for being part of '+name+'.</p>'+
-    '<p style="font-size:14px;line-height:1.6;color:#24354f;margin:0 0 14px"><strong>'+name+' Billing Team</strong></p>'+
+    '<p style="font-size:15px;line-height:1.6;color:#101c32;margin:0 0 14px"><strong>'+name+' Billing Team</strong></p>'+
     '</td></tr>'+
-    '<tr><td style="padding:22px 36px 26px;background:#edf0f5;border-top:1px solid #e8edf5">'+
-    '<p style="font-size:13px;font-weight:700;color:#2f425f;margin:0 0 6px">'+name+'</p>'+
-    '<a href="'+website+'" style="font-size:13px;color:'+accent+';text-decoration:none">'+website+'</a>'+
-    '<p style="font-size:11px;line-height:1.6;color:#6d7c91;margin:14px 0 0">This is an automated billing reminder from '+name+'. No payment is processed through this email. Please do not share passwords or sensitive financial details by email.</p>'+
+    '<tr><td style="padding:22px 36px 26px;background:#edf0f5;border-top:1px solid #e8edf5;text-align:center">'+
+    '<p style="font-size:15px;font-weight:800;color:#101c32;margin:0 0 6px;text-align:center">'+name+'</p>'+
+    '<a href="'+website+'" style="font-size:14px;color:'+accent+';text-decoration:underline">'+website+'</a>'+
+    '<p style="font-size:12px;line-height:1.6;color:#50617a;margin:14px 0 0;text-align:center">This is an automated billing reminder from '+name+'. No payment is processed through this email. Please do not share passwords or sensitive financial details by email.</p>'+
     '</td></tr></table></td></tr></table></body></html>'
 }
 
