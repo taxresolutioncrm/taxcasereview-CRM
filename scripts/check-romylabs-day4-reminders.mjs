@@ -38,15 +38,17 @@ assert(code.includes('BRAND_LOGO_FILES'), 'Published product logo registry missi
 const officialAssets = {
   taxres_crm:'taxrescrm-logo.png',
   arcvena:'arcvena-logo.png',
-  bocasync:'bocasync-logo.svg',
-  camvella:'camvella-logo.svg',
-  restore_relay:'restore-relay-logo.svg',
+  bocasync:'bocasync-logo.png',
+  camvella:'camvella-logo.png',
+  restore_relay:'restore-relay-logo.png',
   romylabs:'romylabs-logo.png',
-  oculivo:'oculivo-logo.svg',
-  groundivo:'groundivo-logo.svg',
+  oculivo:'oculivo-logo.png',
+  groundivo:'groundivo-logo.png',
 }
 for(const [product,file] of Object.entries(officialAssets)){
-  assert(fs.existsSync('public/'+file), 'Official CRM logo asset missing: '+product+' '+file)
+  const png=fs.readFileSync('public/'+file)
+  assert(png.length>64 && png.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'Official CRM PNG invalid: '+product)
+  assert(png.length<2*1024*1024, 'Official CRM PNG too large: '+product)
   assert(code.includes(product+":'"+file+"'"), 'Wrong branded logo mapping: '+product)
 }
 assert(!code.includes('placeholder-logo'), 'Placeholder logos are prohibited')
