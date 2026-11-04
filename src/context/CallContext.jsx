@@ -110,6 +110,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   // RomyLabs-only direct outbound WebRTC call. No conference, second provider leg or self-dial.
   const directOutboundRef = useRef(false)
   const directOutboundCallRef = useRef(null)
+  const directRecordRequestedRef = useRef(false)
   const [directOutbound, setDirectOutbound] = useState(false)
   const [directConnected, setDirectConnected] = useState(false)
 
@@ -514,6 +515,14 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             liveCallRef.current = call
             setOnHold(false)
             setDirectConnected(true)
+            if (!directRecordRequestedRef.current && activeOutboundCallIdRef.current && call?.id) {
+              directRecordRequestedRef.current=true
+              supabase.functions.invoke('romylabs-phone-state',{
+                body:{action:'direct_outbound_record',id:activeOutboundCallIdRef.current,call_id:call.id}
+              }).then(({data,error})=>{
+                if(error||data?.error){console.error('[direct-outbound] recording not available',data?.error||error);showCallToast('Call is connected, but recording could not be confirmed.')}
+              })
+            }
             if (activeOutboundCallIdRef.current) {
               supabase.functions.invoke('romylabs-phone-state', {
                 body:{action:'direct_outbound_state',id:activeOutboundCallIdRef.current,status:'connected'}
@@ -1071,6 +1080,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       // destination leg, self-dial, artificial conference or automatic hold.
       directOutboundRef.current = true
       directOutboundCallRef.current = null
+      directRecordRequestedRef.current=false
       setDirectOutbound(true)
       setDirectConnected(false)
       activeConferenceRef.current = null
@@ -1218,6 +1228,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     if (directOutbound) {
       directOutboundRef.current=false
       directOutboundCallRef.current=null
+      directRecordRequestedRef.current=false
       setDirectOutbound(false)
       setDirectConnected(false)
       if (directAuditId) {
