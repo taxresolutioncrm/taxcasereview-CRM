@@ -10,6 +10,7 @@ on:
       - public/restore-relay-logo.svg
       - public/oculivo-logo.svg
       - public/groundivo-logo.svg
+      - public/poolverge-official-mark.svg
       - public/romylabs-logo.svg
 permissions:
   contents: write
@@ -37,6 +38,7 @@ jobs:
             'restore-relay-logo.svg',
             'oculivo-logo.svg',
             'groundivo-logo.svg',
+            'poolverge-official-mark.svg',
           ]
           for filename in files:
               source=Path('public')/filename
@@ -52,7 +54,7 @@ jobs:
         run: |
           git config user.name "RomyLabs Sandbox Certification"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add public/bocasync-logo.png public/camvella-logo.png public/restore-relay-logo.png public/oculivo-logo.png public/groundivo-logo.png
+          git add public/bocasync-logo.png public/camvella-logo.png public/restore-relay-logo.png public/oculivo-logo.png public/groundivo-logo.png public/poolverge-official-mark.png
           if ! git diff --cached --quiet; then
             git commit -m "assets(email): rasterize committed official CRM SVG logos to email-compatible PNG"
             git push origin HEAD:fix/real-email-taxres-logo-cid-and-design-20261103
