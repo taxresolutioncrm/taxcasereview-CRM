@@ -1011,7 +1011,8 @@ export default function FormaCorp() {
               <button className="btn sm" onClick={()=>saveArticlesToVault(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Saving…':'💾 Save Draft Articles to Documents'}</button>
               {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
               {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Prepare Filing Packet</button>}
-              {c.fl_filing_status==='Filing Queue' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Continue Filing Preparation</button>}
+              {c.fl_filing_status==='Filing Queue' && c.fl_submission_method !== 'prepaid_fax' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Continue Filing Preparation</button>}
+              {c.fl_filing_status==='Filing Queue' && c.fl_submission_method === 'prepaid_fax' && <span className="bdg bn" style={{alignSelf:'center'}}>Fax sent — Sunbiz receipt not yet verified</span>}
               {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <>
                 <a className="btn sm" href={c.entity_type === 'Non-Profit 501(c)(3)' ? 'https://efile.sunbiz.org/np_file.html' : isFloridaCorporation(c) ? 'https://efile.sunbiz.org/profit_file.html' : 'https://efile.sunbiz.org/llc_file.html'} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>🏛 Open Official {isFloridaCorporation(c) ? 'Corporation' : 'LLC'} Filing</a>
                 <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>
@@ -1022,7 +1023,7 @@ export default function FormaCorp() {
             </div>
 
             <div style={{marginTop:10,padding:'10px 11px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:7,fontSize:10.5,lineHeight:1.55}}>
-              <div style={{fontWeight:800,fontSize:11,marginBottom:4}}>🏢 FormaCorp native filing workflow</div>
+              <div style={{fontWeight:800,fontSize:11,marginBottom:4}}>🏢 FormaCorp filing preparation and state receipt tracking</div>
               <div>FormaCorp prepares and tracks the filing. Standard Florida submissions and government payment are completed on the official Sunbiz site. FormaCorp does not charge the same state filing fee again. After submission, enter the state's actual receipt and tracking details here.</div>
             </div>
 
@@ -1129,7 +1130,7 @@ export default function FormaCorp() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:10}}>
           {filtered.map(c=><div key={c.id} className="card" style={{padding:'14px 16px',cursor:'pointer',borderTop:`3px solid ${stageColor[c.stage]||'var(--br)'}`}} onClick={()=>setDetail(c)} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow=`0 6px 20px ${stageColor[c.stage]}22`}} onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=''}}>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontSize:14,fontWeight:800,marginBottom:2}}>{c.entity_name}</div><div style={{fontSize:12,color:'var(--t3)'}}><ClientLink name={c.client_name} /></div></div><span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:stageColor[c.stage]+'22',color:stageColor[c.stage],border:`1px solid ${stageColor[c.stage]}44`,fontWeight:600,whiteSpace:'nowrap'}}>{c.stage}</span></div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}{isFloridaFormable(c) && floridaSubmissionMissing(c).length===0 && <span className="bdg bg" style={{fontSize:10}}>FL Packet Ready</span>}</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><span className="bdg bb" style={{fontSize:10}}>{c.entity_type}</span><span className="bdg bn" style={{fontSize:10}}>{c.state}</span>{c.ein && <span className="bdg bg" style={{fontSize:10}}>EIN ✓</span>}{c.fee_paid && <span className="bdg bg" style={{fontSize:10}}>Paid</span>}{isFloridaFormable(c) && floridaSubmissionMissing(c).length===0 && <span className="bdg bg" style={{fontSize:10}}>FL Packet Ready (not filed)</span>}</div>
             <div style={{display:'flex',gap:3,marginTop:10,alignItems:'center'}}>{STAGES.map((s,i)=><div key={s} style={{flex:1,height:4,borderRadius:2,background:i<=STAGES.indexOf(c.stage)?stageColor[c.stage]:'var(--s3)'}}/>)}</div>
             <div style={{fontSize:9,color:'var(--t3)',marginTop:3}}>Step {STAGES.indexOf(c.stage)+1} of {STAGES.length}: {c.stage}</div>
           </div>)}
