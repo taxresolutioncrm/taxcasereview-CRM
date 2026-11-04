@@ -34,7 +34,7 @@ export default function ActiveCallBar() {
     incomingCall, incomingMatch, calling, ending, active, elapsed, formatTime,
     answerIncoming, declineIncoming, cancelCall, endCall,
     logModal, logForm, setLogForm, saving, OUTCOMES, saveCallLog, closeLogModalWithoutSaving,
-    callToast, sendDTMF, muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer,
+    callToast, sendDTMF, muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer, directOutbound, directConnected,
   } = useCall()
 
   // Add-caller popover state
@@ -347,13 +347,13 @@ export default function ActiveCallBar() {
                 { key: 'mute', onClick: toggleMute, on: muted, onBg: '#C0202F',
                   label: muted ? '🔇 Unmute' : '🎤 Mute',
                   title: muted ? 'Unmute microphone' : 'Mute microphone' },
-                { key: 'hold', onClick: toggleHold, on: onHold, onBg: '#B45309', disabled: holdBusy,
+                { key: 'hold', onClick: toggleHold, on: onHold, onBg: '#B45309', disabled: holdBusy || (directOutbound && !directConnected),
                   label: holdBusy ? '⏳ Hold…' : (onHold ? '▶ Resume' : '⏸ Hold'),
                   title: onHold ? 'Take the caller off hold' : 'Put the caller on hold (they hear hold music)' },
                 { key: 'add', onClick: () => { setShowAddCaller(v => !v); setShowTransfer(false); setAddMsg('') }, on: showAddCaller, onBg: 'rgba(255,255,255,0.35)',
-                  label: '➕ Add Caller', title: 'Conference another person into this call' },
+                  label: '➕ Add Caller', disabled: directOutbound, title: directOutbound ? 'Not available during direct outbound calls' : 'Conference another person into this call' },
                 { key: 'transfer', onClick: () => { setShowTransfer(v => !v); setShowAddCaller(false); setXferMsg('') },
-                  on: showTransfer, onBg: 'rgba(255,255,255,0.35)', disabled: !canTransfer,
+                  on: showTransfer, onBg: 'rgba(255,255,255,0.35)', disabled: !canTransfer || directOutbound,
                   label: '↪ Transfer',
                   title: canTransfer ? 'Transfer this call to a teammate or an outside number' : 'Transfer becomes available once the call connects' },
                 { key: 'dialpad', onClick: () => setShowDialpad(d => !d), on: showDialpad, onBg: 'rgba(255,255,255,0.35)',
