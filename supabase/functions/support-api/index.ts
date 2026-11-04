@@ -423,6 +423,132 @@ const SYSTEM_MAIL_BRAND_BY_PRODUCT: Record<string, { name: string; forbidden: st
 const MAX_SYSTEM_SUBJECT_LEN = 300
 const MAX_SYSTEM_HTML_LEN = 200_000
 
+const GMAIL_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
+
+function gmailB64Url(value: string): string {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function gmailHeader(value: string): string {
+  if (/^[\x00-\x7F]*$/.test(value)) return value
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return '=?UTF-8?B?' + btoa(binary) + '?='
+}
+
+async function getGmailAccessToken(
+  supabase: ReturnType<typeof createClient>,
+): Promise<{ accessToken: string; sender: string }> {
+  const { data: settings, error } = await supabase
+    .from('settings')
+    .select('id,email,gmail_access_token,gmail_token_expiry,gmail_refresh_token,gmail_client_id,gmail_client_secret')
+    .not('gmail_refresh_token', 'is', null)
+    .limit(1)
+    .maybeSingle()
+
+  if (
+    error ||
+    !settings?.gmail_refresh_token ||
+    !settings?.gmail_client_id ||
+    !settings?.gmail_client_secret
+  ) {
+    throw new Error('Central Gmail OAuth transport is unavailable')
+  }
+
+  const expiry = settings.gmail_token_expiry
+    ? new Date(settings.gmail_token_expiry).getTime()
+    : 0
+
+  if (settings.gmail_access_token && expiry > Date.now() + 60_000) {
+    return {
+      accessToken: String(settings.gmail_access_token),
+      sender: cleanHeader(settings.email || 'info@taxcasereview.org').toLowerCase(),
+    }
+  }
+
+  const tokenResponse = await fetch(GMAIL_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: String(settings.gmail_refresh_token),
+      client_id: String(settings.gmail_client_id),
+      client_secret: String(settings.gmail_client_secret),
+      grant_type: 'refresh_token',
+    }),
+  })
+
+  const tokenData = await tokenResponse.json().catch(() => ({}))
+  if (!tokenResponse.ok || !tokenData?.access_token) {
+    throw new Error(
+      String(
+        tokenData?.error_description ||
+          tokenData?.error ||
+          'Central Gmail token refresh failed',
+      ),
+    )
+  }
+
+  await supabase
+    .from('settings')
+    .update({
+      gmail_access_token: tokenData.access_token,
+      gmail_token_expiry: new Date(
+        Date.now() + Number(tokenData.expires_in || 3600) * 1000,
+      ).toISOString(),
+    })
+    .eq('id', settings.id)
+
+  return {
+    accessToken: String(tokenData.access_token),
+    sender: cleanHeader(settings.email || 'info@taxcasereview.org').toLowerCase(),
+  }
+}
+
+async function sendSystemMailViaGmail(opts: {
+  supabase: ReturnType<typeof createClient>
+  fromName: string
+  replyTo: string
+  to: string
+  subject: string
+  html: string
+}) {
+  const { accessToken, sender } = await getGmailAccessToken(opts.supabase)
+  const rawMessage = [
+    'To: ' + cleanHeader(opts.to),
+    'From: ' + gmailHeader(cleanHeader(opts.fromName)) + ' <' + sender + '>',
+    'Reply-To: ' + cleanHeader(opts.replyTo),
+    'Subject: ' + gmailHeader(cleanHeader(opts.subject)),
+    'Date: ' + new Date().toUTCString(),
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset="UTF-8"',
+    '',
+    opts.html,
+  ].join('\r\n')
+
+  const response = await fetch(GMAIL_SEND_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + accessToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw: gmailB64Url(rawMessage) }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || !data?.id) {
+    throw new Error(
+      String(data?.error?.message || 'Central Gmail delivery failed'),
+    )
+  }
+
+  return String(data.id)
+}
+
 function cleanHeader(value: unknown): string {
   return String(value ?? '').replace(/[\r\n]+/g, ' ').trim()
 }
@@ -618,6 +744,25 @@ async function handleSendSystemEmail(
   }
 
   try {
+    if (product === 'restore_relay') {
+      const gmailMessageId = await sendSystemMailViaGmail({
+        supabase,
+        fromName: 'Restore Relay',
+        replyTo: cleanHeader(transport.from_address).toLowerCase() || 'info@restorerelay.com',
+        to,
+        subject,
+        html,
+      })
+
+      return jsonResp({
+        ok: true,
+        provider: 'GMAIL_OAUTH',
+        from: 'central-gmail',
+        reply_to: cleanHeader(transport.from_address).toLowerCase() || 'info@restorerelay.com',
+        message_id: gmailMessageId,
+      })
+    }
+
     const submissionId = await sendSystemMailViaStalwart({
       host: cleanHeader(transport.host),
       username: cleanHeader(transport.username),
@@ -637,11 +782,11 @@ async function handleSendSystemEmail(
     })
   } catch (error) {
     console.error(
-      'support-api Stalwart send failed:',
+      'support-api system mail send failed:',
       product,
       error instanceof Error ? error.message : String(error),
     )
-    return jsonResp({ error: brand.name + ' Stalwart delivery failed' }, 502)
+    return jsonResp({ error: brand.name + ' system mail delivery failed' }, 502)
   }
 }
 
