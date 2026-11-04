@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Outbound conference waits for the browser agent to join and uses provider-native waiting audio, never a hold prompt branded to a different CRM',
   'Invoice-issued, payment-reminder and final-notice billing emails now use their CRM-specific official sender, logo, domain and signature; mismatched credentials block sending',
   'Every SaaS billing email is locked to its own CRM logo, website, signature, mailbox domain, and private MIME identifiers; no cross-company fallbacks',
   'Official embedded CID PNG logos and corrected dark/navy email styling now render for nine CRM brands in the RomyLabs office payment reminder system',
@@ -74,6 +75,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs outbound calls use provider-native conference waiting until the browser agent joins, then automatically start two-way audio',
   'Camvella billing enforcement and office metrics endpoints now target the dedicated Camvella Supabase project',
   'Oculivo website demo requests create an admin follow-up task independently of scheduled appointments',
   'Oculivo demo lead notifications use the existing Stalwart transport, with submission IDs and visible errors',
@@ -123,18 +125,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.45',
+  version: '3.2.46',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.45 — Official Branded Billing Emails',
+  title: 'RomyLabs Admin Portal 3.2.46 — Outbound Call Bridge Recovery',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.45',
+    version: '3.2.46',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.45 — Official Branded Billing Emails',
+    title: 'CRM 3.2.46 — Outbound Conference Audio Bridge',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -156,17 +158,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.45',
+    version: '3.2.46',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.45 — Official Branded Billing Emails',
+    title: 'CRM 3.2.46 — Outbound Conference Audio Bridge',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.45',
+    version: '3.2.46',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.45 — Official Branded Billing Emails',
+    title: 'CRM 3.2.46 — Outbound Conference Audio Bridge',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
