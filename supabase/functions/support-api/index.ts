@@ -30,6 +30,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { hmac } from 'npm:@noble/hashes@1.8.0/hmac.js'
 import { sha256 } from 'npm:@noble/hashes@1.8.0/sha2.js'
+import nodemailer from 'npm:nodemailer@6.9.16'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -689,6 +690,44 @@ async function sendSystemMailViaStalwart(opts: {
   return String(submissionId)
 }
 
+
+async function sendSystemMailViaStalwartSmtp(opts: {
+  host: string
+  port: number
+  username: string
+  password: string
+  fromAddress: string
+  fromName: string
+  to: string
+  subject: string
+  html: string
+}) {
+  const transport = nodemailer.createTransport({
+    host: opts.host,
+    port: opts.port,
+    secure: opts.port === 465,
+    auth: {
+      user: opts.username,
+      pass: opts.password,
+    },
+    tls: {
+      servername: opts.host,
+    },
+  })
+
+  const result = await transport.sendMail({
+    from: '"' + cleanHeader(opts.fromName) + '" <' + cleanHeader(opts.fromAddress) + '>',
+    to: cleanHeader(opts.to),
+    subject: cleanHeader(opts.subject),
+    html: opts.html,
+    replyTo: cleanHeader(opts.fromAddress),
+  })
+
+  const messageId = cleanHeader(result?.messageId)
+  if (!messageId) throw new Error('Stalwart SMTP did not confirm message acceptance')
+  return messageId
+}
+
 async function handleSendSystemEmail(
   supabase: ReturnType<typeof createClient>,
   product: string,
@@ -721,6 +760,57 @@ async function handleSendSystemEmail(
   }
   if (brand.forbidden.some(otherBrand => subject.includes(otherBrand) || html.includes(otherBrand))) {
     return validationError('Foreign branding is not allowed')
+  }
+
+  if (
+    product === 'restore_relay' &&
+    (kind === 'training_invite' || kind === 'client_meeting_invite')
+  ) {
+    const { data: personalTransport, error: personalTransportError } = await supabase.rpc(
+      'romylabs_restore_relay_personal_smtp_transport',
+    )
+
+    if (
+      personalTransportError ||
+      !personalTransport?.ok ||
+      !personalTransport?.host ||
+      !personalTransport?.username ||
+      !personalTransport?.password ||
+      !personalTransport?.from_address
+    ) {
+      console.error(
+        'support-api Restore Relay personal SMTP transport unavailable:',
+        personalTransportError?.message || personalTransport?.error || 'incomplete transport',
+      )
+      return jsonResp({ error: 'Restore Relay training mail transport is unavailable' }, 503)
+    }
+
+    try {
+      const messageId = await sendSystemMailViaStalwartSmtp({
+        host: cleanHeader(personalTransport.host),
+        port: Number(personalTransport.port || 465),
+        username: cleanHeader(personalTransport.username),
+        password: String(personalTransport.password),
+        fromAddress: cleanHeader(personalTransport.from_address).toLowerCase(),
+        fromName: 'Restore Relay',
+        to,
+        subject,
+        html,
+      })
+
+      return jsonResp({
+        ok: true,
+        provider: 'STALWART_SMTP',
+        from: cleanHeader(personalTransport.from_address).toLowerCase(),
+        submission_id: messageId,
+      })
+    } catch (error) {
+      console.error(
+        'support-api Restore Relay personal SMTP send failed:',
+        error instanceof Error ? error.message : String(error),
+      )
+      return jsonResp({ error: 'Restore Relay training SMTP delivery failed' }, 502)
+    }
   }
 
   const { data: transport, error: transportError } = await supabase.rpc(
