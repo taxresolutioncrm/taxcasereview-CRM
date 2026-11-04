@@ -252,6 +252,31 @@ serve(async req=>{
       return error?json({error:error.message},500):json({ok:true,row:data||null})
     }
 
+    // Direct WebRTC-to-PSTN outbound calling: only creates/updates our audit row.
+    // The browser RELAY SDK places the ONE real call to the destination.
+    // No server-originated leg, self-dial, or conference is created here.
+    if(action==='direct_outbound_start'){
+      const digits=String(body?.destination_number||'').replace(/\\D/g,'')
+      const number=digits.length===10?'+1'+digits:(digits.length===11&&digits.startsWith('1')?'+'+digits:'')
+      if(!number)return json({error:'Invalid outbound number'},400)
+      const conferenceName='direct-'+Date.now()+'-'+crypto.randomUUID().slice(0,8)
+      const {data,error}=await db.from('outbound_calls').insert({
+        tenant_id:TENANT, conference_name:conferenceName, destination_number:number,
+        display_name:String(body?.display_name||'').slice(0,160)||null,
+        entity_type:'manual', status:'pending',agent_name:user.email,
+      }).select('id').single()
+      return error?json({error:'Unable to register outbound call'},500):json({ok:true,id:data.id})
+    }
+
+    if(action==='direct_outbound_state'){
+      const id=String(body?.id||'')
+      const state=String(body?.status||'')
+      if(!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(id)||!['ringing','connected','completed'].includes(state))return json({error:'Invalid outbound state'},400)
+      const {data,error}=await db.from('outbound_calls').update({status:state})
+        .eq('tenant_id',TENANT).eq('id',id).neq('status','completed').select('id')
+      return error?json({error:'Unable to update outbound call'},500):json({ok:true,updated:(data||[]).length>0})
+    }
+
     if(action==='outbound_status'){
       const conferenceName=String(body?.conference_name||'')
       if(!conferenceName)return json({error:'conference_name required'},400)
