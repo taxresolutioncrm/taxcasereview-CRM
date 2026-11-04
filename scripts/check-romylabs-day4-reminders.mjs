@@ -64,7 +64,7 @@ assert(code.includes('Please arrange payment through your existing payment metho
 assert(!code.includes('romy@'), 'Do not expose personal mail identities in branded email')
 
 assert(code.includes("p_product_key:productKey"), 'Must pass office product key, not a fixed product')
-assert(code.includes("name:brand+' System Reminder'"), 'Must brand sender by CRM')
+assert(code.includes("'From: \"'+header(brand)+' System Reminder\" <'+from+'>'"), 'Must brand RFC822 sender by CRM')
 assert(code.includes("product_key"), 'Must query office product')
 assert(code.includes("unregistered_product_sender"), 'Must fail closed for unregistered products')
 assert(!code.includes("p_product_key:'taxres_crm'")&&!code.includes("p_product_key:'romylabs'"), 'No fixed sender')
