@@ -44,6 +44,7 @@ const officialAssets = {
   romylabs:'romylabs-logo.png',
   oculivo:'oculivo-logo.png',
   groundivo:'groundivo-logo.png',
+  pool_crm:'poolverge-official-mark.png',
 }
 for(const [product,file] of Object.entries(officialAssets)){
   const png=fs.readFileSync('public/'+file)
@@ -53,7 +54,7 @@ for(const [product,file] of Object.entries(officialAssets)){
 }
 assert(!code.includes('placeholder-logo'), 'Placeholder logos are prohibited')
 
-for(const key of ['taxres_crm','arcvena','bocasync','camvella','restore_relay','romylabs','oculivo','groundivo']){
+for(const key of ['taxres_crm','arcvena','bocasync','camvella','restore_relay','romylabs','oculivo','groundivo','pool_crm']){
   assert(code.includes(key+" :" ) || code.includes(key+":'"), 'Brand asset missing for '+key)
 }
 assert(code.includes('romylabs_products'), 'Per-CRM registry branding lookup missing')
