@@ -1,0 +1,22 @@
+import fs from 'node:fs'
+const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8')
+let errors=0
+const check=(ok,label)=>{console.log((ok?'PASS':'FAIL')+': '+label);if(!ok)errors++}
+const sql=read('supabase/migrations/20261103_oculivo_demo_requests.sql')
+const edge=read('supabase/functions/oculivo-demo-intake/index.ts')
+const config=read('supabase/config.toml')
+const admin=read('src/pages/AdminPortal.jsx')
+const panel=read('src/components/AdminOculivoDemoRequests.jsx')
+check(sql.includes('create table if not exists public.romylabs_demo_requests'),'Oculivo leads are stored separately from scheduled bookings')
+check(sql.includes('enable row level security')&&sql.includes('revoke all on public.romylabs_demo_requests from anon'),'Anonymous clients cannot access CRM lead records')
+check(sql.includes('public._is_platform_admin()')&&sql.includes('for update to authenticated'),'Only platform admins can manage lead follow-ups')
+check(!/grant\s+insert\s+on\s+public\.romylabs_demo_requests\s+to\s+(?:anon|authenticated)/i.test(sql),'Lead inserts are limited to server service role')
+check(config.includes('[functions.oculivo-demo-intake]\nverify_jwt = false')&&edge.includes('secretMatches('),'Server webhook validates its own shared secret')
+check(edge.includes("body?.product!=='oculivo'")&&edge.includes("body?.source!=='oculivo.com'"),'Endpoint is locked to Oculivo product/source')
+check(edge.includes("from('romylabs_demo_requests').insert")&&edge.includes("if(error||!lead?.id)"),'Intake is saved durably before returning success')
+check(edge.includes("romylabs_stalwart_transport_for_product")&&edge.includes("notification_submission_id"),'Existing Stalwart email used and delivery status audited')
+check(edge.includes('oculivo-website-logo.png')&&edge.includes('New private demo request')&&edge.includes('https://taxrescrm.app/crm-admin/tasks'),'Oculivo alerts use official logo and a direct Admin Portal follow-up link')
+check(edge.includes('notification_last_error')&&edge.includes('notification_submitted:false'),'Lead remains actionable when email submission fails')
+check(admin.includes('AdminOculivoDemoRequests')&&admin.includes('<AdminOculivoDemoRequests/>'),'Admin Portal tasks route includes Oculivo native leads')
+check(panel.includes('followup_status')&&panel.includes('contact_outcome')&&panel.includes('notification_submission_id'),'Lead UI has task status, contact outcome and mail audit')
+if(errors)process.exit(1)

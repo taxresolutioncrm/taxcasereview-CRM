@@ -1,4 +1,5 @@
 import AdminBookingAlerts from '../components/AdminBookingAlerts'
+import AdminOculivoDemoRequests from '../components/AdminOculivoDemoRequests'
 // AdminPortal — TaxRes CRM founder/admin shell.
 // Only renders for romy@taxrescrm.net. Full platform control:
 // impersonation, per-office deep dive, billing, provisioning,
@@ -8498,7 +8499,7 @@ export default function AdminPortal() {
             <Route path="/email"          element={<div/>}/>
             <Route path="/dialer"         element={<AdminRouteErrorBoundary><AdminDialer/></AdminRouteErrorBoundary>}/>
             <Route path="/calendar"       element={<AdminRouteErrorBoundary><AdminCalendar/></AdminRouteErrorBoundary>}/>
-            <Route path="/tasks"          element={<AdminRouteErrorBoundary><div style={{padding:20}}><h1 style={{color:"#f1f5f9",fontSize:24,margin:"0 0 8px"}}>Demo Leads & Tasks</h1><p style={{color:"#94a3b8",margin:"0 0 16px"}}>Manage assigned demo follow-ups, deadlines, contact outcomes and completed tasks across RomyLabs products.</p><AdminBookingAlerts workspace /></div></AdminRouteErrorBoundary>}/>
+            <Route path="/tasks"          element={<AdminRouteErrorBoundary><div style={{padding:20}}><h1 style={{color:"#f1f5f9",fontSize:24,margin:"0 0 8px"}}>Demo Leads & Tasks</h1><p style={{color:"#94a3b8",margin:"0 0 16px"}}>Manage assigned demo follow-ups, deadlines, contact outcomes and completed tasks across RomyLabs products.</p><AdminOculivoDemoRequests/><AdminBookingAlerts workspace /></div></AdminRouteErrorBoundary>}/>
             <Route path="/meet"           element={<AdminRouteErrorBoundary><AdminTraining/></AdminRouteErrorBoundary>}/>
             <Route path="/training"       element={<AdminRouteErrorBoundary><AdminTraining/></AdminRouteErrorBoundary>}/>
             <Route path="/chat"           element={<AdminRouteErrorBoundary><AdminChatPage/></AdminRouteErrorBoundary>}/>
