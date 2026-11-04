@@ -2,6 +2,17 @@
 
 This change adds a **separate** lead pipeline for Oculivo website contact requests (without creating fake calendar appointments), independent of the existing product-aware /book flow.
 
+## Current release candidate (sandbox only)
+
+- Website PR: https://github.com/taxresolutioncrm/oculivo-site/pull/16
+- Admin Portal PR: https://github.com/taxresolutioncrm/taxcasereview-CRM/pull/8307
+- PR #8299 was superseded and closed after newer Admin Portal code caused merge conflicts; **never merge that old PR**.
+- Actual Admin Supabase project was checked read-only on 2026-11-03: `public.romylabs_demo_requests` is **absent**, `oculivo-demo-intake` is **not deployed**, while `public._is_platform_admin()` and `public.romylabs_stalwart_transport_for_product(text)` exist.
+- The existing Stalwart RPC for `romylabs` is service-role-only and identifies `info@romylabs.com` as the authorized generic sender. Never display or use private personal addresses as senders.
+- Website mock flow certifies downstream 2xx **and** JSON `ok:true`, 200 with `ok:false` rejection, malformed 200 responses, cross-origin rejection, idempotent retry, missing secret and 503 fallback.
+- Admin mock runtime certifies bearer authorization, wrong product, invalid contact, durable insert, branded Stalwart submission, idempotent UUID, and recorded mail outage.
+- Both repositories' sandbox build gates must be reconfirmed on their exact final SHAs before production deployment. CI previews are **not production**.
+
 ## Supabase/Deployment target
 - Repo: `taxresolutioncrm/taxcasereview-CRM`
 - Admin Supabase project: `mpxgxfqdbquzkrvvejkh`, distinct from Oculivo's CRM Supabase project `czejdbdwaumbdepiswcu`
