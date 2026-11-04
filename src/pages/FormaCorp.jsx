@@ -209,10 +209,11 @@ function FloridaFilingFields({ value, onChange }) {
       <div className="field"><label>Principal Street Address *</label>
         <input value={value.principal_address || ''} onChange={e=>onChange('principal_address',e.target.value)} placeholder="Street, city, FL ZIP"/>
       </div>
-      <div className="field"><label>Mailing Address</label>
+      <div className="field"><label>Mailing Address (leave empty when same as principal)</label>
         <input value={value.mailing_address || ''} onChange={e=>onChange('mailing_address',e.target.value)} placeholder="Leave blank if same as principal address"/>
       </div>
       <div className="field"><label>Registered Agent Florida Street Address *</label>
+        <button type="button" className="btn sm" style={{marginBottom:6}} onClick={()=>onChange('registered_agent_address', value.principal_address || '')}>Use Principal Address for Registered Agent</button>
         <input value={value.registered_agent_address || ''} onChange={e=>onChange('registered_agent_address',e.target.value)} placeholder="Florida street address — no P.O. Box"/>
       </div>
       <div className="fg2">
@@ -222,6 +223,7 @@ function FloridaFilingFields({ value, onChange }) {
         <div className="field"><label>Title</label>
           <select value={value.authorized_representative_title || 'AR'} onChange={e=>onChange('authorized_representative_title',e.target.value)}>
             <option value="AR">AR — Authorized Representative</option>
+            <option value="AMBR">AMBR — Authorized Member</option>
             <option value="MGR">MGR — Manager</option>
           </select>
         </div>
@@ -1164,7 +1166,26 @@ export default function FormaCorp() {
               </div>
             </div>}
 
-            {wStep===5 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case and lifecycle.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[['Service Plan',wForm.service_plan||'Launch'],['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],['Business Purpose',wForm.business_purpose||'—']].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div>{isFloridaFormable(wForm)&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>☀️ Florida Filing Readiness</div>{floridaSubmissionMissing(wForm).length===0?<div style={{fontSize:12,color:'var(--ok)'}}>✅ Florida submission details and filing authorization are ready.</div>:<div style={{fontSize:12,color:'var(--warn)',lineHeight:1.5}}>Case can be created as a Consultation draft. Before state submission, complete: {floridaSubmissionMissing(wForm).join(', ')}.</div>}</div>}{stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📍 {stateReqs[wForm.state].state_name} Filing Snapshot</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{isFloridaFormable(wForm)?`${floridaStateFee(wForm).toFixed(2)}`:stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}<div style={{fontSize:12,color:'var(--t3)',marginTop:10,lineHeight:1.6}}>This creates a formation case starting at the <strong>Consultation</strong> stage. You'll be taken to the case page where you can track progress through filing, EIN, governing documents, banking, and compliance.</div></div>}
+            {wStep===5 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Review the details below, then create the formation case and lifecycle.</div><div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>{[['Service Plan',wForm.service_plan||'Launch'],['Entity Type',`${ENTITY_ICONS[wForm.entity_type]||'🏢'} ${wForm.entity_type}`],['State',`${stateReqs[wForm.state]?.state_name||wForm.state} (${wForm.state})`],['Client',wForm.client_name],['Entity Name',wForm.entity_name],['Owners/Members',wForm.owners||'—'],['Registered Agent',wForm.registered_agent||'—'],['Business Purpose',wForm.business_purpose||'—']].map(([l,v])=><div key={l} className="dr"><span className="dl">{l}</span><span className="dv">{v}</span></div>)}</div>{isFloridaFormable(wForm)&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>Florida Filing Details — Final Review</div>
+              {[
+                ['Principal Street Address',wForm.principal_address],
+                ['Mailing Address',wForm.mailing_address || wForm.principal_address || 'Same as principal'],
+                ['Registered Agent',wForm.registered_agent],
+                ['Registered Agent Street Address',wForm.registered_agent_address],
+                ['Authorized Person',wForm.authorized_representative],
+                ['Authorized Person Title',wForm.authorized_representative_title],
+                ['Correspondence Email',wForm.correspondence_email],
+                ['Effective Date',wForm.effective_date || 'Upon filing'],
+                ['Registered Agent Signature',wForm.fl_registered_agent_signature],
+                [isFloridaCorporation(wForm)?'Incorporator Signature':'Authorized Representative Signature',isFloridaCorporation(wForm)?wForm.fl_incorporator_signature:wForm.fl_authorized_representative_signature],
+                ['Certificate of Status',wForm.fl_certificate_of_status?'Yes':'No'],
+                ['Certified Copy',wForm.fl_certified_copy?'Yes':'No'],
+                ['Filing Authorization',wForm.fl_filing_authorized?'Confirmed':'Missing'],
+              ].map(([label,value])=><div className="dr" key={label}><span className="dl">{label}</span><span className="dv" style={{overflowWrap:'anywhere'}}>{value || '—'}</span></div>)}
+              <div style={{fontSize:11,color:'var(--t3)',marginTop:8}}>Review every field before the official Sunbiz submission. Case creation does not file with Florida or charge its government fee.</div>
+            </div>}
+            {isFloridaFormable(wForm)&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)',marginBottom:10}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>☀️ Florida Filing Readiness</div>{floridaSubmissionMissing(wForm).length===0?<div style={{fontSize:12,color:'var(--ok)'}}>✅ Florida submission details and filing authorization are ready.</div>:<div style={{fontSize:12,color:'var(--warn)',lineHeight:1.5}}>Case can be created as a Consultation draft. Before state submission, complete: {floridaSubmissionMissing(wForm).join(', ')}.</div>}</div>}{stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📍 {stateReqs[wForm.state].state_name} Filing Snapshot</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{isFloridaFormable(wForm)?`${floridaStateFee(wForm).toFixed(2)}`:stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div></div>}<div style={{fontSize:12,color:'var(--t3)',marginTop:10,lineHeight:1.6}}>This creates a formation case starting at the <strong>Consultation</strong> stage. You'll be taken to the case page where you can track progress through filing, EIN, governing documents, banking, and compliance.</div></div>}
 
             <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:20,paddingTop:16,borderTop:'1px solid var(--br)'}}><button className="btn" onClick={()=>wStep===1?setWizard(false):setWStep(s=>s-1)}>{wStep===1?'Cancel':'← Back'}</button>{wStep<5?<button className="btn pri" disabled={(wStep===1&&!wForm.entity_type)||(wStep===2&&!wForm.state)||(wStep===3&&(!wForm.client_name||!wForm.entity_name))} onClick={()=>setWStep(s=>s+1)}>Continue →</button>:<button className="btn pri" onClick={createFromWizard} disabled={saving}>{saving?'Creating…':'🏢 Create Formation + Lifecycle'}</button>}</div>
           </div>
