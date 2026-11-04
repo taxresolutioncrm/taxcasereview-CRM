@@ -35,7 +35,22 @@ async function submitStalwartEmail(admin:any,contact:any,leadId:string) {
  const identity=identities.find((x:any)=>clean(x.email).toLowerCase()===from)
  const drafts=mailboxes.find((x:any)=>x.role==='drafts'),sent=mailboxes.find((x:any)=>x.role==='sent')
  if(!identity?.id||!drafts?.id||!sent?.id)throw new Error('Stalwart sender identity or mailboxes missing')
- const body='<h2>New Oculivo Demo Request</h2><p><strong>Name:</strong> '+escapeHtml(contact.name)+'</p><p><strong>Email:</strong> '+escapeHtml(contact.email)+'</p><p><strong>Practice:</strong> '+escapeHtml(contact.practice)+'</p><p><strong>Specialty:</strong> '+escapeHtml(contact.specialty)+'</p><p><strong>Locations:</strong> '+escapeHtml(contact.locations)+'</p><p>Review this lead in the RomyLabs Admin Portal &gt; Demo Leads &amp; Tasks.</p><p>Lead ID: '+escapeHtml(leadId)+'</p>'
+ const brandLogo='https://app.oculivo.com/oculivo-website-logo.png'
+ const leadRows=[
+  ['Full name',contact.name],['Work email',contact.email],['Practice',contact.practice],
+  ['Specialty',contact.specialty],['Locations',contact.locations]
+ ].map(([label,value])=>'<tr><td style="padding:10px 16px;border-bottom:1px solid #e9e5f2;font-size:13px;color:#5a5571">'+escapeHtml(label)+'</td><td style="padding:10px 16px;border-bottom:1px solid #e9e5f2;font-size:14px;font-weight:600;color:#17152f">'+escapeHtml(value)+'</td></tr>').join('')
+ const body='<!doctype html><html><body style="margin:0;padding:24px;background:#f5f5fb;font-family:Arial,Helvetica,sans-serif;color:#17152f">'
+  +'<table role="presentation" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;margin:auto;background:#ffffff;border:1px solid #e5e3f0;border-radius:16px;overflow:hidden">'
+  +'<tr><td style="padding:25px 29px;background:#15122e;color:#ffffff">'
+  +'<img src="'+brandLogo+'" width="172" alt="Oculivo" style="max-width:172px;height:auto;display:block;margin-bottom:14px" />'
+  +'<div style="font-size:13px;color:#c6bfef;letter-spacing:1.2px;text-transform:uppercase">Oculivo · Website lead</div>'
+  +'<h1 style="font-size:24px;line-height:1.25;margin:12px 0 0;color:#ffffff">New private demo request</h1></td></tr>'
+  +'<tr><td style="padding:25px 20px"><p style="font-size:14px;margin:0 8px 20px;color:#3f3959">A new eye-care practice has requested a walkthrough. This lead has been saved to the RomyLabs Admin Portal with a follow-up task.</p>'
+  +'<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse">'+leadRows+'</table>'
+  +'<p style="padding:17px 9px 0;font-size:14px"><a href="https://taxrescrm.app/crm-admin/tasks" style="color:#4e2fbd;font-weight:700">Open demo leads and tasks</a></p>'
+  +'<p style="padding:0 9px;font-size:11px;color:#77728b">Internal lead ID: '+escapeHtml(leadId)+'</p></td></tr></table>'
+  +'<p style="font-size:11px;color:#77728b;text-align:center">Oculivo · A RomyLabs product · Internal notification</p></body></html>'
  const email={from:[{email:from,name:'Oculivo Demo Alerts'}],to:[{email:'romy@romylabs.com'}],subject:'[Oculivo] New demo request — '+clean(contact.practice,100),mailboxIds:{[drafts.id]:true},keywords:{$draft:true},bodyValues:{body:{value:body,charset:'utf-8'}},htmlBody:[{partId:'body',type:'text/html'}]}
  const reply=await fetch(api,{method:'POST',headers,body:JSON.stringify({using,methodCalls:[['Email/set',{accountId,create:{draft:email}},'e0'],['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sent.id]:true,'keywords/$draft':null}}},'s0']]}),signal:AbortSignal.timeout(15000)})
  if(!reply.ok)throw new Error('Stalwart submission HTTP '+reply.status)
