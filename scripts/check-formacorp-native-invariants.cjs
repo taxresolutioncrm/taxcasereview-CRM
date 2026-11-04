@@ -37,7 +37,7 @@ assert(!/fee_paid:true/.test(faxPath), 'Fax transport cannot mark state filing f
 assert(/Fax packet cleanup failed/.test(faxPath), 'Failed fax uploads must be cleaned up')
 assert(/state receipt not yet verified/.test(content), 'Unverified prepaid fax status must be explicit')
 assert(/Start Business Formation/.test(content), 'Native formation entry point is missing')
-assert(/FormaCorp native filing workflow/.test(content), 'Native filing workflow card is missing')
+assert(/FormaCorp filing preparation and state receipt tracking/.test(content), 'Filing preparation and state receipt tracking card is missing')
 assert(/Florida submission inside FormaCorp/.test(content), 'In-CRM Florida submission controls are missing')
 assert(/submitFloridaFax/.test(content), 'Existing in-CRM Florida fax submission path is missing')
 assert(/isFloridaCorporation/.test(content), 'Florida corporation filing support is missing')
