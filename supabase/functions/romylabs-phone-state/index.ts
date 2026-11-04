@@ -256,7 +256,7 @@ serve(async req=>{
     // The browser RELAY SDK places the ONE real call to the destination.
     // No server-originated leg, self-dial, or conference is created here.
     if(action==='direct_outbound_start'){
-      const digits=String(body?.destination_number||'').replace(/\\D/g,'')
+      const digits=String(body?.destination_number||'').replace(/\D/g,'')
       const number=digits.length===10?'+1'+digits:(digits.length===11&&digits.startsWith('1')?'+'+digits:'')
       if(!number)return json({error:'Invalid outbound number'},400)
       const conferenceName='direct-'+Date.now()+'-'+crypto.randomUUID().slice(0,8)
