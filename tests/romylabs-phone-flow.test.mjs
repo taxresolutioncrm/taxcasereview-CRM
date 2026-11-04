@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 const ROMY = '+15614206999'
 const ADMIN_TENANT = 'a0000000-0000-0000-0000-000000000001'
@@ -64,6 +65,9 @@ assert.deepEqual(pickRomyBridge({from:ROMY,to:ROMY,answeredInbound:null,outbound
 
 // The outbound destination must wait for the browser agent before the conference starts.
 // A customer answering first must never be counted as the agent bridge.
+const outboundLegSource=readFileSync(new URL('../supabase/functions/outbound-leg/index.ts', import.meta.url),'utf8')
+assert.match(outboundLegSource,/startConferenceOnEnter="false"/)
+assert.match(outboundLegSource,/waitUrl=/)
 const outboundConf=new Conference('outbound-agent-first')
 const outboundCustomer=outboundConf.join('outbound-customer',false)
 assert.equal(outboundConf.started,false)
