@@ -1012,9 +1012,9 @@ export default function FormaCorp() {
               {(c.fl_filing_status||'Draft')==='Draft' && <button className="btn pri sm" onClick={()=>prepareFloridaFiling(c)} disabled={flSubmitMissing.length>0}>✅ Ready to Submit</button>}
               {['Ready to Submit','Action Required'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Prepare Filing Packet</button>}
               {c.fl_filing_status==='Filing Queue' && c.fl_submission_method !== 'prepaid_fax' && <button className="btn pri sm" onClick={()=>startNativeFormation(c)}>📋 Continue Filing Preparation</button>}
-              {c.fl_filing_status==='Filing Queue' && c.fl_submission_method === 'prepaid_fax' && <span className="bdg bn" style={{alignSelf:'center'}}>Fax sent — Sunbiz receipt not yet verified</span>}
+              {c.fl_filing_status==='Filing Queue' && c.fl_submission_method === 'prepaid_fax' && <span className="bdg bn" style={{alignSelf:'center'}}>Fax sent — state receipt not yet verified</span>}
               {['Filing Queue','Action Required'].includes(c.fl_filing_status) && <>
-                <a className="btn sm" href={c.entity_type === 'Non-Profit 501(c)(3)' ? 'https://efile.sunbiz.org/np_file.html' : isFloridaCorporation(c) ? 'https://efile.sunbiz.org/profit_file.html' : 'https://efile.sunbiz.org/llc_file.html'} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>🏛 Open Official {isFloridaCorporation(c) ? 'Corporation' : 'LLC'} Filing</a>
+                <a className="btn sm" href={c.entity_type === 'Non-Profit 501(c)(3)' ? 'https://efile.sunbiz.org/np_file.html' : isFloridaCorporation(c) ? 'https://efile.sunbiz.org/profit_file.html' : 'https://efile.sunbiz.org/llc_file.html'} target="_self" style={{textDecoration:'none'}}>🏛 Open Official {isFloridaCorporation(c) ? 'Corporation' : 'LLC'} Filing</a>
                 <button className="btn sm" onClick={()=>recordFloridaSubmission(c)}>🧾 Record State Submission</button>
               </>}
               {c.fl_filing_status==='Submitted to Florida' && <button className="btn sm" onClick={()=>markFloridaReview(c)}>⏳ Mark Under Review</button>}
