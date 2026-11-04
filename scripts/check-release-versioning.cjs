@@ -45,7 +45,13 @@ assert(afterRelease.length===0,
   'Functional files changed after the last release-manifest update without new version and release notes: '+afterRelease.join(', '))
 // A cosmetic edit to release notes cannot substitute for an actual version bump
 // when functional files changed since the preceding manifest revision.
-if (manifestCommits.length > 1) {
+// A later merge that only repairs build scripts must not be charged with
+// functional changes introduced by a prior production release. Still enforce
+// the bump if this exact production merge changes any functional source.
+const isNonfunctionalMainPush = process.env.GITHUB_EVENT_NAME === 'push'
+  && process.env.GITHUB_REF_NAME === 'main'
+  && !git(['diff','--name-only','HEAD^1','HEAD','--','src','public','supabase/functions']).trim()
+if (manifestCommits.length > 1 && !isNonfunctionalMainPush) {
   const olderManifest = manifestCommits[1]
   const changedSincePreviousRelease = git(['diff','--name-only',olderManifest,mostRecentManifest,'--','src','public','supabase/functions'])
     .split(/\r?\n/).filter(Boolean).filter(file=>file !== 'src/releaseInfo.js')
