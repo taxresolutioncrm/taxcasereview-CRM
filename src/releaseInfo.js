@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Direct outbound dialing discards late results after cancellation and resolves hangup updates by provider call ID to avoid unintended follow-on calls',
   'RomyLabs outbound calls now dial directly from the browser to the destination with one provider call leg, not a server call plus conference self-dial',
   'Direct-call Hold and Resume use the real SignalWire browser call state; direct calls retain RomyLabs-specific call history and request native provider recording',
   'Outbound conference waits for the browser agent to join and uses provider-native waiting audio, never a hold prompt branded to a different CRM',
