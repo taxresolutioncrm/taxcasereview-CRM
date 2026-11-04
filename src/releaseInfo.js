@@ -3,7 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
-  'FormaCorp Florida LLC, profit corporation and nonprofit cases link to the correct official Sunbiz filing forms',
+  'FormaCorp Florida LLC, profit corporation and nonprofit cases link to their official Sunbiz filing forms in the same browser window',
   'FormaCorp prepaid fax transport is separate from verified state submission and does not falsely mark government payment',
   'FormaCorp prepaid filing packets enforce active-office tenant isolation and failed upload cleanup',
   'FormaCorp annual-report estimates use the proposed effective-date year and filing readiness labels distinguish state acceptance',
