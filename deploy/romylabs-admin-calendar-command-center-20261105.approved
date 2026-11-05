@@ -1,0 +1,5 @@
+RomyLabs Admin Portal Calendar Command Center v3.2.56
+Explicit user instruction: "deploy".
+Approved release scope: PR #8333, Calendar Command Center visual redesign and existing CRM booking/edit workflows.
+Required: successful sandbox CI, one main merge, dedicated Cloudflare Pages deployment, verify new exact version marker at admin.romylabs.com.
+No Stalwart backend sync deployment; no changes to production mail server or external CRM tenant databases.
