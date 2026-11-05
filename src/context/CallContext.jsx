@@ -119,6 +119,9 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const [conferenceBusy, setConferenceBusy] = useState(false)
   const [conferenceMode, setConferenceMode] = useState(false)
   const [conferenceParticipants, setConferenceParticipants] = useState([])
+  const [conferenceInvite, setConferenceInvite] = useState(null)
+  const conferenceInviteRef = useRef(null)
+  function setInvite(invite) { conferenceInviteRef.current=invite;setConferenceInvite(invite) }
   const conferenceMigrationRef = useRef(false)
   const conferenceModeRef = useRef(false)
   const conferenceOldCallRef = useRef(null)
@@ -131,7 +134,43 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     })
     if (error || data?.error) return null
     setConferenceParticipants(data?.participants||[])
+    const invite=conferenceInviteRef.current
+    if(invite?.token && !['merged','ended'].includes(invite.status)){
+      const {data:guest,error:guestErr}=await supabase.functions.invoke('romylabs-conference',{
+        body:{action:'invite_status',outbound_call_id:activeOutboundCallIdRef.current,
+          call_sid:invite.sid,number:invite.number,expires:invite.expires,token:invite.token}
+      })
+      if(!guestErr && guest?.ok){
+        if(guest.state==='merged')setInvite(null)
+        else setInvite({...invite,status:guest.state})
+      }
+    }
     return data
+  }
+
+  async function mergeConferenceInvite() {
+    const invite=conferenceInviteRef.current
+    if(!invite || invite.status!=='answered' || !activeOutboundCallIdRef.current)
+      return {error:'Wait until the invited caller has answered'}
+    const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+      body:{action:'merge',outbound_call_id:activeOutboundCallIdRef.current,
+        call_sid:invite.sid,number:invite.number,expires:invite.expires,token:invite.token}
+    })
+    if(error||data?.error)return {error:data?.error||error?.message||'Merge failed'}
+    setInvite({...invite,status:data.state||'merging'})
+    return {ok:true}
+  }
+
+  async function cancelConferenceInvite() {
+    const invite=conferenceInviteRef.current
+    if(!invite || !activeOutboundCallIdRef.current)return {error:'No active invitation'}
+    const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+      body:{action:'cancel_invite',outbound_call_id:activeOutboundCallIdRef.current,
+        call_sid:invite.sid,number:invite.number,expires:invite.expires,token:invite.token}
+    })
+    if(error||data?.error)return {error:data?.error||error?.message||'Unable to cancel invitation'}
+    setInvite(null)
+    return {ok:true}
   }
 
   async function removeConferenceParticipant(callSid) {
@@ -212,6 +251,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     if(!(digits.length===10||(digits.length===11&&digits.startsWith('1'))))
       return {error:'Enter a valid 10-digit US phone number.'}
     if(conferenceBusyRef.current)return {error:'Conference operation already in progress'}
+    if(conferenceInviteRef.current && !['ended','merged'].includes(conferenceInviteRef.current.status))
+      return {error:'Finish or cancel the current guest invitation before adding another'}
     if(directOutboundRef.current && !directConnected)return {error:'Wait until the original call is answered'}
     if(phoneContext==='romylabs' && (directOutboundRef.current||conferenceMode)){
       const outboundId=activeOutboundCallIdRef.current
@@ -275,13 +316,15 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           if(!ready)throw Error('Original caller and agent are not both verified in the room. No guest was dialed.')
         }
         if(!conf)throw Error('No active conference')
-        // Dial the invite ONLY after the original caller AND agent are confirmed.
-        const {data,error}=await supabase.functions.invoke('call-add-participant',{
-          body:{conference_name:conf,number,phoneContext}
+        // Invite goes into a separate consult room; it NEVER automatically
+        // joins the original conversation. Agent must click Merge Calls.
+        const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+          body:{action:'invite',outbound_call_id:outboundId,number}
         })
-        if(error||data?.error||!data?.call_sid)
-          return {error:data?.error||error?.message||'Third-party invitation failed'}
-        showCallToast('Calling additional participant. Original call remains active.')
+        if(error||data?.error||!data?.call_sid||!data?.token)
+          return {error:data?.error||error?.message||'Guest invitation failed'}
+        setInvite({sid:data.call_sid,number:data.number,expires:data.expires,token:data.token,status:'ringing'})
+        showCallToast('Calling guest separately. Press Merge Calls once they answer.')
         return {ok:true,call_sid:data.call_sid,status:'ringing'}
       }catch(e){
         console.error('[conference-upgrade]',e)
@@ -1216,6 +1259,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       conferenceModeRef.current=false
       setConferenceMode(false)
       setConferenceParticipants([])
+      setInvite(null)
       setDirectOutbound(true)
       setDirectConnected(false)
       activeConferenceRef.current = null
@@ -1387,6 +1431,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     setConferenceBusy(false)
     setConferenceMode(false)
     setConferenceParticipants([])
+    setInvite(null)
     clearPersistedCallSession()
     const aiGovSessionId = activeAIGovSessionRef.current
     const aiGovTenantId = activeAIGovTenantRef.current
@@ -1613,8 +1658,9 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     answerIncoming, declineIncoming, startCall, joinAIGovernmentCall, endCall, cancelCall,
     muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer,
     directOutbound, directConnected,
-    conferenceMode, conferenceBusy, conferenceParticipants,
+    conferenceMode, conferenceBusy, conferenceParticipants, conferenceInvite,
     refreshConferenceParticipants, removeConferenceParticipant,
+    mergeConferenceInvite, cancelConferenceInvite,
     sendDTMF: (digit) => {
       if (activeCallRef.current?.dtmf) {
         console.log('[DTMF] sending digit:', digit, 'via call object:', activeCallRef.current)
