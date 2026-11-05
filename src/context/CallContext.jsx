@@ -111,6 +111,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const directOutboundRef = useRef(false)
   const directOutboundCallRef = useRef(null)
   const directRecordRequestedRef = useRef(false)
+  const directBindRequestedRef = useRef(false)
   // Reject late responses from cancelled/replaced dial attempts.
   const directOutboundAttemptRef = useRef(0)
   const [directOutbound, setDirectOutbound] = useState(false)
@@ -626,6 +627,17 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             liveCallRef.current = call
             setOnHold(false)
             setDirectConnected(true)
+            if (!directBindRequestedRef.current && activeOutboundCallIdRef.current && call?.id) {
+              directBindRequestedRef.current=true
+              supabase.functions.invoke('romylabs-phone-state',{
+                body:{action:'direct_outbound_bind',id:activeOutboundCallIdRef.current,call_id:call.id}
+              }).then(({data,error})=>{
+                if(error||data?.error) {
+                  console.error('[direct-outbound] verified call binding failed',data?.error||error)
+                  showCallToast('Additional-caller controls are unavailable until this call is verified.')
+                }
+              })
+            }
             if (!directRecordRequestedRef.current && activeOutboundCallIdRef.current && call?.id) {
               directRecordRequestedRef.current=true
               supabase.functions.invoke('romylabs-phone-state',{
@@ -1200,6 +1212,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       const directAttempt = ++directOutboundAttemptRef.current
       directOutboundCallRef.current = null
       directRecordRequestedRef.current=false
+      directBindRequestedRef.current=false
       conferenceModeRef.current=false
       setConferenceMode(false)
       setConferenceParticipants([])
@@ -1356,6 +1369,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       directOutboundAttemptRef.current++
       directOutboundCallRef.current=null
       directRecordRequestedRef.current=false
+      directBindRequestedRef.current=false
       setDirectOutbound(false)
       setDirectConnected(false)
       if (directAuditId) {
