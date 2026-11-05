@@ -3,6 +3,10 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp corrects official Florida LLC, profit and nonprofit Sunbiz filing links, with no undocumented direct filing claim',
+  'FormaCorp includes AMBR title, registered agent address reuse and complete prefiling review',
+  'FormaCorp fax-provider acceptance remains pending state receipt and never falsely marks government fees paid',
+  'FormaCorp fax packet storage verifies active tenant and cleans failed uploads',
   'Invited conference guests answer in an isolated waiting room; only an explicit Merge Calls action connects them to the original conversation',
   'On-demand three-way calling verifies invitation signatures and caller ownership, supports cancelling unmerged guests and disconnecting merged guests',
   'RomyLabs direct outbound calls can be upgraded to an on-demand three-way call only when Add Caller is clicked; the original call is provider-verified before any transition',
@@ -143,18 +147,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.53',
+  version: '3.2.54',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.53 — Calendar Product and Day Navigation Fix',
+  title: 'RomyLabs Admin Portal 3.2.54 — FormaCorp Filing Verification',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.51',
+    version: '3.2.54',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.48 — Manual Payment Office Discovery',
+    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -176,17 +180,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.51',
+    version: '3.2.54',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.48 — Direct Outbound Calling',
+    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.51',
+    version: '3.2.54',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.48 — Direct Outbound Calling',
+    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
