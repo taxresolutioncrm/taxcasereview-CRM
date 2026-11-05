@@ -78,6 +78,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs Admin Portal adds a new responsive calendar preview with month, week and day views, appointment search, and existing CRM event editing, appointment creation and booking links; Stalwart synchronization stays disabled until certified',
+  'Admin Calendar visual preview release is limited to the RomyLabs Admin Portal and verified against its unique Cloudflare production build marker',
   'Manual subscription payments now include all registered CRM products and separately hosted billing offices such as Nashville Tax Solutions',
   'Selecting an existing subscription loads its billing email, seats and contracted rate; changing products clears stale payment details',
   'RomyLabs Admin Portal direct outbound calling connects without an artificial conference or automatic hold and does not change inbound routing',
@@ -131,9 +133,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.48',
+  version: '3.2.49',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.48 — Manual Payment Office Discovery',
+  title: 'RomyLabs Admin Portal 3.2.49 — Manual Payment Office Discovery',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 

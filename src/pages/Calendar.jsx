@@ -8,6 +8,7 @@ import { advanceLeadStatus } from '../lib/leadStatus'
 import { FIRM } from '../lib/firmBranding'
 import { sendGmailEmail } from '../lib/gmailUtils'
 import InternalBooking from '../components/InternalBooking'
+import AdminCalendarPreview from '../components/AdminCalendarPreview'
 import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
 
 const STATUS_COLORS = {
@@ -75,6 +76,7 @@ export default function Calendar() {
   const [loading,       setLoading]       = useState(true)
   const [currentDate,   setCurrentDate]   = useState(new Date())
   const [view,          setView]          = useState('month')
+  const [adminCalendarPreviewOpen, setAdminCalendarPreviewOpen] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showForm,      setShowForm]      = useState(false)
   const [searchParams] = useSearchParams()
@@ -418,6 +420,21 @@ export default function Calendar() {
     )
   }
 
+  // Admin Portal visual preview reuses the existing production CRM event data and handlers.
+  // No JMAP calls, new writes, or booking workflow replacements.
+  if (isRomyLabsAdmin && adminCalendarPreviewOpen) {
+    return <AdminCalendarPreview events={events}
+      onClose={() => setAdminCalendarPreviewOpen(false)}
+      onOpenEvent={event => { setAdminCalendarPreviewOpen(false); setSelectedEvent(event) }}
+      onCreate={date => {
+        setAdminCalendarPreviewOpen(false)
+        setSelectedEvent(null)
+        setForm(current => ({ ...current, date, id: undefined, assignedTo: adminCalendarOwner, product_id: 'romylabs' }))
+        setShowForm(true)
+      }}
+      onBooking={() => { setAdminCalendarPreviewOpen(false); setShowBooking(true) }} />
+  }
+
   // ── EVENT DETAIL PANEL ──
   if (selectedEvent) {
     const sc = scOf(selectedEvent)
@@ -541,6 +558,14 @@ export default function Calendar() {
         <div style={{ background: 'var(--nav)', borderBottom: '1px solid var(--br)', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button onClick={goToday} style={{ padding: '7px 16px', background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8, color: 'var(--tx)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Today</button>
+            {isRomyLabsAdmin && (
+              <button type="button" onClick={() => setAdminCalendarPreviewOpen(true)}
+                style={{ padding: '7px 16px', background: '#166534', border: 'none',
+                  borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit' }}>
+                New Calendar Preview
+              </button>
+            )}
             <button onClick={() => setShowBooking(true)} style={{ padding: '7px 16px', background: '#1d4ed8', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>📅 Send Booking Link</button>
             <div style={{ display: 'flex', gap: 2 }}>
               <button onClick={goPrev} style={{ width: 32, height: 32, background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 6, color: 'var(--tx)', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
