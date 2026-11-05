@@ -1,311 +1,316 @@
 import { useMemo, useState } from 'react'
 import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
+import './AdminCalendarPreview.css'
 
-const pad = n => String(n).padStart(2, '0')
-const iso = d => [d.getFullYear(), pad(d.getMonth() + 1), pad(d.getDate())].join('-')
-const dateOf = value => new Date(value + 'T12:00:00')
-const monthOf = d => new Date(d.getFullYear(), d.getMonth(), 1)
-const shiftMonth = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1)
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const BUTTON = {
-  border: '1px solid var(--br)', background: 'var(--sf)', color: 'var(--tx)',
-  borderRadius: 8, padding: '8px 11px', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+const VERSION = 'v3.2.56'
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const pad = value => String(value).padStart(2, '0')
+const iso = date => [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-')
+const parseDate = date => new Date(date + 'T12:00:00')
+const firstMonth = date => new Date(date.getFullYear(), date.getMonth(), 1)
+const moveMonth = (date, n) => new Date(date.getFullYear(), date.getMonth() + n, 1)
+const dateOf = event => {
+  const text = String(event.date || '')
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : ''
 }
-const eventDate = ev => {
-  const value = String(ev.date || '')
-  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : ''
+const timeOf = event => String(event.time || event.timedisplay || '').slice(0, 12)
+const nameOf = event => event.title || event.clientName || event.client || event.eventType || 'Appointment'
+const colors = {
+  scheduled: '#368ff4', confirmed: '#21b778', pending: '#eeb04c',
+  in_progress: '#8b79f6', completed: '#20b777', cancelled: '#ef6670',
 }
-function calendarDays(month) {
-  const offset = new Date(month.getFullYear(), month.getMonth(), 1).getDay()
-  const total = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
-  return Array.from({ length: Math.ceil((offset + total) / 7) * 7 }, (_, i) =>
-    new Date(month.getFullYear(), month.getMonth(), 1 + i - offset))
+const colorOf = event => colors[String(event.status || '').toLowerCase()] || '#368ff4'
+const longDate = date => parseDate(date).toLocaleDateString('en-US', {
+  weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+})
+const daysOfMonth = month => {
+  const start = firstMonth(month)
+  const offset = start.getDay()
+  const length = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  return Array.from({ length: Math.ceil((offset + length) / 7) * 7 }, (_, index) =>
+    new Date(month.getFullYear(), month.getMonth(), 1 + index - offset))
 }
-function eventLabel(ev) {
-  return ev.title || ev.clientName || ev.client || ev.eventType || 'Appointment'
-}
-const timeLabel = ev => String(ev.timedisplay || ev.time || '').slice(0, 12)
-const safeColor = status => {
-  const key = String(status || '').toLowerCase()
-  return key === 'cancelled' ? '#ef4444' : key === 'completed' ? '#16a34a' :
-    key === 'pending' ? '#f59e0b' : '#3b82f6'
-}
+const button = (label, action, className = '') =>
+  <button type="button" className={'uc-btn ' + className} onClick={action}>{label}</button>
 
 /**
- * Display-only UI over the existing Calendar page's filtered event list.
- * All create/edit/booking actions are delegated to the existing CRM handlers.
- * No Stalwart request, duplicate save, or new Supabase authorization path.
+ * Redesigned view over the EXISTING CRM events. Never writes to a second store.
+ * Booking, editing, and notifications continue through the classic Calendar
+ * handlers passed in by the parent page.
  */
-export default function AdminCalendarPreview({ events = [], products = [], deadlines = [], loading = false, onClose, onCreate, onOpenEvent, onBooking }) {
-  const [month, setMonth] = useState(monthOf(new Date()))
-  const [activeDay, setActiveDay] = useState(iso(new Date()))
+export default function AdminCalendarPreview({
+  events = [], products = [], deadlines = [], loading = false,
+  onClose, onCreate, onOpenEvent, onBooking,
+}) {
+  const [month, setMonth] = useState(firstMonth(new Date()))
+  const [selectedDay, setSelectedDay] = useState(iso(new Date()))
   const [view, setView] = useState('month')
   const [search, setSearch] = useState('')
   const [productFilter, setProductFilter] = useState('all')
-  const [showDeadlines, setShowDeadlines] = useState(true)
-  const [showUpcoming, setShowUpcoming] = useState(true)
-  const todayKey = iso(new Date())
+  const [upcomingOpen, setUpcomingOpen] = useState(true)
+  const [deadlinesOpen, setDeadlinesOpen] = useState(true)
+  const today = iso(new Date())
+
   const availableProducts = useMemo(() => {
-    const options = new Map(
-      products.filter(p => p?.key).map(p => [p.key, { key: p.key, name: p.name || p.key }])
-    )
-    // Preserve discoverability for newly arriving calendar events even before
-    // an asynchronous registry refresh.
-    for (const ev of events) {
-      const key = ev.product_id || 'romylabs'
-      if (!options.has(key)) options.set(key, { key, name: PRODUCT_BOOKING_CONFIGS[key]?.name || key })
+    const all = new Map(products.filter(p => p?.key).map(p => [
+      p.key, { key: p.key, name: p.name || p.key },
+    ]))
+    for (const event of events) {
+      const key = event.product_id || 'romylabs'
+      if (!all.has(key)) all.set(key, {
+        key, name: PRODUCT_BOOKING_CONFIGS[key]?.name || key,
+      })
     }
-    return [...options.values()]
+    return [...all.values()]
   }, [products, events])
-  const eventCountByProduct = useMemo(() => {
-    const counts = new Map()
-    for (const ev of events) {
-      const key = ev.product_id || 'romylabs'
-      counts.set(key, (counts.get(key) || 0) + 1)
+
+  const productCounts = useMemo(() => {
+    const result = new Map()
+    for (const event of events) {
+      const key = event.product_id || 'romylabs'
+      result.set(key, (result.get(key) || 0) + 1)
     }
-    return counts
+    return result
   }, [events])
-  const filtered = useMemo(() => events.filter(ev => {
-    if (!eventDate(ev)) return false
-    if (productFilter !== 'all' && (ev.product_id || 'romylabs') !== productFilter) return false
+
+  const visibleEvents = useMemo(() => events.filter(event => {
+    if (!dateOf(event)) return false
+    if (productFilter !== 'all' && (event.product_id || 'romylabs') !== productFilter) return false
     const q = search.trim().toLowerCase()
-    return !q || [eventLabel(ev), ev.clientName, ev.client, ev.product_id, ev.eventType]
-      .some(x => String(x || '').toLowerCase().includes(q))
+    return !q || [nameOf(event), event.clientName, event.client, event.eventType, event.product_id]
+      .some(value => String(value || '').toLowerCase().includes(q))
   }), [events, search, productFilter])
-  const groups = useMemo(() => {
-    const next = new Map()
-    for (const ev of filtered) {
-      const date = eventDate(ev)
-      if (!next.has(date)) next.set(date, [])
-      next.get(date).push(ev)
+
+  const byDate = useMemo(() => {
+    const grouped = new Map()
+    for (const event of visibleEvents) {
+      const key = dateOf(event)
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key).push(event)
     }
-    for (const list of next.values()) list.sort((a, b) =>
-      String(a.time || '').localeCompare(String(b.time || '')))
-    return next
-  }, [filtered])
-  const selectedAgenda = groups.get(activeDay) || []
-  const soon = filtered.filter(ev => eventDate(ev) >= todayKey && String(ev.status || '').toLowerCase() !== 'cancelled').slice()
-    .sort((a, b) => eventDate(a).localeCompare(eventDate(b)) || String(a.time || '').localeCompare(String(b.time || ''))).slice(0, 8)
-  const selected = dateOf(activeDay)
-  const days = view === 'month' ? calendarDays(month) : view === 'day' ? [selected] :
+    for (const list of grouped.values()) {
+      list.sort((a, b) => timeOf(a).localeCompare(timeOf(b)))
+    }
+    return grouped
+  }, [visibleEvents])
+
+  const todayCount = (byDate.get(today) || []).length
+  const monthCount = visibleEvents.filter(e => dateOf(e).startsWith(iso(month).slice(0, 7))).length
+  const upcoming = useMemo(() => visibleEvents
+    .filter(event => dateOf(event) >= today && String(event.status || '') !== 'cancelled')
+    .slice().sort((a, b) => dateOf(a).localeCompare(dateOf(b)) ||
+      timeOf(a).localeCompare(timeOf(b))).slice(0, 8), [visibleEvents, today])
+  const selectedEvents = byDate.get(selectedDay) || []
+  const selected = parseDate(selectedDay)
+  const days = view === 'month' ? daysOfMonth(month) : view === 'day' ? [selected] :
     Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(selected)
-      date.setDate(selected.getDate() - selected.getDay() + i)
-      return date
+      const day = parseDate(selectedDay)
+      day.setDate(day.getDate() - day.getDay() + i)
+      return day
     })
-  function go(n) {
-    if (view === 'month') setMonth(current => shiftMonth(current, n))
-    else {
-      const date = dateOf(activeDay)
-      date.setDate(date.getDate() + (view === 'week' ? n * 7 : n))
-      setActiveDay(iso(date))
-      setMonth(monthOf(date))
-    }
+
+  const activePeriod = view === 'month'
+    ? month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : view === 'week'
+      ? 'Week of ' + days[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : selected.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+
+  function changePeriod(direction) {
+    if (view === 'month') return setMonth(previous => moveMonth(previous, direction))
+    const next = parseDate(selectedDay)
+    next.setDate(next.getDate() + direction * (view === 'week' ? 7 : 1))
+    setSelectedDay(iso(next))
+    setMonth(firstMonth(next))
   }
-  function openDay(date) {
-    setActiveDay(date)
-    setMonth(monthOf(dateOf(date)))
-    setView('day')
+  function selectDay(date, open = false) {
+    setSelectedDay(date)
+    setMonth(firstMonth(parseDate(date)))
+    if (open) setView('day')
   }
-  function today() {
-    const date = new Date()
-    setMonth(monthOf(date)); setActiveDay(iso(date))
+  function jumpToToday() {
+    selectDay(iso(new Date()))
+    setView('month')
   }
-  const btn = (label, cb, selectedState = false) =>
-    <button type="button" onClick={cb} style={{
-      ...BUTTON, background: selectedState ? '#166534' : 'var(--sf)',
-      color: selectedState ? '#fff' : 'var(--tx)',
-    }}>{label}</button>
-  return (
-    <section aria-label="New CRM calendar preview" style={{
-      minHeight: '100%', background: 'var(--bg)', color: 'var(--tx)', padding: 16,
-    }}>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap',
-        alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div>
-          {btn('Switch to classic', onClose)}
-          <h2 style={{ fontSize: 24, margin: '10px 0 4px' }}>Unified Calendar</h2>
-          <p style={{ fontSize: 12, color: 'var(--t3)', margin: 0 }}>
-            New layout + classic functionality · Existing appointments and reminders
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {btn('Today', today)}
-          {btn('‹', () => go(-1))}
-          <strong style={{ padding: 6, fontSize: 14 }}>
-            {month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </strong>
-          {btn('›', () => go(1))}
-          {['month', 'week', 'day'].map(mode =>
-            <span key={mode}>{btn(mode[0].toUpperCase() + mode.slice(1),
-              () => setView(mode), view === mode)}</span>)}
-          {btn('Booking link', onBooking)}
-          <button type="button" onClick={() => onCreate(activeDay, productFilter)}
-            style={{ ...BUTTON, background: '#16a34a', color: '#fff' }}>+ Add event</button>
-        </div>
-      </div>
-      <div style={{ border: '1px solid var(--br)', borderRadius: 10,
-        background: 'var(--sf)', padding: 12, marginBottom: 12,
-        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-        <strong style={{ fontSize: 13 }}>{filtered.length} CRM events</strong>
-        <span style={{ fontSize: 11, color: 'var(--t3)' }}>
-          Select a date to view it, or use + to add an appointment
+  function create(date = selectedDay) {
+    onCreate(date, productFilter)
+  }
+  function eventRow(event, key) {
+    const product = PRODUCT_BOOKING_CONFIGS[event.product_id]
+    return (
+      <button type="button" key={key} className="uc-aside-event" onClick={() => onOpenEvent(event)}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 800 }}>
+          <span style={{ height: 9, width: 9, borderRadius: 99, background: colorOf(event), flexShrink: 0 }} />
+          {timeOf(event) || 'All day'} · {nameOf(event)}
         </span>
-        <span style={{ fontSize: 12, color: 'var(--t3)' }}>{filtered.filter(ev => eventDate(ev) === todayKey).length} today</span>
-        <label style={{ fontSize: 12, color: 'var(--t3)' }} htmlFor="calendar-product-filter">CRM</label>
-        <select id="calendar-product-filter" aria-label="Filter by CRM" value={productFilter}
-          onChange={e => setProductFilter(e.target.value)}
-          style={{ minHeight: 36, maxWidth: 210, background: 'var(--bg)', color: 'var(--tx)', border: '1px solid var(--br)', borderRadius: 8, padding: '7px 9px' }}>
-          <option value="all">All products</option>
-          {availableProducts.map(product =>
-            <option key={product.key} value={product.key}>
-              {product.name} ({eventCountByProduct.get(product.key) || 0})
-            </option>)}
-        </select>
-        <input aria-label="Search calendar appointments" value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search client, event or product…"
-          style={{ flex: '1 1 200px', marginLeft: 'auto', maxWidth: 340,
-            padding: '9px 11px', border: '1px solid var(--br)', borderRadius: 8,
-            color: 'var(--tx)', background: 'var(--bg)', fontSize: 12 }} />
+        <span style={{ display: 'block', fontSize: 10, marginTop: 5, color: 'var(--uc-muted)' }}>
+          {dateOf(event)} · {product?.name || event.product_id || 'RomyLabs'}
+        </span>
+      </button>
+    )
+  }
+
+  return (
+    <section className="uc-shell" aria-label="Unified CRM Calendar" data-calendar-version={VERSION}>
+      <header className="uc-hero">
+        <div>
+          <div className="uc-eyebrow">RomyLabs workspace · Planning & scheduling</div>
+          <h2>Calendar Command Center <span className="uc-version">{VERSION}</span></h2>
+          <p>One place for appointments, meeting details, deadlines and booking links.
+            Your existing CRM events and reminders remain connected.</p>
+        </div>
+        <div className="uc-hero-actions">
+          {button('Send booking link', onBooking, 'uc-btn-blue')}
+          {button('+ New appointment', () => create(), 'uc-btn-primary')}
+          {button('Classic layout', onClose)}
+        </div>
+      </header>
+
+      <div className="uc-metrics" aria-label="Calendar summary">
+        <div className="uc-metric"><strong>{visibleEvents.length}</strong><small>Total matching appointments</small></div>
+        <div className="uc-metric"><strong>{todayCount}</strong><small>Scheduled today</small></div>
+        <div className="uc-metric"><strong>{monthCount}</strong><small>Appointments this month</small></div>
       </div>
-      {loading && <p role="status" style={{ fontSize: 12, color: 'var(--t3)' }}>Refreshing appointments…</p>}
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 12, minWidth: 0, flexWrap: 'wrap' }}>
-      <div style={{ flex: '1 1 560px', minWidth: 0, overflowX: 'auto' }}>
-      <div style={{ display: 'grid', minWidth: view === 'day' ? 0 : 630,
-        gridTemplateColumns: view === 'day' ? '1fr' : 'repeat(7,minmax(0,1fr))',
-        gap: 3, marginBottom: 3 }}>
-        {(view === 'day' ? [DAYS[selected.getDay()]] : DAYS).map(day =>
-          <div key={day} style={{ textAlign: 'center', fontWeight: 800, color: 'var(--t3)',
-            fontSize: 11, padding: 7 }}>{day}</div>)}
-      </div>
-      <div role="grid" aria-label="Calendar appointments" style={{
-        display: 'grid', minWidth: view === 'day' ? 0 : 630,
-        gridTemplateColumns: view === 'day' ? '1fr' : 'repeat(7,minmax(0,1fr))',
-        gap: 3 }}>
-        {days.map(date => {
-          const key = iso(date)
-          const matching = groups.get(key) || []
-          const currentMonth = date.getMonth() === month.getMonth()
-          return (
-            <div key={key} role="gridcell" aria-label={key}
-              tabIndex={0}
-              onClick={() => openDay(key)}
-              onKeyDown={e => {
-                if (e.target !== e.currentTarget) return
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  openDay(key)
-                }
-              }}
-              title="Click to view this day. Use + to add an appointment."
-              style={{
-              cursor: 'pointer',
-              minHeight: view === 'month' ? 105 : 185, background: 'var(--sf)',
-              opacity: currentMonth || view !== 'month' ? 1 : 0.5,
-              border: '1px solid ' + (key === activeDay ? '#16a34a' : 'var(--br)'),
-              borderRadius: 8, padding: 6, minWidth: 0 }}>
-              <button type="button" onClick={e => {
-                e.stopPropagation()
-                openDay(key)
-              }} style={{ border: 'none', cursor: 'pointer', fontWeight: 800,
-                background: key === iso(new Date()) ? '#166534' : 'transparent',
-                color: key === iso(new Date()) ? '#fff' : 'var(--tx)',
-                borderRadius: 5, padding: '3px 5px', marginBottom: 5 }}>
-                {date.getDate()}
-              </button>
-              <button type="button" aria-label={'Add appointment on ' + key}
-                onClick={e => { e.stopPropagation(); onCreate(key, productFilter) }}
-                style={{ float: 'right', background: 'transparent', color: 'var(--t2)',
-                  border: '1px solid var(--br)', borderRadius: 5, cursor: 'pointer',
-                  fontSize: 12, lineHeight: 1.2, padding: '2px 6px' }}>+</button>
-              {matching.slice(0, view === 'month' ? 3 : 60).map((ev, i) =>
-                <button type="button" key={(ev.id || 'event') + '-' + i}
-                  onClick={e => { e.stopPropagation(); onOpenEvent(ev) }}
-                  title={eventLabel(ev)} style={{
-                    display: 'block', width: '100%', borderRadius: 5, minWidth: 0,
-                    border: '1px solid var(--br)', borderLeft: '3px solid ' + safeColor(ev.status),
-                    background: 'var(--nav)', color: 'var(--tx)', fontSize: 11,
-                    padding: '5px 6px', marginBottom: 4, cursor: 'pointer',
-                    textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                    {PRODUCT_BOOKING_CONFIGS[ev.product_id]?.logo && <img src={PRODUCT_BOOKING_CONFIGS[ev.product_id].logo} alt="" aria-hidden="true" style={{ width: 14, height: 14, objectFit: 'contain', flexShrink: 0 }} />}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {timeLabel(ev) ? timeLabel(ev) + ' · ' : ''}{eventLabel(ev)}
-                    </span>
-                  </span>
-                </button>)}
-              {view === 'month' && matching.length > 3 &&
-                <button type="button" onClick={e => {
-                  e.stopPropagation()
-                  openDay(key)
-                }} style={{ ...BUTTON, border: 0, background: 'transparent', padding: 3 }}>
-                  +{matching.length - 3} more
-                </button>}
-              {view !== 'month' &&
-                <button type="button" onClick={e => { e.stopPropagation(); onCreate(key, productFilter) }}
-                  style={{ ...BUTTON, marginTop: 8, padding: 5 }}>+ Add</button>}
-            </div>
-          )
-        })}
-      </div>
-      </div>
-      <aside aria-label="Calendar agenda and deadlines" style={{ flex: '1 1 250px', minWidth: 230, maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Selected day · {activeDay}</h3>
-          <div aria-label="Day actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 9 }}>
-            <button type="button" onClick={() => onCreate(activeDay, productFilter)}
-              style={{ ...BUTTON, background: '#166534', color: '#fff', padding: '6px 9px' }}>+ New event</button>
-            <button type="button" onClick={() => setView('day')}
-              style={{ ...BUTTON, padding: '6px 9px' }}>View day</button>
-            <button type="button" onClick={() => setView('week')}
-              style={{ ...BUTTON, padding: '6px 9px' }}>View week</button>
+
+      <div className="uc-toolbar">
+        <nav className="uc-navigator" aria-label="Calendar navigation">
+          {button('Today', jumpToToday)}
+          {button('‹', () => changePeriod(-1))}
+          <span className="uc-period">{activePeriod}</span>
+          {button('›', () => changePeriod(1))}
+          <div className="uc-views" aria-label="Calendar view">
+            {['month', 'week', 'day'].map(mode =>
+              <button key={mode} type="button" className={'uc-btn' + (view === mode ? ' uc-active' : '')}
+                aria-pressed={view === mode} onClick={() => setView(mode)}>
+                {mode[0].toUpperCase() + mode.slice(1)}
+              </button>)}
           </div>
-          {selectedAgenda.length === 0 ? <p style={{ color: 'var(--t3)', fontSize: 12, margin: 0 }}>No appointments on this day.</p> :
-            selectedAgenda.map((ev, i) => (
-              <button key={(ev.id || 'day') + i} type="button" onClick={() => onOpenEvent(ev)}
-                style={{ ...BUTTON, display: 'block', width: '100%', textAlign: 'left', marginBottom: 6, borderLeft: '3px solid ' + safeColor(ev.status), fontWeight: 500 }}>
-                <strong>{timeLabel(ev) || 'All day'}</strong> · {eventLabel(ev)}
-                <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 3 }}>
-                  {PRODUCT_BOOKING_CONFIGS[ev.product_id]?.name || ev.product_id || 'RomyLabs'}
-                </div>
-              </button>
-            ))}
-          <button type="button" onClick={() => onCreate(activeDay, productFilter)} style={{ ...BUTTON, width: '100%', marginTop: 7 }}>+ New appointment this day</button>
+        </nav>
+        <div className="uc-filters">
+          <label htmlFor="calendar-product-filter" style={{ fontSize: 11, fontWeight: 750 }}>CRM</label>
+          <select id="calendar-product-filter" className="uc-select" value={productFilter}
+            aria-label="Filter by CRM" onChange={e => setProductFilter(e.target.value)}>
+            <option value="all">All products</option>
+            {availableProducts.map(product =>
+              <option key={product.key} value={product.key}>
+                {product.name} ({productCounts.get(product.key) || 0})
+              </option>)}
+          </select>
+          <input className="uc-search" type="search" aria-label="Search calendar appointments"
+            placeholder="Search appointments or clients…" value={search}
+            onChange={e => setSearch(e.target.value)} />
+          {search && button('Clear', () => setSearch(''))}
         </div>
-        <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
-          <button type="button" aria-expanded={showUpcoming}
-            onClick={() => setShowUpcoming(v => !v)}
-            style={{ ...BUTTON, width: '100%', fontSize: 14, marginBottom: 8, textAlign: 'left' }}>
-            {showUpcoming ? '▾' : '▸'} Upcoming appointments
-          </button>
-          {showUpcoming && <div>
-          {soon.length === 0 ? <p style={{ fontSize: 12, color: 'var(--t3)' }}>Nothing upcoming.</p> :
-            soon.map((ev, i) => <button key={(ev.id || 'soon') + i} type="button" onClick={() => onOpenEvent(ev)}
-              style={{ ...BUTTON, display: 'block', width: '100%', textAlign: 'left', marginBottom: 6, fontWeight: 500 }}>
-              <strong>{eventDate(ev)}</strong> · {timeLabel(ev) || 'All day'} · {eventLabel(ev)}
-            </button>)}
-          </div>}
-        </div>
-        <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
-          <button type="button" aria-expanded={showDeadlines} onClick={() => setShowDeadlines(v => !v)}
-            style={{ ...BUTTON, display: 'block', width: '100%', textAlign: 'left', fontSize: 14 }}>
-            {showDeadlines ? '▾' : '▸'} Upcoming deadlines ({deadlines.length})
-          </button>
-          {showDeadlines && (deadlines.length ? deadlines.slice().sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || ''))).slice(0, 15).map((d, i) => (
-            <div key={d.id || i} style={{ padding: '8px 4px', borderBottom: '1px solid var(--br)', fontSize: 12 }}>
-              <strong>{d.title}</strong>
-              <div style={{ color: 'var(--t3)' }}>{d.clientName || ''} · {d.dueDate || ''}</div>
-            </div>
-          )) : <p style={{ color: 'var(--t3)', fontSize: 12 }}>No active deadlines.</p>)}
-        </div>
-      </aside>
       </div>
-      <p style={{ fontSize: 11, color: 'var(--t3)', marginTop: 12 }}>
-        The unified design uses your existing CRM appointment editor, booking links, reminders and event actions.
-        Switch to classic anytime. Stalwart synchronization is not yet enabled.
-      </p>
+
+      {loading && <p role="status" style={{ color: 'var(--uc-muted)', fontSize: 12 }}>Refreshing appointments…</p>}
+      <div className="uc-workspace">
+        <div className="uc-calendar-panel">
+          <div className="uc-calendar-scroll">
+            <div className={'uc-weekdays' + (view === 'day' ? ' uc-one' : '')}>
+              {(view === 'day' ? [DAYS[selected.getDay()]] : DAYS).map(day =>
+                <div className="uc-weekday" key={day}>{day.slice(0, 3)}</div>)}
+            </div>
+            <div className={'uc-grid' + (view === 'day' ? ' uc-one' : '')}
+              role="grid" aria-label="Appointment dates">
+              {days.map(day => {
+                const date = iso(day)
+                const daily = byDate.get(date) || []
+                return (
+                  <div key={date} role="gridcell" tabIndex={0} aria-label={longDate(date) +
+                    ', ' + daily.length + ' appointments'}
+                    className={'uc-day' + (date === selectedDay ? ' uc-selected' : '') +
+                      (day.getMonth() !== month.getMonth() && view === 'month' ? ' uc-outside' : '') +
+                      (view !== 'month' ? ' uc-large' : '')}
+                    onClick={() => selectDay(date, true)}
+                    onKeyDown={e => {
+                      if (e.target !== e.currentTarget) return
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        selectDay(date, true)
+                      }
+                    }}>
+                    <div className="uc-day-head">
+                      <button type="button" className={'uc-day-date' + (date === today ? ' uc-today' : '')}
+                        onClick={e => { e.stopPropagation(); selectDay(date, true) }}>
+                        {day.getDate()}
+                      </button>
+                      <div className="uc-day-right">
+                        {daily.length > 0 && <span className="uc-count">{daily.length}</span>}
+                        <button type="button" className="uc-add" title={'Add appointment on ' + date}
+                          aria-label={'Add appointment on ' + date}
+                          onClick={e => { e.stopPropagation(); create(date) }}>+</button>
+                      </div>
+                    </div>
+                    {daily.slice(0, view === 'month' ? 3 : 30).map((event, index) => (
+                      <button key={(event.id || date) + index} type="button" className="uc-event"
+                        title={nameOf(event)} onClick={e => { e.stopPropagation(); onOpenEvent(event) }}
+                        style={{ borderLeftColor: colorOf(event) }}>
+                        <time>{timeOf(event) || 'All day'}</time> · {nameOf(event)}
+                      </button>
+                    ))}
+                    {daily.length > (view === 'month' ? 3 : 30) &&
+                      <button type="button" className="uc-more"
+                        onClick={e => { e.stopPropagation(); selectDay(date, true) }}>
+                        +{daily.length - (view === 'month' ? 3 : 30)} more
+                      </button>}
+                    {view !== 'month' && daily.length === 0 &&
+                      <p className="uc-empty">No appointments. Select + to add one.</p>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        <aside className="uc-aside" aria-label="Calendar agenda and deadlines">
+          <div className="uc-card">
+            <div className="uc-eyebrow">Selected date</div>
+            <h3>{selected.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+            <div className="uc-card-date">{selectedEvents.length} appointments scheduled</div>
+            <div className="uc-card-actions" aria-label="Day actions">
+              {button('+ New event', () => create(), 'uc-btn-primary')}
+              {button('Booking link', onBooking, 'uc-btn-blue')}
+              {button('View day', () => setView('day'))}
+              {button('View week', () => setView('week'))}
+            </div>
+            {selectedEvents.length
+              ? selectedEvents.map((event, i) => eventRow(event, (event.id || 'selected') + i))
+              : <p className="uc-empty">Nothing planned yet. Use New event to schedule this day.</p>}
+          </div>
+          <div className="uc-card">
+            <button type="button" className="uc-collapse" aria-expanded={upcomingOpen}
+              onClick={() => setUpcomingOpen(value => !value)}>
+              <span>Upcoming appointments</span><span>{upcomingOpen ? '▾' : '▸'}</span>
+            </button>
+            {upcomingOpen && (upcoming.length
+              ? upcoming.map((event, i) => eventRow(event, (event.id || 'upcoming') + i))
+              : <p className="uc-empty">No upcoming appointments.</p>)}
+          </div>
+          <div className="uc-card">
+            <button type="button" className="uc-collapse" aria-expanded={deadlinesOpen}
+              onClick={() => setDeadlinesOpen(value => !value)}>
+              <span>Deadlines ({deadlines.length})</span><span>{deadlinesOpen ? '▾' : '▸'}</span>
+            </button>
+            {deadlinesOpen && (deadlines.length
+              ? deadlines.slice().sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))
+                .slice(0, 12).map((item, i) => <div key={item.id || i} className="uc-aside-event"
+                  style={{ cursor: 'default', borderLeft: '3px solid #eeb04c' }}>
+                  <strong>{item.title || 'Deadline'}</strong>
+                  <div style={{ color: 'var(--uc-muted)', marginTop: 4 }}>
+                    {item.dueDate || 'No date'} · {item.clientName || ''}
+                  </div>
+                </div>)
+              : <p className="uc-empty">No active deadlines.</p>)}
+          </div>
+        </aside>
+      </div>
+      <div className="uc-footer">
+        <span className="uc-connection">● CRM appointments connected</span>
+        <span>·</span>
+        <span>Classic booking, event editing and reminder workflows remain active.</span>
+        <span>·</span>
+        <span>Stalwart synchronization pending verification.</span>
+      </div>
     </section>
   )
 }
