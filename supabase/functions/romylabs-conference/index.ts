@@ -10,6 +10,18 @@ const json=(x:unknown,status=200)=>new Response(JSON.stringify(x),{status,header
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const normalize=(s:unknown)=>{const digits=String(s||'').replace(/\D/g,'');return digits.length===10?'+1'+digits:digits.length===11&&digits.startsWith('1')?'+'+digits:''}
 const terminal=new Set(['completed','canceled','cancelled','failed','busy','no-answer'])
+const inviteSign=async (message:string)=>{
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(SERVICE),{name:'HMAC',hash:'SHA-256'},false,['sign'])
+  const signature=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(message))
+  return Array.from(new Uint8Array(signature),b=>b.toString(16).padStart(2,'0')).join('')
+}
+const safeEqual=(a:string,b:string)=>{
+  if(a.length!==b.length)return false
+  let result=0
+  for(let i=0;i<a.length;i++)result|=a.charCodeAt(i)^b.charCodeAt(i)
+  return result===0
+}
+
 
 serve(async req=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:CORS})
@@ -116,6 +128,74 @@ serve(async req=>{
       }catch{return null}
     }))
     const participants=details.filter(Boolean) as {sid:string,kind:string,number?:string,status:string}[]
+    if(action==='invite'){
+      // No third-party call is made until the agent and the original party
+      // have already joined. The guest is parked in a separate consult room
+      // until the agent explicitly presses Merge Calls.
+      const agentPresent=participants.some(p=>p.kind==='agent')
+      const originalPresent=participants.some(p=>p.sid===callSid)
+      if(!originalPresent||!agentPresent)return json({error:'Original caller and agent must both be connected'},409)
+      const phone=normalize(body?.number)
+      if(!phone)return json({error:'Enter a valid US number'},400)
+      const {data:adminPhone}=await db.from('settings').select('sw_inbound_did')
+        .eq('tenant_id',TENANT).limit(1).maybeSingle()
+      const from=normalize(adminPhone?.sw_inbound_did)
+      if(!from)return json({error:'RomyLabs outbound caller ID unavailable'},503)
+      const invitation=crypto.randomUUID().replace(/-/g,'')
+      const expires=Date.now()+15*60*1000
+      const proof=await inviteSign(id+'.'+invitation+'.'+expires)
+      const join=URL+'/functions/v1/romylabs-conference-guest?call='+encodeURIComponent(id)+
+        '&invite='+invitation+'&exp='+expires+'&sig='+proof
+      const dial=await fetchProvider('/Calls.json',{
+        method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({To:phone,From:from,Url:join,Method:'POST',Timeout:'30'})
+      })
+      const data=await dial.json()
+      const guestSid=String(data?.sid||'')
+      if(!UUID.test(guestSid))return json({error:'Provider did not create an identifiable guest call'},502)
+      const token=await inviteSign(id+'.'+guestSid+'.'+phone+'.'+expires)
+      return json({ok:true,call_sid:guestSid,number:phone,expires,token,status:'ringing'})
+    }
+
+    if(['invite_status','merge','cancel_invite'].includes(action)){
+      const guestSid=String(body?.call_sid||'')
+      const number=normalize(body?.number)
+      const expires=Number(body?.expires||0)
+      const token=String(body?.token||'')
+      if(!UUID.test(guestSid)||!number||!Number.isSafeInteger(expires)||expires<Date.now()||
+         expires>Date.now()+15*60*1000||!token)
+        return json({error:'Invitation expired or invalid'},403)
+      const proof=await inviteSign(id+'.'+guestSid+'.'+number+'.'+expires)
+      if(!safeEqual(proof,token))return json({error:'Invalid guest invitation'},403)
+      const guest=await (await fetchProvider('/Calls/'+guestSid+'.json')).json()
+      if(normalize(guest?.to)!==number)return json({error:'Guest call destination mismatch'},403)
+      const inRoom=participants.some(p=>p.sid===guestSid)
+      const guestState=String(guest?.status||'unknown').toLowerCase()
+      if(action==='invite_status'){
+        return json({ok:true,state:inRoom?'merged':terminal.has(guestState)?'ended':
+          ['in-progress','answered'].includes(guestState)?'answered':'ringing',call_sid:guestSid})
+      }
+      if(action==='merge'){
+        if(inRoom)return json({ok:true,state:'merged'})
+        if(!['in-progress','answered'].includes(guestState))
+          return json({error:'Guest must answer before joining'},409)
+        const url=URL+'/functions/v1/join-conference?conf='+encodeURIComponent(conference)+'&tenant='+TENANT
+        await fetchProvider('/Calls/'+guestSid+'.json',{
+          method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({Url:url,Method:'POST'})
+        })
+        return json({ok:true,state:'merging'})
+      }
+      if(inRoom)return json({error:'Already merged; use Disconnect guest'},409)
+      if(!terminal.has(guestState)){
+        await fetchProvider('/Calls/'+guestSid+'.json',{
+          method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({Status:'completed'})
+        })
+      }
+      return json({ok:true,state:'ended'})
+    }
+
     if(action==='status'){
       const originalPresent=participants.some(p=>p.sid===callSid)
       const agentPresent=participants.some(p=>p.kind==='agent')
