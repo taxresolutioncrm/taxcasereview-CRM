@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
 
 const pad = n => String(n).padStart(2, '0')
 const iso = d => [d.getFullYear(), pad(d.getMonth() + 1), pad(d.getDate())].join('-')
@@ -35,17 +36,22 @@ const safeColor = status => {
  * All create/edit/booking actions are delegated to the existing CRM handlers.
  * No Stalwart request, duplicate save, or new Supabase authorization path.
  */
-export default function AdminCalendarPreview({ events = [], onClose, onCreate, onOpenEvent, onBooking }) {
+export default function AdminCalendarPreview({ events = [], deadlines = [], loading = false, onClose, onCreate, onOpenEvent, onBooking }) {
   const [month, setMonth] = useState(monthOf(new Date()))
   const [activeDay, setActiveDay] = useState(iso(new Date()))
   const [view, setView] = useState('month')
   const [search, setSearch] = useState('')
+  const [productFilter, setProductFilter] = useState('all')
+  const [showDeadlines, setShowDeadlines] = useState(true)
+  const todayKey = iso(new Date())
+  const products = useMemo(() => [...new Set(events.map(ev => ev.product_id || 'romylabs'))].sort(), [events])
   const filtered = useMemo(() => events.filter(ev => {
     if (!eventDate(ev)) return false
+    if (productFilter !== 'all' && (ev.product_id || 'romylabs') !== productFilter) return false
     const q = search.trim().toLowerCase()
     return !q || [eventLabel(ev), ev.clientName, ev.client, ev.product_id, ev.eventType]
       .some(x => String(x || '').toLowerCase().includes(q))
-  }), [events, search])
+  }), [events, search, productFilter])
   const groups = useMemo(() => {
     const next = new Map()
     for (const ev of filtered) {
@@ -57,6 +63,9 @@ export default function AdminCalendarPreview({ events = [], onClose, onCreate, o
       String(a.time || '').localeCompare(String(b.time || '')))
     return next
   }, [filtered])
+  const selectedAgenda = groups.get(activeDay) || []
+  const soon = filtered.filter(ev => eventDate(ev) >= todayKey && String(ev.status || '').toLowerCase() !== 'cancelled').slice()
+    .sort((a, b) => eventDate(a).localeCompare(eventDate(b)) || String(a.time || '').localeCompare(String(b.time || ''))).slice(0, 8)
   const selected = dateOf(activeDay)
   const days = view === 'month' ? calendarDays(month) : view === 'day' ? [selected] :
     Array.from({ length: 7 }, (_, i) => {
@@ -89,10 +98,10 @@ export default function AdminCalendarPreview({ events = [], onClose, onCreate, o
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap',
         alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
-          {btn('← Classic calendar', onClose)}
-          <h2 style={{ fontSize: 24, margin: '10px 0 4px' }}>New Calendar</h2>
+          {btn('Switch to classic', onClose)}
+          <h2 style={{ fontSize: 24, margin: '10px 0 4px' }}>Unified Calendar</h2>
           <p style={{ fontSize: 12, color: 'var(--t3)', margin: 0 }}>
-            Live CRM appointments · Existing booking and reminder workflows · Stalwart sync pending
+            New layout + classic functionality · Existing appointments and reminders
           </p>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -114,6 +123,14 @@ export default function AdminCalendarPreview({ events = [], onClose, onCreate, o
         background: 'var(--sf)', padding: 12, marginBottom: 12,
         display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
         <strong style={{ fontSize: 13 }}>{filtered.length} CRM events</strong>
+        <span style={{ fontSize: 12, color: 'var(--t3)' }}>{filtered.filter(ev => eventDate(ev) === todayKey).length} today</span>
+        <label style={{ fontSize: 12, color: 'var(--t3)' }} htmlFor="calendar-product-filter">CRM</label>
+        <select id="calendar-product-filter" aria-label="Filter by CRM" value={productFilter}
+          onChange={e => setProductFilter(e.target.value)}
+          style={{ minHeight: 36, maxWidth: 210, background: 'var(--bg)', color: 'var(--tx)', border: '1px solid var(--br)', borderRadius: 8, padding: '7px 9px' }}>
+          <option value="all">All products</option>
+          {products.map(key => <option key={key} value={key}>{PRODUCT_BOOKING_CONFIGS[key]?.name || key}</option>)}
+        </select>
         <input aria-label="Search calendar appointments" value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search client, event or product…"
@@ -121,7 +138,10 @@ export default function AdminCalendarPreview({ events = [], onClose, onCreate, o
             padding: '9px 11px', border: '1px solid var(--br)', borderRadius: 8,
             color: 'var(--tx)', background: 'var(--bg)', fontSize: 12 }} />
       </div>
-      <div style={{ display: 'grid',
+      {loading && <p role="status" style={{ fontSize: 12, color: 'var(--t3)' }}>Refreshing appointments…</p>}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 12, minWidth: 0, flexWrap: 'wrap' }}>
+      <div style={{ flex: '1 1 560px', minWidth: 0, overflowX: 'auto' }}>
+      <div style={{ display: 'grid', minWidth: view === 'day' ? 0 : 630,
         gridTemplateColumns: view === 'day' ? '1fr' : 'repeat(7,minmax(0,1fr))',
         gap: 3, marginBottom: 3 }}>
         {(view === 'day' ? [DAYS[selected.getDay()]] : DAYS).map(day =>
@@ -129,7 +149,7 @@ export default function AdminCalendarPreview({ events = [], onClose, onCreate, o
             fontSize: 11, padding: 7 }}>{day}</div>)}
       </div>
       <div role="grid" aria-label="Calendar appointments" style={{
-        display: 'grid',
+        display: 'grid', minWidth: view === 'day' ? 0 : 630,
         gridTemplateColumns: view === 'day' ? '1fr' : 'repeat(7,minmax(0,1fr))',
         gap: 3 }}>
         {days.map(date => {
@@ -161,7 +181,12 @@ export default function AdminCalendarPreview({ events = [], onClose, onCreate, o
                     padding: '5px 6px', marginBottom: 4, cursor: 'pointer',
                     textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap' }}>
-                  {timeLabel(ev) ? timeLabel(ev) + ' · ' : ''}{eventLabel(ev)}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                    {PRODUCT_BOOKING_CONFIGS[ev.product_id]?.logo && <img src={PRODUCT_BOOKING_CONFIGS[ev.product_id].logo} alt="" aria-hidden="true" style={{ width: 14, height: 14, objectFit: 'contain', flexShrink: 0 }} />}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {timeLabel(ev) ? timeLabel(ev) + ' · ' : ''}{eventLabel(ev)}
+                    </span>
+                  </span>
                 </button>)}
               {view === 'month' && matching.length > 3 &&
                 <button type="button" onClick={() => {
@@ -176,9 +201,47 @@ export default function AdminCalendarPreview({ events = [], onClose, onCreate, o
           )
         })}
       </div>
+      </div>
+      <aside aria-label="Calendar agenda and deadlines" style={{ flex: '1 1 250px', minWidth: 230, maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Selected day · {activeDay}</h3>
+          {selectedAgenda.length === 0 ? <p style={{ color: 'var(--t3)', fontSize: 12, margin: 0 }}>No appointments on this day.</p> :
+            selectedAgenda.map((ev, i) => (
+              <button key={(ev.id || 'day') + i} type="button" onClick={() => onOpenEvent(ev)}
+                style={{ ...BUTTON, display: 'block', width: '100%', textAlign: 'left', marginBottom: 6, borderLeft: '3px solid ' + safeColor(ev.status), fontWeight: 500 }}>
+                <strong>{timeLabel(ev) || 'All day'}</strong> · {eventLabel(ev)}
+                <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 3 }}>
+                  {PRODUCT_BOOKING_CONFIGS[ev.product_id]?.name || ev.product_id || 'RomyLabs'}
+                </div>
+              </button>
+            ))}
+          <button type="button" onClick={() => onCreate(activeDay)} style={{ ...BUTTON, width: '100%', marginTop: 7 }}>+ New appointment this day</button>
+        </div>
+        <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Upcoming appointments</h3>
+          {soon.length === 0 ? <p style={{ fontSize: 12, color: 'var(--t3)' }}>Nothing upcoming.</p> :
+            soon.map((ev, i) => <button key={(ev.id || 'soon') + i} type="button" onClick={() => onOpenEvent(ev)}
+              style={{ ...BUTTON, display: 'block', width: '100%', textAlign: 'left', marginBottom: 6, fontWeight: 500 }}>
+              <strong>{eventDate(ev)}</strong> · {timeLabel(ev) || 'All day'} · {eventLabel(ev)}
+            </button>)}
+        </div>
+        <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
+          <button type="button" aria-expanded={showDeadlines} onClick={() => setShowDeadlines(v => !v)}
+            style={{ ...BUTTON, display: 'block', width: '100%', textAlign: 'left', fontSize: 14 }}>
+            {showDeadlines ? '▾' : '▸'} Upcoming deadlines ({deadlines.length})
+          </button>
+          {showDeadlines && (deadlines.length ? deadlines.slice().sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || ''))).slice(0, 15).map((d, i) => (
+            <div key={d.id || i} style={{ padding: '8px 4px', borderBottom: '1px solid var(--br)', fontSize: 12 }}>
+              <strong>{d.title}</strong>
+              <div style={{ color: 'var(--t3)' }}>{d.clientName || ''} · {d.dueDate || ''}</div>
+            </div>
+          )) : <p style={{ color: 'var(--t3)', fontSize: 12 }}>No active deadlines.</p>)}
+        </div>
+      </aside>
+      </div>
       <p style={{ fontSize: 11, color: 'var(--t3)', marginTop: 12 }}>
-        Event details, appointment creation and booking links use the existing CRM.
-        No appointments are transferred or duplicated.
+        The unified design uses your existing CRM appointment editor, booking links, reminders and event actions.
+        Switch to classic anytime. Stalwart synchronization is not yet enabled.
       </p>
     </section>
   )
