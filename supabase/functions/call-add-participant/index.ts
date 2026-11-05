@@ -140,8 +140,14 @@ serve(async (req) => {
       return json({ error: 'Could not place the call: ' + text }, 502)
     }
 
-    console.log('call-add-participant: dialing', e164, 'into', conference_name)
-    return json({ ok: true })
+    const result = JSON.parse(text || '{}')
+    const callSid = String(result?.sid || '')
+    if (!/^[0-9a-f-]{36}$/i.test(callSid)) {
+      console.error('call-add-participant: missing provider call SID')
+      return json({ error: 'Provider did not return an identifiable participant call' }, 502)
+    }
+    console.log('call-add-participant: invitation placed', callSid, 'into', conference_name)
+    return json({ ok: true, call_sid: callSid, status: 'ringing' })
 
   } catch (err) {
     console.error('call-add-participant error:', err)
