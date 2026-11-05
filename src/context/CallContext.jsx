@@ -1387,6 +1387,17 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     if (outboundPollRef.current) { clearInterval(outboundPollRef.current); outboundPollRef.current = null }
     if (inboundStatusPollRef.current) { clearInterval(inboundStatusPollRef.current); inboundStatusPollRef.current = null }
 
+    // Do not strand a guest in the isolated consult waiting room on End Call.
+    // The provider guest callback also has a hard 120-second time limit for
+    // browser crashes and other failures outside this cleanup path.
+    if (conferenceInviteRef.current && ['ringing','answered'].includes(conferenceInviteRef.current.status)) {
+      const cancelled = await cancelConferenceInvite()
+      if (cancelled?.error) {
+        console.error('[conference] guest cancellation could not be confirmed:', cancelled.error)
+        showCallToast('Guest cancellation is unconfirmed; waiting room will time out automatically.')
+      }
+    }
+
     // Kill the provider conference BEFORE tearing down the browser leg.
     // Hanging up the agent/browser leg first can strand the remote party alone
     // in the conference (audibly on hold) if the SDK hangup promise stalls.
