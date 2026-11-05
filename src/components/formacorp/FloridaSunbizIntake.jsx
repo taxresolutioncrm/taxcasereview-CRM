@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const STEPS = ['Business & Fees', 'Addresses', 'Registered Agent', 'Authorized Persons', 'Signatures', 'Review']
 const EMPTY_MANAGER = { title:'AMBR', name:'', street_address:'' }
@@ -169,11 +169,17 @@ const splitAddress = (full='') => {
 }
 function FloridaAddressEditor({value,onChange,required=false,fixedFlorida=false}) {
   const [parts,setParts]=useState(()=>splitAddress(value))
+  const lastEmitted=useRef(value)
+  useEffect(()=>{
+    if(value!==lastEmitted.current) {lastEmitted.current=value;setParts(splitAddress(value))}
+  },[value])
   const update=(key,part)=>{
     const next={...parts,[key]:part,...(fixedFlorida?{state:'FL'}:{})}
     setParts(next)
     const last=[next.state,next.zip].filter(Boolean).join(' ')
-    onChange([next.street,next.suite,next.city,last].filter(Boolean).join(', '))
+    const full=[next.street,next.suite,next.city,last].filter(Boolean).join(', ')
+    lastEmitted.current=full
+    onChange(full)
   }
   return <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:8,marginBottom:10}}>
     <div style={{gridColumn:'1 / -1'}}><Labeled label={'Street Address'+(required?' *':'')}><input style={fieldStyle} value={parts.street} onChange={e=>update('street',e.target.value)} placeholder="Street number and name"/></Labeled></div>
