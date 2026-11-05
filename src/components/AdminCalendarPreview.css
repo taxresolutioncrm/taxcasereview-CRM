@@ -118,3 +118,11 @@
  .uc-day{min-height:82px;padding:5px}
  .uc-aside{display:flex}
 }
+
+
+/* Calendar event identity must stay visible even when the appointment title truncates. */
+.uc-event{white-space:normal;overflow:hidden;text-overflow:clip;line-height:1.25;min-height:0}
+.uc-event-main{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
+.uc-event-office{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:10px;font-weight:800;color:#90e5cf;min-width:0;white-space:nowrap}
+.uc-event-office>span{overflow:hidden;text-overflow:ellipsis;min-width:0;display:block}
+.uc-event-office-logo{width:13px;height:13px;object-fit:contain;flex-shrink:0;border-radius:3px}

@@ -88,6 +88,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Calendar event chips show the CRM/product name and logo beneath the time/title; if a distinct office name is provided it is displayed too, without inventing an office for unlabeled events',
+  'Clicking any empty part of a calendar day or its date number opens the existing Add Event form for that exact date, matching the plus button; clicking an existing appointment still opens details and More retains day navigation',
   'Calendar Command Center fixes a clipped month view by making the Admin Portal calendar viewport scrollable with hidden scrollbar chrome; compresses header and KPI tiles while sizing month rows dynamically so all weeks can be reached',
   'Calendar Command Center replaces the old Unified Calendar layout with a prominent scheduling header, booking and appointment actions, three live CRM KPI tiles, searchable product filters, larger accessible calendar dates, color-coded appointments, responsive day agenda and explicit on-screen build version',
   'Unified Calendar restores classic day actions (New Event, View Day, View Week) and collapsible upcoming appointments, reusing the existing booking and event handlers',
@@ -150,9 +152,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.57',
+  version: '3.2.58',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.57 — Calendar Viewport and Compact Header',
+  title: 'RomyLabs Admin Portal 3.2.58 — Click Date to Add Event',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
