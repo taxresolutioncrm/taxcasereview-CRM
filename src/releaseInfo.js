@@ -144,7 +144,7 @@ const DEFAULT_RELEASE = {
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.48',
+    version: '3.2.50',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Manual Payment Office Discovery',
     changes: IRS_WORKFLOW_CHANGES,
@@ -168,7 +168,7 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.48',
+    version: '3.2.50',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Direct Outbound Calling',
     changes: IRS_WORKFLOW_CHANGES,
@@ -176,7 +176,7 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.48',
+    version: '3.2.50',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Direct Outbound Calling',
     changes: IRS_WORKFLOW_CHANGES,
