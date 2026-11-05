@@ -76,7 +76,7 @@ function utm(p:Post,now:Date,productId:string){const md=new Intl.DateTimeFormat(
 async function recent(sb:any,productId:string){const since=new Date(Date.now()-30*86400000).toISOString();const {data,error}=await sb.from('linkedin_posts').select('body,category,created_at,scheduled_at,status').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).gte('created_at',since).not('status','eq','failed');if(error)throw error;return data||[]}
 async function generate(sb:any,now:Date,productId:string){
   const library=LIBRARIES[productId]; if(!library?.length)return {created:[],quarantined:[],skipped:0,unsupported:true};
-  const target=slots(now,2),history=await recent(sb,productId),times=target.map(s=>s.iso);
+  const target=slots(now,8),history=await recent(sb,productId),times=target.map(s=>s.iso);
   const {data:existing,error}=await sb.from('linkedin_posts').select('scheduled_at,status').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).in('scheduled_at',times).not('status','eq','failed');if(error)throw error;
   const occupied=new Set((existing||[]).map((x:any)=>new Date(x.scheduled_at).toISOString())); const open=target.filter(s=>!occupied.has(new Date(s.iso).toISOString()));
   const bodies=history.map((x:any)=>x.body||''); const created:any[]=[],quarantined:any[]=[]; let cursor=Math.floor(now.getTime()/86400000)%library.length;
@@ -135,11 +135,13 @@ Deno.serve(async(req)=>{
     if(action==='next_slots')return response({ok:true,slots:slots(now,8)})
     if(action==='generate_report')return response({ok:true,report:await report(sb,now,input.product_id)})
     if(action==='list_reports'){const productId=input.product_id||TAXRES_PRODUCT;const {data,error}=await sb.from('linkedin_weekly_reports').select('*').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).order('week_start',{ascending:false}).limit(12);if(error)throw error;return response({ok:true,reports:data||[]})}
-    if(action==='generate_monday_drafts'||action==='generate_content'){const productId=input.product_id||TAXRES_PRODUCT;const x=await generate(sb,now,productId);if(x.unsupported)return response({ok:false,error:'no_content_library_for_product',product_id:productId},400);if(x.quarantined.length)await alert(sb,`LinkedIn autopilot [${productId}]: content withheld`,`<p>${x.quarantined.length} post(s) failed automated validation and were not approved.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);return response({ok:true,autopilot:true,product_id:productId,...x})}
+    if(action==='generate_monday_drafts'||action==='generate_content'){const productId=input.product_id||TAXRES_PRODUCT;const x=await generate(sb,now,productId);if(x.unsupported)return response({ok:false,error:'no_content_library_for_product',product_id:productId},400);if(x.quarantined.length && clock.day==='Mon' && clock.hour===7)await alert(sb,`LinkedIn autopilot [${productId}]: content withheld`,`<p>${x.quarantined.length} post(s) failed automated validation and were not approved.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);return response({ok:true,autopilot:true,product_id:productId,...x})}
     if(action!=='run')return response({ok:false,error:'unknown_action'},400)
 
     const clock=et(now),result:any={ok:true,autopilot:true,generated:0,quarantined:0,skipped:0,products_skipped:[]};
-    if(clock.day==='Mon'&&clock.hour===7){
+    // Maintain the verified eight-slot rolling queue on every hourly cron run.
+    // All slots are future Tuesday/Thursday 9 AM Eastern; no off-hour publishing.
+    {
       const {data:settingsRows}=await sb.from('linkedin_settings').select('product_id,autopilot').eq('tenant_id',ADMIN_TENANT).eq('autopilot',true);
       const enabledProducts=(settingsRows||[]).map((r:any)=>r.product_id);
       for(const pid of enabledProducts){
