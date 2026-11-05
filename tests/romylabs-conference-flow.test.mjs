@@ -45,6 +45,10 @@ assert.match(conf,/const token=await inviteSign/)
 assert.match(conf,/safeEqual\(proof,token\)/)
 assert.match(guest,/safeEqual\(await sign/)
 assert.match(guest,/startConferenceOnEnter="false"/)
+assert.match(guest,/<Dial timeLimit="120">/)
+assert.match(ctx,/conferenceInviteRef\.current && \['ringing','answered'\]/)
+assert.match(ctx,/if\(upgradeRoom&&!originalBridgeVerified\)/)
+assert.match(ctx,/endConferenceWithRetry\(upgradeRoom\)/)
 
 // Never dial a third party unless both the original and the browser agent
 // have genuinely joined. No fake 8-second connected state.
