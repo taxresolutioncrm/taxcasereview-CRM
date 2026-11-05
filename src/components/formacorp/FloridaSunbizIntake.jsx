@@ -43,6 +43,22 @@ export default function FloridaSunbizIntake({ onSave, onClose, saving=false }) {
     if(!form.registered_agent_accepted||!trim(form.fl_registered_agent_signature))errors.push('Registered-agent acceptance and signature are required')
     if(!trim(form.authorized_representative)||!trim(form.fl_authorized_representative_signature))errors.push('Authorized representative and signature are required')
     if(!trim(form.fl_correspondence_name)||!emailValid(form.correspondence_email))errors.push('Correspondence contact name and valid email are required')
+    if(form.effective_date) {
+      const effective=new Date(form.effective_date+'T12:00:00')
+      const today=new Date();today.setHours(12,0,0,0)
+      if(Number.isNaN(effective.getTime())) errors.push('Effective date must be a valid calendar date')
+      else if(effective>=today && Math.round((effective-today)/86400000)>90) errors.push('Effective date cannot be more than 90 days after filing')
+      else if(effective<today) {
+        let businessDays=0
+        const cursor=new Date(effective)
+        while(cursor<today) {
+          cursor.setDate(cursor.getDate()+1)
+          if(cursor.getDay()!==0 && cursor.getDay()!==6) businessDays++
+          if(businessDays>5) break
+        }
+        if(businessDays>5) errors.push('Effective date cannot be more than 5 business days before filing')
+      }
+    }
     if(!form.fl_filing_authorized)errors.push('Filing authorization is required')
     if(managers.some(m=>trim(m.name)&&(!trim(m.street_address)||poBox(m.street_address))))errors.push('Each listed manager/authorized person needs a street address')
     return errors
