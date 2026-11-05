@@ -21,18 +21,20 @@ const rows = c => [
 ]
 
 export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordReceipt}) {
+  const isSavedCase=!!caseRecord?.id
   const [showOfficial,setShowOfficial]=useState(false)
-  const [receipt,setReceipt]=useState({tracking:caseRecord.fl_tracking_number||'',payment:caseRecord.fl_payment_reference||'',reference:caseRecord.fl_confirmation_url||''})
+  const [receipt,setReceipt]=useState({tracking:caseRecord?.fl_tracking_number||'',payment:caseRecord?.fl_payment_reference||'',reference:caseRecord?.fl_confirmation_url||''})
   const [recording,setRecording]=useState(false)
   const [copied,setCopied]=useState('')
-  const officialUrl=URLS[caseRecord.entity_type]
-  const isPreviouslyRecorded=!!caseRecord.fl_submitted_at
+  const officialUrl=URLS[caseRecord?.entity_type||'LLC']
+  const isPreviouslyRecorded=!!caseRecord?.fl_submitted_at
   const copy=async (label,value)=>{
     if(!value)return
     try { await navigator.clipboard.writeText(String(value)); setCopied(label) }
     catch { setCopied('Copy unavailable—select the value manually') }
   }
   const save=async()=>{
+    if(!isSavedCase||!onRecordReceipt)return
     if(recording||!receipt.tracking.trim()||!receipt.payment.trim())return
     setRecording(true)
     try { await onRecordReceipt({tracking:receipt.tracking.trim(),payment:receipt.payment.trim(),reference:receipt.reference.trim()}) }
@@ -42,7 +44,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
     <div className="modal" style={{width:1120,maxWidth:'97vw',maxHeight:'96vh',overflowY:'auto',padding:20}}>
       <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'start'}}>
         <div><div style={{fontWeight:800,fontSize:18}}>Florida Filing — Sunbiz Workspace</div>
-          <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>{caseRecord.entity_name} • Official government website remains operated by the Florida Department of State</div></div>
+          <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>{caseRecord?.entity_name||'New Florida filing'} • Official government website remains operated by the Florida Department of State</div></div>
         <button className="btn sm" onClick={onClose} aria-label="Close filing workspace">✕</button>
       </div>
       <div style={{padding:12,background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,fontSize:12,margin:'16px 0'}}>
@@ -58,7 +60,8 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
         <aside style={{border:'1px solid var(--br)',background:'var(--s2)',borderRadius:8,padding:12,alignSelf:'start'}}>
           <div style={{fontSize:13,fontWeight:800,marginBottom:6}}>Your saved filing details</div>
           <div style={{fontSize:11,color:'var(--t3)',marginBottom:9}}>Copy a value into the official government form when requested.</div>
-          {rows(caseRecord).map(([label,value])=><div key={label} style={{padding:'9px 0',borderBottom:'1px solid var(--br)',fontSize:11}}>
+          {!isSavedCase&&<div style={{fontSize:11,color:'var(--t3)',padding:'10px 0'}}>No CRM case has been saved yet. You can complete the official filing here, but the government website cannot automatically send its responses back to FormaCorp. Create a CRM case separately to preserve the information.</div>}
+          {isSavedCase&&rows(caseRecord).map(([label,value])=><div key={label} style={{padding:'9px 0',borderBottom:'1px solid var(--br)',fontSize:11}}>
             <div style={{fontWeight:700,marginBottom:4}}>{label}</div>
             <div style={{display:'flex',alignItems:'start',gap:6,justifyContent:'space-between'}}>
               <span style={{overflowWrap:'anywhere',color:'var(--t3)'}}>{value||'—'}</span>
@@ -66,7 +69,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
             </div>
           </div>)}
           {copied&&<div role="status" style={{marginTop:8,fontSize:11}}>{copied==='Copy unavailable—select the value manually'?copied:copied+' copied'}</div>}
-          {Array.isArray(caseRecord.fl_llc_managers)&&caseRecord.fl_llc_managers.filter(m=>m.name).length>0&&<div style={{paddingTop:10}}>
+          {isSavedCase&&Array.isArray(caseRecord.fl_llc_managers)&&caseRecord.fl_llc_managers.filter(m=>m.name).length>0&&<div style={{paddingTop:10}}>
             <strong style={{fontSize:12}}>Managers / Authorized Persons</strong>
             {caseRecord.fl_llc_managers.filter(m=>m.name).map((m,i)=><div key={i} style={{padding:'6px 0',fontSize:11}}>
               <span>{m.title} — {m.name} — {m.street_address}</span>
@@ -95,7 +98,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
           </>}
         </section>
       </div>
-      <div style={{marginTop:14,padding:14,border:'1px solid var(--br)',borderRadius:8,background:'var(--s2)'}}>
+      {isSavedCase&&<div style={{marginTop:14,padding:14,border:'1px solid var(--br)',borderRadius:8,background:'var(--s2)'}}>
         <strong style={{fontSize:13}}>Record official Florida confirmation</strong>
         <p style={{fontSize:11,color:'var(--t3)',margin:'5px 0 12px'}}>Enter these only after the government site confirms the submission and payment. Fax-provider acceptance is not an official receipt.</p>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:9}}>
@@ -107,7 +110,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
           <button className="btn pri" disabled={recording||isPreviouslyRecorded||!receipt.tracking.trim()||!receipt.payment.trim()} onClick={save}>{recording?'Recording…':isPreviouslyRecorded?'Submission already recorded':'Record confirmed state submission'}</button>
           <span style={{fontSize:11,color:'var(--t3)'}}>This records an externally issued receipt; it never submits a filing or charges a card.</span>
         </div>
-      </div>
+      </div>}
     </div>
   </div>
 }
