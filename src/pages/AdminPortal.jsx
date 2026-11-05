@@ -2851,8 +2851,13 @@ function AdminCalendar(){
   return (
     <div
       key="taxrescrm-calendar"
-      className="page-content"
-      style={{ position:'relative', overflow:'hidden', padding:0, height:'100%', flex:1 }}
+      className="page-content admin-calendar-scroll-viewport"
+      style={{
+        position: 'relative', overflowX: 'hidden', overflowY: 'auto',
+        overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none', msOverflowStyle: 'none',
+        padding: 0, height: '100%', minHeight: 0, flex: 1,
+      }}
     >
       <CalendarPage />
     </div>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
 import './AdminCalendarPreview.css'
 
-const VERSION = 'v3.2.56'
+const VERSION = 'v3.2.57'
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const pad = value => String(value).padStart(2, '0')
 const iso = date => [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-')
@@ -211,6 +211,7 @@ export default function AdminCalendarPreview({
                 <div className="uc-weekday" key={day}>{day.slice(0, 3)}</div>)}
             </div>
             <div className={'uc-grid' + (view === 'day' ? ' uc-one' : '')}
+              style={{ '--uc-month-rows': Math.ceil(days.length / 7) }}
               role="grid" aria-label="Appointment dates">
               {days.map(day => {
                 const date = iso(day)
