@@ -88,6 +88,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin Portal Building products now follow central registry sort order; SettleLift appears directly below Health Insurance and above Barbers & Salons',
   'Production calendar v3.2.58 release verifies the exact Admin Portal Cloudflare build marker for click-to-add and CRM/office identity on appointment chips',
   'Calendar event chips show the CRM/product name and logo beneath the time/title; if a distinct office name is provided it is displayed too, without inventing an office for unlabeled events',
   'Clicking any empty part of a calendar day or its date number opens the existing Add Event form for that exact date, matching the plus button; clicking an existing appointment still opens details and More retains day navigation',
@@ -153,9 +154,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.58',
+  version: '3.2.59',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.58 — Click Date to Add Event',
+  title: 'RomyLabs Admin Portal 3.2.59 — SettleLift Product Ordering',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
