@@ -43,7 +43,7 @@ assert(/Registered Agent Signature/.test(content), 'Final review must display re
 // Genuine in-CRM Florida LLC intake and persisted filing-packet contract.
 const nativeLlcIntake=fs.readFileSync('src/components/formacorp/FloridaSunbizIntake.jsx','utf8')
 assert((nativeLlcIntake.match(/export default function FloridaSunbizIntake/g) || []).length===1, 'Native intake must have one component definition')
-assert(nativeLlcIntake.includes("const money = value => '
+assert(/const money = value =>/.test(nativeLlcIntake), 'Native filing fee formatter missing')
 const floridaPdf=fs.readFileSync('src/lib/flArticlesPdf.js','utf8')
 const nativeMigration=fs.readFileSync('supabase/migrations/20261105160000_formacorp_native_florida_llc_intake.sql','utf8')
 assert(/Start Florida LLC Filing/.test(content), 'New Florida LLC intake must be first-class entry point')
