@@ -88,6 +88,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin Portal Products now honors the central product registry order for Building entries, placing SettleLift directly under Health Insurance without changing product availability or other CRM ordering',
   'Calendar Command Center fixes a clipped month view by making the Admin Portal calendar viewport scrollable with hidden scrollbar chrome; compresses header and KPI tiles while sizing month rows dynamically so all weeks can be reached',
   'Calendar Command Center replaces the old Unified Calendar layout with a prominent scheduling header, booking and appointment actions, three live CRM KPI tiles, searchable product filters, larger accessible calendar dates, color-coded appointments, responsive day agenda and explicit on-screen build version',
   'Unified Calendar restores classic day actions (New Event, View Day, View Week) and collapsible upcoming appointments, reusing the existing booking and event handlers',
@@ -150,9 +151,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.57',
+  version: '3.2.58',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.57 — Calendar Viewport and Compact Header',
+  title: 'RomyLabs Admin Portal 3.2.58 — SettleLift Product Ordering',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
