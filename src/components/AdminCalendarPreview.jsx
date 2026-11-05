@@ -43,6 +43,7 @@ export default function AdminCalendarPreview({ events = [], products = [], deadl
   const [search, setSearch] = useState('')
   const [productFilter, setProductFilter] = useState('all')
   const [showDeadlines, setShowDeadlines] = useState(true)
+  const [showUpcoming, setShowUpcoming] = useState(true)
   const todayKey = iso(new Date())
   const availableProducts = useMemo(() => {
     const options = new Map(
@@ -253,6 +254,14 @@ export default function AdminCalendarPreview({ events = [], products = [], deadl
       <aside aria-label="Calendar agenda and deadlines" style={{ flex: '1 1 250px', minWidth: 230, maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
           <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Selected day · {activeDay}</h3>
+          <div aria-label="Day actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 9 }}>
+            <button type="button" onClick={() => onCreate(activeDay, productFilter)}
+              style={{ ...BUTTON, background: '#166534', color: '#fff', padding: '6px 9px' }}>+ New event</button>
+            <button type="button" onClick={() => setView('day')}
+              style={{ ...BUTTON, padding: '6px 9px' }}>View day</button>
+            <button type="button" onClick={() => setView('week')}
+              style={{ ...BUTTON, padding: '6px 9px' }}>View week</button>
+          </div>
           {selectedAgenda.length === 0 ? <p style={{ color: 'var(--t3)', fontSize: 12, margin: 0 }}>No appointments on this day.</p> :
             selectedAgenda.map((ev, i) => (
               <button key={(ev.id || 'day') + i} type="button" onClick={() => onOpenEvent(ev)}
@@ -266,12 +275,18 @@ export default function AdminCalendarPreview({ events = [], products = [], deadl
           <button type="button" onClick={() => onCreate(activeDay, productFilter)} style={{ ...BUTTON, width: '100%', marginTop: 7 }}>+ New appointment this day</button>
         </div>
         <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Upcoming appointments</h3>
+          <button type="button" aria-expanded={showUpcoming}
+            onClick={() => setShowUpcoming(v => !v)}
+            style={{ ...BUTTON, width: '100%', fontSize: 14, marginBottom: 8, textAlign: 'left' }}>
+            {showUpcoming ? '▾' : '▸'} Upcoming appointments
+          </button>
+          {showUpcoming && <div>
           {soon.length === 0 ? <p style={{ fontSize: 12, color: 'var(--t3)' }}>Nothing upcoming.</p> :
             soon.map((ev, i) => <button key={(ev.id || 'soon') + i} type="button" onClick={() => onOpenEvent(ev)}
               style={{ ...BUTTON, display: 'block', width: '100%', textAlign: 'left', marginBottom: 6, fontWeight: 500 }}>
               <strong>{eventDate(ev)}</strong> · {timeLabel(ev) || 'All day'} · {eventLabel(ev)}
             </button>)}
+          </div>}
         </div>
         <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
           <button type="button" aria-expanded={showDeadlines} onClick={() => setShowDeadlines(v => !v)}
