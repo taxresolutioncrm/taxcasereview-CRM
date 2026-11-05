@@ -3,6 +3,8 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Invited conference guests answer in an isolated waiting room; only an explicit Merge Calls action connects them to the original conversation',
+  'On-demand three-way calling verifies invitation signatures and caller ownership, supports cancelling unmerged guests and disconnecting merged guests',
   'RomyLabs direct outbound calls can be upgraded to an on-demand three-way call only when Add Caller is clicked; the original call is provider-verified before any transition',
   'Additional participants are dialed after both the original caller and agent reconnect, with provider-confirmed guest presence and guest-only disconnect',
   'Personal LinkedIn autopilot restores eight upcoming Tuesday/Thursday 9 AM ET posts with an independent personal-profile publisher',
