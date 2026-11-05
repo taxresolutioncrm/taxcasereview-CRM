@@ -88,6 +88,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Send Booking Link now lets RomyLabs Admin select a configured CRM; Email and Copy use the same selected product-specific booking URL and branded email, while unconfigured CRMs are visibly disabled. Removed duplicate booking and add-event buttons from the selected-day panel.',
   'Production calendar v3.2.58 release verifies the exact Admin Portal Cloudflare build marker for click-to-add and CRM/office identity on appointment chips',
   'Calendar event chips show the CRM/product name and logo beneath the time/title; if a distinct office name is provided it is displayed too, without inventing an office for unlabeled events',
   'Clicking any empty part of a calendar day or its date number opens the existing Add Event form for that exact date, matching the plus button; clicking an existing appointment still opens details and More retains day navigation',
@@ -153,9 +154,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.58',
+  version: '3.2.59',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.58 — Click Date to Add Event',
+  title: 'RomyLabs Admin Portal 3.2.59 — CRM-Specific Booking Links',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 

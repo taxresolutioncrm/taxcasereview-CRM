@@ -186,9 +186,43 @@ export function bookUrl(tenantId = FIRM.tenantId) {
   return tenantId ? `${BOOK_URL}?t=${tenantId}` : BOOK_URL
 }
 
-export async function sendBookingInvite({ name, email, phone }) {
+// CRM-specific booking links are validated against the same allowlist used by
+// BookAppointment. An unsupported CRM must never silently send a TaxRes link.
+export function productBookingUrl(productId, { name = '', email = '', phone = '' } = {}) {
+  const config = PRODUCT_BOOKING_CONFIGS[productId]
+  if (!config || config.inactive) throw new Error('Booking is not configured for this CRM')
+  const params = new URLSearchParams({ product: config.key })
+  if (name.trim()) params.set('name', name.trim())
+  if (email.trim()) params.set('email', email.trim())
+  if (phone.trim()) params.set('phone', phone.trim())
+  return `${BOOK_URL}?${params.toString()}`
+}
+
+export async function sendBookingInvite({ name, email, phone, productId }) {
   try {
     const first = (name || '').trim().split(' ')[0] || 'there'
+    if (productId) {
+      const cfg = PRODUCT_BOOKING_CONFIGS[productId]
+      if (!cfg || cfg.inactive) return false
+      const link = productBookingUrl(productId, {
+        name: name || '', email: email || '', phone: phone || '',
+      })
+      const { error } = await supabase.functions.invoke('send-email', { body: {
+        tenant_id: FIRM.tenantId || undefined,
+        to: email,
+        from_name: cfg.fromName || cfg.name,
+        subject: `Schedule Your Appointment — ${cfg.name}`,
+        html: emailHtml({
+          firmName: cfg.name, logoUrl: cfg.logo || '',
+          body: `<p>Hi <strong>${first}</strong>,</p>
+          <p>Choose a date and time for your <strong>${cfg.name}</strong> appointment:</p>
+          <p style="text-align:center;margin:24px 0"><a href="${link}" style="background:#1d4ed8;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;display:inline-block">📅 Choose a Time</a></p>
+          <p>You'll see available times and receive a booking confirmation.</p>
+          <p style="margin-top:20px">Talk soon,<br><strong>${cfg.name}</strong></p>`,
+        }),
+      } })
+      return !error
+    }
     const q = new URLSearchParams()
     if (FIRM.tenantId) q.set('t', FIRM.tenantId)
     if ((name || '').trim()) q.set('name', name.trim())
