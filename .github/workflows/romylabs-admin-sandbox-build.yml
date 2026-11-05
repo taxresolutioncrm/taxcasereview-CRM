@@ -28,6 +28,8 @@ jobs:
         run: node scripts/check-romylabs-day4-reminders.mjs
       - name: Validate RomyLabs phone conference flow
         run: node tests/romylabs-phone-flow.test.mjs
+      - name: Validate on-demand three-way calling without affecting direct dialing
+        run: node tests/romylabs-conference-flow.test.mjs
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker
