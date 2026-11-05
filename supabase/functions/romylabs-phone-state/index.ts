@@ -270,6 +270,37 @@ serve(async req=>{
 
     // Provider-native recording for the direct call. This does not add a second
     // call leg or change media routing. Errors never place the callee on hold.
+    // Bind the actual browser-originated provider call SID to its audited
+    // RomyLabs row even if optional recording fails. Never trust a caller
+    // supplied SID without verifying the provider's live destination number.
+    if(action==='direct_outbound_bind'){
+      const id=String(body?.id||''),sid=String(body?.call_id||'')
+      if(!/^[0-9a-f-]{36}$/i.test(id)||!/^[0-9a-f-]{36}$/i.test(sid))return json({error:'Invalid call identifiers'},400)
+      const {data:row}=await db.from('outbound_calls')
+        .select('id,destination_number,agent_name,provider_call_sid,status')
+        .eq('id',id).eq('tenant_id',TENANT).in('status',['pending','ringing','connected'])
+        .limit(1).maybeSingle()
+      if(!row||String(row.agent_name||'').toLowerCase()!==user.email.toLowerCase())
+        return json({error:'Call is not owned by this user'},403)
+      if(row.provider_call_sid&&row.provider_call_sid!==sid)return json({error:'Different provider call already linked'},409)
+      const creds=await romylabsSignalWireCredentials()
+      if(!creds?.sw_space_url||!creds?.sw_project_id||!creds?.sw_api_token)return json({error:'Provider credentials unavailable'},503)
+      const host=String(creds.sw_space_url).replace(/^https?:\/\//,'').replace(/\/$/,'')
+      if(!/^[a-z0-9.-]+\.signalwire\.com$/i.test(host))return json({error:'Invalid provider host'},500)
+      const provider=await fetch('https://'+host+'/api/laml/2010-04-01/Accounts/'+creds.sw_project_id+'/Calls/'+sid+'.json',{
+        headers:{Authorization:'Basic '+btoa(creds.sw_project_id+':'+creds.sw_api_token)}
+      })
+      if(!provider.ok)return json({error:'Provider could not verify this call'},409)
+      const leg=await provider.json()
+      const norm=(v:string)=>{const d=String(v||'').replace(/\D/g,'');return d.length===10?'+1'+d:d.length===11&&d.startsWith('1')?'+'+d:''}
+      if(norm(leg?.to)!==norm(row.destination_number)||['completed','failed','no-answer','busy','canceled'].includes(String(leg?.status||'').toLowerCase()))
+        return json({error:'Provider call does not match active destination'},409)
+      const {error:upd}=await db.from('outbound_calls').update({provider_call_sid:sid})
+        .eq('id',id).eq('tenant_id',TENANT).neq('status','completed')
+      if(upd)return json({error:'Unable to bind verified call'},500)
+      return json({ok:true})
+    }
+
     if(action==='direct_outbound_record'){
       const id=String(body?.id||'')
       const callId=String(body?.call_id||'')
@@ -277,7 +308,7 @@ serve(async req=>{
       const {data:row,error:findErr}=await db.from('outbound_calls').select('id,status,provider_call_sid')
         .eq('tenant_id',TENANT).eq('id',id).in('status',['pending','ringing','connected']).limit(1).maybeSingle()
       if(findErr||!row)return json({error:'Direct outbound call not found'},404)
-      if(row.provider_call_sid===callId)return json({ok:true,already_registered:true})
+      // Binding the provider leg does not imply recording was started.
       if(row.provider_call_sid&&row.provider_call_sid!==callId)return json({error:'Different provider call already registered'},409)
       const creds=await romylabsSignalWireCredentials()
       if(!creds?.sw_space_url||!creds.sw_project_id||!creds.sw_api_token)return json({error:'Recording credentials unavailable'},503)
