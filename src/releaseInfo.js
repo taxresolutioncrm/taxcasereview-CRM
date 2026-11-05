@@ -3,6 +3,8 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp primary Florida filing button opens the official Sunbiz filing workspace directly, with optional CRM case preparation retained',
+  'Official state confirmation is recorded only against an existing tenant-scoped FormaCorp case',
   'FormaCorp adds an official Sunbiz filing workspace inside the CRM, including same-page government website display where Florida permits it',
   'Saved formation details are copyable alongside the official government application; agency iframe restrictions may require a direct government tab',
   'Official Florida tracking and payment references can be recorded with tenant checks without falsely claiming state acceptance',
