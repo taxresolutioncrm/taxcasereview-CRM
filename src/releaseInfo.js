@@ -84,6 +84,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Three-way calling protects unattended guests with a bounded consult waiting room and verified cleanup when a call ends or a bridge fails',
   'RomyLabs Admin Portal Add Caller now supports an explicitly requested three-way call with real guest connection status and safe guest removal',
   'RomyLabs Admin Portal adds a new responsive calendar preview with month, week and day views, appointment search, and existing CRM event editing, appointment creation and booking links; Stalwart synchronization stays disabled until certified',
   'Admin Calendar visual preview release is limited to the RomyLabs Admin Portal and verified against its unique Cloudflare production build marker',
