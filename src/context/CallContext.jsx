@@ -259,6 +259,8 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       if(!outboundId)return {error:'Active outbound call has not been registered'}
       conferenceBusyRef.current=true
       setConferenceBusy(true)
+      let upgradeRoom=null
+      let originalBridgeVerified=false
       try{
         let conf=activeConferenceRef.current
         if(directOutboundRef.current){
@@ -278,6 +280,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             return {error:data?.error||error?.message||'Provider would not upgrade the call'}
           }
           conf=data.conference_name
+          upgradeRoom=conf
           if(!uiStartedRef.current){
             await supabase.functions.invoke('end-conference',{body:{conferenceName:conf,phoneContext}})
             return {error:'Call was ended before conference connection'}
@@ -314,6 +317,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             await new Promise(resolve=>setTimeout(resolve,500))
           }
           if(!ready)throw Error('Original caller and agent are not both verified in the room. No guest was dialed.')
+          originalBridgeVerified=true
         }
         if(!conf)throw Error('No active conference')
         // Invite goes into a separate consult room; it NEVER automatically
@@ -328,6 +332,13 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
         return {ok:true,call_sid:data.call_sid,status:'ringing'}
       }catch(e){
         console.error('[conference-upgrade]',e)
+        if(upgradeRoom&&!originalBridgeVerified) {
+          // Browser bridge failed AFTER moving the original caller. Never
+          // strand that customer indefinitely in a waiting conference.
+          const ended=await endConferenceWithRetry(upgradeRoom)
+          if(ended && await finalizeCallEnd({alreadyHungUp:true,skipConferenceKill:true}))
+            handleRemoteHangup()
+        }
         showCallToast('Conference connection needs attention: '+(e?.message||e))
         return {error:e?.message||String(e)}
       }finally{
