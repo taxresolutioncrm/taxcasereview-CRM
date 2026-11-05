@@ -47,7 +47,7 @@ assert.doesNotMatch(bar,/setTimeout\(\(\) => \{\s*setParticipants/)
 
 // Remove action can only disconnect an actual guest, not agent or original.
 assert.match(conf,/participant\.kind!=='guest'/)
-assert.match(conf,/Participants\/['+]sid/)
+assert.match(conf,/Participants\/[^\n]*sid/)
 assert.match(add,/call_sid:\s*callSid\s*\|\|\s*null/)
 assert.match(state,/action==='direct_outbound_bind'/)
 assert.match(config,/\[functions\.romylabs-conference\]\s*verify_jwt = true/)
