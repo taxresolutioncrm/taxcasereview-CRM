@@ -80,6 +80,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs Admin Portal Unified Calendar combines the new searchable month/week/day design with existing event detail, add/edit, booking, reminder and deadline workflows; includes CRM brand logos, product filtering, selected-day agenda and mobile horizontal navigation with a classic fallback',
   'RomyLabs Admin Portal adds a new responsive calendar preview with month, week and day views, appointment search, and existing CRM event editing, appointment creation and booking links; Stalwart synchronization stays disabled until certified',
   'Admin Calendar visual preview release is limited to the RomyLabs Admin Portal and verified against its unique Cloudflare production build marker',
   'Manual subscription payments now include all registered CRM products and separately hosted billing offices such as Nashville Tax Solutions',
@@ -135,9 +136,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.50',
+  version: '3.2.51',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.50 — Personal LinkedIn Autopilot Recovery',
+  title: 'RomyLabs Admin Portal 3.2.51 — Unified Calendar',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 

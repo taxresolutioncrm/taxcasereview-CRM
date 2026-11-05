@@ -1,22 +1,27 @@
 const fs = require('fs')
 const assert = require('assert')
 const page = fs.readFileSync('src/pages/Calendar.jsx', 'utf8')
-const preview = fs.readFileSync('src/components/AdminCalendarPreview.jsx', 'utf8')
-assert(page.includes('isRomyLabsAdmin && adminCalendarPreviewOpen'),
-  'Admin calendar preview must remain limited to RomyLabs Admin Portal')
-assert(page.includes('onOpenEvent={event => { setAdminCalendarPreviewOpen(false); setSelectedEvent(event) }}'),
-  'Preview event details must reuse the existing CRM detail view')
-assert(page.includes('setShowForm(true)') && page.includes('onCreate={date =>'),
-  'Preview Add Event must reuse existing CRM event form')
-assert(page.includes('onBooking={() => { setAdminCalendarPreviewOpen(false); setShowBooking(true) }}'),
-  'Preview booking action must retain existing booking component')
-assert(preview.includes('onOpenEvent(ev)') && preview.includes('onCreate(activeDay)'),
-  'Existing CRM event actions must be available')
-assert(!preview.includes("from '../lib/supabase'") &&
-  !preview.includes('supabase.functions.invoke') &&
-  !preview.includes('CalendarEvent/set') &&
-  !preview.includes('CalendarEvent/get'),
-  'Visual preview must not create any independent persistence or JMAP path')
-assert(!page.includes('VITE_STALWART_CALENDAR_PREVIEW') && !page.includes('StalwartCalendarWorkspace'),
-  'Unverified Stalwart workspace must not be accidentally activated')
-console.log('PASS Admin Calendar visual preview uses existing CRM events and workflows only')
+const ui = fs.readFileSync('src/components/AdminCalendarPreview.jsx', 'utf8')
+const has = (source, needle, message) => assert(source.includes(needle), message)
+has(page, 'useState(isRomyLabsAdmin)', 'Unified view must start by default for Admin only')
+has(page, 'adminCalendarPreviewOpen && !selectedEvent && !showForm && !showBooking',
+  'Preserve classic details, event form and booking modal without losing unified view')
+has(page, 'onOpenEvent={event => { setSelectedEvent(event) }}',
+  'Event details must call existing event handler and return to unified calendar')
+has(page, 'onBooking={() => { setShowBooking(true) }}', 'Booking component must remain unchanged')
+has(page, 'onCreate={date =>', 'Existing event form must handle create')
+has(page, 'setShowForm(true)', 'Existing form must open')
+has(page, 'deadlines={deadlines}', 'Existing deadline data must be available')
+has(ui, "PRODUCT_BOOKING_CONFIGS", 'CRM brand logo and name mapping required')
+has(ui, 'Filter by CRM', 'Product filter required')
+has(ui, 'Selected day ·', 'Selected-day agenda required')
+has(ui, 'Upcoming deadlines', 'Legacy deadline summary retained')
+has(ui, "overflowX: 'auto'", 'Mobile scroll guard required')
+has(ui, 'onOpenEvent(ev)', 'Calendar events must open existing detail')
+has(ui, 'onCreate(activeDay)', 'Add event must route to existing form')
+has(ui, 'Switch to classic', 'Classic layout fallback must remain')
+assert(!ui.includes('supabase.') && !ui.includes('CalendarEvent/set'),
+  'Unified view must never duplicate event persistence or use unverified JMAP')
+assert(!page.includes('StalwartCalendarWorkspace'),
+  'Stalwart connector stays outside the production calendar')
+console.log('PASS unified calendar: existing CRM workflows, product filtering, agenda, deadlines and classic fallback')

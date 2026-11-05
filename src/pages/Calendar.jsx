@@ -76,7 +76,7 @@ export default function Calendar() {
   const [loading,       setLoading]       = useState(true)
   const [currentDate,   setCurrentDate]   = useState(new Date())
   const [view,          setView]          = useState('month')
-  const [adminCalendarPreviewOpen, setAdminCalendarPreviewOpen] = useState(false)
+  const [adminCalendarPreviewOpen, setAdminCalendarPreviewOpen] = useState(isRomyLabsAdmin)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showForm,      setShowForm]      = useState(false)
   const [searchParams] = useSearchParams()
@@ -422,17 +422,16 @@ export default function Calendar() {
 
   // Admin Portal visual preview reuses the existing production CRM event data and handlers.
   // No JMAP calls, new writes, or booking workflow replacements.
-  if (isRomyLabsAdmin && adminCalendarPreviewOpen) {
-    return <AdminCalendarPreview events={events}
+  if (isRomyLabsAdmin && adminCalendarPreviewOpen && !selectedEvent && !showForm && !showBooking) {
+    return <AdminCalendarPreview events={events} deadlines={deadlines} loading={loading}
       onClose={() => setAdminCalendarPreviewOpen(false)}
-      onOpenEvent={event => { setAdminCalendarPreviewOpen(false); setSelectedEvent(event) }}
+      onOpenEvent={event => { setSelectedEvent(event) }}
       onCreate={date => {
-        setAdminCalendarPreviewOpen(false)
         setSelectedEvent(null)
         setForm(current => ({ ...current, date, id: undefined, assignedTo: adminCalendarOwner, product_id: 'romylabs' }))
         setShowForm(true)
       }}
-      onBooking={() => { setAdminCalendarPreviewOpen(false); setShowBooking(true) }} />
+      onBooking={() => { setShowBooking(true) }} />
   }
 
   // ── EVENT DETAIL PANEL ──
@@ -563,7 +562,7 @@ export default function Calendar() {
                 style={{ padding: '7px 16px', background: '#166534', border: 'none',
                   borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700,
                   cursor: 'pointer', fontFamily: 'inherit' }}>
-                New Calendar Preview
+                Unified Calendar
               </button>
             )}
             <button onClick={() => setShowBooking(true)} style={{ padding: '7px 16px', background: '#1d4ed8', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>📅 Send Booking Link</button>
