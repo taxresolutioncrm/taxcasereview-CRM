@@ -21,3 +21,6 @@ The existing Admin Portal mailbox bridge already authenticates through Stalwart 
 
 ## Release protocol
 No production Stalwart restart. No mail account password changes. No new paid provider. No production deploy or merge before sandbox certification, tenant isolation and event-parity checks. Version release gates must pass.
+
+## Session URL correction
+Stalwart documents `/.well-known/jmap` as a **307 redirect** to `/jmap/session`. Since the secure Edge Function deliberately uses `redirect: 'manual'` (to prevent credential forwarding), it must call `https://mail.taxrescrm.net/jmap/session` directly. The earlier mock incorrectly made the well-known endpoint return 200; the mock now requires the correct URL. The uncredentialed external probe from this runner could not resolve the server hostname, so authenticated live JMAP remains a separate preflight gate.

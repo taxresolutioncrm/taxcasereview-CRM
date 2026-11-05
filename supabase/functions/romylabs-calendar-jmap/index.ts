@@ -47,7 +47,7 @@ async function getSession(): Promise<Session> {
   // Prevent a mutable transport record from turning into an arbitrary outbound URL.
   if (hostname !== 'mail.taxrescrm.net') throw new Error('stalwart_host_not_verified')
   const auth = 'Basic ' + btoa(String(transport.username) + ':' + String(transport.password))
-  const response = await fetch('https://mail.taxrescrm.net/.well-known/jmap', {
+  const response = await fetch('https://mail.taxrescrm.net/jmap/session', {
     headers: { Authorization: auth, Accept: 'application/json' },
     redirect: 'manual', signal: AbortSignal.timeout(12000),
   })

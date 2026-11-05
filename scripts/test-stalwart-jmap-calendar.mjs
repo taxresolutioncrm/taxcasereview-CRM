@@ -37,7 +37,7 @@ async function fixture({
   })
   async function fakeFetch(url, opts = {}) {
     fetches.push({ url: String(url), method: opts.method || 'GET' })
-    if (String(url).endsWith('/.well-known/jmap')) {
+    if (String(url).endsWith('/jmap/session')) {
       return new Response(JSON.stringify({
         apiUrl: 'https://mail.taxrescrm.net/jmap/',
         primaryAccounts: sessionCapability ? { [CAP]: 'b' } : {},
@@ -102,8 +102,8 @@ async function run() {
     const r = await env.invoke({ action: 'discover' })
     assert.equal(r.status, 200)
     assert.equal(r.body.calendars[0].name, 'RomyLabs')
-    assert.equal(env.fetches[0].url, 'https://mail.taxrescrm.net/.well-known/jmap',
-      'Must use actual Stalwart JMAP session discovery URL')
+    assert.equal(env.fetches[0].url, 'https://mail.taxrescrm.net/jmap/session',
+      'Must call the JMAP session resource directly; well-known is a 307 redirect')
     assert.ok(!JSON.stringify(r.body).includes('private-test-value'))
   }
   {

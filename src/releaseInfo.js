@@ -79,7 +79,7 @@ const EMAIL_PARITY_CHANGES = [
 
 const ADMIN_DEMO_TASK_CHANGES = [
   'RomyLabs Admin Portal adds a feature-flagged JMAP for Calendars workspace with month, week and day views, secure Stalwart event creation, editing and deletion; existing CRM bookings are retained until sync certification',
-  'Stalwart JMAP calendar hardens account discovery at the verified well-known endpoint and checks write rights, external invitations and recurring-series safety; 15 deterministic request/response contract tests cover the bridge',
+  'Stalwart JMAP calendar discovers sessions directly at /jmap/session to avoid the well-known redirect under strict no-redirect credential protection; permission, recurrence and 15 API contract checks remain mandatory',
   'Manual subscription payments now include all registered CRM products and separately hosted billing offices such as Nashville Tax Solutions',
   'Selecting an existing subscription loads its billing email, seats and contracted rate; changing products clears stale payment details',
   'RomyLabs Admin Portal direct outbound calling connects without an artificial conference or automatic hold and does not change inbound routing',
