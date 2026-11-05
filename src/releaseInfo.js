@@ -92,7 +92,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
-  'ChairStyle replaces the Barbers & Salons working name in Admin Portal products, booking choices and billing labels; underlying product ID and in-development status remain unchanged',
+  'ChairStyle replaces the Barbers & Salons working name in Admin Portal products, booking choices and billing labels; chairstyle.net is listed as an in-development domain while links use its RomyLabs overview; underlying product ID and status remain unchanged',
   'Admin Portal Building products now follow central registry sort order; SettleLift appears directly below Health Insurance and above Barbers & Salons',
   'Production calendar v3.2.58 release verifies the exact Admin Portal Cloudflare build marker for click-to-add and CRM/office identity on appointment chips',
   'Calendar event chips show the CRM/product name and logo beneath the time/title; if a distinct office name is provided it is displayed too, without inventing an office for unlabeled events',
