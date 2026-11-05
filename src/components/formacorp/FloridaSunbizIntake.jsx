@@ -11,9 +11,9 @@ const fieldStyle = {width:'100%',padding:'10px 12px',borderRadius:7,border:'1px 
 const cardStyle = {padding:'14px 16px',border:'1px solid var(--br)',borderRadius:9,background:'var(--s2)',marginBottom:12}
 const Labeled = ({label,children,hint}) => <div style={{marginBottom:12}}><label style={{display:'block',fontSize:12,fontWeight:700,marginBottom:5}}>{label}</label>{children}{hint&&<div style={{fontSize:10,color:'var(--t3)',marginTop:4}}>{hint}</div>}</div>
 const money = value => '$'+Number(value).toFixed(2)
-export default function FloridaSunbizIntake({ onSave, onClose, saving=false }) {
+export default function FloridaSunbizIntake({ onSave, onClose, saving=false, initialRecord=null }) {
   const [step,setStep]=useState(0)
-  const [form,setForm]=useState({
+  const [form,setForm]=useState(()=>({
     client_name:'', entity_type:'LLC', state:'FL', entity_name:'', owners:'', registered_agent:'',
     principal_address:'', mailing_address:'', registered_agent_address:'',
     authorized_representative:'', authorized_representative_title:'AMBR',
@@ -23,8 +23,10 @@ export default function FloridaSunbizIntake({ onSave, onClose, saving=false }) {
     fl_certificate_of_status:false, fl_certified_copy:false,
     fl_optional_provisions:'', fl_llc_managers:[{...EMPTY_MANAGER}],
     service_plan:'Launch', business_purpose:'',
-  })
-  const [sameMail,setSameMail]=useState(true)
+    ...(initialRecord || {}),
+    fl_llc_managers:Array.isArray(initialRecord?.fl_llc_managers) && initialRecord.fl_llc_managers.length ? initialRecord.fl_llc_managers : [{...EMPTY_MANAGER}],
+  }))
+  const [sameMail,setSameMail]=useState(()=>!trim(initialRecord?.mailing_address))
   const [issues,setIssues]=useState([])
   const set=(key,value)=>{setForm(old=>({...old,[key]:value}));setIssues([])}
   const managers=Array.isArray(form.fl_llc_managers)?form.fl_llc_managers:[]
@@ -145,11 +147,11 @@ export default function FloridaSunbizIntake({ onSave, onClose, saving=false }) {
           <div style={{fontSize:15,fontWeight:800,marginTop:15}}>Estimated Florida government fee: {money(fee)}</div>
         </>)}
         {issues.length>0&&<div role="alert" style={{padding:12,borderRadius:7,border:'1px solid var(--warn)',color:'var(--warn)',fontSize:12,marginBottom:12}}><strong>Correct these fields before saving:</strong><ul style={{marginTop:7}}>{issues.map(item=><li key={item}>{item}</li>)}</ul></div>}
-        <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.6}}>Saving creates a FormaCorp filing case and captures the intake. It does NOT submit to Florida, reserve the entity name, charge government fees, or confirm approval. Standard online submission and payment still occur on official Sunbiz until a verified authorized filing channel is configured.</div>
+        <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.6}}>Saving creates or updates a FormaCorp filing case and captures the intake. It does NOT submit to Florida, reserve the entity name, charge government fees, or confirm approval. Standard online submission and payment still occur on official Sunbiz until a verified authorized filing channel is configured.</div>
       </>}
       <div style={{display:'flex',justifyContent:'space-between',gap:8,paddingTop:14,marginTop:13,borderTop:'1px solid var(--br)'}}>
         <button className="btn" disabled={saving} onClick={()=>step===0?onClose():setStep(n=>n-1)}>{step===0?'Cancel':'← Back'}</button>
-        {step<STEPS.length-1?<button className="btn pri" onClick={next}>Continue →</button>:<button className="btn pri" disabled={saving} onClick={submit}>{saving?'Saving…':'Save Florida LLC Filing Case'}</button>}
+        {step<STEPS.length-1?<button className="btn pri" onClick={next}>Continue →</button>:<button className="btn pri" disabled={saving} onClick={submit}>{saving?'Saving…':initialRecord?.id?'Update Florida LLC Filing Case':'Save Florida LLC Filing Case'}</button>}
       </div>
     </div>
   </div>
