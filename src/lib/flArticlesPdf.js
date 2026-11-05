@@ -152,18 +152,24 @@ async function buildFlLlcArticlesPdf(c) {
   gap(8)
 
   heading('MANAGER / AUTHORIZED REPRESENTATIVE (optional public listing)')
-  body(
-    'Florida currently uses MGR for Manager and AR for Authorized Representative. ' +
-    'The manager/authorized-representative listing is optional; this packet does not ' +
-    'invent a street address for that optional public listing.',
-    { size: 8, font: ital }
-  )
-  gap(4)
-  label('Title / Name')
-  const repTitle = safe(c.authorized_representative_title, 'AR')
-  const repName = safe(c.authorized_representative)
-  body(`${repTitle} — ${repName}`)
+  const listedManagers = Array.isArray(c.fl_llc_managers) ? c.fl_llc_managers.filter(m => String(m?.name || '').trim()) : []
+  if (listedManagers.length) {
+    for (const manager of listedManagers) {
+      label('Title / Name / Street Address')
+      body(`${safe(manager.title, 'AR')} — ${safe(manager.name)}`)
+      body(safe(manager.street_address))
+      gap(4)
+    }
+  } else {
+    body('No optional manager/authorized-representative information supplied.', { size: 8, font: ital })
+  }
   gap(8)
+
+  if (String(c.fl_optional_provisions || '').trim()) {
+    heading('OPTIONAL ADDITIONAL PROVISIONS — REVIEW BEFORE FILING')
+    body(String(c.fl_optional_provisions))
+    gap(8)
+  }
 
   heading('EFFECTIVE DATE')
   const effective = safe(c.effective_date, 'Upon filing')
@@ -177,7 +183,7 @@ async function buildFlLlcArticlesPdf(c) {
 
   heading('CORRESPONDENCE')
   label('Correspondence Name')
-  body(safe(c.client_name || c.authorized_representative))
+  body(safe(c.fl_correspondence_name || c.client_name || c.authorized_representative))
   gap(2)
   label('Correspondence Email')
   body(safe(c.correspondence_email))
