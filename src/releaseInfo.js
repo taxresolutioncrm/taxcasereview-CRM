@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp native Florida LLC intake now validates individual address fields and safeguards editing against a later state-submission status',
   'Florida LLC selections in the legacy wizard now route to the complete native Articles intake instead of the incomplete generic form',
   'Native Florida filing fields use separate street, suite, city, state and ZIP controls with complete-address checks',
   'FormaCorp saved Florida LLC Article intakes can be reopened and edited with tenant validation before state submission',
