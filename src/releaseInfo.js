@@ -84,6 +84,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Unified Calendar product filter now lists every active product in the Admin Portal registry, including products with zero appointments and separately hosted Nashville, and clicking any date opens its day view with a visible Add Appointment action',
   'RomyLabs Admin Unified Calendar defaults to the new searchable month/week/day layout, retains the classic event editor and booking workflows, supports CRM branding and filtering, selected-day agenda, upcoming appointments, deadlines and mobile scrolling, with one-click classic fallback',
   'Three-way calling protects unattended guests with a bounded consult waiting room and verified cleanup when a call ends or a bridge fails',
   'RomyLabs Admin Portal Add Caller now supports an explicitly requested three-way call with real guest connection status and safe guest removal',
@@ -142,9 +143,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.52',
+  version: '3.2.53',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.52 — Unified Calendar',
+  title: 'RomyLabs Admin Portal 3.2.53 — Calendar Product and Day Navigation Fix',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
