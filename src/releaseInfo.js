@@ -97,6 +97,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'ChairStyle replaces the Barbers & Salons working name in the Admin Portal, booking choices and billing labels; the unlaunched chairstyle.net site is described without a live link and existing product IDs and office versions remain unchanged',
   'Admin Portal Building products now follow central registry sort order; SettleLift appears directly below Health Insurance and above Barbers & Salons',
   'Production calendar v3.2.58 release verifies the exact Admin Portal Cloudflare build marker for click-to-add and CRM/office identity on appointment chips',
   'Calendar event chips show the CRM/product name and logo beneath the time/title; if a distinct office name is provided it is displayed too, without inventing an office for unlabeled events',
@@ -163,9 +164,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.61',
+  version: '3.2.62',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.61 — Official Sunbiz Filing Workspace',
+  title: 'RomyLabs Admin Portal 3.2.62 — ChairStyle Product Branding',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
