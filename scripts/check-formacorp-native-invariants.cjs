@@ -45,6 +45,7 @@ const nativeLlcIntake=fs.readFileSync('src/components/formacorp/FloridaSunbizInt
 const floridaPdf=fs.readFileSync('src/lib/flArticlesPdf.js','utf8')
 const nativeMigration=fs.readFileSync('supabase/migrations/20261105160000_formacorp_native_florida_llc_intake.sql','utf8')
 assert(/Start Florida LLC Filing/.test(content), 'New Florida LLC intake must be first-class entry point')
+assert(/wForm.entity_type==='LLC'/.test(content) && /setFloridaIntake\(true\)/.test(content), 'Legacy Florida LLC selections must redirect to the native filing form')
 assert(/<FloridaSunbizIntake/.test(content) && /onSave={createFromWizard}/.test(content), 'Florida LLC intake must persist through case creation')
 assert(/source = wForm/.test(content) && /fl_llc_managers:Array.isArray\(source.fl_llc_managers\)/.test(content), 'Manager list must persist in formation record')
 assert(/fl_correspondence_name:source/.test(content) && /fl_optional_provisions:source/.test(content), 'Correspondence and provisions must persist')
