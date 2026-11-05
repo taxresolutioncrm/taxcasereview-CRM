@@ -1226,7 +1226,8 @@ export default function FormaCorp() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button className="btn pri" onClick={()=>setFloridaIntake(true)}>＋ Start Florida LLC Filing</button>
+          <button className="btn pri" onClick={()=>setOfficialSunbizCase({entity_type:'LLC'})}>🏛️ Start Official Sunbiz Filing</button>
+          <button className="btn" onClick={()=>setFloridaIntake(true)}>Prepare Florida LLC in CRM</button>
           <button className="btn" onClick={openWizard}>Other Formations</button>
           <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>＋ New Formation Case</button>
         </div>
