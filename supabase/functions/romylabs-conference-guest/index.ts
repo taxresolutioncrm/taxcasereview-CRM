@@ -35,6 +35,6 @@ serve(async req=>{
     // This isolated waiting room never touches the original two-way call.
     // When the authenticated agent selects Merge Calls, the backend moves
     // THIS guest's provider SID into the live main room.
-    return xml('<Dial><Conference startConferenceOnEnter="false" endConferenceOnExit="false">consult-'+invite+'</Conference></Dial>')
+    return xml('<Dial timeLimit="120"><Conference startConferenceOnEnter="false" endConferenceOnExit="false">consult-'+invite+'</Conference></Dial>')
   }catch(e){console.error('[romylabs-conference-guest]',e);return xml('<Hangup/>',500)}
 })
