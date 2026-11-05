@@ -3902,6 +3902,7 @@ function mergeProductRegistry(rows = []) {
       metricsUrl: supabaseUrl ? `${supabaseUrl}/functions/v1/platform-metrics` : (existing.metricsUrl || null),
       nextMilestone: existing.nextMilestone,
       priorityRank: existing.priorityRank,
+      registrySortOrder: Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : null,
     })
   }
   return [...byKey.values()]
@@ -3925,7 +3926,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
       const [{ data, error }, { data: productRows, error: productError }] = await Promise.all([
         supabase.rpc('admin_romylabs_office_registry'),
         supabase.from('romylabs_products')
-          .select('product_id,name,accent_color,icon_ref,industry,app_url,marketing_url,lifecycle,public,short_desc,description,supabase_url,active')
+          .select('product_id,name,accent_color,icon_ref,industry,app_url,marketing_url,lifecycle,public,short_desc,description,supabase_url,active,sort_order')
           .eq('active', true),
       ])
       if (cancelled) return
@@ -4115,6 +4116,10 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   const sortByLifecycle = (a, b) => {
     const lifecycleDiff = (lifecycleOrder[a.lifecycleStage] ?? 9) - (lifecycleOrder[b.lifecycleStage] ?? 9)
     if (lifecycleDiff !== 0) return lifecycleDiff
+    if (a.lifecycleStage === 'building' && b.lifecycleStage === 'building' && a.registrySortOrder != null && b.registrySortOrder != null) {
+      const registryDiff = a.registrySortOrder - b.registrySortOrder
+      if (registryDiff !== 0) return registryDiff
+    }
     if ((a.priorityRank ?? 999) !== (b.priorityRank ?? 999)) return (a.priorityRank ?? 999) - (b.priorityRank ?? 999)
     return 0
   }
