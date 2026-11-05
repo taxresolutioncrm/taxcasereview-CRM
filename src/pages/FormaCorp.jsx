@@ -7,6 +7,7 @@ import ClientLink from '../components/ClientLink'
 import { buildFlArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
 import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
+import FloridaSunbizIntake from '../components/formacorp/FloridaSunbizIntake'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -21,6 +22,7 @@ const FL_FILING_STEPS = ['Draft','Ready to Submit','Filing Queue','Submitted to 
 
 const FL_FIELDS = {
   principal_address:'', mailing_address:'', registered_agent_address:'',
+  fl_correspondence_name:'', fl_optional_provisions:'', fl_llc_managers:[],
   authorized_representative:'', authorized_representative_title:'AR',
   correspondence_email:'', effective_date:'', registered_agent_accepted:false,
   fl_registered_agent_signature:'', fl_authorized_representative_signature:'',
@@ -340,6 +342,7 @@ export default function FormaCorp() {
   const [showSug, setShowSug] = useState(false)
   const [stateReqs, setStateReqs] = useState({})
   const [wizard, setWizard] = useState(false)
+  const [floridaIntake, setFloridaIntake] = useState(false)
   const [wStep, setWStep] = useState(1)
   const [wForm, setWForm] = useState(WIZ_BLANK)
   const [wSugg, setWSugg] = useState([])
@@ -501,67 +504,71 @@ export default function FormaCorp() {
     setWizard(true)
   }
 
-  async function createFromWizard() {
-    if (!wForm.client_name || !wForm.entity_name || !wForm.entity_type || !wForm.state) {
+  async function createFromWizard(source = wForm) {
+    if (!source.client_name || !source.entity_name || !source.entity_type || !source.state) {
       showToast('Please complete all required fields', 'err'); return
     }
     setSaving(true)
-    const req = stateReqs[wForm.state]
+    const req = stateReqs[source.state]
     const fee = req?.llc_filing_fee ? parseFloat(req.llc_filing_fee.replace(/[^0-9.]/g, '')) : null
     const payload = {
-      client_name:wForm.client_name, entity_name:wForm.entity_name, entity_type:wForm.entity_type, state:wForm.state,
-      owners:wForm.owners, registered_agent:wForm.registered_agent, business_purpose:wForm.business_purpose,
-      principal_address:wForm.principal_address || '', mailing_address:wForm.mailing_address || '',
-      registered_agent_address:wForm.registered_agent_address || '',
-      authorized_representative:wForm.authorized_representative || '',
-      authorized_representative_title:wForm.authorized_representative_title || 'AR',
-      correspondence_email:wForm.correspondence_email || '', effective_date:wForm.effective_date || '',
-      registered_agent_accepted:!!wForm.registered_agent_accepted,
-      fl_registered_agent_signature:wForm.fl_registered_agent_signature || '',
-      fl_authorized_representative_signature:wForm.fl_authorized_representative_signature || '',
-      fl_filing_authorized:!!wForm.fl_filing_authorized,
-      fl_authorized_at:wForm.fl_filing_authorized ? new Date().toISOString() : null,
-      fl_certificate_of_status:!!wForm.fl_certificate_of_status,
-      fl_certified_copy:!!wForm.fl_certified_copy,
+      client_name:source.client_name, entity_name:source.entity_name, entity_type:source.entity_type, state:source.state,
+      owners:source.owners, registered_agent:source.registered_agent, business_purpose:source.business_purpose,
+      principal_address:source.principal_address || '', mailing_address:source.mailing_address || '',
+      registered_agent_address:source.registered_agent_address || '',
+      authorized_representative:source.authorized_representative || '',
+      authorized_representative_title:source.authorized_representative_title || 'AR',
+      correspondence_email:source.correspondence_email || '', effective_date:source.effective_date || '',
+      fl_correspondence_name:source.fl_correspondence_name || source.authorized_representative || source.client_name || '',
+      fl_optional_provisions:source.fl_optional_provisions || '',
+      fl_llc_managers:Array.isArray(source.fl_llc_managers) ? source.fl_llc_managers : [],
+      registered_agent_accepted:!!source.registered_agent_accepted,
+      fl_registered_agent_signature:source.fl_registered_agent_signature || '',
+      fl_authorized_representative_signature:source.fl_authorized_representative_signature || '',
+      fl_filing_authorized:!!source.fl_filing_authorized,
+      fl_authorized_at:source.fl_filing_authorized ? new Date().toISOString() : null,
+      fl_certificate_of_status:!!source.fl_certificate_of_status,
+      fl_certified_copy:!!source.fl_certified_copy,
       fl_filing_status:'Draft', fl_payment_status:'unpaid', fl_submission_method:'sunbiz_online',
-      fl_state_fee:floridaStateFee(wForm),
-      state_fee_amount:floridaStateFee(wForm),
+      fl_state_fee:floridaStateFee(source),
+      state_fee_amount:floridaStateFee(source),
       state_fee_payment_status:'unpaid',
-      fl_authorized_shares:wForm.fl_authorized_shares || '1000',
-      fl_officers_directors:wForm.fl_officers_directors || '',
-      fl_director_election_method:wForm.fl_director_election_method || 'As stated by the bylaws.',
-      fl_incorporator:wForm.fl_incorporator || '',
-      fl_incorporator_signature:wForm.fl_incorporator_signature || '',
-      stage:'Consultation', fee: isFloridaFormable(wForm) ? floridaStateFee(wForm) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
+      fl_authorized_shares:source.fl_authorized_shares || '1000',
+      fl_officers_directors:source.fl_officers_directors || '',
+      fl_director_election_method:source.fl_director_election_method || 'As stated by the bylaws.',
+      fl_incorporator:source.fl_incorporator || '',
+      fl_incorporator_signature:source.fl_incorporator_signature || '',
+      stage:'Consultation', fee: isFloridaFormable(source) ? floridaStateFee(source) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
     }
     const { data, error } = await supabase.from('formacorp').insert([payload]).select().single()
     if (error) { setSaving(false); showToast('Error: '+error.message, 'err'); return }
-    const plan = wForm.service_plan || 'Launch'
+    const plan = source.service_plan || 'Launch'
     const selected = plan === 'Formation'
       ? ['State Filing','Formation Documents','Compliance']
       : plan === 'Full Service'
         ? ['State Filing','EIN','Operating Agreement','Banking','Compliance','S-Corp Election','Registered Agent','Company Changes']
         : ['State Filing','EIN','Operating Agreement','Banking','Compliance']
-    const due = wForm.state==='FL' ? `${Number((wForm.effective_date || new Date().toISOString().slice(0,10)).slice(0,4))+1}-05-01` : null
+    const due = source.state==='FL' ? `${Number((source.effective_date || new Date().toISOString().slice(0,10)).slice(0,4))+1}-05-01` : null
     const { error:lifecycleErr } = await supabase.from('formacorp_lifecycle').insert([{
       case_id:data.id,
       service_plan:plan,
       selected_services:selected,
       ein_status:'Not Started',
-      ein_responsible_party_name:wForm.authorized_representative || wForm.client_name || '',
+      ein_responsible_party_name:source.authorized_representative || source.client_name || '',
       operating_agreement_status:'Not Started',
       banking_status:'Not Started',
       bank_account_type:'Business Checking',
-      bank_signer:wForm.authorized_representative || wForm.client_name || '',
+      bank_signer:source.authorized_representative || source.client_name || '',
       annual_report_status:'Not Due',
       annual_report_due_date:due,
       good_standing_status:'Unknown',
-      registered_agent_status:wForm.registered_agent==='Self (Owner)' ? 'Client / Self' : 'Third Party',
+      registered_agent_status:source.registered_agent==='Self (Owner)' ? 'Client / Self' : 'Third Party',
     }])
     setSaving(false)
     if (lifecycleErr) { showToast('Formation created, but lifecycle setup needs attention: '+lifecycleErr.message, 'err') }
     else showToast('🏢 Formation case + launch lifecycle created!')
     setWizard(false)
+    setFloridaIntake(false)
     await load()
     setDetail(data)
   }
@@ -1104,7 +1111,8 @@ export default function FormaCorp() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button className="btn pri" onClick={openWizard}>＋ Start Business Formation</button>
+          <button className="btn pri" onClick={()=>setFloridaIntake(true)}>＋ Start Florida LLC Filing</button>
+          <button className="btn" onClick={openWizard}>Other Formations</button>
           <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>＋ New Formation Case</button>
         </div>
       </div>
@@ -1142,6 +1150,8 @@ export default function FormaCorp() {
       {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>Cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
 
       {editCaseModal}
+
+      {floridaIntake && <FloridaSunbizIntake saving={saving} onClose={()=>setFloridaIntake(false)} onSave={createFromWizard}/>}
 
       {wizard && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>
