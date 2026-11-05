@@ -17,6 +17,7 @@ const bing=read('supabase/functions/bing-data/index.ts')
 const migration=read('supabase/migrations/20261007_linkedin_autopilot_regression_repair.sql')
 const autopilotMigration=read('supabase/migrations/20261007_linkedin_hourly_queue_autopilot.sql')
 const taxresCadenceMigration=read('supabase/migrations/20261008_restore_taxres_linkedin_tue_thu.sql')
+const personalAutopilotGuard=read('supabase/migrations/20261105024000_linkedin_personal_publisher_starvation_guard.sql')
 
 const checks=[
   ['LinkedIn company-page ACL uses versioned REST and both supported organization fields',publish.includes('/rest/organizationAcls?q=roleAssignee') && publish.includes('x?.organizationTarget||x?.organization') && publish.includes("'Linkedin-Version':'202610'")],
@@ -73,7 +74,11 @@ const checks=[
   ['database publisher supports organization and person authors',migration.includes("'urn:li:organization:'||v_conn.linkedin_organization_id")&&migration.includes("'urn:li:person:'||v_conn.linkedin_person_id")],
   ['TaxRes LinkedIn queue no longer has duplicate hourly/daily generators',taxresCadenceMigration.includes("'linkedin-taxres-queue-autopilot'")&&taxresCadenceMigration.includes("'linkedin-queue-replenishment-supabase'")],
   ['TaxRes LinkedIn publishes only Tue/Thu 9 AM ET with no stale catch-up',taxresCadenceMigration.includes("extract(isodow from scheduled_at at time zone 'America/New_York') in (2,4)")&&taxresCadenceMigration.includes("extract(hour from scheduled_at at time zone 'America/New_York') = 9")&&taxresCadenceMigration.includes("scheduled_at >= now() - interval '2 hours'")],
-  ['Monday scheduler remains the sole TaxRes generator path',scheduler.includes("clock.day==='Mon'&&clock.hour===7")&&scheduler.includes("action==='generate_monday_drafts'||action==='generate_content'")],
+  ['Personal LinkedIn rolling eight-slot queue is refreshed by the existing hourly run',scheduler.includes('const target=slots(now,8)')&&scheduler.includes('action!==\'run\'')&&!scheduler.includes("if(clock.day==='Mon'&&clock.hour===7){")],
+  ['Disconnected company queues cannot starve member publishing',personalAutopilotGuard.includes('and exists (')&&personalAutopilotGuard.includes("linkedin_posts.product_id='taxres_crm'")&&personalAutopilotGuard.includes("upper(lc.publish_target_type)='PERSON'")&&personalAutopilotGuard.includes("linkedin_posts.product_id='arcvena'")&&personalAutopilotGuard.includes("upper(lc.publish_target_type)='ORGANIZATION'")&&personalAutopilotGuard.indexOf('and exists (')<personalAutopilotGuard.indexOf('limit 3')],
+  ['No late or off-schedule catch-up, personal Tue/Thu 9 Eastern preserved',personalAutopilotGuard.includes("scheduled_at >= now() - interval '2 hours'")&&personalAutopilotGuard.includes("extract(isodow from scheduled_at at time zone 'America/New_York') in (2,4)")&&personalAutopilotGuard.includes("extract(hour from scheduled_at at time zone 'America/New_York') = 9")],
+  ['Personal target still validates real OAuth connection and token before queueing',scheduler.includes("target==='PERSON' && Boolean(conn.linkedin_person_id)")&&scheduler.includes("new Date(conn.expires_at)<now")],
+
   ['Bing state comes from Bing verification',bing.includes('GetUserSites')&&bing.includes('VerifySite')&&bing.includes("status:'configured'")&&bing.includes('last_verified_at')],
 ]
 let failed=0

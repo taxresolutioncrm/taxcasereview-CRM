@@ -3,6 +3,8 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Personal LinkedIn autopilot restores eight upcoming Tuesday/Thursday 9 AM ET posts with an independent personal-profile publisher',
+  'Disconnected company pages no longer starve personal LinkedIn posts; overdue historical posts never publish outside their time window',
   'Direct outbound dialing discards late results after cancellation and resolves hangup updates by provider call ID to avoid unintended follow-on calls',
   'RomyLabs outbound calls now dial directly from the browser to the destination with one provider call leg, not a server call plus conference self-dial',
   'Direct-call Hold and Resume use the real SignalWire browser call state; direct calls retain RomyLabs-specific call history and request native provider recording',
@@ -133,16 +135,16 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.49',
+  version: '3.2.50',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.49 — Manual Payment Office Discovery',
+  title: 'RomyLabs Admin Portal 3.2.50 — Personal LinkedIn Autopilot Recovery',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.48',
+    version: '3.2.50',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Manual Payment Office Discovery',
     changes: IRS_WORKFLOW_CHANGES,
@@ -166,7 +168,7 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.48',
+    version: '3.2.50',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Direct Outbound Calling',
     changes: IRS_WORKFLOW_CHANGES,
@@ -174,7 +176,7 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.48',
+    version: '3.2.50',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Direct Outbound Calling',
     changes: IRS_WORKFLOW_CHANGES,
