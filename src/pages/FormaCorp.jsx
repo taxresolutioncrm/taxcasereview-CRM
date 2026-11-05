@@ -343,6 +343,7 @@ export default function FormaCorp() {
   const [stateReqs, setStateReqs] = useState({})
   const [wizard, setWizard] = useState(false)
   const [floridaIntake, setFloridaIntake] = useState(false)
+  const [floridaEditCase, setFloridaEditCase] = useState(null)
   const [wStep, setWStep] = useState(1)
   const [wForm, setWForm] = useState(WIZ_BLANK)
   const [wSugg, setWSugg] = useState([])
@@ -571,6 +572,49 @@ export default function FormaCorp() {
     setFloridaIntake(false)
     await load()
     setDetail(data)
+  }
+
+  async function saveNativeFloridaIntake(source) {
+    const prior=floridaEditCase
+    if (!prior) return createFromWizard(source)
+    if (!isFloridaLlc(prior) || ['Submitted to Florida','Under State Review','Approved / Active'].includes(prior.fl_filing_status)) {
+      showToast('Filed or approved Florida submissions cannot be edited as draft intake.', 'err')
+      return
+    }
+    const newFee=floridaStateFee(source)
+    if (prior.state_fee_payment_intent_id || ['received','remitted'].includes(prior.state_fee_payment_status || '')) {
+      if (Math.abs(newFee - Number(prior.state_fee_amount || floridaStateFee(prior))) > .009) {
+        showToast('A payment attempt or collected state fee must be reconciled before changing filing options.', 'err')
+        return
+      }
+    }
+    setSaving(true)
+    try {
+      const { data:tenantId,error:tenantError }=await supabase.rpc('current_tenant_id')
+      if (tenantError || !tenantId || String(tenantId)!==String(prior.tenant_id)) {
+        throw new Error('Unable to verify the active office for this filing.')
+      }
+      const keys=[
+        'client_name','entity_name','owners','registered_agent','principal_address','mailing_address',
+        'registered_agent_address','authorized_representative','authorized_representative_title',
+        'correspondence_email','fl_correspondence_name','effective_date','business_purpose',
+        'registered_agent_accepted','fl_registered_agent_signature','fl_authorized_representative_signature',
+        'fl_filing_authorized','fl_certificate_of_status','fl_certified_copy','fl_optional_provisions','fl_llc_managers'
+      ]
+      const patch=Object.fromEntries(keys.map(k=>[k,source[k]]))
+      patch.fl_state_fee=newFee
+      patch.state_fee_amount=newFee
+      patch.fl_authorized_at=source.fl_filing_authorized?(prior.fl_authorized_at || new Date().toISOString()):null
+      const {error}=await supabase.from('formacorp').update(patch)
+        .eq('id',prior.id).eq('tenant_id',tenantId)
+      if (error) throw error
+      setDetail(d=>d?.id===prior.id?({...d,...patch}):d)
+      setFloridaEditCase(null)
+      await load()
+      showToast('✅ Florida LLC filing intake updated. This is not a state submission.')
+    } catch(error) {
+      showToast('Could not update Florida intake: '+(error?.message || error), 'err')
+    } finally {setSaving(false)}
   }
 
   function searchClient(val) {
@@ -1014,6 +1058,7 @@ export default function FormaCorp() {
 
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>
               <button className="btn sm" onClick={()=>openFloridaEdit(c, [])}>✏️ Edit Filing Details</button>
+              {isFloridaLlc(c) && !['Submitted to Florida','Under State Review','Approved / Active'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>setFloridaEditCase(c)}>📝 Edit Florida LLC Articles Intake</button>}
               {!hasStateFilingFunds(c) && <span style={{fontSize:11,color:'var(--warn)',padding:'7px 10px',border:'1px solid var(--br)',borderRadius:7}}>State fee unpaid — pay directly through official Sunbiz filing; no FormaCorp Stripe charge</span>}
               {hasStateFilingFunds(c) && <span className="bdg bg" style={{alignSelf:'center'}}>Government funds recorded</span>}
               <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
@@ -1101,6 +1146,7 @@ export default function FormaCorp() {
 
         {feePaymentCase && <FormaCorpStateFeeModal caseRecord={feePaymentCase} amount={Number(stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0)} onClose={()=>setFeePaymentCase(null)} onPaid={async(data)=>{ const paid=Number(data?.amount || stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0); const wasFlorida=isFloridaFormable(feePaymentCase); setFeePaymentCase(null); showToast('✅ Government filing funds collected'); await load(); setDetail(d=>d?({...d,state_fee_payment_status:'received',fee_paid:true,state_fee_collected_amount:paid,...(wasFlorida?{fl_payment_status:'received'}:{})}):d) }}/>}
         {editCaseModal}
+        {floridaEditCase && <FloridaSunbizIntake key={floridaEditCase.id} initialRecord={floridaEditCase} saving={saving} onClose={()=>setFloridaEditCase(null)} onSave={saveNativeFloridaIntake}/>}
         {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>This cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
       </div>
     )
