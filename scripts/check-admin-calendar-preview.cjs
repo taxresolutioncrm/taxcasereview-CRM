@@ -38,4 +38,9 @@ assert(!ui.includes('supabase.') && !ui.includes('CalendarEvent/set'),
   'Calendar display must not create new data write pathways or use unverified JMAP')
 assert(!page.includes('StalwartCalendarWorkspace'),
   'Unverified Stalwart sync must stay outside production')
+has(ui, 'aria-label="Day actions"', 'Unified calendar must offer classic day actions')
+has(ui, 'onCreate(activeDay, productFilter)', 'Day action new event must use existing CRM handler')
+has(ui, "setView('week')", 'Day actions need week view')
+has(ui, "setView('day')", 'Day actions need day view')
+has(ui, 'aria-expanded={showUpcoming}', 'Upcoming appointments panel must be collapsible')
 console.log('PASS unified calendar: full active product registry, day actions, existing CRM handlers and classic fallback')
