@@ -271,3 +271,11 @@ verify_jwt = true
 # Server-to-server website lead intake; function validates a private shared bearer secret.
 [functions.oculivo-demo-intake]
 verify_jwt = false
+
+# Authenticated platform-admin-only on-demand three-way call controls.
+[functions.romylabs-conference]
+verify_jwt = true
+
+# SignalWire guest consult callback uses short-lived HMAC-signed URL instead of a browser JWT.
+[functions.romylabs-conference-guest]
+verify_jwt = false

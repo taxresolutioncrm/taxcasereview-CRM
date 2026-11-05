@@ -140,8 +140,16 @@ serve(async (req) => {
       return json({ error: 'Could not place the call: ' + text }, 502)
     }
 
-    console.log('call-add-participant: dialing', e164, 'into', conference_name)
-    return json({ ok: true })
+    let callSid = ''
+    try { callSid = String(JSON.parse(text || '{}')?.sid || '') } catch (_) {}
+    // RomyLabs cannot show a verified guest without a provider call SID.
+    // Preserve the legacy API behavior for unrelated tenants.
+    if (isRomyLabs && !/^[0-9a-f-]{36}$/i.test(callSid)) {
+      console.error('call-add-participant: missing RomyLabs provider call SID')
+      return json({ error: 'Provider did not return an identifiable participant call' }, 502)
+    }
+    console.log('call-add-participant: invitation placed', callSid || 'legacy', 'into', conference_name)
+    return json({ ok: true, call_sid: callSid || null, status: 'ringing' })
 
   } catch (err) {
     console.error('call-add-participant error:', err)

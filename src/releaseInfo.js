@@ -3,6 +3,10 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Invited conference guests answer in an isolated waiting room; only an explicit Merge Calls action connects them to the original conversation',
+  'On-demand three-way calling verifies invitation signatures and caller ownership, supports cancelling unmerged guests and disconnecting merged guests',
+  'RomyLabs direct outbound calls can be upgraded to an on-demand three-way call only when Add Caller is clicked; the original call is provider-verified before any transition',
+  'Additional participants are dialed after both the original caller and agent reconnect, with provider-confirmed guest presence and guest-only disconnect',
   'Personal LinkedIn autopilot restores eight upcoming Tuesday/Thursday 9 AM ET posts with an independent personal-profile publisher',
   'Disconnected company pages no longer starve personal LinkedIn posts; overdue historical posts never publish outside their time window',
   'Direct outbound dialing discards late results after cancellation and resolves hangup updates by provider call ID to avoid unintended follow-on calls',
@@ -80,7 +84,9 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
-  'RomyLabs Admin Portal Unified Calendar combines the new searchable month/week/day design with existing event detail, add/edit, booking, reminder and deadline workflows; includes CRM brand logos, product filtering, selected-day agenda and mobile horizontal navigation with a classic fallback',
+  'RomyLabs Admin Unified Calendar defaults to the new searchable month/week/day layout, retains the classic event editor and booking workflows, supports CRM branding and filtering, selected-day agenda, upcoming appointments, deadlines and mobile scrolling, with one-click classic fallback',
+  'Three-way calling protects unattended guests with a bounded consult waiting room and verified cleanup when a call ends or a bridge fails',
+  'RomyLabs Admin Portal Add Caller now supports an explicitly requested three-way call with real guest connection status and safe guest removal',
   'RomyLabs Admin Portal adds a new responsive calendar preview with month, week and day views, appointment search, and existing CRM event editing, appointment creation and booking links; Stalwart synchronization stays disabled until certified',
   'Admin Calendar visual preview release is limited to the RomyLabs Admin Portal and verified against its unique Cloudflare production build marker',
   'Manual subscription payments now include all registered CRM products and separately hosted billing offices such as Nashville Tax Solutions',
@@ -136,16 +142,16 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.51',
+  version: '3.2.52',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.51 — Unified Calendar',
+  title: 'RomyLabs Admin Portal 3.2.52 — Unified Calendar',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.50',
+    version: '3.2.51',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Manual Payment Office Discovery',
     changes: IRS_WORKFLOW_CHANGES,
@@ -169,7 +175,7 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.50',
+    version: '3.2.51',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Direct Outbound Calling',
     changes: IRS_WORKFLOW_CHANGES,
@@ -177,7 +183,7 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.50',
+    version: '3.2.51',
     releasedAt: '2026-11-03',
     title: 'CRM 3.2.48 — Direct Outbound Calling',
     changes: IRS_WORKFLOW_CHANGES,

@@ -35,6 +35,8 @@ export default function ActiveCallBar() {
     answerIncoming, declineIncoming, cancelCall, endCall,
     logModal, logForm, setLogForm, saving, OUTCOMES, saveCallLog, closeLogModalWithoutSaving,
     callToast, sendDTMF, muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer, directOutbound, directConnected,
+    conferenceMode, conferenceBusy, conferenceParticipants, conferenceInvite,
+    refreshConferenceParticipants, removeConferenceParticipant, mergeConferenceInvite, cancelConferenceInvite,
   } = useCall()
 
   // Add-caller popover state
@@ -43,7 +45,34 @@ export default function ActiveCallBar() {
   const [addBusy, setAddBusy] = useState(false)
   const [addMsg, setAddMsg] = useState('')
 
-  const [participants, setParticipants] = useState([]) // {id, number, status: 'ringing'|'connected'}
+  const [participants, setParticipants] = useState([]) // Existing non-RomyLabs conferences
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [removingGuest, setRemovingGuest] = useState(null)
+
+  useEffect(() => {
+    if (!calling) { setParticipants([]); return }
+    if (!conferenceMode) return
+    // Only a provider response may mark a guest connected. No UI timers.
+    refreshConferenceParticipants()
+    const timer=setInterval(refreshConferenceParticipants,2500)
+    return ()=>clearInterval(timer)
+  }, [calling, conferenceMode])
+
+  async function handleInviteAction(action) {
+    if(inviteBusy)return
+    setInviteBusy(true)
+    const result=action==='merge'?await mergeConferenceInvite():await cancelConferenceInvite()
+    if(result?.error)setAddMsg((action==='merge'?'Could not merge: ':'Could not cancel: ')+result.error)
+    setInviteBusy(false)
+  }
+
+  async function handleRemoveGuest(sid) {
+    if(!sid || removingGuest)return
+    setRemovingGuest(sid)
+    const result=await removeConferenceParticipant(sid)
+    if(result?.error)setAddMsg('Could not disconnect guest: '+result.error)
+    setRemovingGuest(null)
+  }
 
   async function handleAddCaller() {
     const digits = addNumber.replace(/\D/g, '')
@@ -53,14 +82,12 @@ export default function ActiveCallBar() {
     setAddBusy(false)
     if (res?.error) { setAddMsg('❌ ' + res.error); return }
     const num = addNumber.trim()
-    const pid = Date.now()
-    // Show them as a persistent participant — ringing first, then connected.
-    // SignalWire is placing the call; this keeps the CRM in sync with what's
-    // actually happening on the line instead of the panel just vanishing.
-    setParticipants(p => [...p, { id: pid, number: num, status: 'ringing' }])
-    setTimeout(() => {
-      setParticipants(p => p.map(x => x.id === pid && x.status === 'ringing' ? { ...x, status: 'connected' } : x))
-    }, 8000)
+    if(phoneContext==='romylabs' && res?.call_sid){
+      await refreshConferenceParticipants()
+    }else{
+      const pid = Date.now()
+      setParticipants(p => [...p, { id: pid, number: num, status: 'ringing' }])
+    }
     setAddMsg('')
     setAddNumber('')
     setShowAddCaller(false)
@@ -317,8 +344,42 @@ export default function ActiveCallBar() {
               </button>
             </div>
 
-            {/* Conference participants — persistent, so you always see who's on */}
-            {participants.length > 0 && (
+            {/* Provider-confirmed RomyLabs guest participants, never inferred from timeouts. */}
+            {conferenceMode && (
+              <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap',color:'#fff',fontSize:11.5}}>
+                <strong>Three-way call</strong>
+                {conferenceInvite && (
+                  <span style={{border:'1px solid rgba(255,255,255,.45)',borderRadius:12,padding:'5px 9px',display:'inline-flex',gap:7,alignItems:'center',flexWrap:'wrap'}}>
+                    📞 {conferenceInvite.number} — {conferenceInvite.status==='answered'?'Answered (separate)':conferenceInvite.status==='ringing'?'Ringing separately…':conferenceInvite.status==='merging'?'Merging…':conferenceInvite.status==='ended'?'Ended / no confirmed join':'Pending'}
+                    {conferenceInvite.status==='answered' && (
+                      <button type="button" disabled={inviteBusy} onClick={()=>handleInviteAction('merge')}
+                        style={{background:'#15803D',color:'#fff',border:'none',borderRadius:7,padding:'5px 9px',fontWeight:800,cursor:'pointer'}}>
+                        {inviteBusy?'Merging…':'🔗 Merge Calls'}
+                      </button>
+                    )}
+                    {['ringing','answered','ended'].includes(conferenceInvite.status) && (
+                      <button type="button" disabled={inviteBusy} onClick={()=>handleInviteAction('cancel')}
+                        style={{background:'rgba(255,255,255,.18)',color:'#fff',border:'1px solid rgba(255,255,255,.55)',borderRadius:7,padding:'4px 8px',fontWeight:700,cursor:'pointer'}}>
+                        Cancel guest
+                      </button>
+                    )}
+                  </span>
+                )}
+                {conferenceParticipants.filter(p=>p.kind==='guest').map(p=>(
+                  <span key={p.sid} style={{border:'1px solid rgba(34,197,94,.65)',borderRadius:12,padding:'4px 8px',display:'inline-flex',alignItems:'center',gap:7}}>
+                    ✅ {p.number||'Guest'} — Connected
+                    <button type="button" disabled={!!removingGuest||conferenceBusy}
+                      onClick={()=>handleRemoveGuest(p.sid)}
+                      style={{border:'1px solid rgba(255,255,255,.6)',color:'#fff',background:'transparent',borderRadius:7,padding:'2px 6px',fontWeight:700,cursor:'pointer'}}>
+                      {removingGuest===p.sid?'Removing…':'Disconnect guest'}
+                    </button>
+                  </span>
+                ))}
+                {addMsg && <span style={{color:'#fff'}}>{addMsg}</span>}
+              </div>
+            )}
+            {/* Existing conferencing for other office phone contexts. */}
+            {participants.length > 0 && phoneContext!=='romylabs' && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: 700 }}>On this call:</span>
                 {participants.map(p => (
@@ -351,7 +412,9 @@ export default function ActiveCallBar() {
                   label: holdBusy ? '⏳ Hold…' : (onHold ? '▶ Resume' : '⏸ Hold'),
                   title: onHold ? 'Take the caller off hold' : 'Put the caller on hold (they hear hold music)' },
                 { key: 'add', onClick: () => { setShowAddCaller(v => !v); setShowTransfer(false); setAddMsg('') }, on: showAddCaller, onBg: 'rgba(255,255,255,0.35)',
-                  label: '➕ Add Caller', disabled: directOutbound, title: directOutbound ? 'Not available during direct outbound calls' : 'Conference another person into this call' },
+                  label: conferenceBusy ? '⏳ Connecting…' : '➕ Add Caller',
+                  disabled: conferenceBusy || !!conferenceInvite || (directOutbound && !directConnected),
+                  title: conferenceBusy ? 'Verifying original call and agent bridge' : 'Add an outside phone number to this live conversation' },
                 { key: 'transfer', onClick: () => { setShowTransfer(v => !v); setShowAddCaller(false); setXferMsg('') },
                   on: showTransfer, onBg: 'rgba(255,255,255,0.35)', disabled: !canTransfer || directOutbound,
                   label: '↪ Transfer',
@@ -416,7 +479,7 @@ export default function ActiveCallBar() {
                     padding: '6px 10px', fontSize: 12.5, width: 145, height: 28, boxSizing: 'border-box',
                   }}
                 />
-                <button onClick={handleAddCaller} disabled={addBusy}
+                <button onClick={handleAddCaller} disabled={addBusy||conferenceBusy}
                   style={{
                     background: '#15803D', color: '#fff', border: 'none', borderRadius: 7,
                     height: 28, padding: '0 12px', fontWeight: 700, cursor: addBusy ? 'wait' : 'pointer', fontSize: 12,

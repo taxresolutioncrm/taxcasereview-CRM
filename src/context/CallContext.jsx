@@ -111,10 +111,77 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const directOutboundRef = useRef(false)
   const directOutboundCallRef = useRef(null)
   const directRecordRequestedRef = useRef(false)
+  const directBindRequestedRef = useRef(false)
   // Reject late responses from cancelled/replaced dial attempts.
   const directOutboundAttemptRef = useRef(0)
   const [directOutbound, setDirectOutbound] = useState(false)
   const [directConnected, setDirectConnected] = useState(false)
+  const [conferenceBusy, setConferenceBusy] = useState(false)
+  const [conferenceMode, setConferenceMode] = useState(false)
+  const [conferenceParticipants, setConferenceParticipants] = useState([])
+  const [conferenceInvite, setConferenceInvite] = useState(null)
+  const conferenceInviteRef = useRef(null)
+  function setInvite(invite) { conferenceInviteRef.current=invite;setConferenceInvite(invite) }
+  const conferenceMigrationRef = useRef(false)
+  const conferenceModeRef = useRef(false)
+  const conferenceOldCallRef = useRef(null)
+  const conferenceBusyRef = useRef(false)
+
+  async function refreshConferenceParticipants() {
+    if (phoneContext !== 'romylabs' || !conferenceMode || !activeOutboundCallIdRef.current) return null
+    const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+      body:{action:'status',outbound_call_id:activeOutboundCallIdRef.current}
+    })
+    if (error || data?.error) return null
+    setConferenceParticipants(data?.participants||[])
+    const invite=conferenceInviteRef.current
+    if(invite?.token && !['merged','ended'].includes(invite.status)){
+      const {data:guest,error:guestErr}=await supabase.functions.invoke('romylabs-conference',{
+        body:{action:'invite_status',outbound_call_id:activeOutboundCallIdRef.current,
+          call_sid:invite.sid,number:invite.number,expires:invite.expires,token:invite.token}
+      })
+      if(!guestErr && guest?.ok){
+        if(guest.state==='merged')setInvite(null)
+        else setInvite({...invite,status:guest.state})
+      }
+    }
+    return data
+  }
+
+  async function mergeConferenceInvite() {
+    const invite=conferenceInviteRef.current
+    if(!invite || invite.status!=='answered' || !activeOutboundCallIdRef.current)
+      return {error:'Wait until the invited caller has answered'}
+    const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+      body:{action:'merge',outbound_call_id:activeOutboundCallIdRef.current,
+        call_sid:invite.sid,number:invite.number,expires:invite.expires,token:invite.token}
+    })
+    if(error||data?.error)return {error:data?.error||error?.message||'Merge failed'}
+    setInvite({...invite,status:data.state||'merging'})
+    return {ok:true}
+  }
+
+  async function cancelConferenceInvite() {
+    const invite=conferenceInviteRef.current
+    if(!invite || !activeOutboundCallIdRef.current)return {error:'No active invitation'}
+    const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+      body:{action:'cancel_invite',outbound_call_id:activeOutboundCallIdRef.current,
+        call_sid:invite.sid,number:invite.number,expires:invite.expires,token:invite.token}
+    })
+    if(error||data?.error)return {error:data?.error||error?.message||'Unable to cancel invitation'}
+    setInvite(null)
+    return {ok:true}
+  }
+
+  async function removeConferenceParticipant(callSid) {
+    if (!conferenceMode || !activeOutboundCallIdRef.current || !callSid) return {error:'No active guest'}
+    const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+      body:{action:'remove',outbound_call_id:activeOutboundCallIdRef.current,call_sid:callSid}
+    })
+    if (error || data?.error) return {error:data?.error||error?.message||'Could not remove guest'}
+    await refreshConferenceParticipants()
+    return {ok:true}
+  }
 
   async function toggleHold() {
     if (directOutboundRef.current) {
@@ -180,15 +247,112 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   }
 
   async function addParticipant(number) {
-    if (directOutboundRef.current) return {error:'Add Caller is not supported on direct outbound calls'}
-    const conf = activeConferenceRef.current
-    if (!conf) return { error: 'No active call' }
-    const { data, error } = await supabase.functions.invoke('call-add-participant', {
-      body: { conference_name: conf, number, phoneContext },
+    const digits=String(number||'').replace(/\D/g,'')
+    if(!(digits.length===10||(digits.length===11&&digits.startsWith('1'))))
+      return {error:'Enter a valid 10-digit US phone number.'}
+    if(conferenceBusyRef.current)return {error:'Conference operation already in progress'}
+    if(conferenceInviteRef.current && !['ended','merged'].includes(conferenceInviteRef.current.status))
+      return {error:'Finish or cancel the current guest invitation before adding another'}
+    if(directOutboundRef.current && !directConnected)return {error:'Wait until the original call is answered'}
+    if(phoneContext==='romylabs' && (directOutboundRef.current||conferenceMode)){
+      const outboundId=activeOutboundCallIdRef.current
+      if(!outboundId)return {error:'Active outbound call has not been registered'}
+      conferenceBusyRef.current=true
+      setConferenceBusy(true)
+      let upgradeRoom=null
+      let originalBridgeVerified=false
+      try{
+        let conf=activeConferenceRef.current
+        if(directOutboundRef.current){
+          // The migration is strictly on user action. A normal outbound call
+          // NEVER enters a conference and never starts a second call.
+          if(onHold)return {error:'Resume the original call before adding someone'}
+          const oldCall=directOutboundCallRef.current
+          if(!oldCall?.id)return {error:'The original call is missing a provider ID'}
+          conferenceMigrationRef.current=true
+          conferenceOldCallRef.current=oldCall
+          const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+            body:{action:'upgrade',outbound_call_id:outboundId}
+          })
+          if(error||data?.error||!data?.conference_name){
+            conferenceMigrationRef.current=false
+            conferenceOldCallRef.current=null
+            return {error:data?.error||error?.message||'Provider would not upgrade the call'}
+          }
+          conf=data.conference_name
+          upgradeRoom=conf
+          if(!uiStartedRef.current){
+            await supabase.functions.invoke('end-conference',{body:{conferenceName:conf,phoneContext}})
+            return {error:'Call was ended before conference connection'}
+          }
+          activeConferenceRef.current=conf
+          directOutboundRef.current=false
+          directOutboundCallRef.current=null
+          liveCallRef.current=null
+          activeCallRef.current=null
+          setDirectOutbound(false)
+          setDirectConnected(false)
+          conferenceModeRef.current=true
+          setConferenceMode(true)
+          persistCallSession({kind:'outbound',conferenceName:conf,
+            outboundCallId:outboundId,transferableCallsid:null,active,
+            startedAt:callStartedAtRef.current||Date.now()})
+          // The old browser SDK cannot join an existing conference directly.
+          // Its authenticated self-dial is routed to THIS exact active room.
+          const bridge=await relayRef.current.newCall({
+            destinationNumber:callerNumberRef.current,
+            callerNumber:callerNumberRef.current
+          })
+          if(!bridge)throw Error('Agent could not rejoin the original caller')
+          liveCallRef.current=bridge
+          activeCallRef.current=bridge
+          conferenceMigrationRef.current=false
+          let ready=false
+          for(let i=0;i<8;i++){
+            const {data:state}=await supabase.functions.invoke('romylabs-conference',{
+              body:{action:'status',outbound_call_id:outboundId}
+            })
+            if(state?.participants)setConferenceParticipants(state.participants)
+            if(state?.state==='ready'){ready=true;break}
+            await new Promise(resolve=>setTimeout(resolve,500))
+          }
+          if(!ready)throw Error('Original caller and agent are not both verified in the room. No guest was dialed.')
+          originalBridgeVerified=true
+        }
+        if(!conf)throw Error('No active conference')
+        // Invite goes into a separate consult room; it NEVER automatically
+        // joins the original conversation. Agent must click Merge Calls.
+        const {data,error}=await supabase.functions.invoke('romylabs-conference',{
+          body:{action:'invite',outbound_call_id:outboundId,number}
+        })
+        if(error||data?.error||!data?.call_sid||!data?.token)
+          return {error:data?.error||error?.message||'Guest invitation failed'}
+        setInvite({sid:data.call_sid,number:data.number,expires:data.expires,token:data.token,status:'ringing'})
+        showCallToast('Calling guest separately. Press Merge Calls once they answer.')
+        return {ok:true,call_sid:data.call_sid,status:'ringing'}
+      }catch(e){
+        console.error('[conference-upgrade]',e)
+        if(upgradeRoom&&!originalBridgeVerified) {
+          // Browser bridge failed AFTER moving the original caller. Never
+          // strand that customer indefinitely in a waiting conference.
+          const ended=await endConferenceWithRetry(upgradeRoom)
+          if(ended && await finalizeCallEnd({alreadyHungUp:true,skipConferenceKill:true}))
+            handleRemoteHangup()
+        }
+        showCallToast('Conference connection needs attention: '+(e?.message||e))
+        return {error:e?.message||String(e)}
+      }finally{
+        conferenceBusyRef.current=false
+        setConferenceBusy(false)
+      }
+    }
+    const conf=activeConferenceRef.current
+    if(!conf)return {error:'No active call'}
+    const {data,error}=await supabase.functions.invoke('call-add-participant',{
+      body:{conference_name:conf,number,phoneContext}
     })
-    if (error || data?.error) return { error: error?.message || data?.error || 'unknown error' }
-    showCallToast('📞 Dialing ' + number + ' into this call…')
-    return { ok: true }
+    if(error||data?.error)return {error:data?.error||error?.message||'Invite failed'}
+    return {ok:true,call_sid:data?.call_sid||null,status:'ringing'}
   }
 
   function toggleMute() {
@@ -517,6 +681,17 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             liveCallRef.current = call
             setOnHold(false)
             setDirectConnected(true)
+            if (!directBindRequestedRef.current && activeOutboundCallIdRef.current && call?.id) {
+              directBindRequestedRef.current=true
+              supabase.functions.invoke('romylabs-phone-state',{
+                body:{action:'direct_outbound_bind',id:activeOutboundCallIdRef.current,call_id:call.id}
+              }).then(({data,error})=>{
+                if(error||data?.error) {
+                  console.error('[direct-outbound] verified call binding failed',data?.error||error)
+                  showCallToast('Additional-caller controls are unavailable until this call is verified.')
+                }
+              })
+            }
             if (!directRecordRequestedRef.current && activeOutboundCallIdRef.current && call?.id) {
               directRecordRequestedRef.current=true
               supabase.functions.invoke('romylabs-phone-state',{
@@ -552,10 +727,16 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
         }
         if (call.state === 'held' && directOutboundRef.current) setOnHold(true)
         if (call.state === 'hangup' || call.state === 'destroy') {
-          activeCallRef.current = null
+          if (activeCallRef.current===call) activeCallRef.current = null
           setIncomingCall(null)
           setIncomingMatch(null)
           stopRing()
+          if ((conferenceMigrationRef.current || conferenceModeRef.current) && conferenceOldCallRef.current &&
+              (conferenceOldCallRef.current === call || (call?.id && conferenceOldCallRef.current.id===call.id))) {
+            // Provider intentionally moved this leg only after Add Caller.
+            // Never end the original call or show a call recap here.
+            return
+          }
           if (directOutboundRef.current && directOutboundCallRef.current &&
               (directOutboundCallRef.current === call || (call?.id && directOutboundCallRef.current.id === call.id))) {
             if (pageUnloadingRef.current) return
@@ -1085,6 +1266,11 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       const directAttempt = ++directOutboundAttemptRef.current
       directOutboundCallRef.current = null
       directRecordRequestedRef.current=false
+      directBindRequestedRef.current=false
+      conferenceModeRef.current=false
+      setConferenceMode(false)
+      setConferenceParticipants([])
+      setInvite(null)
       setDirectOutbound(true)
       setDirectConnected(false)
       activeConferenceRef.current = null
@@ -1212,11 +1398,22 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     if (outboundPollRef.current) { clearInterval(outboundPollRef.current); outboundPollRef.current = null }
     if (inboundStatusPollRef.current) { clearInterval(inboundStatusPollRef.current); inboundStatusPollRef.current = null }
 
+    // Do not strand a guest in the isolated consult waiting room on End Call.
+    // The provider guest callback also has a hard 120-second time limit for
+    // browser crashes and other failures outside this cleanup path.
+    if (conferenceInviteRef.current && ['ringing','answered'].includes(conferenceInviteRef.current.status)) {
+      const cancelled = await cancelConferenceInvite()
+      if (cancelled?.error) {
+        console.error('[conference] guest cancellation could not be confirmed:', cancelled.error)
+        showCallToast('Guest cancellation is unconfirmed; waiting room will time out automatically.')
+      }
+    }
+
     // Kill the provider conference BEFORE tearing down the browser leg.
     // Hanging up the agent/browser leg first can strand the remote party alone
     // in the conference (audibly on hold) if the SDK hangup promise stalls.
     const directOutbound=directOutboundRef.current
-    const directAuditId=directOutbound?activeOutboundCallIdRef.current:null
+    const directAuditId=(directOutbound||conferenceMode)?activeOutboundCallIdRef.current:null
     const conf = activeConferenceRef.current
     if (conf && !skipConferenceKill) {
       const providerEnded = await endConferenceWithRetry(conf)
@@ -1238,6 +1435,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       directOutboundAttemptRef.current++
       directOutboundCallRef.current=null
       directRecordRequestedRef.current=false
+      directBindRequestedRef.current=false
       setDirectOutbound(false)
       setDirectConnected(false)
       if (directAuditId) {
@@ -1248,6 +1446,14 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       }
     }
 
+    conferenceMigrationRef.current=false
+    conferenceModeRef.current=false
+    conferenceOldCallRef.current=null
+    conferenceBusyRef.current=false
+    setConferenceBusy(false)
+    setConferenceMode(false)
+    setConferenceParticipants([])
+    setInvite(null)
     clearPersistedCallSession()
     const aiGovSessionId = activeAIGovSessionRef.current
     const aiGovTenantId = activeAIGovTenantRef.current
@@ -1474,6 +1680,9 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     answerIncoming, declineIncoming, startCall, joinAIGovernmentCall, endCall, cancelCall,
     muted, toggleMute, onHold, holdBusy, toggleHold, addParticipant, transferCall, canTransfer,
     directOutbound, directConnected,
+    conferenceMode, conferenceBusy, conferenceParticipants, conferenceInvite,
+    refreshConferenceParticipants, removeConferenceParticipant,
+    mergeConferenceInvite, cancelConferenceInvite,
     sendDTMF: (digit) => {
       if (activeCallRef.current?.dtmf) {
         console.log('[DTMF] sending digit:', digit, 'via call object:', activeCallRef.current)
