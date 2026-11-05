@@ -8,6 +8,7 @@ import { advanceLeadStatus } from '../lib/leadStatus'
 import { FIRM } from '../lib/firmBranding'
 import { sendGmailEmail } from '../lib/gmailUtils'
 import InternalBooking from '../components/InternalBooking'
+import StalwartCalendarWorkspace from '../components/StalwartCalendarWorkspace'
 import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
 
 const STATUS_COLORS = {
@@ -75,6 +76,7 @@ export default function Calendar() {
   const [loading,       setLoading]       = useState(true)
   const [currentDate,   setCurrentDate]   = useState(new Date())
   const [view,          setView]          = useState('month')
+  const [stalwartOpen, setStalwartOpen] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showForm,      setShowForm]      = useState(false)
   const [searchParams] = useSearchParams()
@@ -418,6 +420,10 @@ export default function Calendar() {
     )
   }
 
+  if (isRomyLabsAdmin && import.meta.env.VITE_STALWART_CALENDAR_PREVIEW === 'true' && stalwartOpen) {
+    return <StalwartCalendarWorkspace onBack={() => setStalwartOpen(false)} />
+  }
+
   // ── EVENT DETAIL PANEL ──
   if (selectedEvent) {
     const sc = scOf(selectedEvent)
@@ -541,6 +547,9 @@ export default function Calendar() {
         <div style={{ background: 'var(--nav)', borderBottom: '1px solid var(--br)', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button onClick={goToday} style={{ padding: '7px 16px', background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 8, color: 'var(--tx)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Today</button>
+            {isRomyLabsAdmin && import.meta.env.VITE_STALWART_CALENDAR_PREVIEW === 'true' && (
+              <button type="button" onClick={() => setStalwartOpen(true)} style={{ padding: '7px 16px', background: '#1d4ed8', border: '1px solid var(--br)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Stalwart Calendar</button>
+            )}
             <button onClick={() => setShowBooking(true)} style={{ padding: '7px 16px', background: '#1d4ed8', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>📅 Send Booking Link</button>
             <div style={{ display: 'flex', gap: 2 }}>
               <button onClick={goPrev} style={{ width: 32, height: 32, background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 6, color: 'var(--tx)', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
