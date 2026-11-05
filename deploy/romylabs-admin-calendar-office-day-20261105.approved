@@ -1,0 +1,3 @@
+RomyLabs Admin Calendar v3.2.58 — explicit user approval: deploy.
+Release scope: Click any day to add event, show CRM/product and supplied office name on appointment cards; preserves booking, reminders and original CRM workflows.
+Sandbox CI required before single controlled merge. Dedicated Cloudflare Pages workflow verifies exact v3.2.58 marker on admin.romylabs.com. Stalwart sync excluded.

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
 import './AdminCalendarPreview.css'
 
-const VERSION = 'v3.2.57'
+const VERSION = 'v3.2.58'
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const pad = value => String(value).padStart(2, '0')
 const iso = date => [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join('-')
@@ -63,6 +63,15 @@ export default function AdminCalendarPreview({
     }
     return [...all.values()]
   }, [products, events])
+
+  function eventProductLabel(event) {
+    const key = event.product_id
+    const productName = availableProducts.find(product => product.key === key)?.name ||
+      PRODUCT_BOOKING_CONFIGS[key]?.name || (key || 'CRM not assigned')
+    const officeName = String(event.office_name || event.officeName || '').trim()
+    return officeName && officeName.toLowerCase() !== productName.toLowerCase()
+      ? productName + ' · ' + officeName : productName
+  }
 
   const productCounts = useMemo(() => {
     const result = new Map()
@@ -143,7 +152,7 @@ export default function AdminCalendarPreview({
           {timeOf(event) || 'All day'} · {nameOf(event)}
         </span>
         <span style={{ display: 'block', fontSize: 10, marginTop: 5, color: 'var(--uc-muted)' }}>
-          {dateOf(event)} · {product?.name || event.product_id || 'RomyLabs'}
+          {dateOf(event)} · {eventProductLabel(event)}
         </span>
       </button>
     )
@@ -217,22 +226,22 @@ export default function AdminCalendarPreview({
                 const date = iso(day)
                 const daily = byDate.get(date) || []
                 return (
-                  <div key={date} role="gridcell" tabIndex={0} aria-label={longDate(date) +
-                    ', ' + daily.length + ' appointments'}
+                  <div key={date} role="gridcell" tabIndex={0} aria-label={'Add appointment on ' + longDate(date) +
+                    ', ' + daily.length + ' existing appointments'}
                     className={'uc-day' + (date === selectedDay ? ' uc-selected' : '') +
                       (day.getMonth() !== month.getMonth() && view === 'month' ? ' uc-outside' : '') +
                       (view !== 'month' ? ' uc-large' : '')}
-                    onClick={() => selectDay(date, true)}
+                    onClick={() => create(date)}
                     onKeyDown={e => {
                       if (e.target !== e.currentTarget) return
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        selectDay(date, true)
+                        create(date)
                       }
                     }}>
                     <div className="uc-day-head">
                       <button type="button" className={'uc-day-date' + (date === today ? ' uc-today' : '')}
-                        onClick={e => { e.stopPropagation(); selectDay(date, true) }}>
+                        onClick={e => { e.stopPropagation(); create(date) }}>
                         {day.getDate()}
                       </button>
                       <div className="uc-day-right">
@@ -244,9 +253,19 @@ export default function AdminCalendarPreview({
                     </div>
                     {daily.slice(0, view === 'month' ? 3 : 30).map((event, index) => (
                       <button key={(event.id || date) + index} type="button" className="uc-event"
-                        title={nameOf(event)} onClick={e => { e.stopPropagation(); onOpenEvent(event) }}
+                        title={timeOf(event) + ' · ' + nameOf(event) + ' — ' + eventProductLabel(event)}
+                        onClick={e => { e.stopPropagation(); onOpenEvent(event) }}
                         style={{ borderLeftColor: colorOf(event) }}>
-                        <time>{timeOf(event) || 'All day'}</time> · {nameOf(event)}
+                        <span className="uc-event-main">
+                          <time>{timeOf(event) || 'All day'}</time> · {nameOf(event)}
+                        </span>
+                        <span className="uc-event-office" title={'CRM / Office: ' + eventProductLabel(event)}>
+                          {PRODUCT_BOOKING_CONFIGS[event.product_id]?.logo && (
+                            <img src={PRODUCT_BOOKING_CONFIGS[event.product_id].logo}
+                              alt="" aria-hidden="true" className="uc-event-office-logo" />
+                          )}
+                          <span>{eventProductLabel(event)}</span>
+                        </span>
                       </button>
                     ))}
                     {daily.length > (view === 'month' ? 3 : 30) &&
