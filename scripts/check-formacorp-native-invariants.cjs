@@ -15,10 +15,20 @@ const files = [
   'src/pages/Manual.jsx',
 ]
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
+const officialWorkspace = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.jsx','utf8')
 const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
 assert(!/bizee/i.test(content), 'FormaCorp native workflow must not depend on Bizee')
+assert(/<SunbizFilingWorkspace/.test(content), 'Saved formation case must open official filing workspace')
+assert(/saveOfficialSunbizReceipt/.test(content), 'Official receipt confirmation must update the saved case')
+assert(/eq\('tenant_id',tenantId\)/.test(content), 'Official receipt must remain tenant scoped')
+assert(/<iframe/.test(officialWorkspace) && /efile\.sunbiz\.org/.test(officialWorkspace), 'Official government frame attempt must use Sunbiz origin directly')
+assert(/Florida may prevent its website/.test(officialWorkspace), 'Government frame protection warning must be explicit')
+assert(/cannot read, prefill or complete fields/.test(officialWorkspace), 'Do not claim cross-origin government field access')
+assert(/Official confirmation URL/.test(officialWorkspace) || /Official confirmation URL \(optional\)/.test(officialWorkspace), 'Confirmation receipt must remain visible')
+assert(/does not automatically/.test(officialWorkspace) || /never submits a filing/.test(officialWorkspace), 'Do not imply submission from CRM receipt entry')
+
 assert(!/target="_blank"|window\.open\(/.test(content), 'FormaCorp must not open any workflow in another browser tab/window')
 assert(!/orders\.bizee\.com|bizee\.com/i.test(content), 'External Bizee URL detected')
 assert(!/popup=yes|formacorp_bizee_pro|Open Bizee Secure Window/i.test(content), 'External Bizee popup workflow detected')
