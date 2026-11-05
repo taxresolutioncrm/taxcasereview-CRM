@@ -70,6 +70,13 @@ export default function Calendar() {
   const isRomyLabsAdmin = window.location.hostname.toLowerCase() === 'admin.romylabs.com'
   const adminCalendarOwner = 'Romy Cruz'
   const [events,        setEvents]        = useState([])
+  // The product selector comes from the Admin Portal registry, not from
+  // whichever products happen to have appointments in the current window.
+  const [calendarProducts, setCalendarProducts] = useState(() =>
+    Object.values(PRODUCT_BOOKING_CONFIGS)
+      .filter(product => !product.inactive)
+      .map(product => ({ key: product.key, name: product.name }))
+  )
   const [clients,       setClients]       = useState([])
   const [employees,     setEmployees]     = useState([])
   const [deadlines,     setDeadlines]     = useState([])
@@ -104,6 +111,37 @@ export default function Calendar() {
   }, [])
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    if (!isRomyLabsAdmin) return
+    let mounted = true
+    supabase.from('romylabs_products')
+      .select('product_id,name,sort_order')
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .then(({ data, error }) => {
+        if (!mounted || error || !Array.isArray(data)) return
+        const byKey = new Map(
+          Object.values(PRODUCT_BOOKING_CONFIGS)
+            .filter(product => !product.inactive)
+            .map(product => [product.key, { key: product.key, name: product.name, order: 500 }])
+        )
+        for (const product of data) {
+          if (!product.product_id) continue
+          byKey.set(product.product_id, {
+            key: product.product_id,
+            name: product.name || PRODUCT_BOOKING_CONFIGS[product.product_id]?.name || product.product_id,
+            order: Number.isFinite(Number(product.sort_order)) ? Number(product.sort_order) : 500,
+          })
+        }
+        // Nashville is a separately hosted CRM/office and intentionally
+        // does not live in the romylabs_products table.
+        if (!byKey.has('nashville'))
+          byKey.set('nashville', { key: 'nashville', name: 'Nashville Tax Solutions', order: 501 })
+        setCalendarProducts([...byKey.values()].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)))
+      })
+    return () => { mounted = false }
+  }, [isRomyLabsAdmin])
 
   // Realtime sync: when a new appointment is booked via the external Tax Case Review
   // booking widget (cfoservicesnow), it gets inserted into calevents with source='booking_widget'.
@@ -423,12 +461,14 @@ export default function Calendar() {
   // Admin Portal visual preview reuses the existing production CRM event data and handlers.
   // No JMAP calls, new writes, or booking workflow replacements.
   if (isRomyLabsAdmin && adminCalendarPreviewOpen && !selectedEvent && !showForm && !showBooking) {
-    return <AdminCalendarPreview events={events} deadlines={deadlines} loading={loading}
+    return <AdminCalendarPreview events={events} deadlines={deadlines} loading={loading} products={calendarProducts}
       onClose={() => setAdminCalendarPreviewOpen(false)}
       onOpenEvent={event => { setSelectedEvent(event) }}
-      onCreate={date => {
+      onCreate={(date, selectedProduct) => {
         setSelectedEvent(null)
-        setForm(current => ({ ...current, date, id: undefined, assignedTo: adminCalendarOwner, product_id: 'romylabs' }))
+        const validProduct = selectedProduct && PRODUCT_BOOKING_CONFIGS[selectedProduct] && !PRODUCT_BOOKING_CONFIGS[selectedProduct].inactive
+          ? selectedProduct : 'romylabs'
+        setForm(current => ({ ...current, date, id: undefined, assignedTo: adminCalendarOwner, product_id: validProduct }))
         setShowForm(true)
       }}
       onBooking={() => { setShowBooking(true) }} />

@@ -36,7 +36,7 @@ const safeColor = status => {
  * All create/edit/booking actions are delegated to the existing CRM handlers.
  * No Stalwart request, duplicate save, or new Supabase authorization path.
  */
-export default function AdminCalendarPreview({ events = [], deadlines = [], loading = false, onClose, onCreate, onOpenEvent, onBooking }) {
+export default function AdminCalendarPreview({ events = [], products = [], deadlines = [], loading = false, onClose, onCreate, onOpenEvent, onBooking }) {
   const [month, setMonth] = useState(monthOf(new Date()))
   const [activeDay, setActiveDay] = useState(iso(new Date()))
   const [view, setView] = useState('month')
@@ -44,7 +44,26 @@ export default function AdminCalendarPreview({ events = [], deadlines = [], load
   const [productFilter, setProductFilter] = useState('all')
   const [showDeadlines, setShowDeadlines] = useState(true)
   const todayKey = iso(new Date())
-  const products = useMemo(() => [...new Set(events.map(ev => ev.product_id || 'romylabs'))].sort(), [events])
+  const availableProducts = useMemo(() => {
+    const options = new Map(
+      products.filter(p => p?.key).map(p => [p.key, { key: p.key, name: p.name || p.key }])
+    )
+    // Preserve discoverability for newly arriving calendar events even before
+    // an asynchronous registry refresh.
+    for (const ev of events) {
+      const key = ev.product_id || 'romylabs'
+      if (!options.has(key)) options.set(key, { key, name: PRODUCT_BOOKING_CONFIGS[key]?.name || key })
+    }
+    return [...options.values()]
+  }, [products, events])
+  const eventCountByProduct = useMemo(() => {
+    const counts = new Map()
+    for (const ev of events) {
+      const key = ev.product_id || 'romylabs'
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    return counts
+  }, [events])
   const filtered = useMemo(() => events.filter(ev => {
     if (!eventDate(ev)) return false
     if (productFilter !== 'all' && (ev.product_id || 'romylabs') !== productFilter) return false
@@ -82,6 +101,11 @@ export default function AdminCalendarPreview({ events = [], deadlines = [], load
       setMonth(monthOf(date))
     }
   }
+  function openDay(date) {
+    setActiveDay(date)
+    setMonth(monthOf(dateOf(date)))
+    setView('day')
+  }
   function today() {
     const date = new Date()
     setMonth(monthOf(date)); setActiveDay(iso(date))
@@ -115,7 +139,7 @@ export default function AdminCalendarPreview({ events = [], deadlines = [], load
             <span key={mode}>{btn(mode[0].toUpperCase() + mode.slice(1),
               () => setView(mode), view === mode)}</span>)}
           {btn('Booking link', onBooking)}
-          <button type="button" onClick={() => onCreate(activeDay)}
+          <button type="button" onClick={() => onCreate(activeDay, productFilter)}
             style={{ ...BUTTON, background: '#16a34a', color: '#fff' }}>+ Add event</button>
         </div>
       </div>
@@ -123,13 +147,19 @@ export default function AdminCalendarPreview({ events = [], deadlines = [], load
         background: 'var(--sf)', padding: 12, marginBottom: 12,
         display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
         <strong style={{ fontSize: 13 }}>{filtered.length} CRM events</strong>
+        <span style={{ fontSize: 11, color: 'var(--t3)' }}>
+          Select a date to view it, or use + to add an appointment
+        </span>
         <span style={{ fontSize: 12, color: 'var(--t3)' }}>{filtered.filter(ev => eventDate(ev) === todayKey).length} today</span>
         <label style={{ fontSize: 12, color: 'var(--t3)' }} htmlFor="calendar-product-filter">CRM</label>
         <select id="calendar-product-filter" aria-label="Filter by CRM" value={productFilter}
           onChange={e => setProductFilter(e.target.value)}
           style={{ minHeight: 36, maxWidth: 210, background: 'var(--bg)', color: 'var(--tx)', border: '1px solid var(--br)', borderRadius: 8, padding: '7px 9px' }}>
           <option value="all">All products</option>
-          {products.map(key => <option key={key} value={key}>{PRODUCT_BOOKING_CONFIGS[key]?.name || key}</option>)}
+          {availableProducts.map(product =>
+            <option key={product.key} value={product.key}>
+              {product.name} ({eventCountByProduct.get(product.key) || 0})
+            </option>)}
         </select>
         <input aria-label="Search calendar appointments" value={search}
           onChange={e => setSearch(e.target.value)}
@@ -157,23 +187,40 @@ export default function AdminCalendarPreview({ events = [], deadlines = [], load
           const matching = groups.get(key) || []
           const currentMonth = date.getMonth() === month.getMonth()
           return (
-            <div key={key} role="gridcell" aria-label={key} style={{
+            <div key={key} role="gridcell" aria-label={key}
+              tabIndex={0}
+              onClick={() => openDay(key)}
+              onKeyDown={e => {
+                if (e.target !== e.currentTarget) return
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  openDay(key)
+                }
+              }}
+              title="Click to view this day. Use + to add an appointment."
+              style={{
+              cursor: 'pointer',
               minHeight: view === 'month' ? 105 : 185, background: 'var(--sf)',
               opacity: currentMonth || view !== 'month' ? 1 : 0.5,
               border: '1px solid ' + (key === activeDay ? '#16a34a' : 'var(--br)'),
               borderRadius: 8, padding: 6, minWidth: 0 }}>
-              <button type="button" onClick={() => {
-                setActiveDay(key); setMonth(monthOf(date))
-                if (view === 'week') setView('day')
+              <button type="button" onClick={e => {
+                e.stopPropagation()
+                openDay(key)
               }} style={{ border: 'none', cursor: 'pointer', fontWeight: 800,
                 background: key === iso(new Date()) ? '#166534' : 'transparent',
                 color: key === iso(new Date()) ? '#fff' : 'var(--tx)',
                 borderRadius: 5, padding: '3px 5px', marginBottom: 5 }}>
                 {date.getDate()}
               </button>
+              <button type="button" aria-label={'Add appointment on ' + key}
+                onClick={e => { e.stopPropagation(); onCreate(key, productFilter) }}
+                style={{ float: 'right', background: 'transparent', color: 'var(--t2)',
+                  border: '1px solid var(--br)', borderRadius: 5, cursor: 'pointer',
+                  fontSize: 12, lineHeight: 1.2, padding: '2px 6px' }}>+</button>
               {matching.slice(0, view === 'month' ? 3 : 60).map((ev, i) =>
                 <button type="button" key={(ev.id || 'event') + '-' + i}
-                  onClick={() => onOpenEvent(ev)}
+                  onClick={e => { e.stopPropagation(); onOpenEvent(ev) }}
                   title={eventLabel(ev)} style={{
                     display: 'block', width: '100%', borderRadius: 5, minWidth: 0,
                     border: '1px solid var(--br)', borderLeft: '3px solid ' + safeColor(ev.status),
@@ -189,13 +236,14 @@ export default function AdminCalendarPreview({ events = [], deadlines = [], load
                   </span>
                 </button>)}
               {view === 'month' && matching.length > 3 &&
-                <button type="button" onClick={() => {
-                  setActiveDay(key); setView('day')
+                <button type="button" onClick={e => {
+                  e.stopPropagation()
+                  openDay(key)
                 }} style={{ ...BUTTON, border: 0, background: 'transparent', padding: 3 }}>
                   +{matching.length - 3} more
                 </button>}
               {view !== 'month' &&
-                <button type="button" onClick={() => onCreate(key)}
+                <button type="button" onClick={e => { e.stopPropagation(); onCreate(key, productFilter) }}
                   style={{ ...BUTTON, marginTop: 8, padding: 5 }}>+ Add</button>}
             </div>
           )
@@ -215,7 +263,7 @@ export default function AdminCalendarPreview({ events = [], deadlines = [], load
                 </div>
               </button>
             ))}
-          <button type="button" onClick={() => onCreate(activeDay)} style={{ ...BUTTON, width: '100%', marginTop: 7 }}>+ New appointment this day</button>
+          <button type="button" onClick={() => onCreate(activeDay, productFilter)} style={{ ...BUTTON, width: '100%', marginTop: 7 }}>+ New appointment this day</button>
         </div>
         <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: 12 }}>
           <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Upcoming appointments</h3>
