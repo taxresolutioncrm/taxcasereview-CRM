@@ -594,6 +594,17 @@ export default function FormaCorp() {
       if (tenantError || !tenantId || String(tenantId)!==String(prior.tenant_id)) {
         throw new Error('Unable to verify the active office for this filing.')
       }
+      const {data:latest,error:readError}=await supabase.from('formacorp')
+        .select('id,fl_filing_status,state_fee_payment_intent_id,state_fee_payment_status,state_fee_amount,fl_state_fee')
+        .eq('id',prior.id).eq('tenant_id',tenantId).single()
+      if (readError || !latest) throw new Error('Could not recheck this filing in the active office.')
+      if (['Submitted to Florida','Under State Review','Approved / Active'].includes(latest.fl_filing_status)) {
+        throw new Error('This filing has already been recorded as submitted or approved; it cannot be rewritten as a draft.')
+      }
+      if ((latest.state_fee_payment_intent_id || ['received','remitted'].includes(latest.state_fee_payment_status || '')) &&
+          Math.abs(newFee - Number(latest.state_fee_amount || latest.fl_state_fee || 125)) > .009) {
+        throw new Error('Government filing funds must be reconciled before changing paid filing options.')
+      }
       const keys=[
         'client_name','entity_name','owners','registered_agent','principal_address','mailing_address',
         'registered_agent_address','authorized_representative','authorized_representative_title',
@@ -605,9 +616,11 @@ export default function FormaCorp() {
       patch.fl_state_fee=newFee
       patch.state_fee_amount=newFee
       patch.fl_authorized_at=source.fl_filing_authorized?(prior.fl_authorized_at || new Date().toISOString()):null
-      const {error}=await supabase.from('formacorp').update(patch)
+      const {data:updated,error}=await supabase.from('formacorp').update(patch)
         .eq('id',prior.id).eq('tenant_id',tenantId)
-      if (error) throw error
+        .in('fl_filing_status',['Draft','Ready to Submit','Filing Queue','Action Required'])
+        .select('id').single()
+      if (error || !updated) throw error || new Error('No authorized draft was updated.')
       setDetail(d=>d?.id===prior.id?({...d,...patch}):d)
       setFloridaEditCase(null)
       await load()
