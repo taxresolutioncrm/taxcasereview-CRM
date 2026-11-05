@@ -64,3 +64,57 @@
 .uc-connection{color:#6ee7b7;font-weight:800}
 @media(max-width:1080px){.uc-workspace{grid-template-columns:minmax(0,1fr)}.uc-aside{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.uc-card:first-child{grid-column:span 2}}
 @media(max-width:650px){.uc-shell{padding:10px}.uc-hero{padding:16px}.uc-hero-actions{justify-content:flex-start}.uc-metrics{gap:6px}.uc-metric{padding:12px}.uc-metric strong{font-size:20px}.uc-period{min-width:125px}.uc-filters{justify-content:stretch}.uc-search{max-width:none}.uc-aside{display:flex}.uc-toolbar{padding:10px}.uc-day{min-height:98px;padding:6px}.uc-weekdays,.uc-grid{min-width:595px}}
+
+
+/* Calendar v3.2.57: actual CalendarShell parent now scrolls instead of clipping.
+   Keep wheel/trackpad/touch scrolling enabled, but conceal scrollbar chrome. */
+.admin-calendar-scroll-viewport{overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior-y:contain;scrollbar-width:none;-ms-overflow-style:none;min-height:0}
+.admin-calendar-scroll-viewport::-webkit-scrollbar{display:none;width:0;height:0}
+.uc-shell{padding:clamp(8px,1vw,14px);min-height:0;height:auto}
+.uc-hero{padding:10px 16px;gap:10px;margin-bottom:9px;border-radius:12px;box-shadow:none;min-height:0}
+.uc-eyebrow{font-size:9px;margin-bottom:3px;letter-spacing:.09em}
+.uc-hero h2{font-size:clamp(18px,1.6vw,23px);line-height:1.18;margin:0 0 2px}
+.uc-hero p{display:none}
+.uc-hero-actions{gap:6px}
+.uc-hero-actions .uc-btn{min-height:31px;padding:6px 10px;font-size:11px}
+.uc-version{font-size:9px;padding:2px 5px}
+.uc-metrics{gap:7px;margin-bottom:9px}
+.uc-metric{padding:8px 12px;border-radius:9px}
+.uc-metric strong{font-size:20px}
+.uc-metric small{font-size:10px;margin-top:2px}
+.uc-toolbar{gap:8px;padding:8px 10px;margin-bottom:9px;border-radius:10px}
+.uc-toolbar .uc-btn{min-height:30px;padding:6px 9px}
+.uc-select,.uc-search{min-height:31px;padding:5px 9px}
+.uc-workspace{gap:9px;grid-template-columns:minmax(0,1fr) 260px}
+.uc-calendar-panel{padding:7px;border-radius:10px;overflow:visible}
+.uc-calendar-scroll{overflow-x:auto;overflow-y:visible;scrollbar-width:none;-ms-overflow-style:none}
+.uc-calendar-scroll::-webkit-scrollbar{display:none;width:0;height:0}
+.uc-weekdays,.uc-grid{gap:4px;min-width:630px}
+.uc-weekdays{margin-bottom:3px}
+.uc-weekday{padding:4px;font-size:10px}
+.uc-day{min-height:clamp(82px,calc((100dvh - 325px) / var(--uc-month-rows,5)),132px);padding:6px;border-radius:7px}
+.uc-day.uc-large{min-height:clamp(170px,45dvh,380px)}
+.uc-day-head{margin-bottom:4px}
+.uc-day-date{font-size:12px;padding:2px 5px}
+.uc-add{height:23px;min-width:23px;font-size:14px}
+.uc-event{font-size:10px;padding:4px 5px;margin-bottom:3px}
+.uc-card{padding:11px;border-radius:10px}
+.uc-card h3{font-size:12px}
+.uc-card-date{margin-bottom:8px}
+.uc-aside{gap:8px}
+.uc-footer{margin-top:8px;padding:7px 10px}
+@media(max-width:1080px){
+ .uc-workspace{grid-template-columns:minmax(0,1fr)}
+ .uc-aside{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .uc-card:first-child{grid-column:span 2}
+}
+@media(max-width:650px){
+ .uc-hero{padding:9px 11px;gap:6px}
+ .uc-hero-actions{justify-content:flex-start}
+ .uc-metrics{gap:5px}
+ .uc-metric{padding:7px}
+ .uc-metric strong{font-size:17px}
+ .uc-weekdays,.uc-grid{min-width:560px}
+ .uc-day{min-height:82px;padding:5px}
+ .uc-aside{display:flex}
+}

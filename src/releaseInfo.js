@@ -88,6 +88,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Calendar Command Center fixes a clipped month view by making the Admin Portal calendar viewport scrollable with hidden scrollbar chrome; compresses header and KPI tiles while sizing month rows dynamically so all weeks can be reached',
   'Calendar Command Center replaces the old Unified Calendar layout with a prominent scheduling header, booking and appointment actions, three live CRM KPI tiles, searchable product filters, larger accessible calendar dates, color-coded appointments, responsive day agenda and explicit on-screen build version',
   'Unified Calendar restores classic day actions (New Event, View Day, View Week) and collapsible upcoming appointments, reusing the existing booking and event handlers',
   'Unified Calendar product filter now lists every active product in the Admin Portal registry, including products with zero appointments and separately hosted Nashville, and clicking any date opens its day view with a visible Add Appointment action',
@@ -149,9 +150,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.56',
+  version: '3.2.57',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.56 — Calendar Command Center Redesign',
+  title: 'RomyLabs Admin Portal 3.2.57 — Calendar Viewport and Compact Header',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 

@@ -101,14 +101,28 @@ export default function Calendar() {
     notes: '', recurring: 'none', status: 'scheduled', ...(isRomyLabsAdmin ? { product_id: 'romylabs' } : {})
   })
 
-  // Escape .page-content padding
+  // Keep the legacy CRM layout isolated, but never trap the Admin Portal's
+  // unified calendar inside overflow:hidden. Its month grid must scroll.
   useEffect(() => {
-    const el = document.querySelector('.page-content')
+    const el = document.querySelector('.admin-calendar-scroll-viewport') ||
+      document.querySelector('.page-content')
     if (!el) return
     const op = el.style.padding, oo = el.style.overflow, oh = el.style.height
-    el.style.padding = '0'; el.style.overflow = 'hidden'; el.style.height = '100%'
-    return () => { el.style.padding = op; el.style.overflow = oo; el.style.height = oh }
-  }, [])
+    const ox = el.style.overflowX, oy = el.style.overflowY
+    el.style.padding = '0'
+    if (isRomyLabsAdmin) {
+      el.style.overflow = 'hidden auto'
+      el.style.overflowX = 'hidden'
+      el.style.overflowY = 'auto'
+    } else {
+      el.style.overflow = 'hidden'
+    }
+    el.style.height = '100%'
+    return () => {
+      el.style.padding = op; el.style.overflow = oo; el.style.height = oh
+      el.style.overflowX = ox; el.style.overflowY = oy
+    }
+  }, [isRomyLabsAdmin])
 
   useEffect(() => { load() }, [])
 
