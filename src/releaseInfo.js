@@ -3,6 +3,7 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp saved Florida LLC Article intakes can be reopened and edited with tenant validation before state submission',
   'FormaCorp starts Florida LLC formation with a native six-stage Articles of Organization intake and signed filing review inside the CRM',
   'Florida LLC intake captures individual authorized persons and addresses, correspondence contact, optional provisions and fees in the case and PDF packet',
   'Actual state submission and government payment remain through official Sunbiz until a verified authorized filing channel is connected',
