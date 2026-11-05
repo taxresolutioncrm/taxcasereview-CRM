@@ -49,6 +49,10 @@ assert(/<FloridaSunbizIntake/.test(content) && /onSave={createFromWizard}/.test(
 assert(/source = wForm/.test(content) && /fl_llc_managers:Array.isArray\(source.fl_llc_managers\)/.test(content), 'Manager list must persist in formation record')
 assert(/fl_correspondence_name:source/.test(content) && /fl_optional_provisions:source/.test(content), 'Correspondence and provisions must persist')
 assert(/Florida LLC — Articles of Organization/.test(nativeLlcIntake), 'Native Florida Articles intake must exist')
+assert(/FloridaAddressEditor/.test(nativeLlcIntake) && /addressComplete/.test(nativeLlcIntake), 'Native filing must collect and validate structured address components')
+assert(/initialRecord/.test(nativeLlcIntake) && /Update Florida LLC Filing Case/.test(nativeLlcIntake), 'Native filing details must be editable after saving')
+assert(/saveNativeFloridaIntake/.test(content) && /eq\('tenant_id',tenantId\)/.test(content), 'Florida edit must verify active office and case tenant')
+
 assert(/Principal Place of Business/.test(nativeLlcIntake) && /Registered Agent — name, address and acceptance/.test(nativeLlcIntake), 'Sunbiz address and registered-agent fields missing')
 assert(/Authorized Persons/.test(nativeLlcIntake) && /fl_llc_managers/.test(nativeLlcIntake), 'Structured authorized-person intake missing')
 assert(/Review Filing Information/.test(nativeLlcIntake) && /Save Florida LLC Filing Case/.test(nativeLlcIntake), 'Native review and explicit save missing')
