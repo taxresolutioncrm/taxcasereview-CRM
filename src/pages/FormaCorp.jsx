@@ -8,6 +8,7 @@ import { buildFlArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
 import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
 import FloridaSunbizIntake from '../components/formacorp/FloridaSunbizIntake'
+import SunbizFilingWorkspace from '../components/formacorp/SunbizFilingWorkspace'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -344,6 +345,7 @@ export default function FormaCorp() {
   const [wizard, setWizard] = useState(false)
   const [floridaIntake, setFloridaIntake] = useState(false)
   const [floridaEditCase, setFloridaEditCase] = useState(null)
+  const [officialSunbizCase, setOfficialSunbizCase] = useState(null)
   const [wStep, setWStep] = useState(1)
   const [wForm, setWForm] = useState(WIZ_BLANK)
   const [wSugg, setWSugg] = useState([])
@@ -801,6 +803,59 @@ export default function FormaCorp() {
     }, '✅ Recorded as submitted to Florida', 'State submission recorded')
   }
 
+  async function saveOfficialSunbizReceipt(c, receipt) {
+    if (!c?.id) throw new Error('Select a saved formation case first')
+    const tracking=String(receipt?.tracking||'').trim()
+    const payment=String(receipt?.payment||'').trim()
+    if (!tracking || !payment) {
+      showToast('Florida tracking and state payment receipts are both required.', 'err')
+      return
+    }
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if(tenantError||!tenantId||String(tenantId)!==String(c.tenant_id)) {
+      showToast('Cannot verify the currently authorized office.', 'err')
+      return
+    }
+    const {data:latest,error:readError}=await supabase.from('formacorp')
+      .select('id,fl_filing_status,fl_submission_method,fl_submitted_at')
+      .eq('id',c.id).eq('tenant_id',tenantId).single()
+    if(readError||!latest||latest.fl_submitted_at||['Submitted to Florida','Under State Review','Approved / Active'].includes(latest.fl_filing_status)){
+      showToast('Cannot overwrite an already recorded Florida filing.', 'err')
+      return
+    }
+    const confirmationUrl=String(receipt?.reference||'').trim()
+    if(confirmationUrl){
+      try {
+        const url=new URL(confirmationUrl)
+        if(url.protocol!=='https:'||!(['sunbiz.org','efile.sunbiz.org','dos.fl.gov'].includes(url.hostname)||url.hostname.endsWith('.sunbiz.org'))){
+          throw new Error('Invalid state confirmation URL')
+        }
+      } catch { showToast('Use an official Florida state HTTPS confirmation URL.', 'err');return }
+    }
+    const patch={
+      fl_filing_status:'Submitted to Florida',
+      fl_submission_method:'sunbiz_online',
+      fl_tracking_number:tracking,
+      fl_payment_reference:payment,
+      fl_confirmation_url:confirmationUrl,
+      fl_submitted_at:new Date().toISOString(),
+      fl_payment_status:'state_paid',
+      stage:'State Filing',
+    }
+    const {data:updated,error:updateError}=await supabase.from('formacorp')
+      .update(patch).eq('id',c.id).eq('tenant_id',tenantId)
+      .is('fl_submitted_at',null).select('id').single()
+    if(updateError||!updated) {
+      showToast('Could not record the Florida submission: '+(updateError?.message||'no eligible case'), 'err')
+      return
+    }
+    await recordFloridaEvent(c,'Submitted to Florida','User recorded official state tracking and state payment references; state approval not yet confirmed',{fl_submission_method:'sunbiz_online',fl_tracking_number:tracking,fl_payment_reference:payment})
+    setDetail(d=>d?.id===c.id?({...d,...patch}):d)
+    setOfficialSunbizCase(null)
+    await load()
+    showToast('Florida state receipt details recorded. Await official acceptance.')
+  }
+
   async function markFloridaReview(c) {
     await updateFloridaCase(c, { fl_filing_status:'Under State Review' }, 'Florida filing marked under state review', 'State processing/review started')
   }
@@ -1096,6 +1151,7 @@ export default function FormaCorp() {
 
             <details open style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--br)'}}>
               <summary style={{cursor:'pointer',fontSize:11,fontWeight:700}}>Florida submission inside FormaCorp</summary>
+              <button className="btn pri sm" style={{marginTop:10,marginBottom:8}} onClick={()=>setOfficialSunbizCase(c)}>🏛️ Open Official Sunbiz Filing Workspace</button>
               <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Prepare and save all details inside FormaCorp. The final standard state filing and government payment take place on official Sunbiz; record the official state receipt after payment. A fax-provider delivery reference is not proof that Florida accepted or paid for a filing.</div>
               <div style={{fontSize:11,fontWeight:700,margin:'10px 0 6px'}}>Prepaid Sunbiz E-File / Fax submission</div>
               <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>For a frequent-filer Sunbiz account: generate the official Electronic Filing Cover Sheet in Sunbiz, attach it with the signed Articles, enter the fax number printed on that cover sheet, and FormaCorp will combine the PDFs and send the filing through the CRM fax service. Unsigned Articles are blocked. The prepaid Sunbiz account must already have enough funds for the state to process the filing.</div>
@@ -1170,7 +1226,8 @@ export default function FormaCorp() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button className="btn pri" onClick={()=>setFloridaIntake(true)}>＋ Start Florida LLC Filing</button>
+          <button className="btn pri" onClick={()=>setOfficialSunbizCase({entity_type:'LLC'})}>🏛️ Start Official Sunbiz Filing</button>
+          <button className="btn" onClick={()=>setFloridaIntake(true)}>Prepare Florida LLC in CRM</button>
           <button className="btn" onClick={openWizard}>Other Formations</button>
           <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>＋ New Formation Case</button>
         </div>
@@ -1211,6 +1268,7 @@ export default function FormaCorp() {
       {editCaseModal}
 
       {floridaIntake && <FloridaSunbizIntake saving={saving} onClose={()=>setFloridaIntake(false)} onSave={createFromWizard}/>}
+      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)}/>}
 
       {wizard && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>

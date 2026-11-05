@@ -15,10 +15,20 @@ const files = [
   'src/pages/Manual.jsx',
 ]
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
+const officialWorkspace = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.jsx','utf8')
 const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
 assert(!/bizee/i.test(content), 'FormaCorp native workflow must not depend on Bizee')
+assert(/<SunbizFilingWorkspace/.test(content), 'Saved formation case must open official filing workspace')
+assert(/saveOfficialSunbizReceipt/.test(content), 'Official receipt confirmation must update the saved case')
+assert(/eq\('tenant_id',tenantId\)/.test(content), 'Official receipt must remain tenant scoped')
+assert(/<iframe/.test(officialWorkspace) && /efile\.sunbiz\.org/.test(officialWorkspace), 'Official government frame attempt must use Sunbiz origin directly')
+assert(/Florida may prevent its website/.test(officialWorkspace), 'Government frame protection warning must be explicit')
+assert(/cannot read, prefill or complete fields/.test(officialWorkspace), 'Do not claim cross-origin government field access')
+assert(/Official confirmation URL/.test(officialWorkspace) || /Official confirmation URL \(optional\)/.test(officialWorkspace), 'Confirmation receipt must remain visible')
+assert(/does not automatically/.test(officialWorkspace) || /never submits a filing/.test(officialWorkspace), 'Do not imply submission from CRM receipt entry')
+
 assert(!/target="_blank"|window\.open\(/.test(content), 'FormaCorp must not open any workflow in another browser tab/window')
 assert(!/orders\.bizee\.com|bizee\.com/i.test(content), 'External Bizee URL detected')
 assert(!/popup=yes|formacorp_bizee_pro|Open Bizee Secure Window/i.test(content), 'External Bizee popup workflow detected')
@@ -46,7 +56,8 @@ assert((nativeLlcIntake.match(/export default function FloridaSunbizIntake/g) ||
 assert(/const money = value =>/.test(nativeLlcIntake), 'Native filing fee formatter missing')
 const floridaPdf=fs.readFileSync('src/lib/flArticlesPdf.js','utf8')
 const nativeMigration=fs.readFileSync('supabase/migrations/20261105160000_formacorp_native_florida_llc_intake.sql','utf8')
-assert(/Start Florida LLC Filing/.test(content), 'New Florida LLC intake must be first-class entry point')
+assert(/Start Official Sunbiz Filing/.test(content), 'Official filing entry must be visible')
+assert(/Prepare Florida LLC in CRM/.test(content), 'Native preparation entry must remain visible')
 assert(/wForm.entity_type==='LLC'/.test(content) && /setFloridaIntake\(true\)/.test(content), 'Legacy Florida LLC selections must redirect to the native filing form')
 assert(/<FloridaSunbizIntake/.test(content) && /onSave={createFromWizard}/.test(content), 'Florida LLC intake must persist through case creation')
 assert(/source = wForm/.test(content) && /fl_llc_managers:Array.isArray\(source.fl_llc_managers\)/.test(content), 'Manager list must persist in formation record')
