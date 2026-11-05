@@ -3,6 +3,10 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp corrects official Florida LLC, profit and nonprofit Sunbiz filing links, with no undocumented direct filing claim',
+  'FormaCorp includes AMBR title, registered agent address reuse and complete prefiling review',
+  'FormaCorp fax-provider acceptance remains pending state receipt and never falsely marks government fees paid',
+  'FormaCorp fax packet storage verifies active tenant and cleans failed uploads',
   'Invited conference guests answer in an isolated waiting room; only an explicit Merge Calls action connects them to the original conversation',
   'On-demand three-way calling verifies invitation signatures and caller ownership, supports cancelling unmerged guests and disconnecting merged guests',
   'RomyLabs direct outbound calls can be upgraded to an on-demand three-way call only when Add Caller is clicked; the original call is provider-verified before any transition',
@@ -84,7 +88,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
-  'Unified Calendar restores classic day action shortcuts (new appointment, day view, week view), collapsible upcoming agenda and selected-date controls, while keeping the existing CRM booking and event handlers',
+  'Unified Calendar restores classic day actions (New Event, View Day, View Week) and collapsible upcoming appointments, reusing the existing booking and event handlers',
   'Unified Calendar product filter now lists every active product in the Admin Portal registry, including products with zero appointments and separately hosted Nashville, and clicking any date opens its day view with a visible Add Appointment action',
   'RomyLabs Admin Unified Calendar defaults to the new searchable month/week/day layout, retains the classic event editor and booking workflows, supports CRM branding and filtering, selected-day agenda, upcoming appointments, deadlines and mobile scrolling, with one-click classic fallback',
   'Three-way calling protects unattended guests with a bounded consult waiting room and verified cleanup when a call ends or a bridge fails',
@@ -144,18 +148,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.54',
+  version: '3.2.55',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.54 — Calendar Classic Controls Parity',
+  title: 'RomyLabs Admin Portal 3.2.55 — Calendar Classic Controls and FormaCorp Verification',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.51',
+    version: '3.2.54',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.48 — Manual Payment Office Discovery',
+    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -177,17 +181,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.51',
+    version: '3.2.54',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.48 — Direct Outbound Calling',
+    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.51',
+    version: '3.2.54',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.48 — Direct Outbound Calling',
+    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
