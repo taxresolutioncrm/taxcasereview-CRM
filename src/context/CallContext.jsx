@@ -119,6 +119,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
   const [conferenceMode, setConferenceMode] = useState(false)
   const [conferenceParticipants, setConferenceParticipants] = useState([])
   const conferenceMigrationRef = useRef(false)
+  const conferenceModeRef = useRef(false)
   const conferenceOldCallRef = useRef(null)
   const conferenceBusyRef = useRef(false)
 
@@ -235,6 +236,10 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
             return {error:data?.error||error?.message||'Provider would not upgrade the call'}
           }
           conf=data.conference_name
+          if(!uiStartedRef.current){
+            await supabase.functions.invoke('end-conference',{body:{conferenceName:conf,phoneContext}})
+            return {error:'Call was ended before conference connection'}
+          }
           activeConferenceRef.current=conf
           directOutboundRef.current=false
           directOutboundCallRef.current=null
@@ -242,6 +247,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           activeCallRef.current=null
           setDirectOutbound(false)
           setDirectConnected(false)
+          conferenceModeRef.current=true
           setConferenceMode(true)
           persistCallSession({kind:'outbound',conferenceName:conf,
             outboundCallId:outboundId,transferableCallsid:null,active,
@@ -256,7 +262,6 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
           liveCallRef.current=bridge
           activeCallRef.current=bridge
           conferenceMigrationRef.current=false
-          conferenceOldCallRef.current=null
           let ready=false
           for(let i=0;i<8;i++){
             const {data:state}=await supabase.functions.invoke('romylabs-conference',{
@@ -656,11 +661,11 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
         }
         if (call.state === 'held' && directOutboundRef.current) setOnHold(true)
         if (call.state === 'hangup' || call.state === 'destroy') {
-          activeCallRef.current = null
+          if (activeCallRef.current===call) activeCallRef.current = null
           setIncomingCall(null)
           setIncomingMatch(null)
           stopRing()
-          if (conferenceMigrationRef.current && conferenceOldCallRef.current &&
+          if ((conferenceMigrationRef.current || conferenceModeRef.current) && conferenceOldCallRef.current &&
               (conferenceOldCallRef.current === call || (call?.id && conferenceOldCallRef.current.id===call.id))) {
             // Provider intentionally moved this leg only after Add Caller.
             // Never end the original call or show a call recap here.
@@ -1195,6 +1200,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       const directAttempt = ++directOutboundAttemptRef.current
       directOutboundCallRef.current = null
       directRecordRequestedRef.current=false
+      conferenceModeRef.current=false
       setConferenceMode(false)
       setConferenceParticipants([])
       setDirectOutbound(true)
@@ -1361,6 +1367,7 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
     }
 
     conferenceMigrationRef.current=false
+    conferenceModeRef.current=false
     conferenceOldCallRef.current=null
     conferenceBusyRef.current=false
     setConferenceBusy(false)
