@@ -3,6 +3,10 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp opens a native six-step Florida LLC Articles of Organization intake instead of the generic formation wizard',
+  'Florida LLC intake captures street, suite, city, ZIP, registered-agent acceptance, authorized persons, signatures and filing options',
+  'Draft Florida LLC filing cases can be reopened and edited safely before submission; Articles PDF reflects captured filing details',
+  'Saving an intake does not submit an online filing to Sunbiz or pay the Florida filing fee',
   'FormaCorp corrects official Florida LLC, profit and nonprofit Sunbiz filing links, with no undocumented direct filing claim',
   'FormaCorp includes AMBR title, registered agent address reuse and complete prefiling review',
   'FormaCorp fax-provider acceptance remains pending state receipt and never falsely marks government fees paid',
@@ -154,18 +158,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.59',
+  version: '3.2.60',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.59 — SettleLift Product Ordering',
+  title: 'RomyLabs Admin Portal 3.2.60 — FormaCorp Native LLC Intake',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.54',
+    version: '3.2.60',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
+    title: 'CRM 3.2.60 — FormaCorp Native Florida LLC Intake',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -187,17 +191,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.54',
+    version: '3.2.60',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
+    title: 'CRM 3.2.60 — FormaCorp Native Florida LLC Intake',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.54',
+    version: '3.2.60',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
+    title: 'CRM 3.2.60 — FormaCorp Native Florida LLC Intake',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
