@@ -30,3 +30,4 @@ taxres-live-kpi-rootfix=20260919-v1
 taxres-live-kpi-seat-source=20260919-v1
 production-release-verification=20260919-v1
 admin-calendar-preview=ADMIN_CALENDAR_PREVIEW_20261105_VERIFIED
+admin-calendar-command-center=ADMIN_CALENDAR_COMMAND_CENTER_20261105_V3256

@@ -9,6 +9,7 @@ on:
     paths:
       - deploy/romylabs-admin-direct-call-20261104.approved
       - deploy/romylabs-admin-calendar-preview-20261105.approved
+      - deploy/romylabs-admin-calendar-command-center-20261105.approved
 
 permissions:
   contents: read
@@ -44,7 +45,7 @@ jobs:
       - name: Verify production build marker
         shell: bash
         run: |
-          marker='ADMIN_CALENDAR_PREVIEW_20261105_VERIFIED'
+          marker='ADMIN_CALENDAR_COMMAND_CENTER_20261105_V3256'
           for i in 1 2 3 4 5 6; do
             live=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "https://admin.romylabs.com/admin-portal-build.txt?v=$(date +%s)" || true)
             if printf '%s' "$live" | grep -q "$marker"; then
