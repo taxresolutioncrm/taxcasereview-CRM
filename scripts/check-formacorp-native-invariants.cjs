@@ -55,7 +55,7 @@ assert(/Review Filing Information/.test(nativeLlcIntake) && /Save Florida LLC Fi
 assert(/does NOT submit to Florida/.test(nativeLlcIntake), 'State filing disclaimer must remain explicit')
 assert(/fl_optional_provisions/.test(floridaPdf) && /fl_llc_managers/.test(floridaPdf), 'Articles PDF must render structured intake')
 assert(/fl_llc_managers jsonb/.test(nativeMigration) && /fl_correspondence_name text/.test(nativeMigration), 'Migration must provision intake fields')
-assert(/Start Business Formation/.test(content), 'Native formation entry point is missing')
+assert(/Other Formations/.test(content), 'Non-Florida formation wizard entry point is missing')
 assert(/FormaCorp filing preparation and state receipt tracking/.test(content), 'Filing preparation and state receipt tracking card is missing')
 assert(/Florida submission inside FormaCorp/.test(content), 'In-CRM Florida submission controls are missing')
 assert(/submitFloridaFax/.test(content), 'Existing in-CRM Florida fax submission path is missing')
