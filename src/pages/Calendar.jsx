@@ -28,10 +28,6 @@ const COLOR_MAP = {
 
 const DAYS  = ['SUN','MON','TUE','WED','THU','FRI','SAT']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-const ADMIN_CALENDAR_PRODUCTS = Object.values(PRODUCT_BOOKING_CONFIGS)
-  .filter(product => !product.inactive)
-  .sort((a,b) => a.name.localeCompare(b.name))
-
 function productIdentity(ev) {
   const byId = ev?.product_id ? PRODUCT_BOOKING_CONFIGS[ev.product_id] : null
   if (byId) return { label: byId.name, logo: byId.logo }
@@ -309,7 +305,7 @@ export default function Calendar() {
 
   async function saveEvent() {
     if (!form.title || !form.date) { showToast('Title and date required'); return }
-    if (isRomyLabsAdmin && !PRODUCT_BOOKING_CONFIGS[form.product_id]) { showToast('Select a valid CRM / product'); return }
+    if (isRomyLabsAdmin && !calendarProducts.some(product => product.key === form.product_id)) { showToast('Select a valid CRM / product'); return }
     setSaving(true)
     let payload = { ...form, assignedTo: isRomyLabsAdmin ? adminCalendarOwner : form.assignedTo, ...(isRomyLabsAdmin ? { product_id: form.product_id || 'romylabs' } : {}), updated_at: new Date().toISOString() }
     let error
@@ -480,7 +476,7 @@ export default function Calendar() {
       onOpenEvent={event => { setSelectedEvent(event) }}
       onCreate={(date, selectedProduct) => {
         setSelectedEvent(null)
-        const validProduct = selectedProduct && PRODUCT_BOOKING_CONFIGS[selectedProduct] && !PRODUCT_BOOKING_CONFIGS[selectedProduct].inactive
+        const validProduct = selectedProduct && calendarProducts.some(product => product.key === selectedProduct)
           ? selectedProduct : 'romylabs'
         setForm(current => ({ ...current, date, id: undefined, assignedTo: adminCalendarOwner, product_id: validProduct }))
         setShowForm(true)
@@ -859,7 +855,7 @@ export default function Calendar() {
               {isRomyLabsAdmin && (
                 <div><label style={lbl} htmlFor="admin-calendar-product">CRM / Product *</label>
                   <select id="admin-calendar-product" style={inp} value={form.product_id || 'romylabs'} onChange={e => fld('product_id', e.target.value)}>
-                    {ADMIN_CALENDAR_PRODUCTS.map(product => <option key={product.key} value={product.key}>{product.name}</option>)}
+                    {calendarProducts.map(product => <option key={product.key} value={product.key}>{product.name}</option>)}
                   </select>
                   <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 5 }}>This determines which CRM name and logo appear on the calendar.</div>
                 </div>
