@@ -19,6 +19,85 @@ function easternClock(now = new Date()) {
   return { day: `${values.year}-${values.month}-${values.day}`, hour: Number(values.hour) }
 }
 
+const safe = (value: unknown) => String(value ?? '').replace(/[\\r\\n]+/g,' ').trim()
+
+// Shared, provider-confirmed mail path already used by RomyLabs booking alerts.
+// JMAP submission must return a real submission id; no Gmail or optimistic fallback.
+async function sendViaStalwartJmap(opts: { host:string, username:string, password:string, fromAddress?:string, replyTo?:string, fromName:string, to:string, subject:string, html?:string, text?:string }) {
+  const base = `https://${opts.host.replace(/^https?:\/\//,'').replace(/\/$/,'')}`
+  const auth = 'Basic ' + btoa(`${opts.username}:${opts.password}`)
+  const sessionRes = await fetch(`${base}/.well-known/jmap`, { headers:{ Authorization:auth, Accept:'application/json' } })
+  if (!sessionRes.ok) throw new Error(`Stalwart JMAP session failed (${sessionRes.status})`)
+  const session = await sessionRes.json()
+  const apiUrl = String(session?.apiUrl || '').replace('{accountId}','')
+  const accountId = session?.primaryAccounts?.['urn:ietf:params:jmap:mail'] || Object.keys(session?.accounts || {})[0]
+  if (!apiUrl || !accountId) throw new Error('Stalwart JMAP session missing mail account')
+
+  const metaRes = await fetch(apiUrl, {
+    method:'POST',
+    headers:{ Authorization:auth, 'Content-Type':'application/json', Accept:'application/json' },
+    body:JSON.stringify({
+      using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+      methodCalls:[
+        ['Identity/get',{accountId},'i0'],
+        ['Mailbox/get',{accountId,properties:['id','name','role']},'m0'],
+      ],
+    }),
+  })
+  if (!metaRes.ok) throw new Error(`Stalwart JMAP metadata failed (${metaRes.status})`)
+  const meta = await metaRes.json()
+  const identityList = meta?.methodResponses?.find((x:any)=>x?.[0]==='Identity/get')?.[1]?.list || []
+  const mailboxes = meta?.methodResponses?.find((x:any)=>x?.[0]==='Mailbox/get')?.[1]?.list || []
+  const fromAddress = safe(opts.fromAddress || opts.username).toLowerCase()
+  const identity = identityList.find((x:any)=>String(x?.email||'').toLowerCase()===fromAddress)
+  const drafts = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='drafts')
+  const sentBox = mailboxes.find((x:any)=>String(x?.role||'').toLowerCase()==='sent')
+  if (!identity?.id) throw new Error(`Stalwart does not authorize sender identity ${fromAddress}`)
+  if (!drafts?.id || !sentBox?.id) throw new Error('Stalwart Drafts or Sent mailbox unavailable')
+
+  const bodyPartId='body'
+  const createEmail:any = {
+    from:[{email:fromAddress,name:opts.fromName||undefined}],
+    to:[{email:opts.to}],
+    ...(opts.replyTo ? {replyTo:[{email:opts.replyTo}]} : {}),
+    subject:opts.subject,
+    mailboxIds:{[drafts.id]:true},
+    keywords:{'$draft':true},
+    bodyValues:{[bodyPartId]:{value:opts.html || opts.text || '',charset:'utf-8'}},
+  }
+  if (opts.html) createEmail.htmlBody=[{partId:bodyPartId,type:'text/html'}]
+  else createEmail.textBody=[{partId:bodyPartId,type:'text/plain'}]
+
+  const sendRes = await fetch(apiUrl, {
+    method:'POST',
+    headers:{ Authorization:auth, 'Content-Type':'application/json', Accept:'application/json' },
+    body:JSON.stringify({
+      using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
+      methodCalls:[
+        ['Email/set',{accountId,create:{draft:createEmail}},'e0'],
+        ['EmailSubmission/set',{
+          accountId,
+          create:{sendIt:{emailId:'#draft',identityId:identity.id}},
+          onSuccessUpdateEmail:{
+            '#sendIt':{
+              [`mailboxIds/${drafts.id}`]:null,
+              [`mailboxIds/${sentBox.id}`]:true,
+              'keywords/$draft':null,
+            },
+          },
+        },'s0'],
+      ],
+    }),
+  })
+  if (!sendRes.ok) throw new Error(`Stalwart JMAP send failed (${sendRes.status})`)
+  const sent = await sendRes.json()
+  const submission = sent?.methodResponses?.find((x:any)=>x?.[0]==='EmailSubmission/set')?.[1]
+  const notCreated = submission?.notCreated?.sendIt
+  if (notCreated) throw new Error(`Stalwart JMAP rejected send: ${notCreated.description || notCreated.type || 'unknown error'}`)
+  if (!submission?.created?.sendIt?.id) throw new Error('Stalwart JMAP did not confirm message submission')
+  return { submissionId:String(submission.created.sendIt.id), accountId:String(accountId) }
+}
+
 serve(async req => {
   if (req.method !== 'POST') return response({ error: 'Method not allowed' }, 405)
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
@@ -112,16 +191,36 @@ serve(async req => {
       ${rows || '<tr><td style="padding:12px;color:#cbd5e1">No upcoming TaxRes calendar events</td></tr>'}
       </table><p style="color:#cbd5e1;font-size:12px">RomyLabs · Automated executive report</p></div></body></html>`
 
-    const { data: sendResult, error: sendError } = await service.functions.invoke('send-email', {
-      body: { to: destination, subject: `RomyLabs Executive Brief — ${readableDate}`, html, tenant_id: tenantId },
+    const { data: romylabsTransport } = await service.rpc('romylabs_stalwart_transport_for_product', {
+      p_product_key: 'romylabs',
     })
-    if (sendError || sendResult?.success !== true) {
-      return await fail('Email provider did not confirm submission: ' +
-        String(sendError?.message || sendResult?.error || 'missing success response'))
+    let transport = romylabsTransport
+    if (!transport?.ok || !transport.username || !transport.password) {
+      // Existing TaxRes Stalwart identity is the controlled secondary route;
+      // never choose a random settings row or silently use Gmail.
+      const {data: taxresTransport} = await service.rpc('romylabs_stalwart_transport_for_product', {
+        p_product_key: 'taxres_crm',
+      })
+      transport = taxresTransport
     }
+    if (!transport?.ok || !transport.username || !transport.password) {
+      return await fail('No authenticated RomyLabs or TaxRes Stalwart delivery route is configured')
+    }
+    const submission = await sendViaStalwartJmap({
+      host: safe(transport.host || 'mail.taxrescrm.net'),
+      username: safe(transport.username),
+      password: String(transport.password),
+      fromAddress: safe(transport.from_address || transport.username).toLowerCase(),
+      fromName: 'RomyLabs Executive Brief',
+      to: destination,
+      subject: `RomyLabs Executive Brief — ${readableDate}`,
+      html,
+      replyTo: 'romy@romylabs.com',
+    })
+    if (!submission?.submissionId) return await fail('Stalwart did not confirm the executive message submission')
     const submittedAt = new Date().toISOString()
     const { error: statusError } = await service.from('romylabs_daily_briefing_runs')
-      .update({ status: 'submitted', submitted_at: submittedAt, provider: sendResult?.via || 'send-email', error: null })
+      .update({ status: 'submitted', submitted_at: submittedAt, provider: 'Stalwart JMAP / ' + submission.submissionId, error: null })
       .eq('id', run.id)
     if (statusError) return await fail('Provider accepted email but tracking update failed: ' + statusError.message, 500)
     return response({ ok: true, sent: true, submitted: true, submitted_at: submittedAt, recipient: destination })
