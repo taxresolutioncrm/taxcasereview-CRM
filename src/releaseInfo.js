@@ -216,7 +216,7 @@ const OFFICE_RELEASES = {
     version: '3.2.68',
     releasedAt: 'Pending production deployment',
     title: 'CRM 3.2.68 — Three-Office Login and Recovery Repair',
-    changes: [...OFFICE_LOGIN_FIX_CHANGES, ...IRS_WORKFLOW_CHANGES],
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
