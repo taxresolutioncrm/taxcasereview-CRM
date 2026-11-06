@@ -32,6 +32,9 @@ jobs:
         run: node tests/romylabs-conference-flow.test.mjs
       - name: Verify Admin Portal sales, briefing, storage and audit invariants
         run: node scripts/check-admin-operations-repair.mjs
+      - name: Parse executive briefing Deno TypeScript without running live mail
+        run: |
+          node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/daily-briefing/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS executive briefing TypeScript source');"
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker
