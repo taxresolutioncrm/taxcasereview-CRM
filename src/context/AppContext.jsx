@@ -201,18 +201,27 @@ export function AppProvider({ children }) {
   useEffect(() => {
     loadBrandColor()
     loadFirmBranding()   // fills FIRM for email/document templates
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user) {
-        const inviteSetup = new URLSearchParams(window.location.search).get('invite') === '1'
-        if (inviteSetup) {
-          window.location.href = '/settings?reset_password=1'
-          return
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) throw error
+        if (data?.session?.user) {
+          const inviteSetup = new URLSearchParams(window.location.search).get('invite') === '1'
+          if (inviteSetup) {
+            window.location.href = '/settings?reset_password=1'
+            return
+          }
+          setUser(data.session.user)
+          loadRole(data.session.user.email).catch(err => {
+            console.error('[auth] Employee role hydration failed', err)
+          })
         }
-        setUser(data.session.user)
-        loadRole(data.session.user.email)
-      }
-      setChecking(false)
-    })
+      })
+      .catch(err => {
+        // A rejected initial Auth request must not strand all three offices on
+        // an indefinite "Loading…" screen. Leave the Login available to retry.
+        console.error('[auth] Initial session check failed', err)
+      })
+      .finally(() => setChecking(false))
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (_event === 'PASSWORD_RECOVERY' && session?.user) {
