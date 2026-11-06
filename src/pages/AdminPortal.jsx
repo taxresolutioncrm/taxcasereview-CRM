@@ -5722,21 +5722,28 @@ function CommandCenter() {
     Promise.all([
       supabase.rpc('admin_taxres_crm_scope_metrics', { p_tenant_id: tenantId }),
       supabase.rpc('admin_taxres_live_kpis', { p_tenant_id: tenantId }),
+      supabase.rpc('admin_taxres_storage_metrics', { p_tenant_id: tenantId }),
     ])
-      .then(([scopeRes, liveRes]) => {
+      .then(([scopeRes, liveRes, storageRes]) => {
         if (cancelled) return
-        if (scopeRes.error || liveRes.error || !liveRes.data?.metrics) {
+        if (scopeRes.error || liveRes.error || storageRes.error || !liveRes.data?.metrics || !storageRes.data) {
           setTaxresScopeData(null)
           setTaxresScopeError(
             liveRes.error?.message ||
             scopeRes.error?.message ||
+            storageRes.error?.message ||
             'Authoritative TaxRes metrics unavailable'
           )
           return
         }
         setTaxresScopeData({
           ...(scopeRes.data || {}),
-          metrics: liveRes.data.metrics,
+          metrics: {
+            ...liveRes.data.metrics,
+            storage_bytes: Number(storageRes.data.bytes || 0),
+            storage_files: Number(storageRes.data.files || 0),
+          },
+          storage_coverage: storageRes.data.coverage,
           metrics_source: liveRes.data.source || 'live_taxres_family',
         })
       })
@@ -6553,7 +6560,9 @@ function CommandCenter() {
             // CRM account drilldown — TaxRes local tenants + product platform-metrics offices.
             const selectedProduct = PRODUCT_REGISTRY.find(p => p.key === crmProduct && !p.isTenant)
               || { key: crmProduct, label: reportingProducts.find(p=>p.product_id===crmProduct)?.name || crmProduct }
-            const localTaxRes = (data.tenants || []).filter(t => String(t.tenant_code || '').toUpperCase() !== 'DEMO')
+            const localTaxRes = (data.tenants || []).filter(t =>
+              !['DEMO','TRC-003'].includes(String(t.tenant_code || '').toUpperCase())
+            )
             const remoteOffices = (crmRemoteData?.offices || []).map(o=>({
               id:o.id, firm_name:o.name, status:o.is_active===false?'inactive':'active', tenant_code:o.subscription_status || '',
               client_count:o.active_clients ?? o.customer_count, lead_count:o.active_leads ?? o.lead_count, employee_count:o.active_staff ?? o.staff_count,
@@ -6588,7 +6597,7 @@ function CommandCenter() {
               ? '—'
               : taxresMetrics.storage_files > 0
                 ? `${fmtBytes(taxresMetrics.storage_bytes)} · ${Number(taxresMetrics.storage_files).toLocaleString()} files`
-                : fmtBytes(taxresMetrics.storage_bytes)
+                : `${fmtBytes(taxresMetrics.storage_bytes)} · 0 files`
             return (<>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18,
             background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.15)',
@@ -6639,13 +6648,17 @@ function CommandCenter() {
               { label:'Total Seats — TaxRes Offices', value:String(selectedTaxresSeats), icon:'👥', color:'#6366f1' },
               { label:'Pending E-Signs', value:String(taxresMetrics.pending_esigns ?? '—'), icon:'✍️', color:'#8b5cf6' },
               { label:'Demos Today', value:String(taxresMetrics.demos_today ?? '—'), icon:'📅', color:'#0ea5e9' },
-              { label:'File Storage', value:hasLiveTaxresMetrics ? taxresStorageLabel : '—', icon:'💾', color:'#f59e0b' },
+              { label:'Central TaxRes Storage', value:hasLiveTaxresMetrics ? taxresStorageLabel : '—', icon:'💾', color:'#f59e0b' },
             ]).map(k => <KPICard key={k.label} {...k} />)}
             {crmRemoteLoading && <div style={{gridColumn:'1/-1',fontSize:12,color:'#64748b'}}>Loading {selectedProduct.label} offices…</div>}
             {crmRemoteError && <div style={{gridColumn:'1/-1',fontSize:12,color:'#fca5a5'}}>CRM metrics: {crmRemoteError}</div>}
             {crmProduct==='taxres_crm' && taxresScopeLoading && <div style={{gridColumn:'1/-1',fontSize:12,color:'#64748b'}}>Refreshing TaxRes scope…</div>}
             {crmProduct==='taxres_crm' && taxresScopeError && <div style={{gridColumn:'1/-1',fontSize:12,color:'#fca5a5'}}>TaxRes metrics: {taxresScopeError}</div>}
           </div>
+          {crmProduct==='taxres_crm' && <p style={{fontSize:11,color:'#94a3b8',marginTop:-12,marginBottom:18}}>
+            File storage counts registered objects in the central TaxRes family (Tax Case Review and Centurion).
+            Separate Supabase projects, including Nashville, are not included in this total.
+          </p>}
           </>)
           })()}
 
