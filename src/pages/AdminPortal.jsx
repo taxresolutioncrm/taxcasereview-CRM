@@ -2702,39 +2702,111 @@ function EmployeeLookup() {
   )
 }
 
-// ── Audit Log ────────────────────────────────────────────────────────────────
+// ── Platform Audit Log — recent, redacted and paginated ──────────────────────
 function AuditLog() {
-  const [log,setLog] = useState(null)
+  const [rows,setRows] = useState([])
+  const [total,setTotal] = useState(0)
+  const [filter,setFilter] = useState('operations')
+  const [page,setPage] = useState(0)
+  const [refreshTick,setRefreshTick] = useState(0)
+  const [loading,setLoading] = useState(true)
   const [loadError,setLoadError] = useState('')
+  const pageSize = 50
+
   useEffect(()=>{
-    supabase.rpc('admin_get_audit_log',{p_limit:100}).then(({data,error})=>{if(error){setLoadError(error.message);setLog([])}else{setLoadError('');setLog(data||[])}})
-  },[])
+    let cancelled = false
+    setLoading(true)
+    setLoadError('')
+    supabase.rpc('admin_get_audit_log_v2',{
+      p_filter: filter, p_limit: pageSize, p_offset: page*pageSize,
+    }).then(({data,error})=>{
+      if (cancelled) return
+      if (error || !Array.isArray(data?.items)) {
+        setRows([])
+        setTotal(0)
+        setLoadError(error?.message || 'The platform audit response was incomplete.')
+      } else {
+        setRows(data.items)
+        setTotal(Number(data.total || 0))
+      }
+    }).catch(error=>{
+      if (!cancelled) { setRows([]); setTotal(0); setLoadError(String(error?.message || error)) }
+    }).finally(()=>{ if (!cancelled) setLoading(false) })
+    return ()=>{ cancelled=true }
+  },[filter,page,refreshTick])
+
+  const easternTime = date => {
+    if (!date) return '—'
+    const value = new Date(date)
+    return Number.isNaN(value.getTime()) ? '—' : value.toLocaleString('en-US',{
+      timeZone:'America/New_York',year:'numeric',month:'short',day:'numeric',
+      hour:'numeric',minute:'2-digit',timeZoneName:'short',
+    })
+  }
+
   return (
-    <div style={{ padding:'28px 36px', maxWidth:900 }}>
-      <div style={{ fontSize:22,fontWeight:800,color:'#fff',marginBottom:24 }}>📋 Audit Log</div>
-      {loadError && <div style={{color:'#fca5a5',marginBottom:14}}>Unable to load audit log: {loadError}</div>}
-      {!log ? <Spinner /> : log.length===0 ? (
-        <div style={{ color:'#475569',fontSize:14 }}>No admin actions recorded yet.</div>
+    <div style={{ padding:'28px 36px', maxWidth:1240 }}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12,marginBottom:12 }}>
+        <h1 style={{ fontSize:22,fontWeight:800,color:'#fff',margin:0 }}>📋 Platform Audit Log</h1>
+        <button onClick={()=>setRefreshTick(t=>t+1)} disabled={loading}
+          style={{...S.btn('ghost'),fontSize:12}}>{loading?'Refreshing…':'Refresh events'}</button>
+      </div>
+      <p style={{fontSize:12,color:'#94a3b8',lineHeight:1.65,marginBottom:18}}>
+        Immutable event history from administration, credentials, contracts, billing and booking workflows.
+        Impersonation sessions are preserved separately so they do not bury operational activity.
+        Sensitive tokens and credentials are removed by the server before results reach your browser.
+      </p>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:16}}>
+        {[
+          {key:'operations',label:'Operational events'},
+          {key:'impersonation',label:'Impersonation history'},
+          {key:'all',label:'All events'},
+        ].map(option=><button key={option.key} onClick={()=>{setFilter(option.key);setPage(0)}}
+          aria-pressed={filter===option.key}
+          style={{...S.btn(filter===option.key?'primary':'ghost'),fontSize:11,padding:'7px 12px'}}>
+          {option.label}
+        </button>)}
+        <span style={{fontSize:11,color:'#94a3b8',marginLeft:'auto'}}>
+          {total.toLocaleString()} events · {page*pageSize+1}–{Math.min(total,(page+1)*pageSize)} shown
+        </span>
+      </div>
+      {loadError && <div role="alert" style={{color:'#fca5a5',marginBottom:14}}>
+        Audit history unavailable: {loadError}
+      </div>}
+      {loading ? <Spinner /> : rows.length===0 ? (
+        <div style={{...S.card,padding:24,color:'#94a3b8'}}>
+          No {filter==='impersonation'?'impersonation':'operational'} events match this view.
+          {filter==='operations'?' Older sign-in sessions remain available under Impersonation history.':''}
+        </div>
       ) : (
-        <div style={S.card}>
-          <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-            <thead><tr>{['Action','Admin','Office','Detail','When'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-            <tbody>
-              {log.map(a=>(
-                <tr key={a.id}>
-                  <td style={{ ...S.td,color:'#a5b4fc',fontWeight:600 }}>{a.action}</td>
-                  <td style={{ ...S.td,color:'#94a3b8',fontSize:12 }}>{a.admin_email}</td>
-                  <td style={{ ...S.td,color:'#e2e8f0' }}>{a.target_name||'—'}</td>
-                  <td style={{ ...S.td,color:'#475569',fontSize:11 }}>
-                    {a.detail ? JSON.stringify(a.detail, (key, value) => /token|secret|password|authorization|api.?key|refresh|credential|session/i.test(key) ? '[REDACTED]' : value).slice(0,120) : '—'}
-                  </td>
-                  <td style={{ ...S.td,color:'#475569' }}>{fmtAgo(a.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
+        <div style={{...S.card,overflowX:'auto'}}>
+          <table style={{width:'100%',minWidth:800,borderCollapse:'collapse',fontSize:12}}>
+            <thead><tr>{['When (Eastern)','Category','Action','Actor','Office / Subject','Details'].map(h=>
+              <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <tbody>{rows.map(event=>(
+              <tr key={event.id} style={{borderBottom:'1px solid rgba(99,102,241,.10)'}}>
+                <td style={{...S.td,color:'#cbd5e1',whiteSpace:'nowrap'}}>{easternTime(event.created_at)}</td>
+                <td style={{...S.td,color:'#a5b4fc'}}>{event.category || 'Admin'}</td>
+                <td style={{...S.td,color:'#e2e8f0',fontWeight:700}}>{String(event.action||'').replace(/[_.]/g,' ')}</td>
+                <td style={{...S.td,color:'#cbd5e1',overflowWrap:'anywhere'}}>{event.admin_email||'System'}</td>
+                <td style={{...S.td,color:'#cbd5e1'}}>{event.target_name||'—'}</td>
+                <td style={{...S.td,color:'#94a3b8',fontSize:11,overflowWrap:'anywhere'}}>
+                  {event.detail && Object.keys(event.detail).length
+                    ? Object.entries(event.detail).map(([key,value])=>`${key}: ${String(value)}`).join(' · ')
+                    : '—'}
+                </td>
+              </tr>
+            ))}</tbody>
           </table>
         </div>
       )}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16,gap:10}}>
+        <button disabled={loading||page===0} onClick={()=>setPage(p=>Math.max(0,p-1))}
+          style={{...S.btn('ghost'),fontSize:12}}>Previous</button>
+        <span style={{color:'#94a3b8',fontSize:12}}>Page {page+1} of {Math.max(1,Math.ceil(total/pageSize))}</span>
+        <button disabled={loading||(page+1)*pageSize>=total} onClick={()=>setPage(p=>p+1)}
+          style={{...S.btn('ghost'),fontSize:12}}>Next</button>
+      </div>
     </div>
   )
 }
