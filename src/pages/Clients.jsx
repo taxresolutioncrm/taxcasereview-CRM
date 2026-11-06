@@ -774,6 +774,15 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [faxIntent, setFaxIntent] = useState(null)
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
+  const [customClientFolders,setCustomClientFolders] = useState([])
+  const [resolvedFolderClientId,setResolvedFolderClientId] = useState('')
+  const [addingFolder,setAddingFolder] = useState(false)
+  const [newFolderName,setNewFolderName] = useState('')
+  const [savingFolder,setSavingFolder] = useState(false)
+  const [editingFolderId,setEditingFolderId] = useState('')
+  const [editingFolderName,setEditingFolderName] = useState('')
+  const [busyFolderId,setBusyFolderId] = useState('')
+  const [confirmDeleteFolder,setConfirmDeleteFolder] = useState(null)
   const [uploading,  setUploading]  = useState(false)
   const [form,       setForm]       = useState({ docType:'IRS Docs', notes:'' })
   const [files,      setFiles]      = useState([])
@@ -792,6 +801,14 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const canUpload = can('edit','documents')
 
   useEffect(() => {
+    setFolder('All')
+    setCustomClientFolders([])
+    setResolvedFolderClientId('')
+    setAddingFolder(false)
+    setNewFolderName('')
+    setEditingFolderId('')
+    setEditingFolderName('')
+    setConfirmDeleteFolder(null)
     loadDocs()
     return () => { docLoadRequestRef.current += 1 }
   }, [clientId, clientName, tenantId])
@@ -909,30 +926,115 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   }
 
 
+  const validFolderName = input => {
+    const raw=String(input || '')
+    // Reject actual ASCII control characters before trimming so leading
+    // tabs/newlines cannot silently change into an accepted folder name.
+    if (/[\x00-\x1f\x7f]/.test(raw)) return ''
+    const name=raw.trim()
+    return name && name.length<=80 ? name : ''
+  }
+  const existingFolderNames = exceptId => [
+    ...DOC_FOLDERS,...customClientFolders.filter(item=>item.id!==exceptId).map(item=>item.name),'All'
+  ].map(name=>name.toLowerCase())
+  const folderError = err => {
+    const message=err?.message || String(err)
+    return /duplicate|already exists|unique/i.test(message) ? 'Folder already exists' : message
+  }
+  async function createClientFolder() {
+    if (savingFolder || !canUpload) return
+    const name=validFolderName(newFolderName)
+    if (!name) { showToast('Enter a valid folder name (1–80 characters)'); return }
+    if (!resolvedFolderClientId) { showToast('Client record is still loading or could not be verified'); return }
+    if (existingFolderNames().includes(name.toLowerCase())) { showToast('Folder already exists'); return }
+    setSavingFolder(true)
+    try {
+      const {data,error}=await supabase.rpc('create_client_document_folder',
+        {p_client_id:resolvedFolderClientId,p_name:name})
+      if (error) throw error
+      if (!data?.[0]?.id) throw new Error('Folder creation was not confirmed')
+      setAddingFolder(false)
+      setNewFolderName('')
+      await loadDocs()
+      showToast('Folder created')
+    } catch (error) { showToast('Could not create folder: '+folderError(error)) }
+    finally { setSavingFolder(false) }
+  }
+  async function renameClientFolder(item) {
+    if (busyFolderId || !canUpload) return
+    const name=validFolderName(editingFolderName)
+    if (!name) { showToast('Enter a valid folder name (1–80 characters)'); return }
+    if (name===item.name) { setEditingFolderId(''); return }
+    if (existingFolderNames(item.id).includes(name.toLowerCase())) { showToast('Folder already exists'); return }
+    setBusyFolderId(item.id)
+    try {
+      const {error}=await supabase.rpc('rename_client_document_folder',{p_folder_id:item.id,p_new_name:name})
+      if (error) throw error
+      setFolder(prev=>prev===item.name?name:prev)
+      setForm(prev=>({...prev,docType:prev.docType===item.name?name:prev.docType}))
+      setEditingFolderId('')
+      await loadDocs()
+      showToast('Folder renamed; documents preserved')
+    } catch (error) { showToast('Could not rename folder: '+folderError(error)) }
+    finally { setBusyFolderId('') }
+  }
+  async function deleteClientFolder(item) {
+    if (busyFolderId || !canUpload) return
+    setBusyFolderId(item.id)
+    try {
+      const {error}=await supabase.rpc('delete_empty_client_document_folder',{p_folder_id:item.id})
+      if (error) throw error
+      setFolder(prev=>prev===item.name?'All':prev)
+      setForm(prev=>({...prev,docType:prev.docType===item.name?'IRS Docs':prev.docType}))
+      setEditingFolderId('')
+      setConfirmDeleteFolder(null)
+      await loadDocs()
+      showToast('Empty folder deleted')
+    } catch (error) { showToast('Could not delete folder: '+folderError(error)) }
+    finally { setBusyFolderId('') }
+  }
+
   async function loadDocs() {
-    const requestId = ++docLoadRequestRef.current
-    if (!tenantId) { setDocs([]); return }
-    let query = supabase.from('documents').select('*').eq('tenant_id', tenantId)
-    query = clientId ? query.eq('client_id', String(clientId)) : query.eq('client', clientName)
-    query = query.order('created_at', { ascending: false }).order('id', { ascending: false })
-    const pageSize = 500
-    const all = []
-    for (let offset = 0; offset < 100000; offset += pageSize) {
-      const { data, error } = await query.range(offset, offset + pageSize - 1)
-      if (requestId !== docLoadRequestRef.current) return
-      if (error) {
-        showToast?.('Could not load client documents: ' + error.message)
-        return // Do not silently replace a complete list with partial results.
-      }
-      all.push(...(data || []))
-      if (!data || data.length < pageSize) {
+    const requestId=++docLoadRequestRef.current
+    if (!tenantId) { setDocs([]);setCustomClientFolders([]);setResolvedFolderClientId('');return }
+    let clientQuery=supabase.from('clients').select('id,name').eq('tenant_id',tenantId)
+    if (clientId) clientQuery=clientQuery.eq('id',String(clientId))
+    else if (clientName) clientQuery=clientQuery.ilike('name',clientName).limit(2)
+    else { setDocs([]);setCustomClientFolders([]);setResolvedFolderClientId('');return }
+    const {data:clientRows,error:clientError}=await clientQuery.limit(2)
+    if (requestId!==docLoadRequestRef.current) return
+    if (clientError || !clientRows || clientRows.length!==1) {
+      setResolvedFolderClientId('');setDocs([]);setCustomClientFolders([])
+      showToast(clientError ? 'Could not resolve client: '+clientError.message : 'Client record missing or ambiguous')
+      return
+    }
+    const resolvedId=String(clientRows[0].id)
+    setResolvedFolderClientId(resolvedId)
+    const folderQuery=supabase.from('client_document_folders')
+      .select('id,name,client_id').eq('tenant_id',tenantId).eq('client_id',resolvedId)
+      .order('name',{ascending:true})
+    const folderResult=await folderQuery
+    if (requestId!==docLoadRequestRef.current) return
+    if (folderResult.error) {
+      setCustomClientFolders([])
+      showToast('Could not load custom folders: '+folderResult.error.message)
+    } else setCustomClientFolders(folderResult.data || [])
+    const query=supabase.from('documents').select('*').eq('tenant_id', tenantId)
+      .eq('client_id',resolvedId)
+      .order('created_at',{ascending:false}).order('id',{ascending:false})
+    const all=[]
+    const pageSize=500
+    for(let offset=0;offset<100000;offset+=pageSize) {
+      const {data,error}=await query.range(offset,offset+pageSize-1)
+      if(requestId!==docLoadRequestRef.current) return
+      if(error) {showToast('Could not load client documents: '+error.message);return}
+      all.push(...(data||[]))
+      if(!data || data.length<pageSize) {
         setDocs(all)
         return
       }
     }
-    if (requestId === docLoadRequestRef.current) {
-      showToast?.('Document limit reached. Contact support to access remaining files.')
-    }
+    showToast('Document limit reached. Contact support to access remaining files.')
   }
 
   function chooseFiles(fileList) {
@@ -1126,7 +1228,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
               <div className="fg2">
                 <div className="field"><label>Destination Folder</label>
                   <select value={form.docType} onChange={e=>setForm(f=>({...f,docType:e.target.value}))}>
-                    {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
+                    {[...DOC_FOLDERS,...customClientFolders.map(item=>item.name)].map(f=><option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
                 <div className="field"><label>Notes for this batch (optional)</label>
@@ -1206,6 +1308,37 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
               <span style={{fontSize:10,background:'var(--s3)',borderRadius:10,padding:'0 5px',flexShrink:0,minWidth:16,textAlign:'center'}}>{byFolder[f]?.length||0}</span>
             </div>
           ))}
+          <div style={{padding:'10px 12px 4px',fontSize:9,fontWeight:800,color:'var(--t3)',letterSpacing:'.08em',textTransform:'uppercase',display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+            <span>Custom folders</span>
+            {canUpload && <button type="button" className="btn sec" style={{fontSize:10,padding:'3px 6px'}} disabled={!!busyFolderId} onClick={()=>{setAddingFolder(v=>!v);setEditingFolderId('')}}>+ New</button>}
+          </div>
+          {addingFolder && canUpload && <div style={{padding:'5px 10px',display:'flex',flexWrap:'wrap',gap:5}}>
+            <input aria-label="New folder name" autoFocus maxLength={80} value={newFolderName} onChange={e=>setNewFolderName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();createClientFolder()}}} placeholder="Folder name" style={{width:'100%',minWidth:0}}/>
+            <button type="button" className="btn pri" disabled={savingFolder || !resolvedFolderClientId} onClick={createClientFolder}>Save</button>
+            <button type="button" className="btn sec" disabled={savingFolder} onClick={()=>{setAddingFolder(false);setNewFolderName('')}}>Cancel</button>
+          </div>}
+          {customClientFolders.map(item=>(
+            <div key={item.id} style={{padding:'6px 10px',background:folder===item.name?'var(--blt)':'transparent',fontSize:12}}>
+              {editingFolderId===item.id && canUpload ? (
+                <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                  <input aria-label={'Rename '+item.name} maxLength={80} value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();renameClientFolder(item)}}} style={{width:'100%',minWidth:0}}/>
+                  <button type="button" className="btn pri" disabled={!!busyFolderId} onClick={()=>renameClientFolder(item)}>Save</button>
+                  <button type="button" className="btn sec" disabled={!!busyFolderId} onClick={()=>setEditingFolderId('')}>Cancel</button>
+                </div>
+              ) : (
+                <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                  <button type="button" title={item.name} onClick={()=>setFolder(item.name)}
+                    style={{border:0,background:'transparent',color:folder===item.name?'var(--b2)':'var(--tx)',fontWeight:folder===item.name?700:400,textAlign:'left',flex:1,minWidth:90,overflowWrap:'anywhere',cursor:'pointer'}}>
+                    📁 {item.name} ({byFolder[item.name]?.length||0})
+                  </button>
+                  {canUpload && <>
+                    <button type="button" className="btn sec" aria-label={'Rename folder '+item.name} title="Rename custom folder" disabled={!!busyFolderId} style={{fontSize:9,padding:'3px 5px'}} onClick={()=>{setEditingFolderId(item.id);setEditingFolderName(item.name);setAddingFolder(false)}}>Rename</button>
+                    <button type="button" className="btn sec" aria-label={'Delete folder '+item.name} title="Delete empty custom folder" disabled={!!busyFolderId} style={{fontSize:9,padding:'3px 5px',color:'var(--bad)'}} onClick={()=>setConfirmDeleteFolder(item)}>Delete</button>
+                  </>}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
 
         <div data-testid="client-docs-list" style={{minWidth:0,minHeight:0,overflowY:'auto',overscrollBehaviorY:'contain',background:'var(--sf)',borderRight:'1px solid var(--br)'}}>
@@ -1236,6 +1369,20 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
       </div>
       </div>
+      {confirmDeleteFolder && createPortal(
+        <div role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!busyFolderId)setConfirmDeleteFolder(null)}}
+          style={{position:'fixed',inset:0,zIndex:11000,display:'flex',alignItems:'center',justifyContent:'center',padding:18,background:'rgba(4,10,22,.78)'}}>
+          <div role="alertdialog" aria-modal="true" aria-label="Confirm custom folder deletion"
+            style={{background:'var(--sf)',border:'1px solid var(--br)',borderRadius:12,width:'min(440px,94vw)',padding:20,boxShadow:'0 16px 60px rgba(0,0,0,.3)'}}>
+            <strong>Delete empty folder?</strong>
+            <p style={{fontSize:13,margin:'12px 0'}}>Delete “{confirmDeleteFolder.name}”? This action removes only the custom folder. Documents are never deleted, and a folder containing files cannot be removed.</p>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap'}}>
+              <button type="button" className="btn sec" disabled={!!busyFolderId} onClick={()=>setConfirmDeleteFolder(null)}>Cancel</button>
+              <button type="button" className="btn pri" disabled={!!busyFolderId} onClick={()=>deleteClientFolder(confirmDeleteFolder)}>{busyFolderId?'Checking…':'Delete empty folder'}</button>
+            </div>
+          </div>
+        </div>,document.body
+      )}
       {selectedDoc && previewExpanded && createPortal(
         <div role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setPreviewExpanded(false)}}
           style={{position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:18,background:'rgba(4,10,22,.78)'}}>

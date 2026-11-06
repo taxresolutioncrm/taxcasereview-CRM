@@ -10,7 +10,20 @@ const OFFICE_ACCESS_CHANGES = [
   'CloudCPA is retired from the active office directory, manual, release listing and platform metrics routing',
 ]
 
+const CLIENT_DOCUMENT_FOLDER_CHANGES = [
+  'Client Documents: create tenant- and client-scoped custom folders using the verified canonical client ID',
+  'Correct CAP regression in both folder creation and rename: common folder names accepted, ASCII controls rejected before trimming',
+  'General Documents folder creation also accepts CAP and rejects duplicates, control characters and names over 80 characters',
+  'Custom folders can be renamed without losing linked documents, or deleted only when empty',
+  'Folder maintenance uses permission-checked atomic server RPCs and blocks ambiguous legacy documents',
+  'Existing default folders, Canopy imports, secure previews, downloads, fax and AI Analyze remain preserved',
+  'Client Documents manual now explains authorized custom-folder maintenance, legacy document restrictions and empty-only deletion',
+  'Empty-folder deletion uses an accessible in-app confirmation instead of a browser popup',
+  'Folder migrations block imported-category name collisions and serialize concurrent canonical and name-only document writes',
+]
+
 const IRS_WORKFLOW_CHANGES = [
+  ...CLIENT_DOCUMENT_FOLDER_CHANGES,
   ...OFFICE_ACCESS_CHANGES,
   'Live calls can be placed on hold with original audible music and clear recovery when the provider cannot start playback',
   'RomyLabs direct calls stop their provider hold audio before resuming and conference holds use the same looped soundtrack',
@@ -190,18 +203,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.70',
+  version: '3.2.71',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.70 — Four-Office Authentication and Directory',
-  changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
+  title: 'RomyLabs Admin Portal 3.2.71 — Custom Client Document Folders',
+  changes: [...CLIENT_DOCUMENT_FOLDER_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.70',
-    releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Four-Office Authentication and Directory',
+    version: '3.2.71',
+    releasedAt: 'Pending sandbox verification',
+    title: 'CRM 3.2.71 — Client Document Folder Management',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -223,9 +236,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.70',
-    releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Audible Hold Music',
+    version: '3.2.71',
+    releasedAt: 'Pending sandbox verification',
+    title: 'CRM 3.2.71 — Client Document Folder Management',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
