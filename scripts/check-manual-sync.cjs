@@ -64,7 +64,7 @@ for (const route of routes) {
 const familyScopeSignals = [
   ['central TaxRes scope', /central TaxRes CRM experience|central TaxRes-family offices/],
   ['TCR scope', /Tax Case Review/],
-  ['CloudCPA scope', /CloudCPA/],
+  ['Centurion Firm scope', /Centurion Firm/],
   ['Demo scope', /Demo/],
 ]
 for (const [name,re] of familyScopeSignals) assert(re.test(manual), `CRM Manual is missing central-family scope: ${name}`)
