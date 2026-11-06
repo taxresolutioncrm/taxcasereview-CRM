@@ -12,6 +12,7 @@ const OFFICE_ACCESS_CHANGES = [
 
 const CLIENT_DOCUMENT_FOLDER_CHANGES = [
   'Client Documents: create tenant- and client-scoped custom folders using the verified canonical client ID',
+  'Correct CAP regression in both folder creation and rename: common folder names accepted, ASCII controls rejected before trimming',
   'Custom folders can be renamed without losing linked documents, or deleted only when empty',
   'Folder maintenance uses permission-checked atomic server RPCs and blocks ambiguous legacy documents',
   'Existing default folders, Canopy imports, secure previews, downloads, fax and AI Analyze remain preserved',
