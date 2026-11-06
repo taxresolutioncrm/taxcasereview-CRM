@@ -11,6 +11,8 @@ const OFFICE_ACCESS_CHANGES = [
 ]
 
 const IRS_WORKFLOW_CHANGES = [
+  'TaxRes, TCR and Centurion CRM users gain a single responsive call, email and SMS notification summary using existing employee-scoped badges and realtime alerts',
+  'Mobile phone notifications fit safe areas and dismiss when an incoming call rings, with permission-gated channels and no extra subscriptions or audio',
   ...OFFICE_ACCESS_CHANGES,
   'Live calls can be placed on hold with original audible music and clear recovery when the provider cannot start playback',
   'RomyLabs direct calls stop their provider hold audio before resuming and conference holds use the same looped soundtrack',
@@ -195,18 +197,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.71',
+  version: '3.2.72',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.71 — Notification Panel Collision Repair',
+  title: 'RomyLabs Admin Portal 3.2.72 — Unified Communications Notifications',
   changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Four-Office Authentication and Directory',
+    title: 'CRM 3.2.72 — Communications Notifications',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -228,9 +230,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Audible Hold Music',
+    title: 'CRM 3.2.72 — Communications Notifications',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
