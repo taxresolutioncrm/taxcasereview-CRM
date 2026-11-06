@@ -111,6 +111,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin communications popover stays above the AI assistant button on desktop and mobile without covering notification actions',
+  'Product-wide notification rollout compatibility audit documents provider ingress, tenant/privacy checks and live event release gates for each RomyLabs CRM',
   'Admin email and SMS alerts play the existing sound cues, honoring the user sound preference while avoiding a duplicate incoming-call ringtone',
   'Notification polling now surfaces unexpected backend errors instead of silently dropping call, email or SMS status',
   'Admin notification alerts now provide an actionable in-app banner even when browser-level desktop notifications are disabled',
@@ -190,9 +192,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.70',
+  version: '3.2.71',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.70 — Four-Office Authentication and Directory',
+  title: 'RomyLabs Admin Portal 3.2.71 — Notification Panel Collision Repair',
   changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
