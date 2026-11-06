@@ -1013,7 +1013,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       setCustomClientFolders([])
       showToast('Could not load custom folders: '+folderResult.error.message)
     } else setCustomClientFolders(folderResult.data || [])
-    const query=supabase.from('documents').select('*').eq('tenant_id',tenantId)
+    const query=supabase.from('documents').select('*').eq('tenant_id', tenantId)
       .eq('client_id',resolvedId)
       .order('created_at',{ascending:false}).order('id',{ascending:false})
     const all=[]
