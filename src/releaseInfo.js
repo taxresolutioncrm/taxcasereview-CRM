@@ -11,6 +11,8 @@ const OFFICE_ACCESS_CHANGES = [
 ]
 
 const IRS_WORKFLOW_CHANGES = [
+  'All tax CRM offices share a mobile-safe call email SMS notification summary powered by existing per-employee counts and alerts, with no duplicate sounds or realtime channels',
+  'Phone notification sheets dismiss automatically on incoming calls, with iPhone safe-area spacing and permission-aware channel visibility',
   ...OFFICE_ACCESS_CHANGES,
   'Live calls can be placed on hold with original audible music and clear recovery when the provider cannot start playback',
   'RomyLabs direct calls stop their provider hold audio before resuming and conference holds use the same looped soundtrack',
@@ -190,18 +192,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.70',
+  version: '3.2.72',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.70 — Four-Office Authentication and Directory',
+  title: 'RomyLabs Admin Portal 3.2.72 — Tax Office Communications Notifications',
   changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Four-Office Authentication and Directory',
+    title: 'CRM 3.2.72 — Communications Notifications',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -223,9 +225,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Audible Hold Music',
+    title: 'CRM 3.2.72 — Communications Notifications',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
