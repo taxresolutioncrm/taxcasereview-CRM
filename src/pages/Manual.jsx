@@ -25,7 +25,9 @@ const MANUAL_SECTIONS = [
       { type: 'h3', text: 'TaxRes family office model' },
       { type: 'table', headers: ['Office type', 'Manual behavior', 'Office-specific configuration'], rows: [
         ['Tax Case Review (TCR)', 'Uses this shared TaxRes CRM Manual', 'TCR branding, tenant data, and configured communications/payments'],
-        ['CloudCPA', 'Uses this shared TaxRes CRM Manual', 'CloudCPA branding, tenant-scoped employee access, communications, booking, payments, and office integrations'],
+        ['TaxRes', 'Uses the shared TaxRes CRM Manual', 'TaxRes administrative platform and configured providers'],
+        ['Nashville Tax Solutions', 'Uses its separately deployed Nashville CRM manual', 'Dedicated Nashville database, release line, employees and integrations'],
+        ['Centurion Firm', 'Uses its dedicated Centurion CRM configuration', 'Dedicated Centurion database, branding, employee access and provider configuration'],
         ['Demo Office', 'Uses this shared TaxRes CRM Manual', 'Demo branding and safe/demo provider behavior where applicable'],
         ['Future TaxRes-family offices', 'Inherit the shared manual and release gates', 'Their tenant branding, providers, staff, permissions, and integrations must be documented when they differ from the shared workflow'],
       ]},
