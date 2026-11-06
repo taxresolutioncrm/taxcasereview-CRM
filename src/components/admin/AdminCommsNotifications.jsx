@@ -97,6 +97,8 @@ export default function AdminCommsNotifications(){
         seen.current.call=ids
       }
       setProblems(errors)
+    } catch(e) {
+      if(mounted.current)setProblems(['Notification refresh failed; retrying automatically'])
     } finally {running.current=false}
   },[emit])
 
