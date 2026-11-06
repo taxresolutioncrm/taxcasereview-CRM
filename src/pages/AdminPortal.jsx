@@ -183,7 +183,6 @@ async function loadPlatformOfficeRowsFresh() {
   // billing source, while platform-metrics owns usage counts and tenant storage.
   const taxResTenantFeeds = [
     { key:'tax_case_review', name:'Tax Case Review' },
-    { key:'cloudcpa', name:'CloudCPA Inc' },
     { key:'demo', name:'Tax Res CRM Demo' },
   ]
   // Nashville runs in its own Supabase project and is not an entry in
@@ -1019,7 +1018,6 @@ function Overview() {
     const taxResOfficeByProduct = {
       tax_case_review:'Tax Case Review',
       nashville:'Nashville Tax Solutions',
-      cloudcpa:'CloudCPA Inc',
       demo:'Tax Res CRM Demo',
     }
     const finiteOr = (value, fallback) => {
@@ -3344,7 +3342,7 @@ function ProductReportingSetup({ productKey, channel, registryProduct }) {
 const PRODUCT_REGISTRY = [
   // ── ARCHITECTURE NOTE ────────────────────────────────────────────────────
   // PRODUCTS: TaxRes CRM (platform), Camvella, Arcvena, BocaSync, GroundIVO, Oculivo, Restore Relay, + planned verticals
-  // CUSTOMERS/TENANTS: Tax Case Review, Nashville, CloudCPA (live TaxRes tenants — not products)
+  // ACTIVE TAXRES FAMILY: TaxRes, TCR, Nashville, Centurion. CloudCPA retired after merger.
   // connection: 'connected' | 'partial' | 'not_connected' — Command Center CRM platform-metrics feed only
   // lifecycleStage: 'live' | 'available' | 'building' | 'research' | 'internal'
   // brandStatus: 'branded' | 'working_name' | 'unnamed'
@@ -3569,23 +3567,6 @@ const PRODUCT_REGISTRY = [
     commerciallyAvailable: false,
     desc:      'TRC-002 — Nashville tenant on its own Supabase project',
     metricsUrl: 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=nash',
-  },
-  {
-    key:       'cloudcpa',
-    label:     'CloudCPA Inc',
-    icon:      '☁️',
-    color:     '#38bdf8',
-    industry:  'Tax Resolution',
-    isTenant:  true,
-    url:       null,
-    lifecycleStage: 'live',
-    connection:     'connected',
-    brandStatus:    'branded',
-    publicOnRomyLabs: false,
-    commerciallyAvailable: false,
-    desc:      'TRC-003 — CloudCPA Inc (trial) — contract pending',
-    metricsUrl: 'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=cloudcpa',
-    tenantId:  'ecd3d3ce-016a-4bb4-800e-f090f51e4cae',
   },
 
   // ── PLANNED / RESEARCH CRM INITIATIVES ────────────────────────────────────
