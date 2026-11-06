@@ -22,4 +22,13 @@ assert(app.includes("No active employee profile was found"), 'Unknown employee m
 assert(!/\} else \{\s*setRole\('Admin'\)/.test(app),'Missing employee profile must never fall back to Admin')
 
 assert(!/\{ key:'cloudcpa', name:'CloudCPA Inc' \}/.test(admin),'Retired CloudCPA must not appear in active metrics feed')
+assert(!/key:\s*'cloudcpa'/.test(admin), 'Retired CloudCPA must not appear as an active Admin Portal card')
+assert(!/cloudcpa:'CloudCPA Inc'/.test(admin), 'Retired CloudCPA must not appear in active office labels')
+const release = fs.readFileSync('src/releaseInfo.js','utf8')
+const manual = fs.readFileSync('src/pages/Manual.jsx','utf8')
+const hub = fs.readFileSync('supabase/functions/hub-proxy/index.ts','utf8')
+assert(!release.includes('// CloudCPA'), 'Retired CloudCPA must not remain an active release office')
+assert(!manual.includes("['CloudCPA'"), 'Retired CloudCPA must not remain in current office manual')
+assert(!hub.includes('view=cloudcpa'), 'Retired CloudCPA metrics endpoint must not be routed by Admin hub')
+
 console.log('PASS: TaxRes/TCR/Centurion login and reset boundary tests')
