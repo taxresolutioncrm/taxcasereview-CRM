@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { supabase } from '../lib/supabase'
+import { supabase, SUPABASE_URL } from '../lib/supabase'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from '../lib/centurionBrand'
 
 const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxrescrm.net', 'romy@taxcasereview.org']
@@ -22,8 +22,13 @@ function isCenturionIdentity(value) {
   return email.endsWith('@' + CENTURION_LOGIN_DOMAIN)
 }
 function isCentralTaxResHost() {
+  // TaxRes and TCR use the same shared Auth project, even on different domains.
+  // Centurion uses its *own* Auth project and must never post passwords or
+  // recovery requests to the shared project from a TaxRes/TCR frontend.
   const host = window.location.hostname.toLowerCase()
+  if (host === ROMYLABS_ADMIN_HOST || host === 'centurionfirm.taxrescrm.app') return false
   return host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
+    || new URL(SUPABASE_URL).hostname === 'mpxgxfqdbquzkrvvejkh.supabase.co'
 }
 
 
@@ -309,13 +314,22 @@ export default function Login() {
       window.location.replace(NASHVILLE_LOGIN)
       return
     }
+    if (!isAdminHost && isCentralTaxResHost() && isCenturionIdentity(target)) {
+      window.location.replace(CENTURION_LOGIN)
+      return
+    }
     setResetting(true); setError(''); setResetSent(false)
-    const { error } = await supabase.auth.resetPasswordForEmail(target, {
-      redirectTo: window.location.origin + '/'
-    })
-    setResetting(false)
-    if (error) { setError(error.message); return }
-    setResetSent(true)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(target, {
+        redirectTo: window.location.origin + '/'
+      })
+      if (error) { setError(authErrorText(error)); return }
+      setResetSent(true)
+    } catch (err) {
+      setError(authErrorText(err))
+    } finally {
+      setResetting(false)
+    }
   }
 
   async function submit(e) {
