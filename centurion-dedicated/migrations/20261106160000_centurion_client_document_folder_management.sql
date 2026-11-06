@@ -97,7 +97,7 @@ begin
       perform pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.client_id,180621));
     else
       -- Legacy name-only importer writes take a separate per-tenant/name lock.
-      if nullif(coalesce(NEW.client,NEW.clientname,''),'') is not null then
+      if nullif(coalesce(nullif(NEW.client,''),NEW.clientname,''),'') is not null then
         perform pg_advisory_xact_lock(hashtextextended(
           NEW.tenant_id::text || ':legacy:' || lower(coalesce(nullif(NEW.client,''),NEW.clientname)),180621));
       end if;
@@ -168,7 +168,7 @@ begin
   v_name:=public._client_folder_validate_name(p_new_name);
   if v_name=v_folder.name then return; end if;
   if exists(select 1 from public.documents d where d.tenant_id=v_tenant
-      and lower(d."docType")=lower(v_name)
+      and lower(d."docType")=lower(v_name) and d."docType"<>v_folder.name
       and (d.client_id=v_client or (nullif(d.client_id,'') is null and
         (d.client=v_client_name or d.clientname=v_client_name)))) then
     raise exception 'Destination name is already used by an existing or imported document category.'; end if;
