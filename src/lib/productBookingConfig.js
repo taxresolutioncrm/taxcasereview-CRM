@@ -129,9 +129,10 @@ export const PRODUCT_BOOKING_CONFIGS = {
     replyTo: 'romy@romylabs.com', fromName: 'PoolVerge', inactive: false,
   },
   barbers_salons: {
-    key: 'barbers_salons', name: 'ChairStyle', logo: '', favicon: '',
-    logoAlt: 'ChairStyle', headline: 'Ask About ChairStyle Development',
-    types: ['Product Demo', 'Salon Operations Consultation', 'Follow-Up Call'],
+    key: 'barbers_salons', name: 'ChairStyle',
+    logo: 'https://chairstyle.net/favicon.svg', favicon: 'https://chairstyle.net/favicon.svg',
+    logoAlt: 'ChairStyle', headline: 'Book a ChairStyle Demo',
+    types: ['ChairStyle Product Demo', 'Salon Operations Consultation', 'Follow-Up Call'],
     calendarLabel: '[ChairStyle]', notifyEmail: 'romy@romylabs.com',
     replyTo: 'romy@romylabs.com', fromName: 'ChairStyle', inactive: false,
   },
