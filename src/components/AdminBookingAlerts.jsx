@@ -7,7 +7,6 @@ export default function AdminBookingAlerts({workspace=false}) {
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(workspace)
-  const [showCompleted, setShowCompleted] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
   const [expandedTask,setExpandedTask]=useState(null)
   const [taskFilter, setTaskFilter] = useState('open')
@@ -20,15 +19,21 @@ export default function AdminBookingAlerts({workspace=false}) {
   const [historyOpen,setHistoryOpen]=useState(null)
   const [submittingActivity,setSubmittingActivity]=useState(false)
   const load = useCallback(async () => {
-    const {data,error:queryError} = await supabase
-      .from('romylabs_booking_alerts')
-      .select('booking_id,product_id,lead_name,lead_email,appointment_type,appointment_date,appointment_time,booked_at,acknowledged_at,notification_submission_id,notification_submitted_at,notification_last_error,followup_status,assigned_to,contacted_at,contact_outcome,followup_due_at')
-      .in('followup_status',showCompleted?['new','acknowledged','contacted','completed']:['new','acknowledged','contacted'])
-      .order('booked_at',{ascending:false}).limit(100)
-    if (queryError) { setError('Booking alerts unavailable — check database migration and access.'); return }
+    const fields='booking_id,product_id,lead_name,lead_email,appointment_type,appointment_date,appointment_time,booked_at,acknowledged_at,completed_at,notification_submission_id,notification_submitted_at,notification_last_error,followup_status,assigned_to,contacted_at,contact_outcome,followup_due_at'
+    // Query open and completed separately: a long completed history must not
+    // push active leads out of the first page.
+    const [open,completed]=await Promise.all([
+      supabase.from('romylabs_booking_alerts').select(fields)
+        .in('followup_status',['new','acknowledged','contacted'])
+        .order('booked_at',{ascending:false}).limit(100),
+      supabase.from('romylabs_booking_alerts').select(fields)
+        .eq('followup_status','completed')
+        .order('completed_at',{ascending:false}).limit(100),
+    ])
+    if (open.error||completed.error) { setError('Booking tasks unavailable — '+(open.error||completed.error).message); return }
     setError('')
-    setItems(data || [])
-  }, [showCompleted])
+    setItems([...(open.data||[]),...(completed.data||[])])
+  }, [])
   useEffect(() => {
     void load()
     const interval = setInterval(() => { void load() }, 30000)
@@ -135,7 +140,8 @@ export default function AdminBookingAlerts({workspace=false}) {
   const filteredItems=items.filter(item=>{
     if(taskFilter==='contact')return ['new','acknowledged'].includes(item.followup_status)
     if(taskFilter==='overdue')return item.followup_status!=='completed' && new Date(item.followup_due_at||item.booked_at).getTime()<Date.now()
-    return item.followup_status!=='completed' || showCompleted
+    if(taskFilter==='completed')return item.followup_status==='completed'
+    return item.followup_status!=='completed'
   })
   const buttonBase={border:'1px solid #374151',background:'#1e293b',color:'#e2e8f0',fontSize:13,fontWeight:650,padding:'9px 13px',borderRadius:9,cursor:'pointer',whiteSpace:'nowrap'}
   const fieldBase={background:'#0b1221',border:'1px solid #475569',color:'#f8fafc',padding:'10px 11px',borderRadius:9,fontSize:13,maxWidth:'100%'}
@@ -149,16 +155,14 @@ export default function AdminBookingAlerts({workspace=false}) {
           </div>
           <div style={{fontSize:13,color:'#94a3b8',marginTop:6}}>All incoming demo leads remain here until their follow-up is complete.</div>
         </div>
-        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#cbd5e1',cursor:'pointer',padding:'8px 0'}}>
-          <input type="checkbox" checked={showCompleted} onChange={e=>setShowCompleted(e.target.checked)} style={{accentColor:'#818cf8',width:16,height:16}}/>
-          Include completed follow-ups
-        </label>
+        <span style={{fontSize:12,color:'#94a3b8',padding:'8px 0'}}>Select a card to view matching tasks.</span>
       </div>
       <div role="status" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:12,marginBottom:20}}>
         {[
           ['open','Open follow-ups',items.filter(item=>item.followup_status!=='completed').length,'#e2e8f0'],
           ['contact','Needs contact',awaitingContact,'#fbbf24'],
-          ['overdue','Overdue tasks',overdue,overdue?'#fca5a5':'#86efac']
+          ['overdue','Overdue tasks',overdue,overdue?'#fca5a5':'#86efac'],
+          ['completed','Completed',items.filter(item=>item.followup_status==='completed').length,'#86efac']
         ].map(([filter,label,value,color])=><button type="button" key={filter} aria-pressed={taskFilter===filter} onClick={()=>setTaskFilter(filter)} style={{textAlign:'left',cursor:'pointer',background:taskFilter===filter?'#202947':'#151c2d',border:taskFilter===filter?'1px solid #818cf8':'1px solid #283449',borderRadius:13,padding:'15px 18px',fontFamily:'inherit'}}>
           <div style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>{label}</div>
           <div style={{fontSize:26,fontWeight:800,color,marginTop:5,lineHeight:1.2}}>{value}</div>
@@ -197,6 +201,7 @@ export default function AdminBookingAlerts({workspace=false}) {
                 <span><strong style={{color:'#94a3b8'}}>Assigned:</strong> {item.assigned_to||'Unassigned'}</span>
                 <span style={{color:'#475569'}}>·</span>
                 <span><strong style={{color:'#94a3b8'}}>Status:</strong> {item.followup_status}</span>
+                {item.followup_status==='completed' && <span><strong style={{color:'#94a3b8'}}>Completed:</strong> {item.completed_at?new Date(item.completed_at).toLocaleString():'Date unavailable'}</span>}
                 <span style={{color:'#475569'}}>·</span>
                 <span><strong style={{color:'#94a3b8'}}>Last contact:</strong> <strong style={{color:item.contacted_at?'#86efac':'#fbbf24'}}>{item.contact_outcome||'No contact recorded'}</strong></span>
                 {item.contacted_at && <span style={{color:'#94a3b8'}}>{new Date(item.contacted_at).toLocaleString()}</span>}
@@ -261,7 +266,7 @@ export default function AdminBookingAlerts({workspace=false}) {
             </article>
           })}
         </div>
-      ) : <div style={{fontSize:13,color:'#94a3b8',background:'#151c2d',border:'1px solid #283449',padding:24,borderRadius:13}}>No outstanding demo follow-ups.</div>)}
+      ) : <div style={{fontSize:13,color:'#94a3b8',background:'#151c2d',border:'1px solid #283449',padding:24,borderRadius:13}}>{taskFilter==='completed'?'No completed demo follow-ups yet.':taskFilter==='contact'?'No follow-ups need contact.':taskFilter==='overdue'?'No overdue demo follow-ups.':'No outstanding demo follow-ups.'}</div>)}
     </section>
   )
 }
