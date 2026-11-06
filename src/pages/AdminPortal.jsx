@@ -4708,6 +4708,11 @@ function SalesPipeline({ data, supabase, registryProducts }) {
   const [addingNote, setAddingNote]   = useState(false)
   const [activityType, setActivityType] = useState('note')
   const [toast, setToast]             = useState(null)
+  const [pipelineError, setPipelineError] = useState('')
+  const [pipelineLoading, setPipelineLoading] = useState(true)
+  const [incomingBookings, setIncomingBookings] = useState([])
+  const [bookingsError, setBookingsError] = useState('')
+  const [bookingsLoading, setBookingsLoading] = useState(true)
 
   // PRODUCTS: derived from registry prop — auto-updates when new products are registered
   const PRODUCTS = [
@@ -4717,11 +4722,46 @@ function SalesPipeline({ data, supabase, registryProducts }) {
 
   function showToast(msg, ok=true) { setToast({msg,ok}); setTimeout(()=>setToast(null),3000) }
 
-  // Reload prospects from DB
+  // Refresh from the live sales table, rather than preserving an old initial snapshot.
   async function reload() {
-    const { data: rows } = await supabase.from('prospects').select('*').order('created_at', { ascending: false })
-    setProspects(rows || [])
+    setPipelineLoading(true)
+    try {
+      const { data: rows, error } = await supabase.from('prospects')
+        .select('*').order('created_at', { ascending: false })
+      if (error) throw error
+      setProspects(rows || [])
+      setPipelineError('')
+    } catch(error) {
+      // Never render a silent zero as though a failed read meant no sales.
+      setPipelineError(String(error?.message || error))
+    } finally {
+      setPipelineLoading(false)
+    }
   }
+
+  async function loadBookings() {
+    setBookingsLoading(true)
+    try {
+      const { data: rows, error } = await supabase.from('romylabs_booking_alerts')
+        .select('booking_id,product_id,lead_name,lead_email,appointment_type,appointment_date,appointment_time,booked_at,followup_status')
+        .order('booked_at', {ascending:false}).limit(100)
+      if (error) throw error
+      setIncomingBookings(rows || [])
+      setBookingsError('')
+    } catch(error) {
+      setBookingsError(String(error?.message || error))
+    } finally {
+      setBookingsLoading(false)
+    }
+  }
+  useEffect(()=>{ reload(); loadBookings() },[])
+
+  const unlinkedBookings = incomingBookings.filter(booking => {
+    const email = String(booking.lead_email || '').trim().toLowerCase()
+    return !prospects.some(p =>
+      email && String(p.contact_email || '').trim().toLowerCase() === email &&
+      (!booking.product_id || p.product === booking.product_id || booking.product_id === 'romylabs'))
+  })
 
   // Load activities for selected prospect
   async function loadActivities(prospectId) {
@@ -4786,6 +4826,9 @@ function SalesPipeline({ data, supabase, registryProducts }) {
   // Save prospect (add or edit)
   async function saveProspect() {
     if (!form.firm_name?.trim()) { showToast('Firm name required', false); return }
+    if (!form.product || !PRODUCTS.some(p => p.value === form.product && p.value !== 'all')) {
+      showToast('Choose a registered product before saving', false); return
+    }
     setSaving(true)
     const payload = {
       firm_name:          form.firm_name,
@@ -4883,6 +4926,49 @@ function SalesPipeline({ data, supabase, registryProducts }) {
           {toast.msg}
         </div>
       )}
+
+      {/* Inbound booking alerts are leads, not automatically qualified sales opportunities. */}
+      <section style={{...CC2.card({padding:'15px 18px',marginBottom:18})}} aria-label="Incoming booking leads">
+        <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',justifyContent:'space-between',gap:10}}>
+          <div>
+            <strong style={{color:'#fff',fontSize:13}}>Sales opportunities and incoming bookings</strong>
+            <p style={{color:'#94a3b8',fontSize:12,margin:'5px 0 0',lineHeight:1.55}}>
+              Pipeline numbers measure qualified RomyLabs sales prospects. Product CRM customer leads are separate.
+              Booking alerts below can be reviewed and added deliberately without fabricating opportunities.
+            </p>
+          </div>
+          <button onClick={()=>{reload();loadBookings()}} disabled={pipelineLoading || bookingsLoading}
+            style={{...S.btn('ghost'),fontSize:11}}>
+            {pipelineLoading || bookingsLoading ? 'Refreshing…' : 'Refresh sales & bookings'}
+          </button>
+        </div>
+        {pipelineError && <p role="alert" style={{color:'#fca5a5',fontSize:12,marginTop:12}}>Unable to load sales prospects: {pipelineError}</p>}
+        {bookingsError && <p role="alert" style={{color:'#fca5a5',fontSize:12,marginTop:12}}>Unable to load booking alerts: {bookingsError}</p>}
+        {unlinkedBookings.length>0 && <div style={{marginTop:14,borderTop:'1px solid rgba(99,102,241,.2)',paddingTop:12}}>
+          <strong style={{fontSize:12,color:'#c6ff00'}}>{unlinkedBookings.length} incoming booking alert{unlinkedBookings.length===1?'':'s'} not linked to a sales prospect</strong>
+          {unlinkedBookings.slice(0,10).map(booking=>(
+            <div key={booking.booking_id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(99,102,241,.1)'}}>
+              <div style={{minWidth:0}}>
+                <div style={{color:'#e2e8f0',fontSize:12,fontWeight:700}}>{booking.lead_name||'New booking'} · {booking.product_id||'RomyLabs'}</div>
+                <div style={{color:'#94a3b8',fontSize:11,overflowWrap:'anywhere'}}>
+                  {booking.lead_email||'No contact email'} · {booking.appointment_date||'Date not supplied'} {booking.appointment_time||''}
+                </div>
+              </div>
+              <button disabled={pipelineLoading} onClick={()=>{
+                const product = PRODUCTS.find(p=>p.value === booking.product_id)?.value || ''
+                setForm({
+                  firm_name:booking.lead_name||'',contact_name:booking.lead_name||'',
+                  contact_email:booking.lead_email||'',product,stage:'Prospect',pricing_model:'undecided',
+                  source:'RomyLabs booking',notes:`Booking reference: ${booking.booking_id}. ${booking.appointment_type||''} ${booking.appointment_date||''} ${booking.appointment_time||''}`,
+                })
+                setEditMode(false);setShowForm(true)
+              }} style={{...S.btn('ghost'),flexShrink:0,fontSize:11,padding:'7px 10px'}}>Review as Prospect</button>
+            </div>
+          ))}
+          {unlinkedBookings.length>10 && <span style={{fontSize:11,color:'#94a3b8'}}>Showing 10 recent alerts. Use booking management for the complete history.</span>}
+        </div>}
+        {!bookingsLoading && !bookingsError && unlinkedBookings.length===0 && <p style={{color:'#94a3b8',fontSize:11,margin:'10px 0 0'}}>No unlinked incoming booking alerts.</p>}
+      </section>
 
       {/* ── KPI Row ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:20 }}>
