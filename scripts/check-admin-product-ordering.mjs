@@ -35,4 +35,6 @@ assert(dashboardSection.includes('const products = placeBuildingCRMsAfterHealth(
   'Dashboard Product Portfolio must apply the same final Building order as Products tab')
 assert(adminPortalSource.includes('const filtered = placeBuildingCRMsAfterHealth('),
   'Products tab must preserve its existing Building order fix')
+assert(adminPortalSource.includes("websiteUrl: 'https://chairstyle.net/'"),'ChairStyle website link must point to live site')
+assert(adminPortalSource.includes('ChairStyle website at chairstyle.net is live. The salon and barbershop CRM is still being built'),'ChairStyle website must be live while the CRM stays in Building')
 console.log('PASS Admin Portal Building order: Health Insurance > SettleLift > ChairStyle > Research')
