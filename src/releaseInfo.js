@@ -8,7 +8,7 @@ const OFFICE_LOGIN_FIX_CHANGES = [
   'Temporary membership-lookup errors keep the user session but restrict access until the office can be verified',
   'Centurion email sign-in and password recovery are routed to its independent CRM authentication project',
   'Centurion-host sign-in blocks accidentally using TaxRes credentials against the wrong Supabase project',
-  'CloudCPA is no longer polled as an active office in RomyLabs Admin metrics; legacy records remain untouched',
+  'TaxRes active office registry now contains TaxRes, TCR, Nashville and Centurion only',
 ]
 
 const IRS_WORKFLOW_CHANGES = [
@@ -194,7 +194,7 @@ const OFFICE_RELEASES = {
     version: '3.2.68',
     releasedAt: 'Pending production deployment',
     title: 'CRM 3.2.68 — Three-Office Login and Recovery Repair',
-    changes: [...OFFICE_LOGIN_FIX_CHANGES, ...IRS_WORKFLOW_CHANGES],
+    changes: IRS_WORKFLOW_CHANGES,
   },
 
   // TaxRes administrative/default office
@@ -213,20 +213,12 @@ const OFFICE_RELEASES = {
     ],
   },
 
-  // CloudCPA
-  'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.68',
-    releasedAt: 'Pending production deployment',
-    title: 'CRM 3.2.68 — Three-Office Login and Recovery Repair',
-    changes: IRS_WORKFLOW_CHANGES,
-  },
-
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
     version: '3.2.68',
     releasedAt: 'Pending production deployment',
     title: 'CRM 3.2.68 — Three-Office Login and Recovery Repair',
-    changes: [...OFFICE_LOGIN_FIX_CHANGES, ...IRS_WORKFLOW_CHANGES],
+    changes: IRS_WORKFLOW_CHANGES,
   },
 }
 
