@@ -97,6 +97,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'ChairStyle marketing website is live at chairstyle.net while its CRM remains in Building; Admin Portal website link and description no longer say the site is unfinished',
   'Admin Portal dashboard Product Portfolio now places SettleLift immediately below Health Insurance and directly above ChairStyle, consistent with the Products tab instead of leaving SettleLift below Research',
   'Admin Portal Products keeps SettleLift directly below Health Insurance Agency CRM and ahead of ChairStyle, with research-only concepts below the active Building group even after connection status sorting',
   'ChairStyle replaces the Barbers & Salons working name in the Admin Portal, booking choices and billing labels; the unlaunched chairstyle.net site is described without a live link and existing product IDs and office versions remain unchanged',
@@ -166,9 +167,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.64',
+  version: '3.2.65',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.64 — Dashboard Portfolio SettleLift Placement',
+  title: 'RomyLabs Admin Portal 3.2.65 — ChairStyle Website Live',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
