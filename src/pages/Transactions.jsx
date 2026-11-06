@@ -1,197 +1,147 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { FIRM } from '../lib/firmBranding'
 
-// All-transactions view — shows payment_transactions across all clients for this tenant.
-// Filterable by status, associate, date range. Searchable by client name.
-
-const STATUS_COLORS = {
-  'Posted':       { bg: 'rgba(22,163,74,0.15)',   color: '#4ade80' },
-  'Cleared':      { bg: 'rgba(99,102,241,0.15)',  color: '#a5b4fc' },
-  'No Status':    { bg: 'rgba(71,85,105,0.15)',   color: '#94a3b8' },
-  'TBD':          { bg: 'rgba(245,158,11,0.15)',  color: '#fbbf24' },
-  'New Agmt':     { bg: 'rgba(14,165,233,0.15)',  color: '#38bdf8' },
-  'Chargeback':   { bg: 'rgba(220,38,38,0.15)',   color: '#f87171' },
-  'Refunded':     { bg: 'rgba(220,38,38,0.15)',   color: '#f87171' },
-  'Disputed':     { bg: 'rgba(220,38,38,0.15)',   color: '#f87171' },
-  'Chk Returned': { bg: 'rgba(220,38,38,0.15)',   color: '#f87171' },
-  'FAIL':         { bg: 'rgba(220,38,38,0.15)',   color: '#f87171' },
-}
+// Nashville parity candidate. The ledger is paginated on the server and is deliberately
+// separate from confirmed positive collections. Requires the summary RPC migration.
+const PAGE_SIZE = 100
+const RETURNED = ['Refunded', 'Chk Returned', 'Chargeback']
+const STATUS = ['Posted', 'Cleared', 'No Status', 'TBD', 'New Agmt', ...RETURNED, 'Disputed', 'FAIL']
+const DRILLS = [
+  { id: 'collected', label: 'Collected Transactions', key: 'collectedCount' },
+  { id: 'amount', label: 'Total Collected', key: 'collectedAmount', money: true },
+  { id: 'returned', label: 'Refunded / Returned', key: 'returnedCount' },
+  { id: 'disputed', label: 'Disputed', key: 'disputedCount' },
+  { id: 'failed', label: 'Failed Attempts', key: 'failedCount' },
+]
+const fmtMoney = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric' }) : '—'
 
 export default function Transactions() {
   const { user } = useApp()
-  const [transactions, setTransactions] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [associateFilter, setAssociateFilter] = useState('all')
+  const [status, setStatus] = useState('all')
+  const [associate, setAssociate] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [drill, setDrill] = useState('')
   const [page, setPage] = useState(0)
-  const PAGE_SIZE = 100
+  const [rows, setRows] = useState([])
+  const [count, setCount] = useState(0)
+  const [summary, setSummary] = useState(null)
+  const [associates, setAssociates] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [revision, setRevision] = useState(0)
 
-  useEffect(() => { if (user) load() }, [user, statusFilter, associateFilter, dateFrom, dateTo])
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearch(searchInput.trim()), 300)
+    return () => clearTimeout(timeout)
+  }, [searchInput])
+  useEffect(() => setPage(0), [search, status, associate, dateFrom, dateTo, drill])
 
-  async function load() {
-    setLoading(true)
-    setPage(0)
-    let q = supabase
-      .from('payment_transactions')
-      .select('*')
-      .eq('tenant_id', FIRM.tenantId)
-      .order('payment_date', { ascending: false })
-      .limit(2000)
+  useEffect(() => {
+    if (!user || !FIRM.tenantId) return
+    let active = true
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const tenant = FIRM.tenantId
+        const safeSearch = search.replace(/[,%()]/g, ' ').trim()
+        let query = supabase.from('payment_transactions')
+          .select('id,client_id,client_name,payment_date,associate,amount,deposit_account,service_type,status,notes', { count: 'exact' })
+          .eq('tenant_id', tenant)
+        if (safeSearch) query = query.ilike('client_name', '%' + safeSearch + '%')
+        if (associate !== 'all') query = query.eq('associate', associate)
+        if (dateFrom) query = query.gte('payment_date', dateFrom)
+        if (dateTo) query = query.lte('payment_date', dateTo)
+        if (drill === 'collected' || drill === 'amount') query = query.in('status', ['Posted', 'Cleared']).gt('amount', 0)
+        else if (drill === 'returned') query = query.in('status', RETURNED)
+        else if (drill === 'disputed') query = query.eq('status', 'Disputed')
+        else if (drill === 'failed') query = query.eq('status', 'FAIL')
+        else if (status !== 'all') query = query.eq('status', status)
+        const pageRequest = query.order('payment_date', { ascending: false })
+          .order('id', { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+        const summaryRequest = supabase.rpc('tcr_transaction_summary', {
+          p_tenant: tenant, p_search: safeSearch || null, p_associate: associate === 'all' ? null : associate,
+          p_from: dateFrom || null, p_to: dateTo || null,
+        })
+        const [ledger, totals] = await Promise.all([pageRequest, summaryRequest])
+        if (ledger.error) throw ledger.error
+        if (totals.error) throw totals.error
+        if (!active) return
+        setRows(ledger.data || [])
+        setCount(ledger.count || 0)
+        setSummary(totals.data)
+        // Associate discovery must not depend on the currently visible ledger page.
+        if (!associates.length) {
+          const { data: names, error: nameError } = await supabase.from('payment_transactions')
+            .select('associate').eq('tenant_id', tenant).not('associate', 'is', null).limit(1000)
+          if (!nameError && active) setAssociates([...new Set((names || []).map(v => v.associate).filter(Boolean))].sort())
+        }
+      } catch (e) {
+        if (active) { setError(e?.message || 'Transactions could not be loaded'); setRows([]); setCount(0); setSummary(null) }
+      } finally { if (active) setLoading(false) }
+    }
+    load()
+    return () => { active = false }
+  }, [user, search, status, associate, dateFrom, dateTo, drill, page, revision])
 
-    if (statusFilter !== 'all') q = q.eq('status', statusFilter)
-    if (associateFilter !== 'all') q = q.eq('associate', associateFilter)
-    if (dateFrom) q = q.gte('payment_date', dateFrom)
-    if (dateTo) q = q.lte('payment_date', dateTo)
+  const clear = () => { setSearchInput(''); setSearch(''); setStatus('all'); setAssociate('all'); setDateFrom(''); setDateTo(''); setDrill(''); setPage(0) }
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
+  const tileStyle = { background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 12, padding: '14px 16px', color: 'var(--t1)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }
+  const inputStyle = { padding: '8px 12px', borderRadius: 8, background: 'var(--s2)', border: '1px solid var(--b1)', color: 'var(--t1)', fontFamily: 'inherit', minHeight: 38 }
 
-    const { data } = await q
-    setTransactions(data || [])
-    setLoading(false)
-  }
-
-  const filtered = transactions.filter(t =>
-    !search || t.client_name?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-
-  const totalAmount = filtered.reduce((s, t) => s + (Number(t.amount) || 0), 0)
-  const confirmedAmount = filtered.filter(t => t.status === 'Posted' || t.status === 'Cleared')
-    .reduce((s, t) => s + (Number(t.amount) || 0), 0)
-
-  const associates = [...new Set(transactions.map(t => t.associate).filter(Boolean))].sort()
-  const statuses = [...new Set(transactions.map(t => t.status).filter(Boolean))].sort()
-
-  function fmt(dt) {
-    if (!dt) return '—'
-    return new Date(dt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
-
-  function fmtAmt(amt) {
-    if (amt === null || amt === undefined) return '—'
-    const n = Number(amt)
-    return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2 })
-  }
-
-  return (
-    <div style={{ padding: '24px 28px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--t1)', margin: 0 }}>Transactions</h1>
-          <div style={{ fontSize: 13, color: 'var(--t3)', marginTop: 2 }}>Payment history from booking workbook</div>
-        </div>
-      </div>
-
-      {/* Summary tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
-        {[
-          { label: 'Total Records', val: filtered.length.toLocaleString(), color: 'var(--blue)' },
-          { label: 'Total Amount', val: fmtAmt(totalAmount), color: '#10b981' },
-          { label: 'Posted / Cleared', val: fmtAmt(confirmedAmount), color: '#6366f1' },
-          { label: 'Unconfirmed', val: fmtAmt(totalAmount - confirmedAmount), color: '#f59e0b' },
-        ].map(k => (
-          <div key={k.label} style={{ background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 12, padding: '16px 18px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>{k.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{k.val}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-        <input
-          value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search client name..."
-          style={{ flex: '1 1 200px', minWidth: 180, padding: '8px 12px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t1)', fontSize: 13, fontFamily: 'inherit' }}
-        />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          style={{ padding: '8px 12px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t1)', fontSize: 13, fontFamily: 'inherit' }}>
-          <option value="all">All Statuses</option>
-          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={associateFilter} onChange={e => setAssociateFilter(e.target.value)}
-          style={{ padding: '8px 12px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t1)', fontSize: 13, fontFamily: 'inherit' }}>
-          <option value="all">All Associates</option>
-          {associates.map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          style={{ padding: '8px 12px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t1)', fontSize: 13, fontFamily: 'inherit' }} />
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          style={{ padding: '8px 12px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t1)', fontSize: 13, fontFamily: 'inherit' }} />
-        {(search || statusFilter !== 'all' || associateFilter !== 'all' || dateFrom || dateTo) && (
-          <button onClick={() => { setSearch(''); setStatusFilter('all'); setAssociateFilter('all'); setDateFrom(''); setDateTo('') }}
-            style={{ padding: '8px 14px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t3)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Table */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--t3)' }}>Loading…</div>
-      ) : (
-        <>
-          <div style={{ background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 12, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--b1)', background: 'var(--s1)' }}>
-                  {['Date', 'Client', 'Associate', 'Amount', 'Deposit Acct', 'Service', 'Status', 'Notes'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map((t, i) => {
-                  const sc = STATUS_COLORS[t.status] || STATUS_COLORS['No Status']
-                  const amt = Number(t.amount)
-                  return (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--b1)', transition: 'background .1s' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--s1)'}
-                      onMouseLeave={e => e.currentTarget.style.background = ''}>
-                      <td style={{ padding: '10px 14px', color: 'var(--t3)', whiteSpace: 'nowrap' }}>{fmt(t.payment_date)}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--t1)', fontWeight: 500 }}>{t.client_name || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--t2)' }}>{t.associate || '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 700, whiteSpace: 'nowrap', color: amt < 0 ? '#f87171' : '#4ade80' }}>{fmtAmt(t.amount)}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--t3)' }}>{t.deposit_account || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--t3)' }}>{t.service_type || '—'}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: sc.bg, color: sc.color, whiteSpace: 'nowrap' }}>
-                          {t.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 14px', color: 'var(--t3)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.notes || '—'}</td>
-                    </tr>
-                  )
-                })}
-                {paginated.length === 0 && (
-                  <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--t3)' }}>No transactions match your filters.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 16 }}>
-              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                style={{ padding: '6px 14px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t1)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
-                ← Prev
-              </button>
-              <span style={{ fontSize: 13, color: 'var(--t3)' }}>Page {page + 1} of {totalPages} ({filtered.length.toLocaleString()} records)</span>
-              <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                style={{ padding: '6px 14px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, color: 'var(--t1)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
-                Next →
-              </button>
-            </div>
-          )}
-        </>
-      )}
+  return <div style={{ padding: '24px 28px', maxWidth: '100%', overflowX: 'hidden' }}>
+    <h1 style={{ fontSize: 22, margin: '0 0 4px', color: 'var(--t1)' }}>Transactions</h1>
+    <p style={{ color: 'var(--t3)', fontSize: 13, margin: '0 0 20px' }}>Complete transaction ledger; collections include positive confirmed payments only.</p>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 10, marginBottom: 16 }}>
+      {DRILLS.map(card => <button key={card.id} type="button" aria-pressed={drill === card.id}
+        onClick={() => { setDrill(drill === card.id ? '' : card.id); setStatus('all') }}
+        style={{ ...tileStyle, outline: drill === card.id ? '2px solid var(--blue)' : 'none' }}>
+        <div style={{ color: 'var(--t3)', fontSize: 11, marginBottom: 8 }}>{card.label}</div>
+        <strong style={{ fontSize: 20 }}>{summary ? card.money ? fmtMoney(summary[card.key]) : Number(summary[card.key] || 0).toLocaleString() : '—'}</strong>
+      </button>)}
     </div>
-  )
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      <input aria-label="Search client name" placeholder="Search client name" value={searchInput} onChange={e => setSearchInput(e.target.value)} style={{ ...inputStyle, flex: '1 1 180px' }}/>
+      <select aria-label="Transaction status" value={status} onChange={e => { setStatus(e.target.value); setDrill('') }} style={inputStyle}>
+        <option value="all">All statuses</option>{STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+      <select aria-label="Associate" value={associate} onChange={e => setAssociate(e.target.value)} style={inputStyle}>
+        <option value="all">All associates</option>{associates.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+      <input aria-label="Date from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle}/>
+      <input aria-label="Date to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle}/>
+      <button type="button" onClick={clear} style={inputStyle}>Clear filters</button>
+    </div>
+    {drill && <p role="status" style={{ color: 'var(--t2)' }}>Showing {DRILLS.find(d => d.id === drill)?.label} — <button onClick={() => setDrill('')}>Clear drill-down</button></p>}
+    {error && <div role="alert" style={{ padding: 18, border: '1px solid #ef4444', borderRadius: 8, marginBottom: 12, color: 'var(--t1)' }}>
+      Transactions unavailable: {error} <button onClick={() => setRevision(v => v + 1)}>Retry</button>
+    </div>}
+    <p aria-live="polite" style={{ color: 'var(--t3)', fontSize: 12 }}>{loading ? 'Loading…' : error ? 'Could not retrieve totals' : count.toLocaleString() + ' ledger records matched'}</p>
+    <div style={{ overflowX: 'auto', border: '1px solid var(--b1)', borderRadius: 12 }}>
+      <table style={{ borderCollapse: 'collapse', minWidth: 900, width: '100%', fontSize: 13 }}>
+        <thead><tr>{['Date','Client','Associate','Amount','Deposit Acct','Service','Status','Notes'].map(s =>
+          <th key={s} scope="col" style={{ padding: 12, textAlign: 'left', color: 'var(--t2)', borderBottom: '1px solid var(--b1)' }}>{s}</th>)}</tr></thead>
+        <tbody>{rows.map(t => <tr key={t.id} style={{ borderBottom: '1px solid var(--b1)' }}>
+          <td style={{ padding: 12, whiteSpace: 'nowrap' }}>{fmtDate(t.payment_date)}</td>
+          <td style={{ padding: 12 }}>{t.client_name || '—'}</td><td style={{ padding: 12 }}>{t.associate || '—'}</td>
+          <td style={{ padding: 12, whiteSpace: 'nowrap' }}>{fmtMoney(t.amount)}</td>
+          <td style={{ padding: 12 }}>{t.deposit_account || '—'}</td><td style={{ padding: 12 }}>{t.service_type || '—'}</td>
+          <td style={{ padding: 12 }}>{t.status || 'No Status'}</td><td style={{ padding: 12 }}>{t.notes || '—'}</td>
+        </tr>)}
+        {!rows.length && !loading && <tr><td colSpan={8} style={{ padding: 28, textAlign: 'center' }}>{error ? 'Could not load records' : 'No matching records'}</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <nav aria-label="Transaction pages" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16 }}>
+      <button disabled={loading || page === 0} onClick={() => setPage(v => Math.max(0, v - 1))}>Previous</button>
+      <span>Page {page + 1} of {totalPages}</span>
+      <button disabled={loading || page + 1 >= totalPages} onClick={() => setPage(v => v + 1)}>Next</button>
+    </nav>
+  </div>
 }
