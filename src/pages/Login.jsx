@@ -9,6 +9,12 @@ const NASHVILLE_HOST = 'nashville.taxrescrm.app'
 const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'
 const CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'
 const CENTURION_LOGIN = 'https://centurionfirm.taxrescrm.app/login?switch=1'
+const CENTURION_PROJECT_HOST = 'rkniemzmivnuhpdwkduc.supabase.co'
+function centurionBackendMismatch() {
+  return window.location.hostname.toLowerCase() === 'centurionfirm.taxrescrm.app'
+    && new URL(SUPABASE_URL).hostname !== CENTURION_PROJECT_HOST
+}
+
 const NASHVILLE_EXACT_EMAILS = new Set([
   'art@nationwideprofessionals.com',
   'tomas@nationwideprofessionals.com',
@@ -309,6 +315,10 @@ export default function Login() {
 
   async function sendPasswordReset() {
     const target = email.trim()
+    if (centurionBackendMismatch()) {
+      setError('Centurion sign-in is not connected to its dedicated authentication project. Please contact the CRM administrator.')
+      return
+    }
     if (!target) { setError(lang === 'es' ? 'Ingrese su correo electrónico primero' : 'Enter your email address first'); return }
     if (!isAdminHost && isCentralTaxResHost() && isNashvilleIdentity(target)) {
       window.location.replace(NASHVILLE_LOGIN)
@@ -335,6 +345,10 @@ export default function Login() {
   async function submit(e) {
     e.preventDefault()
     if (!email || !password) return setError(t.required)
+    if (centurionBackendMismatch()) {
+      setError('Centurion sign-in is not connected to its dedicated authentication project. Please contact the CRM administrator.')
+      return
+    }
     if (!isAdminHost && isCentralTaxResHost() && isNashvilleIdentity(email)) {
       window.location.replace(NASHVILLE_LOGIN)
       return
