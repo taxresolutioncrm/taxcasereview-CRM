@@ -34,6 +34,8 @@ jobs:
         run: node tests/romylabs-admin-comms-notifications.test.mjs
       - name: Verify notification overlay safety and cross-product rollout trace
         run: node scripts/check-romylabs-comms-rollout.cjs
+      - name: Validate shared tax office communications notifications
+        run: node tests/tax-office-communications-notifications.test.mjs
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker
