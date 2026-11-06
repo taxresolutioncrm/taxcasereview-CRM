@@ -111,6 +111,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Mobile notifications collapse into a tap-friendly bell on the opposite side of the AI assistant and open as a safe-area scrollable sheet',
   'Owner-authorized call and SMS APIs now return exact missed and unread counts instead of truncating at the first 50 calls or 500 messages',
   'Admin communications popover stays above the AI assistant button on desktop and mobile without covering notification actions',
   'Product-wide notification rollout compatibility audit documents provider ingress, tenant/privacy checks and live event release gates for each RomyLabs CRM',
