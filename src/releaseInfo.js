@@ -97,6 +97,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Calendar New Event dropdown and quick-add now use the active product registry including SettleLift, without enabling unfinished customer booking links',
+  'ChairStyle product website is marked live at chairstyle.net while its CRM remains in development (Admin display-only correction; no booking-product rollout)',
   'Admin Portal v3.2.65 independently verifies its exact Cloudflare booking-selector build marker after the approved release',
   'Send Booking Link now lets RomyLabs Admin choose any supported CRM from its product registry; copy and email use the same product-specific branded booking page, and unconfigured products are disabled. Duplicate booking and appointment actions are removed from the selected-day sidebar.',
   'Admin Portal dashboard Product Portfolio now places SettleLift immediately below Health Insurance and directly above ChairStyle, consistent with the Products tab instead of leaving SettleLift below Research',
@@ -168,9 +170,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.65',
+  version: '3.2.66',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.65 — CRM Booking Link Selector',
+  title: 'RomyLabs Admin Portal 3.2.66 — Complete Calendar Products and ChairStyle Website',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 

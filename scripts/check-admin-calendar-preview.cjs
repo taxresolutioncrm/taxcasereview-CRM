@@ -14,6 +14,12 @@ has(page, 'onBooking={() => { setShowBooking(true) }}', 'Existing booking action
 has(page, 'onCreate={(date, selectedProduct) =>', 'CRM form must handle creation')
 has(page, 'setShowForm(true)', 'Add must use existing form')
 has(page, "from('romylabs_products')", 'CRM registry must remain authoritative')
+has(page, '{calendarProducts.map(product => <option key={product.key} value={product.key}>{product.name}</option>)}', 'New Event selector must use active product registry, including SettleLift')
+has(page, 'calendarProducts.some(product => product.key === form.product_id)', 'Event save validation must accept registry products')
+has(page, 'calendarProducts.some(product => product.key === selectedProduct)', 'Calendar quick-add must accept registry products')
+assert(!page.includes('ADMIN_CALENDAR_PRODUCTS.map('),'Do not silently fall back to incomplete static booking list for New Event')
+has(admin, "websiteUrl: 'https://chairstyle.net/'", 'Admin product must point to live ChairStyle marketing website')
+
 has(page, 'products={calendarProducts}', 'Active CRM registry must reach calendar')
 has(page, 'deadlines={deadlines}', 'Deadlines must remain connected')
 has(ui, 'Calendar Command Center', 'Substantial redesign title required')
