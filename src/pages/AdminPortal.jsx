@@ -5954,7 +5954,9 @@ function CommandCenter() {
 
           {/* ── Portfolio Grid (compact — not a duplicate of Products tab) ── */}
           {(() => {
-            const products = mergeProductRegistry(reportingProducts)
+            // Dashboard portfolio must use the same final Building placement as Products.
+            // SettleLift belongs directly below Health Insurance, ahead of Research.
+            const products = placeBuildingCRMsAfterHealth(mergeProductRegistry(reportingProducts))
             const LIFECYCLE_COLOR = { live:'#10b981', available:'#10b981', coming:'#8b5cf6', building:'#f59e0b', research:'#64748b', internal:'#475569' }
             const LIFECYCLE_LABEL = { live:'✅ Live', available:'🟢 Available', coming:'🔜 Coming Soon', building:'🔨 Building', research:'🔬 Research', internal:'🔒 Internal' }
             const CONN_DOT = { connected:'🟢', partial:'🟡', not_connected:'⚪' }
