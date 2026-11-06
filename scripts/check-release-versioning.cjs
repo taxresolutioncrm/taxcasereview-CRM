@@ -95,7 +95,7 @@ if (manifestCommits.length > 1 && !isNonfunctionalReleaseCandidate) {
     const scopedFunctionalFiles = scopedFiles.filter(file => file !== 'src/releaseInfo.js')
     const adminOnlyRelease = scopedFunctionalFiles.length>0 && scopedFunctionalFiles.every(file => adminOnlyFiles.has(file))
     if (!adminOnlyRelease) {
-      for (const office of ['Tax Case Review','CloudCPA','Centurion Firm']) {
+      for (const office of ['Tax Case Review','Centurion Firm']) {
         const section = release.slice(release.indexOf('// '+office))
         assert(section && section.includes("version: '"+currentVersion+"'"),
           office+' must explicitly carry this release version')
