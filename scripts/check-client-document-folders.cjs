@@ -10,7 +10,7 @@ for (const needle of [
   "eq('tenant_id',tenantId)", "clientRows.length!==1",
   "rpc('create_client_document_folder'", "rpc('rename_client_document_folder'",
   "rpc('delete_empty_client_document_folder'",'Rename custom folder',
-  'Delete empty custom folder','window.confirm(', 'Folder contains documents',
+  'Delete empty custom folder','role="alertdialog"', 'Folder contains documents',
   "can('edit','documents')", 'setCustomClientFolders([])',
   'docLoadRequestRef.current', 'await loadDocs()', 'DOC_FOLDERS.map',
   'selectPreview(', 'downloadPreview(', 'analyzeClientDocument(', "setFaxIntent("
@@ -22,6 +22,8 @@ assert(component.includes('!/[\\x00-\\x1f\\x7f]/.test(name)'), 'Folder name must
 assert(!component.includes('!/[\\\\x00-\\\\x1f\\\\x7f]/.test(name)'), 'Folder validation must not be double escaped')
 assert(component.includes('customClientFolders.map(item=>item.name)'), 'Custom folders must be upload destinations')
 assert(component.includes('existingFolderNames(item.id)'), 'Rename must prevent duplicate folder labels')
+assert(!component.includes('window.confirm('), 'Folder deletion must not use native browser dialogs')
+assert(component.includes('setConfirmDeleteFolder(item)'), 'Delete requires an explicit in-app confirmation')
 assert(component.includes('resolvedFolderClientId'), 'Create must use resolved canonical client ID')
 assert(!/storage\.from\('documents'\)\.remove\(/.test(component.split('async function deleteClientFolder')[1].split('async function loadDocs')[0]),
   'Folder deletion must never delete storage documents')
