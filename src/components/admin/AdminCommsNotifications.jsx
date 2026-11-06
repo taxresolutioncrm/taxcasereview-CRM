@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { useCall } from '../context/CallContext'
+import { supabase } from '../../lib/supabase'
+import { useCall } from '../../context/CallContext'
 
 // This component stays mounted in the Admin Portal shell, not in the Email
 // iframe or Communications route. Each source is owner-authorized server-side.
