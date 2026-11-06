@@ -8,6 +8,7 @@ const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
 const NASHVILLE_HOST = 'nashville.taxrescrm.app'
 const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'
 const CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'
+const CENTURION_LOGIN = 'https://centurionfirm.taxrescrm.app/login?switch=1'
 const NASHVILLE_EXACT_EMAILS = new Set([
   'art@nationwideprofessionals.com',
   'tomas@nationwideprofessionals.com',
@@ -322,6 +323,12 @@ export default function Login() {
     if (!email || !password) return setError(t.required)
     if (!isAdminHost && isCentralTaxResHost() && isNashvilleIdentity(email)) {
       window.location.replace(NASHVILLE_LOGIN)
+      return
+    }
+    // Centurion employee credentials belong to the Centurion CRM host.
+    // Prevent accidentally submitting them to the central TaxRes Auth project.
+    if (!isAdminHost && isCentralTaxResHost() && isCenturionIdentity(email)) {
+      window.location.replace(CENTURION_LOGIN)
       return
     }
     setLoading(true)
