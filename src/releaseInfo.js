@@ -2,6 +2,13 @@
 // Each office keeps an independent semantic version line.
 // Shared code does not make Nashville part of a central release.
 
+const OFFICE_LOGIN_FIX_CHANGES = [
+  'TaxRes and TCR authentication retry restores the sign-in screen after an initial session-check failure',
+  'Centurion email sign-in and password recovery are routed to its independent CRM authentication project',
+  'Centurion-host sign-in blocks accidentally using TaxRes credentials against the wrong Supabase project',
+  'CloudCPA is no longer polled as an active office in RomyLabs Admin metrics; legacy records remain untouched',
+]
+
 const IRS_WORKFLOW_CHANGES = [
   'FormaCorp official Sunbiz filing workspace now maximizes the government page and opens it automatically',
   'Saved CRM filing details are compact and collapsible; new filings no longer display an empty sidebar',
@@ -173,19 +180,19 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.67',
+  version: '3.2.68',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.67 — FormaCorp Sunbiz Workspace Polish',
-  changes: ADMIN_DEMO_TASK_CHANGES,
+  title: 'RomyLabs Admin Portal 3.2.68 — TaxRes/TCR/Centurion Sign-in Repair',
+  changes: [...OFFICE_LOGIN_FIX_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.67',
-    releasedAt: '2026-11-03',
-    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
-    changes: IRS_WORKFLOW_CHANGES,
+    version: '3.2.68',
+    releasedAt: 'Pending production deployment',
+    title: 'CRM 3.2.68 — Three-Office Login and Recovery Repair',
+    changes: [...OFFICE_LOGIN_FIX_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 
   // TaxRes administrative/default office
@@ -206,18 +213,18 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.67',
-    releasedAt: '2026-11-03',
-    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
-    changes: IRS_WORKFLOW_CHANGES,
+    version: '3.2.68',
+    releasedAt: 'Pending production deployment',
+    title: 'CRM 3.2.68 — Three-Office Login and Recovery Repair',
+    changes: [...OFFICE_LOGIN_FIX_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.67',
-    releasedAt: '2026-11-03',
-    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
-    changes: IRS_WORKFLOW_CHANGES,
+    version: '3.2.68',
+    releasedAt: 'Pending production deployment',
+    title: 'CRM 3.2.68 — Three-Office Login and Recovery Repair',
+    changes: [...OFFICE_LOGIN_FIX_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 }
 
