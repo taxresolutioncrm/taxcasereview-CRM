@@ -34,6 +34,17 @@ Each channel must meet this complete chain before production:
 
 For products still marked NO-GO, **do not** ship a decorative bell showing three zeros. The correct sequence is provider → persisted event → recipient isolation → read state → UI → live test.
 
+## Mobile-first interaction contract (all CRMs)
+
+- **Phone width (320–640px):** Use one 44–48px bell with a numeric badge; do not keep the long desktop text pill. Place it away from each product's AI assistant, call controls, chat composer and bottom navigation.
+- **Opened notifications:** Show a viewport-anchored, scrollable bottom sheet. Respect `env(safe-area-inset-bottom)`, landscape, reduced viewport height, and virtual keyboard resizing; preserve a visible Close control.
+- **Ring/answer priority:** When the incoming-call banner or native answer/decline controls appear, automatically dismiss the notifications sheet. Notifications may remain recorded, but must not block answering, hang-up, keypad or an active call.
+- **Touch and accessibility:** Controls must have at least a 44px target; no tiny close icon; readable labels and counts, browser hardware Back/Escape closing, screen reader label and keyboard focus restoration where supported.
+- **Navigation:** Clicking an event opens the precise authorized conversation/client; close the sheet on navigation and do not trap scrolling in the background or create an invisible overlay.
+- **Notification safety:** Mobile lock-screen/browser notifications must avoid sensitive client, tax, payment and patient information. Permission denial never hides the in-app alert.
+- **Performance:** Keep one subscription source and bounded polling. Foreground/focus refresh must restore counts after mobile browser suspension; do not promise offline alerts without actual push infrastructure.
+- **Responsive certification:** test 320×568, 375×667, 390×844, 430×932, tablet portrait/landscape and desktop; also 200% text zoom, dark/light, and a live incoming call with the sheet open.
+
 ## Release certification — required for every CRM
 
 - [ ] Two real incoming calls: ring/answer and missed/voicemail, with exactly one alert.
