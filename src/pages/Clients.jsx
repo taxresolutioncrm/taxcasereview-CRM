@@ -782,6 +782,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [editingFolderId,setEditingFolderId] = useState('')
   const [editingFolderName,setEditingFolderName] = useState('')
   const [busyFolderId,setBusyFolderId] = useState('')
+  const [confirmDeleteFolder,setConfirmDeleteFolder] = useState(null)
   const [uploading,  setUploading]  = useState(false)
   const [form,       setForm]       = useState({ docType:'IRS Docs', notes:'' })
   const [files,      setFiles]      = useState([])
@@ -807,6 +808,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     setNewFolderName('')
     setEditingFolderId('')
     setEditingFolderName('')
+    setConfirmDeleteFolder(null)
     loadDocs()
     return () => { docLoadRequestRef.current += 1 }
   }, [clientId, clientName, tenantId])
@@ -974,7 +976,6 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   }
   async function deleteClientFolder(item) {
     if (busyFolderId || !canUpload) return
-    if (!window.confirm(`Delete empty folder "${item.name}"? Documents will not be deleted.`)) return
     setBusyFolderId(item.id)
     try {
       const {error}=await supabase.rpc('delete_empty_client_document_folder',{p_folder_id:item.id})
@@ -982,6 +983,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
       setFolder(prev=>prev===item.name?'All':prev)
       setForm(prev=>({...prev,docType:prev.docType===item.name?'IRS Docs':prev.docType}))
       setEditingFolderId('')
+      setConfirmDeleteFolder(null)
       await loadDocs()
       showToast('Empty folder deleted')
     } catch (error) { showToast('Could not delete folder: '+folderError(error)) }
@@ -1327,7 +1329,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
                   </button>
                   {canUpload && <>
                     <button type="button" className="btn sec" aria-label={'Rename folder '+item.name} title="Rename custom folder" disabled={!!busyFolderId} style={{fontSize:9,padding:'3px 5px'}} onClick={()=>{setEditingFolderId(item.id);setEditingFolderName(item.name);setAddingFolder(false)}}>Rename</button>
-                    <button type="button" className="btn sec" aria-label={'Delete folder '+item.name} title="Delete empty custom folder" disabled={!!busyFolderId} style={{fontSize:9,padding:'3px 5px',color:'var(--bad)'}} onClick={()=>deleteClientFolder(item)}>Delete</button>
+                    <button type="button" className="btn sec" aria-label={'Delete folder '+item.name} title="Delete empty custom folder" disabled={!!busyFolderId} style={{fontSize:9,padding:'3px 5px',color:'var(--bad)'}} onClick={()=>setConfirmDeleteFolder(item)}>Delete</button>
                   </>}
                 </div>
               )}
@@ -1363,6 +1365,20 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
       </div>
       </div>
+      {confirmDeleteFolder && createPortal(
+        <div role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!busyFolderId)setConfirmDeleteFolder(null)}}
+          style={{position:'fixed',inset:0,zIndex:11000,display:'flex',alignItems:'center',justifyContent:'center',padding:18,background:'rgba(4,10,22,.78)'}}>
+          <div role="alertdialog" aria-modal="true" aria-label="Confirm custom folder deletion"
+            style={{background:'var(--sf)',border:'1px solid var(--br)',borderRadius:12,width:'min(440px,94vw)',padding:20,boxShadow:'0 16px 60px rgba(0,0,0,.3)'}}>
+            <strong>Delete empty folder?</strong>
+            <p style={{fontSize:13,margin:'12px 0'}}>Delete “{confirmDeleteFolder.name}”? This action removes only the custom folder. Documents are never deleted, and a folder containing files cannot be removed.</p>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap'}}>
+              <button type="button" className="btn sec" disabled={!!busyFolderId} onClick={()=>setConfirmDeleteFolder(null)}>Cancel</button>
+              <button type="button" className="btn pri" disabled={!!busyFolderId} onClick={()=>deleteClientFolder(confirmDeleteFolder)}>{busyFolderId?'Checking…':'Delete empty folder'}</button>
+            </div>
+          </div>
+        </div>,document.body
+      )}
       {selectedDoc && previewExpanded && createPortal(
         <div role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setPreviewExpanded(false)}}
           style={{position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:18,background:'rgba(4,10,22,.78)'}}>
