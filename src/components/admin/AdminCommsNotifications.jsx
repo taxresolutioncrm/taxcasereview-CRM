@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCall } from '../../context/CallContext'
+import { playSound } from '../../lib/notifySound'
 
 // This component stays mounted in the Admin Portal shell, not in the Email
 // iframe or Communications route. Each source is owner-authorized server-side.
@@ -33,6 +34,7 @@ export default function AdminCommsNotifications(){
     if(alerts.current.has(key))return
     alerts.current.add(key)
     if(alerts.current.size>250)alerts.current=new Set([...alerts.current].slice(-160))
+    if(kind==='email'||kind==='sms')playSound(kind)
     const record={key,kind,title,detail,at:new Date().toISOString()}
     setEvents(old=>[record,...old].slice(0,20))
     if(typeof Notification!=='undefined' && Notification.permission==='granted'){
