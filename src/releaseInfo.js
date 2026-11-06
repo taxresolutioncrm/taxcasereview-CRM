@@ -15,6 +15,7 @@ const CLIENT_DOCUMENT_FOLDER_CHANGES = [
   'Custom folders can be renamed without losing linked documents, or deleted only when empty',
   'Folder maintenance uses permission-checked atomic server RPCs and blocks ambiguous legacy documents',
   'Existing default folders, Canopy imports, secure previews, downloads, fax and AI Analyze remain preserved',
+  'Client Documents manual now explains authorized custom-folder maintenance, legacy document restrictions and empty-only deletion',
 ]
 
 const IRS_WORKFLOW_CHANGES = [
