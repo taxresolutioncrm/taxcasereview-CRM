@@ -21,7 +21,7 @@ const PRODUCT_BRANDS: any = {
   oculivo: { name: 'Oculivo', email: 'romy@romylabs.com' },
   restore_relay: { name: 'Restore Relay', email: 'romy@romylabs.com' },
   pool_crm: { name: 'PoolVerge', email: 'romy@romylabs.com' },
-  barbers_salons: { name: 'Barbers & Salons CRM', email: 'romy@romylabs.com' },
+  barbers_salons: { name: 'ChairStyle', email: 'romy@romylabs.com' },
   health_insurance: { name: 'Health Insurance Agency CRM', email: 'romy@romylabs.com' },
 }
 const safe = (v: any) => String(v ?? '').replace(/[\r\n]+/g, ' ').trim()
