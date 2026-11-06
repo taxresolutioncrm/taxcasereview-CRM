@@ -4,6 +4,8 @@
 
 const OFFICE_LOGIN_FIX_CHANGES = [
   'TaxRes and TCR authentication retry restores the sign-in screen after an initial session-check failure',
+  'Employee membership is checked case-insensitively, with no automatic Admin privileges when a profile is missing',
+  'Temporary membership-lookup errors keep the user session but restrict access until the office can be verified',
   'Centurion email sign-in and password recovery are routed to its independent CRM authentication project',
   'Centurion-host sign-in blocks accidentally using TaxRes credentials against the wrong Supabase project',
   'CloudCPA is no longer polled as an active office in RomyLabs Admin metrics; legacy records remain untouched',
