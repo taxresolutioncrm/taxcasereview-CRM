@@ -40,7 +40,6 @@ const PRODUCT_ENDPOINTS: Record<string, string> = {
   taxres_crm:        'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=saas',
   tax_case_review:   'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=tcr',
   nashville:         'https://ydrvncdedgjtcprczwpu.supabase.co/functions/v1/platform-metrics',
-  cloudcpa:          'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=cloudcpa',
   demo:              'https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/platform-metrics?view=demo',
   camvella:          'https://vgflyyazjvsdtoecvega.supabase.co/functions/v1/platform-metrics',
   arcvena:           'https://wzalqfxovxxszojfbnis.supabase.co/functions/v1/platform-metrics',
@@ -191,7 +190,7 @@ Deno.serve(async (req) => {
 
   async function resolveProductEndpoint(productKey: string) {
     const fixed = PRODUCT_ENDPOINTS[productKey]
-    if (fixed) return { url: fixed, standardExternal: !['taxres_crm','tax_case_review','nashville','cloudcpa','demo','arcvena'].includes(productKey) }
+    if (fixed) return { url: fixed, standardExternal: !['taxres_crm','tax_case_review','nashville','demo','arcvena'].includes(productKey) }
 
     const { data: product, error } = await serviceClient
       .from('romylabs_products')
@@ -334,7 +333,7 @@ Deno.serve(async (req) => {
       })
     }
     const targets = requested === 'taxres_crm'
-      ? ['taxres_crm','tax_case_review','cloudcpa','demo']
+      ? ['taxres_crm','tax_case_review','demo']
       : [requested]
     EdgeRuntime.waitUntil(Promise.all(targets.map(productKey => refreshProductCache(productKey))))
     return new Response(JSON.stringify({ ok:true, accepted:true, products:targets }), {
