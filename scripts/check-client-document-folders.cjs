@@ -52,6 +52,13 @@ for (const [name,sql] of [['TaxRes/TCR',shared],['Centurion',centurion]]) {
     "revoke all on public.client_document_folders from PUBLIC,anon,authenticated",
     "grant execute on function public.rename_client_document_folder(uuid,text) to authenticated"
   ]) assert(sql.includes(needle),name+' SQL missing '+needle)
+  assert(sql.includes("e.access='Super Admin' then 3"),name+' Super Admin access must align with frontend')
+  assert(sql.includes("when e.access in ('Tax Associate','Sales Manager') then 1"),
+    name+' non-editing roles must not gain write access by default')
+  assert(sql.includes("Existing or imported document category") ||
+    sql.includes("existing or imported document category"),name+' must prevent imported category collision')
+  assert(sql.includes("':legacy:'"),name+' legacy-name writes must participate in concurrency locks')
+  assert(sql.includes('d."docType"<>v_folder.name'),name+' case-only rename must preserve current category')
   const deleteBody=sql.split('create or replace function public.delete_empty_client_document_folder')[1]
   assert(deleteBody && !deleteBody.includes('delete from public.documents'),name+' delete must never remove documents')
   assert(!/delete\s+from\s+storage\./i.test(sql),name+' must never delete storage objects')
