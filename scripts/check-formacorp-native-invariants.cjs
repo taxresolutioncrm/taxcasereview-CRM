@@ -15,10 +15,20 @@ const files = [
   'src/pages/Manual.jsx',
 ]
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
+const officialWorkspace = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.jsx','utf8')
 const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
 assert(!/bizee/i.test(content), 'FormaCorp native workflow must not depend on Bizee')
+assert(/<SunbizFilingWorkspace/.test(content), 'Saved formation case must open official filing workspace')
+assert(/saveOfficialSunbizReceipt/.test(content), 'Official receipt confirmation must update the saved case')
+assert(/eq\('tenant_id',tenantId\)/.test(content), 'Official receipt must remain tenant scoped')
+assert(/<iframe/.test(officialWorkspace) && /efile\.sunbiz\.org/.test(officialWorkspace), 'Official government frame attempt must use Sunbiz origin directly')
+assert(/Florida may prevent its website/.test(officialWorkspace), 'Government frame protection warning must be explicit')
+assert(/cannot read, prefill or complete fields/.test(officialWorkspace), 'Do not claim cross-origin government field access')
+assert(/Official confirmation URL/.test(officialWorkspace) || /Official confirmation URL \(optional\)/.test(officialWorkspace), 'Confirmation receipt must remain visible')
+assert(/does not automatically/.test(officialWorkspace) || /never submits a filing/.test(officialWorkspace), 'Do not imply submission from CRM receipt entry')
+
 assert(!/target="_blank"|window\.open\(/.test(content), 'FormaCorp must not open any workflow in another browser tab/window')
 assert(!/orders\.bizee\.com|bizee\.com/i.test(content), 'External Bizee URL detected')
 assert(!/popup=yes|formacorp_bizee_pro|Open Bizee Secure Window/i.test(content), 'External Bizee popup workflow detected')
@@ -40,7 +50,30 @@ assert(/AMBR — Authorized Member/.test(content), 'Florida LLC authorized-membe
 assert(/Use Principal Address for Registered Agent/.test(content), 'Registered-agent address shortcut missing')
 assert(/Florida Filing Details — Final Review/.test(content), 'Complete Florida review panel missing')
 assert(/Registered Agent Signature/.test(content), 'Final review must display registered-agent signature')
-assert(/Start Business Formation/.test(content), 'Native formation entry point is missing')
+// Genuine in-CRM Florida LLC intake and persisted filing-packet contract.
+const nativeLlcIntake=fs.readFileSync('src/components/formacorp/FloridaSunbizIntake.jsx','utf8')
+assert((nativeLlcIntake.match(/export default function FloridaSunbizIntake/g) || []).length===1, 'Native intake must have one component definition')
+assert(/const money = value =>/.test(nativeLlcIntake), 'Native filing fee formatter missing')
+const floridaPdf=fs.readFileSync('src/lib/flArticlesPdf.js','utf8')
+const nativeMigration=fs.readFileSync('supabase/migrations/20261105160000_formacorp_native_florida_llc_intake.sql','utf8')
+assert(/Start Official Sunbiz Filing/.test(content), 'Official filing entry must be visible')
+assert(/Prepare Florida LLC in CRM/.test(content), 'Native preparation entry must remain visible')
+assert(/wForm.entity_type==='LLC'/.test(content) && /setFloridaIntake\(true\)/.test(content), 'Legacy Florida LLC selections must redirect to the native filing form')
+assert(/<FloridaSunbizIntake/.test(content) && /onSave={createFromWizard}/.test(content), 'Florida LLC intake must persist through case creation')
+assert(/source = wForm/.test(content) && /fl_llc_managers:Array.isArray\(source.fl_llc_managers\)/.test(content), 'Manager list must persist in formation record')
+assert(/fl_correspondence_name:source/.test(content) && /fl_optional_provisions:source/.test(content), 'Correspondence and provisions must persist')
+assert(/Florida LLC — Articles of Organization/.test(nativeLlcIntake), 'Native Florida Articles intake must exist')
+assert(/FloridaAddressEditor/.test(nativeLlcIntake) && /addressComplete/.test(nativeLlcIntake), 'Native filing must collect and validate structured address components')
+assert(/initialRecord/.test(nativeLlcIntake) && /Update Florida LLC Filing Case/.test(nativeLlcIntake), 'Native filing details must be editable after saving')
+assert(/saveNativeFloridaIntake/.test(content) && /eq\('tenant_id',tenantId\)/.test(content), 'Florida edit must verify active office and case tenant')
+
+assert(/Principal Place of Business/.test(nativeLlcIntake) && /Registered Agent — name, address and acceptance/.test(nativeLlcIntake), 'Sunbiz address and registered-agent fields missing')
+assert(/Authorized Persons/.test(nativeLlcIntake) && /fl_llc_managers/.test(nativeLlcIntake), 'Structured authorized-person intake missing')
+assert(/Review Filing Information/.test(nativeLlcIntake) && /Save Florida LLC Filing Case/.test(nativeLlcIntake), 'Native review and explicit save missing')
+assert(/does NOT submit to Florida/.test(nativeLlcIntake), 'State filing disclaimer must remain explicit')
+assert(/fl_optional_provisions/.test(floridaPdf) && /fl_llc_managers/.test(floridaPdf), 'Articles PDF must render structured intake')
+assert(/fl_llc_managers jsonb/.test(nativeMigration) && /fl_correspondence_name text/.test(nativeMigration), 'Migration must provision intake fields')
+assert(/Other Formations/.test(content), 'Non-Florida formation wizard entry point is missing')
 assert(/FormaCorp filing preparation and state receipt tracking/.test(content), 'Filing preparation and state receipt tracking card is missing')
 assert(/Florida submission inside FormaCorp/.test(content), 'In-CRM Florida submission controls are missing')
 assert(/submitFloridaFax/.test(content), 'Existing in-CRM Florida fax submission path is missing')

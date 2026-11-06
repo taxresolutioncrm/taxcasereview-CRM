@@ -7,6 +7,8 @@ import ClientLink from '../components/ClientLink'
 import { buildFlArticlesPdf, buildFlFaxPacket } from '../lib/flArticlesPdf'
 import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
+import FloridaSunbizIntake from '../components/formacorp/FloridaSunbizIntake'
+import SunbizFilingWorkspace from '../components/formacorp/SunbizFilingWorkspace'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -21,6 +23,7 @@ const FL_FILING_STEPS = ['Draft','Ready to Submit','Filing Queue','Submitted to 
 
 const FL_FIELDS = {
   principal_address:'', mailing_address:'', registered_agent_address:'',
+  fl_correspondence_name:'', fl_optional_provisions:'', fl_llc_managers:[],
   authorized_representative:'', authorized_representative_title:'AR',
   correspondence_email:'', effective_date:'', registered_agent_accepted:false,
   fl_registered_agent_signature:'', fl_authorized_representative_signature:'',
@@ -340,6 +343,9 @@ export default function FormaCorp() {
   const [showSug, setShowSug] = useState(false)
   const [stateReqs, setStateReqs] = useState({})
   const [wizard, setWizard] = useState(false)
+  const [floridaIntake, setFloridaIntake] = useState(false)
+  const [floridaEditCase, setFloridaEditCase] = useState(null)
+  const [officialSunbizCase, setOfficialSunbizCase] = useState(null)
   const [wStep, setWStep] = useState(1)
   const [wForm, setWForm] = useState(WIZ_BLANK)
   const [wSugg, setWSugg] = useState([])
@@ -501,69 +507,129 @@ export default function FormaCorp() {
     setWizard(true)
   }
 
-  async function createFromWizard() {
-    if (!wForm.client_name || !wForm.entity_name || !wForm.entity_type || !wForm.state) {
+  async function createFromWizard(source = wForm) {
+    if (!source.client_name || !source.entity_name || !source.entity_type || !source.state) {
       showToast('Please complete all required fields', 'err'); return
     }
     setSaving(true)
-    const req = stateReqs[wForm.state]
+    const req = stateReqs[source.state]
     const fee = req?.llc_filing_fee ? parseFloat(req.llc_filing_fee.replace(/[^0-9.]/g, '')) : null
     const payload = {
-      client_name:wForm.client_name, entity_name:wForm.entity_name, entity_type:wForm.entity_type, state:wForm.state,
-      owners:wForm.owners, registered_agent:wForm.registered_agent, business_purpose:wForm.business_purpose,
-      principal_address:wForm.principal_address || '', mailing_address:wForm.mailing_address || '',
-      registered_agent_address:wForm.registered_agent_address || '',
-      authorized_representative:wForm.authorized_representative || '',
-      authorized_representative_title:wForm.authorized_representative_title || 'AR',
-      correspondence_email:wForm.correspondence_email || '', effective_date:wForm.effective_date || '',
-      registered_agent_accepted:!!wForm.registered_agent_accepted,
-      fl_registered_agent_signature:wForm.fl_registered_agent_signature || '',
-      fl_authorized_representative_signature:wForm.fl_authorized_representative_signature || '',
-      fl_filing_authorized:!!wForm.fl_filing_authorized,
-      fl_authorized_at:wForm.fl_filing_authorized ? new Date().toISOString() : null,
-      fl_certificate_of_status:!!wForm.fl_certificate_of_status,
-      fl_certified_copy:!!wForm.fl_certified_copy,
+      client_name:source.client_name, entity_name:source.entity_name, entity_type:source.entity_type, state:source.state,
+      owners:source.owners, registered_agent:source.registered_agent, business_purpose:source.business_purpose,
+      principal_address:source.principal_address || '', mailing_address:source.mailing_address || '',
+      registered_agent_address:source.registered_agent_address || '',
+      authorized_representative:source.authorized_representative || '',
+      authorized_representative_title:source.authorized_representative_title || 'AR',
+      correspondence_email:source.correspondence_email || '', effective_date:source.effective_date || '',
+      fl_correspondence_name:source.fl_correspondence_name || source.authorized_representative || source.client_name || '',
+      fl_optional_provisions:source.fl_optional_provisions || '',
+      fl_llc_managers:Array.isArray(source.fl_llc_managers) ? source.fl_llc_managers : [],
+      registered_agent_accepted:!!source.registered_agent_accepted,
+      fl_registered_agent_signature:source.fl_registered_agent_signature || '',
+      fl_authorized_representative_signature:source.fl_authorized_representative_signature || '',
+      fl_filing_authorized:!!source.fl_filing_authorized,
+      fl_authorized_at:source.fl_filing_authorized ? new Date().toISOString() : null,
+      fl_certificate_of_status:!!source.fl_certificate_of_status,
+      fl_certified_copy:!!source.fl_certified_copy,
       fl_filing_status:'Draft', fl_payment_status:'unpaid', fl_submission_method:'sunbiz_online',
-      fl_state_fee:floridaStateFee(wForm),
-      state_fee_amount:floridaStateFee(wForm),
+      fl_state_fee:floridaStateFee(source),
+      state_fee_amount:floridaStateFee(source),
       state_fee_payment_status:'unpaid',
-      fl_authorized_shares:wForm.fl_authorized_shares || '1000',
-      fl_officers_directors:wForm.fl_officers_directors || '',
-      fl_director_election_method:wForm.fl_director_election_method || 'As stated by the bylaws.',
-      fl_incorporator:wForm.fl_incorporator || '',
-      fl_incorporator_signature:wForm.fl_incorporator_signature || '',
-      stage:'Consultation', fee: isFloridaFormable(wForm) ? floridaStateFee(wForm) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
+      fl_authorized_shares:source.fl_authorized_shares || '1000',
+      fl_officers_directors:source.fl_officers_directors || '',
+      fl_director_election_method:source.fl_director_election_method || 'As stated by the bylaws.',
+      fl_incorporator:source.fl_incorporator || '',
+      fl_incorporator_signature:source.fl_incorporator_signature || '',
+      stage:'Consultation', fee: isFloridaFormable(source) ? floridaStateFee(source) : fee, fee_paid:false, ein:'', state_file_num:'', notes:'', formation_date:'', created_at:new Date().toISOString()
     }
     const { data, error } = await supabase.from('formacorp').insert([payload]).select().single()
     if (error) { setSaving(false); showToast('Error: '+error.message, 'err'); return }
-    const plan = wForm.service_plan || 'Launch'
+    const plan = source.service_plan || 'Launch'
     const selected = plan === 'Formation'
       ? ['State Filing','Formation Documents','Compliance']
       : plan === 'Full Service'
         ? ['State Filing','EIN','Operating Agreement','Banking','Compliance','S-Corp Election','Registered Agent','Company Changes']
         : ['State Filing','EIN','Operating Agreement','Banking','Compliance']
-    const due = wForm.state==='FL' ? `${Number((wForm.effective_date || new Date().toISOString().slice(0,10)).slice(0,4))+1}-05-01` : null
+    const due = source.state==='FL' ? `${Number((source.effective_date || new Date().toISOString().slice(0,10)).slice(0,4))+1}-05-01` : null
     const { error:lifecycleErr } = await supabase.from('formacorp_lifecycle').insert([{
       case_id:data.id,
       service_plan:plan,
       selected_services:selected,
       ein_status:'Not Started',
-      ein_responsible_party_name:wForm.authorized_representative || wForm.client_name || '',
+      ein_responsible_party_name:source.authorized_representative || source.client_name || '',
       operating_agreement_status:'Not Started',
       banking_status:'Not Started',
       bank_account_type:'Business Checking',
-      bank_signer:wForm.authorized_representative || wForm.client_name || '',
+      bank_signer:source.authorized_representative || source.client_name || '',
       annual_report_status:'Not Due',
       annual_report_due_date:due,
       good_standing_status:'Unknown',
-      registered_agent_status:wForm.registered_agent==='Self (Owner)' ? 'Client / Self' : 'Third Party',
+      registered_agent_status:source.registered_agent==='Self (Owner)' ? 'Client / Self' : 'Third Party',
     }])
     setSaving(false)
     if (lifecycleErr) { showToast('Formation created, but lifecycle setup needs attention: '+lifecycleErr.message, 'err') }
     else showToast('🏢 Formation case + launch lifecycle created!')
     setWizard(false)
+    setFloridaIntake(false)
     await load()
     setDetail(data)
+  }
+
+  async function saveNativeFloridaIntake(source) {
+    const prior=floridaEditCase
+    if (!prior) return createFromWizard(source)
+    if (!isFloridaLlc(prior) || ['Submitted to Florida','Under State Review','Approved / Active'].includes(prior.fl_filing_status)) {
+      showToast('Filed or approved Florida submissions cannot be edited as draft intake.', 'err')
+      return
+    }
+    const newFee=floridaStateFee(source)
+    if (prior.state_fee_payment_intent_id || ['received','remitted'].includes(prior.state_fee_payment_status || '')) {
+      if (Math.abs(newFee - Number(prior.state_fee_amount || floridaStateFee(prior))) > .009) {
+        showToast('A payment attempt or collected state fee must be reconciled before changing filing options.', 'err')
+        return
+      }
+    }
+    setSaving(true)
+    try {
+      const { data:tenantId,error:tenantError }=await supabase.rpc('current_tenant_id')
+      if (tenantError || !tenantId || String(tenantId)!==String(prior.tenant_id)) {
+        throw new Error('Unable to verify the active office for this filing.')
+      }
+      const {data:latest,error:readError}=await supabase.from('formacorp')
+        .select('id,fl_filing_status,state_fee_payment_intent_id,state_fee_payment_status,state_fee_amount,fl_state_fee')
+        .eq('id',prior.id).eq('tenant_id',tenantId).single()
+      if (readError || !latest) throw new Error('Could not recheck this filing in the active office.')
+      if (['Submitted to Florida','Under State Review','Approved / Active'].includes(latest.fl_filing_status)) {
+        throw new Error('This filing has already been recorded as submitted or approved; it cannot be rewritten as a draft.')
+      }
+      if ((latest.state_fee_payment_intent_id || ['received','remitted'].includes(latest.state_fee_payment_status || '')) &&
+          Math.abs(newFee - Number(latest.state_fee_amount || latest.fl_state_fee || 125)) > .009) {
+        throw new Error('Government filing funds must be reconciled before changing paid filing options.')
+      }
+      const keys=[
+        'client_name','entity_name','owners','registered_agent','principal_address','mailing_address',
+        'registered_agent_address','authorized_representative','authorized_representative_title',
+        'correspondence_email','fl_correspondence_name','effective_date','business_purpose',
+        'registered_agent_accepted','fl_registered_agent_signature','fl_authorized_representative_signature',
+        'fl_filing_authorized','fl_certificate_of_status','fl_certified_copy','fl_optional_provisions','fl_llc_managers'
+      ]
+      const patch=Object.fromEntries(keys.map(k=>[k,source[k]]))
+      patch.fl_state_fee=newFee
+      patch.state_fee_amount=newFee
+      patch.fl_authorized_at=source.fl_filing_authorized?(prior.fl_authorized_at || new Date().toISOString()):null
+      const {data:updated,error}=await supabase.from('formacorp').update(patch)
+        .eq('id',prior.id).eq('tenant_id',tenantId)
+        .in('fl_filing_status',['Draft','Ready to Submit','Filing Queue','Action Required'])
+        .select('id').single()
+      if (error || !updated) throw error || new Error('No authorized draft was updated.')
+      setDetail(d=>d?.id===prior.id?({...d,...patch}):d)
+      setFloridaEditCase(null)
+      await load()
+      showToast('✅ Florida LLC filing intake updated. This is not a state submission.')
+    } catch(error) {
+      showToast('Could not update Florida intake: '+(error?.message || error), 'err')
+    } finally {setSaving(false)}
   }
 
   function searchClient(val) {
@@ -735,6 +801,59 @@ export default function FormaCorp() {
       fee_paid:true,
       stage:'State Filing',
     }, '✅ Recorded as submitted to Florida', 'State submission recorded')
+  }
+
+  async function saveOfficialSunbizReceipt(c, receipt) {
+    if (!c?.id) throw new Error('Select a saved formation case first')
+    const tracking=String(receipt?.tracking||'').trim()
+    const payment=String(receipt?.payment||'').trim()
+    if (!tracking || !payment) {
+      showToast('Florida tracking and state payment receipts are both required.', 'err')
+      return
+    }
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if(tenantError||!tenantId||String(tenantId)!==String(c.tenant_id)) {
+      showToast('Cannot verify the currently authorized office.', 'err')
+      return
+    }
+    const {data:latest,error:readError}=await supabase.from('formacorp')
+      .select('id,fl_filing_status,fl_submission_method,fl_submitted_at')
+      .eq('id',c.id).eq('tenant_id',tenantId).single()
+    if(readError||!latest||latest.fl_submitted_at||['Submitted to Florida','Under State Review','Approved / Active'].includes(latest.fl_filing_status)){
+      showToast('Cannot overwrite an already recorded Florida filing.', 'err')
+      return
+    }
+    const confirmationUrl=String(receipt?.reference||'').trim()
+    if(confirmationUrl){
+      try {
+        const url=new URL(confirmationUrl)
+        if(url.protocol!=='https:'||!(['sunbiz.org','efile.sunbiz.org','dos.fl.gov'].includes(url.hostname)||url.hostname.endsWith('.sunbiz.org'))){
+          throw new Error('Invalid state confirmation URL')
+        }
+      } catch { showToast('Use an official Florida state HTTPS confirmation URL.', 'err');return }
+    }
+    const patch={
+      fl_filing_status:'Submitted to Florida',
+      fl_submission_method:'sunbiz_online',
+      fl_tracking_number:tracking,
+      fl_payment_reference:payment,
+      fl_confirmation_url:confirmationUrl,
+      fl_submitted_at:new Date().toISOString(),
+      fl_payment_status:'state_paid',
+      stage:'State Filing',
+    }
+    const {data:updated,error:updateError}=await supabase.from('formacorp')
+      .update(patch).eq('id',c.id).eq('tenant_id',tenantId)
+      .is('fl_submitted_at',null).select('id').single()
+    if(updateError||!updated) {
+      showToast('Could not record the Florida submission: '+(updateError?.message||'no eligible case'), 'err')
+      return
+    }
+    await recordFloridaEvent(c,'Submitted to Florida','User recorded official state tracking and state payment references; state approval not yet confirmed',{fl_submission_method:'sunbiz_online',fl_tracking_number:tracking,fl_payment_reference:payment})
+    setDetail(d=>d?.id===c.id?({...d,...patch}):d)
+    setOfficialSunbizCase(null)
+    await load()
+    showToast('Florida state receipt details recorded. Await official acceptance.')
   }
 
   async function markFloridaReview(c) {
@@ -1007,6 +1126,7 @@ export default function FormaCorp() {
 
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>
               <button className="btn sm" onClick={()=>openFloridaEdit(c, [])}>✏️ Edit Filing Details</button>
+              {isFloridaLlc(c) && !['Submitted to Florida','Under State Review','Approved / Active'].includes(c.fl_filing_status) && <button className="btn pri sm" onClick={()=>setFloridaEditCase(c)}>📝 Edit Florida LLC Articles Intake</button>}
               {!hasStateFilingFunds(c) && <span style={{fontSize:11,color:'var(--warn)',padding:'7px 10px',border:'1px solid var(--br)',borderRadius:7}}>State fee unpaid — pay directly through official Sunbiz filing; no FormaCorp Stripe charge</span>}
               {hasStateFilingFunds(c) && <span className="bdg bg" style={{alignSelf:'center'}}>Government funds recorded</span>}
               <button className="btn sm" onClick={()=>downloadArticlesPdf(c)} disabled={pdfBusy}>{pdfBusy?'⏳ Building…':'📄 Preview Articles'}</button>
@@ -1031,6 +1151,7 @@ export default function FormaCorp() {
 
             <details open style={{marginTop:12,paddingTop:10,borderTop:'1px solid var(--br)'}}>
               <summary style={{cursor:'pointer',fontSize:11,fontWeight:700}}>Florida submission inside FormaCorp</summary>
+              <button className="btn pri sm" style={{marginTop:10,marginBottom:8}} onClick={()=>setOfficialSunbizCase(c)}>🏛️ Open Official Sunbiz Filing Workspace</button>
               <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,margin:'6px 0 8px'}}>Prepare and save all details inside FormaCorp. The final standard state filing and government payment take place on official Sunbiz; record the official state receipt after payment. A fax-provider delivery reference is not proof that Florida accepted or paid for a filing.</div>
               <div style={{fontSize:11,fontWeight:700,margin:'10px 0 6px'}}>Prepaid Sunbiz E-File / Fax submission</div>
               <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5,marginBottom:8}}>For a frequent-filer Sunbiz account: generate the official Electronic Filing Cover Sheet in Sunbiz, attach it with the signed Articles, enter the fax number printed on that cover sheet, and FormaCorp will combine the PDFs and send the filing through the CRM fax service. Unsigned Articles are blocked. The prepaid Sunbiz account must already have enough funds for the state to process the filing.</div>
@@ -1094,6 +1215,7 @@ export default function FormaCorp() {
 
         {feePaymentCase && <FormaCorpStateFeeModal caseRecord={feePaymentCase} amount={Number(stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0)} onClose={()=>setFeePaymentCase(null)} onPaid={async(data)=>{ const paid=Number(data?.amount || stateFilingAmount(feePaymentCase,stateReqs[feePaymentCase.state]) || 0); const wasFlorida=isFloridaFormable(feePaymentCase); setFeePaymentCase(null); showToast('✅ Government filing funds collected'); await load(); setDetail(d=>d?({...d,state_fee_payment_status:'received',fee_paid:true,state_fee_collected_amount:paid,...(wasFlorida?{fl_payment_status:'received'}:{})}):d) }}/>}
         {editCaseModal}
+        {floridaEditCase && <FloridaSunbizIntake key={floridaEditCase.id} initialRecord={floridaEditCase} saving={saving} onClose={()=>setFloridaEditCase(null)} onSave={saveNativeFloridaIntake}/>}
         {confirmDel && <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setCD(null)}><div className="modal" style={{maxWidth:380,textAlign:'center'}}><div style={{fontSize:36,marginBottom:12}}>🗑</div><div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Delete this case?</div><div style={{fontSize:13,color:'var(--t3)',marginBottom:20}}>This cannot be undone.</div><div style={{display:'flex',gap:8}}><button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={()=>setCD(null)}>Cancel</button><button className="btn del" style={{flex:1,justifyContent:'center'}} onClick={()=>del(confirmDel)}>Delete</button></div></div></div>}
       </div>
     )
@@ -1104,7 +1226,9 @@ export default function FormaCorp() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
         <h2 style={{fontSize:15,fontWeight:700,margin:0}}>🏢 FormaCorp — Business Formation</h2>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button className="btn pri" onClick={openWizard}>＋ Start Business Formation</button>
+          <button className="btn pri" onClick={()=>setOfficialSunbizCase({entity_type:'LLC'})}>🏛️ Start Official Sunbiz Filing</button>
+          <button className="btn" onClick={()=>setFloridaIntake(true)}>Prepare Florida LLC in CRM</button>
+          <button className="btn" onClick={openWizard}>Other Formations</button>
           <button className="btn" onClick={()=>{setForm(BLANK);setModal('new')}}>＋ New Formation Case</button>
         </div>
       </div>
@@ -1143,6 +1267,9 @@ export default function FormaCorp() {
 
       {editCaseModal}
 
+      {floridaIntake && <FloridaSunbizIntake saving={saving} onClose={()=>setFloridaIntake(false)} onSave={createFromWizard}/>}
+      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)}/>}
+
       {wizard && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>
           <div className="modal" style={{width:560,maxHeight:'90vh',overflowY:'auto'}}>
@@ -1151,7 +1278,7 @@ export default function FormaCorp() {
 
             {wStep===1 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>What type of business entity does your client want to form?</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>{ENTITY_TYPES.map(t=><div key={t} onClick={()=>wFld('entity_type',t)} style={{padding:'16px 14px',borderRadius:8,border:`2px solid ${wForm.entity_type===t?'var(--blue)':'var(--br)'}`,background:wForm.entity_type===t?'var(--blt)':'var(--s2)',cursor:'pointer',fontWeight:600,fontSize:13,display:'flex',alignItems:'center',gap:8,transition:'all .1s'}}><span style={{fontSize:18}}>{ENTITY_ICONS[t]||'🏢'}</span> {t}</div>)}</div></div>}
 
-            {wStep===2 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Which state will {wForm.entity_type || 'the business'} be formed in?</div><select value={wForm.state} onChange={e=>{wFld('state',e.target.value);checkNameSoon(wForm.entity_name,e.target.value)}} style={{width:'100%',padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:14,marginBottom:14}}><option value="">— Select a state —</option>{STATES.map(s=><option key={s} value={s}>{stateReqs[s]?.state_name || s} ({s})</option>)}</select>{wForm.state&&stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📍 {stateReqs[wForm.state].state_name}</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{isFloridaFormable(wForm)?`${floridaStateFee(wForm).toFixed(2)}`:stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div>{stateReqs[wForm.state].notes&&<div style={{fontSize:12,color:'var(--t3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--br)',lineHeight:1.5}}>ℹ️ {stateReqs[wForm.state].notes}</div>}</div>}</div>}
+            {wStep===2 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Which state will {wForm.entity_type || 'the business'} be formed in?</div><select value={wForm.state} onChange={e=>{if(e.target.value==='FL' && wForm.entity_type==='LLC'){setWizard(false);setFloridaIntake(true);return}wFld('state',e.target.value);checkNameSoon(wForm.entity_name,e.target.value)}} style={{width:'100%',padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:14,marginBottom:14}}><option value="">— Select a state —</option>{STATES.map(s=><option key={s} value={s}>{stateReqs[s]?.state_name || s} ({s})</option>)}</select>{wForm.state&&stateReqs[wForm.state]&&<div className="card" style={{padding:'14px 16px',background:'var(--s2)'}}><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📍 {stateReqs[wForm.state].state_name}</div><div className="dr"><span className="dl">Filing Fee</span><span className="dv">{isFloridaFormable(wForm)?`${floridaStateFee(wForm).toFixed(2)}`:stateReqs[wForm.state].llc_filing_fee}</span></div><div className="dr"><span className="dl">Processing Time</span><span className="dv">{stateReqs[wForm.state].processing_time}</span></div><div className="dr"><span className="dl">Annual Report</span><span className="dv">{stateReqs[wForm.state].annual_report_fee}</span></div>{stateReqs[wForm.state].notes&&<div style={{fontSize:12,color:'var(--t3)',marginTop:8,paddingTop:8,borderTop:'1px solid var(--br)',lineHeight:1.5}}>ℹ️ {stateReqs[wForm.state].notes}</div>}</div>}</div>}
 
             {wStep===3 && <div><div style={{fontSize:13,color:'var(--t3)',marginBottom:14}}>Tell us about the business.</div><div style={{position:'relative'}} className="field"><label>Client *</label><input value={wForm.client_name} onChange={e=>wSearchClient(e.target.value)} placeholder="Search or type client name…"/>{wShowSug&&wSugg.length>0&&<div style={{position:'absolute',top:'100%',left:0,right:0,background:'var(--sf)',border:'1px solid var(--br)',borderRadius:6,zIndex:50,maxHeight:160,overflowY:'auto'}}>{wSugg.map(c=><div key={c.id} onClick={()=>chooseWizardClient(c)} style={{padding:'8px 12px',cursor:'pointer',fontSize:13}} onMouseEnter={e=>e.currentTarget.style.background='var(--s2)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>{c.name}</div>)}</div>}</div><div className="field"><label>Entity Name *</label><input value={wForm.entity_name} onChange={e=>{wFld('entity_name',e.target.value);checkNameSoon(e.target.value,wForm.state)}} placeholder="e.g. Smith Holdings LLC"/><NameCheckStatus state={wForm.state} name={wForm.entity_name} check={nameCheck}/></div><div className="field"><label>Owners / Members (names & %)</label><input value={wForm.owners} onChange={e=>wFld('owners',e.target.value)} placeholder="e.g. John Smith 60%, Jane Smith 40%"/></div><div className="field"><label>Registered Agent</label><input value={wForm.registered_agent} onChange={e=>wFld('registered_agent',e.target.value)} placeholder="Self (Owner), or agency name"/></div><div className="field"><label>Business Purpose</label><input value={wForm.business_purpose} onChange={e=>wFld('business_purpose',e.target.value)} placeholder="e.g. Tax resolution consulting services"/></div><FloridaFilingFields value={wForm} onChange={wFld}/></div>}
 

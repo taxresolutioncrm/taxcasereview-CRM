@@ -16,7 +16,7 @@ const PRODUCT_OPTIONS = [
   ['taxres_crm','TaxRes CRM'],['camvella','Camvella'],['arcvena','Arcvena'],
   ['bocasync','BocaSync'],['groundivo','GroundIVO'],['oculivo','Oculivo'],
   ['restore_relay','Restore Relay'],['pool_crm','PoolVerge'],
-  ['barbers_salons','Barbers & Salons CRM'],
+  ['barbers_salons','ChairStyle'],
   ['health_insurance','Health Insurance Agency CRM'],['phl_land_care','PHL Land Care CRM'],
   ['romylabs','RomyLabs']
 ]

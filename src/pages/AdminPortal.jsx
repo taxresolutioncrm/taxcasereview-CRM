@@ -1,3 +1,4 @@
+import { placeBuildingCRMsAfterHealth } from '../lib/adminProductOrdering'
 import AdminBookingAlerts from '../components/AdminBookingAlerts'
 import AdminOculivoDemoRequests from '../components/AdminOculivoDemoRequests'
 // AdminPortal — TaxRes CRM founder/admin shell.
@@ -3515,19 +3516,19 @@ const PRODUCT_REGISTRY = [
   },
   {
     key:        'barbers_salons',
-    label:      'Barbers & Salons CRM',
+    label:      'ChairStyle',
     icon:       '✂️',
     color:      '#EC4899',
     industry:   'Barbers & Salons',
     url:        null,
     appUrl:     null,
-    websiteUrl: null,
+    websiteUrl: 'https://romylabs.com/solutions/barber-salon-crm/',
     lifecycleStage: 'building',
     connection:     'not_connected',
-    brandStatus:    'working_name',
+    brandStatus:    'branded',
     publicOnRomyLabs: false,
     commerciallyAvailable: false,
-    desc:      'CRM and operations platform for barber shops, salons, stylists and multi-location beauty businesses.',
+    desc:      'ChairStyle (chairstyle.net) is in development for barbers, salons, stylists and multi-location beauty teams. Product website not launched.',
     metricsUrl: null,
     nextMilestone: 'Finish product build, connect Supabase, then enable live platform metrics',
     priorityRank:   5,
@@ -3902,6 +3903,7 @@ function mergeProductRegistry(rows = []) {
       metricsUrl: supabaseUrl ? `${supabaseUrl}/functions/v1/platform-metrics` : (existing.metricsUrl || null),
       nextMilestone: existing.nextMilestone,
       priorityRank: existing.priorityRank,
+      registrySortOrder: Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : null,
     })
   }
   return [...byKey.values()]
@@ -3925,7 +3927,7 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
       const [{ data, error }, { data: productRows, error: productError }] = await Promise.all([
         supabase.rpc('admin_romylabs_office_registry'),
         supabase.from('romylabs_products')
-          .select('product_id,name,accent_color,icon_ref,industry,app_url,marketing_url,lifecycle,public,short_desc,description,supabase_url,active')
+          .select('product_id,name,accent_color,icon_ref,industry,app_url,marketing_url,lifecycle,public,short_desc,description,supabase_url,active,sort_order')
           .eq('active', true),
       ])
       if (cancelled) return
@@ -4115,6 +4117,10 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
   const sortByLifecycle = (a, b) => {
     const lifecycleDiff = (lifecycleOrder[a.lifecycleStage] ?? 9) - (lifecycleOrder[b.lifecycleStage] ?? 9)
     if (lifecycleDiff !== 0) return lifecycleDiff
+    if (a.lifecycleStage === 'building' && b.lifecycleStage === 'building' && a.registrySortOrder != null && b.registrySortOrder != null) {
+      const registryDiff = a.registrySortOrder - b.registrySortOrder
+      if (registryDiff !== 0) return registryDiff
+    }
     if ((a.priorityRank ?? 999) !== (b.priorityRank ?? 999)) return (a.priorityRank ?? 999) - (b.priorityRank ?? 999)
     return 0
   }
@@ -4151,9 +4157,13 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
                      : filter === 'planned'  ? products.filter(p => p.lifecycleStage === 'research')
                      : filter === 'products' ? products.filter(p => p.lifecycleStage !== 'research').sort(sortByLifecycle)
                      : [...products, ...tenants].sort(sortByLifecycle)
-  const filtered = filter === 'tenants' || filter === 'planned'
-    ? filteredBase
-    : movePartialProductsDirectlyUnderRestore(filteredBase)
+  // Run this last: registry order alone cannot protect Building entries from
+  // the secondary connection-health rearrangement in the Products table.
+  const filtered = placeBuildingCRMsAfterHealth(
+    filter === 'tenants' || filter === 'planned'
+      ? filteredBase
+      : movePartialProductsDirectlyUnderRestore(filteredBase)
+  )
 
   const BADGE = (txt, color) => (
     <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:20,
@@ -5944,7 +5954,9 @@ function CommandCenter() {
 
           {/* ── Portfolio Grid (compact — not a duplicate of Products tab) ── */}
           {(() => {
-            const products = mergeProductRegistry(reportingProducts)
+            // Dashboard portfolio must use the same final Building placement as Products.
+            // SettleLift belongs directly below Health Insurance, ahead of Research.
+            const products = placeBuildingCRMsAfterHealth(mergeProductRegistry(reportingProducts))
             const LIFECYCLE_COLOR = { live:'#10b981', available:'#10b981', coming:'#8b5cf6', building:'#f59e0b', research:'#64748b', internal:'#475569' }
             const LIFECYCLE_LABEL = { live:'✅ Live', available:'🟢 Available', coming:'🔜 Coming Soon', building:'🔨 Building', research:'🔬 Research', internal:'🔒 Internal' }
             const CONN_DOT = { connected:'🟢', partial:'🟡', not_connected:'⚪' }

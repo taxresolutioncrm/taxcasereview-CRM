@@ -3,6 +3,15 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp primary Florida filing button opens the official Sunbiz filing workspace directly, with optional CRM case preparation retained',
+  'Official state confirmation is recorded only against an existing tenant-scoped FormaCorp case',
+  'FormaCorp adds an official Sunbiz filing workspace inside the CRM, including same-page government website display where Florida permits it',
+  'Saved formation details are copyable alongside the official government application; agency iframe restrictions may require a direct government tab',
+  'Official Florida tracking and payment references can be recorded with tenant checks without falsely claiming state acceptance',
+  'FormaCorp opens a native six-step Florida LLC Articles of Organization intake instead of the generic formation wizard',
+  'Florida LLC intake captures street, suite, city, ZIP, registered-agent acceptance, authorized persons, signatures and filing options',
+  'Draft Florida LLC filing cases can be reopened and edited safely before submission; Articles PDF reflects captured filing details',
+  'Saving an intake does not submit an online filing to Sunbiz or pay the Florida filing fee',
   'FormaCorp corrects official Florida LLC, profit and nonprofit Sunbiz filing links, with no undocumented direct filing claim',
   'FormaCorp includes AMBR title, registered agent address reuse and complete prefiling review',
   'FormaCorp fax-provider acceptance remains pending state receipt and never falsely marks government fees paid',
@@ -88,7 +97,11 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
-  'Send Booking Link now lets RomyLabs Admin select a configured CRM; Email and Copy use the same selected product-specific booking URL and branded email, while unconfigured CRMs are visibly disabled. Removed duplicate booking and add-event buttons from the selected-day panel.',
+  'Send Booking Link now lets RomyLabs Admin choose any supported CRM from its product registry; copy and email use the same product-specific branded booking page, and unconfigured products are disabled. Duplicate booking and appointment actions are removed from the selected-day sidebar.',
+  'Admin Portal dashboard Product Portfolio now places SettleLift immediately below Health Insurance and directly above ChairStyle, consistent with the Products tab instead of leaving SettleLift below Research',
+  'Admin Portal Products keeps SettleLift directly below Health Insurance Agency CRM and ahead of ChairStyle, with research-only concepts below the active Building group even after connection status sorting',
+  'ChairStyle replaces the Barbers & Salons working name in the Admin Portal, booking choices and billing labels; the unlaunched chairstyle.net site is described without a live link and existing product IDs and office versions remain unchanged',
+  'Admin Portal Building products now follow central registry sort order; SettleLift appears directly below Health Insurance and above Barbers & Salons',
   'Production calendar v3.2.58 release verifies the exact Admin Portal Cloudflare build marker for click-to-add and CRM/office identity on appointment chips',
   'Calendar event chips show the CRM/product name and logo beneath the time/title; if a distinct office name is provided it is displayed too, without inventing an office for unlabeled events',
   'Clicking any empty part of a calendar day or its date number opens the existing Add Event form for that exact date, matching the plus button; clicking an existing appointment still opens details and More retains day navigation',
@@ -154,18 +167,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.59',
+  version: '3.2.65',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.59 — CRM-Specific Booking Links',
+  title: 'RomyLabs Admin Portal 3.2.65 — CRM Booking Link Selector',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.54',
+    version: '3.2.61',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
+    title: 'CRM 3.2.61 — Official Sunbiz Filing Workspace',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -187,17 +200,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.54',
+    version: '3.2.61',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
+    title: 'CRM 3.2.61 — Official Sunbiz Filing Workspace',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.54',
+    version: '3.2.61',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.54 — FormaCorp Filing Verification',
+    title: 'CRM 3.2.61 — Official Sunbiz Filing Workspace',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
