@@ -18,7 +18,7 @@ for (const needle of [
   assert(component.includes(needle) || (needle==='Folder contains documents' && shared.includes(needle)),
     'Missing client Documents requirement: '+needle)
 }
-assert(component.includes('!/[\\x00-\\x1f\\x7f]/.test(name)'), 'Folder name must reject actual ASCII control characters')
+assert(component.includes('if (/[\\x00-\\x1f\\x7f]/.test(raw)) return'), 'Folder name must reject raw ASCII control characters before trim')
 assert(!component.includes('!/[\\\\x00-\\\\x1f\\\\x7f]/.test(name)'), 'Folder validation must not be double escaped')
 assert(component.includes('customClientFolders.map(item=>item.name)'), 'Custom folders must be upload destinations')
 assert(component.includes('existingFolderNames(item.id)'), 'Rename must prevent duplicate folder labels')
