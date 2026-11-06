@@ -1,0 +1,40 @@
+.sunbiz-workspace-modal {width:min(1480px,calc(100vw - 24px))!important;max-width:none!important;max-height:96dvh!important;overflow-y:auto;padding:0!important;border-radius:12px;}
+.sunbiz-workspace {padding:16px 18px 18px;min-width:0;}
+.sunbiz-header {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.sunbiz-heading {margin:0;font-size:19px;font-weight:800;line-height:1.25;}
+.sunbiz-subtitle {font-size:11px;color:var(--t3);margin-top:3px;}
+.sunbiz-header-actions {display:flex;align-items:center;gap:9px;flex-shrink:0;}
+.sunbiz-origin {font-size:11px;font-weight:700;border:1px solid var(--br);border-radius:20px;padding:6px 10px;color:var(--t3);white-space:nowrap;}
+.sunbiz-notice {font-size:11px;color:var(--t3);line-height:1.5;margin:0 0 12px;border-radius:8px;background:var(--s2);border:1px solid var(--br);padding:9px 12px;}
+.sunbiz-notice summary {cursor:pointer;display:flex;gap:6px;align-items:center;font-weight:700;color:var(--tx);}
+.sunbiz-notice p {margin:8px 0 0;}
+.sunbiz-notice strong {color:var(--tx);}
+.sunbiz-main {display:grid;grid-template-columns:254px minmax(0,1fr);align-items:start;gap:14px;}
+.sunbiz-main.sunbiz-no-case {display:block;}
+.sunbiz-sidebar {background:var(--s2);border:1px solid var(--br);border-radius:9px;max-height:min(76vh,760px);overflow-y:auto;padding:10px 12px;align-self:start;}
+.sunbiz-sidebar h3 {margin:0 0 3px;font-size:13px;}
+.sunbiz-helper {font-size:11px;color:var(--t3);line-height:1.5;}
+.sunbiz-detail-group {border-top:1px solid var(--br);margin-top:8px;padding-top:6px;}
+.sunbiz-detail-group summary {cursor:pointer;font-size:11px;font-weight:800;padding:4px 0;}
+.sunbiz-data-row {padding:7px 0;border-bottom:1px solid var(--br);}
+.sunbiz-data-label {font-size:10px;font-weight:700;margin-bottom:3px;}
+.sunbiz-data-value {font-size:11px;color:var(--t3);overflow-wrap:anywhere;min-width:0;flex:1;}
+.sunbiz-data-line {display:flex;align-items:flex-start;gap:6px;}
+.sunbiz-copy-btn {font-size:10px!important;padding:4px 7px!important;flex-shrink:0;}
+.sunbiz-page {min-width:0;}
+.sunbiz-browser {min-width:0;border:1px solid var(--br);border-radius:10px;overflow:hidden;background:var(--s2);}
+.sunbiz-browser-bar {padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--br);flex-wrap:wrap;}
+.sunbiz-browser-label {font-size:12px;font-weight:800;}
+.sunbiz-browser-toolbar {display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.sunbiz-browser-address {font-size:10px;color:var(--t3);border:1px solid var(--br);border-radius:5px;padding:5px 9px;white-space:nowrap;}
+.sunbiz-browser iframe {display:block;width:100%;height:74vh;min-height:620px;max-height:850px;border:0;background:#fff;}
+.sunbiz-empty {padding:24px;font-size:12px;line-height:1.6;color:var(--t3);}
+.sunbiz-confirmation {margin-top:13px;border-radius:9px;border:1px solid var(--br);background:var(--s2);overflow:hidden;}
+.sunbiz-confirmation summary {cursor:pointer;padding:12px 14px;font-size:12px;font-weight:800;}
+.sunbiz-confirmation-body {padding:0 14px 14px;}
+.sunbiz-confirmation-fields {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.sunbiz-confirmation-fields label {min-width:0;font-size:11px;font-weight:700;}
+.sunbiz-confirmation-fields input {width:100%;margin-top:5px;}
+.sunbiz-confirmation-actions {display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
+@media(max-width:920px) {.sunbiz-main{grid-template-columns:210px minmax(0,1fr);gap:10px}.sunbiz-workspace{padding:13px}.sunbiz-confirmation-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.sunbiz-browser iframe{min-height:540px;height:68vh}}
+@media(max-width:680px){.sunbiz-workspace-modal{width:100vw!important;max-height:100dvh!important;border-radius:0!important}.sunbiz-workspace{padding:10px}.sunbiz-header{align-items:flex-start}.sunbiz-heading{font-size:16px}.sunbiz-origin{display:none}.sunbiz-main{display:flex;flex-direction:column}.sunbiz-sidebar{width:100%;max-height:260px;position:static}.sunbiz-page{width:100%}.sunbiz-browser iframe{height:70dvh;min-height:460px}.sunbiz-confirmation-fields{grid-template-columns:1fr}.sunbiz-browser-address{display:none}.sunbiz-browser-bar{padding:8px}.sunbiz-notice{margin-bottom:8px}}
