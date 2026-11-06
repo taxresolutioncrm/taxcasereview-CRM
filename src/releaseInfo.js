@@ -3,6 +3,9 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'FormaCorp official Sunbiz filing workspace now maximizes the government page and opens it automatically',
+  'Saved CRM filing details are compact and collapsible; new filings no longer display an empty sidebar',
+  'Government disclosure and state-receipt entry are now collapsible, with responsive mobile layout',
   'FormaCorp primary Florida filing button opens the official Sunbiz filing workspace directly, with optional CRM case preparation retained',
   'Official state confirmation is recorded only against an existing tenant-scoped FormaCorp case',
   'FormaCorp adds an official Sunbiz filing workspace inside the CRM, including same-page government website display where Florida permits it',
@@ -170,18 +173,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.66',
+  version: '3.2.67',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.66 — Completed Demo Tasks History',
+  title: 'RomyLabs Admin Portal 3.2.67 — FormaCorp Sunbiz Workspace Polish',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.61',
+    version: '3.2.67',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.61 — Official Sunbiz Filing Workspace',
+    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -203,17 +206,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.61',
+    version: '3.2.67',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.61 — Official Sunbiz Filing Workspace',
+    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.61',
+    version: '3.2.67',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.61 — Official Sunbiz Filing Workspace',
+    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
