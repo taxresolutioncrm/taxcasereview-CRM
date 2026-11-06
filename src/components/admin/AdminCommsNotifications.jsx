@@ -114,6 +114,7 @@ export default function AdminCommsNotifications(){
     return ()=>{mounted.current=false;clearInterval(timer);window.removeEventListener('focus',foreground);document.removeEventListener('visibilitychange',foreground)}
   },[refresh])
 
+  useEffect(()=>{ if(incomingCall) setOpen(false) },[incomingCall])
   useEffect(()=>{
     if(!incomingCall)return
     const number=String(incomingCall?.options?.remoteCallerNumber||'Unknown caller')
