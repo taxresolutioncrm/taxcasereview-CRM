@@ -16,6 +16,7 @@ const CLIENT_DOCUMENT_FOLDER_CHANGES = [
   'Folder maintenance uses permission-checked atomic server RPCs and blocks ambiguous legacy documents',
   'Existing default folders, Canopy imports, secure previews, downloads, fax and AI Analyze remain preserved',
   'Client Documents manual now explains authorized custom-folder maintenance, legacy document restrictions and empty-only deletion',
+  'Empty-folder deletion uses an accessible in-app confirmation instead of a browser popup',
 ]
 
 const IRS_WORKFLOW_CHANGES = [
