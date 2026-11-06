@@ -48,13 +48,14 @@ set search_path=public,pg_temp as $$
         and lower(e.email)=lower(coalesce(auth.jwt()->>'email',auth.email(),''))
         and lower(coalesce(e.status,''))='active'
         and lower(coalesce(t.status,'')) in ('active','trial')
-        and coalesce(e.perm_documents,
-          case
-            when e.access in ('Super Admin','Admin','EA','CPA','Attorney','Sales Rep','Sales Manager','Manager','Tax Advisor') then 2
-            when e.access='Tax Associate' then 1
-            else 0
-          end
-        ) >= p_level
+        and (case when e.access='Super Admin' then 3 else
+          coalesce(e.perm_documents,
+            case
+              when e.access in ('Admin','EA','CPA','Attorney','Sales Rep','Manager','Tax Advisor') then 2
+              when e.access in ('Tax Associate','Sales Manager') then 1
+              else 0
+            end)
+          end) >= p_level
     );
 $$;
 revoke all on function public._client_folder_can(uuid,integer) from PUBLIC,anon;
@@ -91,8 +92,16 @@ grant execute on function public._client_folder_validate_name(text) to authentic
 create or replace function public._client_folder_document_write_lock()
 returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
 begin
-  if NEW.tenant_id is not null and nullif(NEW.client_id,'') is not null then
-    perform pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.client_id,180621));
+  if NEW.tenant_id is not null then
+    if nullif(NEW.client_id,'') is not null then
+      perform pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text || ':' || NEW.client_id,180621));
+    else
+      -- Legacy name-only importer writes take a separate per-tenant/name lock.
+      if nullif(coalesce(NEW.client,NEW.clientname,''),'') is not null then
+        perform pg_advisory_xact_lock(hashtextextended(
+          NEW.tenant_id::text || ':legacy:' || lower(coalesce(nullif(NEW.client,''),NEW.clientname)),180621));
+      end if;
+    end if;
   end if;
   return NEW;
 end $$;
@@ -105,7 +114,7 @@ revoke all on function public._client_folder_document_write_lock() from PUBLIC,a
 create or replace function public.create_client_document_folder(p_client_id text,p_name text)
 returns table(id uuid,name text)
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare v_tenant uuid; v_client text; v_name text; v_created_id uuid;
+declare v_tenant uuid; v_client text; v_name text; v_client_name text; v_created_id uuid;
 begin
   v_tenant:=public.current_tenant_id();
   v_client:=nullif(btrim(coalesce(p_client_id,'')),'');
@@ -116,6 +125,15 @@ begin
   end if;
   v_name:=public._client_folder_validate_name(p_name);
   perform pg_advisory_xact_lock(hashtextextended(v_tenant::text || ':' || v_client,180621));
+  select c.name into v_client_name from public.clients c
+    where c.id=v_client and c.tenant_id=v_tenant;
+  perform pg_advisory_xact_lock(hashtextextended(
+    v_tenant::text || ':legacy:' || lower(v_client_name),180621));
+  if exists(select 1 from public.documents d where d.tenant_id=v_tenant
+      and lower(d."docType")=lower(v_name)
+      and (d.client_id=v_client or (nullif(d.client_id,'') is null and
+        (d.client=v_client_name or d.clientname=v_client_name)))) then
+    raise exception 'This name is already used by an existing or imported document category.'; end if;
   if exists(select 1 from public.client_document_folders f
       where f.tenant_id=v_tenant and f.client_id=v_client and lower(f.name)=lower(v_name)) then
     raise exception 'Folder already exists' using errcode='23505';
@@ -145,8 +163,15 @@ begin
   select c.name into v_client_name from public.clients c
     where c.id=v_client and c.tenant_id=v_tenant;
   if not found then raise exception 'Client record unavailable' using errcode='42501'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(
+    v_tenant::text || ':legacy:' || lower(v_client_name),180621));
   v_name:=public._client_folder_validate_name(p_new_name);
   if v_name=v_folder.name then return; end if;
+  if exists(select 1 from public.documents d where d.tenant_id=v_tenant
+      and lower(d."docType")=lower(v_name)
+      and (d.client_id=v_client or (nullif(d.client_id,'') is null and
+        (d.client=v_client_name or d.clientname=v_client_name)))) then
+    raise exception 'Destination name is already used by an existing or imported document category.'; end if;
   if exists(select 1 from public.client_document_folders f
       where f.tenant_id=v_tenant and f.client_id=v_client
       and f.id<>p_folder_id and lower(f.name)=lower(v_name)) then
@@ -178,6 +203,8 @@ begin
   if not found then raise exception 'Folder not found'; end if;
   select c.name into v_client_name from public.clients c where c.id=v_client and c.tenant_id=v_tenant;
   if not found then raise exception 'Client record unavailable' using errcode='42501'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(
+    v_tenant::text || ':legacy:' || lower(v_client_name),180621));
   if exists(select 1 from public.documents d where d.tenant_id=v_tenant
       and d."docType"=v_folder.name
       and (d.client_id=v_client or
