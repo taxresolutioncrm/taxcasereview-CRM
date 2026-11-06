@@ -2702,39 +2702,111 @@ function EmployeeLookup() {
   )
 }
 
-// ── Audit Log ────────────────────────────────────────────────────────────────
+// ── Platform Audit Log — recent, redacted and paginated ──────────────────────
 function AuditLog() {
-  const [log,setLog] = useState(null)
+  const [rows,setRows] = useState([])
+  const [total,setTotal] = useState(0)
+  const [filter,setFilter] = useState('operations')
+  const [page,setPage] = useState(0)
+  const [refreshTick,setRefreshTick] = useState(0)
+  const [loading,setLoading] = useState(true)
   const [loadError,setLoadError] = useState('')
+  const pageSize = 50
+
   useEffect(()=>{
-    supabase.rpc('admin_get_audit_log',{p_limit:100}).then(({data,error})=>{if(error){setLoadError(error.message);setLog([])}else{setLoadError('');setLog(data||[])}})
-  },[])
+    let cancelled = false
+    setLoading(true)
+    setLoadError('')
+    supabase.rpc('admin_get_audit_log_v2',{
+      p_filter: filter, p_limit: pageSize, p_offset: page*pageSize,
+    }).then(({data,error})=>{
+      if (cancelled) return
+      if (error || !Array.isArray(data?.items)) {
+        setRows([])
+        setTotal(0)
+        setLoadError(error?.message || 'The platform audit response was incomplete.')
+      } else {
+        setRows(data.items)
+        setTotal(Number(data.total || 0))
+      }
+    }).catch(error=>{
+      if (!cancelled) { setRows([]); setTotal(0); setLoadError(String(error?.message || error)) }
+    }).finally(()=>{ if (!cancelled) setLoading(false) })
+    return ()=>{ cancelled=true }
+  },[filter,page,refreshTick])
+
+  const easternTime = date => {
+    if (!date) return '—'
+    const value = new Date(date)
+    return Number.isNaN(value.getTime()) ? '—' : value.toLocaleString('en-US',{
+      timeZone:'America/New_York',year:'numeric',month:'short',day:'numeric',
+      hour:'numeric',minute:'2-digit',timeZoneName:'short',
+    })
+  }
+
   return (
-    <div style={{ padding:'28px 36px', maxWidth:900 }}>
-      <div style={{ fontSize:22,fontWeight:800,color:'#fff',marginBottom:24 }}>📋 Audit Log</div>
-      {loadError && <div style={{color:'#fca5a5',marginBottom:14}}>Unable to load audit log: {loadError}</div>}
-      {!log ? <Spinner /> : log.length===0 ? (
-        <div style={{ color:'#475569',fontSize:14 }}>No admin actions recorded yet.</div>
+    <div style={{ padding:'28px 36px', maxWidth:1240 }}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12,marginBottom:12 }}>
+        <h1 style={{ fontSize:22,fontWeight:800,color:'#fff',margin:0 }}>📋 Platform Audit Log</h1>
+        <button onClick={()=>setRefreshTick(t=>t+1)} disabled={loading}
+          style={{...S.btn('ghost'),fontSize:12}}>{loading?'Refreshing…':'Refresh events'}</button>
+      </div>
+      <p style={{fontSize:12,color:'#94a3b8',lineHeight:1.65,marginBottom:18}}>
+        Immutable event history from administration, credentials, contracts, billing and booking workflows.
+        Impersonation sessions are preserved separately so they do not bury operational activity.
+        Sensitive tokens and credentials are removed by the server before results reach your browser.
+      </p>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:16}}>
+        {[
+          {key:'operations',label:'Operational events'},
+          {key:'impersonation',label:'Impersonation history'},
+          {key:'all',label:'All events'},
+        ].map(option=><button key={option.key} onClick={()=>{setFilter(option.key);setPage(0)}}
+          aria-pressed={filter===option.key}
+          style={{...S.btn(filter===option.key?'primary':'ghost'),fontSize:11,padding:'7px 12px'}}>
+          {option.label}
+        </button>)}
+        <span style={{fontSize:11,color:'#94a3b8',marginLeft:'auto'}}>
+          {total.toLocaleString()} events · {page*pageSize+1}–{Math.min(total,(page+1)*pageSize)} shown
+        </span>
+      </div>
+      {loadError && <div role="alert" style={{color:'#fca5a5',marginBottom:14}}>
+        Audit history unavailable: {loadError}
+      </div>}
+      {loading ? <Spinner /> : rows.length===0 ? (
+        <div style={{...S.card,padding:24,color:'#94a3b8'}}>
+          No {filter==='impersonation'?'impersonation':'operational'} events match this view.
+          {filter==='operations'?' Older sign-in sessions remain available under Impersonation history.':''}
+        </div>
       ) : (
-        <div style={S.card}>
-          <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
-            <thead><tr>{['Action','Admin','Office','Detail','When'].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-            <tbody>
-              {log.map(a=>(
-                <tr key={a.id}>
-                  <td style={{ ...S.td,color:'#a5b4fc',fontWeight:600 }}>{a.action}</td>
-                  <td style={{ ...S.td,color:'#94a3b8',fontSize:12 }}>{a.admin_email}</td>
-                  <td style={{ ...S.td,color:'#e2e8f0' }}>{a.target_name||'—'}</td>
-                  <td style={{ ...S.td,color:'#475569',fontSize:11 }}>
-                    {a.detail ? JSON.stringify(a.detail, (key, value) => /token|secret|password|authorization|api.?key|refresh|credential|session/i.test(key) ? '[REDACTED]' : value).slice(0,120) : '—'}
-                  </td>
-                  <td style={{ ...S.td,color:'#475569' }}>{fmtAgo(a.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
+        <div style={{...S.card,overflowX:'auto'}}>
+          <table style={{width:'100%',minWidth:800,borderCollapse:'collapse',fontSize:12}}>
+            <thead><tr>{['When (Eastern)','Category','Action','Actor','Office / Subject','Details'].map(h=>
+              <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+            <tbody>{rows.map(event=>(
+              <tr key={event.id} style={{borderBottom:'1px solid rgba(99,102,241,.10)'}}>
+                <td style={{...S.td,color:'#cbd5e1',whiteSpace:'nowrap'}}>{easternTime(event.created_at)}</td>
+                <td style={{...S.td,color:'#a5b4fc'}}>{event.category || 'Admin'}</td>
+                <td style={{...S.td,color:'#e2e8f0',fontWeight:700}}>{String(event.action||'').replace(/[_.]/g,' ')}</td>
+                <td style={{...S.td,color:'#cbd5e1',overflowWrap:'anywhere'}}>{event.admin_email||'System'}</td>
+                <td style={{...S.td,color:'#cbd5e1'}}>{event.target_name||'—'}</td>
+                <td style={{...S.td,color:'#94a3b8',fontSize:11,overflowWrap:'anywhere'}}>
+                  {event.detail && Object.keys(event.detail).length
+                    ? Object.entries(event.detail).map(([key,value])=>`${key}: ${String(value)}`).join(' · ')
+                    : '—'}
+                </td>
+              </tr>
+            ))}</tbody>
           </table>
         </div>
       )}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16,gap:10}}>
+        <button disabled={loading||page===0} onClick={()=>setPage(p=>Math.max(0,p-1))}
+          style={{...S.btn('ghost'),fontSize:12}}>Previous</button>
+        <span style={{color:'#94a3b8',fontSize:12}}>Page {page+1} of {Math.max(1,Math.ceil(total/pageSize))}</span>
+        <button disabled={loading||(page+1)*pageSize>=total} onClick={()=>setPage(p=>p+1)}
+          style={{...S.btn('ghost'),fontSize:12}}>Next</button>
+      </div>
     </div>
   )
 }
@@ -4636,6 +4708,11 @@ function SalesPipeline({ data, supabase, registryProducts }) {
   const [addingNote, setAddingNote]   = useState(false)
   const [activityType, setActivityType] = useState('note')
   const [toast, setToast]             = useState(null)
+  const [pipelineError, setPipelineError] = useState('')
+  const [pipelineLoading, setPipelineLoading] = useState(true)
+  const [incomingBookings, setIncomingBookings] = useState([])
+  const [bookingsError, setBookingsError] = useState('')
+  const [bookingsLoading, setBookingsLoading] = useState(true)
 
   // PRODUCTS: derived from registry prop — auto-updates when new products are registered
   const PRODUCTS = [
@@ -4645,11 +4722,46 @@ function SalesPipeline({ data, supabase, registryProducts }) {
 
   function showToast(msg, ok=true) { setToast({msg,ok}); setTimeout(()=>setToast(null),3000) }
 
-  // Reload prospects from DB
+  // Refresh from the live sales table, rather than preserving an old initial snapshot.
   async function reload() {
-    const { data: rows } = await supabase.from('prospects').select('*').order('created_at', { ascending: false })
-    setProspects(rows || [])
+    setPipelineLoading(true)
+    try {
+      const { data: rows, error } = await supabase.from('prospects')
+        .select('*').order('created_at', { ascending: false })
+      if (error) throw error
+      setProspects(rows || [])
+      setPipelineError('')
+    } catch(error) {
+      // Never render a silent zero as though a failed read meant no sales.
+      setPipelineError(String(error?.message || error))
+    } finally {
+      setPipelineLoading(false)
+    }
   }
+
+  async function loadBookings() {
+    setBookingsLoading(true)
+    try {
+      const { data: rows, error } = await supabase.from('romylabs_booking_alerts')
+        .select('booking_id,product_id,lead_name,lead_email,appointment_type,appointment_date,appointment_time,booked_at,followup_status')
+        .order('booked_at', {ascending:false}).limit(100)
+      if (error) throw error
+      setIncomingBookings(rows || [])
+      setBookingsError('')
+    } catch(error) {
+      setBookingsError(String(error?.message || error))
+    } finally {
+      setBookingsLoading(false)
+    }
+  }
+  useEffect(()=>{ reload(); loadBookings() },[])
+
+  const unlinkedBookings = incomingBookings.filter(booking => {
+    const email = String(booking.lead_email || '').trim().toLowerCase()
+    return !prospects.some(p =>
+      email && String(p.contact_email || '').trim().toLowerCase() === email &&
+      (!booking.product_id || p.product === booking.product_id || booking.product_id === 'romylabs'))
+  })
 
   // Load activities for selected prospect
   async function loadActivities(prospectId) {
@@ -4714,6 +4826,9 @@ function SalesPipeline({ data, supabase, registryProducts }) {
   // Save prospect (add or edit)
   async function saveProspect() {
     if (!form.firm_name?.trim()) { showToast('Firm name required', false); return }
+    if (!form.product || !PRODUCTS.some(p => p.value === form.product && p.value !== 'all')) {
+      showToast('Choose a registered product before saving', false); return
+    }
     setSaving(true)
     const payload = {
       firm_name:          form.firm_name,
@@ -4811,6 +4926,49 @@ function SalesPipeline({ data, supabase, registryProducts }) {
           {toast.msg}
         </div>
       )}
+
+      {/* Inbound booking alerts are leads, not automatically qualified sales opportunities. */}
+      <section style={{...CC2.card({padding:'15px 18px',marginBottom:18})}} aria-label="Incoming booking leads">
+        <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',justifyContent:'space-between',gap:10}}>
+          <div>
+            <strong style={{color:'#fff',fontSize:13}}>Sales opportunities and incoming bookings</strong>
+            <p style={{color:'#94a3b8',fontSize:12,margin:'5px 0 0',lineHeight:1.55}}>
+              Pipeline numbers measure qualified RomyLabs sales prospects. Product CRM customer leads are separate.
+              Booking alerts below can be reviewed and added deliberately without fabricating opportunities.
+            </p>
+          </div>
+          <button onClick={()=>{reload();loadBookings()}} disabled={pipelineLoading || bookingsLoading}
+            style={{...S.btn('ghost'),fontSize:11}}>
+            {pipelineLoading || bookingsLoading ? 'Refreshing…' : 'Refresh sales & bookings'}
+          </button>
+        </div>
+        {pipelineError && <p role="alert" style={{color:'#fca5a5',fontSize:12,marginTop:12}}>Unable to load sales prospects: {pipelineError}</p>}
+        {bookingsError && <p role="alert" style={{color:'#fca5a5',fontSize:12,marginTop:12}}>Unable to load booking alerts: {bookingsError}</p>}
+        {unlinkedBookings.length>0 && <div style={{marginTop:14,borderTop:'1px solid rgba(99,102,241,.2)',paddingTop:12}}>
+          <strong style={{fontSize:12,color:'#c6ff00'}}>{unlinkedBookings.length} incoming booking alert{unlinkedBookings.length===1?'':'s'} not linked to a sales prospect</strong>
+          {unlinkedBookings.slice(0,10).map(booking=>(
+            <div key={booking.booking_id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(99,102,241,.1)'}}>
+              <div style={{minWidth:0}}>
+                <div style={{color:'#e2e8f0',fontSize:12,fontWeight:700}}>{booking.lead_name||'New booking'} · {booking.product_id||'RomyLabs'}</div>
+                <div style={{color:'#94a3b8',fontSize:11,overflowWrap:'anywhere'}}>
+                  {booking.lead_email||'No contact email'} · {booking.appointment_date||'Date not supplied'} {booking.appointment_time||''}
+                </div>
+              </div>
+              <button disabled={pipelineLoading} onClick={()=>{
+                const product = PRODUCTS.find(p=>p.value === booking.product_id)?.value || ''
+                setForm({
+                  firm_name:booking.lead_name||'',contact_name:booking.lead_name||'',
+                  contact_email:booking.lead_email||'',product,stage:'Prospect',pricing_model:'undecided',
+                  source:'RomyLabs booking',notes:`Booking reference: ${booking.booking_id}. ${booking.appointment_type||''} ${booking.appointment_date||''} ${booking.appointment_time||''}`,
+                })
+                setEditMode(false);setShowForm(true)
+              }} style={{...S.btn('ghost'),flexShrink:0,fontSize:11,padding:'7px 10px'}}>Review as Prospect</button>
+            </div>
+          ))}
+          {unlinkedBookings.length>10 && <span style={{fontSize:11,color:'#94a3b8'}}>Showing 10 recent alerts. Use booking management for the complete history.</span>}
+        </div>}
+        {!bookingsLoading && !bookingsError && unlinkedBookings.length===0 && <p style={{color:'#94a3b8',fontSize:11,margin:'10px 0 0'}}>No unlinked incoming booking alerts.</p>}
+      </section>
 
       {/* ── KPI Row ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:20 }}>
@@ -5223,6 +5381,11 @@ function CommandCenter() {
   const [taxresScopeData, setTaxresScopeData] = useState(null)
   const [taxresScopeLoading, setTaxresScopeLoading] = useState(false)
   const [taxresScopeError, setTaxresScopeError] = useState('')
+  const [briefingStatus, setBriefingStatus] = useState(null)
+  const [briefingStatusError, setBriefingStatusError] = useState('')
+  const [briefingTestBusy, setBriefingTestBusy] = useState(false)
+  const [briefingTestMessage, setBriefingTestMessage] = useState('')
+  const [briefingTestOk, setBriefingTestOk] = useState(false)
   const [activity, setActivity] = useState([])
   const [liveMetricsVersion, setLiveMetricsVersion] = useState(0)
   const [liveMetricsProduct, setLiveMetricsProduct] = useState('')
@@ -5564,21 +5727,28 @@ function CommandCenter() {
     Promise.all([
       supabase.rpc('admin_taxres_crm_scope_metrics', { p_tenant_id: tenantId }),
       supabase.rpc('admin_taxres_live_kpis', { p_tenant_id: tenantId }),
+      supabase.rpc('admin_taxres_storage_metrics', { p_tenant_id: tenantId }),
     ])
-      .then(([scopeRes, liveRes]) => {
+      .then(([scopeRes, liveRes, storageRes]) => {
         if (cancelled) return
-        if (scopeRes.error || liveRes.error || !liveRes.data?.metrics) {
+        if (scopeRes.error || liveRes.error || storageRes.error || !liveRes.data?.metrics || !storageRes.data) {
           setTaxresScopeData(null)
           setTaxresScopeError(
             liveRes.error?.message ||
             scopeRes.error?.message ||
+            storageRes.error?.message ||
             'Authoritative TaxRes metrics unavailable'
           )
           return
         }
         setTaxresScopeData({
           ...(scopeRes.data || {}),
-          metrics: liveRes.data.metrics,
+          metrics: {
+            ...liveRes.data.metrics,
+            storage_bytes: Number(storageRes.data.bytes || 0),
+            storage_files: Number(storageRes.data.files || 0),
+          },
+          storage_coverage: storageRes.data.coverage,
           metrics_source: liveRes.data.source || 'live_taxres_family',
         })
       })
@@ -5601,6 +5771,21 @@ function CommandCenter() {
   // ── Bing state ──
   const [bingData, setBingData]           = useState(null)
   const [bingConnected, setBingConnected] = useState(false)
+
+  const reloadBriefingStatus = useCallback(async () => {
+    const { data, error } = await supabase.rpc('admin_daily_briefing_status')
+    if (error || !data) {
+      setBriefingStatus(null)
+      setBriefingStatusError(error?.message || 'Unable to determine the scheduler status')
+      return
+    }
+    setBriefingStatus(data)
+    setBriefingStatusError('')
+  },[])
+
+  useEffect(()=>{
+    if (tab==='system') reloadBriefingStatus().catch(e=>setBriefingStatusError(String(e?.message||e)))
+  },[tab,reloadBriefingStatus])
 
   // ── System live status ──
   const [sysStatus, setSysStatus] = useState(null)
@@ -6395,7 +6580,9 @@ function CommandCenter() {
             // CRM account drilldown — TaxRes local tenants + product platform-metrics offices.
             const selectedProduct = PRODUCT_REGISTRY.find(p => p.key === crmProduct && !p.isTenant)
               || { key: crmProduct, label: reportingProducts.find(p=>p.product_id===crmProduct)?.name || crmProduct }
-            const localTaxRes = (data.tenants || []).filter(t => String(t.tenant_code || '').toUpperCase() !== 'DEMO')
+            const localTaxRes = (data.tenants || []).filter(t =>
+              !['DEMO','TRC-003'].includes(String(t.tenant_code || '').toUpperCase())
+            )
             const remoteOffices = (crmRemoteData?.offices || []).map(o=>({
               id:o.id, firm_name:o.name, status:o.is_active===false?'inactive':'active', tenant_code:o.subscription_status || '',
               client_count:o.active_clients ?? o.customer_count, lead_count:o.active_leads ?? o.lead_count, employee_count:o.active_staff ?? o.staff_count,
@@ -6430,7 +6617,7 @@ function CommandCenter() {
               ? '—'
               : taxresMetrics.storage_files > 0
                 ? `${fmtBytes(taxresMetrics.storage_bytes)} · ${Number(taxresMetrics.storage_files).toLocaleString()} files`
-                : fmtBytes(taxresMetrics.storage_bytes)
+                : `${fmtBytes(taxresMetrics.storage_bytes)} · 0 files`
             return (<>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18,
             background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.15)',
@@ -6481,13 +6668,17 @@ function CommandCenter() {
               { label:'Total Seats — TaxRes Offices', value:String(selectedTaxresSeats), icon:'👥', color:'#6366f1' },
               { label:'Pending E-Signs', value:String(taxresMetrics.pending_esigns ?? '—'), icon:'✍️', color:'#8b5cf6' },
               { label:'Demos Today', value:String(taxresMetrics.demos_today ?? '—'), icon:'📅', color:'#0ea5e9' },
-              { label:'File Storage', value:hasLiveTaxresMetrics ? taxresStorageLabel : '—', icon:'💾', color:'#f59e0b' },
+              { label:'Central TaxRes Storage', value:hasLiveTaxresMetrics ? taxresStorageLabel : '—', icon:'💾', color:'#f59e0b' },
             ]).map(k => <KPICard key={k.label} {...k} />)}
             {crmRemoteLoading && <div style={{gridColumn:'1/-1',fontSize:12,color:'#64748b'}}>Loading {selectedProduct.label} offices…</div>}
             {crmRemoteError && <div style={{gridColumn:'1/-1',fontSize:12,color:'#fca5a5'}}>CRM metrics: {crmRemoteError}</div>}
             {crmProduct==='taxres_crm' && taxresScopeLoading && <div style={{gridColumn:'1/-1',fontSize:12,color:'#64748b'}}>Refreshing TaxRes scope…</div>}
             {crmProduct==='taxres_crm' && taxresScopeError && <div style={{gridColumn:'1/-1',fontSize:12,color:'#fca5a5'}}>TaxRes metrics: {taxresScopeError}</div>}
           </div>
+          {crmProduct==='taxres_crm' && <p style={{fontSize:11,color:'#94a3b8',marginTop:-12,marginBottom:18}}>
+            File storage counts registered objects in the central TaxRes family (Tax Case Review and Centurion).
+            Separate Supabase projects, including Nashville, are not included in this total.
+          </p>}
           </>)
           })()}
 
@@ -6640,20 +6831,48 @@ function CommandCenter() {
             </div>
           </div>
 
-          <div style={{ ...CC.card(), padding:'20px 24px', background:'rgba(16,185,129,.04)', border:'1px solid rgba(16,185,129,.15)' }}>
+          <section style={{ ...CC.card(), padding:'20px 24px', background:'rgba(16,185,129,.04)', border:'1px solid rgba(16,185,129,.15)' }} aria-label="Daily executive email status">
             <div style={{ fontSize:13, color:'#10b981', fontWeight:700, marginBottom:6 }}>Daily Executive Email</div>
-            <div style={{ fontSize:12, color:'#475569', marginBottom:14 }}>
-              A morning briefing is sent to romy@taxrescrm.net every day at 7:00 AM ET with platform stats, upcoming calendar events, and MRR.
+            <div style={{ fontSize:12, color:'#94a3b8', marginBottom:14,lineHeight:1.7 }}>
+              Scheduled for 7:00 AM America/New_York (Eastern; adjusts for daylight saving time).
+              Recipient: romy@taxrescrm.net. Includes current platform totals, calendar and MRR.
             </div>
-            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
               <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:20,
-                background:'rgba(16,185,129,.15)', color:'#10b981' }}>✅ Active</span>
+                background:briefingStatus?.ready?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)',
+                color:briefingStatus?.ready?'#10b981':'#fbbf24' }}>
+                {briefingStatus?.ready ? '✓ Scheduled' : briefingStatus ? '⚠ Not configured' : 'Status unverified'}
+              </span>
               <button onClick={async()=>{
-                const {error} = await supabase.functions.invoke('daily-briefing',{body:{}})
-                alert(error ? 'Error: '+error.message : 'Test briefing sent to romy@taxrescrm.net')
-              }} style={{ ...S.btn('ghost'), fontSize:11, padding:'4px 12px' }}>Send Test</button>
+                setBriefingTestBusy(true);setBriefingTestMessage('');setBriefingTestOk(false)
+                try {
+                  const {data:result,error} = await supabase.functions.invoke('daily-briefing',{body:{mode:'test'}})
+                  if(error || result?.sent !== true || result?.submitted !== true) {
+                    throw new Error(error?.message || result?.error || 'The email provider did not confirm submission')
+                  }
+                  setBriefingTestOk(true)
+                  setBriefingTestMessage('Test message accepted by the mail provider at '+new Date(result.submitted_at||Date.now()).toLocaleString('en-US',{timeZone:'America/New_York',timeZoneName:'short'})+'. Check the recipient mailbox for delivery.')
+                } catch(error) {
+                  setBriefingTestMessage('Test email failed: '+String(error?.message||error))
+                } finally {
+                  setBriefingTestBusy(false)
+                  await reloadBriefingStatus().catch(e=>setBriefingStatusError(String(e?.message||e)))
+                }
+              }} disabled={briefingTestBusy}
+                style={{ ...S.btn('ghost'), fontSize:11, padding:'4px 12px' }}>
+                {briefingTestBusy?'Submitting test…':'Send Test'}
+              </button>
+              <button onClick={()=>reloadBriefingStatus().catch(e=>setBriefingStatusError(String(e?.message||e)))}
+                style={{...S.btn('ghost'),fontSize:11,padding:'4px 12px'}}>Refresh status</button>
             </div>
-          </div>
+            {briefingStatusError && <p role="alert" style={{color:'#fca5a5',fontSize:12,marginTop:10}}>Scheduler status unavailable: {briefingStatusError}</p>}
+            {briefingStatus?.last_run && <p style={{color:'#cbd5e1',fontSize:11,marginTop:10,lineHeight:1.6}}>
+              Last attempt: {new Date(briefingStatus.last_run.attempted_at).toLocaleString('en-US',{timeZone:'America/New_York',timeZoneName:'short'})} ·
+              {briefingStatus.last_run.mode==='test'?' Test':' Scheduled'} · {briefingStatus.last_run.status}
+              {briefingStatus.last_run.error ? ' · '+briefingStatus.last_run.error : ''}
+            </p>}
+            {briefingTestMessage && <p role="status" style={{color:briefingTestOk?'#86efac':'#fca5a5',fontSize:12,marginTop:10,lineHeight:1.6}}>{briefingTestMessage}</p>}
+          </section>
         </>)}
 
         {tab==='products' && <ProductsTab supabase={supabase} taxresActivity={activity} />}
