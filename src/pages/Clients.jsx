@@ -926,7 +926,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
   const validFolderName = input => {
     const name=String(input || '').trim()
-    return name && name.length<=80 && !/[\\x00-\\x1f\\x7f]/.test(name) ? name : ''
+    return name && name.length<=80 && !/[\x00-\x1f\x7f]/.test(name) ? name : ''
   }
   const existingFolderNames = exceptId => [
     ...DOC_FOLDERS,...customClientFolders.filter(item=>item.id!==exceptId).map(item=>item.name),'All'
