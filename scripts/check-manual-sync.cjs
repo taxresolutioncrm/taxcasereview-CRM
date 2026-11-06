@@ -68,7 +68,10 @@ const familyScopeSignals = [
   ['Demo scope', /Demo/],
 ]
 for (const [name,re] of familyScopeSignals) assert(re.test(manual), `CRM Manual is missing central-family scope: ${name}`)
-assert(!/Nashville/.test(manual), 'TCR Manual must not expose Nashville-only instructions')
+// Nashville may be listed as an independent office, but the shared manual
+// must clearly direct staff to its separately maintained CRM instructions.
+assert(manual.includes("['Nashville Tax Solutions', 'Uses its separately deployed Nashville CRM manual'"),
+  'Shared CRM manual must distinguish the independent Nashville handbook')
 
 const requiredWorkflowSignals = [
   ['employee CRM invitation', /Send the CRM invitation/],
