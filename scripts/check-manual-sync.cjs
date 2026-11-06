@@ -64,11 +64,14 @@ for (const route of routes) {
 const familyScopeSignals = [
   ['central TaxRes scope', /central TaxRes CRM experience|central TaxRes-family offices/],
   ['TCR scope', /Tax Case Review/],
-  ['CloudCPA scope', /CloudCPA/],
+  ['Centurion Firm scope', /Centurion Firm/],
   ['Demo scope', /Demo/],
 ]
 for (const [name,re] of familyScopeSignals) assert(re.test(manual), `CRM Manual is missing central-family scope: ${name}`)
-assert(!/Nashville/.test(manual), 'TCR Manual must not expose Nashville-only instructions')
+// Nashville may be listed as an independent office, but the shared manual
+// must clearly direct staff to its separately maintained CRM instructions.
+assert(manual.includes("['Nashville Tax Solutions', 'Uses its separately deployed Nashville CRM manual'"),
+  'Shared CRM manual must distinguish the independent Nashville handbook')
 
 const requiredWorkflowSignals = [
   ['employee CRM invitation', /Send the CRM invitation/],

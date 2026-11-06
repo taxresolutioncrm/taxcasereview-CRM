@@ -2,7 +2,16 @@
 // Each office keeps an independent semantic version line.
 // Shared code does not make Nashville part of a central release.
 
+const OFFICE_ACCESS_CHANGES = [
+  'TaxRes and TCR login screens recover from temporary initial session failures instead of remaining stuck on Loading',
+  'Centurion sign-in and password recovery route to its separate authentication project',
+  'Centurion login refuses to post credentials against the wrong Supabase project',
+  'Employee lookup matches verified office membership case-insensitively and never grants Admin access on missing membership',
+  'CloudCPA is retired from the active office directory, manual, release listing and platform metrics routing',
+]
+
 const IRS_WORKFLOW_CHANGES = [
+  ...OFFICE_ACCESS_CHANGES,
   'Live calls can be placed on hold with original audible music and clear recovery when the provider cannot start playback',
   'RomyLabs direct calls stop their provider hold audio before resuming and conference holds use the same looped soundtrack',
   'FormaCorp official Sunbiz filing workspace now maximizes the government page and opens it automatically',
@@ -181,18 +190,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.69',
+  version: '3.2.70',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.69 — Communications Notifications',
-  changes: ADMIN_DEMO_TASK_CHANGES,
+  title: 'RomyLabs Admin Portal 3.2.70 — Four-Office Authentication and Directory',
+  changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.69',
+    version: '3.2.70',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.69 — Audible Hold Music',
+    title: 'CRM 3.2.70 — Four-Office Authentication and Directory',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -212,19 +221,11 @@ const OFFICE_RELEASES = {
     ],
   },
 
-  // CloudCPA
-  'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.69',
-    releasedAt: '2026-11-03',
-    title: 'CRM 3.2.69 — Audible Hold Music',
-    changes: IRS_WORKFLOW_CHANGES,
-  },
-
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.69',
+    version: '3.2.70',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.69 — Audible Hold Music',
+    title: 'CRM 3.2.70 — Audible Hold Music',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
