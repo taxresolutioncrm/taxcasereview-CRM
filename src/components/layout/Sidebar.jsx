@@ -379,7 +379,7 @@ export default function Sidebar() {
     async function loadCommsCounts() {
       const smsLastSeen = localStorage.getItem('tcr_sms_last_seen') || new Date(0).toISOString()
       const [vmRes, esignRes, faxRes, smsRes] = await Promise.all([
-        supabase.from('voicemails').select('id,is_read'),
+        supabase.from('voicemails').select('id', { count: 'exact', head: true }).eq('is_read', false),
         supabase.from('esigns').select('id,status'),
         supabase.from('fax_logs').select('id,is_read,direction'),
         supabase.from('sms_messages').select('id', { count: 'exact', head: true }).eq('direction', 'inbound').gt('created_at', smsLastSeen),
@@ -392,10 +392,11 @@ export default function Sidebar() {
       if (esignRes.error) console.error('[badge] esigns query failed:', esignRes.error.message)
       if (faxRes.error)   console.error('[badge] fax_logs query failed:', faxRes.error.message)
       if (smsRes.error)   console.error('[badge] sms_messages query failed:', smsRes.error.message)
-      setUnreadVoicemails((vmRes.data || []).filter(v => !v.is_read).length)
+      setUnreadVoicemails(vmRes.count || 0)
       setPendingEsign((esignRes.data || []).filter(e => e.status === 'Awaiting').length)
       setUnreadFax((faxRes.data || []).filter(f => f.direction === 'inbound' && !f.is_read).length)
       setUnreadSms(smsRes.count || 0)
+      window.dispatchEvent(new CustomEvent('taxoffice:comm-counts',{detail:{owner:user.id,source:'calls-sms',error:!!(vmRes.error||smsRes.error),counts:{call:vmRes.count||0,sms:smsRes.count||0}}}))
     }
     if (!user) return
     loadCommsCounts()
@@ -503,10 +504,12 @@ export default function Sidebar() {
         // A navigation-aborted fetch is not an application error. Keep the last
         // successful badge values and let the next realtime/poll/visibility pass retry.
         console.warn('[badge] email/task count refresh skipped:', error.message)
+        window.dispatchEvent(new CustomEvent('taxoffice:comm-counts',{detail:{owner:user.id,source:'email',error:true}}))
         return
       }
       const b = data || {}
       setUnreadInbox(Number(b.email) || 0)
+      window.dispatchEvent(new CustomEvent('taxoffice:comm-counts',{detail:{owner:user.id,source:'email',counts:{email:Number(b.email)||0}}}))
       setOpenTasks(Number(b.tasks) || 0)
       setEmailActionNeeded(0)
       setEmailWaiting(0)
