@@ -30,6 +30,8 @@ jobs:
         run: node tests/romylabs-phone-flow.test.mjs
       - name: Validate on-demand three-way calling without affecting direct dialing
         run: node tests/romylabs-conference-flow.test.mjs
+      - name: Validate Admin Portal call email SMS notifications
+        run: node tests/romylabs-admin-comms-notifications.test.mjs
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker

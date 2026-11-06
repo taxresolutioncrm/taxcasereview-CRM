@@ -1,6 +1,7 @@
 import { placeBuildingCRMsAfterHealth } from '../lib/adminProductOrdering'
 import AdminBookingAlerts from '../components/AdminBookingAlerts'
 import AdminOculivoDemoRequests from '../components/AdminOculivoDemoRequests'
+import AdminCommsNotifications from '../components/admin/AdminCommsNotifications'
 // AdminPortal — TaxRes CRM founder/admin shell.
 // Only renders for romy@taxrescrm.net. Full platform control:
 // impersonation, per-office deep dive, billing, provisioning,
@@ -689,11 +690,13 @@ function Sidebar({ onSignOut, mobile=false, onClose }) {
 
 
 function AdminDialer() {
+  const location = useLocation()
   const {
     relayStatus, calling, active, elapsed,
     startCall, endCall, cancelCall,
   } = useCall()
-  const [tab,setTab] = useState('phone')
+  const [tab,setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') === 'sms' ? 'sms' : 'phone')
+  useEffect(() => { if (new URLSearchParams(location.search).get('tab') === 'sms') setTab('sms') }, [location.search])
   const [number, setNumber] = useState('')
   const [voicemails, setVoicemails] = useState([])
   const [vmLoading, setVmLoading] = useState(true)
@@ -8404,6 +8407,7 @@ export default function AdminPortal() {
   return (
     <ScreenShareProvider>
     <CallProvider phoneContext="romylabs">
+    <AdminCommsNotifications />
     <div className="rl-admin-shell" style={{display:'flex',minHeight:'100vh',background:'#0d0c1a',fontFamily:'system-ui,Arial,sans-serif',width:'100%',overflowX:'hidden'}}>
       <style>{`
         .rl-admin-mobile-bar,.rl-admin-mobile-overlay{display:none}
