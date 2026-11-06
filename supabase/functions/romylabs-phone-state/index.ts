@@ -210,7 +210,11 @@ serve(async req=>{
           .select('id,destination_number,display_name,status,created_at,provider_call_sid')
           .eq('tenant_id',TENANT).order('created_at',{ascending:false}).limit(50),
       ])
-      const error=incoming.error||outbound.error
+      const missed=await db.from('incoming_calls')
+        .select('id',{count:'exact',head:true})
+        .eq('tenant_id',TENANT).eq('status','missed')
+        .gte('created_at',new Date(Date.now()-24*60*60*1000).toISOString())
+      const error=incoming.error||outbound.error||missed.error
       if(error)return json({error:error.message},500)
       const rows=[
         ...(incoming.data||[]).map((r:any)=>({
@@ -220,7 +224,7 @@ serve(async req=>{
           id:`out:${r.id}`,direction:'Outbound',phone:r.destination_number||'',name:r.display_name||'RomyLabs Call',status:r.status||'unknown',created_at:r.created_at
         })),
       ].sort((a:any,b:any)=>new Date(b.created_at||0).getTime()-new Date(a.created_at||0).getTime()).slice(0,75)
-      return json({ok:true,calls:rows})
+      return json({ok:true,calls:rows,missed_last_24h_count:missed.count||0})
     }
 
     if(action==='claim'){

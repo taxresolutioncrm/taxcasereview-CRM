@@ -7,6 +7,7 @@ import { CallProvider } from './context/CallContext'
 import { GmailSyncProvider } from './context/GmailSyncContext'
 import { ScreenShareProvider } from './context/ScreenShareContext'
 import Sidebar  from './components/layout/Sidebar'
+import TaxOfficeCommunicationsNotifications from './components/communications/TaxOfficeCommunicationsNotifications'
 import AIAssistant from './components/AIAssistant'
 import TopBar   from './components/layout/TopBar'
 import GlobalTeamChatNotifier from './components/GlobalTeamChatNotifier'
@@ -306,6 +307,7 @@ function Shell() {
     <GmailSyncProvider>
     <div className="app-shell">
       <GlobalTeamChatNotifier />
+      <TaxOfficeCommunicationsNotifications />
       <AIGovernmentCallNotifier />
       <Sidebar />
       <div className="main-area">

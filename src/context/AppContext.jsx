@@ -514,6 +514,9 @@ export function AppProvider({ children }) {
     }
 
     function notifyAction({ title, body, target, tag, suppressPath = '' }) {
+      if (/^(email|sms|voicemail)-/.test(String(tag||''))) {
+        window.dispatchEvent(new CustomEvent('taxoffice:comm-event',{detail:{owner:user.id,title,body,target,tag}}))
+      }
       const onSuppressedPage = suppressPath && window.location.pathname.startsWith(suppressPath)
       if (document.visibilityState !== 'visible') {
         if ('Notification' in window && Notification.permission === 'granted') {

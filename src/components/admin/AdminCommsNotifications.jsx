@@ -66,8 +66,8 @@ export default function AdminCommsNotifications(){
       })
       const [sms,mail,phone]=values
       setCounts(old=>({
-        call:phone?phone.calls.filter(c=>c.direction==='Inbound'&&c.status==='missed'&&timeOf(c.created_at)>Date.now()-24*3600*1000).length:old.call,
-        sms:sms?sms.messages.filter(m=>m.direction==='inbound'&&!m.read).length:old.sms,
+        call:phone?(Number.isFinite(phone.missed_last_24h_count)?phone.missed_last_24h_count:phone.calls.filter(c=>c.direction==='Inbound'&&c.status==='missed'&&timeOf(c.created_at)>Date.now()-24*3600*1000).length):old.call,
+        sms:sms?(Number.isFinite(sms.unread_count)?sms.unread_count:sms.messages.filter(m=>m.direction==='inbound'&&!m.read).length):old.sms,
         email:mail?(mail.mailboxes.find(m=>String(m.role||'').toLowerCase()==='inbox')?.unreadEmails ?? mail.messages.filter(m=>!m.keywords?.['$seen']).length):old.email
       }))
       if(sms){
@@ -114,6 +114,7 @@ export default function AdminCommsNotifications(){
     return ()=>{mounted.current=false;clearInterval(timer);window.removeEventListener('focus',foreground);document.removeEventListener('visibilitychange',foreground)}
   },[refresh])
 
+  useEffect(()=>{ if(incomingCall) setOpen(false) },[incomingCall])
   useEffect(()=>{
     if(!incomingCall)return
     const number=String(incomingCall?.options?.remoteCallerNumber||'Unknown caller')
@@ -128,17 +129,24 @@ export default function AdminCommsNotifications(){
     if(typeof Notification==='undefined')return setPermission('unsupported')
     try { setPermission(await Notification.requestPermission()) }catch(e){setPermission('denied')}
   }
+  useEffect(()=>{
+    if(!open)return
+    const onKey=e=>{if(e.key==='Escape')setOpen(false)}
+    document.addEventListener('keydown',onKey)
+    return ()=>document.removeEventListener('keydown',onKey)
+  },[open])
   const total=counts.call+counts.sms+counts.email
   const chip={border:'1px solid #46516f',padding:'6px 9px',borderRadius:8,background:'#15172a',color:'#e2e8f0',cursor:'pointer',fontSize:12}
-  return <div style={{position:'fixed',right:16,bottom:16,zIndex:9400,fontFamily:'Inter,Arial,sans-serif',color:'#e2e8f0'}}>
-    {!open&&events.length>0&&events[0].key!==dismissed&&<div role="status" style={{width:'min(90vw,345px)',background:'#17263b',border:'1px solid #6366f1',borderRadius:10,boxShadow:'0 9px 26px #0009',padding:10,marginBottom:8,display:'flex',gap:7,alignItems:'center'}}>
+  return <div className="rl-comms-control" style={{position:'fixed',right:16,bottom:16,zIndex:10002,fontFamily:'Inter,Arial,sans-serif',color:'#e2e8f0'}}>
+    <style>{`\n      .rl-comms-control .rl-comms-panel{position:fixed;right:16px;bottom:150px;width:min(92vw,370px);max-height:calc(100dvh - 164px);overflow-y:auto;overscroll-behavior:contain}\n      .rl-comms-control .rl-comms-alert{width:min(90vw,345px)}\n      .rl-comms-control .rl-comms-trigger{min-height:44px}\n      @media(max-width:640px){\n        .rl-comms-control{left:12px!important;right:auto!important;bottom:calc(76px + env(safe-area-inset-bottom,0px))!important}\n        .rl-comms-control .rl-comms-trigger{font-size:0!important;border-radius:50%!important;width:48px;height:48px;padding:0!important;display:flex;align-items:center;justify-content:center;gap:3px}\n        .rl-comms-control .rl-comms-trigger .rl-comms-trigger-label{font-size:19px}\n        .rl-comms-control .rl-comms-trigger .rl-comms-trigger-text{display:none}\n        .rl-comms-control .rl-comms-trigger .rl-comms-trigger-count{font-size:11px!important;margin-left:0!important;padding:2px 5px!important}\n        .rl-comms-control .rl-comms-trigger .rl-comms-trigger-error{font-size:13px!important;margin-left:0!important}\n        .rl-comms-control .rl-comms-panel{left:8px;right:8px;bottom:calc(138px + env(safe-area-inset-bottom,0px));width:auto;max-height:min(72dvh,calc(100dvh - 164px));border-radius:16px;padding:14px!important}\n        .rl-comms-control .rl-comms-alert{width:min(82vw,290px);max-height:140px;overflow:auto;margin-bottom:8px}\n      }\n      @media(max-height:420px){.rl-comms-control .rl-comms-panel{bottom:8px;max-height:calc(100dvh - 16px)}}\n    `}</style>
+    {!open&&events.length>0&&events[0].key!==dismissed&&<div role="status" className="rl-comms-alert" style={{width:'min(90vw,345px)',background:'#17263b',border:'1px solid #6366f1',borderRadius:10,boxShadow:'0 9px 26px #0009',padding:10,marginBottom:8,display:'flex',gap:7,alignItems:'center'}}>
       <button onClick={()=>{navigate(ADMIN_ROUTES[events[0].kind]);setDismissed(events[0].key)}} style={{flex:1,minWidth:0,textAlign:'left',background:'transparent',border:0,color:'#fff',cursor:'pointer'}}>
         <strong style={{fontSize:12,display:'block'}}>{events[0].title}</strong>
         <span style={{display:'block',color:'#cbd5e1',fontSize:12,overflowWrap:'anywhere'}}>{events[0].detail}</span>
       </button>
       <button onClick={()=>setDismissed(events[0].key)} aria-label="Dismiss alert" style={{background:'none',border:0,color:'#cbd5e1',cursor:'pointer'}}>✕</button>
     </div>}
-    {open&&<section aria-label="RomyLabs communications notifications" style={{width:'min(92vw,370px)',background:'#0f1425',border:'1px solid #4f5f80',borderRadius:14,boxShadow:'0 18px 50px #0009',padding:16,marginBottom:10}}>
+    {open&&<section className="rl-comms-panel" role="dialog" aria-modal="false" aria-label="RomyLabs communications notifications" style={{position:'fixed',right:16,bottom:150,width:'min(92vw,370px)',maxHeight:'calc(100dvh - 164px)',overflowY:'auto',background:'#0f1425',border:'1px solid #4f5f80',borderRadius:14,boxShadow:'0 18px 50px #0009',padding:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:12}}>
         <strong style={{fontSize:15}}>Communications Notifications</strong>
         <button style={chip} onClick={()=>setOpen(false)} aria-label="Close notifications">✕</button>
@@ -161,10 +169,10 @@ export default function AdminCommsNotifications(){
       </div>
       <p style={{fontSize:11,color:'#94a3b8',marginTop:12}}>Live call ringing and automatic inbox checks every 30 seconds while the portal is open. Browser alerts require permission.</p>
     </section>}
-    <button type="button" aria-label={'Communications notifications'+(total?' ('+total+')':'')} aria-expanded={open}
+    <button type="button" className="rl-comms-trigger" aria-label={'Communications notifications'+(total?' ('+total+')':'')} aria-expanded={open}
       onClick={()=>setOpen(v=>!v)} style={{border:'1px solid #6366f1',boxShadow:'0 8px 25px #0009',borderRadius:999,padding:'11px 16px',background:'#202049',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>
-      🔔 Calls · Email · SMS {total>0&&<span style={{display:'inline-block',marginLeft:7,padding:'2px 7px',borderRadius:12,background:'#c6ff00',color:'#10210a'}}>{total>99?'99+':total}</span>}
-      {problems.length>0&&<span style={{color:'#ffb4b4',marginLeft:7}}>!</span>}
+      <span className="rl-comms-trigger-label">🔔</span><span className="rl-comms-trigger-text"> Calls · Email · SMS</span> {total>0&&<span className="rl-comms-trigger-count" style={{display:'inline-block',marginLeft:7,padding:'2px 7px',borderRadius:12,background:'#c6ff00',color:'#10210a'}}>{total>99?'99+':total}</span>}
+      {problems.length>0&&<span className="rl-comms-trigger-error" style={{color:'#ffb4b4',marginLeft:7}}>!</span>}
     </button>
   </div>
 }

@@ -65,24 +65,20 @@ function patchSidebar() {
   // prebuild: production must execute the same badge logic that is committed
   // in Sidebar.jsx. Build-time source mutation made production diverge from
   // reviewed source and could silently zero badges for shared/admin mailboxes.
-  const expected = `    async function loadEmailTaskCounts() {
-      if (!user?.email) return
-      const { data, error } = await supabase.rpc('get_sidebar_badge_counts')
-      if (error) {
-        // A navigation-aborted fetch is not an application error. Keep the last
-        // successful badge values and let the next realtime/poll/visibility pass retry.
-        console.warn('[badge] email/task count refresh skipped:', error.message)
-        return
-      }
-      const b = data || {}
-      setUnreadInbox(Number(b.email) || 0)
-      setOpenTasks(Number(b.tasks) || 0)
-      setEmailActionNeeded(0)
-      setEmailWaiting(0)
-    }`
-
-  if (!s.includes(expected)) {
+  // Preserve the authorized RPC and its existing badge semantics while
+  // allowing a separate notification summary to observe the computed count.
+  const required = [
+    'async function loadEmailTaskCounts()',
+    "supabase.rpc('get_sidebar_badge_counts')",
+    'setUnreadInbox(Number(b.email) || 0)',
+    'setOpenTasks(Number(b.tasks) || 0)',
+  ]
+  if (required.some(fragment => !s.includes(fragment))) {
     throw new Error('Sidebar.jsx: protected RPC badge loader is missing or was modified')
+  }
+  const loader = s.slice(s.indexOf('async function loadEmailTaskCounts()'),s.indexOf('    if (!user) return',s.indexOf('async function loadEmailTaskCounts()')))
+  if (loader.includes("supabase.from('emails')") || loader.includes('mailbox_owner')) {
+    throw new Error('Sidebar.jsx: direct client mailbox query is forbidden; use protected RPC')
   }
   console.log('Sidebar email counts already current: protected RPC preserved.')
 }

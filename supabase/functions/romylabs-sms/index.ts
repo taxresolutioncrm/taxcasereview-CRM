@@ -27,13 +27,22 @@ serve(async req=>{
 
     if(action==='list'){
       const limit=Math.max(1,Math.min(Number(body?.limit)||200,500))
-      const {data,error}=await db.from('sms_messages')
-        .select('id,clientName,phone,body,status,direction,signalwire_sms_id,sent_by,read,media,error_msg,created_at')
-        .eq('tenant_id',TENANT)
-        .not('signalwire_sms_id','like','demo-seed-sms-%')
-        .order('created_at',{ascending:false})
-        .limit(limit)
-      return error?json({error:error.message},500):json({ok:true,messages:data||[]})
+      const [messages,unread]=await Promise.all([
+        db.from('sms_messages')
+          .select('id,clientName,phone,body,status,direction,signalwire_sms_id,sent_by,read,media,error_msg,created_at')
+          .eq('tenant_id',TENANT)
+          .or('signalwire_sms_id.is.null,signalwire_sms_id.not.like.demo-seed-sms-%')
+          .order('created_at',{ascending:false})
+          .limit(limit),
+        // Exact unread counter, not the first 500 displayed messages.
+        db.from('sms_messages')
+          .select('id',{count:'exact',head:true})
+          .eq('tenant_id',TENANT).eq('direction','inbound')
+          .or('signalwire_sms_id.is.null,signalwire_sms_id.not.like.demo-seed-sms-%')
+          .or('read.is.null,read.eq.false'),
+      ])
+      const error=messages.error||unread.error
+      return error?json({error:error.message},500):json({ok:true,messages:messages.data||[],unread_count:unread.count||0})
     }
 
     if(action==='mark_read'){

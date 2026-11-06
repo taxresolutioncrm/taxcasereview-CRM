@@ -11,6 +11,8 @@ const OFFICE_ACCESS_CHANGES = [
 ]
 
 const IRS_WORKFLOW_CHANGES = [
+  'TaxRes, TCR and Centurion CRM users gain a single responsive call, email and SMS notification summary using existing employee-scoped badges and realtime alerts',
+  'Mobile phone notifications fit safe areas and dismiss when an incoming call rings, with permission-gated channels and no extra subscriptions or audio',
   ...OFFICE_ACCESS_CHANGES,
   'Live calls can be placed on hold with original audible music and clear recovery when the provider cannot start playback',
   'RomyLabs direct calls stop their provider hold audio before resuming and conference holds use the same looped soundtrack',
@@ -111,6 +113,11 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Incoming calls automatically dismiss the mobile notification sheet so answering and declining a call remain accessible',
+  'Mobile notifications collapse into a tap-friendly bell on the opposite side of the AI assistant and open as a safe-area scrollable sheet',
+  'Owner-authorized call and SMS APIs now return exact missed and unread counts instead of truncating at the first 50 calls or 500 messages',
+  'Admin communications popover stays above the AI assistant button on desktop and mobile without covering notification actions',
+  'Product-wide notification rollout compatibility audit documents provider ingress, tenant/privacy checks and live event release gates for each RomyLabs CRM',
   'Admin email and SMS alerts play the existing sound cues, honoring the user sound preference while avoiding a duplicate incoming-call ringtone',
   'Notification polling now surfaces unexpected backend errors instead of silently dropping call, email or SMS status',
   'Admin notification alerts now provide an actionable in-app banner even when browser-level desktop notifications are disabled',
@@ -190,18 +197,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.70',
+  version: '3.2.72',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.70 — Four-Office Authentication and Directory',
+  title: 'RomyLabs Admin Portal 3.2.72 — Unified Communications Notifications',
   changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Four-Office Authentication and Directory',
+    title: 'CRM 3.2.72 — Communications Notifications',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -223,9 +230,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Audible Hold Music',
+    title: 'CRM 3.2.72 — Communications Notifications',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
