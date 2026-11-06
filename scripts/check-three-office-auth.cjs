@@ -16,5 +16,10 @@ assert(login.includes('new URL(SUPABASE_URL).hostname === \'mpxgxfqdbquzkrvvejkh
 assert(login.includes('finally {') && login.includes('setResetting(false)'), 'Reset errors must release spinner')
 assert(app.includes("supabase.auth.getSession()") && app.includes(".finally(() => setChecking(false))"),'Auth connection errors must not strand app loading forever')
 assert(client.includes('VITE_SUPABASE_URL'),'Supabase URL must remain build-configurable')
+assert(app.includes(".ilike('email', normalizedEmail)"), 'Case-insensitive employee membership matching required')
+assert(app.includes("if (tenantError)") && app.includes("if (employeeError)"), 'Office lookup errors must be distinguished from missing membership')
+assert(app.includes("No active employee profile was found"), 'Unknown employee membership must never gain default Admin role')
+assert(!/\} else \{\s*setRole\('Admin'\)/.test(app),'Missing employee profile must never fall back to Admin')
+
 assert(!/\{ key:'cloudcpa', name:'CloudCPA Inc' \}/.test(admin),'Retired CloudCPA must not appear in active metrics feed')
 console.log('PASS: TaxRes/TCR/Centurion login and reset boundary tests')
