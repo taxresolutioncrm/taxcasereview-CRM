@@ -927,8 +927,12 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
 
   const validFolderName = input => {
-    const name=String(input || '').trim()
-    return name && name.length<=80 && !/[\x00-\x1f\x7f]/.test(name) ? name : ''
+    const raw=String(input || '')
+    // Reject actual ASCII control characters before trimming so leading
+    // tabs/newlines cannot silently change into an accepted folder name.
+    if (/[\x00-\x1f\x7f]/.test(raw)) return ''
+    const name=raw.trim()
+    return name && name.length<=80 ? name : ''
   }
   const existingFolderNames = exceptId => [
     ...DOC_FOLDERS,...customClientFolders.filter(item=>item.id!==exceptId).map(item=>item.name),'All'
