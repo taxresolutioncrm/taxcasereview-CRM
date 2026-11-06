@@ -7,16 +7,17 @@ export default function AdminOculivoDemoRequests() {
   const [items,setItems]=useState([])
   const [error,setError]=useState('')
   const [saving,setSaving]=useState('')
-  const [includeCompleted,setIncludeCompleted]=useState(false)
+  const [taskView,setTaskView]=useState('open')
   const [drafts,setDrafts]=useState({})
   const load=useCallback(async()=>{
-    const query=supabase.from('romylabs_demo_requests')
-      .select('id,product_id,lead_name,lead_email,practice_name,specialty,locations,notes,created_at,assigned_to,followup_status,followup_due_at,contacted_at,contact_outcome,notification_submission_id,notification_last_error')
-      .order('created_at',{ascending:false}).limit(100)
-    const {data,error:err}=await (includeCompleted?query:query.neq('followup_status','completed'))
-    if(err){setError('Oculivo demo request tasks unavailable: '+err.message);return}
-    setError('');setItems(data||[])
-  },[includeCompleted])
+    const fields='id,product_id,lead_name,lead_email,practice_name,specialty,locations,notes,created_at,assigned_to,followup_status,followup_due_at,contacted_at,contact_outcome,notification_submission_id,notification_last_error'
+    const [open,completed]=await Promise.all([
+      supabase.from('romylabs_demo_requests').select(fields).neq('followup_status','completed').order('created_at',{ascending:false}).limit(100),
+      supabase.from('romylabs_demo_requests').select(fields).eq('followup_status','completed').order('created_at',{ascending:false}).limit(100),
+    ])
+    if(open.error||completed.error){setError('Oculivo demo request tasks unavailable: '+(open.error||completed.error).message);return}
+    setError('');setItems([...(open.data||[]),...(completed.data||[])])
+  },[])
   useEffect(()=>{
     void load()
     const interval=setInterval(()=>{if(document.visibilityState==='visible')void load()},45000)
@@ -42,6 +43,9 @@ export default function AdminOculivoDemoRequests() {
     setDrafts(v=>{const next={...v};delete next[item.id];return next})
     await load()
   }
+  const visibleItems=items.filter(item=>taskView==='completed'?item.followup_status==='completed':item.followup_status!=='completed')
+  const completedCount=items.filter(item=>item.followup_status==='completed').length
+  const openCount=items.length-completedCount
   const field={background:'#10192b',color:'#f1f5f9',border:'1px solid #38445a',borderRadius:8,padding:'9px 11px',fontSize:13,width:'100%'}
   const btn={background:'#252e45',color:'#f1f5f9',border:'1px solid #41516f',borderRadius:8,padding:'9px 13px',cursor:'pointer'}
   return <section aria-label="Oculivo Website Demo Requests" style={{margin:'18px 0 24px',padding:18,border:'1px solid #31405a',borderRadius:14,background:'#11192b'}}>
@@ -49,13 +53,14 @@ export default function AdminOculivoDemoRequests() {
       <div><h2 style={{margin:0,fontSize:19,color:'#f1f5f9'}}>Oculivo Website Demo Requests</h2>
         <p style={{margin:'5px 0 0',color:'#a7b3c9',fontSize:13}}>New contact-form leads. Each submission creates a durable follow-up task, separate from scheduled bookings.</p></div>
       <div style={{display:'flex',gap:10,alignItems:'center'}}>
-        <label style={{display:'flex',gap:6,color:'#d4deed',fontSize:13,alignItems:'center'}}><input type="checkbox" checked={includeCompleted} onChange={e=>setIncludeCompleted(e.target.checked)}/> Show completed</label>
+        <button type="button" aria-pressed={taskView==='open'} onClick={()=>setTaskView('open')} style={{...btn,borderColor:taskView==='open'?'#818cf8':'#41516f'}}>Open ({openCount})</button>
+        <button type="button" aria-pressed={taskView==='completed'} onClick={()=>setTaskView('completed')} style={{...btn,borderColor:taskView==='completed'?'#818cf8':'#41516f'}}>Completed ({completedCount})</button>
         <button type="button" style={btn} onClick={()=>void load()}>Refresh</button>
       </div>
     </div>
     {error&&<p role="alert" style={{color:'#fecaca'}}>{error}</p>}
-    {!items.length?<p style={{color:'#94a3b8'}}>No {includeCompleted?'':'open '}Oculivo website demo requests.</p>:<div style={{display:'grid',gap:11}}>
-      {items.map(item=>{
+    {!visibleItems.length?<p style={{color:'#94a3b8'}}>{taskView==='completed'?'No completed Oculivo website demo requests yet.':'No open Oculivo website demo requests.'}</p>:<div style={{display:'grid',gap:11}}>
+      {visibleItems.map(item=>{
         const draft=drafts[item.id]||{}
         const update=(key,value)=>setDrafts(v=>({...v,[item.id]:{...v[item.id],[key]:value}}))
         return <article key={item.id} style={{background:'#17243a',border:'1px solid #31405a',padding:16,borderRadius:12}}>
