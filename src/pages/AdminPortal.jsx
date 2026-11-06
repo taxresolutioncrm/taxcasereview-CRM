@@ -5381,6 +5381,11 @@ function CommandCenter() {
   const [taxresScopeData, setTaxresScopeData] = useState(null)
   const [taxresScopeLoading, setTaxresScopeLoading] = useState(false)
   const [taxresScopeError, setTaxresScopeError] = useState('')
+  const [briefingStatus, setBriefingStatus] = useState(null)
+  const [briefingStatusError, setBriefingStatusError] = useState('')
+  const [briefingTestBusy, setBriefingTestBusy] = useState(false)
+  const [briefingTestMessage, setBriefingTestMessage] = useState('')
+  const [briefingTestOk, setBriefingTestOk] = useState(false)
   const [activity, setActivity] = useState([])
   const [liveMetricsVersion, setLiveMetricsVersion] = useState(0)
   const [liveMetricsProduct, setLiveMetricsProduct] = useState('')
@@ -5766,6 +5771,21 @@ function CommandCenter() {
   // ── Bing state ──
   const [bingData, setBingData]           = useState(null)
   const [bingConnected, setBingConnected] = useState(false)
+
+  const reloadBriefingStatus = useCallback(async () => {
+    const { data, error } = await supabase.rpc('admin_daily_briefing_status')
+    if (error || !data) {
+      setBriefingStatus(null)
+      setBriefingStatusError(error?.message || 'Unable to determine the scheduler status')
+      return
+    }
+    setBriefingStatus(data)
+    setBriefingStatusError('')
+  },[])
+
+  useEffect(()=>{
+    if (tab==='system') reloadBriefingStatus().catch(e=>setBriefingStatusError(String(e?.message||e)))
+  },[tab,reloadBriefingStatus])
 
   // ── System live status ──
   const [sysStatus, setSysStatus] = useState(null)
@@ -6811,20 +6831,48 @@ function CommandCenter() {
             </div>
           </div>
 
-          <div style={{ ...CC.card(), padding:'20px 24px', background:'rgba(16,185,129,.04)', border:'1px solid rgba(16,185,129,.15)' }}>
+          <section style={{ ...CC.card(), padding:'20px 24px', background:'rgba(16,185,129,.04)', border:'1px solid rgba(16,185,129,.15)' }} aria-label="Daily executive email status">
             <div style={{ fontSize:13, color:'#10b981', fontWeight:700, marginBottom:6 }}>Daily Executive Email</div>
-            <div style={{ fontSize:12, color:'#475569', marginBottom:14 }}>
-              A morning briefing is sent to romy@taxrescrm.net every day at 7:00 AM ET with platform stats, upcoming calendar events, and MRR.
+            <div style={{ fontSize:12, color:'#94a3b8', marginBottom:14,lineHeight:1.7 }}>
+              Scheduled for 7:00 AM America/New_York (Eastern; adjusts for daylight saving time).
+              Recipient: romy@taxrescrm.net. Includes current platform totals, calendar and MRR.
             </div>
-            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
               <span style={{ fontSize:11, fontWeight:700, padding:'4px 12px', borderRadius:20,
-                background:'rgba(16,185,129,.15)', color:'#10b981' }}>✅ Active</span>
+                background:briefingStatus?.ready?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)',
+                color:briefingStatus?.ready?'#10b981':'#fbbf24' }}>
+                {briefingStatus?.ready ? '✓ Scheduled' : briefingStatus ? '⚠ Not configured' : 'Status unverified'}
+              </span>
               <button onClick={async()=>{
-                const {error} = await supabase.functions.invoke('daily-briefing',{body:{}})
-                alert(error ? 'Error: '+error.message : 'Test briefing sent to romy@taxrescrm.net')
-              }} style={{ ...S.btn('ghost'), fontSize:11, padding:'4px 12px' }}>Send Test</button>
+                setBriefingTestBusy(true);setBriefingTestMessage('');setBriefingTestOk(false)
+                try {
+                  const {data:result,error} = await supabase.functions.invoke('daily-briefing',{body:{mode:'test'}})
+                  if(error || result?.sent !== true || result?.submitted !== true) {
+                    throw new Error(error?.message || result?.error || 'The email provider did not confirm submission')
+                  }
+                  setBriefingTestOk(true)
+                  setBriefingTestMessage('Test message accepted by the mail provider at '+new Date(result.submitted_at||Date.now()).toLocaleString('en-US',{timeZone:'America/New_York',timeZoneName:'short'})+'. Check the recipient mailbox for delivery.')
+                } catch(error) {
+                  setBriefingTestMessage('Test email failed: '+String(error?.message||error))
+                } finally {
+                  setBriefingTestBusy(false)
+                  await reloadBriefingStatus().catch(e=>setBriefingStatusError(String(e?.message||e)))
+                }
+              }} disabled={briefingTestBusy}
+                style={{ ...S.btn('ghost'), fontSize:11, padding:'4px 12px' }}>
+                {briefingTestBusy?'Submitting test…':'Send Test'}
+              </button>
+              <button onClick={()=>reloadBriefingStatus().catch(e=>setBriefingStatusError(String(e?.message||e)))}
+                style={{...S.btn('ghost'),fontSize:11,padding:'4px 12px'}}>Refresh status</button>
             </div>
-          </div>
+            {briefingStatusError && <p role="alert" style={{color:'#fca5a5',fontSize:12,marginTop:10}}>Scheduler status unavailable: {briefingStatusError}</p>}
+            {briefingStatus?.last_run && <p style={{color:'#cbd5e1',fontSize:11,marginTop:10,lineHeight:1.6}}>
+              Last attempt: {new Date(briefingStatus.last_run.attempted_at).toLocaleString('en-US',{timeZone:'America/New_York',timeZoneName:'short'})} ·
+              {briefingStatus.last_run.mode==='test'?' Test':' Scheduled'} · {briefingStatus.last_run.status}
+              {briefingStatus.last_run.error ? ' · '+briefingStatus.last_run.error : ''}
+            </p>}
+            {briefingTestMessage && <p role="status" style={{color:briefingTestOk?'#86efac':'#fca5a5',fontSize:12,marginTop:10,lineHeight:1.6}}>{briefingTestMessage}</p>}
+          </section>
         </>)}
 
         {tab==='products' && <ProductsTab supabase={supabase} taxresActivity={activity} />}
