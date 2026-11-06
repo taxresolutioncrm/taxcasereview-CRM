@@ -105,7 +105,7 @@ revoke all on function public._client_folder_document_write_lock() from PUBLIC,a
 create or replace function public.create_client_document_folder(p_client_id text,p_name text)
 returns table(id uuid,name text)
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare v_tenant uuid; v_client text; v_name text;
+declare v_tenant uuid; v_client text; v_name text; v_created_id uuid;
 begin
   v_tenant:=public.current_tenant_id();
   v_client:=nullif(btrim(coalesce(p_client_id,'')),'');
@@ -120,10 +120,11 @@ begin
       where f.tenant_id=v_tenant and f.client_id=v_client and lower(f.name)=lower(v_name)) then
     raise exception 'Folder already exists' using errcode='23505';
   end if;
-  return query insert into public.client_document_folders(tenant_id,client_id,name)
-    values(v_tenant,v_client,v_name) returning client_document_folders.id,client_document_folders.name;
+  insert into public.client_document_folders(tenant_id,client_id,name)
+    values(v_tenant,v_client,v_name) returning client_document_folders.id into v_created_id;
   insert into public.client_document_folder_audit(actor_id,actor_email,tenant_id,client_id,folder_id,operation,new_name)
-    values(auth.uid(),coalesce(auth.email(),''),v_tenant,v_client,id,'create',v_name);
+    values(auth.uid(),coalesce(auth.email(),''),v_tenant,v_client,v_created_id,'create',v_name);
+  return query select v_created_id,v_name;
 end $$;
 
 create or replace function public.rename_client_document_folder(p_folder_id uuid,p_new_name text)
