@@ -37,4 +37,12 @@ for(const path of ['supabase/migrations/20261106160000_taxres_tcr_client_documen
   assert(sql.includes('and f.client_id=v_client and lower(f.name)=lower(v_name)'),path+' create duplicate check missing')
   assert(sql.includes('and f.id<>p_folder_id and lower(f.name)=lower(v_name)'),path+' rename duplicate check missing')
 }
+const general=fs.readFileSync('src/pages/Documents.jsx','utf8')
+const generalCreate=general.split('async function saveCustomFolder()')[1]?.split('async function upload()')[0]
+assert(generalCreate,'General Documents folder-creation path must exist')
+assert(generalCreate.includes('name.length > 80'), 'General Documents must limit folder name to 80 characters')
+assert(generalCreate.includes("folder.toLowerCase() === name.toLowerCase()"),
+  'General Documents must reject case-insensitive duplicates')
+assert(generalCreate.includes(good), 'General Documents must use correct ASCII control regex')
+assert(!generalCreate.includes(bad), 'General Documents cannot reintroduce Nashville CAP regex bug')
 console.log('PASS: CAP/ordinary folder names, create/rename shared validator, control characters, and SQL tenant/client uniqueness')
