@@ -16,11 +16,18 @@ const files = [
 ]
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
 const officialWorkspace = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.jsx','utf8')
+const officialWorkspaceStyles = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.css','utf8')
 const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
 assert(!/bizee/i.test(content), 'FormaCorp native workflow must not depend on Bizee')
 assert(/<SunbizFilingWorkspace/.test(content), 'Saved formation case must open official filing workspace')
+assert(/sunbiz-no-case/.test(officialWorkspace), 'New filing should not waste viewport width on an empty CRM sidebar')
+assert(/src=\{officialUrl\}/.test(officialWorkspace), 'Official iframe must point to the state site, not a copy')
+assert(/sunbiz-confirmation/.test(officialWorkspace) && /<details className="sunbiz-confirmation"/.test(officialWorkspace), 'State receipt controls must be collapsible')
+assert(/@media\(max-width:680px\)/.test(officialWorkspaceStyles), 'Responsive Sunbiz workspace required on mobile')
+assert(/height:74vh/.test(officialWorkspaceStyles), 'Government filing page must dominate desktop viewport')
+
 assert(/saveOfficialSunbizReceipt/.test(content), 'Official receipt confirmation must update the saved case')
 assert(/eq\('tenant_id',tenantId\)/.test(content), 'Official receipt must remain tenant scoped')
 assert(/<iframe/.test(officialWorkspace) && /efile\.sunbiz\.org/.test(officialWorkspace), 'Official government frame attempt must use Sunbiz origin directly')
