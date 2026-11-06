@@ -100,6 +100,11 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs sales now distinguishes qualified software prospects from incoming booking leads and shows source-read errors instead of false zeros',
+  'Executive briefing scheduling is verified against 7 AM Eastern time with delivery attempts and provider-confirmed test submission',
+  'Central TaxRes file storage now counts registered Supabase objects and discloses which separate CRM projects are excluded',
+  'RomyLabs audit history adds new operational event categories, safe redaction, date/time and filtered pagination',
+
   'Admin Demo Leads & Tasks adds a clickable Completed card with persisted completion timestamps and full contact activity history, separate from the open queue',
   'Oculivo website demo requests offer distinct Open and Completed views without hiding active follow-ups behind completed records',
   'Admin Portal v3.2.65 independently verifies its exact Cloudflare booking-selector build marker after the approved release',
@@ -173,9 +178,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.67',
+  version: '3.2.68',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.67 — FormaCorp Sunbiz Workspace Polish',
+  title: 'RomyLabs Admin Portal 3.2.68 — Sales, Executive Email, Storage and Audit Repair',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
