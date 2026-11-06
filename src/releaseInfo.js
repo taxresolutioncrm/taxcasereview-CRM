@@ -102,6 +102,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin notification alerts now provide an actionable in-app banner even when browser-level desktop notifications are disabled',
   'RomyLabs Admin Portal keeps call, email and SMS notification badges available across admin pages, with quick links to their respective inboxes',
   'New inbound communications trigger visible notifications, optional browser alerts and explicit connection warnings using authorized backend sources',
   'RomyLabs phone Hold now requests audible original music, with automatic stop-on-resume and no changes to existing call routing',
