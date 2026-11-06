@@ -32,6 +32,8 @@ jobs:
         run: node tests/romylabs-conference-flow.test.mjs
       - name: Validate Admin Portal call email SMS notifications
         run: node tests/romylabs-admin-comms-notifications.test.mjs
+      - name: Validate office CRM communication notifications
+        run: node tests/tax-office-communications-notifications.test.mjs
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker
