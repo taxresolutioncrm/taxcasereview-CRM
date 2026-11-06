@@ -1,3 +1,4 @@
+import { placeBuildingCRMsAfterHealth } from '../lib/adminProductOrdering'
 import AdminBookingAlerts from '../components/AdminBookingAlerts'
 import AdminOculivoDemoRequests from '../components/AdminOculivoDemoRequests'
 // AdminPortal — TaxRes CRM founder/admin shell.
@@ -4156,9 +4157,13 @@ function ProductsTab({ supabase, taxresActivity = [] }) {
                      : filter === 'planned'  ? products.filter(p => p.lifecycleStage === 'research')
                      : filter === 'products' ? products.filter(p => p.lifecycleStage !== 'research').sort(sortByLifecycle)
                      : [...products, ...tenants].sort(sortByLifecycle)
-  const filtered = filter === 'tenants' || filter === 'planned'
-    ? filteredBase
-    : movePartialProductsDirectlyUnderRestore(filteredBase)
+  // Run this last: registry order alone cannot protect Building entries from
+  // the secondary connection-health rearrangement in the Products table.
+  const filtered = placeBuildingCRMsAfterHealth(
+    filter === 'tenants' || filter === 'planned'
+      ? filteredBase
+      : movePartialProductsDirectlyUnderRestore(filteredBase)
+  )
 
   const BADGE = (txt, color) => (
     <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:20,
