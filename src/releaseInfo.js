@@ -97,6 +97,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin Demo Leads & Tasks adds a clickable Completed card with persisted completion timestamps and full contact activity history, separate from the open queue',
+  'Oculivo website demo requests offer distinct Open and Completed views without hiding active follow-ups behind completed records',
   'Admin Portal v3.2.65 independently verifies its exact Cloudflare booking-selector build marker after the approved release',
   'Send Booking Link now lets RomyLabs Admin choose any supported CRM from its product registry; copy and email use the same product-specific branded booking page, and unconfigured products are disabled. Duplicate booking and appointment actions are removed from the selected-day sidebar.',
   'Admin Portal dashboard Product Portfolio now places SettleLift immediately below Health Insurance and directly above ChairStyle, consistent with the Products tab instead of leaving SettleLift below Research',
@@ -168,9 +170,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.65',
+  version: '3.2.66',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.65 — CRM Booking Link Selector',
+  title: 'RomyLabs Admin Portal 3.2.66 — Completed Demo Tasks History',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
