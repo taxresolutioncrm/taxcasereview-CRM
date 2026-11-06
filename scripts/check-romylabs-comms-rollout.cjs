@@ -14,6 +14,7 @@ assert(bell.includes("max-height:calc(100dvh - 164px)"),'Popover must stay withi
 assert(bell.includes('.rl-comms-control{left:12px!important;right:auto!important'),'Mobile trigger must be opposite AI assistant')
 assert(bell.includes('env(safe-area-inset-bottom,0px)'),'Mobile trigger must account for iPhone safe area')
 assert(bell.includes('@media(max-height:420px)'),'Landscape height must be constrained')
+assert(bell.includes('if(incomingCall) setOpen(false)'),'Incoming calls must close mobile notification overlay')
 assert(bell.includes('aria-modal="false"')&&bell.includes("e.key==='Escape'"),'Panel must be dismissible without a modal call blocker')
 const aiMatch=ai.match(/\.taxres-ai-fab\{[^}]*bottom:(\d+)px[^}]*height:(\d+)px/)
 assert(aiMatch,'AI floating assistant dimensions unavailable')
