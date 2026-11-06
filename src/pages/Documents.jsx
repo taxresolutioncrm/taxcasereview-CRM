@@ -187,9 +187,17 @@ export default function Documents() {
   }
 
   async function saveCustomFolder() {
-    const name = String(newFolderName || '').trim()
-    if (!name) return
-    if (ALL_FOLDERS.includes(name)) { showToast('Folder already exists'); return }
+    const raw = String(newFolderName || '')
+    // Match the client Documents validation: never double-escape ASCII ranges.
+    const name = raw.trim()
+    if (!name || name.length > 80 || /[\x00-\x1f\x7f]/.test(raw)) {
+      showToast('Enter a valid folder name (1–80 characters)')
+      return
+    }
+    if (ALL_FOLDERS.some(folder => folder.toLowerCase() === name.toLowerCase())) {
+      showToast('Folder already exists')
+      return
+    }
     const updated = [...customFolders, name]
     const { data: s } = await supabase.from('settings').select('id').limit(1).maybeSingle()
     if (s?.id) {
