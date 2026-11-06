@@ -102,6 +102,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Admin email and SMS alerts play the existing sound cues, honoring the user sound preference while avoiding a duplicate incoming-call ringtone',
   'Notification polling now surfaces unexpected backend errors instead of silently dropping call, email or SMS status',
   'Admin notification alerts now provide an actionable in-app banner even when browser-level desktop notifications are disabled',
   'RomyLabs Admin Portal keeps call, email and SMS notification badges available across admin pages, with quick links to their respective inboxes',
