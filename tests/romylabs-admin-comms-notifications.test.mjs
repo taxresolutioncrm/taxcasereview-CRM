@@ -25,6 +25,7 @@ for(const phrase of [
   "setInterval(()=>void refresh(),REFRESH_MS)",
   "new Notification(title",
   "Enable Desktop Notifications",
+  "playSound(kind)",
   "Connection issue:",
   "aria-expanded={open}",
   "Missed 24h:",
