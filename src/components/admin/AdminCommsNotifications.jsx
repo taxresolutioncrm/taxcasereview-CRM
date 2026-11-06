@@ -138,7 +138,7 @@ export default function AdminCommsNotifications(){
       </button>
       <button onClick={()=>setDismissed(events[0].key)} aria-label="Dismiss alert" style={{background:'none',border:0,color:'#cbd5e1',cursor:'pointer'}}>✕</button>
     </div>}
-    {open&&<section aria-label="RomyLabs communications notifications" style={{width:'min(92vw,370px)',background:'#0f1425',border:'1px solid #4f5f80',borderRadius:14,boxShadow:'0 18px 50px #0009',padding:16,marginBottom:10}}>
+    {open&&<section aria-label="RomyLabs communications notifications" style={{position:'fixed',right:16,bottom:150,width:'min(92vw,370px)',maxHeight:'calc(100dvh - 164px)',overflowY:'auto',background:'#0f1425',border:'1px solid #4f5f80',borderRadius:14,boxShadow:'0 18px 50px #0009',padding:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:12}}>
         <strong style={{fontSize:15}}>Communications Notifications</strong>
         <button style={chip} onClick={()=>setOpen(false)} aria-label="Close notifications">✕</button>
