@@ -321,8 +321,8 @@ serve(async req=>{
       const creds=await romylabsSignalWireCredentials()
       if(!creds?.sw_space_url||!creds.sw_project_id||!creds.sw_api_token)
         return json({error:'SignalWire credentials unavailable'},503)
-      const host=String(creds.sw_space_url).replace(/^https?:\\/\\//,'').replace(/\\/$/,'')
-      if(!/^[a-z0-9.-]+\\.signalwire\\.com$/i.test(host))
+      const host=String(creds.sw_space_url).replace(/^https?:\/\//,'').replace(/\/$/,'')
+      if(!/^[a-z0-9.-]+\.signalwire\.com$/i.test(host))
         return json({error:'Invalid provider host'},500)
       const controlId='romylabs-hold-'+id.slice(0,8)
       const command=hold?'calling.play':'calling.play.stop'
