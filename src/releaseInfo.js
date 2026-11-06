@@ -3,6 +3,8 @@
 // Shared code does not make Nashville part of a central release.
 
 const IRS_WORKFLOW_CHANGES = [
+  'Live calls can be placed on hold with original audible music and clear recovery when the provider cannot start playback',
+  'RomyLabs direct calls stop their provider hold audio before resuming and conference holds use the same looped soundtrack',
   'FormaCorp official Sunbiz filing workspace now maximizes the government page and opens it automatically',
   'Saved CRM filing details are compact and collapsible; new filings no longer display an empty sidebar',
   'Government disclosure and state-receipt entry are now collapsible, with responsive mobile layout',
@@ -100,6 +102,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs phone Hold now requests audible original music, with automatic stop-on-resume and no changes to existing call routing',
   'Admin Demo Leads & Tasks adds a clickable Completed card with persisted completion timestamps and full contact activity history, separate from the open queue',
   'Oculivo website demo requests offer distinct Open and Completed views without hiding active follow-ups behind completed records',
   'Admin Portal v3.2.65 independently verifies its exact Cloudflare booking-selector build marker after the approved release',
@@ -173,18 +176,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.67',
+  version: '3.2.68',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.67 — FormaCorp Sunbiz Workspace Polish',
+  title: 'RomyLabs Admin Portal 3.2.68 — Audible Hold Music',
   changes: ADMIN_DEMO_TASK_CHANGES,
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.67',
+    version: '3.2.68',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
+    title: 'CRM 3.2.68 — Audible Hold Music',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -206,17 +209,17 @@ const OFFICE_RELEASES = {
 
   // CloudCPA
   'ecd3d3ce-016a-4bb4-800e-f090f51e4cae': {
-    version: '3.2.67',
+    version: '3.2.68',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
+    title: 'CRM 3.2.68 — Audible Hold Music',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.67',
+    version: '3.2.68',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.67 — Sunbiz Filing Workspace Polish',
+    title: 'CRM 3.2.68 — Audible Hold Music',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
