@@ -66,8 +66,8 @@ export default function AdminCommsNotifications(){
       })
       const [sms,mail,phone]=values
       setCounts(old=>({
-        call:phone?phone.calls.filter(c=>c.direction==='Inbound'&&c.status==='missed'&&timeOf(c.created_at)>Date.now()-24*3600*1000).length:old.call,
-        sms:sms?sms.messages.filter(m=>m.direction==='inbound'&&!m.read).length:old.sms,
+        call:phone?(Number.isFinite(phone.missed_last_24h_count)?phone.missed_last_24h_count:phone.calls.filter(c=>c.direction==='Inbound'&&c.status==='missed'&&timeOf(c.created_at)>Date.now()-24*3600*1000).length):old.call,
+        sms:sms?(Number.isFinite(sms.unread_count)?sms.unread_count:sms.messages.filter(m=>m.direction==='inbound'&&!m.read).length):old.sms,
         email:mail?(mail.mailboxes.find(m=>String(m.role||'').toLowerCase()==='inbox')?.unreadEmails ?? mail.messages.filter(m=>!m.keywords?.['$seen']).length):old.email
       }))
       if(sms){
