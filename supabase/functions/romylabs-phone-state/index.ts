@@ -301,6 +301,49 @@ serve(async req=>{
       return json({ok:true})
     }
 
+    // The browser SDK hold mutes media; it does not supply music itself.
+    // Play the same original hold soundtrack through the provider against
+    // this user's already-verified direct call. Do not redirect/create legs.
+    if(action==='direct_outbound_hold_music'){
+      const id=String(body?.id||'')
+      const hold=body?.hold
+      if(!/^[0-9a-f-]{36}$/i.test(id)||typeof hold!=='boolean')
+        return json({error:'Invalid call or hold state'},400)
+      const {data:row,error:readError}=await db.from('outbound_calls')
+        .select('id,status,provider_call_sid,agent_name')
+        .eq('tenant_id',TENANT).eq('id',id).eq('status','connected')
+        .limit(1).maybeSingle()
+      if(readError||!row)return json({error:'Active direct call not found'},404)
+      if(String(row.agent_name||'').toLowerCase()!==user.email.toLowerCase())
+        return json({error:'Call is not owned by this user'},403)
+      if(!row.provider_call_sid||!/^[0-9a-f-]{36}$/i.test(row.provider_call_sid))
+        return json({error:'Provider call is not verified yet'},409)
+      const creds=await romylabsSignalWireCredentials()
+      if(!creds?.sw_space_url||!creds.sw_project_id||!creds.sw_api_token)
+        return json({error:'SignalWire credentials unavailable'},503)
+      const host=String(creds.sw_space_url).replace(/^https?:\/\//,'').replace(/\/$/,'')
+      if(!/^[a-z0-9.-]+\.signalwire\.com$/i.test(host))
+        return json({error:'Invalid provider host'},500)
+      const controlId='romylabs-hold-'+id.slice(0,8)
+      const command=hold?'calling.play':'calling.play.stop'
+      const params=hold?{
+        control_id:controlId,loop:0,
+        play:[{type:'audio',params:{url:URL+'/functions/v1/hold-music?audio=1'}}]
+      }:{control_id:controlId}
+      const provider=await fetch('https://'+host+'/api/calling/calls',{
+        method:'POST',headers:{
+          Authorization:'Basic '+btoa(creds.sw_project_id+':'+creds.sw_api_token),
+          'Content-Type':'application/json'
+        },
+        body:JSON.stringify({command,id:row.provider_call_sid,params})
+      })
+      if(!provider.ok){
+        console.error('[direct-outbound] hold music command rejected',command,provider.status)
+        return json({error:hold?'Hold music playback failed':'Unable to stop hold music',status:provider.status},502)
+      }
+      return json({ok:true,music:hold?'playing':'stopped'})
+    }
+
     if(action==='direct_outbound_record'){
       const id=String(body?.id||'')
       const callId=String(body?.call_id||'')

@@ -189,12 +189,35 @@ export function CallProvider({ children, phoneContext = 'taxres' }) {
       if (!call || holdBusy) return
       setHoldBusy(true)
       try {
+        const outboundId=activeOutboundCallIdRef.current
+        if (!outboundId) throw new Error('Call has not been registered for hold music')
+        const providerMusic=async(hold)=>{
+          const {data,error}=await supabase.functions.invoke('romylabs-phone-state',{
+            body:{action:'direct_outbound_hold_music',id:outboundId,hold}
+          })
+          if(error||data?.error)throw new Error(data?.error||error?.message||'Provider hold music unavailable')
+        }
         if (onHold) {
-          if (typeof call.unhold !== 'function') throw new Error('Resume is not supported by the active call')
-          await call.unhold()
+          // Stop provider playback before reopening the browser audio path.
+          await providerMusic(false)
+          try {
+            if (typeof call.unhold !== 'function') throw new Error('Resume is not supported by the active call')
+            await call.unhold()
+          } catch(e) {
+            // Do not leave someone in dead silence if SDK resume fails.
+            await providerMusic(true).catch(err=>console.error('[hold-music] recovery failed',err))
+            throw e
+          }
         } else {
           if (typeof call.hold !== 'function') throw new Error('Hold is not supported by the active call')
           await call.hold()
+          try {
+            await providerMusic(true)
+          } catch(e) {
+            // Never report Hold as successful when the customer hears silence.
+            await call.unhold?.().catch(err=>console.error('[hold-music] rollback failed',err))
+            throw e
+          }
         }
         setOnHold(!onHold)
       } catch(e) { showCallToast('Call hold control failed: '+(e?.message||e)) }

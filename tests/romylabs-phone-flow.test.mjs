@@ -84,6 +84,26 @@ assert.match(phoneStateSource,/action==='direct_outbound_state'/)
 assert.match(phoneStateSource,/action==='direct_outbound_record'/)
 assert.doesNotMatch(phoneStateSource.slice(phoneStateSource.indexOf("if(action==='direct_outbound_start')"),phoneStateSource.indexOf("if(action==='direct_outbound_record')")) ,/Calls\.json|Conferences\.json/)
 
+// Hold regression: conference callers must get actual audio, and direct
+// browser/PSTN calls must ask SignalWire to play/stop that audio while
+// preserving hold/unhold and authenticated ownership of the provider call.
+const holdAudioSource=readFileSync(new URL('../supabase/functions/hold-music/index.ts', import.meta.url),'utf8')
+const conferenceHoldSource=readFileSync(new URL('../supabase/functions/call-hold/index.ts', import.meta.url),'utf8')
+transformSync(holdAudioSource,{loader:'ts'})
+transformSync(conferenceHoldSource,{loader:'ts'})
+assert.ok(holdAudioSource.includes("'Content-Type':'audio/wav'"))
+assert.ok(holdAudioSource.includes('<Play loop="0">'))
+assert.ok(holdAudioSource.includes('cachedAudio ||= makeMusic()'))
+assert.ok(conferenceHoldSource.includes('holdBody.HoldUrl=holdUrl'))
+assert.ok(phoneStateSource.includes("action==='direct_outbound_hold_music'"))
+assert.ok(phoneStateSource.includes("'calling.play.stop'"))
+assert.ok(phoneStateSource.includes('provider_call_sid'))
+assert.ok(phoneStateSource.includes('row.agent_name'))
+assert.ok(phoneStateSource.includes('hold-music?audio=1'))
+assert.ok(callContextSource.includes('await providerMusic(true)'))
+assert.ok(callContextSource.includes('await providerMusic(false)'))
+assert.ok(callContextSource.includes('await call.unhold()'))
+
 const outboundLegSource=readFileSync(new URL('../supabase/functions/outbound-leg/index.ts', import.meta.url),'utf8')
 assert.match(outboundLegSource,/startConferenceOnEnter="false"/)
 assert.doesNotMatch(outboundLegSource,/waitUrl=|hold-music/)
@@ -127,6 +147,7 @@ console.log(JSON.stringify({
   T9b_outbound_customer_released_on_agent_join:'PASS',
   T9c_direct_browser_to_PSTN_no_conference:'PASS',
   T9d_provider_hold_unhold_and_recording:'PASS',
+  T9e_audible_hold_and_safe_resume:'PASS',
   T10_ivr_menu_1_to_5:'PASS',
   T11_demo_sms_filtered:'PASS',
   T12_refresh_rejoin_same_conference:'PASS',
