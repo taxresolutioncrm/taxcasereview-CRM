@@ -1,17 +1,11 @@
 name: Deploy RomyLabs Admin to Cloudflare
 
 on:
+  # Native Cloudflare Pages Git integration already deploys this repository.
+  # This separate Wrangler workflow is an opt-in fallback only; triggering
+  # it on main produced misleading red checks because repository secrets
+  # are not provisioned. Never deploy both paths automatically.
   workflow_dispatch:
-  # One-time deployment approval marker; ordinary pushes do not deploy.
-  push:
-    branches:
-      - main
-    paths:
-      - deploy/romylabs-admin-direct-call-20261104.approved
-      - deploy/romylabs-admin-calendar-preview-20261105.approved
-      - deploy/romylabs-admin-calendar-command-center-20261105.approved
-      - deploy/romylabs-admin-calendar-office-day-20261105.approved
-      - deploy/romylabs-admin-booking-selector-20261105.approved
 
 permissions:
   contents: read
