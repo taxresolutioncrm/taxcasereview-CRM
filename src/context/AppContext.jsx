@@ -893,6 +893,7 @@ export function AppProvider({ children }) {
 
   async function loadRole(email) {
     if (!email) return
+    const normalizedEmail = String(email).trim().toLowerCase()
 
     // During impersonation, always Super Admin regardless of actual employee record
     const imp = getImpersonation()
@@ -903,13 +904,22 @@ export function AppProvider({ children }) {
       return
     }
 
-    if (['romy@taxcasereview.org', 'romy@taxrescrm.net', 'romy@romylabs.com', 'info@romylabs.com'].includes(email)) {
+    if (['romy@taxcasereview.org', 'romy@taxrescrm.net', 'romy@romylabs.com', 'info@romylabs.com'].includes(normalizedEmail)) {
       setRole('Super Admin')
       setPerms(null)
       setEmployeeName('')
       return
     }
-    const { data: tenantId } = await supabase.rpc('current_tenant_id')
+    const { data: tenantId, error: tenantError } = await supabase.rpc('current_tenant_id')
+    if (tenantError) {
+      // A temporary RPC/network failure does not mean the user lost membership.
+      // Keep their Auth session, but do not give access until office verification works.
+      console.error('[auth] Could not verify office membership', tenantError)
+      setRole('View Only')
+      setEmployeeName('')
+      setPerms(null)
+      return
+    }
     if (!tenantId) {
       await supabase.auth.signOut()
       setUser(null)
@@ -920,12 +930,20 @@ export function AppProvider({ children }) {
       window.location.href = '/login'
       return
     }
-    const { data } = await supabase
+    const { data, error: employeeError } = await supabase
       .from('employees')
       .select('name, access, status, perm_leads, perm_clients, perm_billing, perm_schedule, perm_documents, perm_reports, perm_hr, perm_settings, perm_comms, perm_irs')
       .eq('tenant_id', tenantId)
-      .eq('email', email)
+      .ilike('email', normalizedEmail)
       .maybeSingle()
+
+    if (employeeError) {
+      console.error('[auth] Could not verify employee access', employeeError)
+      setRole('View Only')
+      setEmployeeName('')
+      setPerms(null)
+      return
+    }
 
     if (data) {
       if (String(data.status || 'Active').toLowerCase() !== 'active') {
@@ -943,9 +961,14 @@ export function AppProvider({ children }) {
       const hasCustomPerms = Object.keys(data).some(k => k.startsWith('perm_') && data[k] !== null)
       setPerms(hasCustomPerms ? data : null)
     } else {
-      setRole('Admin')
+      // Missing employee membership is never an Admin authorization fallback.
+      await supabase.auth.signOut()
+      setUser(null)
+      setRole('View Only')
       setEmployeeName('')
       setPerms(null)
+      alert('No active employee profile was found for this CRM office. Contact your office administrator.')
+      window.location.href = '/login'
     }
   }
 
