@@ -928,7 +928,7 @@ export default function Calendar() {
       )}
 
       <DeleteConfirmModal open={!!confirmDel} label="event" onConfirm={() => deleteEvent(confirmDel)} onCancel={() => setConfirmDel(null)} />
-      {showBooking && <InternalBooking onClose={() => setShowBooking(false)} />}
+      {showBooking && <InternalBooking onClose={() => setShowBooking(false)} products={isRomyLabsAdmin ? calendarProducts : null} />}
     </div>
   )
 }

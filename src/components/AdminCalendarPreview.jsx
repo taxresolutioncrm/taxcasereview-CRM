@@ -288,8 +288,6 @@ export default function AdminCalendarPreview({
             <h3>{selected.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
             <div className="uc-card-date">{selectedEvents.length} appointments scheduled</div>
             <div className="uc-card-actions" aria-label="Day actions">
-              {button('+ New event', () => create(), 'uc-btn-primary')}
-              {button('Booking link', onBooking, 'uc-btn-blue')}
               {button('View day', () => setView('day'))}
               {button('View week', () => setView('week'))}
             </div>

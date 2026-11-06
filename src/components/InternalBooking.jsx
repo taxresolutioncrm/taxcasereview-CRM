@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { sendBookingInvite, bookUrl } from '../lib/bookingEmails'
+import { sendBookingInvite, bookUrl, productBookingUrl } from '../lib/bookingEmails'
+import { PRODUCT_BOOKING_CONFIGS } from '../lib/productBookingConfig'
 
 // ── Send Booking Link (Calendar header) ──
 // Calendly-exact: staff never pick times for anyone. This sends the person
@@ -7,20 +8,41 @@ import { sendBookingInvite, bookUrl } from '../lib/bookingEmails'
 // When they book, everything downstream is automatic — calendar event, lead
 // created if they're new, note on the record, confirmation + rep emails.
 
-export default function InternalBooking({ onClose }) {
+export default function InternalBooking({ onClose, products = null }) {
   const [form, setForm] = useState({ name: '', email: '' })
   const [state, setState] = useState('idle') // idle | sending | sent | error
   const [copied, setCopied] = useState(false)
+  const [productId, setProductId] = useState('romylabs')
+  const [copyError, setCopyError] = useState('')
+  const productOptions = Array.isArray(products) ? products.filter(p => p?.key) : null
+  const selectedConfig = productOptions ? PRODUCT_BOOKING_CONFIGS[productId] : null
+  const selectionValid = !productOptions || Boolean(selectedConfig && !selectedConfig.inactive)
+
+  function chooseProduct(value) {
+    setProductId(value)
+    setState('idle')
+    setCopied(false)
+    setCopyError('')
+  }
 
   async function send() {
-    if (!form.email.trim()) return
+    if (!form.email.trim() || !selectionValid) return
     setState('sending')
-    const ok = await sendBookingInvite({ name: form.name, email: form.email.trim() })
+    const ok = await sendBookingInvite({ name: form.name, email: form.email.trim(), ...(productOptions ? { productId } : {}) })
     setState(ok ? 'sent' : 'error')
   }
 
-  function copyLink() {
-    navigator.clipboard.writeText(bookUrl()).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800) })
+  async function copyLink() {
+    if (!selectionValid) return
+    setCopyError('')
+    try {
+      const url = productOptions ? productBookingUrl(productId) : bookUrl()
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setCopyError('Unable to copy the link. Check clipboard permissions.')
+    }
   }
 
   const label = { display: 'block', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--t3)', marginBottom: 5 }
@@ -48,7 +70,7 @@ export default function InternalBooking({ onClose }) {
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, margin: '0 auto' }}>✉️</div>
               <div style={{ fontWeight: 800, fontSize: 17, marginTop: 12 }}>Invite sent</div>
               <div style={{ color: 'var(--t3)', fontSize: 12.5, marginTop: 8, lineHeight: 1.7 }}>
-                {form.email.trim()} got the link. When they book, the appointment hits the calendar,
+                {form.email.trim()} got the {selectedConfig ? selectedConfig.name + ' ' : ''}booking link. When they book, the appointment hits the calendar,
                 a lead is created if they're new, and the rep gets notified — automatically.
               </div>
               <button onClick={onClose} style={{ marginTop: 16, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 28px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>Done</button>
@@ -56,6 +78,25 @@ export default function InternalBooking({ onClose }) {
           ) : (
             <>
               <div style={{ display: 'grid', gap: 12 }}>
+                {productOptions && (
+                  <div>
+                    <label htmlFor="booking-product-select" style={label}>Booking for which CRM? *</label>
+                    <select id="booking-product-select" value={productId}
+                      onChange={e => chooseProduct(e.target.value)}
+                      style={{ ...input, cursor: 'pointer', colorScheme: 'dark' }}>
+                      {productOptions.map(product => {
+                        const configured = PRODUCT_BOOKING_CONFIGS[product.key]
+                        const ready = Boolean(configured && !configured.inactive)
+                        return <option key={product.key} value={product.key} disabled={!ready}>
+                          {product.name || configured?.name || product.key}{ready ? '' : ' — Booking not configured'}
+                        </option>
+                      })}
+                    </select>
+                    <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--t3)' }}>
+                      {selectedConfig ? selectedConfig.name + ' branded booking page' : 'Select a configured CRM to send a booking link.'}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label style={label}>Their name</label>
                   <input style={input} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Taxpayer" autoFocus />
@@ -66,13 +107,14 @@ export default function InternalBooking({ onClose }) {
                 </div>
               </div>
 
+              {copyError && <div role="alert" style={{ fontSize: 12, color: '#fca5a5', marginTop: 10 }}>{copyError}</div>}
               {state === 'error' && (
                 <div style={{ color: '#fca5a5', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, marginTop: 12 }}>
                   Send failed — check the address and try again.
                 </div>
               )}
 
-              <button disabled={state === 'sending' || !form.email.trim()} onClick={send}
+              <button disabled={state === 'sending' || !form.email.trim() || !selectionValid} onClick={send}
                 style={{
                   width: '100%', marginTop: 14, border: 'none', borderRadius: 10, padding: '13px 0',
                   fontSize: 14.5, fontWeight: 800, cursor: state === 'sending' || !form.email.trim() ? 'not-allowed' : 'pointer',
@@ -84,7 +126,7 @@ export default function InternalBooking({ onClose }) {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, justifyContent: 'center' }}>
                 <span style={{ color: 'var(--t3)', fontSize: 11.5 }}>or share it yourself:</span>
-                <button onClick={copyLink} style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 7, color: 'inherit', padding: '5px 12px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+                <button onClick={copyLink} disabled={!selectionValid} style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 7, color: 'inherit', padding: '5px 12px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
                   {copied ? '✅ Copied' : '📋 Copy Link'}
                 </button>
               </div>
