@@ -23,7 +23,7 @@ test(briefing.includes("rpc('_is_platform_admin')"),'On-demand test requires aut
 test(briefing.includes("sendResult?.success !== true"),'Provider failure is not treated as sent')
 test(migration.includes("romylabs_daily_briefing_runs"),'Durable email delivery audit installed')
 test(migration.includes("'0 11,12 * * *'"),'DST-safe UTC scheduler covers both Eastern offsets')
-test(migration.includes("from storage.objects"),'Storage count is based on actual storage objects')
+test(migration.includes("join storage.objects"),'Storage count is based on actual storage objects')
 test(migration.includes("storage_object_tenants"),'Storage count uses verified tenant ownership')
 test(migration.includes("revoke all on function public.admin_get_audit_log_v2"),'Sanitized audit endpoint not exposed publicly')
 console.log('PASS RomyLabs Admin Portal operations regression contract')
