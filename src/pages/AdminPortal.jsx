@@ -3528,7 +3528,7 @@ const PRODUCT_REGISTRY = [
     brandStatus:    'branded',
     publicOnRomyLabs: false,
     commerciallyAvailable: false,
-    desc:      'ChairStyle's website is live at chairstyle.net. The barber and salon CRM remains in development for bookings, client history, staff, payroll, and multi-location operations.',
+    desc:      "ChairStyle website is live at chairstyle.net. Its barber and salon CRM remains in development for bookings, client history, staff, payroll, and multi-location operations.",
     metricsUrl: null,
     nextMilestone: 'Finish product build, connect Supabase, then enable live platform metrics',
     priorityRank:   5,
