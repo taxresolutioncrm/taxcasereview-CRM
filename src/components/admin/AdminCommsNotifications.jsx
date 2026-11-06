@@ -19,6 +19,7 @@ export default function AdminCommsNotifications(){
   const [open,setOpen]=useState(false)
   const [counts,setCounts]=useState(countsDefault)
   const [events,setEvents]=useState([])
+  const [dismissed,setDismissed]=useState('')
   const [problems,setProblems]=useState([])
   const [permission,setPermission]=useState(() => typeof Notification==='undefined'?'unsupported':Notification.permission)
   const seen=useRef({sms:null,email:null,call:null})
@@ -126,6 +127,13 @@ export default function AdminCommsNotifications(){
   const total=counts.call+counts.sms+counts.email
   const chip={border:'1px solid #46516f',padding:'6px 9px',borderRadius:8,background:'#15172a',color:'#e2e8f0',cursor:'pointer',fontSize:12}
   return <div style={{position:'fixed',right:16,bottom:16,zIndex:9400,fontFamily:'Inter,Arial,sans-serif',color:'#e2e8f0'}}>
+    {!open&&events.length>0&&events[0].key!==dismissed&&<div role="status" style={{width:'min(90vw,345px)',background:'#17263b',border:'1px solid #6366f1',borderRadius:10,boxShadow:'0 9px 26px #0009',padding:10,marginBottom:8,display:'flex',gap:7,alignItems:'center'}}>
+      <button onClick={()=>{navigate(ADMIN_ROUTES[events[0].kind]);setDismissed(events[0].key)}} style={{flex:1,minWidth:0,textAlign:'left',background:'transparent',border:0,color:'#fff',cursor:'pointer'}}>
+        <strong style={{fontSize:12,display:'block'}}>{events[0].title}</strong>
+        <span style={{display:'block',color:'#cbd5e1',fontSize:12,overflowWrap:'anywhere'}}>{events[0].detail}</span>
+      </button>
+      <button onClick={()=>setDismissed(events[0].key)} aria-label="Dismiss alert" style={{background:'none',border:0,color:'#cbd5e1',cursor:'pointer'}}>✕</button>
+    </div>}
     {open&&<section aria-label="RomyLabs communications notifications" style={{width:'min(92vw,370px)',background:'#0f1425',border:'1px solid #4f5f80',borderRadius:14,boxShadow:'0 18px 50px #0009',padding:16,marginBottom:10}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:12}}>
         <strong style={{fontSize:15}}>Communications Notifications</strong>
