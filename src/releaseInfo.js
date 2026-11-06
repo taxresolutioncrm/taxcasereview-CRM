@@ -9,6 +9,7 @@ const OFFICE_LOGIN_FIX_CHANGES = [
   'Centurion email sign-in and password recovery are routed to its independent CRM authentication project',
   'Centurion-host sign-in blocks accidentally using TaxRes credentials against the wrong Supabase project',
   'TaxRes active office registry now contains TaxRes, TCR, Nashville and Centurion only',
+  'Retired CloudCPA removed from active office directory, manuals and background metrics collection',
 ]
 
 const IRS_WORKFLOW_CHANGES = [
