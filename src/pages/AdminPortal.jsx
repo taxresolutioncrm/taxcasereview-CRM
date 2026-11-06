@@ -182,7 +182,8 @@ async function loadPlatformOfficeRowsFresh() {
   // billing source, while platform-metrics owns usage counts and tenant storage.
   const taxResTenantFeeds = [
     { key:'tax_case_review', name:'Tax Case Review' },
-    { key:'cloudcpa', name:'CloudCPA Inc' },
+    // Legacy CloudCPA is excluded from active office telemetry after merger into Centurion.
+    // Historical CloudCPA data and backend metrics routes remain available for audit.
     { key:'demo', name:'Tax Res CRM Demo' },
   ]
   // Nashville runs in its own Supabase project and is not an entry in
