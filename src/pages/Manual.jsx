@@ -439,6 +439,13 @@ const MANUAL_SECTIONS = [
         ['Uploads', 'Anything uploaded by you or the client through the portal'],
         ['Generated', 'Forms generated directly by the CRM (2848 PDFs, state forms)'],
       ]},
+      { type: 'h3', text: 'Custom client folders — create, rename, delete' },
+      { type: 'steps', items: [
+        { title: 'Create a folder', desc: 'Open an existing client → Documents → Custom folders → New. Enter a unique 1–80 character name (for example, test), then Save. The CRM verifies the canonical client record before creating anything.' },
+        { title: 'Rename a custom folder', desc: 'Select Rename beside the custom folder, edit the name, then Save or Cancel. All documents associated with that folder keep their records and file attachments; only the folder label changes.' },
+        { title: 'Delete an empty custom folder', desc: 'Select Delete and confirm. The server will reject the request if any linked documents remain. Move those documents first; deletion never removes the files.' },
+      ]},
+      { type: 'warn', text: 'Default and imported Canopy folders are not editable with these controls. Legacy name-only documents must first be reconciled to their correct client ID before a custom folder can be renamed. Staff without document-edit permission can view authorized folders but cannot create, rename, or delete them.' },
       { type: 'h3', text: 'Uploading documents' },
       { type: 'steps', items: [
         { title: 'Client file → Documents tab → Upload', desc: 'Drag and drop or click to browse. Supported: PDF, Word, Excel, JPG, PNG. Max 50MB per file.' },
