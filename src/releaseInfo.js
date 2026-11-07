@@ -11,6 +11,12 @@ const OFFICE_ACCESS_CHANGES = [
 ]
 
 const IRS_WORKFLOW_CHANGES = [
+  'Transactions associate filter now loads all matching associate names only when opened, without the first-1,000-record truncation or an extra initial page request',
+  'Employee Productivity and Transactions reports can export authorized filtered results as native Excel workbooks, including numeric columns and productivity totals',
+  'Time & Billing adds a separate Employee Productivity view with date windows, employee search and refresh; existing Log Time, WIP and Billing Report controls remain intact',
+  'Transaction ledger server-side pagination and tenant-scoped collection summaries staged for controlled verification',
+  'Transaction financial summary cards provide confirmed, returned, disputed and failed drill-downs with visible retry',
+  'Employee productivity reporting uses a tenant-authorized database aggregate with date, search and responsive controls',
   ...OFFICE_ACCESS_CHANGES,
   'Live calls can be placed on hold with original audible music and clear recovery when the provider cannot start playback',
   'RomyLabs direct calls stop their provider hold audio before resuming and conference holds use the same looped soundtrack',
@@ -190,18 +196,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.70',
+  version: '3.2.72',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.70 — Four-Office Authentication and Directory',
+  title: 'RomyLabs Admin Portal 3.2.72 — Shared CRM Parity Candidate',
   changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Four-Office Authentication and Directory',
+    title: 'CRM 3.2.72 — Transactions and Productivity Parity',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -223,9 +229,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.70',
+    version: '3.2.72',
     releasedAt: '2026-11-03',
-    title: 'CRM 3.2.70 — Audible Hold Music',
+    title: 'CRM 3.2.72 — Transactions and Productivity Parity',
     changes: IRS_WORKFLOW_CHANGES,
   },
 }
