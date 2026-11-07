@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { Link } from 'react-router-dom'
+import { exportReportXlsx } from '../lib/reportExcelExport'
 
 // Nashville parity candidate. The ledger is paginated on the server and is deliberately
 // separate from confirmed positive collections. Requires the summary RPC migration.
@@ -35,6 +36,8 @@ export default function Transactions() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   useEffect(() => {
     const timeout = setTimeout(() => setSearch(searchInput.trim()), 300)
@@ -90,6 +93,45 @@ export default function Transactions() {
     return () => { active = false }
   }, [user, myTenantId, search, status, associate, dateFrom, dateTo, drill, page, revision])
 
+  async function exportExcel() {
+    if (!myTenantId || loading || error || exporting) return
+    setExporting(true); setExportError('')
+    try {
+      // Export the full filtered result, not just the visible 100-row page.
+      // Cap exports to prevent a multi-minute memory spike in the browser.
+      if (count > 25000) throw new Error('More than 25,000 matching records. Narrow the dates or filters before exporting.')
+      const safeSearch = search.replace(/[,%()]/g, ' ').trim()
+      const allRows = []
+      for (let offset = 0; offset < count; offset += 1000) {
+        let q = supabase.from('payment_transactions')
+          .select('id,client_name,payment_date,associate,amount,deposit_account,service_type,status,notes')
+          .eq('tenant_id', myTenantId)
+        if (safeSearch) q = q.ilike('client_name','%' + safeSearch + '%')
+        if (associate !== 'all') q = q.eq('associate', associate)
+        if (dateFrom) q = q.gte('payment_date', dateFrom)
+        if (dateTo) q = q.lte('payment_date', dateTo)
+        if (drill === 'collected' || drill === 'amount') q = q.in('status',['Posted','Cleared']).gt('amount',0)
+        else if (drill === 'returned') q = q.in('status', RETURNED)
+        else if (drill === 'disputed') q = q.eq('status','Disputed')
+        else if (drill === 'failed') q = q.eq('status','FAIL')
+        else if (status !== 'all') q = q.eq('status',status)
+        const result = await q.order('payment_date',{ascending:false}).order('id',{ascending:false})
+          .range(offset,Math.min(count-1,offset+999))
+        if (result.error) throw result.error
+        allRows.push(...(result.data || []))
+      }
+      if (allRows.length !== count) throw new Error('The ledger changed during export. Refresh and retry to avoid an incomplete Excel file.')
+      await exportReportXlsx({
+        filename: 'transactions-' + (dateFrom || 'all') + '-to-' + (dateTo || 'all') + '.xlsx',
+        sheetName: 'Transactions',
+        headers: ['Date','Client','Associate','Amount','Deposit Account','Service','Status','Notes'],
+        rows: allRows.map(t=>[t.payment_date,t.client_name,t.associate,Number(t.amount || 0),t.deposit_account,t.service_type,t.status,t.notes]),
+        moneyColumns: [3],
+      })
+    } catch(e) { setExportError(e?.message || 'Excel export failed') }
+    finally { setExporting(false) }
+  }
+
   const clear = () => { setSearchInput(''); setSearch(''); setStatus('all'); setAssociate('all'); setDateFrom(''); setDateTo(''); setDrill(''); setPage(0) }
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
   const tileStyle = { background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 12, padding: '14px 16px', color: 'var(--t1)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }
@@ -117,8 +159,10 @@ export default function Transactions() {
       <input aria-label="Date from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle}/>
       <input aria-label="Date to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle}/>
       <button type="button" onClick={clear} style={inputStyle}>Clear filters</button>
+      <button type="button" onClick={exportExcel} disabled={loading || exporting || !!error || count === 0} style={inputStyle} aria-label="Export filtered transactions to Excel">{exporting?'Exporting…':'Export to Excel (.xlsx)'}</button>
     </div>
     {drill && <p role="status" style={{ color: 'var(--t2)' }}>Showing {DRILLS.find(d => d.id === drill)?.label} — <button onClick={() => setDrill('')}>Clear drill-down</button></p>}
+    {exportError && <div role="alert" style={{color:'#ef4444',marginBottom:12}}>{exportError}</div>}
     {error && <div role="alert" style={{ padding: 18, border: '1px solid #ef4444', borderRadius: 8, marginBottom: 12, color: 'var(--t1)' }}>
       Transactions unavailable: {error} <button onClick={() => setRevision(v => v + 1)}>Retry</button>
     </div>}
