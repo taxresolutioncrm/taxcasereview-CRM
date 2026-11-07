@@ -1,0 +1,26 @@
+name: Verify portfolio buyer-intent SEO live
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/verify-portfolio-buyer-content-live.mjs'
+      - '.github/workflows/verify-portfolio-buyer-content-live.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/verify-portfolio-buyer-content-live.mjs
+      - run: node scripts/verify-portfolio-buyer-content-live.mjs
+      - name: Upload public SEO production evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-buyer-seo-live-evidence
+          path: seo-live/
+          if-no-files-found: warn
