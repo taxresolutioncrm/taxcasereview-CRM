@@ -38,26 +38,32 @@ const parseMeta=(s)=>{
 }
 async function check([name,domain,ga4,clarity]){
   const root='https://'+domain
-  const [home,robots,sitemap]=await Promise.all([
+  const [home,robots,initialSitemap]=await Promise.all([
     limitedFetch(root+'/'),limitedFetch(root+'/robots.txt'),limitedFetch(root+'/sitemap.xml')
   ])
+  let sitemap=initialSitemap
+  if(sitemap.status===404){
+    const alternative=await limitedFetch(root+'/sitemap-index.xml')
+    if(alternative.status===200 && /<sitemapindex\b/i.test(alternative.body))sitemap=alternative
+  }
   const meta=parseMeta(home.body)
   const robotRules=robots.body.split(/\r?\n/).map(line=>line.trim()).filter(line=>/^(user-agent|allow|disallow|sitemap):/i.test(line)).slice(0,35)
   const headScripts=[...home.body.matchAll(/<script[^>]*>/gi)].map(m=>m[0]).filter(x=>/clarity|googletagmanager|analytics|config/i.test(x)).slice(0,8)
+  const claritySnippets=[...home.body.matchAll(/clarity\.ms\/tag\//gi)].map(m=>home.body.slice(Math.max(0,m.index-190),m.index+170)).slice(0,4)
   let code=home.body
   const external=[...home.body.matchAll(/<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']/gi)].map(m=>m[1])
-    .filter(x=>x.includes('analytics')||x.includes('tracking')).slice(0,2)
+    .filter(x=>x.includes('analytics')||x.includes('tracking')||x.includes('config.js')||x.includes('clarity.js')).slice(0,2)
   for(const path of external){
     try{const u=new URL(path,root);if(u.host===domain||u.host==='www.'+domain){code+=' '+(await limitedFetch(u.href)).body}}catch{}
   }
   const issues=[],notes=[]
   if(home.status!==200)issues.push('Homepage HTTP '+home.status+(home.error?' ('+home.error+')':''))
   if(robots.status!==200)issues.push('robots.txt HTTP '+robots.status)
-  if(sitemap.status!==200)issues.push('sitemap.xml HTTP '+sitemap.status)
+  if(sitemap.status!==200)issues.push('Sitemap HTTP '+sitemap.status)
   if(home.status===200){
     if(!meta.title)issues.push('Homepage title missing')
     if(!meta.description)issues.push('Homepage meta description missing')
-    if(meta.h1!==1)issues.push('Homepage H1 count '+meta.h1)
+    if(meta.h1!==1){if(meta.h1===0&&/<div[^>]*id=[\"']root[\"']/.test(home.body))notes.push('CSR homepage: H1 absent from raw HTML; requires rendered SEO audit');else issues.push('Homepage H1 count '+meta.h1)}
     if(!meta.canonical)issues.push('Homepage canonical missing')
     else {
       try{const p=new URL(meta.canonical);if(p.hostname!==domain||!['','/'].includes(p.pathname))issues.push('Homepage canonical unexpected '+meta.canonical)}
@@ -67,7 +73,18 @@ async function check([name,domain,ga4,clarity]){
     if(!meta.jsonLD)notes.push('No JSON-LD visible in raw HTML (may be injected later)')
   }
   if(robots.status===200){
-    if(/(?:^|\n)\s*Disallow:\s*\/\s*(?:\n|$)/im.test(robots.body))issues.push('robots.txt disallows entire site')
+    // Only compare Googlebot and wildcard rules. A restriction on training or
+    // non-search crawlers is not a Google indexing block.
+    let agents=[],hasRules=false,blockedGoogle=false
+    for(const raw of robots.body.split(/\r?\n/)){
+      const line=raw.trim().split('#')[0].trim()
+      const ua=line.match(/^User-agent:\s*(.+)$/i)
+      if(ua){if(hasRules){agents=[];hasRules=false}agents.push(ua[1].trim().toLowerCase());continue}
+      const disallow=line.match(/^Disallow:\s*(.*?)\s*$/i)
+      if(disallow){hasRules=true;if(disallow[1]==='/'&&(agents.includes('*')||agents.includes('googlebot')))blockedGoogle=true}
+      else if(/^Allow:/i.test(line))hasRules=true
+    }
+    if(blockedGoogle)issues.push('Googlebot or wildcard is disallowed from entire site')
     if(!/sitemap\s*:/i.test(robots.body))notes.push('robots.txt has no sitemap directive')
   }
   if(sitemap.status===200){
@@ -86,7 +103,7 @@ async function check([name,domain,ga4,clarity]){
   if(!ga4)notes.push('Central GA4 measurement ID not established for comparison')
   if(!clarity)notes.push('Central Clarity project ID not established for comparison')
   if(home.status===200&&home.url!==root+'/'&&home.url!==root)notes.push('Homepage redirected to '+home.url)
-  return {name,domain,homepageStatus:home.status,robotsStatus:robots.status,sitemapStatus:sitemap.status,meta,robotRules,headScripts,gaIds:ids,clarityIds:clids,gaLoaderCount,clarityLoaderCount,issues,notes}
+  return {name,domain,homepageStatus:home.status,robotsStatus:robots.status,sitemapStatus:sitemap.status,meta,robotRules,headScripts,claritySnippets,gaIds:ids,clarityIds:clids,gaLoaderCount,clarityLoaderCount,issues,notes}
 }
 const results=[]
 let cursor=0
@@ -100,6 +117,6 @@ fs.mkdirSync('portfolio-audit',{recursive:true})
 fs.writeFileSync('portfolio-audit/live-seo.json',JSON.stringify({generatedAt:new Date().toISOString(),results},null,2))
 fs.writeFileSync('portfolio-audit/live-seo.md',report.join('\n')+'\n')
 console.log(report.slice(0,7+results.length).join('\n'))
-for(const row of results)console.log('LIVE_DIAGNOSTIC '+JSON.stringify({name:row.name,robotRules:row.robotRules,scripts:row.headScripts,canonical:row.meta.canonical,h1:row.meta.h1}))
+for(const row of results)console.log('LIVE_DIAGNOSTIC '+JSON.stringify({name:row.name,robotRules:row.robotRules,scripts:row.headScripts,claritySnippets:row.claritySnippets,canonical:row.meta.canonical,h1:row.meta.h1}))
 console.log('LIVE_AUDIT_SUMMARY '+JSON.stringify({count:results.length,issueSites:results.filter(x=>x.issues.length).map(x=>x.name),cleanSites:results.filter(x=>!x.issues.length).map(x=>x.name)}))
 if(results.some(x=>x.issues.length))process.exitCode=1
