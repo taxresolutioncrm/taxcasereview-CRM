@@ -5835,8 +5835,8 @@ function CommandCenter() {
         .finally(() => setGscLoading(false))
       return
     }
-    if (tab === 'search') fetchGSC()
-  }, [tab])
+    if (tab === 'search') fetchGSC(seoProduct)
+  }, [tab, seoProduct])
 
   async function fetchBing(productKey = 'taxres_crm') {
     setBingData(null)
@@ -5904,9 +5904,8 @@ function CommandCenter() {
   const [ga4Loading, setGa4Loading] = useState(false)
 
   useEffect(() => {
-    fetchGSC(seoProduct)
-    fetchBing(seoProduct)
-  }, [seoProduct])
+    if (tab === 'search') fetchBing(seoProduct)
+  }, [tab, seoProduct])
 
   async function loadGA4() {
     setGa4Loading(true)
