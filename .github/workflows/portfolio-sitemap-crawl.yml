@@ -1,0 +1,30 @@
+name: All portfolio sitemap pages metadata audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/audit-portfolio-sitemap-pages.mjs'
+      - '.github/workflows/portfolio-sitemap-crawl.yml'
+  workflow_dispatch:
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate crawler source syntax
+        run: node --check scripts/audit-portfolio-sitemap-pages.mjs
+      - name: Crawl every public sitemap URL and record page-level SEO evidence
+        run: node scripts/audit-portfolio-sitemap-pages.mjs
+      - name: Store full evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-sitemap-pages
+          path: portfolio-audit/
+          if-no-files-found: warn
