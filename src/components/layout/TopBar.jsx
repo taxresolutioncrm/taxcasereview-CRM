@@ -225,7 +225,7 @@ export default function TopBar({ onNew }) {
 
       <div className="topbar-main" style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
         <span className="page-title" style={{ flexShrink: 0 }}>{title}</span>
-        <div className={`topbar-search-wrap${mobileSearchOpen ? ' mobile-search-open' : ''}`} ref={mobileSearchRef}>
+        <div className={`topbar-search-wrap${mobileSearchOpen ? ' mobile-search-open' : ''}`} ref={mobileSearchRef} style={{ flex: 1, minWidth: 0, maxWidth: 300 }}>
           <GlobalSearch value={searchQ} onChange={setSearchQ} />
         </div>
       </div>
