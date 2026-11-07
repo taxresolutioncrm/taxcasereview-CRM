@@ -5751,6 +5751,10 @@ function CommandCenter() {
     return () => { cancelled = true }
   }, [crmProduct, crmAccount, data])
 
+  // SEO selection is referenced by the GSC useEffect dependency array below.
+  // Initialize it BEFORE any hooks that evaluate seoProduct during render.
+  const [seoProduct, setSeoProduct] = useState('taxres_crm')
+
   // ── GSC state + fetch ──
   const [gscData, setGscData]         = useState(null)
   const [gscLoading, setGscLoading]   = useState(false)
@@ -5903,7 +5907,6 @@ function CommandCenter() {
 
   // ── GA4 real data load ─────────────────────────────────────────────────────
   const [marketingProduct, setMarketingProduct] = useState('taxres_crm')
-  const [seoProduct, setSeoProduct] = useState('taxres_crm')
   const [ga4Data, setGa4Data] = useState(null)
   const [ga4Loading, setGa4Loading] = useState(false)
 
