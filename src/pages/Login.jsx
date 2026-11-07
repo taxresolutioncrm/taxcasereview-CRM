@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase, SUPABASE_URL } from '../lib/supabase'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from '../lib/centurionBrand'
+import { SHARED_SAAS_PROJECT_HOST, centurionBackendMismatch as isCenturionBackendMismatch } from '../lib/sharedSaasRouting'
 
 const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxrescrm.net', 'romy@taxcasereview.org']
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
@@ -9,14 +10,8 @@ const NASHVILLE_HOST = 'nashville.taxrescrm.app'
 const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'
 const CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'
 const CENTURION_LOGIN = 'https://centurionfirm.taxrescrm.app/login?switch=1'
-// Centurion is TRC-004 within the same TaxRes/TCR SaaS Supabase project.
-// Fail closed on an incorrectly configured Centurion deployment, but never
-// require the retired, separate Centurion Auth project.
-const SHARED_SAAS_PROJECT_HOST = 'mpxgxfqdbquzkrvvejkh.supabase.co'
-function centurionBackendMismatch() {
-  return window.location.hostname.toLowerCase() === 'centurionfirm.taxrescrm.app'
-    && new URL(SUPABASE_URL).hostname !== SHARED_SAAS_PROJECT_HOST
-}
+// The Centurion domain uses the same SaaS Auth project as TaxRes and TCR.
+const centurionBackendMismatch = () => isCenturionBackendMismatch(window.location.hostname, SUPABASE_URL)
 
 const NASHVILLE_EXACT_EMAILS = new Set([
   'art@nationwideprofessionals.com',
