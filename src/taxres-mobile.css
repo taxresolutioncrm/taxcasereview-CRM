@@ -56,6 +56,15 @@ img, video, canvas, iframe, svg { max-width: 100%; }
   .topbar .search-input { display: none !important; }
   .topbar .topbar-clock, .topbar .topbar-datestr { display: none !important; }
   .tax-mobile-parity .topbar .topbar-main { min-width: 0 !important; flex: 1 1 0 !important; }
+  /* Unselected offices keep their pre-existing title rules. */
+  .page-title {
+    min-width: 0 !important;
+    max-width: 46vw !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 14px !important;
+  }
   .tax-mobile-parity .topbar .page-title {
     min-width: 0 !important;
     max-width: none !important;
@@ -181,6 +190,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
 @media (max-width: 640px) {
   .page-content { padding: 10px !important; }
   .topbar { min-height: 54px !important; }
+  .page-title { max-width: 38vw !important; font-size: 13px !important; }
   .tax-mobile-parity .topbar .page-title { max-width: none !important; font-size: 13px !important; }
 
   /* Preserve the two essential topbar controls: navigation and + New.
@@ -262,6 +272,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
 @media (max-width: 420px) {
   .page-content { padding: 8px !important; }
   .sidebar { width: min(90vw, 310px) !important; }
+  .page-title { max-width: 34vw !important; }
   .tax-mobile-parity .topbar .page-title { max-width: none !important; }
   .card, .dp, .info-box { border-radius: 10px !important; }
   .modal-overlay, .modal-bg { padding: 6px !important; }
