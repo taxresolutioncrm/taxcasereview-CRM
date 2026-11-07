@@ -1,0 +1,24 @@
+// Source-level release contract; does NOT replace live authenticated RLS/E2E certification.
+import fs from 'node:fs'
+import assert from 'node:assert/strict'
+const read = p => fs.readFileSync(p,'utf8')
+const transactions = read('src/pages/Transactions.jsx')
+const billing = read('src/pages/BillingProductivity.jsx')
+const entry = read('src/pages/TimeEntry.jsx')
+const a = read('supabase/migrations/20261106235900_tcr_transaction_summary_parity.sql')
+const b = read('supabase/migrations/20261106235901_billing_productivity_parity.sql')
+for (const text of ['.range(page * PAGE_SIZE','tcr_transaction_summary',"'Refunded', 'Chk Returned', 'Chargeback'",'role="alert"',"myTenantId",'/clients/']) assert(transactions.includes(text),'Transaction invariant missing: '+text)
+assert(!transactions.includes('.limit(2000)'),'Do not cap complete ledger at 2,000')
+assert(transactions.includes(".gt('amount', 0)"),'Collected card must exclude nonpositive entries')
+for (const text of ['billing_productivity_report','This week (Monday–Sunday)','America/New_York','role="alert"','overflowX']) assert(billing.includes(text),'Billing UI invariant missing: '+text)
+for (const text of ['<BillingProductivity />','Show Productivity','Log Time','Billing Report','wip','billed']) assert(entry.includes(text),'Existing billing behavior missing: '+text)
+for (const sql of [a,b]) {
+  assert(/SECURITY INVOKER/i.test(sql),'RLS bypass not allowed')
+  assert(/REVOKE ALL ON FUNCTION/.test(sql),'RPC must revoke default public execute')
+  assert(/GRANT EXECUTE/.test(sql),'RPC must grant authenticated only')
+  assert(/current_tenant_id\(\)/.test(sql),'RPC tenant scope missing')
+}
+assert(/RETURNS TABLE\(work_date date, staff_name text/.test(b),'Report contract mismatch')
+assert(/start_on date, end_on date/.test(b),'Date args mismatch')
+assert(/billing_time_entries/.test(b) && /employees/.test(b),'Staff or billing model missing')
+console.log('PASS source contracts: transaction drill-down and productivity report; real DB tests still required')
