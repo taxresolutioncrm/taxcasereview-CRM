@@ -14,12 +14,12 @@ const sites=[
   ['ChairStyle','chairstyle.net',null,null],
   ['Lakeside Pools','lakesidepoolsfl.com',null,null],
 ]
-const limitedFetch=async(url)=>{
+const limitedFetch=async(url,maximum=250000)=>{
   let last=''
   for(let attempt=0;attempt<2;attempt++){
     try{
       const r=await fetch(url,{redirect:'follow',headers:{'User-Agent':'RomyLabs-Site-QA/1.0 (+public read-only website audit)','Accept':'text/html,application/xml,text/plain,*/*'},signal:AbortSignal.timeout(12500)})
-      const body=(await r.text()).slice(0,250000)
+      const body=(await r.text()).slice(0,maximum)
       return {status:r.status,url:r.url,body,contentType:r.headers.get('content-type')||'',error:''}
     }catch(e){last=String(e?.message||e)}
   }
@@ -52,9 +52,9 @@ async function check([name,domain,ga4,clarity]){
   const claritySnippets=[...home.body.matchAll(/clarity\.ms\/tag\//gi)].map(m=>home.body.slice(Math.max(0,m.index-190),m.index+170)).slice(0,4)
   let code=home.body
   const external=[...home.body.matchAll(/<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']/gi)].map(m=>m[1])
-    .filter(x=>x.includes('analytics')||x.includes('tracking')||x.includes('config.js')||x.includes('clarity.js')).slice(0,2)
+    .filter(x=>x.includes('analytics')||x.includes('tracking')||x.includes('config.js')||x.includes('clarity.js')||x.includes('/assets/index-')).slice(0,4)
   for(const path of external){
-    try{const u=new URL(path,root);if(u.host===domain||u.host==='www.'+domain){code+=' '+(await limitedFetch(u.href)).body}}catch{}
+    try{const u=new URL(path,root);if(u.host===domain||u.host==='www.'+domain){code+=' '+(await limitedFetch(u.href,3000000)).body}}catch{}
   }
   const issues=[],notes=[]
   if(home.status!==200)issues.push('Homepage HTTP '+home.status+(home.error?' ('+home.error+')':''))
@@ -96,8 +96,12 @@ async function check([name,domain,ga4,clarity]){
   const ids=[...new Set(code.match(/G-[A-Z0-9]{7,}/g)||[])]
   const clids=[...new Set((code.match(/(?:yg|y6|z3|xy)[a-z0-9]{8,}/gi)||[]).filter(x=>x.length<=12))]
   if(ga4&&ids.some(x=>x!==ga4))issues.push('Unexpected extra GA4 ID(s): '+ids.filter(x=>x!==ga4).join(','))
-  const gaLoaderCount=count(home.body,/googletagmanager\.com\/gtag\/js\?id=/gi)
-  const clarityLoaderCount=count(home.body,/clarity\.ms\/tag\//gi)
+  // React/Next hydration JSON often serializes the exact same source script.
+  // Count executable script elements, not textual mentions in hydration payload.
+  const scriptElements=[...home.body.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+  const gaLoaderCount=[...home.body.matchAll(/<script\b[^>]*src=["'][^"']*googletagmanager\.com\/gtag\/js\?id=[^"']+["'][^>]*>/gi)].length
+  const clarityLoaderCount=scriptElements.filter(m=>/clarity\.ms\/tag\//i.test(m[2])&&!/self\.__next_f\.push/.test(m[2])).length
+  if(home.body.includes('self.__next_f')&&clarityLoaderCount===0)notes.push('Next hydration includes tracking script metadata; runtime execution needs browser verification')
   if(gaLoaderCount>1)issues.push('Multiple direct GA4 loaders: '+gaLoaderCount)
   if(clarityLoaderCount>1)issues.push('Multiple direct Clarity loaders: '+clarityLoaderCount)
   if(!ga4)notes.push('Central GA4 measurement ID not established for comparison')
