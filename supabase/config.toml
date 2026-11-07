@@ -286,3 +286,6 @@ verify_jwt = true
 
 [functions.business-clarity-data]
 verify_jwt = true
+
+[functions.ga4-portfolio-refresh]
+verify_jwt = false
