@@ -219,7 +219,8 @@ img, video, canvas, iframe, svg { max-width: 100%; }
   .topbar > button[title*="Switch to light"],
   .topbar > button[title*="Switch to dark"],
   .topbar > button[title*="support ticket"] { display: none !important; }
-  .topbar > .btn.pri, .topbar > button.btn.pri {
+  .topbar > .btn.pri, .topbar > button.btn.pri,
+  .topbar > .topbar-create-controls > .btn.pri {
     min-width: 62px !important;
     min-height: 40px !important;
     padding: 6px 9px !important;
