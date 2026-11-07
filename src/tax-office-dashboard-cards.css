@@ -108,26 +108,42 @@ html.light [data-card-idx] {
 }
 
 @media (max-width: 640px) {
-  /* Dashboard only: keep 2 columns even on 320px phones; do not change other cards. */
+  /* Existing non-target tenants retain their original card layout. */
   .page-content div:has(> [data-card-idx]) {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  [data-card-idx] {
+    height: auto !important;
+    min-height: 106px !important;
+    padding: 17px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Only TaxRes, TCR and Centurion use Nashville's two-up compact cards. */
+  .tax-mobile-parity .page-content div:has(> [data-card-idx]) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
     min-width: 0 !important;
   }
-  [data-card-idx] {
+  .tax-mobile-parity [data-card-idx] {
     min-width: 0 !important;
     height: auto !important;
     min-height: 100px !important;
     padding: 11px 9px !important;
     border-radius: 11px !important;
   }
-  [data-card-idx] > div:nth-child(3) { min-width: 0 !important; gap: 4px !important; }
-  [data-card-idx] > div:nth-child(3) > div:first-child { min-width: 0 !important; flex: 1 1 auto; }
-  [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
+  .tax-mobile-parity [data-card-idx] > div:nth-child(3) {
+    min-width: 0 !important; gap: 4px !important;
+  }
+  .tax-mobile-parity [data-card-idx] > div:nth-child(3) > div:first-child {
+    min-width: 0 !important; flex: 1 1 auto;
+  }
+  .tax-mobile-parity [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
     font-size: clamp(18px, 5vw, 25px) !important;
     overflow-wrap: anywhere !important;
   }
-  [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
+  .tax-mobile-parity [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
     width: 28px !important; min-width: 28px !important; height: 28px !important;
     margin-left: 3px !important; font-size: 17px !important;
   }
