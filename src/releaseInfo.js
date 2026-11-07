@@ -111,6 +111,11 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'RomyLabs sales now distinguishes qualified software prospects from incoming booking leads and shows source-read errors instead of false zeros',
+  'Executive briefing sends only through authorized Stalwart JMAP with delivery-attempt auditing, authenticated 7 AM Eastern scheduling and provider-confirmed submission',
+  'Central TaxRes file storage now counts registered Supabase objects and discloses which separate CRM projects are excluded',
+  'RomyLabs audit history adds new operational event categories, safe redaction, date/time and filtered pagination',
+
   'Admin email and SMS alerts play the existing sound cues, honoring the user sound preference while avoiding a duplicate incoming-call ringtone',
   'Notification polling now surfaces unexpected backend errors instead of silently dropping call, email or SMS status',
   'Admin notification alerts now provide an actionable in-app banner even when browser-level desktop notifications are disabled',
@@ -190,9 +195,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.70',
+  version: '3.2.71',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.70 — Four-Office Authentication and Directory',
+  title: 'RomyLabs Admin Portal 3.2.71 — Sales, Executive Email, Storage and Audit Repair',
   changes: [...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
