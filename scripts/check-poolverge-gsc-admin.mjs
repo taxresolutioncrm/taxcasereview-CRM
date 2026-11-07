@@ -12,7 +12,7 @@ const bearerGuard = api.match(/if\(!\/\^Bearer ([^/]+)\/\.test\(authorization\)\
 checked(Boolean(bearerGuard), 'GSC authentication guard is present')
 const bearerPattern = new RegExp('^Bearer ' + bearerGuard[1])
 checked(bearerPattern.test('Bearer eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFkbWluIn0.signature'), 'Valid bearer JWT passes GSC authentication gate')
-checked(!bearerPattern.test('not-a-token') && !bearerPattern.test('Bearer ') && !bearerPattern.test('Bearer token\\nother'), 'Missing, empty, and multi-line tokens are rejected')
+checked(!bearerPattern.test('not-a-token') && !bearerPattern.test('Bearer ') && !bearerPattern.test('Bearer token' + String.fromCharCode(10) + 'other'), 'Missing, empty, and multi-line tokens are rejected')
 checked(!api.includes(String.raw`/^Bearer \\S+$/`), 'Double-escaped bearer regex regression cannot reappear')
 
 checked(api.includes("action==='connect'") && api.includes('success:true'), 'OAuth connect reports result correctly')
