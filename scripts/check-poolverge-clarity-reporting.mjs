@@ -12,7 +12,7 @@ const clarityEffectPos=ui.indexOf("supabase.functions.invoke('poolverge-clarity-
 check(clarityEffectPos>statePos,'Clarity effect never references seoProduct before initialization')
 check(ui.includes("tab !== 'search' || seoProduct !== 'pool_crm'"),'Clarity endpoint only called for selected PoolVerge SEO panel')
 check(ui.includes('https://clarity.microsoft.com/projects/view/z31rnrvbns/dashboard'),'Clarity project deep link is exact and product-specific')
-check(ui.includes("POOLVERGE_CLARITY_API_TOKEN"),'Missing separate API token visible as configuration requirement')
+check(ui.includes("Connect existing PoolVerge Clarity analytics"),'Owner can connect Microsoft Clarity securely inside the Admin Portal')
 check(ui.includes("Clarity Tracking Installed") && !ui.includes("Clarity Setup · Verify Sessions"),'Website tracking no longer falsely appears uninstalled')
 check(ui.includes("apiStatus==='live' && typeof sessions==='number' && sessions>0"),'Verified-live badge requires real positive session metrics')
 check(ui.includes('Dashboard recordings and heatmaps remain in Microsoft Clarity'),'Recordings are never copied to central CRM')
