@@ -10,6 +10,11 @@ const OFFICE_ACCESS_CHANGES = [
   'CloudCPA is retired from the active office directory, manual, release listing and platform metrics routing',
 ]
 
+const CENTURION_MOBILE_CHANGES = [
+  'Centurion mobile review: readable Dashboard KPIs, complete header titles, client/case/lead search, and three-per-row client actions',
+  'Centurion presentation remains scoped to its office identity and does not change dedicated Supabase login, tenant membership or records',
+]
+
 const TAXRES_MOBILE_CHANGES = [
   'TaxRes administration mobile review: full route titles and accessible search alongside New',
   'TaxRes dashboard metrics and client Quick Actions use the scoped phone layout without changing permissions or workflow data',
@@ -247,10 +252,10 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.74',
+    version: '3.2.75',
     releasedAt: 'Pending production deployment',
-    title: 'CRM 3.2.74 — Mobile UX Review Candidate',
-    changes: IRS_WORKFLOW_CHANGES,
+    title: 'Centurion 3.2.75 — Mobile UX Review Candidate',
+    changes: [...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 }
 
