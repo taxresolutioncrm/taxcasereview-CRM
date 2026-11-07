@@ -118,7 +118,7 @@ const EMAIL_PARITY_CHANGES = [
 
 const ADMIN_DEMO_TASK_CHANGES = [
   'RomyLabs sales now distinguishes qualified software prospects from incoming booking leads and shows source-read errors instead of false zeros',
-  'Executive briefing sends only through authorized Stalwart JMAP with delivery-attempt auditing, authenticated 7 AM Eastern scheduling and provider-confirmed submission',
+  'Executive briefing runs at 7 AM Eastern with authenticated scheduler, persistent delivery audit and verified Stalwart JMAP submission',
   'Central TaxRes file storage now counts registered Supabase objects and discloses which separate CRM projects are excluded',
   'RomyLabs audit history adds new operational event categories, safe redaction, date/time and filtered pagination',
 
