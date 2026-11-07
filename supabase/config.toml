@@ -283,3 +283,6 @@ verify_jwt = false
 # PoolVerge Clarity analytics: admin JWT required, only pooled session metrics.
 [functions.poolverge-clarity-data]
 verify_jwt = true
+
+[functions.business-clarity-data]
+verify_jwt = true

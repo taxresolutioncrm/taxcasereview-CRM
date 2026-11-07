@@ -232,10 +232,10 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.80',
+  version: '3.2.81',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.80 — Connect PoolVerge Clarity In App',
-  changes: [...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
+  title: 'RomyLabs Admin Portal 3.2.81 — Per-Business Clarity Reporting (Sandbox)',
+  changes: ['Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
