@@ -135,6 +135,10 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'PoolVerge SEO can now report Google Search Console clicks, impressions, click-through rate, search position and leading queries in the RomyLabs Admin Portal',
+  'PoolVerge Microsoft Clarity project z31rnrvbns is registered in the Admin Portal as configured, with live session verification kept pending',
+  'Google Search Console preserves the selected PoolVerge property across navigation, verifies OAuth state and distinguishes live results from cached history',
+  'Only authenticated RomyLabs platform administrators can retrieve or refresh Google Search Console credentials',
   'RomyLabs sales now distinguishes qualified software prospects from incoming booking leads and shows source-read errors instead of false zeros',
   'Executive briefing runs at 7 AM Eastern with authenticated scheduler, persistent delivery audit and verified Stalwart JMAP submission',
   'Central TaxRes file storage now counts registered Supabase objects and discloses which separate CRM projects are excluded',
@@ -219,9 +223,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.75',
+  version: '3.2.76',
   releasedAt: 'Pending production deployment',
-  title: 'TaxRes 3.2.75 — Mobile UX Review Candidate',
+  title: 'RomyLabs Admin Portal 3.2.76 — PoolVerge Search Console Reporting',
   changes: [...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 

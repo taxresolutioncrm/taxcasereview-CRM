@@ -7,7 +7,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GSC_BASE = 'https://searchconsole.googleapis.com'
 const ADMIN_TENANT = 'a0000000-0000-0000-0000-000000000001'
 const CANONICAL_REDIRECT = 'https://admin.romylabs.com/crm-admin/command-center'
-const LIVE_PRODUCTS = ['taxres_crm','romylabs','camvella','arcvena','bocasync','groundivo','oculivo','restore_relay']
+const LIVE_PRODUCTS = ['taxres_crm','romylabs','camvella','arcvena','bocasync','groundivo','oculivo','restore_relay','pool_crm']
 const corsHeaders = {
   'Access-Control-Allow-Origin':'*',
   'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type',
@@ -23,6 +23,7 @@ const GSC_SITE_CANDIDATES: Record<string,string[]> = {
   groundivo:['sc-domain:groundivo.com','https://groundivo.com/','https://www.groundivo.com/'],
   oculivo:['sc-domain:oculivo.com','https://oculivo.com/','https://www.oculivo.com/'],
   restore_relay:['sc-domain:restorerelay.com','https://restorerelay.com/','https://www.restorerelay.com/'],
+  pool_crm:['sc-domain:poolverge.com','https://poolverge.com/','https://www.poolverge.com/'],
 }
 
 function hostOf(site:string){
@@ -123,7 +124,7 @@ async function readSnapshot(supabase:any,productKey:string,reason:string){
     impressions:null,clicks:null,ctr:null,avgPosition:null,topQueries:[]
   }
   return {
-    mock:false,connected:true,reauth_required:true,degraded:true,cached:true,dataAvailable:true,reason,
+    mock:false,connected:false,reauth_required:/REAUTH_REQUIRED/.test(reason),degraded:true,cached:true,dataAvailable:true,reason,
     product_key:productKey,siteUrl:data.site_url,rangeLabel:'Last 3 months',rangeDays:90,impressions:Number(data.impressions),impressionsChange:0,
     clicks:Number(data.clicks),clicksChange:0,ctr:Number(data.ctr),ctrChange:0,avgPosition:Number(data.avg_position),
     posChange:0,topQueries:data.top_queries||[],dataThrough:data.data_through,cachedAt:data.synced_at
@@ -150,6 +151,17 @@ serve(async(req)=>{
   const json=(body:any,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json'}})
   const supabase=createClient(SUPABASE_URL,SUPABASE_SERVICE_KEY)
   try{
+    // Provider keys and OAuth refresh credentials belong to the platform owner.
+    // An authenticated user must be an approved platform administrator before
+    // this service-role function can read or update Google credentials.
+    const authorization=req.headers.get('authorization')||''
+    if(!/^Bearer \\S+$/.test(authorization)) return json({error:'Platform admin authentication required'},401)
+    const caller=createClient(SUPABASE_URL,Deno.env.get('SUPABASE_ANON_KEY')!,{
+      global:{headers:{Authorization:authorization}},
+      auth:{persistSession:false}
+    })
+    const {data:allowed,error:accessError}=await caller.rpc('_is_platform_admin')
+    if(accessError || allowed!==true) return json({error:'Platform admin access required'},403)
     const body=await req.json().catch(()=>({}))
     const {action,code,product_key='taxres_crm'}=body
     if(!GSC_SITE_CANDIDATES[product_key]) return json({error:'Unsupported reporting product'},400)
@@ -178,7 +190,7 @@ serve(async(req)=>{
       const all=await syncAll(supabase,d.access_token)
       const selected=all[product_key]
       if(selected?.error) return json({error:selected.error,connected:false},400)
-      return json({...selected,all_synced:Object.keys(all).filter(k=>!all[k]?.error)})
+      return json({...selected,success:true,all_synced:Object.keys(all).filter(k=>!all[k]?.error)})
     }
 
     try{
