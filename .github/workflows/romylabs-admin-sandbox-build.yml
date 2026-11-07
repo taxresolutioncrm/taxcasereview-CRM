@@ -37,6 +37,11 @@ jobs:
       - name: Parse daily briefing TypeScript source
         run: |
           node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/daily-briefing/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS executive briefing TypeScript source');"
+      - name: Verify PoolVerge Search Console product isolation and authorization
+        run: node scripts/check-poolverge-gsc-admin.mjs
+      - name: Parse Search Console Deno TypeScript source
+        run: |
+          node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/gsc-data/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS PoolVerge GSC TypeScript');"
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker
