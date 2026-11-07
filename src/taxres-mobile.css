@@ -52,15 +52,39 @@ img, video, canvas, iframe, svg { max-width: 100%; }
   .topbar > div:first-of-type { min-width: 0 !important; gap: 8px !important; flex: 1 1 auto !important; }
   /* Direct second div is the desktop phone/fax/utility strip in both TCR/Nashville. */
   .topbar > div:nth-of-type(2) { display: none !important; }
+  .topbar .topbar-search-wrap { display: none !important; }
   .topbar .search-input { display: none !important; }
   .topbar .topbar-clock, .topbar .topbar-datestr { display: none !important; }
-  .page-title {
+  .topbar .topbar-main { min-width: 0 !important; flex: 1 1 0 !important; }
+  .topbar .page-title {
     min-width: 0 !important;
-    max-width: 46vw !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
+    max-width: none !important;
+    flex: 1 1 auto !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.25 !important;
     font-size: 14px !important;
+  }
+  .topbar .mobile-search-toggle {
+    display: inline-flex !important; align-items: center; justify-content: center;
+    flex: 0 0 42px; min-width: 42px; min-height: 44px;
+    padding: 0; color: var(--tx); border: 1px solid var(--br);
+    background: var(--sf); border-radius: 9px; cursor: pointer;
+  }
+  .topbar.mobile-search-active { overflow: visible !important; z-index: 1500 !important; }
+  .topbar .topbar-search-wrap.mobile-search-open {
+    display: block !important; position: absolute !important; top: calc(100% + 4px);
+    left: 8px; right: 8px; width: auto; max-width: none;
+    z-index: 1501; border: 1px solid var(--br);
+    background: var(--sf); border-radius: 10px;
+    padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,.32);
+  }
+  .topbar .topbar-search-wrap.mobile-search-open > div { max-width: none !important; }
+  .topbar .topbar-search-wrap.mobile-search-open .search-input {
+    display: block !important; min-height: 44px !important;
+    max-width: none !important; width: 100% !important; font-size: 16px !important;
   }
 
   .page-content {
@@ -156,7 +180,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
 @media (max-width: 640px) {
   .page-content { padding: 10px !important; }
   .topbar { min-height: 54px !important; }
-  .page-title { max-width: 38vw !important; font-size: 13px !important; }
+  .topbar .page-title { max-width: none !important; font-size: 13px !important; }
 
   /* Preserve the two essential topbar controls: navigation and + New.
      Hide desktop utility buttons that are available elsewhere in the app. */
@@ -172,7 +196,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
     margin-left: auto !important;
   }
 
-  .metrics { grid-template-columns: 1fr !important; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .card { padding: 12px !important; }
   .modal { padding: 14px !important; }
   .toast { left: 10px !important; right: 10px !important; bottom: 10px !important; max-width: none !important; }
@@ -214,7 +238,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
 @media (max-width: 420px) {
   .page-content { padding: 8px !important; }
   .sidebar { width: min(90vw, 310px) !important; }
-  .page-title { max-width: 34vw !important; }
+  .topbar .page-title { max-width: none !important; }
   .card, .dp, .info-box { border-radius: 10px !important; }
   .modal-overlay, .modal-bg { padding: 6px !important; }
   .modal { max-height: calc(100dvh - 12px) !important; border-radius: 10px !important; }
