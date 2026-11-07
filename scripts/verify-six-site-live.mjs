@@ -15,10 +15,15 @@ const title=s=>s.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim()||''
 const canonical=s=>(s.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)/i)||s.match(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["']canonical["']/i))?.[1]||''
 const out=await Promise.all(targets.map(async t=>{
  try{
- const [home,page,robots,sitemap]=await Promise.all([
+ const [home,page,robots,rawSitemap]=await Promise.all([
  f(t.origin+'/?liveqa=20261107'),f(t.origin+t.page+'?liveqa=20261107'),
  f(t.origin+'/robots.txt?liveqa=20261107'),f(t.origin+'/sitemap.xml?liveqa=20261107')
  ])
+ let sitemap=rawSitemap
+ if(sitemap.status===404){
+   const alt=await f(t.origin+'/sitemap-index.xml?liveqa=20261107')
+   if(alt.status===200 && /<sitemapindex\b/i.test(alt.body))sitemap=alt
+ }
  const errors=[],notes=[]
  for(const [kind,r] of [['home',home],['buyer page',page],['robots',robots],['sitemap',sitemap]])if(r.status!==200)errors.push(kind+' HTTP '+r.status)
  for(const [kind,r] of [['home',home],['buyer page',page]]){
