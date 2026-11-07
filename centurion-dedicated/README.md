@@ -1,3 +1,5 @@
+> **RETIRED / DO NOT DEPLOY** — Historical planning artifacts only. Centurion operates as `TRC-004` in the shared TaxResolution-CRM Supabase SaaS project (`mpxgxfqdbquzkrvvejkh`), together with TaxRes and TCR. Nashville is separately deployed. The former dedicated Centurion Supabase project is not an active environment. Do not execute the migrations, tenant resolver, or Edge Functions in this folder. This folder is retained only as a historical audit trail.
+
 # Centurion dedicated SaaS tenant cutover
 
 ## Separation contract
