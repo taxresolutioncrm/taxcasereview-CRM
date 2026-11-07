@@ -136,6 +136,7 @@ const EMAIL_PARITY_CHANGES = [
 
 const ADMIN_DEMO_TASK_CHANGES = [
   'PoolVerge SEO can now report Google Search Console clicks, impressions, click-through rate, search position and leading queries in the RomyLabs Admin Portal',
+  'PoolVerge Microsoft Clarity project z31rnrvbns is registered in the Admin Portal as configured, with live session verification kept pending',
   'Google Search Console preserves the selected PoolVerge property across navigation, verifies OAuth state and distinguishes live results from cached history',
   'Only authenticated RomyLabs platform administrators can retrieve or refresh Google Search Console credentials',
   'RomyLabs sales now distinguishes qualified software prospects from incoming booking leads and shows source-read errors instead of false zeros',
