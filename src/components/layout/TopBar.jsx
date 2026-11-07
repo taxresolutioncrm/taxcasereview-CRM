@@ -268,13 +268,15 @@ export default function TopBar({ onNew }) {
       <span className="topbar-datestr" style={{ fontSize: 12, color: 'var(--t3)', whiteSpace: 'nowrap' }}>{dateStr}</span>
       <span className="topbar-clock">{clock}</span>
 
-      {usesMobileParity(myTenantId) && <button type="button" className="mobile-search-toggle" aria-label={mobileSearchOpen ? 'Close search' : 'Search clients, cases, and leads'} aria-expanded={mobileSearchOpen}
-        onClick={() => { setMobileSearchOpen(v => !v); setOpen(false); setMobileNavOpen(false) }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></svg>
-      </button>}
-      <button ref={btnRef} className="btn pri" onClick={() => { setMobileSearchOpen(false); setOpen(o => !o) }} style={{ position: 'relative', minWidth: 72 }}>
-        {open ? '✕ Close' : '+ New'}
-      </button>
+      <div className="topbar-create-controls" style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+        {usesMobileParity(myTenantId) && <button type="button" className="mobile-search-toggle" aria-label={mobileSearchOpen ? 'Close search' : 'Search clients, cases, and leads'} aria-expanded={mobileSearchOpen}
+          onClick={() => { setMobileSearchOpen(v => !v); setOpen(false); setMobileNavOpen(false) }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></svg>
+        </button>}
+        <button ref={btnRef} className="btn pri" onClick={() => { setMobileSearchOpen(false); setOpen(o => !o) }} style={{ position: 'relative', minWidth: 72 }}>
+          {open ? '✕ Close' : '+ New'}
+        </button>
+      </div>
 
       {newDrawer}
     </div>
