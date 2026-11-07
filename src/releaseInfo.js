@@ -14,7 +14,7 @@ const MOBILE_UX_CHANGES = [
   'On phones, Dashboard KPI cards display in two compact columns without cutting off amounts',
   'Mobile header displays complete page titles (including detail routes), retains language selection, and reveals search beside New for clients, cases, and leads',
   'Client file Quick Actions appear three per row with readable labels and touch-friendly targets',
-  'Navigation and detail tabs keep their existing behaviors; search and New stay grouped on narrow phones and office access stays unchanged',
+  'Navigation and detail tabs keep their existing behaviors; search and New stay grouped on narrow phones while other offices retain their original New button sizing',
 ]
 
 const IRS_WORKFLOW_CHANGES = [
