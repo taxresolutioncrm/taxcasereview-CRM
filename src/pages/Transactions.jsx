@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
-import { FIRM } from '../lib/firmBranding'
+import { Link } from 'react-router-dom'
 
 // Nashville parity candidate. The ledger is paginated on the server and is deliberately
 // separate from confirmed positive collections. Requires the summary RPC migration.
@@ -19,7 +19,7 @@ const fmtMoney = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFrac
 const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric' }) : '—'
 
 export default function Transactions() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
@@ -43,13 +43,13 @@ export default function Transactions() {
   useEffect(() => setPage(0), [search, status, associate, dateFrom, dateTo, drill])
 
   useEffect(() => {
-    if (!user || !FIRM.tenantId) return
+    if (!user || !myTenantId) return
     let active = true
     const load = async () => {
       setLoading(true)
       setError('')
       try {
-        const tenant = FIRM.tenantId
+        const tenant = myTenantId
         const safeSearch = search.replace(/[,%()]/g, ' ').trim()
         let query = supabase.from('payment_transactions')
           .select('id,client_id,client_name,payment_date,associate,amount,deposit_account,service_type,status,notes', { count: 'exact' })
@@ -88,7 +88,7 @@ export default function Transactions() {
     }
     load()
     return () => { active = false }
-  }, [user, search, status, associate, dateFrom, dateTo, drill, page, revision])
+  }, [user, myTenantId, search, status, associate, dateFrom, dateTo, drill, page, revision])
 
   const clear = () => { setSearchInput(''); setSearch(''); setStatus('all'); setAssociate('all'); setDateFrom(''); setDateTo(''); setDrill(''); setPage(0) }
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
@@ -129,7 +129,7 @@ export default function Transactions() {
           <th key={s} scope="col" style={{ padding: 12, textAlign: 'left', color: 'var(--t2)', borderBottom: '1px solid var(--b1)' }}>{s}</th>)}</tr></thead>
         <tbody>{rows.map(t => <tr key={t.id} style={{ borderBottom: '1px solid var(--b1)' }}>
           <td style={{ padding: 12, whiteSpace: 'nowrap' }}>{fmtDate(t.payment_date)}</td>
-          <td style={{ padding: 12 }}>{t.client_name || '—'}</td><td style={{ padding: 12 }}>{t.associate || '—'}</td>
+          <td style={{ padding: 12 }}>{t.client_id ? <Link to={'/clients/' + encodeURIComponent(t.client_id)} style={{ color: 'var(--blue)', fontWeight: 600 }}>{t.client_name || 'Open client'}</Link> : (t.client_name || '—')}</td><td style={{ padding: 12 }}>{t.associate || '—'}</td>
           <td style={{ padding: 12, whiteSpace: 'nowrap' }}>{fmtMoney(t.amount)}</td>
           <td style={{ padding: 12 }}>{t.deposit_account || '—'}</td><td style={{ padding: 12 }}>{t.service_type || '—'}</td>
           <td style={{ padding: 12 }}>{t.status || 'No Status'}</td><td style={{ padding: 12 }}>{t.notes || '—'}</td>
