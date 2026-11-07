@@ -62,17 +62,68 @@ serve(async(req)=>{
   if(authError||admin!==true)return reply({error:'Platform administrator required'},403)
 
   const supabase=createClient(url,serviceKey,{auth:{persistSession:false}})
+  const payload=await req.json().catch(()=>({}))
+  if(payload?.product_id && payload.product_id !== productId)
+    return reply({error:'This endpoint only supports PoolVerge'},400)
+  const action=payload?.action||'status'
+  if(!['status','connect'].includes(action))
+    return reply({error:'Unsupported Clarity operation'},400)
+  // The owner connects their existing Microsoft project directly in the portal.
+  // Credentials are validated against the real export service before encrypted
+  // storage in Supabase Vault; never logged, echoed or persisted in public rows.
+  if(action==='connect') {
+    const candidate=typeof payload?.api_token==='string'?payload.api_token.trim():''
+    if(candidate.length<32 || candidate.length>10000 || /\s/.test(candidate))
+      return reply({error:'Enter the valid Microsoft Clarity Data Export API token'},400)
+    let exportData:unknown
+    try {
+      const verify=await fetch('https://www.clarity.ms/export-data/api/v1/project-live-insights?numOfDays=3',{
+        headers:{Authorization:`Bearer ${candidate}`,Accept:'application/json'},
+        signal:AbortSignal.timeout(14000),
+      })
+      if(!verify.ok) {
+        const reason=verify.status===401||verify.status===403?'Microsoft rejected this Clarity token':
+          verify.status===429?'Clarity export daily quota reached':'Clarity export unavailable'
+        return reply({error:reason,connected:false,api_status:'error'},verify.status===429?429:400)
+      }
+      exportData=await verify.json()
+      if(!Array.isArray(exportData))return reply({error:'Microsoft returned an unexpected Clarity report'},502)
+    } catch {
+      return reply({error:'Could not verify Clarity API access with Microsoft'},502)
+    }
+    const {error:vaultError}=await supabase.rpc('poolverge_clarity_vault_token',{p_new_token:candidate})
+    if(vaultError)return reply({error:'Encrypted Clarity token storage unavailable'},503)
+    const metrics=parseMetrics(exportData)
+    const syncedAt=new Date().toISOString()
+    const {error:saveError}=await supabase.from('romylabs_poolverge_clarity_cache')
+      .update({metrics,fetched_at:syncedAt,attempted_at:syncedAt,last_error:null})
+      .eq('product_id',productId)
+    if(saveError)return reply({error:'Clarity connected, but statistics could not be saved'},503)
+    if(metrics.sessions!==null && metrics.sessions>0) {
+      await supabase.from('product_traffic_channels')
+        .update({status:'live',last_verified_at:syncedAt,updated_at:syncedAt})
+        .eq('product_id',productId).eq('channel_key','clarity').eq('tracking_id',projectId)
+    }
+    return reply({project_id:projectId,product_id:productId,tracking_configured:true,
+      api_status:'live',connected:true,cached:false,range_days:3,
+      metrics,synced_at:syncedAt,
+      dashboard_url:'https://clarity.microsoft.com/projects/view/z31rnrvbns/dashboard'})
+  }
   const {data:row,error:readError}=await supabase.from('romylabs_poolverge_clarity_cache')
     .select('metrics,fetched_at,attempted_at,last_error').eq('product_id',productId).maybeSingle()
   if(readError)return reply({error:'Clarity metrics cache unavailable'},503)
-  const token=Deno.env.get('POOLVERGE_CLARITY_API_TOKEN')||''
+  // Continue supporting the previously configured Edge Function environment
+  // secret, while allowing direct admin setup via the encrypted Supabase Vault.
+  const {data:vaultToken,error:vaultReadError}=await supabase.rpc('poolverge_clarity_vault_token')
+  if(vaultReadError)return reply({error:'Clarity secure credential lookup unavailable'},503)
+  const token=String(vaultToken||Deno.env.get('POOLVERGE_CLARITY_API_TOKEN')||'')
   const base={project_id:projectId,product_id:productId,
     dashboard_url:'https://clarity.microsoft.com/projects/view/z31rnrvbns/dashboard',
     range_days:3, tracking_configured:true}
   const current=row?.metrics&&row?.fetched_at?{...base,connected:true,cached:true,
     metrics:row.metrics,synced_at:row.fetched_at}:null
   if(!token)return reply({...base,connected:false,api_status:'token_required',
-    message:'Clarity tracking is installed. Data Export API token must be configured to show session metrics.',
+    message:'Clarity tracking is installed. Connect the existing project with a Data Export API token in this Admin Portal to display session metrics.',
     ...(current?{last_snapshot:current}: {})})
   // Clarity limits data exports to 10 requests/project/day. This atomic claim
   // permits at most one request per 12 hours even across concurrent page loads.
