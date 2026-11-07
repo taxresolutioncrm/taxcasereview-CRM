@@ -17,4 +17,6 @@ checked(ui.includes("body: { action: 'connect', code: gscCode, product_key: prod
 checked(ui.includes("gsc?.connected === true && gsc?.degraded !== true && gsc?.cached !== true"), 'Only fresh API data shows as connected')
 checked(ui.includes("seoProduct==='pool_crm'?'PoolVerge'"), 'PoolVerge shown on Google connect control')
 checked(ui.includes('gscError && !gscLoading'), 'Property access failures are visible to owner')
+checked(ui.includes("if (tab === 'search') fetchGSC(seoProduct)"), 'SEO tab refresh uses selected property, not a TaxRes default')
+checked(!ui.includes("fetchGSC(seoProduct)\n    fetchBing(seoProduct)"), 'Avoid duplicate competing GSC fetches when changing products')
 console.log('PASS PoolVerge ↔ RomyLabs GSC product-scoped regression contract')
