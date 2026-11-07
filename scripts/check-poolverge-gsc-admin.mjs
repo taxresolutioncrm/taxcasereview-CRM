@@ -8,7 +8,7 @@ checked(api.includes("'pool_crm'") && api.includes('sc-domain:poolverge.com'), '
 checked(api.includes('https://poolverge.com/') && api.includes('https://www.poolverge.com/'), 'PoolVerge URL-prefix properties supported without mixing domains')
 checked(api.includes("caller.rpc('_is_platform_admin')"), 'GSC OAuth credentials only used after platform-admin authorization')
 checked(api.includes("action==='connect'") && api.includes('success:true'), 'OAuth connect reports result correctly')
-checked(api.includes('product_key:x.product_key'), 'Snapshots remain isolated by actual product key')
+checked(api.includes('product_id:x.product_key'), 'Snapshots remain isolated by actual product key')
 checked(api.includes("eq('product_id',x.product_key)"), 'Channel activation remains scoped to the requested product')
 checked(api.includes("connected:false,reauth_required:/REAUTH_REQUIRED/.test(reason),degraded:true,cached:true"), 'Cached snapshots cannot impersonate a live connection')
 checked(ui.includes("sessionStorage.setItem('romylabs-gsc-oauth'"), 'Google callback remembers selected product with a session-bound state nonce')
