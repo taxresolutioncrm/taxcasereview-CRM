@@ -155,7 +155,7 @@ serve(async(req)=>{
     // An authenticated user must be an approved platform administrator before
     // this service-role function can read or update Google credentials.
     const authorization=req.headers.get('authorization')||''
-    if(!/^Bearer \\S+$/.test(authorization)) return json({error:'Platform admin authentication required'},401)
+    if(!/^Bearer \S+$/.test(authorization)) return json({error:'Platform admin authentication required'},401)
     const caller=createClient(SUPABASE_URL,Deno.env.get('SUPABASE_ANON_KEY')!,{
       global:{headers:{Authorization:authorization}},
       auth:{persistSession:false}
