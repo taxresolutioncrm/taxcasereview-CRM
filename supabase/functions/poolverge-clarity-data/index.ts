@@ -73,7 +73,7 @@ serve(async(req)=>{
   // storage in Supabase Vault; never logged, echoed or persisted in public rows.
   if(action==='connect') {
     const candidate=typeof payload?.api_token==='string'?payload.api_token.trim():''
-    if(candidate.length<32 || candidate.length>10000 || /\\s/.test(candidate))
+    if(candidate.length<32 || candidate.length>10000 || /\s/.test(candidate))
       return reply({error:'Enter the valid Microsoft Clarity Data Export API token'},400)
     let exportData:unknown
     try {
