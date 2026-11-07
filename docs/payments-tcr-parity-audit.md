@@ -10,3 +10,5 @@
 
 ## Read-only Payments schema/RLS preflight
 The existing `payments` table has `date` (text), `created_at` (timestamptz), `amount` (text), client/invoice and method/status fields. It does **not** have `checkNum` or `reference` columns in the inspected project. The export retains those optional columns as blank when source values do not exist; no data is invented and no database schema is modified. Payments RLS is enabled and its existing authorization rules are unchanged. The on-screen date now uses the same effective-date fallback as filters and Excel.
+
+**Release dependency:** Centurion shared SaaS Auth correction PR #8385 is required first. This Payments PR retains that source and advances the office versions independently: TaxRes 3.2.87, TCR 3.2.76, Centurion 3.2.77. Nashville is excluded.
