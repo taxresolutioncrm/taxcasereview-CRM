@@ -1,0 +1,23 @@
+name: Verify actual live website releases
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/verify-live-site-releases.mjs'
+      - '.github/workflows/verify-live-site-releases.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate release verification syntax
+        run: node --check scripts/verify-live-site-releases.mjs
+      - name: Verify exact public production HTML and analytics scripts
+        run: node scripts/verify-live-site-releases.mjs
