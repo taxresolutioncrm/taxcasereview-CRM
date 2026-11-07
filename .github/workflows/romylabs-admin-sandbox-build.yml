@@ -54,6 +54,11 @@ jobs:
       - name: Parse weekly reporting Edge Function TypeScript source
         run: |
           node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/weekly-growth-report/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS weekly growth report TypeScript source');"
+      - name: Validate GA4 portfolio daily refresh worker isolation
+        run: node scripts/check-ga4-portfolio-refresh.mjs
+      - name: Parse GA4 portfolio refresh Edge Function TypeScript
+        run: |
+          node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/ga4-portfolio-refresh/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS GA4 portfolio refresh TypeScript');"
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+const code=readFileSync('supabase/functions/ga4-portfolio-refresh/index.ts','utf8')
+const config=readFileSync('supabase/config.toml','utf8')
+assert(code.includes("request.method !== 'POST'"), 'POST-only route')
+assert(code.includes("verify_internal_cron_token"), 'existing server cron token authorization')
+assert(code.includes("authorized !== true"), 'reject unauthorized requests')
+assert(code.includes("eq('channel_key', 'ga4')"), 'GA4 channels only')
+assert(code.includes(".not('tracking_id', 'is', null)"), 'configured properties only')
+assert(code.includes("'/functions/v1/ga4-sync'"), 'reuse existing GA4 sync')
+assert(code.includes("Authorization': 'Bearer ' + serviceKey"), 'existing GA4 JWT gate preserved')
+assert(code.includes("Math.min(3, products.length)"), 'bounded concurrency')
+assert(!code.includes('SUPABASE_ANON_KEY'), 'no untrusted anon key in worker')
+assert(!code.includes('yguz2tkhnt'), 'no Oculivo Clarity ID cross contamination')
+assert(config.includes('[functions.ga4-portfolio-refresh]\nverify_jwt = false'), 'internal authentication behind JWT-disabled cron endpoint')
+console.log('PASS GA4 daily coordinator: auth, per-product isolation, bounded provider calls')
