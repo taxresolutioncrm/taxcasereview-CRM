@@ -5818,6 +5818,54 @@ function CommandCenter() {
   },[tab,seoProduct,poolClarityTick])
 
 
+  // Other businesses use their own Clarity API tokens; PoolVerge remains untouched.
+  const [businessClarity,setBusinessClarity]=useState(null)
+  const [businessClarityToken,setBusinessClarityToken]=useState('')
+  const [businessClarityError,setBusinessClarityError]=useState('')
+  const [businessClarityLoading,setBusinessClarityLoading]=useState(false)
+  const [businessClaritySaving,setBusinessClaritySaving]=useState(false)
+  const [businessClarityTick,setBusinessClarityTick]=useState(0)
+  useEffect(()=>{
+    if(tab!=='search'||seoProduct==='pool_crm')return
+    let cancelled=false
+    setBusinessClarity(null)
+    setBusinessClarityToken('')
+    setBusinessClarityError('')
+    const tracking=clarityRows.find(r=>r.product_id===seoProduct)?.tracking_id
+    if(!tracking)return
+    setBusinessClarityLoading(true)
+    supabase.functions.invoke('business-clarity-data',{body:{product_id:seoProduct,action:'status'}})
+      .then(({data,error})=>{
+        if(cancelled)return
+        if(error||data?.error) setBusinessClarityError(data?.error||error?.message||'Clarity unavailable')
+        else setBusinessClarity(data)
+      }).catch(error=>{if(!cancelled)setBusinessClarityError(String(error?.message||error))})
+      .finally(()=>{if(!cancelled)setBusinessClarityLoading(false)})
+    return()=>{cancelled=true}
+  },[tab,seoProduct,businessClarityTick,clarityRows])
+  async function connectBusinessClarity(){
+    const token=businessClarityToken.trim()
+    if(!token)return
+    setBusinessClaritySaving(true)
+    setBusinessClarityError('')
+    try{
+      const {data,error}=await supabase.functions.invoke('business-clarity-data',{
+        body:{action:'connect',product_id:seoProduct,api_token:token}})
+      if(error||data?.error||!data?.connected){
+        let reason=data?.error||error?.message||'Clarity token verification failed'
+        if(error?.context && typeof error.context.json==='function'){
+          const body=await error.context.json().catch(()=>null)
+          reason=body?.error||reason
+        }
+        throw new Error(reason)
+      }
+      setBusinessClarity(data)
+      setBusinessClarityToken('')
+      setBusinessClarityTick(v=>v+1)
+    }catch(error){setBusinessClarityError(String(error?.message||error))}
+    finally{setBusinessClaritySaving(false)}
+  }
+
   // ── Bing state ──
   const [bingData, setBingData]           = useState(null)
   const [bingConnected, setBingConnected] = useState(false)
@@ -6685,6 +6733,56 @@ function CommandCenter() {
                 Dashboard recordings and heatmaps remain in Microsoft Clarity. This panel displays
                 aggregate session reporting only; Google clicks are a separate metric.
               </p>
+            </section>
+          })()}
+
+          {/* Product-scoped Clarity reporting for all registered businesses except PoolVerge. */}
+          {seoProduct!=='pool_crm' && (()=>{
+            const row=clarityRows.find(r=>r.product_id===seoProduct)
+            const id=row?.tracking_id
+            const name=reportingProducts.find(p=>p.product_id===seoProduct)?.name||seoProduct
+            const metrics=businessClarity?.metrics||businessClarity?.last_snapshot?.metrics
+            const fmt=v=>typeof v==='number'?v.toLocaleString('en-US'):'—'
+            return <section aria-label={name+' Microsoft Clarity'} style={CC.card({padding:'18px 24px',marginBottom:18})}>
+              <div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+                <strong style={{fontSize:14,color:'#fff'}}>Microsoft Clarity · {name}</strong>
+                <span style={{fontSize:11,color:businessClarity?.connected?'#10b981':'#fbbf24'}}>
+                  {businessClarity?.connected?'Analytics API connected':id?'Tracking registered · API not connected':'Clarity project not registered'}
+                </span>
+              </div>
+              <p style={{fontSize:12,color:'#cbd5e1'}}>Project: {id||'Not registered'} · Website tracking and reporting are verified separately.</p>
+              {metrics&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:10,margin:'12px 0'}}>
+                {[
+                  ['Sessions',metrics.sessions],['Bot sessions',metrics.botSessions],['Visitors',metrics.users],
+                  ['Dead clicks',metrics.deadClicks],['Rage clicks',metrics.rageClicks],['Script errors',metrics.scriptErrors]
+                ].map(([label,value])=><div key={label} style={{border:'1px solid rgba(99,102,241,.18)',borderRadius:8,padding:12}}>
+                  <div style={{fontSize:10,color:'#94a3b8',marginBottom:6}}>{label}</div>
+                  <div style={{fontSize:20,color:'#e2e8f0',fontWeight:800}}>{fmt(value)}</div>
+                </div>)}
+              </div>}
+              {businessClarityLoading&&<p role="status">Checking Clarity analytics…</p>}
+              {businessClarityError&&<p role="alert" style={{color:'#fca5a5',fontSize:12}}>{businessClarityError}</p>}
+              {id&&!businessClarity?.connected&&<div style={{padding:14,border:'1px solid rgba(99,102,241,.3)',borderRadius:9}}>
+                <strong style={{fontSize:12}}>Connect existing {name} Clarity analytics</strong>
+                <p style={{fontSize:11,color:'#94a3b8'}}>Generate this business's Data Export API token in Microsoft Clarity Settings → Data Export. Tokens are stored separately and encrypted.</p>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  <input type="password" autoComplete="off" aria-label={name+' Clarity Data Export API token'}
+                    placeholder="Clarity Data Export API token" value={businessClarityToken}
+                    onChange={e=>setBusinessClarityToken(e.target.value)}
+                    style={{flex:'1 1 240px',minWidth:180,padding:10,borderRadius:6,background:'rgba(255,255,255,.04)',color:'#fff',border:'1px solid #475569'}} />
+                  <button type="button" onClick={connectBusinessClarity} disabled={businessClaritySaving||!businessClarityToken.trim()}
+                    style={{...S.btn('primary'),fontSize:11}}>
+                    {businessClaritySaving?'Verifying…':'Verify & Connect Clarity'}
+                  </button>
+                </div>
+              </div>}
+              {!id&&<p style={{fontSize:12,color:'#fbbf24'}}>Register this business's existing Clarity project ID and website tracking before connecting an API token.</p>}
+              {businessClarity?.synced_at&&<p style={{fontSize:11,color:'#94a3b8'}}>Saved snapshot · Last 3 days · {new Date(businessClarity.synced_at).toLocaleString('en-US',{timeZone:'America/New_York'})}</p>}
+              <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:12}}>
+                {id&&<a href={'https://clarity.microsoft.com/projects/view/'+encodeURIComponent(id)+'/dashboard'} target="_blank" rel="noreferrer" style={{fontSize:12,color:'#a5b4fc'}}>Open {name} Clarity dashboard</a>}
+                <button onClick={()=>setBusinessClarityTick(v=>v+1)} disabled={businessClarityLoading} style={{...S.btn('ghost'),fontSize:11}}>Refresh connection status</button>
+              </div>
+              <p style={{fontSize:11,color:'#94a3b8'}}>Recordings and heatmaps remain in Microsoft Clarity. Only aggregate statistics appear here.</p>
             </section>
           })()}
 
