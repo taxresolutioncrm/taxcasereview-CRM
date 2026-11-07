@@ -11,6 +11,7 @@ const OFFICE_ACCESS_CHANGES = [
 ]
 
 const IRS_WORKFLOW_CHANGES = [
+  'Employee Productivity and Transactions reports can export authorized filtered results as native Excel workbooks, including numeric columns and productivity totals',
   'Time & Billing adds a separate Employee Productivity view with date windows, employee search and refresh; existing Log Time, WIP and Billing Report controls remain intact',
   'Transaction ledger server-side pagination and tenant-scoped collection summaries staged for controlled verification',
   'Transaction financial summary cards provide confirmed, returned, disputed and failed drill-downs with visible retry',
