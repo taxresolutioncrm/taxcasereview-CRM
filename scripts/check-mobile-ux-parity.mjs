@@ -31,6 +31,7 @@ for (const dest of ["'/clients/'", "'/cases/'", "'/leads/'"]) {
 }
 assert(top.includes("usesMobileParity(myTenantId) && <button"), 'Search toggle must be scoped')
 assert(top.includes('className="topbar-create-controls"'), 'Search and New must remain grouped at narrow widths')
+assert(mobile.includes('.topbar > .topbar-create-controls > .btn.pri'), 'Legacy office mobile New button styling must remain')
 assert(mobile.includes('.mobile-search-toggle { display: none; }'), 'Desktop must not show duplicate mobile search')
 assert(mobile.includes('flex-wrap: wrap !important;'), 'Narrow header must not clip')
 assert(mobile.includes('max-width: none !important;'), 'Search overlay must override desktop width')
