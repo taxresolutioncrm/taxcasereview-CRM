@@ -135,6 +135,9 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'PoolVerge SEO now opens its own Microsoft Clarity dashboard instead of the generic projects page and properly distinguishes installed tracking from live analytics',
+  'PoolVerge Clarity session reporting is provided by a server-only Data Export API integration with private cache, usage throttling and administrator authorization',
+  'Clarity remains marked configured until session activity is verified, and clearly identifies the separate Microsoft API token still needed for in-portal metrics',
   'Restored Google Search Console reporting across all existing RomyLabs products by fixing the bearer authorization regex that rejected every valid session',
   'Added an authentication regression gate to prevent a repeat of the global Google SEO connection failure',
   'Fixed the Command Center startup crash caused by Google Search Console reading SEO product state before its React initialization',
@@ -227,9 +230,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.78',
+  version: '3.2.79',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.78 — Restore All Google Search Console Connections',
+  title: 'RomyLabs Admin Portal 3.2.79 — PoolVerge Clarity Reporting',
   changes: [...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 

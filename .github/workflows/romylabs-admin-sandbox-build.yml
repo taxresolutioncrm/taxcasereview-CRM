@@ -44,6 +44,11 @@ jobs:
           node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/gsc-data/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS PoolVerge GSC TypeScript');"
       - name: Verify Command Center render initialization regression
         run: node tests/admin-command-center-startup.test.mjs
+      - name: Verify PoolVerge Microsoft Clarity integration
+        run: node scripts/check-poolverge-clarity-reporting.mjs
+      - name: Parse PoolVerge Clarity Edge Function TypeScript
+        run: |
+          node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/poolverge-clarity-data/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS Clarity Edge Function TypeScript');"
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker

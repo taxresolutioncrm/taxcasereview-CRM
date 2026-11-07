@@ -3360,7 +3360,7 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
           : isClarityLive
           ? 'Clarity Connected'
           : isClarityConfigured
-          ? (isGscLive ? 'GSC + Clarity Setup' : 'Clarity Setup · Verify Sessions')
+          ? (isGscLive ? 'GSC + Clarity Installed' : 'Clarity Tracking Installed')
           : status === 'connected' ? 'Connected'
           : status === 'implemented' ? `${channel === 'seo' ? 'SEO' : 'Analytics'} implemented · reporting pending`
           : 'Setup needed'
@@ -5761,6 +5761,34 @@ function CommandCenter() {
   const [gscConnected, setGscConnected] = useState(false)
   const [gscError, setGscError] = useState('')
   const [gscCached, setGscCached] = useState(false)
+  // PoolVerge Clarity is a separate API integration, not a Google metric.
+  const [poolClarity, setPoolClarity] = useState(null)
+  const [poolClarityError, setPoolClarityError] = useState('')
+  const [poolClarityLoading, setPoolClarityLoading] = useState(false)
+  const [poolClarityTick, setPoolClarityTick] = useState(0)
+  useEffect(()=>{
+    if(tab !== 'search' || seoProduct !== 'pool_crm') return
+    let cancelled=false
+    setPoolClarityLoading(true)
+    setPoolClarityError('')
+    supabase.functions.invoke('poolverge-clarity-data',{body:{product_id:'pool_crm'}})
+      .then(({data,error})=>{
+        if(cancelled)return
+        if(error || !data) {
+          setPoolClarityError(error?.message || 'Clarity reporting unavailable')
+          return
+        }
+        if(data.error) {
+          setPoolClarityError(data.error)
+          return
+        }
+        setPoolClarity(data)
+      }).catch(error=>{
+        if(!cancelled)setPoolClarityError(String(error?.message||error))
+      }).finally(()=>{if(!cancelled)setPoolClarityLoading(false)})
+    return ()=>{cancelled=true}
+  },[tab,seoProduct,poolClarityTick])
+
 
   // ── Bing state ──
   const [bingData, setBingData]           = useState(null)
@@ -6541,31 +6569,70 @@ function CommandCenter() {
             </>)})()}
           </div>
 
-          {/* Clarity recording setup is separate from Search Console metrics:
-              a tracking ID alone never proves any real sessions were recorded. */}
+          {/* Dedicated Clarity reporting: website tracking is installed; dashboard
+              metrics require a separate, server-held Microsoft Data Export token. */}
           {seoProduct==='pool_crm' && (()=>{
             const clarity = clarityRows.find(r=>r.product_id==='pool_crm')
             const configured = clarity?.tracking_id === 'z31rnrvbns'
-            const live = configured && clarity?.status === 'live'
+            const metrics=poolClarity?.metrics || poolClarity?.last_snapshot?.metrics
+            const sessions=metrics?.sessions
+            const apiStatus=poolClarity?.api_status || ''
+            const live=apiStatus==='live' && typeof sessions==='number' && sessions>0
+            const metric=(value)=>typeof value==='number' ? value.toLocaleString('en-US') : '—'
             return <section aria-label="PoolVerge Microsoft Clarity" style={CC.card({padding:'18px 24px',marginBottom:18})}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
                 <strong style={{color:'#fff',fontSize:14}}>Microsoft Clarity · PoolVerge</strong>
                 <span style={{fontSize:11,color:live?'#10b981':configured?'#fbbf24':'#94a3b8'}}>
-                  {live?'Verified live':configured?'Tracking configured · session verification pending':'Tracking setup pending'}
+                  {live?'Live sessions verified':configured?'Tracking installed':'Tracking not registered'}
                 </span>
               </div>
-              <p style={{fontSize:12,color:'#cbd5e1',lineHeight:1.7,margin:'10px 0 4px'}}>
-                Project ID: <code style={{color:'#e2e8f0'}}>{clarity?.tracking_id||'—'}</code>.
-                Use Microsoft Clarity to review PoolVerge visitor recordings, heatmaps and scroll behavior.
+              <p style={{fontSize:12,color:'#cbd5e1',lineHeight:1.7,margin:'10px 0 8px'}}>
+                Project <strong>z31rnrvbns</strong> · poolverge.com. Website visitor recordings,
+                heatmaps and scroll behavior belong to this specific project.
               </p>
-              <p style={{fontSize:11,color:'#94a3b8',margin:'4px 0 0',lineHeight:1.6}}>
-                This confirms the tracking configuration, not visitor session delivery.
-                Google clicks and Clarity sessions are separate measurements.
+              {metrics && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:10,margin:'12px 0'}}>
+                {[
+                  {label:'Sessions',value:metrics.sessions},
+                  {label:'Bot sessions',value:metrics.botSessions},
+                  {label:'Visitors',value:metrics.users},
+                  {label:'Dead clicks',value:metrics.deadClicks},
+                  {label:'Rage clicks',value:metrics.rageClicks},
+                  {label:'Script errors',value:metrics.scriptErrors},
+                ].map(item=><div key={item.label} style={{border:'1px solid rgba(99,102,241,.18)',borderRadius:8,padding:12}}>
+                  <div style={{fontSize:10,color:'#94a3b8',marginBottom:6}}>{item.label}</div>
+                  <div style={{fontSize:20,color:'#e2e8f0',fontWeight:800}}>{metric(item.value)}</div>
+                </div>)}
+              </div>}
+              {poolClarityLoading && <p style={{fontSize:11,color:'#94a3b8'}} role="status">Checking Clarity analytics…</p>}
+              {poolClarityError && <p style={{fontSize:11,color:'#fca5a5'}} role="alert">Clarity API: {poolClarityError}</p>}
+              {!poolClarityLoading && poolClarity?.api_status==='token_required' &&
+                <p style={{fontSize:12,color:'#fbbf24',lineHeight:1.6}}>
+                  Tracking is installed. The Admin Portal still needs a Clarity Data Export API token
+                  stored in Supabase Edge Function secrets as <code>POOLVERGE_CLARITY_API_TOKEN</code>
+                  to display session metrics. The project ID alone cannot authenticate exports.
+                </p>}
+              {!poolClarityLoading && poolClarity?.api_status==='error' &&
+                <p style={{fontSize:11,color:'#fca5a5'}} role="alert">{poolClarity.message||'Clarity export failed; saved data is preserved.'}</p>}
+              {!poolClarityLoading && poolClarity?.api_status==='pending' &&
+                <p style={{fontSize:11,color:'#cbd5e1'}}>The next provider refresh is pending. No sessions have been confirmed yet.</p>}
+              {poolClarity?.synced_at && <p style={{fontSize:11,color:'#94a3b8'}}>
+                {poolClarity.cached?'Saved snapshot':'Latest provider report'} · Last 3 days ·
+                {new Date(poolClarity.synced_at).toLocaleString('en-US',{timeZone:'America/New_York',timeZoneName:'short'})}
+              </p>}
+              <div style={{display:'flex',gap:14,alignItems:'center',flexWrap:'wrap',marginTop:12}}>
+                <a href="https://clarity.microsoft.com/projects/view/z31rnrvbns/dashboard"
+                  target="_blank" rel="noreferrer" style={{fontSize:12,color:'#a5b4fc'}}>
+                  Open PoolVerge Clarity dashboard
+                </a>
+                <button onClick={()=>setPoolClarityTick(t=>t+1)} disabled={poolClarityLoading}
+                  style={{...S.btn('ghost'),fontSize:11,padding:'6px 10px'}}>
+                  {poolClarityLoading?'Checking…':'Refresh connection status'}
+                </button>
+              </div>
+              <p style={{fontSize:11,color:'#94a3b8',lineHeight:1.6,margin:'10px 0 0'}}>
+                Dashboard recordings and heatmaps remain in Microsoft Clarity. This panel displays
+                aggregate session reporting only; Google clicks are a separate metric.
               </p>
-              <a href="https://clarity.microsoft.com/" target="_blank" rel="noreferrer"
-                style={{display:'inline-block',fontSize:12,color:'#a5b4fc',marginTop:10}}>
-                Open Microsoft Clarity
-              </a>
             </section>
           })()}
 

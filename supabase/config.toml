@@ -279,3 +279,7 @@ verify_jwt = true
 # SignalWire guest consult callback uses short-lived HMAC-signed URL instead of a browser JWT.
 [functions.romylabs-conference-guest]
 verify_jwt = false
+
+# PoolVerge Clarity analytics: admin JWT required, only pooled session metrics.
+[functions.poolverge-clarity-data]
+verify_jwt = true
