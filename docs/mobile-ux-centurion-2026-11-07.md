@@ -11,10 +11,11 @@
 4. The eleven Quick Actions in `Clients.jsx` had no responsive class, so the generic quick-actions styles never matched the inline eleven-column grid.
 5. Sidebar navigation already closes on route changes and client section tabs have a real internal horizontal scroll wrapper. Preserve them.
 
-## Centurion-specific safety checks
-- Dedicated Supabase project is separate from the TCR shared DB. The dedicated project has existing RLS enabled for `clients`, `cases`, `leads`, and `employees`; neither its records nor policies are modified by this UI branch.
-- The shared project also contains a TRC-004 control-plane tenant. This UI must not infer which backend is live from the tenant ID alone. Validate deployed Centurion environment and domain before accepting production.
-- Existing Centurion dedicated `current_tenant_id()` still returns a fixed office UUID; the multi-office membership cutover remains separate and incomplete. **Do not claim multi-office isolation was fully certified by these mobile tests.**
+## Centurion-specific safety checks (reverified November 7, 2026)
+- Centurion is tenant TRC-004 in the SAME active Supabase project as TaxRes and TCR (`mpxgxfqdbquzkrvvejkh`), not the retired Centurion dedicated project.
+- Shared project includes active Centurion employee memberships and registered Auth identities, unique active email membership across these three offices, and tenant-scoped Payments RLS. No data was moved or changed.
+- `current_tenant_id()` resolves active employee membership inside the shared project; it is not the retired fixed-UUID resolver.
+- The actual Cloudflare Centurion domain environment and browser-authenticated role isolation still require live verification. Do not infer deployment configuration from repository contents alone.
 
 ## Implemented in prerequisite shared UI branch
 - Scoped 2-column phone dashboard KPIs, non-clipped full header title, search toggle adjacent to New, and 3-column client Quick Actions.
@@ -22,7 +23,7 @@
 - Desktop styles retained; opt-in class only for TCR, TaxRes and Centurion tenant IDs.
 
 ## Pre-release verification required
-- On the actual Centurion domain with the dedicated project configured: logged-in owner and regular roles.
+- On the actual Centurion domain configured against the shared TaxResolution-CRM Supabase project: logged-in owner and regular roles.
 - Viewports 320, 375, 390, 430, 768px and desktop >=1024px. Confirm no clipped titles, unusable buttons, sideways page scrolling or lost touch affordances.
 - End-to-end search and click-through across clients, cases and leads, including no results and navigation closure; ensure Quick Actions open correct authorized modals and tabs scroll.
 - Cloudflare preview commit verification and real tenant-domain mapping. No production deployment until explicit authorization.
