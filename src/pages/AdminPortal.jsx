@@ -6730,7 +6730,7 @@ function CommandCenter() {
                 </button>
               </div>
               <p style={{fontSize:11,color:'#94a3b8',lineHeight:1.6,margin:'10px 0 0'}}>
-                Recordings and heatmaps stay in Microsoft Clarity · Aggregate reporting only.
+                Dashboard recordings and heatmaps remain in Microsoft Clarity. This panel displays aggregate session reporting only; Google clicks are a separate metric.
               </p>
             </section>
           })()}
