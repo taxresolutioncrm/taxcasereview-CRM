@@ -77,10 +77,12 @@ Deno.serve(async (req) => {
 
       supabase.from('marketing_ga4_traffic')
         .select('sessions,users,channel')
+        .eq('product_id', 'taxres_crm')
         .gte('date', weekAgo.toISOString().slice(0, 10)),
 
       supabase.from('marketing_ga4_traffic')
-        .select('sessions,users')
+        .select('sessions,users,channel')
+        .eq('product_id', 'taxres_crm')
         .gte('date', twoWeeksAgo.toISOString().slice(0, 10))
         .lt('date', weekAgo.toISOString().slice(0, 10)),
 
@@ -119,9 +121,14 @@ Deno.serve(async (req) => {
     `${r.query} (${r.clicks} clicks, pos ${Math.round(r.position || 0)})`
   )
 
-  const sessions = ga4.reduce((s: number, r: any) => s + (r.sessions || 0), 0)
-  const sessPrev = ga4prev.reduce((s: number, r: any) => s + (r.sessions || 0), 0)
-  const users    = ga4.reduce((s: number, r: any) => s + (r.users || 0), 0)
+  // The __TOTAL__ row is the canonical daily count. Never sum it with channel rows.
+  const dailyTotals = ga4.filter((r: any) => r.channel === '__TOTAL__')
+  const priorTotals = ga4prev.filter((r: any) => r.channel === '__TOTAL__')
+  const sessions = dailyTotals.reduce((s: number, r: any) => s + (r.sessions || 0), 0)
+  const sessPrev = priorTotals.reduce((s: number, r: any) => s + (r.sessions || 0), 0)
+  // GA4 users are not additive across days. This is an approximate sum of daily users,
+  // never a distinct weekly-user count.
+  const users = dailyTotals.reduce((s: number, r: any) => s + (r.users || 0), 0)
   const organic  = ga4.filter((r: any) => (r.channel || '').toLowerCase().includes('organic'))
                       .reduce((s: number, r: any) => s + (r.sessions || 0), 0)
   const social   = ga4.filter((r: any) => /linkedin|social/i.test(r.channel || ''))
