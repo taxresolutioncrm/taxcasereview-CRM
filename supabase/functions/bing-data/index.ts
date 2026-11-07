@@ -10,6 +10,7 @@ const BING_JSON_BASE = 'https://ssl.bing.com/webmaster/api.svc/json'
 
 const PRODUCT_SITES: Record<string,string> = {
   taxres_crm: 'https://taxrescrm.net/',
+  pool_crm: 'https://poolverge.com/',
   camvella: 'https://camvella.com/',
   arcvena: 'https://arcvena.com/',
   bocasync: 'https://bocasync.com/',
