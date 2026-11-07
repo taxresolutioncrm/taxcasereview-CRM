@@ -86,7 +86,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
   .tax-mobile-parity .topbar.mobile-search-active { overflow: visible !important; z-index: 1500 !important; }
   .tax-mobile-parity .topbar .topbar-search-wrap.mobile-search-open {
     display: block !important; position: absolute !important; top: calc(100% + 4px);
-    left: 8px; right: 8px; width: auto; max-width: none;
+    left: 8px; right: 8px; width: auto !important; max-width: none !important;
     z-index: 1501; border: 1px solid var(--br);
     background: var(--sf); border-radius: 10px;
     padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,.32);
