@@ -43,7 +43,7 @@ Deno.serve(async (request: Request) => {
     while (next < products.length) {
       const productId = products[next++]
       try {
-        const upstream = await fetch(url.replace(/\\/$/, '') + '/functions/v1/ga4-sync', {
+        const upstream = await fetch((url.endsWith('/') ? url.slice(0, -1) : url) + '/functions/v1/ga4-sync', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
