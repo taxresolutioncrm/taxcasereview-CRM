@@ -6,6 +6,7 @@ const OFFICE_ACCESS_CHANGES = [
   'TaxRes and TCR login screens recover from temporary initial session failures instead of remaining stuck on Loading',
   'Centurion sign-in and password recovery use the shared TaxRes/TCR/Centurion SaaS project',
   'Centurion branded login rejects a mismatched Supabase project and never requires the retired dedicated database',
+  'Centurion shared SaaS project and TRC-004 tenant registration verified without migrating or changing customer records',
   'Employee lookup matches verified office membership case-insensitively and never grants Admin access on missing membership',
   'CloudCPA is retired from the active office directory, manual, release listing and platform metrics routing',
 ]
