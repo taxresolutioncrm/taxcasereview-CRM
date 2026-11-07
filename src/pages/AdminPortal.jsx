@@ -5751,6 +5751,8 @@ function CommandCenter() {
   const [gscData, setGscData]         = useState(null)
   const [gscLoading, setGscLoading]   = useState(false)
   const [gscConnected, setGscConnected] = useState(false)
+  const [gscError, setGscError] = useState('')
+  const [gscCached, setGscCached] = useState(false)
 
   // ── Bing state ──
   const [bingData, setBingData]           = useState(null)
@@ -5807,14 +5809,30 @@ function CommandCenter() {
     // defer the provider call until the SEO tab is actually opened.
     const urlParams = new URLSearchParams(window.location.search)
     const gscCode = urlParams.get('code')
+    const oauthState = urlParams.get('state')
     if (gscCode) {
-      window.history.replaceState({}, '', window.location.pathname)
-      const redirect = window.location.origin + '/crm-admin/command-center'
+      const savedState = sessionStorage.getItem('romylabs-gsc-oauth')
+      sessionStorage.removeItem('romylabs-gsc-oauth')
+      const expected = savedState ? JSON.parse(savedState) : null
+      const product = expected?.product || 'taxres_crm'
+      window.history.replaceState({}, '', window.location.pathname + '?tab=search')
+      setTab('search')
+      setSeoProduct(product)
+      if (!expected?.nonce || oauthState !== expected.nonce) {
+        setGscError('Google authorization state did not match. Please reconnect from the SEO tab.')
+        return
+      }
+      setGscLoading(true)
       supabase.functions.invoke('gsc-data', {
-        body: { action: 'connect', code: gscCode, redirect_uri: redirect }
-      }).then(({ data: r }) => {
-        if (r?.success) fetchGSC()
-      }).catch(e => console.error('GSC connect:', e))
+        body: { action: 'connect', code: gscCode, product_key: product }
+      }).then(({ data: r, error }) => {
+        if(error || r?.error || r?.connected !== true) {
+          setGscError(r?.error || error?.message || 'Google Search Console authorization failed')
+          return
+        }
+        fetchGSC(product)
+      }).catch(e => setGscError(String(e?.message || e)))
+        .finally(() => setGscLoading(false))
       return
     }
     if (tab === 'search') fetchGSC()
@@ -5843,22 +5861,40 @@ function CommandCenter() {
   async function fetchGSC(productKey = 'taxres_crm') {
     setGscLoading(true)
     setGscConnected(false)
+    setGscCached(false)
+    setGscError('')
     setGscData(null)
     try {
       const { data: gsc, error } = await supabase.functions.invoke('gsc-data', { body: { product_key: productKey } })
       if (error) throw error
-      if (gsc && !gsc.mock && !gsc.error) {
+      if (gsc?.error) throw new Error(gsc.error)
+      if (gsc?.dataAvailable) {
         setGscData(gsc)
-        setGscConnected(true)
+        setGscCached(Boolean(gsc.cached || gsc.degraded))
       }
-    } catch(e) { console.error('GSC fetch:', e) } finally { setGscLoading(false) }
+      if (gsc?.connected === true && gsc?.degraded !== true && gsc?.cached !== true) {
+        setGscConnected(true)
+      } else {
+        setGscError(gsc?.reason || (
+          productKey === 'pool_crm'
+            ? 'PoolVerge Search Console property not available to this Google account. Verify sc-domain:poolverge.com access and connect the authorized account.'
+            : 'Live Google Search Console data unavailable.'
+        ))
+      }
+    } catch(e) {
+      setGscError(String(e?.message || e))
+    } finally {
+      setGscLoading(false)
+    }
   }
 
   function handleGSCConnect() {
     const CLIENT_ID = '70057646964-vimoia1qkjtml9n3mplo0hme82m3t2qs.apps.googleusercontent.com'
     const redirect  = window.location.origin + '/crm-admin/command-center'
     const scope     = 'https://www.googleapis.com/auth/webmasters.readonly'
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`
+    const nonce = crypto.randomUUID()
+    sessionStorage.setItem('romylabs-gsc-oauth', JSON.stringify({nonce,product:seoProduct}))
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${encodeURIComponent(nonce)}`
   }
 
   // ── GA4 real data load ─────────────────────────────────────────────────────
@@ -6452,10 +6488,10 @@ function CommandCenter() {
               <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Google Search Console</div>
               {gscConnected
                 ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(16,185,129,.15)', color:'#10b981', marginLeft:'auto' }}>✅ Connected</span>
-                : <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(99,102,241,.15)', color:'#6366f1', marginLeft:'auto' }}>Not connected</span>
+                : <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(99,102,241,.15)', color:'#a5b4fc', marginLeft:'auto' }}>{gscCached ? 'Cached · reconnect needed' : 'Not connected'}</span>
               }
             </div>
-            {(()=>{ const sd = gscConnected && gscData ? gscData : null; return (<>
+            {(()=>{ const sd = gscData?.dataAvailable ? gscData : null; return (<>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom: sd && gscData?.topQueries?.length > 0 ? 16 : 0 }}>
                 {[
                   { label:'Impressions',  value: sd ? sd.impressions.toLocaleString() : '—', color:'#6366f1' },
@@ -6487,11 +6523,13 @@ function CommandCenter() {
               {!gscConnected && (
                 <div style={{ marginTop:8 }}>
                   {gscLoading
-                    ? <div style={{ fontSize:12, color:'#475569' }}>Checking connection…</div>
-                    : <button onClick={handleGSCConnect} style={{ background:'#6366f1', color:'#fff', border:'none', borderRadius:6, padding:'7px 16px', fontSize:12, fontWeight:600, cursor:'pointer' }}>Connect Google Search Console</button>
+                    ? <div style={{ fontSize:12, color:'#94a3b8' }}>Checking this website's Search Console property…</div>
+                    : <button onClick={handleGSCConnect} style={{ background:'#6366f1', color:'#fff', border:'none', borderRadius:6, padding:'7px 16px', fontSize:12, fontWeight:600, cursor:'pointer' }}>Connect Google Search Console · {seoProduct==='pool_crm'?'PoolVerge':reportingProducts.find(p=>p.product_id===seoProduct)?.name||seoProduct}</button>
                   }
                 </div>
               )}
+              {gscError && !gscLoading && <div role="alert" style={{fontSize:12,color:'#fca5a5',marginTop:10,lineHeight:1.6}}>{gscError}</div>}
+              {gscCached && gscData?.cachedAt && <div style={{fontSize:11,color:'#fbbf24',marginTop:8}}>Last saved snapshot: {new Date(gscData.cachedAt).toLocaleString('en-US',{timeZone:'America/New_York'})}. These are not live figures.</div>}
               {gscConnected && gscData?.siteUrl && <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>{gscData.rangeLabel || 'Last 3 months'} · {gscData.siteUrl}</div>}
             </>)})()}
           </div>
