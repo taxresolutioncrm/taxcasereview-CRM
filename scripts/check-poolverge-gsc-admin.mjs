@@ -7,6 +7,14 @@ const checked=(condition,label)=>{assert(condition,label);console.log('PASS',lab
 checked(api.includes("'pool_crm'") && api.includes('sc-domain:poolverge.com'), 'PoolVerge supported by Search Console domain-property routing')
 checked(api.includes('https://poolverge.com/') && api.includes('https://www.poolverge.com/'), 'PoolVerge URL-prefix properties supported without mixing domains')
 checked(api.includes("caller.rpc('_is_platform_admin')"), 'GSC OAuth credentials only used after platform-admin authorization')
+
+const bearerGuard = api.match(/if\(!\/\^Bearer ([^/]+)\/\.test\(authorization\)\)/)
+checked(Boolean(bearerGuard), 'GSC authentication guard is present')
+const bearerPattern = new RegExp('^Bearer ' + bearerGuard[1])
+checked(bearerPattern.test('Bearer eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFkbWluIn0.signature'), 'Valid bearer JWT passes GSC authentication gate')
+checked(!bearerPattern.test('not-a-token') && !bearerPattern.test('Bearer ') && !bearerPattern.test('Bearer token' + String.fromCharCode(10) + 'other'), 'Missing, empty, and multi-line tokens are rejected')
+checked(!api.includes(String.raw`/^Bearer \\S+$/`), 'Double-escaped bearer regex regression cannot reappear')
+
 checked(api.includes("action==='connect'") && api.includes('success:true'), 'OAuth connect reports result correctly')
 checked(api.includes('product_id:x.product_key'), 'Snapshots remain isolated by actual product key')
 checked(api.includes("eq('product_id',x.product_key)"), 'Channel activation remains scoped to the requested product')
