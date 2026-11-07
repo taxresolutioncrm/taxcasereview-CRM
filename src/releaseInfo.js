@@ -136,7 +136,7 @@ const EMAIL_PARITY_CHANGES = [
 
 const ADMIN_DEMO_TASK_CHANGES = [
   'PoolVerge SEO can now report Google Search Console clicks, impressions, click-through rate, search position and leading queries in the RomyLabs Admin Portal',
-  'Google Search Console connection verifies the selected product and does not show stale cached figures as live',
+  'Google Search Console preserves the selected PoolVerge property across navigation, verifies OAuth state and distinguishes live results from cached history',
   'Only authenticated RomyLabs platform administrators can retrieve or refresh Google Search Console credentials',
   'RomyLabs sales now distinguishes qualified software prospects from incoming booking leads and shows source-read errors instead of false zeros',
   'Executive briefing runs at 7 AM Eastern with authenticated scheduler, persistent delivery audit and verified Stalwart JMAP submission',
