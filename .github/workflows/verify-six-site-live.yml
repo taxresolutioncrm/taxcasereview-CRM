@@ -1,0 +1,19 @@
+name: Verify six other website production releases
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/verify-six-site-live.mjs'
+      - '.github/workflows/verify-six-site-live.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/verify-six-site-live.mjs
+      - run: node scripts/verify-six-site-live.mjs
