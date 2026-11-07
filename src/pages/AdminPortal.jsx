@@ -5766,6 +5766,34 @@ function CommandCenter() {
   const [poolClarityError, setPoolClarityError] = useState('')
   const [poolClarityLoading, setPoolClarityLoading] = useState(false)
   const [poolClarityTick, setPoolClarityTick] = useState(0)
+  const [poolClarityToken, setPoolClarityToken] = useState('')
+  const [poolClaritySaving, setPoolClaritySaving] = useState(false)
+  const [poolClarityConnectError, setPoolClarityConnectError] = useState('')
+  async function connectPoolClarity() {
+    const token=poolClarityToken.trim()
+    if(!token) {setPoolClarityConnectError('Enter the Microsoft Clarity Data Export token first.');return}
+    setPoolClaritySaving(true)
+    setPoolClarityConnectError('')
+    try {
+      const {data,error}=await supabase.functions.invoke('poolverge-clarity-data',{
+        body:{action:'connect',product_id:'pool_crm',api_token:token},
+      })
+      if(error||data?.error||data?.connected!==true) {
+        let reason=data?.error || error?.message || 'Microsoft Clarity did not authorize this token.'
+        if(error?.context && typeof error.context.json==='function') {
+          const serverBody=await error.context.json().catch(()=>null)
+          reason=serverBody?.error || reason
+        }
+        throw new Error(reason)
+      }
+      setPoolClarity(data)
+      setPoolClarityToken('')
+      setPoolClarityTick(t=>t+1)
+    } catch(error) {
+      setPoolClarityConnectError(String(error?.message||error))
+    } finally {setPoolClaritySaving(false)}
+  }
+
   useEffect(()=>{
     if(tab !== 'search' || seoProduct !== 'pool_crm') return
     let cancelled=false
@@ -6607,10 +6635,34 @@ function CommandCenter() {
               {poolClarityError && <p style={{fontSize:11,color:'#fca5a5'}} role="alert">Clarity API: {poolClarityError}</p>}
               {!poolClarityLoading && poolClarity?.api_status==='token_required' &&
                 <p style={{fontSize:12,color:'#fbbf24',lineHeight:1.6}}>
-                  Tracking is installed. The Admin Portal still needs a Clarity Data Export API token
-                  stored in Supabase Edge Function secrets as <code>POOLVERGE_CLARITY_API_TOKEN</code>
-                  to display session metrics. The project ID alone cannot authenticate exports.
+                  Website tracking is installed. To import Clarity session statistics here,
+                  connect PoolVerge's existing project with its Microsoft Data Export API token.
+                  No new Clarity project or tracking installation is needed.
                 </p>}
+              {!poolClarity?.connected && <div style={{margin:'12px 0',padding:14,border:'1px solid rgba(99,102,241,.3)',borderRadius:9}}>
+                <div style={{fontSize:12,color:'#e2e8f0',fontWeight:700,marginBottom:6}}>
+                  Connect existing PoolVerge Clarity analytics
+                </div>
+                <p style={{fontSize:11,color:'#94a3b8',lineHeight:1.6,margin:'0 0 10px'}}>
+                  In the PoolVerge Clarity dashboard open Settings → Data Export → Generate new API token.
+                  Paste it here to validate your existing project and save it encrypted on the server.
+                  The token is never displayed again.
+                </p>
+                <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                  <input type="password" autoComplete="off" aria-label="Clarity Data Export API token"
+                    placeholder="Clarity Data Export API token"
+                    value={poolClarityToken} onChange={e=>setPoolClarityToken(e.target.value)}
+                    style={{flex:'1 1 240px',minWidth:180,padding:'9px 12px',borderRadius:6,
+                      background:'rgba(255,255,255,.04)',border:'1px solid rgba(148,163,184,.35)',
+                      color:'#e2e8f0',fontSize:12}}/>
+                  <button type="button" disabled={poolClaritySaving||!poolClarityToken.trim()}
+                    onClick={connectPoolClarity}
+                    style={{...S.btn('primary'),fontSize:11,padding:'8px 12px'}}>
+                    {poolClaritySaving?'Validating with Microsoft…':'Verify & Connect Clarity'}
+                  </button>
+                </div>
+                {poolClarityConnectError && <p role="alert" style={{fontSize:11,color:'#fca5a5',marginTop:9}}>{poolClarityConnectError}</p>}
+              </div>}
               {!poolClarityLoading && poolClarity?.api_status==='error' &&
                 <p style={{fontSize:11,color:'#fca5a5'}} role="alert">{poolClarity.message||'Clarity export failed; saved data is preserved.'}</p>}
               {!poolClarityLoading && poolClarity?.api_status==='pending' &&
