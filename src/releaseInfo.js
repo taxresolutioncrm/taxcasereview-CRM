@@ -10,6 +10,11 @@ const OFFICE_ACCESS_CHANGES = [
   'CloudCPA is retired from the active office directory, manual, release listing and platform metrics routing',
 ]
 
+const TAXRES_MOBILE_CHANGES = [
+  'TaxRes administration mobile review: full route titles and accessible search alongside New',
+  'TaxRes dashboard metrics and client Quick Actions use the scoped phone layout without changing permissions or workflow data',
+]
+
 const MOBILE_UX_CHANGES = [
   'On phones, Dashboard KPI cards display in two compact columns without cutting off amounts',
   'Mobile header displays complete page titles (including detail routes), retains language selection, and reveals search beside New for clients, cases, and leads',
@@ -209,10 +214,10 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.74',
+  version: '3.2.75',
   releasedAt: 'Pending production deployment',
-  title: 'TaxRes 3.2.74 — Mobile UX Review Candidate',
-  changes: [...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
+  title: 'TaxRes 3.2.75 — Mobile UX Review Candidate',
+  changes: [...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
