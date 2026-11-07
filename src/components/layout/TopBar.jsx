@@ -80,7 +80,7 @@ export default function TopBar({ onNew }) {
 
   const panelRef = useRef(null)
   const btnRef = useRef(null)
-  const title = PAGE_TITLES[location.pathname] || 'Tax Resolution CRM'
+  const title = PAGE_TITLES[location.pathname] || (usesMobileParity(myTenantId) ? PAGE_TITLES['/' + location.pathname.split('/')[1]] : null) || 'Tax Resolution CRM'
 
   useEffect(() => {
     const tick = () => {
