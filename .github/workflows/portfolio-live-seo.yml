@@ -1,0 +1,30 @@
+name: Portfolio live SEO and tracking verification
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/audit-portfolio-live-seo.mjs'
+      - '.github/workflows/portfolio-live-seo.yml'
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check audit syntax
+        run: node --check scripts/audit-portfolio-live-seo.mjs
+      - name: Check all 12 public websites over HTTPS (read only)
+        run: node scripts/audit-portfolio-live-seo.mjs
+      - name: Store full evidence even when a site fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-live-seo-matrix
+          path: portfolio-audit/
+          if-no-files-found: warn
