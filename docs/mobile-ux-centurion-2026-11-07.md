@@ -1,7 +1,7 @@
 # Centurion — independent mobile UX audit and release gate
 
 **Office:** Centurion Firm / `8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a`
-**Frontend:** Shared taxcasereview-CRM source; Centurion branded domain must be checked against dedicated Supabase project `rkniemzmivnuhpdwkduc`.
+**Frontend:** Shared taxcasereview-CRM source. Centurion is TRC-004 in the shared TaxResolution-CRM Supabase project `mpxgxfqdbquzkrvvejkh`. The previous dedicated project is retired; the branded domain must be checked against the shared backend.
 **Candidate:** Centurion v3.2.75 (dependent on scoped UI PR #8367 and TaxRes release review PR #8368).
 
 ## Verified source root causes
