@@ -135,6 +135,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Restored Google Search Console reporting across all existing RomyLabs products by fixing the bearer authorization regex that rejected every valid session',
+  'Added an authentication regression gate to prevent a repeat of the global Google SEO connection failure',
   'Fixed the Command Center startup crash caused by Google Search Console reading SEO product state before its React initialization',
   'Added a startup regression test that reproduces the original JavaScript ReferenceError and preserves PoolVerge Google Search Console and Clarity behavior',
   'PoolVerge SEO can now report Google Search Console clicks, impressions, click-through rate, search position and leading queries in the RomyLabs Admin Portal',
@@ -225,9 +227,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.77',
+  version: '3.2.78',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.77 — Command Center Startup Repair',
+  title: 'RomyLabs Admin Portal 3.2.78 — Restore All Google Search Console Connections',
   changes: [...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
