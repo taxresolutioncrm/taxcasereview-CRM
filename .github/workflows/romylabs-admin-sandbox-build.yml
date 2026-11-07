@@ -42,6 +42,8 @@ jobs:
       - name: Parse Search Console Deno TypeScript source
         run: |
           node --input-type=module -e "import {transform} from 'esbuild'; import {readFileSync} from 'node:fs'; await transform(readFileSync('supabase/functions/gsc-data/index.ts','utf8'),{loader:'ts',format:'esm'}); console.log('PASS PoolVerge GSC TypeScript');"
+      - name: Verify Command Center render initialization regression
+        run: node tests/admin-command-center-startup.test.mjs
       - name: Cloudflare-equivalent frontend build
         run: npm run build
       - name: Confirm emitted build marker

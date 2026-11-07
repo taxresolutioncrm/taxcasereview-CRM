@@ -135,6 +135,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'Fixed the Command Center startup crash caused by Google Search Console reading SEO product state before its React initialization',
+  'Added a startup regression test that reproduces the original JavaScript ReferenceError and preserves PoolVerge Google Search Console and Clarity behavior',
   'PoolVerge SEO can now report Google Search Console clicks, impressions, click-through rate, search position and leading queries in the RomyLabs Admin Portal',
   'PoolVerge Microsoft Clarity project z31rnrvbns is registered in the Admin Portal as configured, with live session verification kept pending',
   'Google Search Console preserves the selected PoolVerge property across navigation, verifies OAuth state and distinguishes live results from cached history',
@@ -223,9 +225,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.76',
+  version: '3.2.77',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.76 — PoolVerge Search Console Reporting',
+  title: 'RomyLabs Admin Portal 3.2.77 — Command Center Startup Repair',
   changes: [...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
