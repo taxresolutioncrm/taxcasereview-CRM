@@ -33,5 +33,5 @@ checked(claritySql.includes("where product_id = 'pool_crm'"),'Clarity registrati
 checked(claritySql.includes("status = 'configured'"),'Clarity status never falsely claims live sessions')
 checked(ui.includes("Microsoft Clarity · PoolVerge"),'PoolVerge SEO panel shows Clarity project')
 checked(ui.includes("clarityConfiguredProducts"),'Clarity configured status visible separately from live')
-checked(ui.includes("session verification pending"),'Clarity live-session verification clearly pending')
+checked(ui.includes("apiStatus==='live' && typeof sessions==='number' && sessions>0"),'Clarity live-session verification requires actual provider sessions')
 console.log('PASS PoolVerge ↔ RomyLabs GSC product-scoped regression contract')
