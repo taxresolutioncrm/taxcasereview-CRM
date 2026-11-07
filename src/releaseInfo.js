@@ -28,7 +28,17 @@ const MOBILE_UX_CHANGES = [
   'Navigation and detail tabs keep their existing behaviors; search and New stay grouped on narrow phones while other offices retain their original New button sizing',
 ]
 
+const PAYMENTS_NASHVILLE_PARITY_CHANGES = [
+  'Payments filters include inclusive From and To dates with created_at fallback for imported entries',
+  'Payments transaction table, date filtering, and Excel export display the same effective business date or created-at fallback',
+  'Payment-date range consistently updates Total Collected, Pending, payment count, failed count and collected by method',
+  'Payments exports the currently filtered and sorted records to real Excel .xlsx with numeric amounts and protected text cells',
+  'Payments filter toolbar keeps search and labeled dates on the first row, statuses, methods, Clear Dates and Excel export together below',
+  'Payment processing, Autopay, existing search, invoice links, office configuration and permissions stay unchanged',
+]
+
 const IRS_WORKFLOW_CHANGES = [
+  ...PAYMENTS_NASHVILLE_PARITY_CHANGES,
   ...MOBILE_UX_CHANGES,
   'Transactions associate filter now loads all matching associate names only when opened, without the first-1,000-record truncation or an extra initial page request',
   'Employee Productivity and Transactions reports can export authorized filtered results as native Excel workbooks, including numeric columns and productivity totals',
@@ -233,18 +243,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.86',
+  version: '3.2.87',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.86 — Centurion Shared SaaS Auth Correction',
-  changes: ['Added an authenticated, product-scoped GA4 daily refresh coordinator; existing on-demand analytics and tracking are unchanged', 'TaxRes weekly owner growth report now isolates TaxRes GA4 rows, avoids double-counting channel and total rows, and preserves live owner/cron authentication', 'Microsoft Clarity metric cards now match Bing Webmaster Tools styling across all registered businesses, including responsive sizing and compact metadata', 'Fixed PoolVerge Bing Webmaster Tools reporting: add missing PoolVerge domain mapping while preserving other properties', 'Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
+  title: 'RomyLabs Admin Portal 3.2.87 — Shared SaaS and Payments Excel Parity',
+  changes: [...PAYMENTS_NASHVILLE_PARITY_CHANGES, 'Added an authenticated, product-scoped GA4 daily refresh coordinator; existing on-demand analytics and tracking are unchanged', 'TaxRes weekly owner growth report now isolates TaxRes GA4 rows, avoids double-counting channel and total rows, and preserves live owner/cron authentication', 'Microsoft Clarity metric cards now match Bing Webmaster Tools styling across all registered businesses, including responsive sizing and compact metadata', 'Fixed PoolVerge Bing Webmaster Tools reporting: add missing PoolVerge domain mapping while preserving other properties', 'Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.75',
+    version: '3.2.76',
     releasedAt: 'Pending production deployment',
-    title: 'TCR 3.2.75 — Shared SaaS Auth Configuration Verification',
+    title: 'TCR 3.2.76 — Shared SaaS Payments Date and Excel',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -266,9 +276,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.76',
+    version: '3.2.77',
     releasedAt: 'Pending production deployment',
-    title: 'Centurion 3.2.76 — Shared SaaS Auth Correction',
+    title: 'Centurion 3.2.77 — Shared SaaS Payments Date and Excel',
     changes: [...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 }
