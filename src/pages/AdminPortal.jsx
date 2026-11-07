@@ -3315,7 +3315,7 @@ function StatusDot({ ok }) {
 
 
 
-function ProductReportingSelector({ value, onChange, channel, gscConnected, activeGscProduct, registryProducts, marketingConnectedProducts=[], marketingBlockedProducts=[], seoConnectedProducts=[], clarityConnectedProducts=[] }) {
+function ProductReportingSelector({ value, onChange, channel, gscConnected, activeGscProduct, registryProducts, marketingConnectedProducts=[], marketingBlockedProducts=[], seoConnectedProducts=[], clarityConnectedProducts=[], clarityConfiguredProducts=[] }) {
   // Derives entirely from romylabs_products registry — no hardcoded product list.
   // Integration status starts as 'pending' (setup needed) for all products.
   // Live GSC connection overrides the SEO badge when gscConnected===true for the active product.
@@ -3348,6 +3348,7 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
         const isMarketingLive = channel === 'marketing' && marketingConnectedProducts.includes(p.key)
         const isMarketingBlocked = channel === 'marketing' && marketingBlockedProducts.includes(p.key)
         const isClarityLive = channel === 'seo' && clarityConnectedProducts.includes(p.key)
+        const isClarityConfigured = channel === 'seo' && clarityConfiguredProducts.includes(p.key)
         const statusLabel = isMarketingLive
           ? 'GA4 Connected'
           : isMarketingBlocked
@@ -3358,11 +3359,14 @@ function ProductReportingSelector({ value, onChange, channel, gscConnected, acti
           ? 'GSC Connected'
           : isClarityLive
           ? 'Clarity Connected'
+          : isClarityConfigured
+          ? (isGscLive ? 'GSC + Clarity Setup' : 'Clarity Setup · Verify Sessions')
           : status === 'connected' ? 'Connected'
           : status === 'implemented' ? `${channel === 'seo' ? 'SEO' : 'Analytics'} implemented · reporting pending`
           : 'Setup needed'
         const statusColor = isMarketingBlocked ? '#ef4444'
           : (status === 'connected' || isGscLive || isMarketingLive || isClarityLive) ? '#10b981'
+          : isClarityConfigured ? '#fbbf24'
           : status === 'implemented' ? '#a78bfa'
           : '#f59e0b'
         return (
@@ -6477,7 +6481,8 @@ function CommandCenter() {
           <ProductReportingSelector value={seoProduct} onChange={setSeoProduct} channel="seo"
             gscConnected={gscConnected} activeGscProduct={seoProduct}
             registryProducts={reportingProducts} seoConnectedProducts={gscLiveProducts}
-            clarityConnectedProducts={clarityRows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id)} />
+            clarityConnectedProducts={clarityRows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id)}
+            clarityConfiguredProducts={clarityRows.filter(r => r.status === 'configured' && r.tracking_id).map(r => r.product_id)} />
           <>
 
           {/* ── Google Search Console ── */}
@@ -6532,6 +6537,34 @@ function CommandCenter() {
               {gscConnected && gscData?.siteUrl && <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>{gscData.rangeLabel || 'Last 3 months'} · {gscData.siteUrl}</div>}
             </>)})()}
           </div>
+
+          {/* Clarity recording setup is separate from Search Console metrics:
+              a tracking ID alone never proves any real sessions were recorded. */}
+          {seoProduct==='pool_crm' && (()=>{
+            const clarity = clarityRows.find(r=>r.product_id==='pool_crm')
+            const configured = clarity?.tracking_id === 'z31rnrvbns'
+            const live = configured && clarity?.status === 'live'
+            return <section aria-label="PoolVerge Microsoft Clarity" style={CC.card({padding:'18px 24px',marginBottom:18})}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+                <strong style={{color:'#fff',fontSize:14}}>Microsoft Clarity · PoolVerge</strong>
+                <span style={{fontSize:11,color:live?'#10b981':configured?'#fbbf24':'#94a3b8'}}>
+                  {live?'Verified live':configured?'Tracking configured · session verification pending':'Tracking setup pending'}
+                </span>
+              </div>
+              <p style={{fontSize:12,color:'#cbd5e1',lineHeight:1.7,margin:'10px 0 4px'}}>
+                Project ID: <code style={{color:'#e2e8f0'}}>{clarity?.tracking_id||'—'}</code>.
+                Use Microsoft Clarity to review PoolVerge visitor recordings, heatmaps and scroll behavior.
+              </p>
+              <p style={{fontSize:11,color:'#94a3b8',margin:'4px 0 0',lineHeight:1.6}}>
+                This confirms the tracking configuration, not visitor session delivery.
+                Google clicks and Clarity sessions are separate measurements.
+              </p>
+              <a href="https://clarity.microsoft.com/" target="_blank" rel="noreferrer"
+                style={{display:'inline-block',fontSize:12,color:'#a5b4fc',marginTop:10}}>
+                Open Microsoft Clarity
+              </a>
+            </section>
+          })()}
 
           {/* Bing reporting is product-scoped to the currently selected product. */}
           <div style={CC.card({padding:'22px 24px'})}>
