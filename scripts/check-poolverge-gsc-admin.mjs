@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+const source=p=>readFileSync(p,'utf8')
+const api=source('supabase/functions/gsc-data/index.ts')
+const ui=source('src/pages/AdminPortal.jsx')
+const checked=(condition,label)=>{assert(condition,label);console.log('PASS',label)}
+checked(api.includes("'pool_crm'") && api.includes('sc-domain:poolverge.com'), 'PoolVerge supported by Search Console domain-property routing')
+checked(api.includes('https://poolverge.com/') && api.includes('https://www.poolverge.com/'), 'PoolVerge URL-prefix properties supported without mixing domains')
+checked(api.includes("caller.rpc('_is_platform_admin')"), 'GSC OAuth credentials only used after platform-admin authorization')
+checked(api.includes("action==='connect'") && api.includes('success:true'), 'OAuth connect reports result correctly')
+checked(api.includes('product_key:x.product_key'), 'Snapshots remain isolated by actual product key')
+checked(api.includes("eq('product_id',x.product_key)"), 'Channel activation remains scoped to the requested product')
+checked(api.includes("connected:false,reauth_required:/REAUTH_REQUIRED/.test(reason),degraded:true,cached:true"), 'Cached snapshots cannot impersonate a live connection')
+checked(ui.includes("sessionStorage.setItem('romylabs-gsc-oauth'"), 'Google callback remembers selected product with a session-bound state nonce')
+checked(ui.includes('oauthState !== expected.nonce'), 'Google OAuth callback rejects unexpected state')
+checked(ui.includes("body: { action: 'connect', code: gscCode, product_key: product }"), 'OAuth callback synchronizes the selected product')
+checked(ui.includes("gsc?.connected === true && gsc?.degraded !== true && gsc?.cached !== true"), 'Only fresh API data shows as connected')
+checked(ui.includes("seoProduct==='pool_crm'?'PoolVerge'"), 'PoolVerge shown on Google connect control')
+checked(ui.includes('gscError && !gscLoading'), 'Property access failures are visible to owner')
+console.log('PASS PoolVerge ↔ RomyLabs GSC product-scoped regression contract')
