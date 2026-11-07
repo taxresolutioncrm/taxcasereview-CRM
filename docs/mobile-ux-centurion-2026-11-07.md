@@ -28,3 +28,16 @@
 - Cloudflare preview commit verification and real tenant-domain mapping. No production deployment until explicit authorization.
 
 **Status:** Static source and RLS preflight reviewed. Browser/device viewport and deployed Centurion backend mapping not verified here. No live user data was changed.
+
+## Viewport certification matrix (required before release)
+
+| Width | Dashboard 2-up | Header / search / New | Client actions / tabs | Page scrolling | Authenticated test |
+|---|---|---|---|---|---|
+| 320px | Pending | Pending | Pending | Pending | Pending |
+| 375px | Pending | Pending | Pending | Pending | Pending |
+| 390px | Pending | Pending | Pending | Pending | Pending |
+| 430px | Pending | Pending | Pending | Pending | Pending |
+| 768px | Pending | Pending | Pending | Pending | Pending |
+| 1024px+ | Desktop regression pending | Pending | Pending | Pending | Pending |
+
+These checks must run with an actual signed-in office session and populated sample clients/cases/leads. Source-only GitHub build success is not visual/browser certification.
