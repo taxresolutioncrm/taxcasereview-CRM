@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { FIRM } from '../lib/firmBranding'
 import { parseMoney, formatMoney } from '../lib/money'
+import BillingProductivity from './BillingProductivity'
 
 const BLANK = {
   client_id: '', client_name: '', task_id: '', task_title: '',
@@ -37,6 +38,7 @@ export default function TimeEntry({ clientId, clientName, embed = false, newEntr
   const [loading,     setLoading]     = useState(true)
   const [showForm,    setShowForm]    = useState(false)
   const [showReport,  setShowReport]  = useState(false)
+  const [showProductivity, setShowProductivity] = useState(false)
   const [form,        setForm]        = useState({ ...BLANK })
   const [editId,      setEditId]      = useState(null)
   const [saving,      setSaving]      = useState(false)
@@ -231,6 +233,9 @@ export default function TimeEntry({ clientId, clientName, embed = false, newEntr
         </button>
       </div>
 
+      {!embed && <div style={{marginBottom:12,display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="btn sec" aria-expanded={showProductivity} onClick={()=>setShowProductivity(v=>!v)}>{showProductivity?'Hide Productivity':'Show Productivity'}</button></div>}
+      {!embed && showProductivity && <BillingProductivity />}
+      
       {/* Billing Report Panel */}
       {showReport && (() => {
         const byActivity = {}
