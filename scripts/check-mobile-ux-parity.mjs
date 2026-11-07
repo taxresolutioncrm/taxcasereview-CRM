@@ -30,6 +30,10 @@ for (const dest of ["'/clients/'", "'/cases/'", "'/leads/'"]) {
   assert(search.includes(dest), 'GlobalSearch must retain '+dest)
 }
 assert(top.includes("usesMobileParity(myTenantId) && <button"), 'Search toggle must be scoped')
+assert(top.includes('className="topbar-create-controls"'), 'Search and New must remain grouped at narrow widths')
+assert(mobile.includes('.mobile-search-toggle { display: none; }'), 'Desktop must not show duplicate mobile search')
+assert(mobile.includes('flex-wrap: wrap !important;'), 'Narrow header must not clip')
+assert(mobile.includes('max-width: none !important;'), 'Search overlay must override desktop width')
 assert(mobile.includes('.tax-mobile-parity .topbar .page-title'), 'Unclipped title scope missing')
 assert(mobile.includes('.tax-mobile-parity .topbar .topbar-search-wrap.mobile-search-open'), 'Mobile search overlay missing')
 assert(mobile.includes('.tax-mobile-parity .page-content .client-quick-actions-grid'), 'Quick Actions grid missing')
