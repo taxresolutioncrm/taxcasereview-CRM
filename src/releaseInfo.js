@@ -12,9 +12,9 @@ const OFFICE_ACCESS_CHANGES = [
 
 const MOBILE_UX_CHANGES = [
   'On phones, Dashboard KPI cards display in two compact columns without cutting off amounts',
-  'Mobile header displays complete page titles and reveals search beside New for clients, cases, and leads',
+  'Mobile header displays complete page titles (including detail routes), retains language selection, and reveals search beside New for clients, cases, and leads',
   'Client file Quick Actions appear three per row with readable labels and touch-friendly targets',
-  'Navigation, detail tabs and create actions preserve the existing role checks and office tenant boundaries',
+  'Navigation and detail tabs keep their existing behaviors; search and New stay grouped on narrow phones and office access stays unchanged',
 ]
 
 const IRS_WORKFLOW_CHANGES = [
@@ -219,7 +219,7 @@ const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
     version: '3.2.74',
-    releasedAt: '2026-11-03',
+    releasedAt: 'Pending production deployment',
     title: 'CRM 3.2.74 — Mobile UX Review Candidate',
     changes: IRS_WORKFLOW_CHANGES,
   },
@@ -243,7 +243,7 @@ const OFFICE_RELEASES = {
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
     version: '3.2.74',
-    releasedAt: '2026-11-03',
+    releasedAt: 'Pending production deployment',
     title: 'CRM 3.2.74 — Mobile UX Review Candidate',
     changes: IRS_WORKFLOW_CHANGES,
   },
