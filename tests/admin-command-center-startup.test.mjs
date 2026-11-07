@@ -3,9 +3,10 @@ import {readFileSync} from 'node:fs'
 
 const source = readFileSync('src/pages/AdminPortal.jsx', 'utf8')
 const ccStart = source.indexOf('function CommandCenter() {')
-const ccEnd = source.indexOf('function ', ccStart+22)
 assert(ccStart >= 0, 'CommandCenter component must exist')
-const cc = source.slice(ccStart, ccEnd<0 ? undefined : ccEnd)
+// Nested helper functions occur inside CommandCenter. Inspect the remaining module
+// rather than incorrectly terminating at the first nested helper declaration.
+const cc = source.slice(ccStart)
 const declaration = "const [seoProduct, setSeoProduct] = useState('taxres_crm')"
 const declarationIndex = cc.indexOf(declaration)
 const seoEffectStart = cc.indexOf("if (tab === 'search') fetchGSC(seoProduct)")
