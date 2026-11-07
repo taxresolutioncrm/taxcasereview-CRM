@@ -102,7 +102,7 @@ if (manifestCommits.length > 1 && !isNonfunctionalReleaseCandidate) {
       }
     }
     if (adminOnlyRelease) {
-      assert(release.includes("changes: ADMIN_DEMO_TASK_CHANGES"),
+      assert(/changes:\s*(?:ADMIN_DEMO_TASK_CHANGES|\[[^\]]*\.\.\.ADMIN_DEMO_TASK_CHANGES[^\]]*\])/.test(release),
         'Admin Portal-only functional changes require Admin Portal release notes')
     } else {
       assert(release.includes("changes: IRS_WORKFLOW_CHANGES"),
