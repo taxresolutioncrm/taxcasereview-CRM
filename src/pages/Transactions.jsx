@@ -33,6 +33,9 @@ export default function Transactions() {
   const [count, setCount] = useState(0)
   const [summary, setSummary] = useState(null)
   const [associates, setAssociates] = useState([])
+  const [associatesLoading, setAssociatesLoading] = useState(false)
+  const [associatesLoaded, setAssociatesLoaded] = useState(false)
+  const [associatesError, setAssociatesError] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
@@ -53,7 +56,7 @@ export default function Transactions() {
       setError('')
       try {
         const tenant = myTenantId
-        const safeSearch = search.replace(/[,%()]/g, ' ').trim()
+        const safeSearch = search.replace(/[,%_()]/g, ' ').trim()
         let query = supabase.from('payment_transactions')
           .select('id,client_id,client_name,payment_date,associate,amount,deposit_account,service_type,status,notes', { count: 'exact' })
           .eq('tenant_id', tenant)
@@ -79,12 +82,6 @@ export default function Transactions() {
         setRows(ledger.data || [])
         setCount(ledger.count || 0)
         setSummary(totals.data)
-        // Associate discovery must not depend on the currently visible ledger page.
-        if (!associates.length) {
-          const { data: names, error: nameError } = await supabase.from('payment_transactions')
-            .select('associate').eq('tenant_id', tenant).not('associate', 'is', null).limit(1000)
-          if (!nameError && active) setAssociates([...new Set((names || []).map(v => v.associate).filter(Boolean))].sort())
-        }
       } catch (e) {
         if (active) { setError(e?.message || 'Transactions could not be loaded'); setRows([]); setCount(0); setSummary(null) }
       } finally { if (active) setLoading(false) }
@@ -92,6 +89,33 @@ export default function Transactions() {
     load()
     return () => { active = false }
   }, [user, myTenantId, search, status, associate, dateFrom, dateTo, drill, page, revision])
+
+  // Load the associate filter on demand: no truncated 1,000-row discovery and no
+  // extra ledger query during the initial render. A stable id order avoids repeats.
+  async function loadAssociates() {
+    if (!myTenantId || associatesLoaded || associatesLoading) return
+    setAssociatesLoading(true)
+    setAssociatesError('')
+    try {
+      const names = new Set()
+      const batchSize = 1000
+      for (let offset = 0; ; offset += batchSize) {
+        const { data, error: listError } = await supabase.from('payment_transactions')
+          .select('associate').eq('tenant_id', myTenantId)
+          .not('associate', 'is', null).order('id', { ascending: true })
+          .range(offset, offset + batchSize - 1)
+        if (listError) throw listError
+        for (const row of data || []) if (row.associate) names.add(row.associate)
+        if ((data || []).length < batchSize) break
+      }
+      setAssociates([...names].sort((a, b) => a.localeCompare(b)))
+      setAssociatesLoaded(true)
+    } catch (e) {
+      setAssociatesError(e?.message || 'Could not retrieve the full associate list. Reopen to retry.')
+    } finally {
+      setAssociatesLoading(false)
+    }
+  }
 
   async function exportExcel() {
     if (!myTenantId || loading || error || exporting) return
@@ -153,8 +177,10 @@ export default function Transactions() {
       <select aria-label="Transaction status" value={status} onChange={e => { setStatus(e.target.value); setDrill('') }} style={inputStyle}>
         <option value="all">All statuses</option>{STATUS.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
-      <select aria-label="Associate" value={associate} onChange={e => setAssociate(e.target.value)} style={inputStyle}>
-        <option value="all">All associates</option>{associates.map(s => <option key={s} value={s}>{s}</option>)}
+      <select aria-label="Associate" value={associate} onFocus={loadAssociates} onChange={e => setAssociate(e.target.value)} style={inputStyle}>
+        <option value="all">All associates</option>
+        {associatesLoading && <option disabled>Loading associates…</option>}
+        {associates.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
       <input aria-label="Date from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle}/>
       <input aria-label="Date to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle}/>
@@ -162,6 +188,7 @@ export default function Transactions() {
       <button type="button" onClick={exportExcel} disabled={loading || exporting || !!error || count === 0} style={inputStyle} aria-label="Export filtered transactions to Excel">{exporting?'Exporting…':'Export to Excel (.xlsx)'}</button>
     </div>
     {drill && <p role="status" style={{ color: 'var(--t2)' }}>Showing {DRILLS.find(d => d.id === drill)?.label} — <button onClick={() => setDrill('')}>Clear drill-down</button></p>}
+    {associatesError && <div role="alert" style={{color:"#ef4444",marginBottom:12}}>{associatesError}</div>}
     {exportError && <div role="alert" style={{color:'#ef4444',marginBottom:12}}>{exportError}</div>}
     {error && <div role="alert" style={{ padding: 18, border: '1px solid #ef4444', borderRadius: 8, marginBottom: 12, color: 'var(--t1)' }}>
       Transactions unavailable: {error} <button onClick={() => setRevision(v => v + 1)}>Retry</button>
