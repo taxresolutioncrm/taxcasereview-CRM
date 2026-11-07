@@ -16,6 +16,7 @@ import AIGovernmentCallNotifier from './components/calling/AIGovernmentCallNotif
 import ImpersonationBanner from './components/ImpersonationBanner'
 import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
+import { usesMobileParity } from './lib/mobileParityTenants'
 
 
 const TAXRES_FAMILY_BUILD = __TAXRES_BUILD__
@@ -263,7 +264,7 @@ function Guard({ section, children }) {
 }
 
 function Shell() {
-  const { openModal, closeModal, realtimeOk } = useApp()
+  const { openModal, closeModal, realtimeOk, myTenantId } = useApp()
   const navigate = useNavigate()
   const [showRealtimeWarning, setShowRealtimeWarning] = React.useState(false)
 
@@ -304,7 +305,7 @@ function Shell() {
     <ScreenShareProvider>
     <CallProvider>
     <GmailSyncProvider>
-    <div className="app-shell">
+    <div className={usesMobileParity(myTenantId) ? "app-shell tax-mobile-parity" : "app-shell"}>
       <GlobalTeamChatNotifier />
       <AIGovernmentCallNotifier />
       <Sidebar />

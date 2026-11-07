@@ -16,6 +16,21 @@ assert(nashvilleBlock.includes("version: '3.0.0'"),'Nashville baseline must star
 assert(!nashvilleBlock.includes('Employee note editing'),'Nashville release notes must not claim note editing before Nashville ships it');
 assert(!nashvilleBlock.includes('Note editor performance optimization'),'Nashville release notes must not claim TCR note performance work');
 
+// Shared source can ship to several independently-versioned offices. Each
+// affected customer line must advance relative to its own production baseline.
+function officeVersion(contents, office) {
+  const marker = '// ' + office
+  const index = contents.indexOf(marker)
+  assert(index >= 0, office + ': release entry missing')
+  const match = contents.slice(index).match(/version:\s*'([0-9]+\.[0-9]+\.[0-9]+)'/)
+  assert(match, office + ': invalid office version')
+  return match[1]
+}
+function semverGreater(next, prev) {
+  const n = next.split('.').map(Number), p = prev.split('.').map(Number)
+  return n[0]>p[0] || (n[0]===p[0] && (n[1]>p[1] || (n[1]===p[1] && n[2]>p[2])))
+}
+
 const {execFileSync}=require('child_process')
 const semver = v => /^[0-9]+[.][0-9]+[.][0-9]+$/.test(v||'')
 const versionFrom = (contents, label) => {
@@ -96,9 +111,10 @@ if (manifestCommits.length > 1 && !isNonfunctionalReleaseCandidate) {
     const adminOnlyRelease = scopedFunctionalFiles.length>0 && scopedFunctionalFiles.every(file => adminOnlyFiles.has(file))
     if (!adminOnlyRelease) {
       for (const office of ['Tax Case Review','Centurion Firm']) {
-        const section = release.slice(release.indexOf('// '+office))
-        assert(section && section.includes("version: '"+currentVersion+"'"),
-          office+' must explicitly carry this release version')
+        const before = officeVersion(baselineRelease, office)
+        const after = officeVersion(release, office)
+        assert(semverGreater(after, before),
+          office + ' must advance its own version for shared CRM changes (' + before + ' -> ' + after + ')')
       }
     }
     if (adminOnlyRelease) {

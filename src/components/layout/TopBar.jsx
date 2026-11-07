@@ -6,6 +6,7 @@ import { useFirm } from '../../lib/useFirm'
 import { isSoundEnabled, setSoundEnabled, playSound } from '../../lib/notifySound'
 import { applyDocumentLanguage, getStoredLanguage, storeLanguage } from '../../lib/i18n'
 import GlobalSearch from '../GlobalSearch'
+import { usesMobileParity } from '../../lib/mobileParityTenants'
 
 const PAGE_TITLES = {
   '/':             'Dashboard',      '/calendar':    'Calendar',
@@ -53,10 +54,12 @@ function formatUsPhone(value) {
 export default function TopBar({ onNew }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { searchQ, setSearchQ, mobileNavOpen, setMobileNavOpen } = useApp()
+  const { searchQ, setSearchQ, mobileNavOpen, setMobileNavOpen, myTenantId } = useApp()
   const [clock, setClock] = useState('')
   const [dateStr, setDateStr] = useState('')
   const [open, setOpen] = useState(false)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const mobileSearchRef = useRef(null)
   const [language, setLanguageState] = useState(getStoredLanguage)
   const { firm } = useFirm()
   const [soundOn, setSoundOnState] = useState(isSoundEnabled())
@@ -77,7 +80,7 @@ export default function TopBar({ onNew }) {
 
   const panelRef = useRef(null)
   const btnRef = useRef(null)
-  const title = PAGE_TITLES[location.pathname] || 'Tax Resolution CRM'
+  const title = PAGE_TITLES[location.pathname] || (usesMobileParity(myTenantId) ? PAGE_TITLES['/' + location.pathname.split('/')[1]] : null) || 'Tax Resolution CRM'
 
   useEffect(() => {
     const tick = () => {
@@ -100,7 +103,10 @@ export default function TopBar({ onNew }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  useEffect(() => { setOpen(false) }, [location.pathname])
+  useEffect(() => { setOpen(false); setMobileSearchOpen(false) }, [location.pathname])
+  useEffect(() => {
+    if (mobileSearchOpen) mobileSearchRef.current?.querySelector('input')?.focus()
+  }, [mobileSearchOpen])
 
   const MODAL_PATHS = new Set(['/leads','/clients','/cases','/tasks','/invoices','/payments','/documents','/calendar','/email','/esign','/fax','/formacorp','/books','/transcripts','/irsportal'])
   function go(path) {
@@ -206,18 +212,22 @@ export default function TopBar({ onNew }) {
     : null
 
   return (
-    <div className="topbar" style={{ position: 'relative' }}>
+    <div className={`topbar${mobileSearchOpen ? ' mobile-search-active' : ''}`} style={{ position: 'relative' }}>
       <button
         className="hamburger-btn"
-        onClick={() => setMobileNavOpen(o => !o)}
-        aria-label="Open menu"
+        type="button"
+        onClick={() => { setMobileNavOpen(o => !o); setMobileSearchOpen(false) }}
+        aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+        aria-expanded={mobileNavOpen}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
+      <div className="topbar-main" style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 }}>
         <span className="page-title" style={{ flexShrink: 0 }}>{title}</span>
-        <GlobalSearch value={searchQ} onChange={setSearchQ} />
+        <div className={`topbar-search-wrap${mobileSearchOpen ? ' mobile-search-open' : ''}`} ref={mobileSearchRef} style={{ flex: 1, minWidth: 0, maxWidth: 300 }}>
+          <GlobalSearch value={searchQ} onChange={setSearchQ} />
+        </div>
       </div>
 
       <div style={{display:'flex',alignItems:'center',gap:14,flexShrink:0}}>
@@ -258,9 +268,15 @@ export default function TopBar({ onNew }) {
       <span className="topbar-datestr" style={{ fontSize: 12, color: 'var(--t3)', whiteSpace: 'nowrap' }}>{dateStr}</span>
       <span className="topbar-clock">{clock}</span>
 
-      <button ref={btnRef} className="btn pri" onClick={() => setOpen(o => !o)} style={{ position: 'relative', minWidth: 72 }}>
-        {open ? '✕ Close' : '+ New'}
-      </button>
+      <div className="topbar-create-controls" style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+        {usesMobileParity(myTenantId) && <button type="button" className="mobile-search-toggle" aria-label={mobileSearchOpen ? 'Close search' : 'Search clients, cases, and leads'} aria-expanded={mobileSearchOpen}
+          onClick={() => { setMobileSearchOpen(v => !v); setOpen(false); setMobileNavOpen(false) }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></svg>
+        </button>}
+        <button ref={btnRef} className="btn pri" onClick={() => { setMobileSearchOpen(false); setOpen(o => !o) }} style={{ position: 'relative', minWidth: 72 }}>
+          {open ? '✕ Close' : '+ New'}
+        </button>
+      </div>
 
       {newDrawer}
     </div>
