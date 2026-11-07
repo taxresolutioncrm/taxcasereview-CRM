@@ -42,6 +42,8 @@ async function check([name,domain,ga4,clarity]){
     limitedFetch(root+'/'),limitedFetch(root+'/robots.txt'),limitedFetch(root+'/sitemap.xml')
   ])
   const meta=parseMeta(home.body)
+  const robotRules=robots.body.split(/\r?\n/).map(line=>line.trim()).filter(line=>/^(user-agent|allow|disallow|sitemap):/i.test(line)).slice(0,35)
+  const headScripts=[...home.body.matchAll(/<script[^>]*>/gi)].map(m=>m[0]).filter(x=>/clarity|googletagmanager|analytics|config/i.test(x)).slice(0,8)
   let code=home.body
   const external=[...home.body.matchAll(/<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']/gi)].map(m=>m[1])
     .filter(x=>x.includes('analytics')||x.includes('tracking')).slice(0,2)
@@ -84,7 +86,7 @@ async function check([name,domain,ga4,clarity]){
   if(!ga4)notes.push('Central GA4 measurement ID not established for comparison')
   if(!clarity)notes.push('Central Clarity project ID not established for comparison')
   if(home.status===200&&home.url!==root+'/'&&home.url!==root)notes.push('Homepage redirected to '+home.url)
-  return {name,domain,homepageStatus:home.status,robotsStatus:robots.status,sitemapStatus:sitemap.status,meta,gaIds:ids,clarityIds:clids,gaLoaderCount,clarityLoaderCount,issues,notes}
+  return {name,domain,homepageStatus:home.status,robotsStatus:robots.status,sitemapStatus:sitemap.status,meta,robotRules,headScripts,gaIds:ids,clarityIds:clids,gaLoaderCount,clarityLoaderCount,issues,notes}
 }
 const results=[]
 let cursor=0
@@ -98,5 +100,6 @@ fs.mkdirSync('portfolio-audit',{recursive:true})
 fs.writeFileSync('portfolio-audit/live-seo.json',JSON.stringify({generatedAt:new Date().toISOString(),results},null,2))
 fs.writeFileSync('portfolio-audit/live-seo.md',report.join('\n')+'\n')
 console.log(report.slice(0,7+results.length).join('\n'))
+for(const row of results)console.log('LIVE_DIAGNOSTIC '+JSON.stringify({name:row.name,robotRules:row.robotRules,scripts:row.headScripts,canonical:row.meta.canonical,h1:row.meta.h1}))
 console.log('LIVE_AUDIT_SUMMARY '+JSON.stringify({count:results.length,issueSites:results.filter(x=>x.issues.length).map(x=>x.name),cleanSites:results.filter(x=>!x.issues.length).map(x=>x.name)}))
 if(results.some(x=>x.issues.length))process.exitCode=1
