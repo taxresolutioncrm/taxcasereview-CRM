@@ -135,6 +135,8 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
+  'PoolVerge Clarity can now be connected securely inside Admin Portal SEO using the existing Microsoft project and a verified Data Export token',
+  'Clarity API credentials are encrypted in Supabase Vault and never shown to other users; the existing Cloudflare tracking project remains untouched',
   'PoolVerge SEO now opens its own Microsoft Clarity dashboard instead of the generic projects page and properly distinguishes installed tracking from live analytics',
   'PoolVerge Clarity session reporting is provided by a server-only Data Export API integration with private cache, usage throttling and administrator authorization',
   'Clarity remains marked configured until session activity is verified, and clearly identifies the separate Microsoft API token still needed for in-portal metrics',
@@ -230,9 +232,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.79',
+  version: '3.2.80',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.79 — PoolVerge Clarity Reporting',
+  title: 'RomyLabs Admin Portal 3.2.80 — Connect PoolVerge Clarity In App',
   changes: [...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
