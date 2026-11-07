@@ -3,6 +3,7 @@
    current/future TaxRes office. Keep it imported AFTER office polish CSS so the
    responsive rules win without changing desktop branding. */
 
+.mobile-search-toggle { display: none; }
 html, body, #root { max-width: 100%; overflow-x: hidden; }
 .main-area, .page-content { min-width: 0; max-width: 100%; }
 .page-content > * { max-width: 100%; min-width: 0; }
@@ -190,6 +191,25 @@ img, video, canvas, iframe, svg { max-width: 100%; }
 @media (max-width: 640px) {
   .page-content { padding: 10px !important; }
   .topbar { min-height: 54px !important; }
+  /* Keep title fully readable and search + New together at 320px. */
+  .tax-mobile-parity .topbar {
+    height: auto !important;
+    min-height: 54px !important;
+    flex-wrap: wrap !important;
+    align-content: center !important;
+    padding: 6px 9px !important;
+    overflow: hidden !important;
+  }
+  .tax-mobile-parity .topbar.mobile-search-active { overflow: visible !important; }
+  .tax-mobile-parity .topbar .topbar-main { flex: 1 1 140px !important; min-width: 96px !important; }
+  .tax-mobile-parity .topbar .topbar-create-controls {
+    margin-left: auto !important;
+    flex: 0 0 auto !important;
+  }
+  .tax-mobile-parity .topbar .topbar-create-controls > .btn.pri {
+    min-width: 62px !important; min-height: 44px !important;
+    padding: 6px 9px !important; font-size: 12px !important;
+  }
   .page-title { max-width: 38vw !important; font-size: 13px !important; }
   .tax-mobile-parity .topbar .page-title { max-width: none !important; font-size: 13px !important; }
 
