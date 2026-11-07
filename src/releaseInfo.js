@@ -4,15 +4,15 @@
 
 const OFFICE_ACCESS_CHANGES = [
   'TaxRes and TCR login screens recover from temporary initial session failures instead of remaining stuck on Loading',
-  'Centurion sign-in and password recovery route to its separate authentication project',
-  'Centurion login refuses to post credentials against the wrong Supabase project',
+  'Centurion sign-in and password recovery use the shared TaxRes/TCR/Centurion SaaS project',
+  'Centurion branded login rejects a mismatched Supabase project and never requires the retired dedicated database',
   'Employee lookup matches verified office membership case-insensitively and never grants Admin access on missing membership',
   'CloudCPA is retired from the active office directory, manual, release listing and platform metrics routing',
 ]
 
 const CENTURION_MOBILE_CHANGES = [
   'Centurion mobile review: readable Dashboard KPIs, complete header titles, client/case/lead search, and three-per-row client actions',
-  'Centurion presentation remains scoped to its office identity and does not change dedicated Supabase login, tenant membership or records',
+  'Centurion presentation remains scoped to its TRC-004 office inside the shared SaaS project without changing membership or records',
 ]
 
 const TAXRES_MOBILE_CHANGES = [
@@ -232,18 +232,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.85',
+  version: '3.2.86',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.85 — Daily GA4 Reporting (Ready Candidate)',
+  title: 'RomyLabs Admin Portal 3.2.86 — Centurion Shared SaaS Auth Correction',
   changes: ['Added an authenticated, product-scoped GA4 daily refresh coordinator; existing on-demand analytics and tracking are unchanged', 'TaxRes weekly owner growth report now isolates TaxRes GA4 rows, avoids double-counting channel and total rows, and preserves live owner/cron authentication', 'Microsoft Clarity metric cards now match Bing Webmaster Tools styling across all registered businesses, including responsive sizing and compact metadata', 'Fixed PoolVerge Bing Webmaster Tools reporting: add missing PoolVerge domain mapping while preserving other properties', 'Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.74',
+    version: '3.2.75',
     releasedAt: 'Pending production deployment',
-    title: 'CRM 3.2.74 — Mobile UX Review Candidate',
+    title: 'TCR 3.2.75 — Shared SaaS Auth Configuration Verification',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -265,9 +265,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.75',
+    version: '3.2.76',
     releasedAt: 'Pending production deployment',
-    title: 'Centurion 3.2.75 — Mobile UX Review Candidate',
+    title: 'Centurion 3.2.76 — Shared SaaS Auth Correction',
     changes: [...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 }
