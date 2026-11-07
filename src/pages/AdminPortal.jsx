@@ -6655,18 +6655,18 @@ function CommandCenter() {
             const apiStatus=poolClarity?.api_status || ''
             const live=apiStatus==='live' && typeof sessions==='number' && sessions>0
             const metric=(value)=>typeof value==='number' ? value.toLocaleString('en-US') : '—'
-            return <section aria-label="PoolVerge Microsoft Clarity" style={CC.card({padding:'18px 24px',marginBottom:18})}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-                <strong style={{color:'#fff',fontSize:14}}>Microsoft Clarity · PoolVerge</strong>
-                <span style={{fontSize:11,color:live?'#10b981':configured?'#fbbf24':'#94a3b8'}}>
+            return <section aria-label="PoolVerge Microsoft Clarity" style={CC.card({padding:'22px 24px',marginBottom:18})}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+                <span aria-hidden="true" style={{fontSize:16}}>🟣</span>
+                <strong style={{color:'#fff',fontSize:14,fontWeight:800}}>Microsoft Clarity · PoolVerge</strong>
+                <span style={{marginLeft:'auto',fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:10,background:live?'rgba(16,185,129,.15)':configured?'rgba(245,158,11,.12)':'rgba(100,116,139,.15)',color:live?'#10b981':configured?'#fbbf24':'#94a3b8'}}>
                   {live?'Live sessions verified':configured?'Tracking installed':'Tracking not registered'}
                 </span>
               </div>
               <p style={{fontSize:12,color:'#cbd5e1',lineHeight:1.7,margin:'10px 0 8px'}}>
-                Project <strong>z31rnrvbns</strong> · poolverge.com. Website visitor recordings,
-                heatmaps and scroll behavior belong to this specific project.
+                Project <strong>z31rnrvbns</strong> · poolverge.com
               </p>
-              {metrics && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:10,margin:'12px 0'}}>
+              {metrics && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,160px),1fr))',gap:12,margin:'12px 0 16px'}}>
                 {[
                   {label:'Sessions',value:metrics.sessions},
                   {label:'Bot sessions',value:metrics.botSessions},
@@ -6674,9 +6674,9 @@ function CommandCenter() {
                   {label:'Dead clicks',value:metrics.deadClicks},
                   {label:'Rage clicks',value:metrics.rageClicks},
                   {label:'Script errors',value:metrics.scriptErrors},
-                ].map(item=><div key={item.label} style={{border:'1px solid rgba(99,102,241,.18)',borderRadius:8,padding:12}}>
-                  <div style={{fontSize:10,color:'#94a3b8',marginBottom:6}}>{item.label}</div>
-                  <div style={{fontSize:20,color:'#e2e8f0',fontWeight:800}}>{metric(item.value)}</div>
+                ].map(item=><div key={item.label} style={{background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:8,padding:'14px 16px'}}>
+                  <div style={{fontSize:9,color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>{item.label}</div>
+                  <div style={{fontSize:22,color:item.label==='Sessions'?'#6366f1':item.label==='Bot sessions'?'#f59e0b':item.label==='Visitors'?'#10b981':'#e2e8f0',fontWeight:800}}>{metric(item.value)}</div>
                 </div>)}
               </div>}
               {poolClarityLoading && <p style={{fontSize:11,color:'#94a3b8'}} role="status">Checking Clarity analytics…</p>}
@@ -6730,8 +6730,7 @@ function CommandCenter() {
                 </button>
               </div>
               <p style={{fontSize:11,color:'#94a3b8',lineHeight:1.6,margin:'10px 0 0'}}>
-                Dashboard recordings and heatmaps remain in Microsoft Clarity. This panel displays
-                aggregate session reporting only; Google clicks are a separate metric.
+                Recordings and heatmaps stay in Microsoft Clarity · Aggregate reporting only.
               </p>
             </section>
           })()}
@@ -6743,21 +6742,22 @@ function CommandCenter() {
             const name=reportingProducts.find(p=>p.product_id===seoProduct)?.name||seoProduct
             const metrics=businessClarity?.metrics||businessClarity?.last_snapshot?.metrics
             const fmt=v=>typeof v==='number'?v.toLocaleString('en-US'):'—'
-            return <section aria-label={name+' Microsoft Clarity'} style={CC.card({padding:'18px 24px',marginBottom:18})}>
-              <div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-                <strong style={{fontSize:14,color:'#fff'}}>Microsoft Clarity · {name}</strong>
-                <span style={{fontSize:11,color:businessClarity?.connected?'#10b981':'#fbbf24'}}>
+            return <section aria-label={name+' Microsoft Clarity'} style={CC.card({padding:'22px 24px',marginBottom:18})}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+                <span aria-hidden="true" style={{fontSize:16}}>🟣</span>
+                <strong style={{fontSize:14,fontWeight:800,color:'#fff'}}>Microsoft Clarity · {name}</strong>
+                <span style={{marginLeft:'auto',fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:10,background:businessClarity?.connected?'rgba(16,185,129,.15)':'rgba(245,158,11,.12)',color:businessClarity?.connected?'#10b981':'#fbbf24'}}>
                   {businessClarity?.connected?'Analytics API connected':id?'Tracking registered · API not connected':'Clarity project not registered'}
                 </span>
               </div>
               <p style={{fontSize:12,color:'#cbd5e1'}}>Project: {id||'Not registered'} · Website tracking and reporting are verified separately.</p>
-              {metrics&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:10,margin:'12px 0'}}>
+              {metrics&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,160px),1fr))',gap:12,margin:'12px 0 16px'}}>
                 {[
                   ['Sessions',metrics.sessions],['Bot sessions',metrics.botSessions],['Visitors',metrics.users],
                   ['Dead clicks',metrics.deadClicks],['Rage clicks',metrics.rageClicks],['Script errors',metrics.scriptErrors]
-                ].map(([label,value])=><div key={label} style={{border:'1px solid rgba(99,102,241,.18)',borderRadius:8,padding:12}}>
-                  <div style={{fontSize:10,color:'#94a3b8',marginBottom:6}}>{label}</div>
-                  <div style={{fontSize:20,color:'#e2e8f0',fontWeight:800}}>{fmt(value)}</div>
+                ].map(([label,value])=><div key={label} style={{background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:8,padding:'14px 16px'}}>
+                  <div style={{fontSize:9,color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>{label}</div>
+                  <div style={{fontSize:22,color:label==='Sessions'?'#6366f1':label==='Bot sessions'?'#f59e0b':label==='Visitors'?'#10b981':'#e2e8f0',fontWeight:800}}>{fmt(value)}</div>
                 </div>)}
               </div>}
               {businessClarityLoading&&<p role="status">Checking Clarity analytics…</p>}
@@ -6782,7 +6782,7 @@ function CommandCenter() {
                 {id&&<a href={'https://clarity.microsoft.com/projects/view/'+encodeURIComponent(id)+'/dashboard'} target="_blank" rel="noreferrer" style={{fontSize:12,color:'#a5b4fc'}}>Open {name} Clarity dashboard</a>}
                 <button onClick={()=>setBusinessClarityTick(v=>v+1)} disabled={businessClarityLoading} style={{...S.btn('ghost'),fontSize:11}}>Refresh connection status</button>
               </div>
-              <p style={{fontSize:11,color:'#94a3b8'}}>Recordings and heatmaps remain in Microsoft Clarity. Only aggregate statistics appear here.</p>
+              <p style={{fontSize:11,color:'#94a3b8'}}>Recordings and heatmaps stay in Microsoft Clarity · Aggregate reporting only.</p>
             </section>
           })()}
 
