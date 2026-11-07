@@ -1,15 +1,14 @@
-// Non-network regression guard for the weekly growth report.
-// It intentionally checks source contracts without altering runtime behavior.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const source = readFileSync('supabase/functions/weekly-growth-report/index.ts', 'utf8')
-const section = source.slice(source.indexOf("const [gscRes, ga4Res"), source.indexOf("const gsc      ="))
-assert.equal((section.match(/\.eq\('product_id', 'taxres_crm'\)/g) || []).length, 2, 'Current and previous GA4 ranges must remain TaxRes-scoped')
-assert.match(source, /const dailyTotals = ga4\.filter\(\(r: any\) => r\.channel === '__TOTAL__'\)/)
-assert.match(source, /const priorTotals = ga4prev\.filter\(\(r: any\) => r\.channel === '__TOTAL__'\)/)
-assert.match(source, /const sessions = dailyTotals\.reduce/)
-assert.match(source, /const sessPrev = priorTotals\.reduce/)
-assert.doesNotMatch(source, /const sessions = ga4\.reduce/)
-assert.doesNotMatch(source, /const sessPrev = ga4prev\.reduce/)
-console.log('PASS weekly report totals isolated and not double counted')
+assert(source.includes("if(!(await authorized(req,admin)))"), 'Live owner/cron authorization must remain enforced')
+assert(source.includes('verify_internal_cron_token'), 'Internal cron token validation must remain intact')
+assert.equal((source.match(/\.eq\('product_id','taxres_crm'\)/g) || []).length, 2, 'Current and prior GA4 queries must use the TaxRes product key')
+assert(source.includes("totalRows=ga.filter((r:any)=>r.channel==='__TOTAL__')"), 'Daily total filter must be present')
+assert(source.includes("prevTotalRows=prev.filter((r:any)=>r.channel==='__TOTAL__')"), 'Prior daily total filter must be present')
+assert(source.includes("sessions=sum(totalRows,'sessions')"), 'Sessions must use daily totals only')
+assert(source.includes("prevSessions=sum(prevTotalRows,'sessions')"), 'Previous sessions must use daily totals only')
+assert(!source.includes("sessions=sum(ga,'sessions')"), 'Must not double count current channel sessions')
+assert(!source.includes("prevSessions=sum(prev,'sessions')"), 'Must not double count prior channel sessions')
+console.log('PASS TaxRes GA4 isolation, source alignment and live authorization safeguards')
