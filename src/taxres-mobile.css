@@ -52,11 +52,11 @@ img, video, canvas, iframe, svg { max-width: 100%; }
   .topbar > div:first-of-type { min-width: 0 !important; gap: 8px !important; flex: 1 1 auto !important; }
   /* Direct second div is the desktop phone/fax/utility strip in both TCR/Nashville. */
   .topbar > div:nth-of-type(2) { display: none !important; }
-  .topbar .topbar-search-wrap { display: none !important; }
+  .tax-mobile-parity .topbar .topbar-search-wrap { display: none !important; }
   .topbar .search-input { display: none !important; }
   .topbar .topbar-clock, .topbar .topbar-datestr { display: none !important; }
-  .topbar .topbar-main { min-width: 0 !important; flex: 1 1 0 !important; }
-  .topbar .page-title {
+  .tax-mobile-parity .topbar .topbar-main { min-width: 0 !important; flex: 1 1 0 !important; }
+  .tax-mobile-parity .topbar .page-title {
     min-width: 0 !important;
     max-width: none !important;
     flex: 1 1 auto !important;
@@ -67,22 +67,22 @@ img, video, canvas, iframe, svg { max-width: 100%; }
     line-height: 1.25 !important;
     font-size: 14px !important;
   }
-  .topbar .mobile-search-toggle {
+  .tax-mobile-parity .topbar .mobile-search-toggle {
     display: inline-flex !important; align-items: center; justify-content: center;
     flex: 0 0 42px; min-width: 42px; min-height: 44px;
     padding: 0; color: var(--tx); border: 1px solid var(--br);
     background: var(--sf); border-radius: 9px; cursor: pointer;
   }
-  .topbar.mobile-search-active { overflow: visible !important; z-index: 1500 !important; }
-  .topbar .topbar-search-wrap.mobile-search-open {
+  .tax-mobile-parity .topbar.mobile-search-active { overflow: visible !important; z-index: 1500 !important; }
+  .tax-mobile-parity .topbar .topbar-search-wrap.mobile-search-open {
     display: block !important; position: absolute !important; top: calc(100% + 4px);
     left: 8px; right: 8px; width: auto; max-width: none;
     z-index: 1501; border: 1px solid var(--br);
     background: var(--sf); border-radius: 10px;
     padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,.32);
   }
-  .topbar .topbar-search-wrap.mobile-search-open > div { max-width: none !important; }
-  .topbar .topbar-search-wrap.mobile-search-open .search-input {
+  .tax-mobile-parity .topbar .topbar-search-wrap.mobile-search-open > div { max-width: none !important; }
+  .tax-mobile-parity .topbar .topbar-search-wrap.mobile-search-open .search-input {
     display: block !important; min-height: 44px !important;
     max-width: none !important; width: 100% !important; font-size: 16px !important;
   }
@@ -164,7 +164,8 @@ img, video, canvas, iframe, svg { max-width: 100%; }
   textarea { resize: vertical; }
 
   .dr { grid-template-columns: 1fr !important; gap: 2px !important; }
-  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .metrics { grid-template-columns: 1fr !important; }
+  .tax-mobile-parity .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   [data-card-idx] { min-width: 0 !important; }
 
   /* Messaging/workspace panes must shrink to viewport instead of retaining desktop mins. */
@@ -180,7 +181,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
 @media (max-width: 640px) {
   .page-content { padding: 10px !important; }
   .topbar { min-height: 54px !important; }
-  .topbar .page-title { max-width: none !important; font-size: 13px !important; }
+  .tax-mobile-parity .topbar .page-title { max-width: none !important; font-size: 13px !important; }
 
   /* Preserve the two essential topbar controls: navigation and + New.
      Hide desktop utility buttons that are available elsewhere in the app. */
@@ -211,14 +212,14 @@ img, video, canvas, iframe, svg { max-width: 100%; }
   .tabs > *, .tab-row > *, .chips > *, .chip-row > * { flex: 0 0 auto !important; }
 
   /* Client detail only: eleven working actions in readable rows of three. */
-  .page-content .client-quick-actions-grid {
+  .tax-mobile-parity .page-content .client-quick-actions-grid {
     display: grid !important;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 8px !important;
     min-width: 0 !important;
     width: 100% !important;
   }
-  .page-content .client-quick-actions-grid > button {
+  .tax-mobile-parity .page-content .client-quick-actions-grid > button {
     min-width: 0 !important;
     max-width: 100% !important;
     min-height: 90px !important;
@@ -227,7 +228,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
     font-size: 11px !important;
     overflow-wrap: anywhere !important;
   }
-  .page-content .client-quick-actions-grid > button > span {
+  .tax-mobile-parity .page-content .client-quick-actions-grid > button > span {
     max-width: 100% !important;
     white-space: normal !important;
     overflow-wrap: anywhere !important;
@@ -261,7 +262,7 @@ img, video, canvas, iframe, svg { max-width: 100%; }
 @media (max-width: 420px) {
   .page-content { padding: 8px !important; }
   .sidebar { width: min(90vw, 310px) !important; }
-  .topbar .page-title { max-width: none !important; }
+  .tax-mobile-parity .topbar .page-title { max-width: none !important; }
   .card, .dp, .info-box { border-radius: 10px !important; }
   .modal-overlay, .modal-bg { padding: 6px !important; }
   .modal { max-height: calc(100dvh - 12px) !important; border-radius: 10px !important; }
