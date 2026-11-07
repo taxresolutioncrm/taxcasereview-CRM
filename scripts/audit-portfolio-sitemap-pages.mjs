@@ -61,7 +61,11 @@ async function collect(domain){
     if(!r.html.includes('<h1')&&!r.html.includes('<H1'))warnings.push('no H1 in initial HTML; JS rendering may supply it')
     if(/<meta\b[^>]*name=["']robots["'][^>]*content=["'][^"']*noindex/i.test(r.html))warnings.push('sitemap page has noindex meta')
     if(!/type=["']application\/ld\+json["']/i.test(r.html))warnings.push('no JSON-LD in initial HTML')
-    if(normalize(r.url)!==normalize(page))warnings.push('redirected to '+r.url)
+    if(normalize(r.url)!==normalize(page)){
+      warnings.push('redirected to '+r.url)
+      const c=canonical(r.html)
+      if(c && normalize(c)!==normalize(r.url))warnings.push('FINAL-URL CANONICAL CONFLICT: final='+r.url+' canonical='+c)
+    }
    }
    result.push({url:page,status:r.status,title:title(r.html),issues:problems,warnings})
  }}
@@ -76,7 +80,7 @@ async function collect(domain){
 const audits=[]
 for(const [name,domain] of sites){
  const data=await collect(domain);audits.push({name,...data})
- console.log('SITE_CRAWL '+JSON.stringify({name,domain,advertised:data.advertised,inspected:data.inspected,issues:data.issueCount,warnings:data.warningCount,fatalErrors:data.fatalErrors.slice(0,7),sampleIssues:data.sampleIssues.slice(0,5)}))
+ console.log('SITE_CRAWL '+JSON.stringify({name,domain,advertised:data.advertised,inspected:data.inspected,issues:data.issueCount,warnings:data.warningCount,fatalErrors:data.fatalErrors.slice(0,7),sampleIssues:data.sampleIssues.slice(0,5),sampleWarnings:data.sampleWarnings.slice(0,5)}))
 }
 fs.mkdirSync('portfolio-audit',{recursive:true})
 fs.writeFileSync('portfolio-audit/sitewide-pages.json',JSON.stringify(audits,null,2))
