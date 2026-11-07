@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatMoney } from '../lib/money'
+import { exportReportXlsx } from '../lib/reportExcelExport'
 
 const easternDate = date => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 function dateRange(period) {
@@ -20,6 +21,8 @@ export default function BillingProductivity() {
   const [loading,setLoading] = useState(true)
   const [error,setError] = useState('')
   const [revision,setRevision] = useState(0)
+  const [exporting,setExporting] = useState(false)
+  const [exportError,setExportError] = useState('')
   useEffect(() => {
     let active = true
     const fetchReport = async () => {
@@ -37,10 +40,33 @@ export default function BillingProductivity() {
     entries:a.entries+Number(r.entries||0),hours:a.hours+Number(r.hours||0),
     recorded:a.recorded+Number(r.recorded||0),billed:a.billed+Number(r.billed||0)
   }),{entries:0,hours:0,recorded:0,billed:0}),[rows])
+  const exportExcel = async () => {
+    if (loading || error || exporting) return
+    setExporting(true); setExportError('')
+    try {
+      const range = dateRange(period)
+      const exportRows = rows.map(r => [
+        r.work_date, r.staff_name, Number(r.entries || 0), Number(r.hours || 0),
+        Number(r.recorded || 0), Number(r.billed || 0),
+      ])
+      exportRows.push(['TOTAL', '', totals.entries, totals.hours, totals.recorded, totals.billed])
+      await exportReportXlsx({
+        filename: 'employee-productivity-' + range.start_on + '-to-' + range.end_on + '.xlsx',
+        sheetName: 'Employee Productivity',
+        headers: ['Date', 'Employee', 'Entries', 'Hours', 'Recorded', 'Billed'],
+        rows: exportRows, decimalColumns: [3], moneyColumns: [4,5],
+      })
+    } catch (e) {
+      setExportError(e?.message || 'Excel export failed')
+    } finally { setExporting(false) }
+  }
   return <section aria-label="Employee Productivity" style={{...card,marginBottom:16,padding:16}}>
     <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:12,alignItems:'center',marginBottom:12}}>
       <div><h3 style={{margin:0,color:'var(--tx)'}}>Employee Productivity</h3><p style={{margin:'4px 0',fontSize:12,color:'var(--t3)'}}>Authorized employee time and billing activity</p></div>
-      <button type="button" className="btn sec" disabled={loading} onClick={()=>setRevision(n=>n+1)}>↻ {loading?'Loading…':'Refresh'}</button>
+      <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+        <button type="button" className="btn sec" disabled={loading || !!error || exporting || !rows.length} onClick={exportExcel} aria-label="Export employee productivity report to Excel">{exporting?'Preparing Excel…':'Export to Excel (.xlsx)'}</button>
+        <button type="button" className="btn sec" disabled={loading} onClick={()=>setRevision(n=>n+1)}>↻ {loading?'Loading…':'Refresh'}</button>
+      </div>
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,230px),1fr))',gap:10,marginBottom:12}}>
       <label style={{fontSize:12,color:'var(--t2)'}}>Employee search<input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employees" style={control}/></label>
@@ -48,6 +74,7 @@ export default function BillingProductivity() {
         <option value="day">Today</option><option value="week">This week (Monday–Sunday)</option><option value="month">This month</option>
       </select></label>
     </div>
+    {exportError && <p role="alert" style={{color:'#ef4444'}}>{exportError}</p>}
     {error ? <div role="alert" style={{...card,borderColor:'#ef4444'}}>Could not load Employee Productivity: {error} <button type="button" onClick={()=>setRevision(v=>v+1)}>Retry</button></div> : <>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(125px,1fr))',gap:10,marginBottom:12}} aria-live="polite">
         {[['Time entries',totals.entries],['Total hours',totals.hours.toFixed(2)+'h'],['Recorded',formatMoney(totals.recorded)],['Billed',formatMoney(totals.billed)]].map(([label,val])=><div key={label} style={card}><div style={{fontSize:11,color:'var(--t3)'}}>{label}</div><strong style={{fontSize:19,color:'var(--tx)'}}>{loading?'—':val}</strong></div>)}
