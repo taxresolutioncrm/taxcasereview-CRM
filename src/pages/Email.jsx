@@ -109,9 +109,7 @@ export default function Email() {
   const draftFeatureEnabled = ['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'].includes(myTenantId)
   const userEmailLower = user?.email?.toLowerCase() || ''
   const isDemoMailbox = userEmailLower === 'demo@taxrescrm.net'
-  const CLOUDCPA_TENANT_ID = 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae'
   const isNashville = myTenantId === NASHVILLE_TENANT_ID
-  const isCloudCpaPlatformRelay = myTenantId === CLOUDCPA_TENANT_ID && !gmailConnected
   const isRomyLabsMailboxAdmin = ['info@romylabs.com','romy@romylabs.com'].includes(userEmailLower)
   const centralMailboxOwner = isRomyLabsMailboxAdmin ? 'info@romylabs.com' : (user?.email || '')
   const DEMO_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
@@ -460,7 +458,7 @@ export default function Email() {
     if (!form.subject || !form.body) { showToast('Subject and body required'); return }
     if (!form.recipient) { showToast('Recipient email address required to send'); return }
     if (saving) return
-    if (composeAttachments.length && (form.routeId || isDemoMailbox || isCloudCpaPlatformRelay || (isNashville && m365Connected) || !gmailConnected)) {
+    if (composeAttachments.length && (form.routeId || isDemoMailbox || (isNashville && m365Connected) || !gmailConnected)) {
       showToast('Attachments are supported with connected Gmail new messages. This mailbox does not support attachments here; nothing was sent.')
       return
     }
@@ -515,29 +513,6 @@ export default function Email() {
       } catch (e) {
         setSaving(false)
         showToast('Demo email not sent: ' + (e?.message || e))
-        return
-      }
-    } else if (isCloudCpaPlatformRelay) {
-      try {
-        const { data, error } = await supabase.functions.invoke('send-email', {
-          body: {
-            tenant_id: myTenantId,
-            to: form.recipient,
-            subject: form.subject,
-            text: form.body,
-            from_email: 'tony@thecloudcpa.net',
-            from_name: 'CloudCPA Inc',
-          },
-        })
-        if (error) throw error
-        if (!data?.success || data?.via !== 'taxres_platform_relay' || data?.reply_to !== 'tony@thecloudcpa.net') {
-          throw new Error(data?.error || 'CloudCPA platform relay did not confirm delivery')
-        }
-        status = 'Sent'
-        alreadyStored = true
-      } catch (e) {
-        setSaving(false)
-        showToast('CloudCPA email not sent: ' + (e?.message || e))
         return
       }
     } else if (isNashville && m365Connected) {
@@ -605,7 +580,7 @@ export default function Email() {
       })
     }
 
-    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via Stalwart' : isCloudCpaPlatformRelay && status === 'Sent' ? '✅ CloudCPA email sent through the TaxRes platform relay' : isNashville && m365Connected && status === 'Sent' ? '✅ Email sent via Microsoft 365!' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ No connected email provider — this was only saved as a log entry, nothing was emailed')
+    showToast(form.routeId && status === 'Sent' ? `✅ Reply sent from ${form.replyFrom}` : isDemoMailbox && status === 'Sent' ? '✅ Demo email sent via Stalwart' : isNashville && m365Connected && status === 'Sent' ? '✅ Email sent via Microsoft 365!' : status === 'Sent' ? '✅ Email sent via Gmail!' : '⚠️ No connected email provider — this was only saved as a log entry, nothing was emailed')
     if (status === 'Sent' && draftScope && draftFeatureEnabled) discardRecoveredDraft(activeDraftId)
     setForm(BLANK); setComposeAttachments([]); setView('inbox'); load()
   }
@@ -1574,7 +1549,7 @@ export default function Email() {
               </button>
             </div>
             <div style={{ marginTop: 10, fontSize: 11, color: 'var(--t3)', textAlign: 'center' }}>
-              {isDemoMailbox ? 'TaxRes CRM email is connected through Stalwart.' : isCloudCpaPlatformRelay ? 'CloudCPA outbound email is active through the TaxRes platform relay. Replies go to tony@thecloudcpa.net until CloudCPA connects its own mailbox.' : 'Connect Gmail in the sidebar to send directly. Until then, emails are logged for tracking.'}
+              {isDemoMailbox ? 'TaxRes CRM email is connected through Stalwart.' : 'Connect Gmail in the sidebar to send directly. Until then, emails are logged for tracking.'}
             </div>
           </div>
         )}
