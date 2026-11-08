@@ -153,7 +153,7 @@ export async function loadFirmBrandingPublic(tenantHint) {
   try {
     // Public branding must have an explicit tenant. Never invoke the legacy
     // no-argument RPC path because it selects the first settings row and can
-    // display another office's logo/name on a CloudCPA document.
+    // display another office's logo/name on a document.
     if (!tenantHint) {
       if (!FIRM.loaded) resetFirmBranding()
       return FIRM
