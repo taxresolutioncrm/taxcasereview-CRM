@@ -9,8 +9,11 @@ const sites=[
 const out=await Promise.all(sites.map(async x=>{
  try{
   const r=await fetch(x.url+'?public_release_probe=20261107',{redirect:'follow',headers:{'Cache-Control':'no-cache','User-Agent':'RomyLabs-PoolVerge-Release-QA/1.0'},signal:AbortSignal.timeout(14000)})
-  const s=await r.text(),ok=r.status===200&&s.includes(x.expected)&&!s.includes(x.absent)
-  return {url:x.url,status:ok?'PASS':'FAIL',http:r.status,expectedFound:s.includes(x.expected),staleFound:s.includes(x.absent),chars:s.length}
+  const s=await r.text()
+  const expectedFound=x.url==='https://romylabs.com/' ? /PoolVerge<\/strong>[\s\S]{0,500}CRM Live/.test(s) : s.includes(x.expected)
+  const staleFound=s.includes(x.absent)
+  const ok=r.status===200&&expectedFound&&!staleFound
+  return {url:x.url,status:ok?'PASS':'FAIL',http:r.status,expectedFound,staleFound,chars:s.length}
  }catch(e){return {url:x.url,status:'ERROR',error:String(e)}}
 }))
 for(const x of out)console.log('POOLVERGE_RELEASE '+JSON.stringify(x))
