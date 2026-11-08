@@ -21,6 +21,8 @@ const FALLBACK_PRODUCTS = [
   { product_id:'restore_relay', name:'Restore Relay' },
 ]
 
+const alphabeticalProducts = list => [...list].sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity:'base', numeric:true }))
+
 const SYMBOLS = '!@#$%^&*()-_=+[]{};:,.?'
 function securePassword(length=24, useSymbols=true) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789' + (useSymbols ? SYMBOLS : '')
@@ -43,7 +45,7 @@ function maskSecret() { return '••••••••••••••••
 
 export default function CredentialVault() {
   const [entries, setEntries] = useState([])
-  const [products, setProducts] = useState(FALLBACK_PRODUCTS)
+  const [products, setProducts] = useState(() => alphabeticalProducts(FALLBACK_PRODUCTS))
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -67,11 +69,11 @@ export default function CredentialVault() {
     setLoading(true)
     const [{ data, error }, productRes] = await Promise.all([
       supabase.rpc('credential_vault_list'),
-      supabase.from('romylabs_products').select('product_id,name,active,sort_order').eq('active', true).order('sort_order')
+      supabase.from('romylabs_products').select('product_id,name,active,sort_order').eq('active', true).order('name')
     ])
     if (error) notify(error.message)
     setEntries(data || [])
-    if (productRes.data?.length) setProducts(productRes.data)
+    if (productRes.data?.length) setProducts(alphabeticalProducts(productRes.data))
     setLoading(false)
   }
 
