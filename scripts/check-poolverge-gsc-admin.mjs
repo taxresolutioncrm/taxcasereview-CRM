@@ -25,7 +25,7 @@ checked(ui.includes("body: { action: 'connect', code: gscCode, product_key: prod
 checked(ui.includes("gsc?.connected === true && gsc?.degraded !== true && gsc?.cached !== true"), 'Only fresh API data shows as connected')
 checked(ui.includes("seoProduct==='pool_crm'?'PoolVerge'"), 'PoolVerge shown on Google connect control')
 checked(ui.includes('gscError && !gscLoading'), 'Property access failures are visible to owner')
-checked(ui.includes("if (tab === 'search') fetchGSC(seoProduct)"), 'SEO tab refresh uses selected property, not a TaxRes default')
+checked(ui.includes("if (tab === 'search') fetchGSC(seoProduct, gscRangeDays)"), 'SEO tab refresh uses selected property and selected reporting window')
 checked(!ui.includes("fetchGSC(seoProduct)\n    fetchBing(seoProduct)"), 'Avoid duplicate competing GSC fetches when changing products')
 const claritySql=source('supabase/migrations/20261107064000_poolverge_clarity_reporting.sql')
 checked(claritySql.includes("tracking_id = 'z31rnrvbns'"),'Clarity uses actual previously provided PoolVerge project ID')
@@ -35,3 +35,7 @@ checked(ui.includes("Microsoft Clarity · PoolVerge"),'PoolVerge SEO panel shows
 checked(ui.includes("clarityConfiguredProducts"),'Clarity configured status visible separately from live')
 checked(ui.includes("apiStatus==='live' && typeof sessions==='number' && sessions>0"),'Clarity live-session verification requires actual provider sessions')
 console.log('PASS PoolVerge ↔ RomyLabs GSC product-scoped regression contract')
+
+checked(ui.includes("const [gscRangeDays, setGscRangeDays] = useState(28)"), 'Search Console defaults to actionable 28-day reporting')
+checked(ui.includes("range_days: rangeDays"), 'Search Console sends selected reporting window to provider API')
+checked(ui.includes("Data through"), 'Search Console displays provider freshness date')

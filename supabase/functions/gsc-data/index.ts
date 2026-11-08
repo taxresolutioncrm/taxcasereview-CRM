@@ -68,11 +68,13 @@ async function getOAuthToken(supabase:any,settings:any){
   return d.access_token as string
 }
 
-async function fetchLive(token:string,siteUrl:string,productKey:string){
-  const end=new Date(); end.setDate(end.getDate()-1)
-  const start=new Date(end); start.setDate(start.getDate()-89)
+async function fetchLive(token:string,siteUrl:string,productKey:string,rangeDays=90){
+  const allowed=[7,28,90]
+  const days=allowed.includes(Number(rangeDays))?Number(rangeDays):90
+  const end=new Date(); end.setDate(end.getDate()-2)
+  const start=new Date(end); start.setDate(start.getDate()-(days-1))
   const prevEnd=new Date(start); prevEnd.setDate(prevEnd.getDate()-1)
-  const prevStart=new Date(prevEnd); prevStart.setDate(prevStart.getDate()-89)
+  const prevStart=new Date(prevEnd); prevStart.setDate(prevStart.getDate()-(days-1))
   const fmt=(d:Date)=>d.toISOString().slice(0,10)
   const post=async(body:any)=>{
     const r=await fetch(`${GSC_BASE}/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,{
@@ -100,7 +102,7 @@ async function fetchLive(token:string,siteUrl:string,productKey:string){
       .filter((r:any)=>r.query)
       .sort((a:any,b:any)=>b.impressions-a.impressions || b.clicks-a.clicks || a.pos-b.pos)
       .slice(0,10),
-    rangeLabel:'Last 3 months',rangeDays:90,
+    rangeLabel:days===7?'Last 7 days':days===28?'Last 28 days':'Last 90 days',rangeDays:days,
     dataThrough:fmt(end),syncedAt:new Date().toISOString(),authMode:'oauth'
   }
 }
@@ -163,7 +165,7 @@ serve(async(req)=>{
     const {data:allowed,error:accessError}=await caller.rpc('_is_platform_admin')
     if(accessError || allowed!==true) return json({error:'Platform admin access required'},403)
     const body=await req.json().catch(()=>({}))
-    const {action,code,product_key='taxres_crm'}=body
+    const {action,code,product_key='taxres_crm',range_days=90}=body
     if(!GSC_SITE_CANDIDATES[product_key]) return json({error:'Unsupported reporting product'},400)
     const {data:settings,error}=await supabase.from('settings').select('*').eq('tenant_id',ADMIN_TENANT).maybeSingle()
     if(error||!settings) return json({error:'Could not load Search Console settings'},500)
@@ -196,8 +198,8 @@ serve(async(req)=>{
     try{
       const token=await getOAuthToken(supabase,settings)
       const siteUrl=await resolveSiteUrl(token,product_key)
-      const live=await fetchLive(token,siteUrl,product_key)
-      await saveSnapshot(supabase,live)
+      const live=await fetchLive(token,siteUrl,product_key,range_days)
+      if (live.rangeDays === 90) await saveSnapshot(supabase,live)
       return json(live)
     }catch(e:any){
       const reason=String(e?.message||e)

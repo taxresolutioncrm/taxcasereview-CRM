@@ -5767,6 +5767,7 @@ function CommandCenter() {
   const [gscConnected, setGscConnected] = useState(false)
   const [gscError, setGscError] = useState('')
   const [gscCached, setGscCached] = useState(false)
+  const [gscRangeDays, setGscRangeDays] = useState(28)
   // PoolVerge Clarity is a separate API integration, not a Google metric.
   const [poolClarity, setPoolClarity] = useState(null)
   const [poolClarityError, setPoolClarityError] = useState('')
@@ -5948,13 +5949,13 @@ function CommandCenter() {
           setGscError(r?.error || error?.message || 'Google Search Console authorization failed')
           return
         }
-        fetchGSC(product)
+        fetchGSC(product, gscRangeDays)
       }).catch(e => setGscError(String(e?.message || e)))
         .finally(() => setGscLoading(false))
       return
     }
-    if (tab === 'search') fetchGSC(seoProduct)
-  }, [tab, seoProduct])
+    if (tab === 'search') fetchGSC(seoProduct, gscRangeDays)
+  }, [tab, seoProduct, gscRangeDays])
 
   async function fetchBing(productKey = 'taxres_crm') {
     setBingData(null)
@@ -5976,14 +5977,14 @@ function CommandCenter() {
     }
   }
 
-  async function fetchGSC(productKey = 'taxres_crm') {
+  async function fetchGSC(productKey = 'taxres_crm', rangeDays = gscRangeDays) {
     setGscLoading(true)
     setGscConnected(false)
     setGscCached(false)
     setGscError('')
     setGscData(null)
     try {
-      const { data: gsc, error } = await supabase.functions.invoke('gsc-data', { body: { product_key: productKey } })
+      const { data: gsc, error } = await supabase.functions.invoke('gsc-data', { body: { product_key: productKey, range_days: rangeDays } })
       if (error) throw error
       if (gsc?.error) throw new Error(gsc.error)
       if (gsc?.dataAvailable) {
@@ -6600,9 +6601,17 @@ function CommandCenter() {
 
           {/* ── Google Search Console ── */}
           <div style={CC.card({padding:'22px 24px', marginBottom:18})}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
               <span style={{ fontSize:16 }}>🔵</span>
               <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Google Search Console</div>
+              <div style={{display:'flex',gap:5,marginLeft:8}}>
+                {[7,28,90].map(days=>(
+                  <button key={days} onClick={()=>setGscRangeDays(days)} disabled={gscLoading}
+                    style={{border:'1px solid '+(gscRangeDays===days?'#6366f1':'rgba(255,255,255,.08)'),background:gscRangeDays===days?'rgba(99,102,241,.18)':'rgba(255,255,255,.03)',color:gscRangeDays===days?'#c7d2fe':'#64748b',borderRadius:6,padding:'4px 8px',fontSize:10,fontWeight:700,cursor:gscLoading?'default':'pointer'}}>
+                    {days}d
+                  </button>
+                ))}
+              </div>
               {gscConnected
                 ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(16,185,129,.15)', color:'#10b981', marginLeft:'auto' }}>✅ Connected</span>
                 : <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:10, background:'rgba(99,102,241,.15)', color:'#a5b4fc', marginLeft:'auto' }}>{gscCached ? 'Cached · reconnect needed' : 'Not connected'}</span>
@@ -6611,14 +6620,15 @@ function CommandCenter() {
             {(()=>{ const sd = gscData?.dataAvailable ? gscData : null; return (<>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom: sd && gscData?.topQueries?.length > 0 ? 16 : 0 }}>
                 {[
-                  { label:'Impressions',  value: sd ? sd.impressions.toLocaleString() : '—', color:'#6366f1' },
-                  { label:'Clicks',       value: sd ? sd.clicks.toLocaleString() : '—',       color:'#10b981' },
-                  { label:'CTR',          value: sd ? `${sd.ctr}%` : '—',                     color:'#f59e0b' },
-                  { label:'Avg Position', value: sd ? String(sd.avgPosition) : '—',           color:'#f97316' },
+                  { label:'Impressions',  value: sd ? sd.impressions.toLocaleString() : '—', color:'#6366f1', delta:sd?.impressionsChange, suffix:'%' },
+                  { label:'Clicks',       value: sd ? sd.clicks.toLocaleString() : '—',       color:'#10b981', delta:sd?.clicksChange, suffix:'%' },
+                  { label:'CTR',          value: sd ? `${sd.ctr}%` : '—',                     color:'#f59e0b', delta:sd?.ctrChange, suffix:' pts' },
+                  { label:'Avg Position', value: sd ? String(sd.avgPosition) : '—',           color:'#f97316', delta:sd?.posChange, suffix:'' },
                 ].map((m,i)=>(
                   <div key={i} style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
                     <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>{m.label}</div>
                     <div style={{ fontSize:22, fontWeight:800, color:m.color }}>{m.value}</div>
+                    {sd && typeof m.delta==='number' && <div style={{fontSize:10,marginTop:3,color:m.delta>0?'#10b981':m.delta<0?'#f87171':'#64748b'}}>{m.delta>0?'+':''}{m.delta}{m.suffix} vs previous {gscRangeDays}d</div>}
                   </div>
                 ))}
               </div>
@@ -6647,7 +6657,11 @@ function CommandCenter() {
               )}
               {gscError && !gscLoading && <div role="alert" style={{fontSize:12,color:'#fca5a5',marginTop:10,lineHeight:1.6}}>{gscError}</div>}
               {gscCached && gscData?.cachedAt && <div style={{fontSize:11,color:'#fbbf24',marginTop:8}}>Last saved snapshot: {new Date(gscData.cachedAt).toLocaleString('en-US',{timeZone:'America/New_York'})}. These are not live figures.</div>}
-              {gscConnected && gscData?.siteUrl && <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>{gscData.rangeLabel || 'Last 3 months'} · {gscData.siteUrl}</div>}
+              {gscConnected && gscData?.siteUrl && <div style={{ fontSize:11, color:'#475569', marginTop:8, lineHeight:1.6 }}>
+                {gscData.rangeLabel || ('Last '+gscRangeDays+' days')} · {gscData.siteUrl}
+                {gscData.dataThrough ? <> · Data through <strong style={{color:'#64748b'}}>{gscData.dataThrough}</strong></> : null}
+                {gscData.syncedAt ? <> · Refreshed {new Date(gscData.syncedAt).toLocaleString('en-US',{timeZone:'America/New_York'})}</> : null}
+              </div>}
             </>)})()}
           </div>
 
