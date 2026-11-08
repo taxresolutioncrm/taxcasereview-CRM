@@ -497,7 +497,7 @@ export function AppProvider({ children }) {
 
   // Global notification delivery for central TaxRes-family offices.
   // Runtime notifications use Supabase Realtime only — never GitHub Actions.
-  // Central TCR / CloudCPA / Centurion use ONE managed Realtime channel for
+  // Central TCR / Centurion use ONE managed Realtime channel for
   // notification events. Nashville retains its existing paths unchanged.
   useEffect(() => {
     if (!user) return
