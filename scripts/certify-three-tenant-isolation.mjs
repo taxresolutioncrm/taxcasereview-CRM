@@ -12,7 +12,6 @@ if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {
 const TENANTS = [
   { id:'61a89aef-0e7e-4ea2-b222-44ab2024655a', code:'TRC-001', name:'Tax Case Review' },
   { id:'489ace07-1a6b-4864-833a-4f8420568b40', code:'TRC-002', name:'Nashville Tax Solutions' },
-  { id:'ecd3d3ce-016a-4bb4-800e-f090f51e4cae', code:'TRC-003', name:'CloudCPA Inc' },
 ]
 const TABLES = [
   { table:'clients', make:(tenant,run)=>({id:`${run}_${tenant.code}_client`,name:`QA Isolation ${tenant.code}`,email:`${run}.${tenant.code}.client@example.com`,phone:'0000000000',status:'Active',tenant_id:tenant.id,notes:`TEMP QA ISOLATION ${run}`}) },

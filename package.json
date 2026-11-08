@@ -1,7 +1,7 @@
 {
   "name": "tcr-client",
   "private": true,
-  "version": "3.2.88",
+  "version": "3.2.89",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
@@ -34,7 +34,6 @@
     "deploy": "gh-pages -d dist --dotfiles",
     "check-central-family-isolation": "node scripts/check-central-family-isolation.cjs",
     "check-dashboard-i18n": "node scripts/check-dashboard-localization.mjs",
-    "cloudcpa:readiness": "node scripts/certify-cloudcpa-readiness.mjs",
     "check-family-auth": "node scripts/check-taxres-family-auth.mjs",
     "check-nashville-closeout": "node scripts/check-nashville-closeout.cjs",
     "check-client-case-quick-actions": "node scripts/check-client-case-quick-actions.cjs",
@@ -53,8 +52,6 @@
     "check-taxres-workflow-library-mirror": "node scripts/check-taxres-workflow-library-mirror.mjs",
     "check-document-intelligence": "node scripts/check-document-intelligence.mjs",
     "check-fantasy-public-rls": "node scripts/check-fantasy-public-rls.mjs",
-    "check-cloudcpa-contact-branding": "node scripts/check-cloudcpa-contact-branding.cjs",
-    "check-cloudcpa-document-branding": "node scripts/check-cloudcpa-document-branding.cjs",
     "check-taxreturns-family": "node scripts/check-taxreturns-family.cjs",
     "check-ai-file-picker": "node scripts/check-ai-file-picker.cjs",
     "check-email-blast-select-all": "node scripts/check-email-blast-select-all.cjs",

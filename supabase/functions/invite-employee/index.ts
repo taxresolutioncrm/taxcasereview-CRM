@@ -127,7 +127,7 @@ serve(async(req)=>{
     const tokenHash=linkData?.properties?.hashed_token||linkData?.properties?.hashedToken||''
     if(!tokenHash) return json({error:'Could not prepare employee access token'},500)
 
-    const office=tenant?.tenant_code==='TRC-003'?'cloudcpa':tenant?.tenant_code==='DEMO'?'demo':'tcr'
+    const office=tenant?.tenant_code==='DEMO'?'demo':'tcr'
     const accessLink=`${FAMILY_PASSWORD_PAGE}?token_hash=${encodeURIComponent(tokenHash)}&type=${kind}&office=${encodeURIComponent(office)}`
     const html=accessEmailHtml({name:requestedName||employee.name||'',brandName:firmName,logoUrl,link:accessLink,kind})
     let emailOk=false, textOk=false

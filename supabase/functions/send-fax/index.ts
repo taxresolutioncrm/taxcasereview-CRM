@@ -60,12 +60,7 @@ serve(async (req) => {
       .maybeSingle()
 
     let platformRelay = false
-    // CloudCPA TRC-003 is an active prospect workspace. Until Tony connects
-    // CloudCPA's own fax carrier, allow authenticated CloudCPA staff with
-    // communications permission to transmit outbound faxes through the proven
-    // Tax Case Review SignalWire transport. The CRM keeps the fax log and
-    // callback tenant scoped to CloudCPA; the response truthfully identifies
-    // the physical relay number/provider.
+    // Platform administrator fallback uses the existing TaxRes fax transport.
     const hasTenantFaxProvider = Boolean(
       settings?.telnyx_api_key ||
       (settings?.sw_space_url && settings?.sw_project_id && settings?.sw_api_token)
@@ -73,7 +68,7 @@ serve(async (req) => {
     if (!hasTenantFaxProvider) {
       const { data: cloudTenant } = await admin.from('tenants')
         .select('tenant_code').eq('id', tenantId).maybeSingle()
-      if (['TRC-003','ADMIN'].includes(String(cloudTenant?.tenant_code || ''))) {
+      if (String(cloudTenant?.tenant_code || '') === 'ADMIN') {
         const { data: relaySettings } = await admin.from('settings')
           .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,telnyx_api_key,firm_fax_number,tenant_id')
           .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a')

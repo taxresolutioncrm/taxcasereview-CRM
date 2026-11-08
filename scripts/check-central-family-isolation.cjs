@@ -80,8 +80,7 @@ must(settings.includes('delete payload.m365_client_id'),'Central settings must s
 must(settings.includes('delete payload.verizon_api_key'),'Central settings must strip Verizon fields outside Nashville boundary')
 must(settings.includes("calling_provider: 'signalwire'"),'Central calling provider default must remain SignalWire')
 
-must(email.includes('isCloudCpaPlatformRelay'),'CloudCPA email relay path must remain explicit')
-must(email.includes('myTenantId === CLOUDCPA_TENANT_ID && !gmailConnected'),'CloudCPA relay must be tenant-scoped')
+must(!email.includes('isCloudCpaPlatformRelay'),'Retired office email relay must not remain in active shared Email UI')
 must(email.includes('isNashville && (m365Connected ? ('),'M365 UI must remain behind an exact Nashville guard if shared code is present')
 
 must(appContext.includes('This account does not have an active TaxRes-family office in this CRM.'),'Authenticated users with no active central tenant must fail closed')
@@ -91,7 +90,6 @@ must(manageBooking.includes('loadFirmBrandingPublic(rec?.tenant_id)'),'Manage Bo
 must(!adminPortal.includes("{ key:'nashville'"),'Central Admin Portal metrics must not request Nashville')
 
 for(const asset of [
-  'public/cloudcpa-logo.png',
   'public/taxrescrm-logo.png',
   'public/taxrescrm-favicon.png',
   'public/templates/2848_Pers_RC.pdf',
@@ -124,7 +122,7 @@ must(quarantine.includes('get_branding_by_email_domain'),'Pre-login branding mus
 must(!quarantine.includes('delete from public.clients'),'Quarantine must preserve legacy client history')
 must(!quarantine.includes('delete from public.payments'),'Quarantine must preserve legacy payment history')
 must(!quarantine.includes('delete from public.cases'),'Quarantine must preserve legacy case history')
-must(centralMetrics.includes('products":["tax_case_review","cloudcpa"]'),'Central family metrics must request TCR + CloudCPA only')
+must(centralMetrics.includes('tax_case_review'),'Central family metrics must continue Tax Case Review coverage')
 must(!centralMetrics.includes('products":["tax_case_review","nashville"'),'Central family metrics must not request Nashville')
 must(!centralMetrics.includes('c_nash'),'Central family metrics must not define a Nashville tenant constant')
 must(centralMetrics.includes('from public, anon'),'Central family metrics must revoke anonymous execution')

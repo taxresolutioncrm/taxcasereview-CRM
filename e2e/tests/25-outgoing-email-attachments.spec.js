@@ -24,7 +24,7 @@ test('unsupported mailbox providers fail closed before any network send', () => 
   const beforeSend=email.slice(start,email.indexOf('    setSaving(true)',start))
   expect(beforeSend).toContain('composeAttachments.length &&')
   expect(beforeSend).toContain('form.routeId')
-  expect(beforeSend).toContain('isCloudCpaPlatformRelay')
+  expect(beforeSend).toContain('isDemoMailbox')
   expect(beforeSend).toContain('!gmailConnected')
   expect(beforeSend).toContain('nothing was sent.')
 })

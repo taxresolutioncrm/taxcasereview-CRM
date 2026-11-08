@@ -10,7 +10,6 @@ const FIXED_PRODUCTS = new Set([
   'taxres_crm',
   'tax_case_review',
   'nashville',
-  'cloudcpa',
   'demo',
   'camvella',
   'arcvena',

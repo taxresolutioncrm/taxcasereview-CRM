@@ -844,17 +844,14 @@ serve(async (req) => {
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 
-    // Prospect / demo office fallback: until the office connects its own
-    // mailbox, deliver through the proven TaxRes Stalwart transport while
-    // preserving that tenant's branding. TRC-003 (CloudCPA) and TRC-004
-    // (Centurion) are intentionally explicit so no unrelated tenant silently
-    // inherits this fallback.
+    // Retained solely for the approved Centurion office. Other tenants
+    // must configure their own mailbox and cannot inherit this relay.
     if (tenant_id) {
       const { data: relayTenant } = await admin.from('tenants')
         .select('id,tenant_code,firm_name')
         .eq('id', tenant_id)
         .maybeSingle()
-      if (['TRC-003','TRC-004'].includes(String(relayTenant?.tenant_code || ''))) {
+      if (String(relayTenant?.tenant_code || '') === 'TRC-004') {
         const { data: relaySettings } = await admin.from('settings')
           .select('name,firmname,email,firmemail,gmail_refresh_token')
           .eq('tenant_id', tenant_id)
@@ -863,7 +860,7 @@ serve(async (req) => {
           const { data: vaultTransport } = await admin.rpc('romylabs_stalwart_transport_for_product', {
             p_product_key: 'taxres_crm',
           })
-          const tenantLabel = relayTenant?.tenant_code === 'TRC-004' ? 'Centurion' : 'CloudCPA'
+          const tenantLabel = 'Centurion'
           if (!vaultTransport?.ok) {
             return new Response(JSON.stringify({ error:`${tenantLabel} platform mail transport unavailable` }), {
               status:409, headers:{...corsHeaders,'Content-Type':'application/json'},
@@ -883,19 +880,17 @@ serve(async (req) => {
           // Centurion is a TaxRes-hosted demo office. Its client-facing system
           // mail must use the TaxRes info identity, not the operator mailbox
           // stored in the shared transport credential.
-          const relayFrom = relayTenant?.tenant_code === 'TRC-004'
-            ? 'info@taxrescrm.net'
-            : transport.fromAddress
+          const relayFrom = 'info@taxrescrm.net'
           const recipients=(Array.isArray(to)?to:[to]).map((x:any)=>safe(x)).filter(Boolean).slice(0,25)
           if (!recipients.length) {
             return new Response(JSON.stringify({ error:'Recipient missing' }), {
               status:422, headers:{...corsHeaders,'Content-Type':'application/json'},
             })
           }
-          const fallbackName = relayTenant?.tenant_code === 'TRC-004' ? 'Centurion Firm' : 'CloudCPA Inc'
+          const fallbackName = 'Centurion Firm'
           const relayName=safe(relaySettings?.name || relaySettings?.firmname || relayTenant?.firm_name || fallbackName)
           const configuredReply=safe(relaySettings?.email || relaySettings?.firmemail).toLowerCase()
-          const relayReply=configuredReply || (relayTenant?.tenant_code === 'TRC-003' ? 'tony@thecloudcpa.net' : '')
+          const relayReply=configuredReply || relayFrom
           const submissions:any[]=[]
           for (const recipient of recipients) {
             const result=await sendViaStalwartJmap({
@@ -903,7 +898,7 @@ serve(async (req) => {
               username:transport.username,
               password:transport.password,
               fromAddress:relayFrom,
-              replyTo:relayReply || (relayTenant?.tenant_code === 'TRC-004' ? relayFrom : undefined),
+              replyTo:relayReply,
               fromName:`${relayName} via TaxRes CRM`,
               to:recipient,
               subject:safe(subject),

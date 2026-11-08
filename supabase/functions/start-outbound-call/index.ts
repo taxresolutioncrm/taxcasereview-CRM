@@ -50,19 +50,6 @@ serve(async (req) => {
       .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did,tenant_id')
       .eq('tenant_id', effectiveTenantId).limit(1).maybeSingle()
     let platformRelay = false
-    if (!romylabsContext && (!settings?.sw_space_url || !settings?.sw_project_id || !settings?.sw_api_token)) {
-      const { data: cloudTenant } = await db.from('tenants').select('tenant_code').eq('id', effectiveTenantId).maybeSingle()
-      if (cloudTenant?.tenant_code === 'TRC-003') {
-        const fallback = await db.from('settings')
-          .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did,tenant_id')
-          .eq('tenant_id','61a89aef-0e7e-4ea2-b222-44ab2024655a').limit(1).maybeSingle()
-        if (fallback.data?.sw_space_url && fallback.data?.sw_project_id && fallback.data?.sw_api_token) {
-          settings = fallback.data
-          platformRelay = true
-        }
-        if (!sErr) sErr = fallback.error
-      }
-    }
     if (romylabsContext && (!settings?.sw_space_url || !settings?.sw_project_id || !settings?.sw_api_token)) {
       const fallback = await db.from('settings')
         .select('sw_space_url,sw_project_id,sw_api_token,sw_inbound_did,sw_outbound_did,tenant_id')

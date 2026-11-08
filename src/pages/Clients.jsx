@@ -1865,7 +1865,7 @@ export default function Clients() {
     const settings = await getSettings()
     let status = 'Sent', swId = null, errMsg = null
 
-    if (settings?.sw_space_url || myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae') {
+    if (settings?.sw_space_url) {
       try {
         const { data: resData, error: invokeErr } = await supabase.functions.invoke('send-sms', {
           body: { to: toNum, body: smsBody, client_id: c.id || null, user_id: user?.id || null }
@@ -1886,13 +1886,11 @@ export default function Clients() {
 
     const actor = resolveActorName(user, employees)
     let error = null
-    if (!(myTenantId === 'ecd3d3ce-016a-4bb4-800e-f090f51e4cae' && swId)) {
-      ;({ error } = await supabase.from('sms_messages').insert([{
+    ;({ error } = await supabase.from('sms_messages').insert([{
         clientName: c.name, phone: toNum, body: smsBody, status,
         signalwire_sms_id: swId, sent_by: actor, error_msg: errMsg,
         created_at: new Date().toISOString(),
       }]))
-    }
     setSmsSending(false)
     if (error) { showToast('Error: '+error.message); return }
 
@@ -2666,7 +2664,7 @@ export default function Clients() {
                 )}
               </div>
             </div>
-            {/* TCR, TaxRes and Centurion only; CloudCPA and Nashville are out of scope. */}
+            {/* TCR, TaxRes and Centurion only; Nashville is out of scope. */}
             {['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'].includes(FIRM.tenantId) && (
             <div style={{marginTop:12,display:'flex',gap:8,flexWrap:'wrap'}}>
               <button type="button" className="btn sec" style={{padding:'8px 14px',fontSize:13,fontWeight:700}} onClick={()=>{setDetailTab('tasks');setTaskSubTab('time');setLogTimeRequest(n=>n+1)}}>⏱ Log Time</button>

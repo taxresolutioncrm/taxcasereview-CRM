@@ -15,7 +15,7 @@ function editableNoteUsages(file){
 
 // Tenant portability must be evaluated only against the note-editing implementation.
 // Clients/Leads contain legitimate office-specific integrations outside note editing
-// (for example CloudCPA SMS routing), so scanning entire page files creates false
+// (for example tenant-specific SMS routing), so scanning entire page files creates false
 // deploy failures without protecting the note editor.
 const text=[
   ...migrationFiles.map(read),
