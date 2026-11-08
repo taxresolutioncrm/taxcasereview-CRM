@@ -165,9 +165,7 @@ serve(async req => {
     }
     if (calendarRes.error) return await fail('Calendar stats unavailable: ' + calendarRes.error.message)
 
-    const tenants = tenantsRes.data.filter((tenant: any) =>
-      !/cloudcpa/i.test(String(tenant.firm_name || '')) &&
-      String(tenant.tenant_code || '').toUpperCase() !== 'TRC-003')
+    const tenants = tenantsRes.data
     const activeOffices = tenants.filter((t: any) => t.status === 'active').length
     const mrr = tenants.reduce((sum: number, t: any) => sum + Number(t.effective_monthly || 0), 0)
     const clients = tenants.reduce((sum: number, t: any) => sum + Number(t.client_count || 0), 0)
