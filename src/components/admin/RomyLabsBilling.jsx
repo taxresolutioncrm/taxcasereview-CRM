@@ -106,7 +106,8 @@ export default function RomyLabsBilling() {
       })
     }
     for(const office of officeRegistry){
-      if(office.product_key!==payment.product_key || !office.external_office_id) continue
+      // TaxRes offices retain their existing native tenant picker and seat defaults.
+      if(payment.product_key==='taxres_crm' || office.product_key!==payment.product_key || !office.external_office_id) continue
       const id=String(office.external_office_id)
       if(!candidates.has(id)) candidates.set(id,{
         id,name:office.firm_name||id,registeredOffice:office,note:'Registered office · no billing account'
