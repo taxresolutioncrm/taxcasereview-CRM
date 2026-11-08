@@ -124,7 +124,6 @@ Deno.serve(async (req) => {
     }
     if(view==='tcr') return new Response(JSON.stringify(await tenantView(TCR_TENANT_ID,'tax_case_review','Tax Case Review',0)),{headers:{...cors,'Content-Type':'application/json'}})
     if(view==='nash') return new Response(JSON.stringify(await tenantView(NASH_TENANT_ID,'nashville','Nashville Tax Solutions',0)),{headers:{...cors,'Content-Type':'application/json'}})
-    if(view==='cloudcpa') return new Response(JSON.stringify(await tenantView('ecd3d3ce-016a-4bb4-800e-f090f51e4cae','cloudcpa','CloudCPA Inc',0)),{headers:{...cors,'Content-Type':'application/json'}})
     if(view==='demo') return new Response(JSON.stringify(await tenantView(DEMO_RUNTIME_TENANT_ID,'taxres_demo','Tax Res CRM Demo',0,true)),{headers:{...cors,'Content-Type':'application/json'}})
 
     const {data:tenants}=await supabase.from('tenants').select('id,firm_name,tenant_code,monthly_rate,created_at').not('tenant_code','in',`(${ADMIN_CODE},${TCR_CODE},${DEMO_CODE})`).neq('id',NASH_TENANT_ID)
