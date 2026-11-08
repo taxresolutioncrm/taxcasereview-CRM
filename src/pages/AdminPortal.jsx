@@ -118,6 +118,7 @@ const EXTERNAL_OFFICE_PRODUCTS = {
   groundivo:     { label:'GroundIVO',     color:'#16a34a', appUrl:'https://app.groundivo.com/' },
   oculivo:       { label:'Oculivo',       color:'#7C3AED', appUrl:'https://app.oculivo.com/' },
   restore_relay: { label:'Restore Relay', color:'#C2410C', appUrl:'https://restorerelay.com/login' },
+  pool_crm:      { label:'PoolVerge', color:'#0891B2', appUrl:'https://app.poolverge.com/' },
   nashville:     { label:'Nashville Tax Solutions', color:'#6366f1', appUrl:'https://nashville.taxrescrm.app' },
 }
 
@@ -173,7 +174,7 @@ async function loadPlatformOfficeRowsFresh() {
       .map(p => [p.product_id, {
         label:p.name || p.product_id,
         color:p.accent_color || '#6366f1',
-        appUrl:p.app_url || null,
+        appUrl:p.app_url || EXTERNAL_OFFICE_PRODUCTS[p.product_id]?.appUrl || null,
         sortOrder:Number.isFinite(Number(p.sort_order)) ? Number(p.sort_order) : 999,
       }])
   )
@@ -330,6 +331,8 @@ async function loadPlatformOfficeRowsFresh() {
         source_id:office.external_office_id,
         product:operationalProduct,
         firm_name:office.firm_name || `${cfg.label} Office`,
+        primary_contact_name:office.primary_contact_name || null,
+        primary_contact_email:office.primary_contact_email || null,
         brand_color:cfg.color,
         employee_count:null,
         registry_seat_hint:office.seats == null ? null : Number(office.seats),
@@ -1446,7 +1449,7 @@ function ExternalProductOfficePage({ productKey }) {
         setCfg({
           label:data.name || productKey,
           color:data.accent_color || '#6366f1',
-          appUrl:data.app_url || null,
+          appUrl:data.app_url || EXTERNAL_OFFICE_PRODUCTS[productKey]?.appUrl || null,
         })
       })
     return()=>{cancelled=true}
@@ -1486,6 +1489,9 @@ function ExternalProductOfficePage({ productKey }) {
           status:registryMatch.status,
           is_active:!['inactive','suspended','cancelled'].includes(String(registryMatch.status||'').toLowerCase()),
           since:registryMatch.created_at,
+          primary_contact_name:registryMatch.primary_contact_name || null,
+          primary_contact_email:registryMatch.primary_contact_email || null,
+          phone:registryMatch.primary_contact_phone || null,
           mrr:registryMatch.monthly_amount,
         })
         setLoading(false)

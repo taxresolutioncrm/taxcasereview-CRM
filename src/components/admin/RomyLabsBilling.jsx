@@ -31,6 +31,7 @@ export default function RomyLabsBilling() {
   const [filter,setFilter] = useState('all')
   const [selected,setSelected] = useState(null)
   const [tenants,setTenants] = useState([])
+  const [officeRegistry,setOfficeRegistry] = useState([])
   const [products,setProducts] = useState(PRODUCT_OPTIONS)
   const [paymentOpen,setPaymentOpen] = useState(false)
   const [payment,setPayment] = useState(blankPayment)
@@ -42,16 +43,18 @@ export default function RomyLabsBilling() {
 
   const load = useCallback(async()=>{
     setError('')
-    const [{data:payload,error:e},{data:tenantPayload,error:tenantError},{data:productPayload,error:productError}] = await Promise.all([
+    const [{data:payload,error:e},{data:tenantPayload,error:tenantError},{data:productPayload,error:productError},{data:registryPayload,error:registryError}] = await Promise.all([
       supabase.rpc('romylabs_billing_dashboard'),
       supabase.rpc('admin_tenant_overview'),
-      supabase.from('romylabs_products').select('product_id,name').order('name')
+      supabase.from('romylabs_products').select('product_id,name').order('name'),
+      supabase.rpc('admin_romylabs_office_registry')
     ])
     if(e){setError(e.message);setData(null);return null}
     const nextData = payload || {accounts:[],invoices:[],payments:[],events:[]}
     setData(nextData)
     setSelected(current => current ? (nextData.accounts || []).find(a=>a.id===current.id) || current : current)
     if(!tenantError) setTenants(Array.isArray(tenantPayload)?tenantPayload:[])
+    if(!registryError) setOfficeRegistry(Array.isArray(registryPayload)?registryPayload:[])
     // Existing billing accounts are also in scope, even if the office has a
     // separate Supabase project and is absent from this project's tenants.
     if(!productError && Array.isArray(productPayload) && productPayload.length){
@@ -102,6 +105,14 @@ export default function RomyLabsBilling() {
         note:'Billing account'
       })
     }
+    for(const office of officeRegistry){
+      // TaxRes offices retain their existing native tenant picker and seat defaults.
+      if(payment.product_key==='taxres_crm' || office.product_key!==payment.product_key || !office.external_office_id) continue
+      const id=String(office.external_office_id)
+      if(!candidates.has(id)) candidates.set(id,{
+        id,name:office.firm_name||id,registeredOffice:office,note:'Registered office · no billing account'
+      })
+    }
     if(payment.product_key==='taxres_crm'){
       for(const t of tenants){
         if(!t.id||t.tenant_code==='DEMO') continue
@@ -112,7 +123,8 @@ export default function RomyLabsBilling() {
       }
     }
     return [...candidates.values()].sort((a,b)=>a.name.localeCompare(b.name))
-  },[accounts,tenants,payment.product_key])
+  },[accounts,tenants,officeRegistry,payment.product_key])
+  const registeredWithoutBilling = useMemo(()=>officeRegistry.filter(o=>o.product_key && o.external_office_id && !accounts.some(a=>a.product_key===o.product_key && String(a.external_tenant_id)===String(o.external_office_id))),[accounts,officeRegistry])
   const kpis = [
     ['Monthly Recurring',money(data?.mrr_cents),'#10b981'],
     ['Past Due',money(data?.past_due_cents),'#f59e0b'],
@@ -134,6 +146,13 @@ export default function RomyLabsBilling() {
       setPayment(p=>recalc({...p,external_tenant_id:String(account.external_tenant_id),
         account_name:account.account_name,billing_email:account.billing_email||'',
         seat_count:account.seat_count||'',per_seat_rate:Number(account.per_seat_amount_cents||0)/100}))
+      return
+    }
+    const registered=option?.registeredOffice
+    if(registered){
+      setPayment(p=>recalc({...p,external_tenant_id:String(registered.external_office_id),
+        account_name:registered.firm_name||'',billing_email:registered.primary_contact_email||'',
+        seat_count:'',per_seat_rate:''}))
       return
     }
     const t=option?.tenant
@@ -208,6 +227,14 @@ export default function RomyLabsBilling() {
     <div style={{...card,padding:'13px 16px',marginBottom:18,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}><span style={{fontSize:11,fontWeight:800,color:'#64748b',textTransform:'uppercase'}}>Collection policy</span><span style={{fontSize:12,color:'#e2e8f0'}}>Invoice automatically</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#f59e0b'}}>Day 10 notice</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#f97316'}}>Day 15 final notice</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#ef4444'}}>Day 20 suspend</span><span style={{marginLeft:'auto',fontSize:11,color:'#475569'}}>Manual payments are audited and update purchased seats/MRR.</span></div>
     <div style={{display:'flex',gap:8,marginBottom:12}}>{['all','active','past_due','suspended','trial'].map(v=><button key={v} onClick={()=>setFilter(v)} style={{padding:'6px 11px',borderRadius:20,border:`1px solid ${filter===v?'#6366f1':'rgba(255,255,255,.08)'}`,background:filter===v?'rgba(99,102,241,.18)':'transparent',color:filter===v?'#c7d2fe':'#64748b',cursor:'pointer',fontSize:11,fontWeight:700}}>{v==='all'?'All accounts':v.replace('_',' ')}</button>)}</div>
     {!data ? <div style={{padding:40,textAlign:'center',color:'#475569'}}>Loading billing accounts…</div> : <div style={{...card,overflowX:'auto'}}><table style={{width:'100%',minWidth:1280,borderCollapse:'collapse',tableLayout:'auto'}}><thead><tr>{['Account','Product','Status','Seats','Monthly','Billing Email','Last Payment','Next Billing','Auto Suspend',''].map((h,i)=><th key={h} style={i===9?{...th,position:'sticky',right:0,zIndex:3,background:'#171625',minWidth:220}:{...th}}>{h}</th>)}</tr></thead><tbody>{visible.length===0?<tr><td colSpan={10} style={{...td,textAlign:'center',padding:28}}>No subscription accounts in this view.</td></tr>:visible.map(a=><tr key={a.id}><td style={{...td,color:'#e2e8f0',fontWeight:700}}>{a.account_name}</td><td style={td}>{a.product_key}</td><td style={td}><span style={badge(a.status)}>{a.status.replace('_',' ')}</span></td><td style={{...td,color:'#c7d2fe',fontWeight:800}}>{Number(a.seat_count||0)}</td><td style={{...td,color:'#10b981',fontWeight:800}}>{money(a.monthly_amount_cents)}/mo</td><td style={td}>{a.billing_email||'—'}</td><td style={{...td,minWidth:145}}>{latestPaymentFor(a.id)?money(latestPaymentFor(a.id).amount_cents)+' · '+date(latestPaymentFor(a.id).paid_at||latestPaymentFor(a.id).created_at):'—'}</td><td style={td}>Day {a.billing_day}</td><td style={td}>{a.auto_suspend?'✓ Enabled':'Manual'}</td><td style={{...td,whiteSpace:'nowrap',minWidth:220,position:'sticky',right:0,zIndex:2,background:'#171625',boxShadow:'-10px 0 18px rgba(9,8,22,.45)'}}><div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}><button onClick={()=>openPayment(a)} style={{padding:'5px 9px',borderRadius:7,border:'1px solid rgba(16,185,129,.3)',background:'rgba(16,185,129,.08)',color:'#6ee7b7',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap'}}>Manual Payment</button><button onClick={()=>setSelected(a)} style={{padding:'5px 12px',minWidth:86,borderRadius:7,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',cursor:'pointer',fontWeight:700}}>Details →</button></div></td></tr>)}</tbody></table></div>}
+    {registeredWithoutBilling.length>0&&<details style={{...card,marginTop:12,marginBottom:18,padding:'12px 16px'}}>
+      <summary style={{cursor:'pointer',color:'#c7d2fe',fontWeight:800,fontSize:12}}>Registered offices without a RomyLabs subscription account ({registeredWithoutBilling.length})</summary>
+      <div style={{fontSize:11,color:'#94a3b8',marginTop:8,marginBottom:10}}>Office directory entries only. No charges, invoices, or subscription status are inferred.</div>
+      {registeredWithoutBilling.map(office=><div key={office.product_key+':'+office.external_office_id} style={{display:'flex',flexWrap:'wrap',gap:10,justifyContent:'space-between',padding:'7px 0',borderTop:'1px solid rgba(99,102,241,.12)',fontSize:12}}>
+        <span style={{color:'#e2e8f0',fontWeight:700}}>{office.firm_name}</span>
+        <span style={{color:'#94a3b8'}}>{products.find(([key])=>key===office.product_key)?.[1]||office.product_key} · Not linked to billing</span>
+      </div>)}
+    </details>}
     <div style={{marginTop:18}}>
       <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:12,marginBottom:9}}>
         <div style={{fontSize:12,fontWeight:900,color:'#e2e8f0',textTransform:'uppercase',letterSpacing:'.06em'}}>Payment Transactions</div>
