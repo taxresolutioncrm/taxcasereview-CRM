@@ -26,7 +26,7 @@ export default function AdminPortalGuard() {
     async function resetTenantContext() {
       // /crm-admin is the platform control plane, never a tenant session.
       // A previous Jump In may leave BOTH browser state and the durable
-      // admin_tenant_overrides row pointing at CloudCPA/TCR/etc. Clear both
+      // admin_tenant_overrides row pointing at TCR/other offices. Clear both
       // before rendering the portal so tenant context can never bleed in.
       try { sessionStorage.removeItem('admin_impersonation') } catch (_) {}
       try { await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null }) } catch (_) {}
