@@ -199,7 +199,7 @@ serve(async(req)=>{
       const token=await getOAuthToken(supabase,settings)
       const siteUrl=await resolveSiteUrl(token,product_key)
       const live=await fetchLive(token,siteUrl,product_key,range_days)
-      await saveSnapshot(supabase,live)
+      if (live.rangeDays === 90) await saveSnapshot(supabase,live)
       return json(live)
     }catch(e:any){
       const reason=String(e?.message||e)
