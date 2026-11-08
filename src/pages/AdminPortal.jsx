@@ -3424,7 +3424,7 @@ function ProductReportingSetup({ productKey, channel, registryProduct }) {
 const PRODUCT_REGISTRY = [
   // ── ARCHITECTURE NOTE ────────────────────────────────────────────────────
   // PRODUCTS: TaxRes CRM (platform), Camvella, Arcvena, BocaSync, GroundIVO, Oculivo, Restore Relay, + planned verticals
-  // ACTIVE TAXRES FAMILY: TaxRes, TCR, Nashville, Centurion. CloudCPA retired after merger.
+  // ACTIVE TAXRES FAMILY: TaxRes, TCR, Nashville, Centurion. retired offices excluded.
   // connection: 'connected' | 'partial' | 'not_connected' — Command Center CRM platform-metrics feed only
   // lifecycleStage: 'live' | 'available' | 'building' | 'research' | 'internal'
   // brandStatus: 'branded' | 'working_name' | 'unnamed'
@@ -6875,7 +6875,7 @@ function CommandCenter() {
             const selectedProduct = PRODUCT_REGISTRY.find(p => p.key === crmProduct && !p.isTenant)
               || { key: crmProduct, label: reportingProducts.find(p=>p.product_id===crmProduct)?.name || crmProduct }
             const localTaxRes = (data.tenants || []).filter(t =>
-              !['DEMO','TRC-003'].includes(String(t.tenant_code || '').toUpperCase())
+              String(t.tenant_code || '').toUpperCase() !== 'DEMO' && t.status !== 'deleted'
             )
             const remoteOffices = (crmRemoteData?.offices || []).map(o=>({
               id:o.id, firm_name:o.name, status:o.is_active===false?'inactive':'active', tenant_code:o.subscription_status || '',
