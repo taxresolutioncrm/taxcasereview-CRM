@@ -27,7 +27,7 @@ const MANUAL_SECTIONS = [
         ['Tax Case Review (TCR)', 'Uses this shared TaxRes CRM Manual', 'TCR branding, tenant data, and configured communications/payments'],
         ['TaxRes', 'Uses the shared TaxRes CRM Manual', 'TaxRes administrative platform and configured providers'],
         ['Nashville Tax Solutions', 'Uses its separately deployed Nashville CRM manual', 'Dedicated Nashville database, release line, employees and integrations'],
-        ['Centurion Firm', 'Uses its dedicated Centurion CRM configuration', 'Dedicated Centurion database, branding, employee access and provider configuration'],
+        ['Centurion Firm', 'Uses TRC-004 within the shared TaxRes/TCR/Centurion SaaS', 'Shared Supabase project with tenant-isolated records, Centurion branding, employee access and provider configuration'],
         ['Demo Office', 'Uses this shared TaxRes CRM Manual', 'Demo branding and safe/demo provider behavior where applicable'],
         ['Future TaxRes-family offices', 'Inherit the shared manual and release gates', 'Their tenant branding, providers, staff, permissions, and integrations must be documented when they differ from the shared workflow'],
       ]},
