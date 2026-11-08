@@ -1,0 +1,19 @@
+name: Verify PoolVerge live status on public RomyLabs website
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/verify-romylabs-poolverge-live.mjs'
+      - '.github/workflows/verify-romylabs-poolverge-live.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/verify-romylabs-poolverge-live.mjs
+      - run: node scripts/verify-romylabs-poolverge-live.mjs
