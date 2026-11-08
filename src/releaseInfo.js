@@ -27,6 +27,7 @@ const MOBILE_UX_CHANGES = [
 ]
 
 const IRS_WORKFLOW_CHANGES = [
+  'Retired obsolete office-specific CRM routes and relays while retaining tenant-scoped TaxRes, TCR and Centurion messaging, calling and case workflows',
   ...MOBILE_UX_CHANGES,
   'Transactions associate filter now loads all matching associate names only when opened, without the first-1,000-record truncation or an extra initial page request',
   'Employee Productivity and Transactions reports can export authorized filtered results as native Excel workbooks, including numeric columns and productivity totals',
@@ -240,9 +241,9 @@ const DEFAULT_RELEASE = {
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.74',
+    version: '3.2.75',
     releasedAt: 'Pending production deployment',
-    title: 'CRM 3.2.74 — Mobile UX Review Candidate',
+    title: 'CRM 3.2.75 — Retired Office Cleanup Candidate',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -264,9 +265,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.75',
+    version: '3.2.76',
     releasedAt: 'Pending production deployment',
-    title: 'Centurion 3.2.75 — Mobile UX Review Candidate',
+    title: 'Centurion 3.2.76 — Retired Office Cleanup Candidate',
     changes: [...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 }
