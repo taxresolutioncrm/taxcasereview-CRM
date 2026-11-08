@@ -1,0 +1,22 @@
+name: PoolVerge office registry Admin Portal regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/pages/AdminPortal.jsx'
+      - 'src/components/admin/RomyLabsBilling.jsx'
+      - 'src/pages/ESignaturesHub.jsx'
+      - 'scripts/check-poolverge-admin-office.mjs'
+      - '.github/workflows/check-poolverge-admin-office.yml'
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check office source and no invented billing
+        run: node scripts/check-poolverge-admin-office.mjs
