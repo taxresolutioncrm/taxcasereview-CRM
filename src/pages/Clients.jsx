@@ -37,6 +37,7 @@ import { SMS_TEMPLATES, applySmsTemplate } from '../lib/smsTemplates'
 import { FIRM, label } from '../lib/firmBranding'
 import EditableNote from '../components/EditableNote'
 import { rememberRecentClient } from '../lib/recentClients'
+import ClientIRSContacts from '../components/ClientIRSContacts'
 
 // Tenant-resolved firm name so onboarding email + POA/addendum SMS bodies
 // read for whichever firm is signed in. Mirrors Leads.jsx and docUtils.
@@ -3502,6 +3503,10 @@ export default function Clients() {
               <DR label="Admin" val={c.clientAdmin}/>
               <DR label="Sales Rep" val={c.salesRep}/>
               <DR label="Client Since" val={c.clientSince}/>
+              <ClientIRSContacts client={c} tenantId={myTenantId} onSaved={updated => {
+                setDetail(prev=>prev?.id===c.id?{...prev,...updated}:prev)
+                setClients(prev=>prev.map(row=>row.id===c.id?{...row,...updated}:row))
+              }}/>
             </div>
 
             {/* Deadlines */}
