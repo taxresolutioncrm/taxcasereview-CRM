@@ -36,6 +36,7 @@ import { generatePOACoverLetterPdf } from '../lib/irsFormUtils'
 import { SMS_TEMPLATES, applySmsTemplate } from '../lib/smsTemplates'
 import { FIRM, label } from '../lib/firmBranding'
 import EditableNote from '../components/EditableNote'
+import { rememberRecentClient } from '../lib/recentClients'
 
 // Tenant-resolved firm name so onboarding email + POA/addendum SMS bodies
 // read for whichever firm is signed in. Mirrors Leads.jsx and docUtils.
@@ -2381,6 +2382,9 @@ export default function Clients() {
   }
 
   function openDetail(c, opts = {}) {
+    // Record actual opens, not client creation or dashboard list rendering.
+    // History is intentionally local to this employee, tenant and browser.
+    if (c?.id && myTenantId && user?.email) rememberRecentClient(myTenantId, user.email, c)
     if (!opts.preserveTab) setDetailTab('overview')
     setDetail(c)
     setRelCases([]);setRelTasks([]);setRelInvoices([]);setRelSms([]);setRelDeadlines([])
