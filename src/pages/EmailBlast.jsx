@@ -80,7 +80,8 @@ const EMAIL_TEMPLATES = [
 ]
 
 export default function EmailBlast() {
-  const { myTenantId } = useApp()
+  const { myTenantId, can } = useApp()
+  const canSendBlast = can('edit','email') // server send-email also requires tenant perm_comms >= 2
   const [rows, setRows] = useState([])
   const [selected, setSelected] = useState(() => new Set())
   const [search, setSearch] = useState('')
@@ -150,6 +151,7 @@ export default function EmailBlast() {
 
   async function sendTest() {
     setError(''); setNotice('')
+    if (!canSendBlast) return setError('Email sending is not authorized for your role.')
     if (!emailOk(testEmail)) return setError('Enter a valid test email address.')
     if (!subject.trim() || !body.trim()) return setError('Subject and message are required.')
     setSending(true)
@@ -160,6 +162,7 @@ export default function EmailBlast() {
 
   async function sendBlast() {
     setError(''); setNotice('')
+    if (!canSendBlast) return setError('Bulk email sending requires Communications Edit permission.')
     const recipients = rows.filter(row => selected.has(row.id))
     if (!recipients.length) return setError('Select at least one recipient.')
     if (!subject.trim() || !body.trim()) return setError('Subject and message are required.')
@@ -200,6 +203,7 @@ export default function EmailBlast() {
         </div>
         <p style={{color:'var(--t2)',margin:'7px 0 0',maxWidth:760,lineHeight:1.55}}>
           Send one message to selected eligible clients. Email opt-outs and suppressed addresses are excluded automatically.
+          {!canSendBlast && <span style={{display:'block',color:'var(--warn)',fontWeight:700}}>This role has view-only communications access. Email blasts require Communications Edit permission.</span>}
         </p>
       </div>
       <div style={{minWidth:116,textAlign:'right'}}>
@@ -381,7 +385,7 @@ export default function EmailBlast() {
                 onChange={e=>setTestEmail(e.target.value)}
                 placeholder="Test email address"
               />
-              <button className="btn" disabled={sending} onClick={sendTest} style={{whiteSpace:'nowrap'}}>Send test</button>
+              <button className="btn" disabled={sending||!canSendBlast} onClick={sendTest} style={{whiteSpace:'nowrap'}}>Send test</button>
             </div>
           </div>
 
@@ -397,7 +401,7 @@ export default function EmailBlast() {
             </div>
             <button
               className="btn primary full"
-              disabled={sending||!recipientCount||!subject.trim()||!body.trim()}
+              disabled={!canSendBlast||sending||!recipientCount||!subject.trim()||!body.trim()}
               onClick={sendBlast}
               style={{minHeight:42,fontWeight:900}}
             >
