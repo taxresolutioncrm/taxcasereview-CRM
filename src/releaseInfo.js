@@ -9,10 +9,10 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
-  'Clients sidebar shows the last 10 opened clients, searchable and clickable, scoped to this office and employee in local browser storage (not cross-device sync)',
+  'Clients sidebar shows the last 10 opened clients, searchable and clickable, scoped to this office and employee in local browser storage (not cross-device sync); direct client-to-client links reload the correct file',
   'Tax Preparer is an additive client/tax-return role with payroll, billing administration, bulk communications and settings restricted by default; Tax Advisor remains unchanged',
   'Client IRS / Case Info includes editable Revenue Officer and Taxpayer Advocate contacts',
-  'Client document workspace supports multi-level folders, folder-targeted uploads, rename and safe empty-folder deletion subject to database permission checks',
+  'Client document workspace supports multi-level folders, folder-targeted uploads, in-app create/rename/empty-folder confirmation, and tenant-scoped database permission checks',
   'Employee creation prevents duplicate submissions, shows database failures and refreshes records after a confirmed save',
   'Nested folders and contact storage require the separately reviewed shared-project additive database migration before deployment',
 ]
