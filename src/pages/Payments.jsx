@@ -9,6 +9,8 @@ import { triggerWorkflow } from '../lib/triggerWorkflow'
 import { applyPaymentToInvoice, reversePaymentFromInvoice } from '../lib/invoiceSync'
 import ClientLink from '../components/ClientLink'
 import { FIRM } from '../lib/firmBranding'
+import { paymentView, paymentDay, paymentsExportRows } from '../lib/paymentsView'
+import { exportReportXlsx } from '../lib/reportExcelExport'
 
 const BLANK = { clientName:'', client_id:'', invNum:'', amount:'', method:'Credit Card', checkNum:'', date:'', status:'Cleared', notes:'', reference:'' }
 const METHODS = ['Credit Card','ACH / Bank Transfer','Check','Cash','Zelle','Venmo','PayPal','Money Order','Wire Transfer','Other']
@@ -31,6 +33,9 @@ export default function Payments() {
   const [search,   setSearch]   = useState('')
   const [filterMethod, setFilterMethod] = useState('All')
   const [filterStatus, setFilterStatus] = useState('All')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [exporting, setExporting] = useState(false)
   const [suggestions, setSug]   = useState([])
   const [showSug,  setShowSug]  = useState(false)
   const [invSug,   setInvSug]   = useState([])
@@ -172,36 +177,38 @@ export default function Payments() {
     setItems(prev => prev.filter(i => i.id !== confirmDel)); setConfirmDel(null); showToast('Deleted')
   }
 
-  const cleared = items.filter(p=>['Cleared','paid','Posted','completed'].includes(p.status)).reduce((s,p)=>s+parseFloat(p.amount||0),0)
-  const pending = items.filter(p=>['Pending','TBD','No Status','New Agmt'].includes(p.status)).reduce((s,p)=>s+parseFloat(p.amount||0),0)
+  // Both the visible list and the workbook use exactly the same filtered/sorted view.
+  // Summaries follow the selected date range while retaining the original status,
+  // method and search controls for the transaction list.
+  const {
+    invalidDateRange, filtered, sorted, byMethod,
+    collected: cleared, pending, count: paymentCount, failed: failedCount,
+  } = paymentView(items, { dateFrom, dateTo, search, status: filterStatus, method: filterMethod, sortCol, sortDir })
 
-  const filtered = items.filter(p=>{
-    const q = search.toLowerCase()
-    const ms = !q || (p.clientName||p.clientname)?.toLowerCase().includes(q) || p.invNum?.includes(q)
-    const mm = filterMethod==='All' || p.method===filterMethod
-    const ms2 = filterStatus==='All' || p.status===filterStatus
-    return ms && mm && ms2
-  })
-
-  const sorted = [...filtered].sort((a, b) => {
-    let av = a[sortCol] || ''
-    let bv = b[sortCol] || ''
-    if (sortCol === 'amount') { av = parseFloat(av||0); bv = parseFloat(bv||0) }
-    else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase() }
-    if (av < bv) return sortDir === 'asc' ? -1 : 1
-    if (av > bv) return sortDir === 'asc' ? 1 : -1
-    return 0
-  })
+  async function exportPaymentsExcel() {
+    if (!sorted.length || invalidDateRange || exporting) return
+    setExporting(true)
+    try {
+      await exportReportXlsx({
+        filename: 'payments-' + (dateFrom || 'all') + '-to-' + (dateTo || 'all') + '.xlsx',
+        sheetName: 'Payments',
+        headers: ['Client', 'Invoice #', 'Amount', 'Method', 'Check #', 'Date', 'Status', 'Reference'],
+        rows: paymentsExportRows(sorted),
+        moneyColumns: [2],
+      })
+      showToast('Exported ' + sorted.length + ' payments to Excel')
+    } catch (error) {
+      console.error('Payments Excel export failed', error)
+      showToast('Excel export failed. Please retry.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
   }
-
-  // Group by method for breakdown
-  const byMethod = {}
-  items.filter(p=>p.status==='Cleared').forEach(p=>{ byMethod[p.method||'Other']=(byMethod[p.method||'Other']||0)+parseFloat(p.amount||0) })
-
 
   function printReceipt(pay) {
     const w = window.open('','_blank','width=600,height=700')
@@ -262,8 +269,8 @@ export default function Payments() {
         {[
           ['Total Collected','$'+Math.round(cleared).toLocaleString(),'var(--ok)'],
           ['Pending','$'+Math.round(pending).toLocaleString(),'var(--warn)'],
-          ['Payments',items.length,'var(--blue)'],
-          ['Failed',items.filter(p=>p.status==='Failed').length,'var(--bad)'],
+          ['Payments',paymentCount,'var(--blue)'],
+          ['Failed',failedCount,'var(--bad)'],
         ].map(([label,val,color])=>(
           <div key={label} className="card" style={{padding:'10px 12px',textAlign:'center'}}>
             <div style={{fontWeight:800,fontSize:18,color,lineHeight:1}}>{val}</div>
@@ -313,32 +320,51 @@ export default function Payments() {
         })()}
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:12,marginBottom:12,alignItems:'start'}}>
-        {/* Filters */}
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)}
-            placeholder="Search client or invoice #…"
-            style={{flex:1,minWidth:160,padding:'7px 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}/>
-          <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
-            style={{padding:'7px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}>
-            <option value="All">All Statuses</option>
-            {['Cleared','Pending','Failed'].map(s=><option key={s}>{s}</option>)}
-          </select>
-          <select value={filterMethod} onChange={e=>setFilterMethod(e.target.value)}
-            style={{padding:'7px 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:6,color:'var(--tx)',fontSize:12}}>
-            <option value="All">All Methods</option>
-            {METHODS.map(m=><option key={m}>{m}</option>)}
-          </select>
+      {/* Payments tools: compact two-row filter controls; the method totals remain alongside where space permits. */}
+      <div className="payments-filter-workspace" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,440px),1fr))',gap:12,marginBottom:12,alignItems:'start',minWidth:0}}>
+        <div style={{display:'flex',flexDirection:'column',gap:10,minWidth:0}}>
+          <div className="payments-filter-dates" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,145px),1fr))',gap:10,alignItems:'end',minWidth:0}}>
+            <label style={{display:'flex',flexDirection:'column',gap:5,minWidth:0,fontSize:12,color:'var(--t2)'}}>
+              <span style={{whiteSpace:'nowrap'}}>Search Payments</span>
+              <input aria-label="Search payments" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Client or invoice #"
+                style={{boxSizing:'border-box',width:'100%',minWidth:0,height:40,padding:'0 12px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:10,color:'var(--tx)',fontSize:13}}/>
+            </label>
+            <label style={{display:'flex',flexDirection:'column',gap:5,minWidth:0,fontSize:12,color:'var(--t2)'}}>
+              <span style={{whiteSpace:'nowrap'}}>From</span>
+              <input type="date" aria-label="Payments start date" value={dateFrom} max={dateTo || undefined} onChange={e=>setDateFrom(e.target.value)}
+                style={{boxSizing:'border-box',width:'100%',minWidth:0,height:40,padding:'0 8px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:10,color:'var(--tx)',fontSize:12}}/>
+            </label>
+            <label style={{display:'flex',flexDirection:'column',gap:5,minWidth:0,fontSize:12,color:'var(--t2)'}}>
+              <span style={{whiteSpace:'nowrap'}}>To</span>
+              <input type="date" aria-label="Payments end date" value={dateTo} min={dateFrom || undefined} onChange={e=>setDateTo(e.target.value)}
+                style={{boxSizing:'border-box',width:'100%',minWidth:0,height:40,padding:'0 8px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:10,color:'var(--tx)',fontSize:12}}/>
+            </label>
+          </div>
+          <div className="payments-filter-actions" style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',minWidth:0}}>
+            <select aria-label="Filter by payment status" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
+              style={{flex:'1 1 140px',minWidth:0,height:40,padding:'0 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:10,color:'var(--tx)',fontSize:12}}>
+              <option value="All">All Statuses</option>
+              {['Cleared','Pending','Failed'].map(status=><option key={status}>{status}</option>)}
+            </select>
+            <select aria-label="Filter by payment method" value={filterMethod} onChange={e=>setFilterMethod(e.target.value)}
+              style={{flex:'1 1 140px',minWidth:0,height:40,padding:'0 10px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:10,color:'var(--tx)',fontSize:12}}>
+              <option value="All">All Methods</option>
+              {METHODS.map(method=><option key={method}>{method}</option>)}
+            </select>
+            {(dateFrom || dateTo) && <button type="button" className="btn" onClick={()=>{setDateFrom('');setDateTo('')}} style={{minHeight:40}}>Clear Dates</button>}
+            <button type="button" className="btn" aria-label="Export filtered payments to Excel" onClick={exportPaymentsExcel} disabled={exporting || !sorted.length || invalidDateRange}
+              style={{minHeight:40,whiteSpace:'nowrap',flex:'0 1 auto'}}>{exporting ? 'Exporting…' : 'Export to Excel (.xlsx)'}</button>
+          </div>
+          {invalidDateRange && <span role="alert" style={{color:'var(--bad)',fontSize:12}}>Start date must be on or before end date.</span>}
         </div>
 
-        {/* Method breakdown mini */}
         {Object.keys(byMethod).length > 0 && (
-          <div className="card" style={{padding:'8px 12px',fontSize:11,minWidth:180}}>
-            <div style={{fontWeight:700,fontSize:10,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:6}}>By Method</div>
-            {Object.entries(byMethod).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([m,v])=>(
-              <div key={m} style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
-                <span style={{color:'var(--t2)'}}>{m}</span>
-                <span style={{fontWeight:700}}>${Math.round(v).toLocaleString()}</span>
+          <div className="card" style={{padding:'10px 12px',fontSize:11,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:10,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:6}}>Collected by Method</div>
+            {Object.entries(byMethod).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([method,amount])=>(
+              <div key={method} style={{display:'flex',justifyContent:'space-between',gap:8,marginBottom:3}}>
+                <span style={{color:'var(--t2)',minWidth:0,overflowWrap:'anywhere'}}>{method}</span>
+                <span style={{fontWeight:700,whiteSpace:'nowrap'}}>${Math.round(amount).toLocaleString()}</span>
               </div>
             ))}
           </div>
@@ -384,7 +410,7 @@ export default function Payments() {
                   <td style={{padding:'9px 12px',fontWeight:700,color:'var(--ok)',fontSize:13}}>${parseFloat(p.amount||0).toLocaleString()}</td>
                   <td style={{padding:'9px 12px'}}><span className="bdg bn" style={{fontSize:10}}>{p.method}</span></td>
                   <td style={{padding:'9px 12px',color:'var(--t3)',fontSize:11}}>{p.checkNum||'—'}</td>
-                  <td style={{padding:'9px 12px',color:'var(--t2)'}}>{p.date||'—'}</td>
+                  <td style={{padding:'9px 12px',color:'var(--t2)'}}>{paymentDay(p)||'—'}</td>
                   <td style={{padding:'9px 12px'}}><span className={`bdg ${p.status==='Cleared'?'bg':p.status==='Failed'?'br':'ba'}`}>{p.status}</span></td>
                   <td style={{padding:'9px 12px'}}>
                     <div style={{display:'flex',gap:5}}>
