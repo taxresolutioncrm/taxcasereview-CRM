@@ -795,6 +795,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const previewSequence = useRef(0)
   const fileRef = useRef(null)
   const docLoadRequestRef = useRef(0)
+  const folderLoadRequestRef = useRef(0)
   const canUpload = can('edit','documents')
 
   useEffect(() => {
@@ -802,7 +803,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     setForm(prev=>({...prev,folderId:''}))
     loadDocs()
     loadFolders()
-    return () => { docLoadRequestRef.current += 1 }
+    return () => { docLoadRequestRef.current += 1; folderLoadRequestRef.current += 1 }
   }, [clientId, clientName, tenantId])
   useEffect(() => {
     previewSequence.current += 1
@@ -919,12 +920,16 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
 
   async function loadFolders() {
+    const requestId = ++folderLoadRequestRef.current
     if (!tenantId || !clientId) { setCustomFolders([]); return }
     const {data,error} = await supabase.from('client_document_folders')
       .select('id,name,parent_folder_id,tenant_id,client_id').eq('tenant_id',tenantId)
       .eq('client_id',String(clientId)).order('name')
+    if (requestId !== folderLoadRequestRef.current) return
     if (error) { showToast('Could not load document folders: '+error.message); return }
-    setCustomFolders(data||[])
+    const scoped=(data||[]).filter(item=>
+      String(item.tenant_id)===String(tenantId) && String(item.client_id)===String(clientId))
+    setCustomFolders(scoped)
   }
 
   function addFolder() {
