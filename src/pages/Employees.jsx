@@ -27,6 +27,7 @@ function getRoleLabels() {
     'Super Admin':   'Super Admin',
     'Admin':         l.associateRole || 'Admin',
     'Tax Associate': l.paraRole || 'Tax Associate',
+    'Tax Preparer': 'Tax Preparer',
     'EA':            'EA',
     'CPA':           'CPA',
     'Attorney':      'Attorney',
@@ -37,7 +38,7 @@ function getRoleLabels() {
     'View Only':     'View Only',
   }
 }
-const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'EA': '#14b8a6', 'CPA': '#22c55e', 'Attorney': '#a855f7', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Sales Rep': '#8b5cf6' }
+const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'Tax Preparer': '#0d9488', 'EA': '#14b8a6', 'CPA': '#22c55e', 'Attorney': '#a855f7', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Sales Rep': '#8b5cf6' }
 // Role display colors (for the role badge — role is the title, access is the permission level)
 const TITLE_COLORS = { 'Super Admin': '#ef4444', 'Associate': '#10b981', 'Para': '#0ea5e9', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Staff': '#64748b', 'Sales': '#8b5cf6', 'Sales Rep': '#8b5cf6' }
 
@@ -231,7 +232,7 @@ function employeeLoginLabel(value) {
 }
 
 export default function Employees() {
-  const { showToast, can, user, planTier } = useApp()
+  const { showToast, can, user, planTier, myTenantId } = useApp()
   const [employees, setEmployees] = useState([])
   const [lastLoginByEmail, setLastLoginByEmail] = useState({})
   const [confirmDel, setConfirmDel] = useState(null)
@@ -414,15 +415,17 @@ export default function Employees() {
     setSaving(true)
     setSaveError('')
     const wasCreating = !editing
-    let payload = toDbPayload({...form, email:String(form.email).trim().toLowerCase(), name:String(form.name).trim()})
+    const officeId = myTenantId || FIRM.tenantId
+    let payload = {...toDbPayload({...form, email:String(form.email).trim().toLowerCase(), name:String(form.name).trim()}),tenant_id:officeId}
     let error = null
     let data = null
     try {
+      if (!officeId) throw new Error('Office tenant is not resolved; employee was not saved.')
       if (wasCreating) {
         // Detect an existing same-office employee before any write; the database
         // unique email constraint also protects against concurrent submissions.
         const {data:existing,error:lookupError} = await supabase.from('employees')
-          .select('id,name').eq('tenant_id',FIRM.tenantId).ilike('email',payload.email).limit(1)
+          .select('id,name').eq('tenant_id',officeId).ilike('email',payload.email).limit(1)
         if (lookupError) throw lookupError
         if (existing?.length) throw new Error('This email already belongs to an employee in this office. Edit the existing record instead.')
       }
@@ -430,7 +433,7 @@ export default function Employees() {
         if (wasCreating) {
           ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
         } else {
-          const result = await supabase.from('employees').update(payload).eq('id',editing).eq('tenant_id',FIRM.tenantId).select('id').maybeSingle()
+          const result = await supabase.from('employees').update(payload).eq('id',editing).eq('tenant_id',officeId).select('id').maybeSingle()
           error = result.error
           data = result.data
           if (!error && !data?.id) throw new Error('Employee update did not affect a record in this office.')
@@ -766,7 +769,7 @@ export default function Employees() {
             {/* Tabs */}
             <div style={{ display: 'flex', gap: 4, padding: '12px 24px 0', borderBottom: '1px solid var(--br)' }}>
               {['info', ...(can('edit','employees') || form.email === user?.email ? ['irs'] : []), 'pay', ...(editing ? ['documents'] : []), ...(hasPlanFeature(planTier, 'advanced_user_permissions') ? ['permissions'] : [])].map(t => (
-                <button key={t} onClick={async () => { if (showForm && !editing) { await save(true) } setTab(t) }} style={{
+                <button key={t} onClick={async () => { if (showForm && !editing) { const saved=await save(true); if(!saved)return } setTab(t) }} style={{
                   padding: '8px 18px', borderRadius: '8px 8px 0 0',
                   border: '1px solid var(--br)', borderBottom: tab === t ? '1px solid var(--sf)' : '1px solid var(--br)',
                   background: tab === t ? 'var(--sf)' : 'var(--s2)',
