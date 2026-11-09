@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase, SUPABASE_URL } from '../lib/supabase'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from '../lib/centurionBrand'
+import { SHARED_SAAS_PROJECT_HOST, centurionBackendMismatch as isCenturionBackendMismatch } from '../lib/sharedSaasRouting'
 
 const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxrescrm.net', 'romy@taxcasereview.org']
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
@@ -9,11 +10,9 @@ const NASHVILLE_HOST = 'nashville.taxrescrm.app'
 const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'
 const CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'
 const CENTURION_LOGIN = 'https://centurionfirm.taxrescrm.app/login?switch=1'
-const CENTURION_PROJECT_HOST = 'rkniemzmivnuhpdwkduc.supabase.co'
-function centurionBackendMismatch() {
-  return window.location.hostname.toLowerCase() === 'centurionfirm.taxrescrm.app'
-    && new URL(SUPABASE_URL).hostname !== CENTURION_PROJECT_HOST
-}
+// The Centurion domain uses the shared SaaS Auth project (tenant TRC-004).
+// Only verify the configured endpoint; tenant membership remains server-enforced.
+const centurionBackendMismatch = () => isCenturionBackendMismatch(window.location.hostname, SUPABASE_URL)
 
 const NASHVILLE_EXACT_EMAILS = new Set([
   'art@nationwideprofessionals.com',
@@ -28,13 +27,12 @@ function isCenturionIdentity(value) {
   return email.endsWith('@' + CENTURION_LOGIN_DOMAIN)
 }
 function isCentralTaxResHost() {
-  // TaxRes and TCR use the same shared Auth project, even on different domains.
-  // Centurion uses its *own* Auth project and must never post passwords or
-  // recovery requests to the shared project from a TaxRes/TCR frontend.
+  // TaxRes, TCR, and Centurion share one SaaS authentication project.
+  // Centurion retains its own branded login URL; Nashville remains separate.
   const host = window.location.hostname.toLowerCase()
   if (host === ROMYLABS_ADMIN_HOST || host === 'centurionfirm.taxrescrm.app') return false
   return host === 'taxrescrm.app' || host === 'www.taxrescrm.app'
-    || new URL(SUPABASE_URL).hostname === 'mpxgxfqdbquzkrvvejkh.supabase.co'
+    || new URL(SUPABASE_URL).hostname === SHARED_SAAS_PROJECT_HOST
 }
 
 
@@ -316,7 +314,7 @@ export default function Login() {
   async function sendPasswordReset() {
     const target = email.trim()
     if (centurionBackendMismatch()) {
-      setError('Centurion sign-in is not connected to its dedicated authentication project. Please contact the CRM administrator.')
+      setError('Centurion login must use the TaxRes/TCR/Centurion shared SaaS project. Please contact the CRM administrator.')
       return
     }
     if (!target) { setError(lang === 'es' ? 'Ingrese su correo electrónico primero' : 'Enter your email address first'); return }
@@ -346,15 +344,15 @@ export default function Login() {
     e.preventDefault()
     if (!email || !password) return setError(t.required)
     if (centurionBackendMismatch()) {
-      setError('Centurion sign-in is not connected to its dedicated authentication project. Please contact the CRM administrator.')
+      setError('Centurion login must use the TaxRes/TCR/Centurion shared SaaS project. Please contact the CRM administrator.')
       return
     }
     if (!isAdminHost && isCentralTaxResHost() && isNashvilleIdentity(email)) {
       window.location.replace(NASHVILLE_LOGIN)
       return
     }
-    // Centurion employee credentials belong to the Centurion CRM host.
-    // Prevent accidentally submitting them to the central TaxRes Auth project.
+    // Preserve the branded Centurion login while authenticating against
+    // the same shared SaaS project as TaxRes and TCR.
     if (!isAdminHost && isCentralTaxResHost() && isCenturionIdentity(email)) {
       window.location.replace(CENTURION_LOGIN)
       return
