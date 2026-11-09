@@ -29,5 +29,5 @@ assert(login.includes('signInWithRecovery(email.trim(), password'), 'Existing re
 assert(app.includes("const NASHVILLE_LOGIN_URL = 'https://nashville.taxrescrm.app/login?switch=1'"), 'Independent Nashville login boundary must stay')
 assert(client.includes("VITE_SUPABASE_URL || 'https://mpxgxfqdbquzkrvvejkh.supabase.co'"), 'Shared TaxRes/TCR/Centurion default client must stay pinned to common project')
 assert(!login.includes('rkniemzmivnuhpdwkduc'), 'Deleted Centurion Supabase project cannot remain in runtime')
-assert(release.includes('Centurion sign-in and password recovery use the shared TaxRes/TCR/Centurion SaaS project'), 'Release notes must not claim separate Centurion backend')
+assert(release.includes('Centurion sign-in and password recovery stay on the shared TaxRes/TCR/Centurion SaaS application without a cross-host redirect'), 'Release notes must not claim separate Centurion backend')
 console.log('PASS SaaS: Centurion shared Auth with fail-closed wrong-project guard; TCR/TaxRes and Nashville boundaries preserved')
