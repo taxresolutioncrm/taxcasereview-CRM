@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import {getRecentClients,rememberRecentClient,recentClientsKey,MAX_RECENT_CLIENTS} from '../src/lib/recentClients.js'
+
+const store = new Map(),events=[]
+globalThis.localStorage = {getItem:key=>store.get(key)||null,setItem:(key,value)=>store.set(key,value)}
+globalThis.CustomEvent = class {constructor(type,props){this.type=type;this.detail=props?.detail}}
+globalThis.window = {dispatchEvent:event=>events.push(event)}
+for(let n=1;n<=13;n++)rememberRecentClient('tenant-a','EMP@EXAMPLE.COM',{id:'c'+n,name:'Client '+n,clientNum:'T'+n})
+assert.equal(MAX_RECENT_CLIENTS,10)
+assert.deepEqual(getRecentClients('tenant-a','emp@example.com').map(x=>x.id),['c13','c12','c11','c10','c9','c8','c7','c6','c5','c4'])
+rememberRecentClient('tenant-a','EMP@example.com',{id:'c5',name:'Client 5',clientNum:'T5'})
+assert.equal(getRecentClients('tenant-a','emp@example.com')[0].id,'c5','Reopening moves client to the top')
+assert.equal(getRecentClients('tenant-a','other@example.com').length,0,'Employees must not share local history')
+assert.equal(getRecentClients('tenant-b','emp@example.com').length,0,'Tenants must not share local history')
+assert.equal(recentClientsKey('tenant-a','EMP@EXAMPLE.COM'),recentClientsKey('tenant-a','emp@example.com'))
+assert(events.length>=14,'Opened client event must notify sidebar immediately')
+
+const read=path=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8')
+const clients=read('src/pages/Clients.jsx')
+const sidebar=read('src/components/layout/Sidebar.jsx')
+const employees=read('src/pages/Employees.jsx')
+const context=read('src/context/AppContext.jsx')
+const contacts=read('src/components/ClientIRSContacts.jsx')
+const sql=read('supabase/migrations/20261109180500_shared_three_office_contacts_and_nested_folders.sql')
+assert(clients.includes('rememberRecentClient(myTenantId, user.email, c)'),'Only actual client detail opens should record history')
+assert(sidebar.includes('getRecentClients(activeTenantId, user?.email)'),'Sidebar must scope recent clients to employee and active tenant')
+assert(sidebar.includes('Search recent clients') && sidebar.includes("'/clients/'+encodeURIComponent(client.id)"),'History must be searchable and clickable')
+assert(sidebar.includes("setMobileNavOpen(false)"),'Recent navigation must close mobile sidebar')
+assert(clients.includes('ClientIRSContacts client={c} tenantId={myTenantId}'),'IRS contacts must be tenant-scoped on client overview')
+assert(contacts.includes("'revenueOfficerContact'")&&contacts.includes("'taxpayerAdvocateContact'"),'Both contact sections required')
+for(const field of ['name','department','manager','phone','fax','email','address','notes'])assert(contacts.includes("'"+field+"'"),'IRS contacts missing '+field)
+assert(contacts.includes(".eq('tenant_id',tenantId).eq('id',client.id)"),'IRS contact save must bind client + tenant')
+assert(employees.includes("'Tax Preparer':")&&context.includes("'Tax Preparer':"),'Tax Preparer missing in UI or auth')
+assert(employees.includes("'Tax Advisor':")&&context.includes("'Tax Advisor':"),'Existing Tax Advisor role must remain')
+assert(/'Tax Preparer':\s*\{[^}]*perm_billing:0[^}]*perm_hr:0, perm_settings:0/.test(employees),'Tax Preparer must have no billing, HR or settings')
+assert(employees.includes('saveInFlightRef.current') && employees.includes('await load()') && employees.includes('Employee save failed: '),'Employee saves must be guarded and refresh')
+assert(clients.includes('client_document_folder_id:form.folderId || null'),'Uploads must target exact folder IDs')
+assert(clients.includes('addNestedFolders(item.id,depth+1)'),'Nested folders must support deeper levels')
+assert(clients.includes('deleteFolder(item)')&&clients.includes('renameFolder(item)'),'Folder maintenance controls required')
+assert(sql.includes('ENABLE ROW LEVEL SECURITY') && sql.includes('current_employee_permission')&&sql.includes('current_tenant_id'),'Folder DB RLS must enforce tenant and permissions')
+assert(sql.includes('validate_shared_document_folder')&&sql.includes('validate_shared_client_folder'),'Folder hierarchy + document ownership DB constraints required')
+assert(sql.includes('reject_nonempty_shared_folder_delete') && sql.includes('legacy documents'),'Folder deletion must fail with documents, children, or ambiguous legacy docs')
+assert(sql.includes('"revenueOfficerContact" jsonb')&&sql.includes('"taxpayerAdvocateContact" jsonb'),'IRS contact schema columns missing')
+assert(!sql.includes('CREATE POLICY shared_folders_read ON public.client_document_folders\n  FOR SELECT TO anon'),'Anonymous cannot view folders')
+console.log('PASS: shared TaxRes/TCR/Centurion Recent Clients, Tax Preparer, IRS contacts, nested folder security, employee save safeguards')
