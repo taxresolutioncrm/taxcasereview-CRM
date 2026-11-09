@@ -778,6 +778,8 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [folder,     setFolder]     = useState('All')
   const [customFolders,setCustomFolders] = useState([])
   const [folderSaving,setFolderSaving] = useState(false)
+  const [folderDialog,setFolderDialog] = useState(null)
+  const [folderDialogError,setFolderDialogError] = useState('')
   const [uploading,  setUploading]  = useState(false)
   const [form,       setForm]       = useState({ docType:'IRS Docs', folderId:'', notes:'' })
   const [files,      setFiles]      = useState([])
@@ -925,52 +927,69 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     setCustomFolders(data||[])
   }
 
-  async function addFolder() {
+  function addFolder() {
     if (!canUpload || folderSaving || !tenantId || !clientId) return
     const parentId=folder.startsWith('custom:')?folder.slice(7):null
-    const name=window.prompt(parentId?'New subfolder name':'New folder name')
-    if (name===null) return
-    const clean=name.trim()
-    if (!clean || clean.length>80) {showToast('Use a folder name between 1 and 80 characters');return}
-    setFolderSaving(true)
-    const {data,error}=await supabase.from('client_document_folders')
-      .insert({tenant_id:tenantId,client_id:String(clientId),parent_folder_id:parentId,name:clean})
-      .select('id,name,parent_folder_id,tenant_id,client_id').single()
-    setFolderSaving(false)
-    if(error){showToast('Could not create folder: '+error.message);return}
-    await loadFolders()
-    if(data?.id)setFolder('custom:'+data.id)
-    showToast('Folder created')
+    setFolderDialog({action:'create',parentId,name:''})
+    setFolderDialogError('')
   }
 
-  async function renameFolder(item) {
+  function renameFolder(item) {
     if (!canUpload || folderSaving) return
-    const name=window.prompt('Rename folder',item.name)
-    if(name===null || name.trim()===item.name)return
-    const clean=name.trim()
-    if (!clean || clean.length>80) {showToast('Use a folder name between 1 and 80 characters');return}
-    setFolderSaving(true)
-    const {error}=await supabase.from('client_document_folders')
-      .update({name:clean}).eq('tenant_id',tenantId).eq('client_id',String(clientId)).eq('id',item.id)
-    setFolderSaving(false)
-    if(error){showToast('Could not rename folder: '+error.message);return}
-    await loadFolders()
-    showToast('Folder renamed')
+    setFolderDialog({action:'rename',item,name:item.name})
+    setFolderDialogError('')
   }
 
-  async function deleteFolder(item) {
+  function deleteFolder(item) {
     if (!canUpload || folderSaving) return
     if(customFolders.some(f=>f.parent_folder_id===item.id)){showToast('Delete nested subfolders first');return}
     if(docs.some(d=>d.client_document_folder_id===item.id)){showToast('Move or delete documents before deleting folder');return}
-    if(!window.confirm('Delete empty folder "'+item.name+'"?'))return
+    setFolderDialog({action:'delete',item,name:item.name})
+    setFolderDialogError('')
+  }
+
+  async function confirmFolderDialog() {
+    if (!folderDialog || folderSaving || !tenantId || !clientId || !canUpload) return
+    const action=folderDialog.action
+    const clean=String(folderDialog.name||'').trim()
+    if (action!=='delete' && (!clean || clean.length>80)) {
+      setFolderDialogError('Use a folder name between 1 and 80 characters')
+      return
+    }
+    if (action==='delete' && (customFolders.some(f=>f.parent_folder_id===folderDialog.item.id)
+      || docs.some(d=>d.client_document_folder_id===folderDialog.item.id))) {
+      setFolderDialogError('Folder must not contain any documents or subfolders')
+      return
+    }
     setFolderSaving(true)
-    const {error}=await supabase.from('client_document_folders')
-      .delete().eq('tenant_id',tenantId).eq('client_id',String(clientId)).eq('id',item.id)
-    setFolderSaving(false)
-    if(error){showToast('Folder cannot be deleted: '+error.message);return}
-    setFolder('All')
-    await loadFolders()
-    showToast('Empty folder deleted')
+    setFolderDialogError('')
+    try {
+      if (action==='create') {
+        const {data,error}=await supabase.from('client_document_folders')
+          .insert({tenant_id:tenantId,client_id:String(clientId),parent_folder_id:folderDialog.parentId,name:clean})
+          .select('id,name,parent_folder_id,tenant_id,client_id').single()
+        if(error || !data?.id)throw error || new Error('Folder creation was not confirmed')
+        await loadFolders()
+        setFolder('custom:'+data.id)
+      } else if(action==='rename') {
+        const {data,error}=await supabase.from('client_document_folders')
+          .update({name:clean}).eq('tenant_id',tenantId).eq('client_id',String(clientId))
+          .eq('id',folderDialog.item.id).select('id').single()
+        if(error || !data?.id)throw error || new Error('Folder rename was not confirmed')
+        await loadFolders()
+      } else if(action==='delete') {
+        const {data,error}=await supabase.from('client_document_folders')
+          .delete().eq('tenant_id',tenantId).eq('client_id',String(clientId))
+          .eq('id',folderDialog.item.id).select('id').single()
+        if(error || !data?.id)throw error || new Error('Folder deletion was not confirmed')
+        setFolder('All')
+        await loadFolders()
+      }
+      setFolderDialog(null)
+      showToast(action==='create'?'Folder created':action==='rename'?'Folder renamed':'Empty folder deleted')
+    } catch (err) {
+      setFolderDialogError(err?.message || 'Folder change failed')
+    } finally { setFolderSaving(false) }
   }
 
   async function loadDocs() {
@@ -1270,6 +1289,24 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
       )}
 
+      {folderDialog && <div data-testid="client-folder-dialog" role="dialog" aria-label="Manage client folder"
+        style={{padding:'10px 14px',display:'grid',gap:8,background:'var(--s2)',borderBottom:'1px solid var(--br)'}}>
+        <strong style={{fontSize:12}}>{folderDialog.action==='create'?'New '+(folderDialog.parentId?'subfolder':'folder')
+          :folderDialog.action==='rename'?'Rename folder':'Delete empty folder'}</strong>
+        {folderDialog.action==='delete'
+          ? <div style={{fontSize:12}}>Delete “{folderDialog.item?.name}”? This only succeeds when no documents or child folders exist.</div>
+          : <input autoFocus aria-label="Folder name" maxLength={80} value={folderDialog.name}
+              onChange={e=>setFolderDialog(prev=>({...prev,name:e.target.value}))}
+              onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();confirmFolderDialog()}}}
+              style={{width:'100%',boxSizing:'border-box',padding:8,borderRadius:7,background:'var(--sf)',color:'var(--tx)',border:'1px solid var(--br)'}}/>}
+        {folderDialogError && <div role="alert" style={{fontSize:11,color:'var(--bad)'}}>{folderDialogError}</div>}
+        <div style={{display:'flex',gap:8}}>
+          <button type="button" className="btn pri" disabled={folderSaving} onClick={confirmFolderDialog}
+            style={{fontSize:11}}>{folderSaving?'Saving…':folderDialog.action==='delete'?'Delete empty folder':'Save folder'}</button>
+          <button type="button" className="btn sec" disabled={folderSaving}
+            onClick={()=>setFolderDialog(null)} style={{fontSize:11}}>Cancel</button>
+        </div>
+      </div>}
       {/* Three-pane Documents workspace with independently scrolling folders, files and PDF. */}
       <div data-testid="client-docs-workspace" style={{width:'100%',maxWidth:'100%',overflowX:'auto',overflowY:'hidden'}}>
       <div style={{display:'grid',gridTemplateColumns:'200px minmax(270px,0.9fr) minmax(370px,1.3fr)',minWidth:840,height:'min(68vh,760px)',minHeight:460,overflow:'hidden'}}>
