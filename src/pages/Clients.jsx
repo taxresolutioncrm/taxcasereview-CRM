@@ -1722,7 +1722,7 @@ export default function Clients() {
   // background for the table view, but it no longer blocks opening
   // a record you already know the id of.
   useEffect(() => {
-    if (!urlId || detail || !myTenantId) return
+    if (!urlId || (detail && String(detail.id)===String(urlId)) || !myTenantId) return
     let cancelled = false
     supabase.from('clients').select('*')
       .eq('tenant_id', myTenantId)
@@ -1732,13 +1732,13 @@ export default function Clients() {
         if (!cancelled && data) openDetail(data, { preserveTab: true, full: true })
       })
     return () => { cancelled = true }
-  }, [urlId, myTenantId])
+  }, [urlId, myTenantId, detail?.id])
   useEffect(() => {
     if (urlId && clients.length > 0 && !detail) {
       const found = clients.find(c => String(c.id) === String(urlId))
       if (found) openDetail(found, { preserveTab: true })
     }
-  }, [urlId, clients])
+  }, [urlId, clients, detail?.id])
   // If the URL no longer points at the client currently being shown
   // (e.g. clicking "Clients" in the sidebar while a detail page is open,
   // or a link elsewhere jumping straight to a different client), drop the
