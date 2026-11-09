@@ -1,0 +1,143 @@
+-- SANDBOX-STAGED ONLY: apply to shared TaxResolution-CRM project after review.
+-- No migration is applied to Nashville or production by this commit.
+-- Existing documents and client assignments remain intact.
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS "revenueOfficerContact" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS "taxpayerAdvocateContact" jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS public.client_document_folders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE RESTRICT,
+  client_id text NOT NULL REFERENCES public.clients(id) ON DELETE RESTRICT,
+  parent_folder_id uuid REFERENCES public.client_document_folders(id) ON DELETE RESTRICT,
+  name text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (length(btrim(name)) BETWEEN 1 AND 80),
+  CHECK (name !~ '[[:cntrl:]]'),
+  CHECK (tenant_id <> '489ace07-1a6b-4864-833a-4f8420568b40'::uuid)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS shared_client_document_folder_root_name
+  ON public.client_document_folders (tenant_id,client_id,lower(name))
+  WHERE parent_folder_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS shared_client_document_folder_child_name
+  ON public.client_document_folders (tenant_id,client_id,parent_folder_id,lower(name))
+  WHERE parent_folder_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS shared_client_document_folder_client_idx
+  ON public.client_document_folders(tenant_id,client_id,parent_folder_id);
+
+CREATE OR REPLACE FUNCTION public.validate_shared_client_folder()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+DECLARE v_parent_tenant uuid; v_parent_client text; v_client_tenant uuid;
+BEGIN
+  IF TG_OP='UPDATE' AND (
+    NEW.id IS DISTINCT FROM OLD.id OR
+    NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR
+    NEW.client_id IS DISTINCT FROM OLD.client_id
+  ) THEN RAISE EXCEPTION 'Folder owner and identity cannot be reassigned'; END IF;
+  SELECT tenant_id INTO v_client_tenant FROM public.clients WHERE id=NEW.client_id;
+  IF v_client_tenant IS NULL OR v_client_tenant IS DISTINCT FROM NEW.tenant_id
+    THEN RAISE EXCEPTION 'Folder must belong to the client tenant'; END IF;
+  IF NEW.parent_folder_id IS NOT NULL THEN
+    IF NEW.parent_folder_id=NEW.id THEN RAISE EXCEPTION 'Folder cannot contain itself'; END IF;
+    SELECT tenant_id,client_id INTO v_parent_tenant,v_parent_client
+      FROM public.client_document_folders WHERE id=NEW.parent_folder_id;
+    IF NOT FOUND OR v_parent_tenant IS DISTINCT FROM NEW.tenant_id OR v_parent_client IS DISTINCT FROM NEW.client_id
+      THEN RAISE EXCEPTION 'Parent folder must belong to same client and tenant'; END IF;
+    IF TG_OP='UPDATE' AND EXISTS (
+      WITH RECURSIVE ancestors(id,parent_folder_id) AS (
+        SELECT id,parent_folder_id FROM public.client_document_folders WHERE id=NEW.parent_folder_id
+        UNION
+        SELECT f.id,f.parent_folder_id FROM public.client_document_folders f
+          JOIN ancestors a ON a.parent_folder_id=f.id
+      ) SELECT 1 FROM ancestors WHERE id=NEW.id
+    ) THEN RAISE EXCEPTION 'Folder hierarchy cannot contain cycles'; END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS shared_client_folder_guard ON public.client_document_folders;
+CREATE TRIGGER shared_client_folder_guard
+  BEFORE INSERT OR UPDATE ON public.client_document_folders
+  FOR EACH ROW EXECUTE FUNCTION public.validate_shared_client_folder();
+
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS client_document_folder_id uuid
+  REFERENCES public.client_document_folders(id) ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS shared_document_folder_ref_idx ON public.documents(client_document_folder_id)
+  WHERE client_document_folder_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.validate_shared_document_folder()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+DECLARE v_folder_tenant uuid; v_folder_client text;
+BEGIN
+  IF NEW.client_document_folder_id IS NULL THEN RETURN NEW; END IF;
+  SELECT tenant_id,client_id INTO v_folder_tenant,v_folder_client
+    FROM public.client_document_folders WHERE id=NEW.client_document_folder_id;
+  IF NOT FOUND OR NEW.tenant_id IS DISTINCT FROM v_folder_tenant OR NEW.client_id IS DISTINCT FROM v_folder_client
+    THEN RAISE EXCEPTION 'Document folder must belong to the same client and tenant'; END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS shared_document_folder_guard ON public.documents;
+CREATE TRIGGER shared_document_folder_guard
+  BEFORE INSERT OR UPDATE OF client_document_folder_id,tenant_id,client_id ON public.documents
+  FOR EACH ROW EXECUTE FUNCTION public.validate_shared_document_folder();
+
+CREATE OR REPLACE FUNCTION public.reject_nonempty_shared_folder_delete()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.client_document_folders WHERE parent_folder_id=OLD.id)
+    THEN RAISE EXCEPTION 'Remove nested subfolders before deleting this folder'; END IF;
+  IF EXISTS (SELECT 1 FROM public.documents WHERE client_document_folder_id=OLD.id)
+    THEN RAISE EXCEPTION 'Move documents out of this folder before deleting'; END IF;
+  -- Refuse removal if an unassigned legacy file uses the same folder label.
+  -- Name-only legacy rows are ambiguous and must never be silently orphaned.
+  IF OLD.parent_folder_id IS NULL AND EXISTS (
+    SELECT 1 FROM public.documents d JOIN public.clients c ON c.id=OLD.client_id
+    WHERE d.tenant_id=OLD.tenant_id AND d.client_document_folder_id IS NULL
+      AND lower(coalesce(d."docType",''))=lower(OLD.name)
+      AND (d.client_id=OLD.client_id OR
+          (d.client_id IS NULL AND (d.client=c.name OR d.clientname=c.name)))
+  ) THEN RAISE EXCEPTION 'Folder has legacy documents; reconcile them before deleting'; END IF;
+  RETURN OLD;
+END $$;
+
+DROP TRIGGER IF EXISTS shared_nonempty_folder_delete_guard ON public.client_document_folders;
+CREATE TRIGGER shared_nonempty_folder_delete_guard
+  BEFORE DELETE ON public.client_document_folders
+  FOR EACH ROW EXECUTE FUNCTION public.reject_nonempty_shared_folder_delete();
+
+ALTER TABLE public.client_document_folders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS shared_folders_read ON public.client_document_folders;
+DROP POLICY IF EXISTS shared_folders_insert ON public.client_document_folders;
+DROP POLICY IF EXISTS shared_folders_update ON public.client_document_folders;
+DROP POLICY IF EXISTS shared_folders_delete ON public.client_document_folders;
+CREATE POLICY shared_folders_read ON public.client_document_folders
+  FOR SELECT TO authenticated
+  USING (tenant_id=(SELECT public.current_tenant_id())
+    AND (SELECT public.current_employee_permission('perm_documents'))>=1
+    AND EXISTS (SELECT 1 FROM public.clients c
+      WHERE c.id=client_id AND c.tenant_id=tenant_id));
+CREATE POLICY shared_folders_insert ON public.client_document_folders
+  FOR INSERT TO authenticated
+  WITH CHECK (tenant_id=(SELECT public.current_tenant_id())
+    AND (SELECT public.current_employee_permission('perm_documents'))>=2
+    AND EXISTS (SELECT 1 FROM public.clients c
+      WHERE c.id=client_id AND c.tenant_id=tenant_id));
+CREATE POLICY shared_folders_update ON public.client_document_folders
+  FOR UPDATE TO authenticated
+  USING (tenant_id=(SELECT public.current_tenant_id())
+    AND (SELECT public.current_employee_permission('perm_documents'))>=2)
+  WITH CHECK (tenant_id=(SELECT public.current_tenant_id())
+    AND (SELECT public.current_employee_permission('perm_documents'))>=2);
+CREATE POLICY shared_folders_delete ON public.client_document_folders
+  FOR DELETE TO authenticated
+  USING (tenant_id=(SELECT public.current_tenant_id())
+    AND (SELECT public.current_employee_permission('perm_documents'))>=2);
+REVOKE ALL ON public.client_document_folders FROM anon;
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.client_document_folders TO authenticated;
+
+-- Verify after sandbox migration: zero null/mismatched tenant-client folder pairs,
+-- every parent shares its child's tenant/client, every assigned document matches,
+-- no folder cycles, and historical document counts remain unchanged.
