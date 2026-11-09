@@ -8,6 +8,6 @@
 
 **Auth source correction:** Centurion login uses shared SaaS endpoint verification and server-authorized tenant membership; old deleted Supabase guard removed; Nashville routing unchanged. No schema, SQL, payroll, payment gateway or user mutations.
 
-**Tests:** Existing `check-three-office-auth` updated; `check-centurion-saas-routing` and `check-payments-date-excel` added to prebuild. Prior versions passed these test contracts; this new current-main candidate requires its own CI run. Authenticated viewport 320/375/390/430, tablet and desktop, real xlsx opening, and Cloudflare live SHA verification remain necessary before declaring deployed.
+**Tests:** Existing `check-three-office-auth` updated; `check-centurion-saas-routing` and `check-payments-date-excel` added to prebuild. Fresh PR #8395 GitHub workflow run 42630200956 completed successfully on commit 5e5fcfef66609f405fa78f019fb497194b63f0df: SaaS routing, real Excel export, three-office Auth checks, release version accountability and Cloudflare-equivalent frontend build passed. Authenticated viewport 320/375/390/430, tablet and desktop, real xlsx opening, and Cloudflare live SHA verification remain necessary before declaring deployed.
 
-**Candidate versions:** TaxRes 3.2.88, TCR 3.2.75, Centurion 3.2.76. Release remains unmerged until explicit authorization.
+**Candidate versions:** TaxRes 3.2.89, TCR 3.2.75, Centurion 3.2.76. The upstream Admin Portal v3.2.88 Credential Vault alphabetical product list and its regression coverage remain intact. Release remains unmerged until explicit authorization.
