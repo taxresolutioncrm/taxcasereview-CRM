@@ -1162,12 +1162,27 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const byFolder = {}
   DOC_FOLDERS.forEach(f => { byFolder[f] = [] })
   docs.forEach(d => {
+    if (d.client_document_folder_id) return // exact custom-folder records are not duplicated under legacy type labels
     const f = d.docType || 'Other'
     if (!byFolder[f]) byFolder[f] = []
     byFolder[f].push(d)
   })
 
-  const visible = folder === 'All' ? docs : (byFolder[folder] || [])
+  const flattenedFolders = []
+  const visitedFolders = new Set()
+  function addNestedFolders(parentId,depth=0) {
+    for(const item of customFolders.filter(row=>(row.parent_folder_id||null)===parentId)
+      .sort((a,b)=>a.name.localeCompare(b.name))){
+      if(visitedFolders.has(item.id))continue
+      visitedFolders.add(item.id)
+      flattenedFolders.push({...item,depth})
+      addNestedFolders(item.id,depth+1)
+    }
+  }
+  addNestedFolders(null)
+  const visible = folder === 'All' ? docs
+    : folder.startsWith('custom:') ? docs.filter(d=>d.client_document_folder_id===folder.slice(7))
+    : (byFolder[folder] || [])
 
   return (
     <div className="card" style={{padding:0,overflow:'hidden',minWidth:0}}>
@@ -1190,8 +1205,16 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <>
               <div className="fg2">
                 <div className="field"><label>Destination Folder</label>
-                  <select value={form.docType} onChange={e=>setForm(f=>({...f,docType:e.target.value}))}>
-                    {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
+                  <select value={form.folderId ? 'custom:'+form.folderId : 'legacy:'+form.docType}
+                    onChange={e=>setForm(f=>e.target.value.startsWith('custom:')
+                      ? {...f,folderId:e.target.value.slice(7)}
+                      : {...f,folderId:'',docType:e.target.value.slice(7)})}>
+                    <optgroup label="Standard document folders">
+                      {DOC_FOLDERS.map(name=><option key={name} value={'legacy:'+name}>{name}</option>)}
+                    </optgroup>
+                    {flattenedFolders.length>0 && <optgroup label="Custom folders and subfolders">
+                      {flattenedFolders.map(item=><option key={item.id} value={'custom:'+item.id}>{'— '.repeat(item.depth)}{item.name}</option>)}
+                    </optgroup>}
                   </select>
                 </div>
                 <div className="field"><label>Notes for this batch (optional)</label>
@@ -1260,6 +1283,14 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <span style={{fontSize:10,background:'var(--s3)',borderRadius:10,padding:'0 5px'}}>{docs.length}</span>
           </div>
           <div style={{padding:'10px 12px 4px',fontSize:9,fontWeight:800,color:'var(--t3)',letterSpacing:'.08em',textTransform:'uppercase'}}>Document folders</div>
+          <div style={{padding:'7px 10px',display:'flex',gap:5,flexWrap:'wrap'}}>
+            <button type="button" className="btn sec" disabled={!canUpload||folderSaving}
+              onClick={addFolder} style={{fontSize:10,padding:'5px 7px'}}>
+              {folder.startsWith('custom:') ? '+ Subfolder' : '+ Folder'}
+            </button>
+            {folder.startsWith('custom:') && <button type="button" className="btn sec"
+              onClick={()=>setFolder('All')} style={{fontSize:10,padding:'5px 7px'}}>Root</button>}
+          </div>
           {DOC_FOLDERS.map(f=>(
             <div key={f} onClick={()=>setFolder(f)}
               style={{padding:'7px 14px',cursor:'pointer',fontSize:12.5,fontWeight:folder===f?700:400,
@@ -1269,6 +1300,19 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
               onMouseLeave={e=>{if(folder!==f)e.currentTarget.style.background='transparent'}}>
               <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📂 {f}</span>
               <span style={{fontSize:10,background:'var(--s3)',borderRadius:10,padding:'0 5px',flexShrink:0,minWidth:16,textAlign:'center'}}>{byFolder[f]?.length||0}</span>
+            </div>
+          ))}
+          {flattenedFolders.length>0 && <div style={{padding:'10px 12px 4px',fontSize:9,fontWeight:800,color:'var(--t3)',letterSpacing:'.08em',textTransform:'uppercase'}}>Custom folders</div>}
+          {flattenedFolders.map(item=>(
+            <div key={item.id} style={{display:'flex',alignItems:'center',gap:3,paddingLeft:Math.min(8+item.depth*12,75),background:folder==='custom:'+item.id?'var(--blt)':'transparent',minWidth:0}}>
+              <button type="button" title={item.name} onClick={()=>setFolder('custom:'+item.id)}
+                style={{flex:1,minWidth:0,textAlign:'left',background:'transparent',border:0,cursor:'pointer',padding:'7px 3px',fontSize:11,color:folder==='custom:'+item.id?'var(--b2)':'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                📂 {item.name}
+              </button>
+              {canUpload&&<button type="button" aria-label={'Rename '+item.name} title="Rename" disabled={folderSaving}
+                onClick={()=>renameFolder(item)} style={{fontSize:10,padding:3,border:0,background:'transparent',cursor:'pointer',color:'var(--t2)'}}>✎</button>}
+              {canUpload&&<button type="button" aria-label={'Delete '+item.name} title="Delete empty folder" disabled={folderSaving}
+                onClick={()=>deleteFolder(item)} style={{fontSize:10,padding:3,border:0,background:'transparent',cursor:'pointer',color:'var(--bad)'}}>×</button>}
             </div>
           ))}
         </div>
