@@ -2,14 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase, SUPABASE_URL } from '../lib/supabase'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL, CENTURION_FAVICON_DATA_URL } from '../lib/centurionBrand'
-import { SHARED_SAAS_PROJECT_HOST, centurionBackendMismatch as isCenturionBackendMismatch } from '../lib/sharedSaasRouting'
+import { SHARED_SAAS_PROJECT_HOST, CENTURION_CRM_HOST, centurionBackendMismatch as isCenturionBackendMismatch } from '../lib/sharedSaasRouting'
 
 const ROMYLABS_OWNERS = ['romy@romylabs.com', 'info@romylabs.com', 'romy@taxrescrm.net', 'romy@taxcasereview.org']
 const ROMYLABS_ADMIN_HOST = 'admin.romylabs.com'
 const NASHVILLE_HOST = 'nashville.taxrescrm.app'
 const NASHVILLE_LOGIN = 'https://nashville.taxrescrm.app/login?switch=1'
 const CENTURION_LOGIN_DOMAIN = 'centurionfirm.com'
-const CENTURION_LOGIN = 'https://centurionfirm.taxrescrm.app/login?switch=1'
 // The Centurion domain uses the shared SaaS Auth project (tenant TRC-004).
 // Only verify the configured endpoint; tenant membership remains server-enforced.
 const centurionBackendMismatch = () => isCenturionBackendMismatch(window.location.hostname, SUPABASE_URL)
@@ -200,6 +199,7 @@ export default function Login() {
   const debounceRef = useRef(null)
   const emailInputRef = useRef(null)
   const isAdminHost = window.location.hostname.toLowerCase() === ROMYLABS_ADMIN_HOST
+  const isCenturionHost = window.location.hostname.toLowerCase() === CENTURION_CRM_HOST
   const t = COPY[lang]
 
   useEffect(() => {
@@ -263,17 +263,10 @@ export default function Login() {
       return
     }
 
+    // The Centurion hostname is a first-class branded entrypoint to the
+    // shared SaaS application; its identity must not depend on email autofill.
     const domain = email.split('@')[1]?.trim().toLowerCase()
-    if (!domain || !domain.includes('.')) {
-      setBranding(null)
-      applyLoginBrowserBranding(null, false)
-      return
-    }
-
-    // Centurion is a committed TaxRes-family demo tenant. Apply its branding
-    // immediately from the login domain so the screen never flashes/falls back
-    // to generic TaxRes while the anonymous branding RPC is pending or stale.
-    if (domain === CENTURION_LOGIN_DOMAIN || isCenturionIdentity(email)) {
+    if (isCenturionHost || domain === CENTURION_LOGIN_DOMAIN || isCenturionIdentity(email)) {
       const centurionBranding = {
         firm_name: 'Centurion Firm',
         logo_url: CENTURION_LOGO_DATA_URL,
@@ -282,6 +275,12 @@ export default function Login() {
       }
       setBranding(centurionBranding)
       applyLoginBrowserBranding(centurionBranding, false)
+      return
+    }
+
+    if (!domain || !domain.includes('.')) {
+      setBranding(null)
+      applyLoginBrowserBranding(null, false)
       return
     }
 
@@ -309,7 +308,7 @@ export default function Login() {
       }
     }, 400)
     return () => clearTimeout(debounceRef.current)
-  }, [email, isAdminHost])
+  }, [email, isAdminHost, isCenturionHost])
 
   async function sendPasswordReset() {
     const target = email.trim()
@@ -320,10 +319,6 @@ export default function Login() {
     if (!target) { setError(lang === 'es' ? 'Ingrese su correo electrónico primero' : 'Enter your email address first'); return }
     if (!isAdminHost && isCentralTaxResHost() && isNashvilleIdentity(target)) {
       window.location.replace(NASHVILLE_LOGIN)
-      return
-    }
-    if (!isAdminHost && isCentralTaxResHost() && isCenturionIdentity(target)) {
-      window.location.replace(CENTURION_LOGIN)
       return
     }
     setResetting(true); setError(''); setResetSent(false)
@@ -351,12 +346,9 @@ export default function Login() {
       window.location.replace(NASHVILLE_LOGIN)
       return
     }
-    // Preserve the branded Centurion login while authenticating against
-    // the same shared SaaS project as TaxRes and TCR.
-    if (!isAdminHost && isCentralTaxResHost() && isCenturionIdentity(email)) {
-      window.location.replace(CENTURION_LOGIN)
-      return
-    }
+    // Centurion and TaxRes share Supabase Auth. Do not navigate away for
+    // Centurion staff: authenticate here and let server-side membership/RLS
+    // resolve the correct office. Nashville alone retains a separate host.
     setLoading(true)
     setLoginStatus('')
     setError('')
@@ -413,7 +405,8 @@ export default function Login() {
 
   const firmName = branding?.firm_name || (isAdminHost ? 'RomyLabs' : 'Tax Case Review')
   const logoUrl = branding?.logo_url || (isAdminHost ? '/romylabs-logo.png' : '/taxrescrm-logo.png')
-  const isCenturionBrand = branding?.firm_name === 'Centurion Firm'
+  const isCenturionBrand = isCenturionHost
+    || branding?.firm_name === 'Centurion Firm'
     || isCenturionIdentity(email)
     || isCenturionIdentity(emailInputRef.current?.value)
 
