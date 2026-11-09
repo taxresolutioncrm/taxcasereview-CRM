@@ -4,8 +4,8 @@
 
 const OFFICE_ACCESS_CHANGES = [
   'TaxRes and TCR login screens recover from temporary initial session failures instead of remaining stuck on Loading',
-  'Centurion sign-in and password recovery use the shared TaxRes/TCR/Centurion SaaS project',
-  'Centurion login blocks wrong or retired Supabase project configuration while preserving server-side tenant membership',
+  'Centurion sign-in and password recovery stay on the shared TaxRes/TCR/Centurion SaaS application without a cross-host redirect',
+  'Centurion login blocks wrong or retired Supabase project configuration and shows Centurion branding by hostname even before email autofill',
   'Employee lookup matches verified office membership case-insensitively and never grants Admin access on missing membership',
   'CloudCPA is retired from the active office directory, manual, release listing and platform metrics routing',
 ]
@@ -241,18 +241,18 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.89',
+  version: '3.2.90',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.89 — Payments Parity and Shared SaaS Correction',
+  title: 'RomyLabs Admin Portal 3.2.90 — Centurion Shared SaaS Login Loop Fix',
   changes: [...PAYMENTS_NASHVILLE_PARITY_CHANGES, 'Credential Vault product dropdowns list active products alphabetically by name, with All Products at the top and unchanged product IDs and access', 'Google Search Console reporting now supports live 7-day, 28-day and 90-day windows with previous-period deltas, exact data-through dates and refresh timestamps across all connected products', '90-day Search Console remains the canonical cached snapshot while shorter windows are fetched live on demand', 'PoolVerge Lakeside Pools office displays across the product hierarchy and office details using the registered, existing office ID; no duplicate tenant or fabricated usage', 'RomyLabs Billing offers registered external offices and distinguishes those without a subscription account, preserving the TaxRes picker; E-Signatures uses the PoolVerge label', 'Added an authenticated, product-scoped GA4 daily refresh coordinator; existing on-demand analytics and tracking are unchanged', 'TaxRes weekly owner growth report now isolates TaxRes GA4 rows, avoids double-counting channel and total rows, and preserves live owner/cron authentication', 'Microsoft Clarity metric cards now match Bing Webmaster Tools styling across all registered businesses, including responsive sizing and compact metadata', 'Fixed PoolVerge Bing Webmaster Tools reporting: add missing PoolVerge domain mapping while preserving other properties', 'Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.75',
+    version: '3.2.76',
     releasedAt: 'Pending production deployment',
-    title: 'TCR 3.2.75 — Payments Date and Excel Candidate',
+    title: 'TCR 3.2.76 — Shared SaaS Login Routing Fix',
     changes: IRS_WORKFLOW_CHANGES,
   },
 
@@ -274,9 +274,9 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.76',
+    version: '3.2.77',
     releasedAt: 'Pending production deployment',
-    title: 'Centurion 3.2.76 — Payments and Shared SaaS Candidate',
+    title: 'Centurion 3.2.77 — Fix Login Redirect Loop and Branding',
     changes: [...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 }
