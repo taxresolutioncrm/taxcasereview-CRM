@@ -776,8 +776,10 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [faxIntent, setFaxIntent] = useState(null)
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
+  const [customFolders,setCustomFolders] = useState([])
+  const [folderSaving,setFolderSaving] = useState(false)
   const [uploading,  setUploading]  = useState(false)
-  const [form,       setForm]       = useState({ docType:'IRS Docs', notes:'' })
+  const [form,       setForm]       = useState({ docType:'IRS Docs', folderId:'', notes:'' })
   const [files,      setFiles]      = useState([])
   const [saving,     setSaving]     = useState(false)
   const [uploadResults,setUploadResults] = useState([])
@@ -794,7 +796,10 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const canUpload = can('edit','documents')
 
   useEffect(() => {
+    setFolder('All')
+    setForm(prev=>({...prev,folderId:''}))
     loadDocs()
+    loadFolders()
     return () => { docLoadRequestRef.current += 1 }
   }, [clientId, clientName, tenantId])
   useEffect(() => {
@@ -911,6 +916,63 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   }
 
 
+  async function loadFolders() {
+    if (!tenantId || !clientId) { setCustomFolders([]); return }
+    const {data,error} = await supabase.from('client_document_folders')
+      .select('id,name,parent_folder_id,tenant_id,client_id').eq('tenant_id',tenantId)
+      .eq('client_id',String(clientId)).order('name')
+    if (error) { showToast('Could not load document folders: '+error.message); return }
+    setCustomFolders(data||[])
+  }
+
+  async function addFolder() {
+    if (!canUpload || folderSaving || !tenantId || !clientId) return
+    const parentId=folder.startsWith('custom:')?folder.slice(7):null
+    const name=window.prompt(parentId?'New subfolder name':'New folder name')
+    if (name===null) return
+    const clean=name.trim()
+    if (!clean || clean.length>80) {showToast('Use a folder name between 1 and 80 characters');return}
+    setFolderSaving(true)
+    const {data,error}=await supabase.from('client_document_folders')
+      .insert({tenant_id:tenantId,client_id:String(clientId),parent_folder_id:parentId,name:clean})
+      .select('id,name,parent_folder_id,tenant_id,client_id').single()
+    setFolderSaving(false)
+    if(error){showToast('Could not create folder: '+error.message);return}
+    await loadFolders()
+    if(data?.id)setFolder('custom:'+data.id)
+    showToast('Folder created')
+  }
+
+  async function renameFolder(item) {
+    if (!canUpload || folderSaving) return
+    const name=window.prompt('Rename folder',item.name)
+    if(name===null || name.trim()===item.name)return
+    const clean=name.trim()
+    if (!clean || clean.length>80) {showToast('Use a folder name between 1 and 80 characters');return}
+    setFolderSaving(true)
+    const {error}=await supabase.from('client_document_folders')
+      .update({name:clean}).eq('tenant_id',tenantId).eq('client_id',String(clientId)).eq('id',item.id)
+    setFolderSaving(false)
+    if(error){showToast('Could not rename folder: '+error.message);return}
+    await loadFolders()
+    showToast('Folder renamed')
+  }
+
+  async function deleteFolder(item) {
+    if (!canUpload || folderSaving) return
+    if(customFolders.some(f=>f.parent_folder_id===item.id)){showToast('Delete nested subfolders first');return}
+    if(docs.some(d=>d.client_document_folder_id===item.id)){showToast('Move or delete documents before deleting folder');return}
+    if(!window.confirm('Delete empty folder "'+item.name+'"?'))return
+    setFolderSaving(true)
+    const {error}=await supabase.from('client_document_folders')
+      .delete().eq('tenant_id',tenantId).eq('client_id',String(clientId)).eq('id',item.id)
+    setFolderSaving(false)
+    if(error){showToast('Folder cannot be deleted: '+error.message);return}
+    setFolder('All')
+    await loadFolders()
+    showToast('Empty folder deleted')
+  }
+
   async function loadDocs() {
     const requestId = ++docLoadRequestRef.current
     if (!tenantId) { setDocs([]); return }
@@ -976,7 +1038,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     setUploadResults([])
     setBatchProgress({done:0,total:files.length})
     const batchId=crypto.randomUUID?.() || `batch-${Date.now()}`
-    const folderKey=String(form.docType||'Other').replace(/[^a-zA-Z0-9._-]+/g,'-')
+    const folderKey=String(form.folderId || form.docType || 'Other').replace(/[^a-zA-Z0-9._-]+/g,'-')
     const ownerKey=String(clientId)
     const knownHashes=new Set(
       docs.filter(d=>String(d.client_id||'')===String(clientId) && d.file_hash)
@@ -1032,7 +1094,8 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           client:clientName,
           clientname:clientName,
           client_id:String(clientId),
-          docType:form.docType,
+          docType:form.folderId ? (customFolders.find(f=>f.id===form.folderId)?.name || 'Custom Folder') : form.docType,
+          client_document_folder_id:form.folderId || null,
           notes:form.notes,
           file_url:`storage://documents/${path}`,
           file_name:selectedFile.name,
@@ -1051,7 +1114,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           }else throw insertErr
         }else{
           successCount++;knownHashes.add(hash)
-          setResult(key,{name:selectedFile.name,status:'success',message:`Filed in ${form.docType}`})
+          setResult(key,{name:selectedFile.name,status:'success',message:`Filed in ${form.folderId ? (customFolders.find(f=>f.id===form.folderId)?.name||'Custom Folder'):form.docType}`})
         }
       }catch(e){
         failureCount++
@@ -1062,7 +1125,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
     setSaving(false)
     await loadDocs()
-    if(successCount && onLogged) await onLogged(`📁 Uploaded ${successCount} document(s) to ${form.docType}`)
+    if(successCount && onLogged) await onLogged(`📁 Uploaded ${successCount} document(s) to ${form.folderId ? 'selected custom folder' : form.docType}`)
     showToast(`Upload finished: ${successCount} saved${duplicateCount?`, ${duplicateCount} duplicate(s) skipped`:''}${failureCount?`, ${failureCount} failed`:''}`)
     if(failureCount===0){
       setFiles([])
