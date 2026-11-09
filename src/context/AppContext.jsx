@@ -48,6 +48,7 @@ export const ACCESS_LEVELS = {
   'Super Admin': { label: 'Super Admin', color: '#ef4444' },
   'Admin':       { label: 'Admin',       color: '#f59e0b' },
   'Tax Associate': { label: 'Tax Associate', color: '#3b82f6' },
+  'Tax Preparer': { label: 'Tax Preparer', color: '#0d9488' },
   'EA':            { label: 'EA',            color: '#14b8a6' },
   'CPA':           { label: 'CPA',           color: '#22c55e' },
   'Attorney':      { label: 'Attorney',      color: '#a855f7' },
@@ -70,6 +71,10 @@ const ROLE_DEFAULTS = {
   'Tax Associate': {
     canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','settings'],
     canEdit: ['tasks','chat','settings'],
+  },
+  'Tax Preparer': {
+    canView: ['dashboard','clients','cases','tasks','calendar','deadlines','documents','esign','irsforms','irsreference','taxreturns','transcripts'],
+    canEdit: ['clients','cases','tasks','calendar','documents','esign','irsforms','taxreturns'],
   },
   'EA': {
     canView: ['dashboard','leads','clients','cases','tasks','calendar','deadlines','documents','chat','irsforms','irsreference','taxreturns','reports','settings'],
