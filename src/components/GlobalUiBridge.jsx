@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { EN_ES, getStoredLanguage, storeLanguage } from '../lib/i18n'
+import { translateDashboardGreeting } from '../lib/dashboardLocale'
 
 const ES_LOCAL = {
   'Dashboard':'Panel principal','Calendar':'Calendario','Leads':'Prospectos','Clients':'Clientes','Cases':'Casos','Tasks':'Tareas',
@@ -47,6 +48,11 @@ const EN = Object.fromEntries(Object.entries(ES).map(([k,v]) => [v,k]))
 function translateExact(value, lang) {
   const map = lang === 'es' ? ES : EN
   if (map[value]) return map[value]
+
+  // Live dashboard greetings include the employee name and emoji, so they
+  // never match the exact dictionary key. Translate them in both directions.
+  const greeting = translateDashboardGreeting(value, lang)
+  if (greeting !== value) return greeting
 
   // Preserve emoji/bullet prefixes used by dashboard section headers.
   for (const [from, to] of Object.entries(map)) {
