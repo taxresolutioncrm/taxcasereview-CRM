@@ -799,6 +799,12 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const canUpload = can('edit','documents')
 
   useEffect(() => {
+    // Clear the previous client's visible rows immediately, not only after
+    // asynchronous tenant-filtered queries resolve.
+    setDocs([])
+    setCustomFolders([])
+    setFolderDialog(null)
+    setSelectedDoc(null)
     setFolder('All')
     setForm(prev=>({...prev,folderId:''}))
     loadDocs()
@@ -1172,14 +1178,31 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   }
 
   async function delDoc(doc) {
-    if (doc.file_name) {
-      const path = doc.storage_path || (String(doc.file_url || '').startsWith('storage://documents/') ? String(doc.file_url).replace('storage://documents/','') : doc.file_url?.split('/documents/')[1])
-      if (path) await supabase.storage.from('documents').remove([path]).catch(()=>{})
+    if (!can('edit','documents') || !tenantId || !clientId ||
+      String(doc?.tenant_id)!==String(tenantId) ||
+      String(doc?.client_id)!==String(clientId)) {
+      showToast('Document deletion is not authorized for this client')
+      return
     }
-    const { error } = await supabase.from('documents').delete().eq('id', doc.id)
-    if (error) { showToast('Error: ' + error.message); return }
-    showToast('Deleted'); loadDocs()
-    if (onLogged) await onLogged(`🗑️ Document deleted: "${doc.name}"`)
+    // Remove the database record first. Deleting Storage first could destroy
+    // the only copy even when the database refuses an unauthorized deletion.
+    const {data:deleted,error} = await supabase.from('documents').delete()
+      .eq('id',doc.id).eq('tenant_id',tenantId).eq('client_id',String(clientId))
+      .select('id').maybeSingle()
+    if (error || !deleted?.id) {
+      showToast('Could not delete document: '+(error?.message||'Database did not confirm deletion'))
+      return
+    }
+    const path = doc.storage_path || (String(doc.file_url||'').startsWith('storage://documents/')
+      ? String(doc.file_url).slice('storage://documents/'.length):'')
+    if (path && String(path).startsWith(String(tenantId)+'/')) {
+      const {error:storageError} = await supabase.storage.from('documents').remove([path])
+      if (storageError) showToast('Record deleted. Stored file cleanup needs attention: '+storageError.message)
+    }
+    setSelectedDoc(null)
+    await loadDocs()
+    if(onLogged)await onLogged(`🗑️ Document deleted: "${doc.name}"`)
+    showToast('Document deleted')
   }
 
   // Group by folder
