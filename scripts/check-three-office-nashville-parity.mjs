@@ -23,6 +23,7 @@ const clients=read('src/pages/Clients.jsx')
 const sidebar=read('src/components/layout/Sidebar.jsx')
 const employees=read('src/pages/Employees.jsx')
 const context=read('src/context/AppContext.jsx')
+const translations=read('src/lib/i18n.js')
 const contacts=read('src/components/ClientIRSContacts.jsx')
 const emailBlast=read('src/pages/EmailBlast.jsx')
 const sendEmailFn=read('supabase/functions/send-email/index.ts')
@@ -31,6 +32,9 @@ assert(clients.includes('rememberRecentClient(myTenantId, user.email, c)'),'Only
 assert(sidebar.includes('getRecentClients(activeTenantId, user?.email)'),'Sidebar must scope recent clients to employee and active tenant')
 assert(sidebar.includes('Search recent clients') && sidebar.includes("'/clients/'+encodeURIComponent(client.id)"),'History must be searchable and clickable')
 assert(sidebar.includes('No recently viewed clients'),'Nashville v3.1.87 empty-state label must remain exact')
+for(const key of ['No recently viewed clients','Search recent clients…','Tax Preparer','Revenue Officer','New subfolder','Delete empty folder']) {
+  assert(translations.includes("'"+key+"':"),'New feature needs a Spanish translation: '+key)
+}
 assert(clients.includes("id,name,custnum,status"),'Shared client listing must select actual custnum column')
 assert(sidebar.includes("setMobileNavOpen(false)"),'Recent navigation must close mobile sidebar')
 assert(clients.includes('ClientIRSContacts client={c} tenantId={myTenantId}'),'IRS contacts must be tenant-scoped on client overview')
