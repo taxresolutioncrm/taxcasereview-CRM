@@ -1,11 +1,13 @@
 {
   "name": "tcr-client",
   "private": true,
-  "version": "3.2.92",
+  "version": "3.2.94",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
     "check-admin-calendar-preview": "node scripts/check-admin-calendar-preview.cjs",
+    "check-calendar-detail-delete": "node scripts/check-calendar-detail-delete.mjs",
+    "check-gsc-overall-history": "node scripts/check-gsc-overall-history.mjs",
     "check-poolverge-bing-route": "node scripts/check-poolverge-bing-route.mjs",
     "check-admin-product-ordering": "node scripts/check-admin-product-ordering.mjs",
     "check-polling": "node scripts/check-polling-intervals.cjs",
@@ -28,7 +30,7 @@
     "ui:quick-create": "node scripts/fix-quick-create-routes.mjs",
     "ui:navigation-audit": "node scripts/audit-ui-navigation.mjs",
     "source:verify-current": "git diff --exit-code -- src scripts package.json vite.config.js 2>/dev/null || (echo 'ERROR: prebuild repair scripts changed tracked source. Commit the source fix instead of building mutated source.' && exit 1)",
-    "prebuild": "npm run check-poolverge-bing-route && npm run check-mobile-ux-parity && npm run check-billing-transaction-parity && npm run check-admin-product-ordering && npm run check-admin-calendar-preview && npm run check-time-entry-client-picker && npm run check-taxres-irs-inbox-guidance && npm run check-admin-portal-version && npm run check-release-modal && npm run check-release-versioning && npm run check-tcr-dashboard-reporting && npm run check-note-edit-performance && npm run check-note-edit-family-standard && npm run check-taxres-note-edit-audit && npm run check-tcr-note-edit-audit && npm run check-note-edit-audit && npm run check-taxres-nashville-handoff && npm run check-client-assignment-centurion-links && npm run check-ai-government-call-agent && npm run check-client-case-quick-actions && npm run check-client-task-scheduling && npm run check-formacorp-native && npm run check-centurion-saas-routing && npm run check-payments-date-excel && npm run check-three-office-nashville-parity && npm run check-three-office-auth && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run check-oculivo-lead-intake",
+    "prebuild": "npm run check-calendar-detail-delete && npm run check-gsc-overall-history && npm run check-poolverge-bing-route && npm run check-mobile-ux-parity && npm run check-billing-transaction-parity && npm run check-admin-product-ordering && npm run check-admin-calendar-preview && npm run check-time-entry-client-picker && npm run check-taxres-irs-inbox-guidance && npm run check-admin-portal-version && npm run check-release-modal && npm run check-release-versioning && npm run check-tcr-dashboard-reporting && npm run check-note-edit-performance && npm run check-note-edit-family-standard && npm run check-taxres-note-edit-audit && npm run check-tcr-note-edit-audit && npm run check-note-edit-audit && npm run check-taxres-nashville-handoff && npm run check-client-assignment-centurion-links && npm run check-ai-government-call-agent && npm run check-client-case-quick-actions && npm run check-client-task-scheduling && npm run check-formacorp-native && npm run check-centurion-saas-routing && npm run check-payments-date-excel && npm run check-three-office-nashville-parity && npm run check-three-office-auth && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run check-oculivo-lead-intake",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist --dotfiles",
