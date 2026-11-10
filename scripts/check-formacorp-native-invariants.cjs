@@ -1,4 +1,5 @@
 const fs = require('fs')
+require('child_process').execFileSync(process.execPath,['scripts/check-florida-sunbiz-pdf-import.mjs'],{stdio:'inherit'})
 
 const files = [
   'src/pages/FormaCorp.jsx',
