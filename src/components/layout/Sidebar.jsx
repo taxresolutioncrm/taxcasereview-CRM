@@ -745,24 +745,24 @@ export default function Sidebar() {
                   )}
                 </NavLink>
                 {item.path === '/clients' && !tierLocked && (
-                  <div data-testid="sidebar-recent-clients" style={{padding:'6px 10px 10px 29px',maxWidth:'100%'}}>
+                  <div data-testid="sidebar-recent-clients" style={{padding:'6px 9px 8px 12px',margin:'2px 6px 5px',maxWidth:'100%',background:'rgba(148,163,184,.06)',borderRadius:9}}>
                     <input
                       aria-label="Search recent clients"
                       placeholder="Search recent clients…"
                       value={recentClientSearch}
                       onChange={event => setRecentClientSearch(event.target.value)}
-                      style={{width:'100%',minWidth:0,boxSizing:'border-box',fontSize:11,padding:'6px 8px',border:'1px solid var(--br)',borderRadius:6,background:'var(--s2)',color:'var(--tx)'}}
+                      style={{width:'100%',minWidth:0,boxSizing:'border-box',fontSize:12,padding:'7px 9px',border:'1px solid var(--br)',borderRadius:6,background:'var(--s2)',color:'var(--tx)'}}
                     />
-                    <div style={{fontSize:10,fontWeight:800,color:'var(--t3)',margin:'7px 0 4px'}}>Recent clients</div>
+                    <div style={{fontSize:10,fontWeight:800,color:'var(--t3)',margin:'6px 0 3px'}}>Recent clients</div>
                     {recentClients.filter(client => (client.name+' '+client.number).toLowerCase().includes(recentClientSearch.trim().toLowerCase())).map(client => (
                       <NavLink key={client.id} to={'/clients/'+encodeURIComponent(client.id)}
                         onClick={() => setMobileNavOpen(false)}
-                        style={{display:'block',padding:'5px 4px',fontSize:11,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
+                        style={{display:'block',padding:'6px 5px',minHeight:32,boxSizing:'border-box',fontSize:12,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
                         title={client.name+' '+client.number}>
                         {client.name}{client.number ? ' · '+client.number : ''}
                       </NavLink>
                     ))}
-                    {recentClients.length === 0 && <div style={{fontSize:10,color:'var(--t3)'}}>Opened client files appear here.</div>}
+                    {recentClients.length === 0 && <div style={{fontSize:10,color:'var(--t3)'}}>No recently viewed clients</div>}
                     {recentClients.length > 0 && !recentClients.some(client => (client.name+' '+client.number).toLowerCase().includes(recentClientSearch.trim().toLowerCase())) && <div style={{fontSize:10,color:'var(--t3)'}}>No matches.</div>}
                   </div>
                 )}
