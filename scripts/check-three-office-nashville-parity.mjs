@@ -28,6 +28,16 @@ const contacts=read('src/components/ClientIRSContacts.jsx')
 const emailBlast=read('src/pages/EmailBlast.jsx')
 const sendEmailFn=read('supabase/functions/send-email/index.ts')
 const sql=read('supabase/migrations/20261109180500_shared_three_office_contacts_and_nested_folders.sql')
+const formacorp=read('src/pages/FormaCorp.jsx')
+assert(formacorp.includes("client_id:linkedClient.id"),'FormaCorp must save a stable CRM client ID')
+assert(formacorp.includes("await syncFormationBusiness(payload,linkedClient.id)"),'Formation saves must sync business information')
+assert(formacorp.includes("eq('tenant_id',tenantId)"),'Formation client lookup must be tenant-scoped')
+assert(formacorp.includes("eq('id',client.id).eq('tenant_id',client.tenant_id)"),'Business Info writes must be tenant and client scoped')
+for(const key of ['business_name','businessType','ein','biz_street','biz_city','biz_state','biz_zip']) {
+  assert(formacorp.includes('patch.'+key+'='),'Business info sync missing '+key)
+}
+assert(formacorp.includes('data.length !== 1'),'Unmatched and ambiguous client names must not silently link')
+
 assert(clients.includes('rememberRecentClient(myTenantId, user.email, c)'),'Only actual client detail opens should record history')
 assert(sidebar.includes('getRecentClients(activeTenantId, user?.email)'),'Sidebar must scope recent clients to employee and active tenant')
 assert(sidebar.includes('Search recent clients') && sidebar.includes("'/clients/'+encodeURIComponent(client.id)"),'History must be searchable and clickable')
