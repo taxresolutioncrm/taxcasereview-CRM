@@ -356,16 +356,17 @@ export default function Calendar() {
   }
 
   async function deleteEvent(id) {
-    const target = selectedEvent || events.find(e => e.id === id)
+    const target = events.find(e => e.id === id) || selectedEvent
     const result = isRomyLabsAdmin
       ? await supabase.rpc('admin_delete_product_calendar_event', {
           p_event_id: id,
           p_product_id: target?.product_id || 'romylabs',
         })
-      : await supabase.from('calevents').delete().eq('id', id)
+      : await supabase.from('calevents').delete().eq('id', id).select('id')
     const { data, error } = result
     if (error) { showToast('Error: ' + error.message); setConfirmDel(null); return }
-    if (isRomyLabsAdmin && data !== true) { showToast('Event was not deleted'); setConfirmDel(null); return }
+    const deleted = isRomyLabsAdmin ? data === true : Array.isArray(data) && data.some(row => row.id === id)
+    if (!deleted) { showToast('Event was not deleted'); setConfirmDel(null); return }
     setEvents(prev => prev.filter(e => e.id !== id)); setSelectedEvent(null); setConfirmDel(null); showToast('Deleted')
   }
 
@@ -533,12 +534,7 @@ export default function Calendar() {
                 setEvents(evs => evs.map(e => e.id === selectedEvent.id ? { ...e, eventType: 'Meeting', status: 'scheduled' } : e))
                 showToast('✅ Invite accepted')
               }} style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✅ Accept</button>
-              <button onClick={async () => {
-                await supabase.from('calevents').delete().eq('id', selectedEvent.id)
-                setEvents(evs => evs.filter(e => e.id !== selectedEvent.id))
-                setSelectedEvent(null)
-                showToast('❌ Invite declined and removed')
-              }} style={{ padding: '8px 18px', background: '#3b1a1a', color: '#fca5a5', border: '1px solid #ef4444', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>❌ Decline</button>
+              <button onClick={() => setConfirmDel(selectedEvent.id)} style={{ padding: '8px 18px', background: '#3b1a1a', color: '#fca5a5', border: '1px solid #ef4444', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>❌ Decline</button>
             </div>
           </div>
         )}
@@ -596,6 +592,7 @@ export default function Calendar() {
             </div>
           )}
         </div>
+        <DeleteConfirmModal open={!!confirmDel} label="event" onConfirm={() => deleteEvent(confirmDel)} onCancel={() => setConfirmDel(null)} />
       </div>
     )
   }
