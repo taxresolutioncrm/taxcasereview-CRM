@@ -143,7 +143,7 @@ async function syncAll(supabase:any,token:string){
   for(const key of LIVE_PRODUCTS){
     try{
       const siteUrl=await resolveSiteUrl(token,key)
-      const live=await fetchLive(token,siteUrl,key)
+      const live=await fetchLive(token,siteUrl,key,90)
       await saveSnapshot(supabase,live)
       results[key]=live
     }catch(e:any){
