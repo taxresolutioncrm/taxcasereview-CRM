@@ -42,7 +42,7 @@ const FL_FIELDS = {
 }
 
 const BLANK = {
-  client_name:'', entity_name:'', entity_type:'LLC', state:'FL',
+  client_name:'', client_id:null, entity_name:'', entity_type:'LLC', state:'FL',
   owners:'', registered_agent:'', business_purpose:'',
   ein:'', state_file_num:'', stage:'Consultation',
   notes:'', formation_date:'', fee:'', fee_paid:false,
@@ -50,7 +50,7 @@ const BLANK = {
 }
 
 const WIZ_BLANK = {
-  entity_type: '', state: '', client_name: '', entity_name: '',
+  entity_type: '', state: '', client_name: '', client_id:null, entity_name: '',
   owners: '', registered_agent: '', business_purpose: '',
   service_plan:'Launch',
   ...FL_FIELDS,
@@ -476,7 +476,7 @@ export default function FormaCorp() {
   async function load() {
     const [{ data:c }, { data:cl }, { data:sr }] = await Promise.all([
       supabase.from('formacorp').select('*').order('created_at', { ascending:false }),
-      supabase.from('clients').select('id,name,email,phone'),
+      supabase.from('clients').select('id,name,email,phone,tenant_id'),
       supabase.from('state_formation_requirements').select('*')
     ])
     setCases(c || [])
@@ -490,14 +490,14 @@ export default function FormaCorp() {
   function wFld(k,v) { setWForm(f=>({...f,[k]:v})) }
 
   function wSearchClient(val) {
-    wFld('client_name', val)
+    setWForm(f => ({...f,client_name:val,client_id:null}))
     if (val.length < 2) { setWSugg([]); setWShowSug(false); return }
     const m = clients.filter(c=>c.name.toLowerCase().includes(val.toLowerCase())).slice(0,6)
     setWSugg(m); setWShowSug(m.length > 0)
   }
 
   function chooseWizardClient(c) {
-    setWForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setWForm(f => ({ ...f, client_name:c.name, client_id:c.id, correspondence_email:f.correspondence_email || c.email || '' }))
     setWSugg([]); setWShowSug(false)
   }
 
@@ -507,15 +507,56 @@ export default function FormaCorp() {
     setWizard(true)
   }
 
+  async function linkedFormationClient(source) {
+    const {data:tenantId,error:tenantError} = await supabase.rpc('current_tenant_id')
+    if (tenantError || !tenantId) throw new Error('Unable to verify the current office')
+    let query = supabase.from('clients').select('id,name,tenant_id,business_name,businessType,ein,biz_street,biz_city,biz_state,biz_zip')
+      .eq('tenant_id',tenantId)
+    if (source.client_id) query=query.eq('id',source.client_id)
+    else query=query.eq('name',String(source.client_name||'').trim())
+    const {data,error} = await query.limit(2)
+    if (error) throw error
+    if (!data || data.length !== 1) throw new Error('Select one existing CRM client before saving this formation (unmatched or duplicate client name)')
+    if (source.client_id && data[0].name !== source.client_name) throw new Error('The selected client changed; please choose the client again')
+    return data[0]
+  }
+
+  async function syncFormationBusiness(caseRecord, linkedId) {
+    if (!linkedId) throw new Error('Formation has no verified CRM client link')
+    const client = await linkedFormationClient({client_id:linkedId,client_name:caseRecord.client_name})
+    const patch={}
+    // Preserve existing business facts; formation drafts must not overwrite client-entered data.
+    if (!client.business_name && caseRecord.entity_name?.trim()) patch.business_name=caseRecord.entity_name.trim()
+    if (!client.businessType && caseRecord.entity_type?.trim()) patch.businessType=caseRecord.entity_type.trim()
+    if (!client.ein && caseRecord.ein?.trim()) patch.ein=caseRecord.ein.trim()
+    const address=String(caseRecord.principal_address||'').trim()
+    // Only parse structured US addresses. Do not put an entire address into a street-only field.
+    const match=address.match(/^(.+?),\\s*([^,]+),\\s*([A-Z]{2})\\s+(\\d{5})(?:-\\d{4})?$/i)
+    if (match) {
+      const [,street,city,state,zip]=match
+      if (!client.biz_street) patch.biz_street=street.trim()
+      if (!client.biz_city) patch.biz_city=city.trim()
+      if (!client.biz_state) patch.biz_state=state.toUpperCase()
+      if (!client.biz_zip) patch.biz_zip=zip
+    }
+    if (!Object.keys(patch).length) return
+    const {data,error}=await supabase.from('clients').update(patch)
+      .eq('id',client.id).eq('tenant_id',client.tenant_id).select('id').single()
+    if (error || !data) throw error || new Error('Client Business Info update was not confirmed')
+  }
+
   async function createFromWizard(source = wForm) {
     if (!source.client_name || !source.entity_name || !source.entity_type || !source.state) {
       showToast('Please complete all required fields', 'err'); return
     }
+    let linkedClient
+    try { linkedClient=await linkedFormationClient(source) }
+    catch(error) {showToast('Client link required: '+error.message,'err');return}
     setSaving(true)
     const req = stateReqs[source.state]
     const fee = req?.llc_filing_fee ? parseFloat(req.llc_filing_fee.replace(/[^0-9.]/g, '')) : null
     const payload = {
-      client_name:source.client_name, entity_name:source.entity_name, entity_type:source.entity_type, state:source.state,
+      client_name:linkedClient.name, client_id:linkedClient.id, entity_name:source.entity_name, entity_type:source.entity_type, state:source.state,
       owners:source.owners, registered_agent:source.registered_agent, business_purpose:source.business_purpose,
       principal_address:source.principal_address || '', mailing_address:source.mailing_address || '',
       registered_agent_address:source.registered_agent_address || '',
@@ -567,6 +608,8 @@ export default function FormaCorp() {
       good_standing_status:'Unknown',
       registered_agent_status:source.registered_agent==='Self (Owner)' ? 'Client / Self' : 'Third Party',
     }])
+    try {await syncFormationBusiness(payload,linkedClient.id)}
+    catch(error) {showToast('Formation created, but client Business Info sync failed: '+error.message,'err')}
     setSaving(false)
     if (lifecycleErr) { showToast('Formation created, but lifecycle setup needs attention: '+lifecycleErr.message, 'err') }
     else showToast('🏢 Formation case + launch lifecycle created!')
@@ -623,6 +666,10 @@ export default function FormaCorp() {
         .in('fl_filing_status',['Draft','Ready to Submit','Filing Queue','Action Required'])
         .select('id').single()
       if (error || !updated) throw error || new Error('No authorized draft was updated.')
+      if (prior.client_id) {
+        try {await syncFormationBusiness({...prior,...patch},prior.client_id)}
+        catch(syncError) {showToast('Filing saved, but client Business Info sync failed: '+syncError.message,'err')}
+      }
       setDetail(d=>d?.id===prior.id?({...d,...patch}):d)
       setFloridaEditCase(null)
       await load()
@@ -633,14 +680,14 @@ export default function FormaCorp() {
   }
 
   function searchClient(val) {
-    fld('client_name', val)
+    setForm(f => ({...f,client_name:val,client_id:null}))
     if (val.length < 2) { setSugg([]); setShowSug(false); return }
     const m = clients.filter(c=>c.name.toLowerCase().includes(val.toLowerCase())).slice(0,6)
     setSugg(m); setShowSug(m.length > 0)
   }
 
   function chooseClient(c) {
-    setForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setForm(f => ({ ...f, client_name:c.name, client_id:c.id, correspondence_email:f.correspondence_email || c.email || '' }))
     setSugg([]); setShowSug(false)
   }
 
@@ -648,8 +695,11 @@ export default function FormaCorp() {
     if (!form.client_name || !form.entity_name || !form.entity_type) {
       showToast('Client, entity name and type required', 'err'); return
     }
+    let linkedClient
+    try { linkedClient=await linkedFormationClient(form) }
+    catch(error) {showToast('Client link required: '+error.message,'err');return}
     setSaving(true)
-    const payload = { ...form, fee: form.fee ? parseFloat(form.fee) : null, created_at: form.created_at || new Date().toISOString() }
+    const payload = { ...form, client_id:linkedClient.id, client_name:linkedClient.name, fee: form.fee ? parseFloat(form.fee) : null, created_at: form.created_at || new Date().toISOString() }
     if (isFloridaFormable(payload)) {
       payload.fl_state_fee = floridaStateFee(payload)
       payload.state_fee_amount = floridaStateFee(payload)
@@ -669,6 +719,8 @@ export default function FormaCorp() {
       : await supabase.from('formacorp').insert([payload])
     setSaving(false)
     if (error) { showToast('Error: '+error.message, 'err'); return }
+    try {await syncFormationBusiness(payload,linkedClient.id)}
+    catch(syncError) {showToast('Formation saved, but client Business Info sync failed: '+syncError.message,'err')}
     showToast(modal==='edit' ? '✅ Updated!' : '✅ Case created!')
     if (modal === 'edit' && detail?.id === form.id) setDetail(d => ({ ...d, ...payload }))
     setModal(false); setForm(BLANK); await load()
@@ -691,6 +743,10 @@ export default function FormaCorp() {
   async function updateFloridaCase(c, patch, toast, eventNote) {
     const { error } = await supabase.from('formacorp').update(patch).eq('id', c.id)
     if (error) { showToast('Florida filing update failed: '+error.message, 'err'); return false }
+    if (c.client_id) {
+      try {await syncFormationBusiness({...c,...patch},c.client_id)}
+      catch(syncError) {showToast('Filing saved, but client Business Info sync failed: '+syncError.message,'err')}
+    }
     if (eventNote) await recordFloridaEvent(c, patch.fl_filing_status || c.fl_filing_status || 'Draft', eventNote, patch)
     setDetail(d => d?.id===c.id ? ({...d,...patch}) : d)
     await load()
