@@ -17,6 +17,19 @@ const files = [
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
 const officialWorkspace = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.jsx','utf8')
 const officialWorkspaceStyles = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.css','utf8')
+const floridaPdfParser = fs.readFileSync('src/lib/flSunbizPdfImport.js','utf8')
+assertPdfImportSource()
+function assertPdfImportSource() {
+  for (const term of ['parseFloridaSunbizPdf','parseFloridaSunbizText','extractPdfText','nameMatches','floridaHeader','canVerify']) {
+    if (!floridaPdfParser.includes(term)) throw new Error('Sunbiz PDF parser missing '+term)
+  }
+  const importer = fs.readFileSync('src/pages/FormaCorp.jsx','utf8')
+  for(const term of ['importOfficialSunbizPdf','client_document_folders','client_document_folder_id:folderId','formacorp_documents','file_hash:hash','onImportPdf=','!parsed.canVerify','client_id:c.client_id']) {
+    if(!importer.includes(term)) throw new Error('FormaCorp PDF import missing '+term)
+  }
+  if(!officialWorkspace.includes('Verify and save to client business file')) throw new Error('Sunbiz PDF upload action missing')
+}
+
 const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 
