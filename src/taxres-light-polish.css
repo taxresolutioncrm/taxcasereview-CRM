@@ -289,3 +289,50 @@ html.light .bdg:not(.blue):not(.bb):not(.bg):not(.ba):not(.br):not(.bc) {
     min-width: 0 !important;
   }
 }
+
+
+/* Nashville v3.1.90 follow-up: dashboard elements with hard-coded inline
+   dark colors. Shared tax theme classes, exclusively active in light mode. */
+html.light .tax-dashboard-timezones {
+  background: #fff !important;
+  border: 1px solid #dbe4ee !important;
+  box-shadow: 0 6px 18px rgba(33,51,74,.06) !important;
+}
+html.light .tax-dashboard-timezones [style*="color: var(--t2)"] {
+  color: #24364c !important;
+}
+html.light .tax-dashboard-widget-title {
+  color: #162338 !important;
+}
+html.light .tax-dashboard-tas-skeleton {
+  background: #f3f6fa !important;
+}
+html.light .tax-dashboard-tas-entry {
+  background: #f7faff !important;
+  background-image: none !important;
+  border: 1px solid #dce6f0 !important;
+  box-shadow: 0 4px 12px rgba(33,51,74,.045) !important;
+}
+html.light .tax-dashboard-tas-entry:hover {
+  background: #eef5ff !important;
+  border-color: #b8d0e8 !important;
+}
+html.light .tax-dashboard-tas-text,
+html.light .tax-dashboard-tip-text {
+  color: #24364c !important;
+}
+html.light .tax-dashboard-tas-link {
+  color: #1768b0 !important;
+}
+html.light .tax-dashboard-tip-panel {
+  background: #f7fbf7 !important;
+  background-image: none !important;
+  border: 1px solid #d5e8d7 !important;
+  box-shadow: 0 4px 12px rgba(33,51,74,.045) !important;
+}
+html.light .tax-dashboard-tip-dot:not(.is-active) {
+  background: #cad8e8 !important;
+}
+html.light .tax-dashboard-tip-dot.is-active {
+  background: var(--blue, #1a7fd4) !important;
+}
