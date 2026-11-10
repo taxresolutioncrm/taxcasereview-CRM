@@ -877,6 +877,8 @@ export default function FormaCorp() {
     if (caseError || !caseRow || caseRow.client_id !== client.id || caseRow.entity_name !== c.entity_name) {
       throw new Error('The formation client or business changed; reload before importing')
     }
+    // Reject incompatible entity types before creating folders or uploading anything.
+    const updatePlan=planFloridaSunbizBusinessUpdate(parsed,caseRow,kind)
     // In the client document tree: Business / Legal company / Formation Documents.
     // All three folder rows are tenant/client scoped and guarded by the folder migration's RLS.
     async function folder(name,parentId) {
@@ -937,7 +939,7 @@ export default function FormaCorp() {
     }
     // Labeled PDF data fills missing fields only. Never assume approval or payment
     // and never overwrite an employee's existing values without review.
-    const {patch,conflicts}=planFloridaSunbizBusinessUpdate(parsed,caseRow,kind)
+    const {patch,conflicts}=updatePlan
     let syncWarning=''
     if (Object.keys(patch).length) {
       const {data:savedCase,error:metadataError}=await supabase.from('formacorp')
