@@ -15,6 +15,7 @@ const SHARED_NASHVILLE_PARITY_CHANGES = [
   'Client document workspace supports multi-level folders, folder-targeted uploads, in-app create/rename/empty-folder confirmation, immediate tenant-switch state cleanup, verified database-before-storage deletion, and tenant-scoped database permission checks',
   'Employee creation prevents duplicate submissions, shows database failures and refreshes records after a confirmed save',
   'Nested folders and contact storage require the separately reviewed shared-project additive database migration before deployment',
+  'New shared Clients, Tax Preparer, IRS contacts and folder labels have Spanish translations without changing existing office role terminology',
 ]
 
 const OFFICE_ACCESS_CHANGES = [
