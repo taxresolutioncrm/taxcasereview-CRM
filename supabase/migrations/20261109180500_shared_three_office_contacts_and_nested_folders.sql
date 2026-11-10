@@ -144,7 +144,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON public.client_document_folders TO authentic
 CREATE OR REPLACE FUNCTION public.shared_preparer_may_access_client(
   p_tenant uuid, p_assigned_to text, p_tax_associate text, p_client_admin text
 ) RETURNS boolean
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path=public,pg_temp AS $
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=public,pg_temp AS $$
   SELECT NOT EXISTS (
     SELECT 1 FROM public.employees e
     WHERE e.tenant_id=public.current_tenant_id()
@@ -164,7 +164,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path=public,pg_temp AS $
         OR lower(btrim(coalesce(p_client_admin,'')))=lower(btrim(e.name))
       )
   );
-$;
+$$;
 REVOKE ALL ON FUNCTION public.shared_preparer_may_access_client(uuid,text,text,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.shared_preparer_may_access_client(uuid,text,text,text) TO authenticated;
 
