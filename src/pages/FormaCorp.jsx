@@ -475,9 +475,11 @@ export default function FormaCorp() {
   useEffect(() => { load() }, [])
 
   async function load() {
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if(tenantError||!tenantId) {showToast('Cannot load FormaCorp without a verified office','err');return}
     const [{ data:c }, { data:cl }, { data:sr }] = await Promise.all([
-      supabase.from('formacorp').select('*').order('created_at', { ascending:false }),
-      supabase.from('clients').select('id,name,email,phone,tenant_id'),
+      supabase.from('formacorp').select('*').eq('tenant_id',tenantId).order('created_at', { ascending:false }),
+      supabase.from('clients').select('id,name,email,phone,tenant_id').eq('tenant_id',tenantId),
       supabase.from('state_formation_requirements').select('*')
     ])
     setCases(c || [])
