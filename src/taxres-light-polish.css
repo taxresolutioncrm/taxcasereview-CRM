@@ -100,13 +100,13 @@ html.light .search-input:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent) !important;
 }
 
-html.light .btn:not(.pri) {
+html.light .btn:not(.pri):not(.danger):not(.success):not(.warning):not(.del) {
   background: #f8fafc;
   border-color: #d6e0ea;
   color: #24364c !important;
 }
 
-html.light .btn:not(.pri):hover {
+html.light .btn:not(.pri):not(.danger):not(.success):not(.warning):not(.del):hover {
   background: #eef4f9;
   border-color: #c8d5e2;
 }
