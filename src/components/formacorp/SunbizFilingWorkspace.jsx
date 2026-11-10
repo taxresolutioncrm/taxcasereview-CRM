@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { parseFloridaSunbizPdf } from '../../lib/flSunbizPdfImport'
 import './SunbizFilingWorkspace.css'
 
 const URLS = {
@@ -28,7 +29,7 @@ const GROUPS = [
   ] },
 ]
 
-export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordReceipt}) {
+export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordReceipt, onImportPdf}) {
   const isSavedCase=!!caseRecord?.id
   const officialUrl=URLS[caseRecord?.entity_type||'LLC']
   const isPreviouslyRecorded=!!caseRecord?.fl_submitted_at
@@ -38,6 +39,31 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
     reference:caseRecord?.fl_confirmation_url||'',
   })
   const [recording,setRecording]=useState(false)
+  const [pdfFile,setPdfFile]=useState(null)
+  const [pdfResult,setPdfResult]=useState(null)
+  const [pdfError,setPdfError]=useState('')
+  const [pdfKind,setPdfKind]=useState('Filed Articles')
+  const [importing,setImporting]=useState(false)
+  const readPdf=async file=>{
+    setPdfFile(null);setPdfResult(null);setPdfError('')
+    if(!file)return
+    try {
+      const parsed=await parseFloridaSunbizPdf(file,caseRecord?.entity_name)
+      if(!parsed.companyName)throw new Error('The PDF does not contain a recognizable company name. No business data was changed.')
+      if(!parsed.nameMatches)throw new Error('Business-name mismatch. PDF: '+parsed.companyName+'; FormaCorp: '+caseRecord.entity_name+'. Select the correct business before importing.')
+      if(!parsed.floridaHeader)throw new Error('Cannot identify Florida Division of Corporations text in this PDF.')
+      setPdfFile(file);setPdfResult(parsed)
+    } catch(err){setPdfError(err?.message||String(err))}
+  }
+  const importPdf=async()=>{
+    if(!pdfFile||!pdfResult?.canVerify||!onImportPdf||importing)return
+    setImporting(true);setPdfError('')
+    try {
+      await onImportPdf(pdfFile,pdfKind)
+      setPdfFile(null);setPdfResult(null)
+    } catch(error){setPdfError(error?.message||String(error))}
+    finally{setImporting(false)}
+  }
   const [copied,setCopied]=useState('')
   const copy=async(label,value)=>{
     if(!value)return
@@ -127,6 +153,30 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
           </section>
         </div>
 
+        {isSavedCase&&<section className="sunbiz-confirmation" aria-label="Import downloaded Sunbiz PDF">
+          <div className="sunbiz-confirmation-body">
+            <h3>Save downloaded Sunbiz PDF to this client's business file</h3>
+            <p className="sunbiz-helper">Finish filing and payment on Florida's official site, then select the downloaded PDF. FormaCorp reads its text, checks the company name against this formation, and saves one file for both business documents and FormaCorp. State approval is not assumed from a PDF upload.</p>
+            <label>Sunbiz document type
+              <select value={pdfKind} onChange={e=>setPdfKind(e.target.value)} disabled={importing}>
+                <option>Filed Articles</option>
+                <option>Payment Receipt</option>
+                <option>Certificate of Status</option>
+                <option>Certified Copy</option>
+              </select>
+            </label>
+            <label>Downloaded PDF
+              <input type="file" accept=".pdf,application/pdf" disabled={importing} onChange={e=>readPdf(e.target.files?.[0])}/>
+            </label>
+            {pdfResult&&<div role="status" className="sunbiz-helper">
+              ✓ Matched: {pdfResult.companyName}. {pdfResult.documentNumber?'Document '+pdfResult.documentNumber+'. ':''}{pdfResult.filedDate?'Filed '+pdfResult.filedDate+'. ':''}The PDF is ready to archive under this business.
+            </div>}
+            {pdfError&&<p role="alert" style={{color:'var(--red,#dc2626)'}}>{pdfError}</p>}
+            <button className="btn pri" type="button" onClick={importPdf} disabled={!pdfResult?.canVerify||!pdfFile||importing}>
+              {importing?'Saving PDF…':'Verify and save to client business file'}
+            </button>
+          </div>
+        </section>}
         {isSavedCase&&<details className="sunbiz-confirmation">
           <summary>Record official Florida confirmation {isPreviouslyRecorded?'· Already recorded':'· After submission'}</summary>
           <div className="sunbiz-confirmation-body">
