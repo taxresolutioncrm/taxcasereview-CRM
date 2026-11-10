@@ -46,8 +46,8 @@ assert(!lightPolish.includes('html.dark'),'Nashville light-mode rules must not o
 
 const dashboardSource=read('src/pages/Dashboard.jsx')
 assert(lightPolish.includes('Nashville v3.1.90 follow-up'),'Nashville 3.1.90 dashboard light-mode follow-up missing')
+assert(dashboardSource.includes('tax-dashboard-theme-root'),'Shared dashboard theme scope class missing')
 for(const cls of [
- 'tax-dashboard-theme-root',
  'tax-dashboard-timezones',
  'tax-dashboard-widget-title',
  'tax-dashboard-tas-skeleton',
