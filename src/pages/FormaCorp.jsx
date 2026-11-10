@@ -9,6 +9,7 @@ import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
 import FloridaSunbizIntake from '../components/formacorp/FloridaSunbizIntake'
 import SunbizFilingWorkspace from '../components/formacorp/SunbizFilingWorkspace'
+import { parseFloridaSunbizPdf } from '../lib/flSunbizPdfImport'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -859,6 +860,99 @@ export default function FormaCorp() {
     }, '✅ Recorded as submitted to Florida', 'State submission recorded')
   }
 
+  async function importOfficialSunbizPdf(c, file, kind) {
+    if (!c?.id || !c?.client_id || c.state !== 'FL') throw new Error('Select a saved Florida formation linked to an existing CRM client')
+    const validKinds=['Filed Articles','Payment Receipt','Certificate of Status','Certified Copy']
+    if (!validKinds.includes(kind)) throw new Error('Select a supported Florida document type')
+    const parsed=await parseFloridaSunbizPdf(file,c.entity_name)
+    if (!parsed.canVerify) throw new Error('The PDF name or Florida header did not match the selected formation; no document saved')
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if (tenantError || !tenantId || String(tenantId)!==String(c.tenant_id)) throw new Error('Cannot verify the current office')
+    const client=await linkedFormationClient({client_id:c.client_id,client_name:c.client_name})
+    const {data:caseRow,error:caseError}=await supabase.from('formacorp')
+      .select('id,tenant_id,client_id,client_name,entity_name,state,state_file_num,formation_date')
+      .eq('id',c.id).eq('tenant_id',tenantId).single()
+    if (caseError || !caseRow || caseRow.client_id !== client.id || caseRow.entity_name !== c.entity_name) {
+      throw new Error('The formation client or business changed; reload before importing')
+    }
+    // In the client document tree: Business / Legal company / Formation Documents.
+    // All three folder rows are tenant/client scoped and guarded by the folder migration's RLS.
+    async function folder(name,parentId) {
+      let query=supabase.from('client_document_folders')
+        .select('id').eq('tenant_id',tenantId).eq('client_id',client.id).eq('name',name)
+      query=parentId?query.eq('parent_folder_id',parentId):query.is('parent_folder_id',null)
+      const {data:existing,error:lookupError}=await query.limit(1).maybeSingle()
+      if (lookupError) throw new Error('Business document folders unavailable: '+lookupError.message)
+      if (existing) return existing.id
+      const {data:created,error:createError}=await supabase.from('client_document_folders').insert([{
+        tenant_id:tenantId,client_id:client.id,parent_folder_id:parentId,name,
+      }]).select('id').single()
+      if (created) return created.id
+      if (createError?.code==='23505') {
+        const {data:concurrent,error:retryError}=await query.limit(1).maybeSingle()
+        if (!retryError && concurrent) return concurrent.id
+      }
+      throw new Error('Could not create business document folder: '+(createError?.message||'Unknown error'))
+    }
+    const rootId=await folder('Business',null)
+    const companyId=await folder(caseRow.entity_name,rootId)
+    const folderId=await folder('Formation Documents',companyId)
+    const bytes=await file.arrayBuffer()
+    const digest=await crypto.subtle.digest('SHA-256',bytes)
+    const hash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')
+    const {data:existingDoc,error:duplicateError}=await supabase.from('documents')
+      .select('id,storage_path').eq('tenant_id',tenantId).eq('client_id',client.id)
+      .eq('file_hash',hash).limit(1).maybeSingle()
+    if (duplicateError) throw duplicateError
+    if (existingDoc) throw new Error('This PDF is already in the selected client document file')
+    const safeName=String(file.name).replace(/[^a-z0-9_.-]/gi,'_').slice(0,110)
+    const fileName=kind.replace(/ /g,'-')+'-'+Date.now()+'-'+safeName
+    const storagePath=tenantId+'/formacorp/'+c.id+'/official/'+fileName
+    const {error:uploadError}=await supabase.storage.from('documents')
+      .upload(storagePath,new Blob([bytes],{type:'application/pdf'}),{upsert:false,contentType:'application/pdf'})
+    if (uploadError) throw new Error('Sunbiz PDF storage failed: '+uploadError.message)
+    let indexed=false
+    try {
+      const {error:docError}=await supabase.from('documents').insert([{
+        tenant_id:tenantId,client_id:client.id,client:client.name,clientname:client.name,
+        name:kind+' — '+caseRow.entity_name,docType:'Formation Documents',
+        client_document_folder_id:folderId,
+        file_name:fileName,original_file_name:file.name,
+        file_url:'storage://documents/'+storagePath,storage_path:storagePath,
+        file_size:file.size,file_hash:hash,source:'FormaCorp Sunbiz',
+        notes:'Florida Sunbiz PDF imported by staff; name checked against linked formation. State authenticity and approval are separately verified.',
+      }])
+      if (docError) throw new Error('Client business document index failed: '+docError.message)
+      indexed=true
+      const {error:caseDocError}=await supabase.from('formacorp_documents').insert([{
+        tenant_id:tenantId,case_id:c.id,document_type:'Florida Sunbiz — '+kind,
+        file_name:fileName,storage_path:storagePath,source:'Sunbiz PDF import',
+      }])
+      if (caseDocError) throw new Error('PDF is in the client business file, but FormaCorp index failed: '+caseDocError.message)
+    } catch(error) {
+      if(!indexed) await supabase.storage.from('documents').remove([storagePath])
+      throw error
+    }
+    // Record document number and filed date only from positively matched Articles.
+    // A downloaded PDF does not prove registry acceptance: never set Approved/Active here.
+    if(kind==='Filed Articles' && (parsed.documentNumber || parsed.filedDate)) {
+      const patch={}
+      if(parsed.documentNumber && !caseRow.state_file_num) patch.state_file_num=parsed.documentNumber
+      if(parsed.filedDate && !caseRow.formation_date) patch.formation_date=parsed.filedDate
+      if(Object.keys(patch).length) {
+        const {error:metadataError}=await supabase.from('formacorp').update(patch)
+          .eq('id',c.id).eq('tenant_id',tenantId)
+        if(metadataError) {
+          showToast('PDF saved to both document files; state fields need review: '+metadataError.message,'err')
+        } else {
+          setDetail(d=>d?.id===c.id?({...d,...patch}):d)
+        }
+      }
+    }
+    await load()
+    showToast('✅ Sunbiz PDF name verified and saved to Client → Business → '+caseRow.entity_name+' → Formation Documents and FormaCorp. Confirm approval separately.')
+  }
+
   async function saveOfficialSunbizReceipt(c, receipt) {
     if (!c?.id) throw new Error('Select a saved formation case first')
     const tracking=String(receipt?.tracking||'').trim()
@@ -1324,7 +1418,7 @@ export default function FormaCorp() {
       {editCaseModal}
 
       {floridaIntake && <FloridaSunbizIntake saving={saving} onClose={()=>setFloridaIntake(false)} onSave={createFromWizard}/>}
-      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)}/>}
+      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)} onImportPdf={(file,kind)=>importOfficialSunbizPdf(officialSunbizCase,file,kind)}/>}
 
       {wizard && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>
