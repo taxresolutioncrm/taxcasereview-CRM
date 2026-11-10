@@ -36,6 +36,8 @@ import { generatePOACoverLetterPdf } from '../lib/irsFormUtils'
 import { SMS_TEMPLATES, applySmsTemplate } from '../lib/smsTemplates'
 import { FIRM, label } from '../lib/firmBranding'
 import EditableNote from '../components/EditableNote'
+import { rememberRecentClient } from '../lib/recentClients'
+import ClientIRSContacts from '../components/ClientIRSContacts'
 
 // Tenant-resolved firm name so onboarding email + POA/addendum SMS bodies
 // read for whichever firm is signed in. Mirrors Leads.jsx and docUtils.
@@ -774,8 +776,12 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const [faxIntent, setFaxIntent] = useState(null)
   const [docs,       setDocs]       = useState([])
   const [folder,     setFolder]     = useState('All')
+  const [customFolders,setCustomFolders] = useState([])
+  const [folderSaving,setFolderSaving] = useState(false)
+  const [folderDialog,setFolderDialog] = useState(null)
+  const [folderDialogError,setFolderDialogError] = useState('')
   const [uploading,  setUploading]  = useState(false)
-  const [form,       setForm]       = useState({ docType:'IRS Docs', notes:'' })
+  const [form,       setForm]       = useState({ docType:'IRS Docs', folderId:'', notes:'' })
   const [files,      setFiles]      = useState([])
   const [saving,     setSaving]     = useState(false)
   const [uploadResults,setUploadResults] = useState([])
@@ -789,11 +795,15 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const previewSequence = useRef(0)
   const fileRef = useRef(null)
   const docLoadRequestRef = useRef(0)
+  const folderLoadRequestRef = useRef(0)
   const canUpload = can('edit','documents')
 
   useEffect(() => {
+    setFolder('All')
+    setForm(prev=>({...prev,folderId:''}))
     loadDocs()
-    return () => { docLoadRequestRef.current += 1 }
+    loadFolders()
+    return () => { docLoadRequestRef.current += 1; folderLoadRequestRef.current += 1 }
   }, [clientId, clientName, tenantId])
   useEffect(() => {
     previewSequence.current += 1
@@ -909,6 +919,84 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   }
 
 
+  async function loadFolders() {
+    const requestId = ++folderLoadRequestRef.current
+    if (!tenantId || !clientId) { setCustomFolders([]); return }
+    const {data,error} = await supabase.from('client_document_folders')
+      .select('id,name,parent_folder_id,tenant_id,client_id').eq('tenant_id',tenantId)
+      .eq('client_id',String(clientId)).order('name')
+    if (requestId !== folderLoadRequestRef.current) return
+    if (error) { showToast('Could not load document folders: '+error.message); return }
+    const scoped=(data||[]).filter(item=>
+      String(item.tenant_id)===String(tenantId) && String(item.client_id)===String(clientId))
+    setCustomFolders(scoped)
+  }
+
+  function addFolder() {
+    if (!canUpload || folderSaving || !tenantId || !clientId) return
+    const parentId=folder.startsWith('custom:')?folder.slice(7):null
+    setFolderDialog({action:'create',parentId,name:''})
+    setFolderDialogError('')
+  }
+
+  function renameFolder(item) {
+    if (!canUpload || folderSaving) return
+    setFolderDialog({action:'rename',item,name:item.name})
+    setFolderDialogError('')
+  }
+
+  function deleteFolder(item) {
+    if (!canUpload || folderSaving) return
+    if(customFolders.some(f=>f.parent_folder_id===item.id)){showToast('Delete nested subfolders first');return}
+    if(docs.some(d=>d.client_document_folder_id===item.id)){showToast('Move or delete documents before deleting folder');return}
+    setFolderDialog({action:'delete',item,name:item.name})
+    setFolderDialogError('')
+  }
+
+  async function confirmFolderDialog() {
+    if (!folderDialog || folderSaving || !tenantId || !clientId || !canUpload) return
+    const action=folderDialog.action
+    const clean=String(folderDialog.name||'').trim()
+    if (action!=='delete' && (!clean || clean.length>80)) {
+      setFolderDialogError('Use a folder name between 1 and 80 characters')
+      return
+    }
+    if (action==='delete' && (customFolders.some(f=>f.parent_folder_id===folderDialog.item.id)
+      || docs.some(d=>d.client_document_folder_id===folderDialog.item.id))) {
+      setFolderDialogError('Folder must not contain any documents or subfolders')
+      return
+    }
+    setFolderSaving(true)
+    setFolderDialogError('')
+    try {
+      if (action==='create') {
+        const {data,error}=await supabase.from('client_document_folders')
+          .insert({tenant_id:tenantId,client_id:String(clientId),parent_folder_id:folderDialog.parentId,name:clean})
+          .select('id,name,parent_folder_id,tenant_id,client_id').single()
+        if(error || !data?.id)throw error || new Error('Folder creation was not confirmed')
+        await loadFolders()
+        setFolder('custom:'+data.id)
+      } else if(action==='rename') {
+        const {data,error}=await supabase.from('client_document_folders')
+          .update({name:clean}).eq('tenant_id',tenantId).eq('client_id',String(clientId))
+          .eq('id',folderDialog.item.id).select('id').single()
+        if(error || !data?.id)throw error || new Error('Folder rename was not confirmed')
+        await loadFolders()
+      } else if(action==='delete') {
+        const {data,error}=await supabase.from('client_document_folders')
+          .delete().eq('tenant_id',tenantId).eq('client_id',String(clientId))
+          .eq('id',folderDialog.item.id).select('id').single()
+        if(error || !data?.id)throw error || new Error('Folder deletion was not confirmed')
+        setFolder('All')
+        await loadFolders()
+      }
+      setFolderDialog(null)
+      showToast(action==='create'?'Folder created':action==='rename'?'Folder renamed':'Empty folder deleted')
+    } catch (err) {
+      setFolderDialogError(err?.message || 'Folder change failed')
+    } finally { setFolderSaving(false) }
+  }
+
   async function loadDocs() {
     const requestId = ++docLoadRequestRef.current
     if (!tenantId) { setDocs([]); return }
@@ -974,7 +1062,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
     setUploadResults([])
     setBatchProgress({done:0,total:files.length})
     const batchId=crypto.randomUUID?.() || `batch-${Date.now()}`
-    const folderKey=String(form.docType||'Other').replace(/[^a-zA-Z0-9._-]+/g,'-')
+    const folderKey=String(form.folderId || form.docType || 'Other').replace(/[^a-zA-Z0-9._-]+/g,'-')
     const ownerKey=String(clientId)
     const knownHashes=new Set(
       docs.filter(d=>String(d.client_id||'')===String(clientId) && d.file_hash)
@@ -1030,7 +1118,8 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           client:clientName,
           clientname:clientName,
           client_id:String(clientId),
-          docType:form.docType,
+          docType:form.folderId ? (customFolders.find(f=>f.id===form.folderId)?.name || 'Custom Folder') : form.docType,
+          client_document_folder_id:form.folderId || null,
           notes:form.notes,
           file_url:`storage://documents/${path}`,
           file_name:selectedFile.name,
@@ -1049,7 +1138,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
           }else throw insertErr
         }else{
           successCount++;knownHashes.add(hash)
-          setResult(key,{name:selectedFile.name,status:'success',message:`Filed in ${form.docType}`})
+          setResult(key,{name:selectedFile.name,status:'success',message:`Filed in ${form.folderId ? (customFolders.find(f=>f.id===form.folderId)?.name||'Custom Folder'):form.docType}`})
         }
       }catch(e){
         failureCount++
@@ -1060,7 +1149,7 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
 
     setSaving(false)
     await loadDocs()
-    if(successCount && onLogged) await onLogged(`📁 Uploaded ${successCount} document(s) to ${form.docType}`)
+    if(successCount && onLogged) await onLogged(`📁 Uploaded ${successCount} document(s) to ${form.folderId ? 'selected custom folder' : form.docType}`)
     showToast(`Upload finished: ${successCount} saved${duplicateCount?`, ${duplicateCount} duplicate(s) skipped`:''}${failureCount?`, ${failureCount} failed`:''}`)
     if(failureCount===0){
       setFiles([])
@@ -1097,12 +1186,27 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
   const byFolder = {}
   DOC_FOLDERS.forEach(f => { byFolder[f] = [] })
   docs.forEach(d => {
+    if (d.client_document_folder_id) return // exact custom-folder records are not duplicated under legacy type labels
     const f = d.docType || 'Other'
     if (!byFolder[f]) byFolder[f] = []
     byFolder[f].push(d)
   })
 
-  const visible = folder === 'All' ? docs : (byFolder[folder] || [])
+  const flattenedFolders = []
+  const visitedFolders = new Set()
+  function addNestedFolders(parentId,depth=0) {
+    for(const item of customFolders.filter(row=>(row.parent_folder_id||null)===parentId)
+      .sort((a,b)=>a.name.localeCompare(b.name))){
+      if(visitedFolders.has(item.id))continue
+      visitedFolders.add(item.id)
+      flattenedFolders.push({...item,depth})
+      addNestedFolders(item.id,depth+1)
+    }
+  }
+  addNestedFolders(null)
+  const visible = folder === 'All' ? docs
+    : folder.startsWith('custom:') ? docs.filter(d=>d.client_document_folder_id===folder.slice(7))
+    : (byFolder[folder] || [])
 
   return (
     <div className="card" style={{padding:0,overflow:'hidden',minWidth:0}}>
@@ -1125,8 +1229,16 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <>
               <div className="fg2">
                 <div className="field"><label>Destination Folder</label>
-                  <select value={form.docType} onChange={e=>setForm(f=>({...f,docType:e.target.value}))}>
-                    {DOC_FOLDERS.map(f=><option key={f}>{f}</option>)}
+                  <select value={form.folderId ? 'custom:'+form.folderId : 'legacy:'+form.docType}
+                    onChange={e=>setForm(f=>e.target.value.startsWith('custom:')
+                      ? {...f,folderId:e.target.value.slice(7)}
+                      : {...f,folderId:'',docType:e.target.value.slice(7)})}>
+                    <optgroup label="Standard document folders">
+                      {DOC_FOLDERS.map(name=><option key={name} value={'legacy:'+name}>{name}</option>)}
+                    </optgroup>
+                    {flattenedFolders.length>0 && <optgroup label="Custom folders and subfolders">
+                      {flattenedFolders.map(item=><option key={item.id} value={'custom:'+item.id}>{'— '.repeat(item.depth)}{item.name}</option>)}
+                    </optgroup>}
                   </select>
                 </div>
                 <div className="field"><label>Notes for this batch (optional)</label>
@@ -1182,6 +1294,24 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
         </div>
       )}
 
+      {folderDialog && <div data-testid="client-folder-dialog" role="dialog" aria-label="Manage client folder"
+        style={{padding:'10px 14px',display:'grid',gap:8,background:'var(--s2)',borderBottom:'1px solid var(--br)'}}>
+        <strong style={{fontSize:12}}>{folderDialog.action==='create'?'New '+(folderDialog.parentId?'subfolder':'folder')
+          :folderDialog.action==='rename'?'Rename folder':'Delete empty folder'}</strong>
+        {folderDialog.action==='delete'
+          ? <div style={{fontSize:12}}>Delete “{folderDialog.item?.name}”? This only succeeds when no documents or child folders exist.</div>
+          : <input autoFocus aria-label="Folder name" maxLength={80} value={folderDialog.name}
+              onChange={e=>setFolderDialog(prev=>({...prev,name:e.target.value}))}
+              onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();confirmFolderDialog()}}}
+              style={{width:'100%',boxSizing:'border-box',padding:8,borderRadius:7,background:'var(--sf)',color:'var(--tx)',border:'1px solid var(--br)'}}/>}
+        {folderDialogError && <div role="alert" style={{fontSize:11,color:'var(--bad)'}}>{folderDialogError}</div>}
+        <div style={{display:'flex',gap:8}}>
+          <button type="button" className="btn pri" disabled={folderSaving} onClick={confirmFolderDialog}
+            style={{fontSize:11}}>{folderSaving?'Saving…':folderDialog.action==='delete'?'Delete empty folder':'Save folder'}</button>
+          <button type="button" className="btn sec" disabled={folderSaving}
+            onClick={()=>setFolderDialog(null)} style={{fontSize:11}}>Cancel</button>
+        </div>
+      </div>}
       {/* Three-pane Documents workspace with independently scrolling folders, files and PDF. */}
       <div data-testid="client-docs-workspace" style={{width:'100%',maxWidth:'100%',overflowX:'auto',overflowY:'hidden'}}>
       <div style={{display:'grid',gridTemplateColumns:'200px minmax(270px,0.9fr) minmax(370px,1.3fr)',minWidth:840,height:'min(68vh,760px)',minHeight:460,overflow:'hidden'}}>
@@ -1195,6 +1325,14 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
             <span style={{fontSize:10,background:'var(--s3)',borderRadius:10,padding:'0 5px'}}>{docs.length}</span>
           </div>
           <div style={{padding:'10px 12px 4px',fontSize:9,fontWeight:800,color:'var(--t3)',letterSpacing:'.08em',textTransform:'uppercase'}}>Document folders</div>
+          <div style={{padding:'7px 10px',display:'flex',gap:5,flexWrap:'wrap'}}>
+            <button type="button" className="btn sec" disabled={!canUpload||folderSaving}
+              onClick={addFolder} style={{fontSize:10,padding:'5px 7px'}}>
+              {folder.startsWith('custom:') ? '+ Subfolder' : '+ Folder'}
+            </button>
+            {folder.startsWith('custom:') && <button type="button" className="btn sec"
+              onClick={()=>setFolder('All')} style={{fontSize:10,padding:'5px 7px'}}>Root</button>}
+          </div>
           {DOC_FOLDERS.map(f=>(
             <div key={f} onClick={()=>setFolder(f)}
               style={{padding:'7px 14px',cursor:'pointer',fontSize:12.5,fontWeight:folder===f?700:400,
@@ -1204,6 +1342,19 @@ export function ClientDocs({ clientId, clientName, tenantId, supabase, showToast
               onMouseLeave={e=>{if(folder!==f)e.currentTarget.style.background='transparent'}}>
               <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📂 {f}</span>
               <span style={{fontSize:10,background:'var(--s3)',borderRadius:10,padding:'0 5px',flexShrink:0,minWidth:16,textAlign:'center'}}>{byFolder[f]?.length||0}</span>
+            </div>
+          ))}
+          {flattenedFolders.length>0 && <div style={{padding:'10px 12px 4px',fontSize:9,fontWeight:800,color:'var(--t3)',letterSpacing:'.08em',textTransform:'uppercase'}}>Custom folders</div>}
+          {flattenedFolders.map(item=>(
+            <div key={item.id} style={{display:'flex',alignItems:'center',gap:3,paddingLeft:Math.min(8+item.depth*12,75),background:folder==='custom:'+item.id?'var(--blt)':'transparent',minWidth:0}}>
+              <button type="button" title={item.name} onClick={()=>setFolder('custom:'+item.id)}
+                style={{flex:1,minWidth:0,textAlign:'left',background:'transparent',border:0,cursor:'pointer',padding:'7px 3px',fontSize:11,color:folder==='custom:'+item.id?'var(--b2)':'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                📂 {item.name}
+              </button>
+              {canUpload&&<button type="button" aria-label={'Rename '+item.name} title="Rename" disabled={folderSaving}
+                onClick={()=>renameFolder(item)} style={{fontSize:10,padding:3,border:0,background:'transparent',cursor:'pointer',color:'var(--t2)'}}>✎</button>}
+              {canUpload&&<button type="button" aria-label={'Delete '+item.name} title="Delete empty folder" disabled={folderSaving}
+                onClick={()=>deleteFolder(item)} style={{fontSize:10,padding:3,border:0,background:'transparent',cursor:'pointer',color:'var(--bad)'}}>×</button>}
             </div>
           ))}
         </div>
@@ -1576,7 +1727,7 @@ export default function Clients() {
   // background for the table view, but it no longer blocks opening
   // a record you already know the id of.
   useEffect(() => {
-    if (!urlId || detail || !myTenantId) return
+    if (!urlId || (detail && String(detail.id)===String(urlId)) || !myTenantId) return
     let cancelled = false
     supabase.from('clients').select('*')
       .eq('tenant_id', myTenantId)
@@ -1586,13 +1737,13 @@ export default function Clients() {
         if (!cancelled && data) openDetail(data, { preserveTab: true, full: true })
       })
     return () => { cancelled = true }
-  }, [urlId, myTenantId])
+  }, [urlId, myTenantId, detail?.id])
   useEffect(() => {
     if (urlId && clients.length > 0 && !detail) {
       const found = clients.find(c => String(c.id) === String(urlId))
       if (found) openDetail(found, { preserveTab: true })
     }
-  }, [urlId, clients])
+  }, [urlId, clients, detail?.id])
   // If the URL no longer points at the client currently being shown
   // (e.g. clicking "Clients" in the sidebar while a detail page is open,
   // or a link elsewhere jumping straight to a different client), drop the
@@ -1607,7 +1758,7 @@ export default function Clients() {
     if (!myTenantId) { setClients([]); setEmployees([]); return }
     const [{ data:cl },{ data:em },{ data:cats },{ data:sts }] = await Promise.all([
       supabase.from('clients')
-        .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
+        .select('id,name,custnum,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
         .eq('tenant_id', myTenantId)
         .or('archived.eq.true,deleted_at.is.null')
         .order('name',{ascending:true}),
@@ -1796,7 +1947,7 @@ export default function Clients() {
     setModal(false); setForm(BLANK)
     // Reload then navigate straight into the new client's detail
     const { data: allClients } = await supabase.from('clients')
-      .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
+      .select('id,name,custnum,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
       .eq('tenant_id', myTenantId)
       .or('archived.eq.true,deleted_at.is.null')
       .order('name', { ascending: true })
@@ -2381,6 +2532,9 @@ export default function Clients() {
   }
 
   function openDetail(c, opts = {}) {
+    // Record actual opens, not client creation or dashboard list rendering.
+    // History is intentionally local to this employee, tenant and browser.
+    if (c?.id && myTenantId && user?.email) rememberRecentClient(myTenantId, user.email, c)
     if (!opts.preserveTab) setDetailTab('overview')
     setDetail(c)
     setRelCases([]);setRelTasks([]);setRelInvoices([]);setRelSms([]);setRelDeadlines([])
@@ -3498,6 +3652,10 @@ export default function Clients() {
               <DR label="Admin" val={c.clientAdmin}/>
               <DR label="Sales Rep" val={c.salesRep}/>
               <DR label="Client Since" val={c.clientSince}/>
+              <ClientIRSContacts client={c} tenantId={myTenantId} onSaved={updated => {
+                setDetail(prev=>prev?.id===c.id?{...prev,...updated}:prev)
+                setClients(prev=>prev.map(row=>row.id===c.id?{...row,...updated}:row))
+              }}/>
             </div>
 
             {/* Deadlines */}
