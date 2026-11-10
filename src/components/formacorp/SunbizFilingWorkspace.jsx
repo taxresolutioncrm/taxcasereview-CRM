@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { parseFloridaSunbizPdf } from '../../lib/flSunbizPdfImport'
+import { parseFloridaSunbizPdf, planFloridaSunbizBusinessUpdate } from '../../lib/flSunbizPdfImport'
 import './SunbizFilingWorkspace.css'
 
 const URLS = {
@@ -169,7 +169,33 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
               <input type="file" accept=".pdf,application/pdf" disabled={importing} onChange={e=>readPdf(e.target.files?.[0])}/>
             </label>
             {pdfResult&&<div role="status" className="sunbiz-helper">
-              ✓ Matched: {pdfResult.companyName}. {pdfResult.documentNumber?'Document '+pdfResult.documentNumber+'. ':''}{pdfResult.filedDate?'Filed '+pdfResult.filedDate+'. ':''}The PDF is ready to archive under this business.
+              <strong>Florida PDF matched: {pdfResult.companyName}</strong>
+              <p>Confirm the extracted fields below before saving. Blank values are not guessed; existing values are preserved.</p>
+              {[
+                ['Entity type',pdfResult.entityType],
+                ['Document number',pdfResult.documentNumber],
+                ['Filing date',pdfResult.filedDate],
+                ['Principal address',pdfResult.principalAddress],
+                ['Mailing address',pdfResult.mailingAddress],
+                ['Registered agent',pdfResult.registeredAgent],
+                ['Agent address',pdfResult.registeredAgentAddress],
+                ['Effective date',pdfResult.effectiveDate],
+              ].filter(([,value])=>!!value).map(([label,value])=><div className="sunbiz-data-row" key={label}>
+                <span className="sunbiz-data-label">{label}</span>
+                <strong className="sunbiz-data-value">{value}</strong>
+              </div>)}
+              {(()=>{
+                try {
+                  const {patch,conflicts}=planFloridaSunbizBusinessUpdate(pdfResult,caseRecord,pdfKind)
+                  return <div>
+                    <p>{Object.keys(patch).length} missing field(s) can be filled automatically.</p>
+                    {!!conflicts.length&&<div role="alert">
+                      <strong>Needs review — existing CRM values will NOT be overwritten:</strong>
+                      {conflicts.map(item=><div key={item.field}>{item.field}: CRM "{item.current}" / PDF "{item.fromPdf}"</div>)}
+                    </div>}
+                  </div>
+                } catch(error){return <p role="alert">{error.message}</p>}
+              })()}
             </div>}
             {pdfError&&<p role="alert" style={{color:'var(--red,#dc2626)'}}>{pdfError}</p>}
             <button className="btn pri" type="button" onClick={importPdf} disabled={!pdfResult?.canVerify||!pdfFile||importing}>
