@@ -37,11 +37,48 @@ export function parseFloridaSunbizText(text, expectedName) {
   const filedDate=first(source, [
     /(?:DATE FILED|FILED ON|FILED DATE|FILING DATE)\s*[:\-]?\s*((?:0?[1-9]|1[0-2])[-\/](?:[0-2]?\d|3[01])[-\/](?:20\d{2}|\d{2})|20\d{2}-\d{2}-\d{2})/i,
   ])
+  // Only fields with explicit government labels can populate the company file.
+  // Different filing forms and receipts expose different subsets of information.
+  const labelValue = (patterns, opts={}) => {
+    for (let i=0;i<lines.length;i++) {
+      for (const p of patterns) {
+        const match=lines[i].match(p)
+        if(!match) continue
+        const inline=clean((match[1]||'').replace(/^[:#\s-]+/,''))
+        if(inline && !/^(?:N\/A|NONE|NOT APPLICABLE)$/i.test(inline)) return inline
+        const next=lines[i+1]||''
+        if(next && !/^(?:REGISTERED|PRINCIPAL|MAILING|DOCUMENT|FILED|DATE|EFFECTIVE|ENTITY|NAME OF|AGENT|ADDRESS|TITLE|SIGNATURE|ARTICLE)\b/i.test(next))return next
+      }
+    }
+    return ''
+  }
+  const principalAddress=labelValue([
+    /^PRINCIPAL (?:OFFICE )?(?:STREET )?ADDRESS\s*[:#-]?\s*(.*)$/i,
+    /^PRINCIPAL PLACE OF BUSINESS\s*[:#-]?\s*(.*)$/i,
+  ])
+  const mailingAddress=labelValue([
+    /^MAILING (?:STREET )?ADDRESS\s*[:#-]?\s*(.*)$/i,
+  ])
+  const registeredAgent=labelValue([
+    /^REGISTERED AGENT (?:NAME|PERSON)\s*[:#-]?\s*(.*)$/i,
+    /^NAME OF REGISTERED AGENT\s*[:#-]?\s*(.*)$/i,
+  ])
+  const registeredAgentAddress=labelValue([
+    /^REGISTERED AGENT (?:STREET )?ADDRESS\s*[:#-]?\s*(.*)$/i,
+    /^STREET ADDRESS OF REGISTERED AGENT\s*[:#-]?\s*(.*)$/i,
+  ])
+  const effectiveDate=labelValue([
+    /^EFFECTIVE DATE\s*[:#-]?\s*(.*)$/i,
+  ])
+  const entityType=/\b(?:ARTICLES OF ORGANIZATION|LIMITED LIABILITY COMPANY)\b/i.test(source)
+    ? 'LLC'
+    : /\bARTICLES OF INCORPORATION\b/i.test(source) ? 'C-Corp' : ''
   const floridaHeader=/FLORIDA\s+DEPARTMENT\s+OF\s+STATE|DIVISION\s+OF\s+CORPORATIONS/i.test(source)
   const expected=norm(expectedName)
   const extracted=norm(companyName)
   return {
-    companyName,documentNumber,filedDate,
+    companyName,documentNumber,filedDate,principalAddress,mailingAddress,
+    registeredAgent,registeredAgentAddress,effectiveDate,entityType,
     floridaHeader,
     nameMatches:!!expected && !!extracted && expected === extracted,
     canVerify:!!expected && !!extracted && expected === extracted && floridaHeader,
