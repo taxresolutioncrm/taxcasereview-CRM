@@ -138,6 +138,101 @@ CREATE POLICY shared_folders_delete ON public.client_document_folders
 REVOKE ALL ON public.client_document_folders FROM anon;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.client_document_folders TO authenticated;
 
+-- Tax Preparer may only access assigned client records and their documents.
+-- This is additive: other roles' existing granular permissions are unchanged.
+-- SECURITY INVOKER is intentional; do not bypass the office's existing RLS.
+CREATE OR REPLACE FUNCTION public.shared_preparer_may_access_client(
+  p_tenant uuid, p_assigned_to text, p_tax_associate text, p_client_admin text
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=public,pg_temp AS $
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.employees e
+    WHERE e.tenant_id=public.current_tenant_id()
+      AND lower(e.email)=lower(coalesce(auth.jwt()->>'email',''))
+      AND lower(coalesce(e.status,'Active'))='active'
+      AND e.access='Tax Preparer'
+  ) OR EXISTS (
+    SELECT 1 FROM public.employees e
+    WHERE e.tenant_id=p_tenant
+      AND e.tenant_id=public.current_tenant_id()
+      AND lower(e.email)=lower(coalesce(auth.jwt()->>'email',''))
+      AND lower(coalesce(e.status,'Active'))='active'
+      AND e.access='Tax Preparer'
+      AND (
+        lower(btrim(coalesce(p_assigned_to,'')))=lower(btrim(e.name))
+        OR lower(btrim(coalesce(p_tax_associate,'')))=lower(btrim(e.name))
+        OR lower(btrim(coalesce(p_client_admin,'')))=lower(btrim(e.name))
+      )
+  );
+$;
+REVOKE ALL ON FUNCTION public.shared_preparer_may_access_client(uuid,text,text,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.shared_preparer_may_access_client(uuid,text,text,text) TO authenticated;
+
+-- Restrictive policies combine with the current tenant-scoped permission
+-- policies using AND, preventing a permissive legacy policy from bypassing them.
+DROP POLICY IF EXISTS shared_preparer_client_select_restrict ON public.clients;
+DROP POLICY IF EXISTS shared_preparer_client_update_restrict ON public.clients;
+CREATE POLICY shared_preparer_client_select_restrict ON public.clients AS RESTRICTIVE
+  FOR SELECT TO authenticated USING (
+    public.shared_preparer_may_access_client(tenant_id,"assignedTo","taxAssociate","clientAdmin")
+  );
+CREATE POLICY shared_preparer_client_update_restrict ON public.clients AS RESTRICTIVE
+  FOR UPDATE TO authenticated USING (
+    public.shared_preparer_may_access_client(tenant_id,"assignedTo","taxAssociate","clientAdmin")
+  ) WITH CHECK (
+    public.shared_preparer_may_access_client(tenant_id,"assignedTo","taxAssociate","clientAdmin")
+  );
+
+DROP POLICY IF EXISTS shared_preparer_document_select_restrict ON public.documents;
+DROP POLICY IF EXISTS shared_preparer_document_update_restrict ON public.documents;
+DROP POLICY IF EXISTS shared_preparer_document_insert_restrict ON public.documents;
+CREATE POLICY shared_preparer_document_select_restrict ON public.documents AS RESTRICTIVE
+  FOR SELECT TO authenticated USING (
+    NOT EXISTS (
+      SELECT 1 FROM public.employees e
+      WHERE e.tenant_id=public.current_tenant_id()
+        AND lower(e.email)=lower(coalesce(auth.jwt()->>'email',''))
+        AND e.access='Tax Preparer' AND lower(coalesce(e.status,'Active'))='active'
+    ) OR EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.tenant_id=documents.tenant_id AND c.id=documents.client_id
+    )
+  );
+CREATE POLICY shared_preparer_document_update_restrict ON public.documents AS RESTRICTIVE
+  FOR UPDATE TO authenticated USING (
+    NOT EXISTS (
+      SELECT 1 FROM public.employees e
+      WHERE e.tenant_id=public.current_tenant_id()
+        AND lower(e.email)=lower(coalesce(auth.jwt()->>'email',''))
+        AND e.access='Tax Preparer' AND lower(coalesce(e.status,'Active'))='active'
+    ) OR EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.tenant_id=documents.tenant_id AND c.id=documents.client_id
+    )
+  ) WITH CHECK (
+    NOT EXISTS (
+      SELECT 1 FROM public.employees e
+      WHERE e.tenant_id=public.current_tenant_id()
+        AND lower(e.email)=lower(coalesce(auth.jwt()->>'email',''))
+        AND e.access='Tax Preparer' AND lower(coalesce(e.status,'Active'))='active'
+    ) OR EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.tenant_id=documents.tenant_id AND c.id=documents.client_id
+    )
+  );
+CREATE POLICY shared_preparer_document_insert_restrict ON public.documents AS RESTRICTIVE
+  FOR INSERT TO authenticated WITH CHECK (
+    NOT EXISTS (
+      SELECT 1 FROM public.employees e
+      WHERE e.tenant_id=public.current_tenant_id()
+        AND lower(e.email)=lower(coalesce(auth.jwt()->>'email',''))
+        AND e.access='Tax Preparer' AND lower(coalesce(e.status,'Active'))='active'
+    ) OR EXISTS (
+      SELECT 1 FROM public.clients c
+      WHERE c.tenant_id=documents.tenant_id AND c.id=documents.client_id
+    )
+  );
+
 -- Verify after sandbox migration: zero null/mismatched tenant-client folder pairs,
 -- every parent shares its child's tenant/client, every assigned document matches,
 -- no folder cycles, and historical document counts remain unchanged.
