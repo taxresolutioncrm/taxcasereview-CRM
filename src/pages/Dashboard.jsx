@@ -454,7 +454,7 @@ export default function Dashboard() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg,#1A7FD4,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>⚖️</div>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: '#f1f5f9' }}>Taxpayer Advocate</div>
+          <div className="tax-dashboard-widget-title" style={{ fontSize: 13, fontWeight: 800, color: '#f1f5f9' }}>Taxpayer Advocate</div>
           <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 600 }}>● IRS.gov Updates</div>
         </div>
       </div>
@@ -463,7 +463,7 @@ export default function Dashboard() {
         {tasFeeds.length === 0 ? (
           [1,2,3].map(i => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-              <div style={{ background: '#1e293b', borderRadius: '4px 14px 14px 14px', padding: '10px 13px', width: '88%' }}>
+              <div className="tax-dashboard-tas-skeleton" style={{ background: '#1e293b', borderRadius: '4px 14px 14px 14px', padding: '10px 13px', width: '88%' }}>
                 <div style={{ width: '80%', height: 10, background: 'var(--br)', borderRadius: 4, marginBottom: 6 }}/>
                 <div style={{ width: '55%', height: 8, background: 'var(--br)', borderRadius: 4 }}/>
               </div>
@@ -474,12 +474,11 @@ export default function Dashboard() {
           return (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
               <a href={item.link || '#'} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', maxWidth: '92%' }}>
-                <div style={{ background: '#1e3a5f', borderRadius: '4px 14px 14px 14px', padding: '10px 13px', cursor: 'pointer', transition: 'background .15s' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#1e3a6e'}
-                  onMouseLeave={e => e.currentTarget.style.background='#1e3a5f'}
+                <div className="tax-dashboard-tas-entry" style={{ background: '#1e3a5f', borderRadius: '4px 14px 14px 14px', padding: '10px 13px', cursor: 'pointer', transition: 'background .15s' }}
+
                 >
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: '#e2e8f0', lineHeight: 1.45, marginBottom: 5 }}>{item.title}</div>
-                  <div style={{ fontSize: 10, color: '#60a5fa', fontWeight: 700 }}>Read more →</div>
+                  <div className="tax-dashboard-tas-text" style={{ fontSize: 11.5, fontWeight: 600, color: '#e2e8f0', lineHeight: 1.45, marginBottom: 5 }}>{item.title}</div>
+                  <div className="tax-dashboard-tas-link" style={{ fontSize: 10, color: '#60a5fa', fontWeight: 700 }}>Read more →</div>
                 </div>
               </a>
               <div style={{ fontSize: 10, color: 'var(--t3)', paddingLeft: 2 }}>{date}</div>
@@ -495,7 +494,7 @@ export default function Dashboard() {
   )
 
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', padding: '20px 24px' }}>
+    <div className="tax-dashboard-theme-root" style={{ display: 'flex', gap: 20, alignItems: 'flex-start', padding: '20px 24px' }}>
       {/* Main dashboard content */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
@@ -505,7 +504,7 @@ export default function Dashboard() {
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--tx)' }}>{greeting()}</div>
           <div style={{ fontSize: 13, color: 'var(--t3)', marginTop: 2 }}>{fmtDate(time)}</div>
         </div>
-        <div style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: '12px 16px' }}>
+        <div className="tax-dashboard-timezones" style={{ background: 'var(--sf)', border: '1px solid var(--br)', borderRadius: 10, padding: '12px 16px' }}>
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {US_TIMEZONES.map(z => (
               <div key={z.zone} style={{ textAlign: 'center' }}>
@@ -689,19 +688,19 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg,#f59e0b,#d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>💡</div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#f1f5f9' }}>CRM Tips</div>
+                <div className="tax-dashboard-widget-title" style={{ fontSize: 13, fontWeight: 800, color: '#f1f5f9' }}>CRM Tips</div>
                 <div style={{ fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>● Daily Hint</div>
               </div>
             </div>
             <div>
-              <div style={{ background: 'linear-gradient(135deg,#1c2a1c,#1a2e1a)', border: '1px solid rgba(34,197,94,.2)', borderRadius: '4px 14px 14px 14px', padding: '12px 14px' }}>
+              <div className="tax-dashboard-tip-panel" style={{ background: 'linear-gradient(135deg,#1c2a1c,#1a2e1a)', border: '1px solid rgba(34,197,94,.2)', borderRadius: '4px 14px 14px 14px', padding: '12px 14px' }}>
                 <div style={{ fontSize: 22, marginBottom: 8 }}>{CRM_TIPS[tipIdx].icon}</div>
-                <div style={{ fontSize: 12, color: '#e2e8f0', lineHeight: 1.55, fontWeight: 500 }}>{CRM_TIPS[tipIdx].tip}</div>
+                <div className="tax-dashboard-tip-text" style={{ fontSize: 12, color: '#e2e8f0', lineHeight: 1.55, fontWeight: 500 }}>{CRM_TIPS[tipIdx].tip}</div>
               </div>
               <div style={{ marginTop: 6, paddingLeft: 2 }}>
                 <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginTop: 4 }}>
                   {CRM_TIPS.map((_, i) => (
-                    <div key={i} style={{ width: i === tipIdx ? 14 : 5, height: 5, borderRadius: 3, background: i === tipIdx ? '#93c5fd' : 'rgba(255,255,255,.2)', transition: 'all .3s', cursor: 'pointer' }} onClick={() => setTipIdx(i)} />
+                    <div key={i} className={i===tipIdx?'tax-dashboard-tip-dot is-active':'tax-dashboard-tip-dot'} style={{ width: i === tipIdx ? 14 : 5, height: 5, borderRadius: 3, background: i === tipIdx ? '#93c5fd' : 'rgba(255,255,255,.2)', transition: 'all .3s', cursor: 'pointer' }} onClick={() => setTipIdx(i)} />
                   ))}
                 </div>
               </div>
