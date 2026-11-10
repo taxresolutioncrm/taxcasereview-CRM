@@ -12,7 +12,7 @@ const SHARED_NASHVILLE_PARITY_CHANGES = [
   'Clients sidebar shows the last 10 opened clients with the shared CRM custnum, compact searchable rows and the No recently viewed clients empty state; the history is per employee, tenant and browser, not cross-device sync',
   'Tax Preparer is additive, default restricted, with assigned-client and related-document row policy staged alongside the database migration; Tax Advisor and Super Admin remain unchanged; bulk-email UI and backend require Communications Edit',
   'Client IRS / Case Info includes editable Revenue Officer and Taxpayer Advocate contacts',
-  'Client document workspace supports multi-level folders, folder-targeted uploads, in-app create/rename/empty-folder confirmation, stale-request tenant protection, and tenant-scoped database permission checks',
+  'Client document workspace supports multi-level folders, folder-targeted uploads, in-app create/rename/empty-folder confirmation, immediate tenant-switch state cleanup, verified database-before-storage deletion, and tenant-scoped database permission checks',
   'Employee creation prevents duplicate submissions, shows database failures and refreshes records after a confirmed save',
   'Nested folders and contact storage require the separately reviewed shared-project additive database migration before deployment',
 ]
