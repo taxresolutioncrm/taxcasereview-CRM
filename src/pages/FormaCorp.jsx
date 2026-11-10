@@ -862,6 +862,69 @@ export default function FormaCorp() {
     }, '✅ Recorded as submitted to Florida', 'State submission recorded')
   }
 
+  async function importFreshFloridaPdf(file,kind,selectedClientId) {
+    if(!selectedClientId) throw new Error('Choose the existing CRM client before saving the Sunbiz PDF')
+    const preview=await parseFloridaSunbizPdf(file,'')
+    if(!preview.companyName || !preview.floridaHeader) {
+      throw new Error('The downloaded PDF must identify a Florida company and the Division of Corporations')
+    }
+    const parsed=await parseFloridaSunbizPdf(file,preview.companyName)
+    if(!parsed.canVerify) throw new Error('Cannot verify the business name from this Sunbiz PDF')
+    const entityType=parsed.entityType || (/\bP\.?L\.?L\.?C\.?$/i.test(parsed.companyName)?'Professional LLC (PLLC)':
+      /\bL\.?L\.?C\.?$/i.test(parsed.companyName)?'LLC':
+      /\b(?:INC\.?|CORP\.?|CORPORATION)$/i.test(parsed.companyName)?'C-Corp':'')
+    if(!entityType) throw new Error('Business entity type is not recognizable. Create a FormaCorp case for the correct entity type before importing.')
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if(tenantError || !tenantId) throw new Error('Unable to verify your active office')
+    const {data:client,error:clientError}=await supabase.from('clients')
+      .select('id,name,tenant_id').eq('id',String(selectedClientId)).eq('tenant_id',tenantId).single()
+    if(clientError || !client) throw new Error('The selected CRM client is not accessible in this office')
+    // Fail before inserting a case if the separate folder migration is absent.
+    const {error:folderError}=await supabase.from('client_document_folders')
+      .select('id').eq('tenant_id',tenantId).eq('client_id',client.id).limit(1)
+    if(folderError) throw new Error('Business folder permissions or migration are not ready: '+folderError.message)
+    const {data:currentCases,error:caseSearchError}=await supabase.from('formacorp')
+      .select('*').eq('tenant_id',tenantId).limit(500)
+    if(caseSearchError) throw new Error('Could not verify existing office businesses: '+caseSearchError.message)
+    const matchName=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')
+    const matching=(currentCases||[]).filter(c=>matchName(c.entity_name)===matchName(parsed.companyName))
+    if(matching.some(c=>String(c.client_id)!==String(client.id))){
+      throw new Error('A business with this legal name already belongs to a different client in this office. Review the client assignment.')
+    }
+    if(matching.length>1) throw new Error('Several FormaCorp cases match this company. Resolve duplicates before attaching the PDF.')
+    let business=matching[0]
+    if(!business){
+      const {data:created,error:createError}=await supabase.from('formacorp').insert([{
+        tenant_id:tenantId,client_id:client.id,client_name:client.name,
+        entity_name:parsed.companyName,entity_type:entityType,state:'FL',
+        principal_address:parsed.principalAddress||'',
+        mailing_address:parsed.mailingAddress||'',
+        registered_agent:parsed.registeredAgent||'',
+        registered_agent_address:parsed.registeredAgentAddress||'',
+        stage:'State Filing',fl_filing_status:'Draft',
+        fl_submission_method:'sunbiz_online',
+        notes:'Created from downloaded Florida Sunbiz PDF. State payment and approval must be confirmed separately.',
+      }]).select('*').single()
+      if(createError || !created) throw new Error('Could not create FormaCorp business: '+(createError?.message||'Insert not confirmed'))
+      business=created
+      // A newly imported company should appear in the lifecycle even if the staff
+      // entered everything on the government website rather than in the intake.
+      const {error:lifecycleError}=await supabase.from('formacorp_lifecycle').insert([{
+        case_id:created.id,service_plan:'Formation',
+        selected_services:['State Filing','Formation Documents','Compliance'],
+        ein_status:'Not Started',operating_agreement_status:'Not Started',
+        banking_status:'Not Started',annual_report_status:'Not Due',
+        good_standing_status:'Unknown',registered_agent_status:'Unknown',
+      }])
+      if(lifecycleError) showToast('Business created but lifecycle setup needs attention: '+lifecycleError.message,'err')
+    }
+    await importOfficialSunbizPdf(business,file,kind)
+    const {data:refreshed}=await supabase.from('formacorp').select('*')
+      .eq('id',business.id).eq('tenant_id',tenantId).single()
+    setDetail(refreshed||business)
+    setOfficialSunbizCase(null)
+  }
+
   async function importOfficialSunbizPdf(c, file, kind) {
     if (!c?.id || !c?.client_id || c.state !== 'FL') throw new Error('Select a saved Florida formation linked to an existing CRM client')
     const validKinds=['Filed Articles','Payment Receipt','Certificate of Status','Certified Copy']
@@ -1425,7 +1488,7 @@ export default function FormaCorp() {
       {editCaseModal}
 
       {floridaIntake && <FloridaSunbizIntake saving={saving} onClose={()=>setFloridaIntake(false)} onSave={createFromWizard}/>}
-      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)} onImportPdf={(file,kind)=>importOfficialSunbizPdf(officialSunbizCase,file,kind)}/>}
+      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)} onImportPdf={(file,kind,selectedClientId)=>officialSunbizCase?.id ? importOfficialSunbizPdf(officialSunbizCase,file,kind) : importFreshFloridaPdf(file,kind,selectedClientId)} clients={clients}/>}
 
       {wizard && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>
