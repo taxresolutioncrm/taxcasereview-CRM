@@ -1758,7 +1758,7 @@ export default function Clients() {
     if (!myTenantId) { setClients([]); setEmployees([]); return }
     const [{ data:cl },{ data:em },{ data:cats },{ data:sts }] = await Promise.all([
       supabase.from('clients')
-        .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
+        .select('id,name,custnum,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
         .eq('tenant_id', myTenantId)
         .or('archived.eq.true,deleted_at.is.null')
         .order('name',{ascending:true}),
@@ -1947,7 +1947,7 @@ export default function Clients() {
     setModal(false); setForm(BLANK)
     // Reload then navigate straight into the new client's detail
     const { data: allClients } = await supabase.from('clients')
-      .select('id,name,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
+      .select('id,name,custnum,status,email,phone,phone2,city,state,street,zip,biz_street,biz_city,biz_state,biz_zip,"clientType","assignedTo","taxAssociate","clientAdmin","salesRep","pipelineStage","irsBalance","issueType","spouseName",tags,office_label,archived,deleted_at,"business_name",created_at,tenant_id')
       .eq('tenant_id', myTenantId)
       .or('archived.eq.true,deleted_at.is.null')
       .order('name', { ascending: true })
