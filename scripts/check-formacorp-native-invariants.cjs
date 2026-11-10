@@ -25,7 +25,7 @@ function assertPdfImportSource() {
     if (!floridaPdfParser.includes(term)) throw new Error('Sunbiz PDF parser missing '+term)
   }
   const importer = fs.readFileSync('src/pages/FormaCorp.jsx','utf8')
-  for(const term of ['importOfficialSunbizPdf','client_document_folders','client_document_folder_id:folderId','formacorp_documents','file_hash:hash','onImportPdf=','!parsed.canVerify','client_id:c.client_id']) {
+  for(const term of ['importOfficialSunbizPdf','importFreshFloridaPdf','client_document_folders','client_document_folder_id:folderId','formacorp_documents','file_hash:hash','onImportPdf=','!parsed.canVerify','client_id:c.client_id','selectedClientId','matching.length>1']) {
     if(!importer.includes(term)) throw new Error('FormaCorp PDF import missing '+term)
   }
   if(!officialWorkspace.includes('Verify and save to client business file')) throw new Error('Sunbiz PDF upload action missing')
