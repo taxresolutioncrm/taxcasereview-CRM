@@ -28,6 +28,22 @@ const contacts=read('src/components/ClientIRSContacts.jsx')
 const emailBlast=read('src/pages/EmailBlast.jsx')
 const sendEmailFn=read('supabase/functions/send-email/index.ts')
 const sql=read('supabase/migrations/20261109180500_shared_three_office_contacts_and_nested_folders.sql')
+const lightPolish=read('src/taxres-light-polish.css')
+assert(lightPolish.includes('Nashville v3.1.89 parity'),'Shared Nashville light-mode polish is missing')
+for(const sel of [
+  'html.light .nav-item.active',
+  'html.light .nav-item:hover',
+  'html.light .nav-badge',
+  'html.light th',
+  'html.light tbody tr:hover td',
+  'html.light button:focus-visible',
+  'html.light .field input',
+  'html.light .search-input',
+  'html.light [data-card-idx]',
+  ':not(.danger):not(.success):not(.warning)',
+]) assert(lightPolish.includes(sel),'Light mode regression: missing '+sel)
+assert(!lightPolish.includes('html.dark'),'Nashville light-mode rules must not override dark mode')
+
 const formacorp=read('src/pages/FormaCorp.jsx')
 assert(formacorp.includes("client_id:linkedClient.id"),'FormaCorp must save a stable CRM client ID')
 assert(formacorp.includes("await syncFormationBusiness(payload,linkedClient.id)"),'Formation saves must sync business information')
