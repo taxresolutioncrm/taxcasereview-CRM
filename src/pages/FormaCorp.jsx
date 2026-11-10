@@ -9,7 +9,7 @@ import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
 import FloridaSunbizIntake from '../components/formacorp/FloridaSunbizIntake'
 import SunbizFilingWorkspace from '../components/formacorp/SunbizFilingWorkspace'
-import { parseFloridaSunbizPdf } from '../lib/flSunbizPdfImport'
+import { parseFloridaSunbizPdf, planFloridaSunbizBusinessUpdate } from '../lib/flSunbizPdfImport'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -526,13 +526,15 @@ export default function FormaCorp() {
     if (!linkedId) throw new Error('Formation has no verified CRM client link')
     const client = await linkedFormationClient({client_id:linkedId,client_name:caseRecord.client_name})
     const patch={}
-    // Preserve existing business facts; formation drafts must not overwrite client-entered data.
+    // A client can own several companies: the one-business client summary cannot
+    // absorb fields from a different company. Each FormaCorp case remains independent.
+    if (client.business_name && client.business_name.trim().toUpperCase() !== String(caseRecord.entity_name||'').trim().toUpperCase()) return
     if (!client.business_name && caseRecord.entity_name?.trim()) patch.business_name=caseRecord.entity_name.trim()
     if (!client.businessType && caseRecord.entity_type?.trim()) patch.businessType=caseRecord.entity_type.trim()
     if (!client.ein && caseRecord.ein?.trim()) patch.ein=caseRecord.ein.trim()
     const address=String(caseRecord.principal_address||'').trim()
     // Only parse structured US addresses. Do not put an entire address into a street-only field.
-    const match=address.match(/^(.+?),\\s*([^,]+),\\s*([A-Z]{2})\\s+(\\d{5})(?:-\\d{4})?$/i)
+    const match=address.match(/^(.+?),\s*([^,]+),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?$/i)
     if (match) {
       const [,street,city,state,zip]=match
       if (!client.biz_street) patch.biz_street=street.trim()
@@ -870,7 +872,7 @@ export default function FormaCorp() {
     if (tenantError || !tenantId || String(tenantId)!==String(c.tenant_id)) throw new Error('Cannot verify the current office')
     const client=await linkedFormationClient({client_id:c.client_id,client_name:c.client_name})
     const {data:caseRow,error:caseError}=await supabase.from('formacorp')
-      .select('id,tenant_id,client_id,client_name,entity_name,state,state_file_num,formation_date')
+      .select('id,tenant_id,client_id,client_name,entity_name,entity_type,state,state_file_num,formation_date,principal_address,mailing_address,registered_agent,registered_agent_address,effective_date,ein')
       .eq('id',c.id).eq('tenant_id',tenantId).single()
     if (caseError || !caseRow || caseRow.client_id !== client.id || caseRow.entity_name !== c.entity_name) {
       throw new Error('The formation client or business changed; reload before importing')
@@ -933,24 +935,27 @@ export default function FormaCorp() {
       if(!indexed) await supabase.storage.from('documents').remove([storagePath])
       throw error
     }
-    // Record document number and filed date only from positively matched Articles.
-    // A downloaded PDF does not prove registry acceptance: never set Approved/Active here.
-    if(kind==='Filed Articles' && (parsed.documentNumber || parsed.filedDate)) {
-      const patch={}
-      if(parsed.documentNumber && !caseRow.state_file_num) patch.state_file_num=parsed.documentNumber
-      if(parsed.filedDate && !caseRow.formation_date) patch.formation_date=parsed.filedDate
-      if(Object.keys(patch).length) {
-        const {error:metadataError}=await supabase.from('formacorp').update(patch)
-          .eq('id',c.id).eq('tenant_id',tenantId)
-        if(metadataError) {
-          showToast('PDF saved to both document files; state fields need review: '+metadataError.message,'err')
-        } else {
-          setDetail(d=>d?.id===c.id?({...d,...patch}):d)
-        }
+    // Labeled PDF data fills missing fields only. Never assume approval or payment
+    // and never overwrite an employee's existing values without review.
+    const {patch,conflicts}=planFloridaSunbizBusinessUpdate(parsed,caseRow,kind)
+    let syncWarning=''
+    if (Object.keys(patch).length) {
+      const {data:savedCase,error:metadataError}=await supabase.from('formacorp')
+        .update(patch).eq('id',c.id).eq('tenant_id',tenantId).eq('client_id',client.id)
+        .select('id').single()
+      if (metadataError || !savedCase) {
+        syncWarning='Business details require review: '+(metadataError?.message||'Case update not confirmed')
+      } else {
+        setDetail(d=>d?.id===c.id?({...d,...patch}):d)
+        try {await syncFormationBusiness({...caseRow,...patch},client.id)}
+        catch(error) {syncWarning='Client Business Info requires review: '+error.message}
       }
     }
+    if (conflicts.length) syncWarning=[syncWarning,
+      'Existing values differ from PDF: '+conflicts.map(c=>c.field).join(', ')+'; values were preserved.'].filter(Boolean).join(' ')
+    if (syncWarning) showToast('PDF archived. '+syncWarning,'err')
     await load()
-    showToast('✅ Sunbiz PDF name verified and saved to Client → Business → '+caseRow.entity_name+' → Formation Documents and FormaCorp. Confirm approval separately.')
+    if (!syncWarning) showToast('✅ Sunbiz PDF matched, business fields synchronized and file saved to Client → Business → '+caseRow.entity_name+' → Formation Documents and FormaCorp. Confirm approval separately.')
   }
 
   async function saveOfficialSunbizReceipt(c, receipt) {
