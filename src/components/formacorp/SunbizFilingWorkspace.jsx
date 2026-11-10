@@ -139,6 +139,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
                 <div className="sunbiz-browser-toolbar">
                   <span className="sunbiz-browser-address">efile.sunbiz.org</span>
                   {officialUrl&&<a className="btn sm" href={officialUrl} target="_blank" rel="noopener noreferrer">Open in new tab</a>}
+                  {isSavedCase&&<button type="button" className="btn sm" onClick={()=>document.getElementById('sunbiz-pdf-import')?.scrollIntoView({behavior:'smooth',block:'start'})}>Save downloaded PDF</button>
                 </div>
               </div>
               {officialUrl
@@ -153,7 +154,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
           </section>
         </div>
 
-        {isSavedCase&&<section className="sunbiz-confirmation" aria-label="Import downloaded Sunbiz PDF">
+        {isSavedCase&&<section id="sunbiz-pdf-import" className="sunbiz-confirmation" aria-label="Import downloaded Sunbiz PDF">
           <div className="sunbiz-confirmation-body">
             <h3>Save downloaded Sunbiz PDF to this client's business file</h3>
             <p className="sunbiz-helper">Finish filing and payment on Florida's official site, then select the downloaded PDF. FormaCorp reads its text, checks the company name against this formation, and saves one file for both business documents and FormaCorp. State approval is not assumed from a PDF upload.</p>
