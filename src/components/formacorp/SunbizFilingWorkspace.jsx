@@ -139,7 +139,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
                 <div className="sunbiz-browser-toolbar">
                   <span className="sunbiz-browser-address">efile.sunbiz.org</span>
                   {officialUrl&&<a className="btn sm" href={officialUrl} target="_blank" rel="noopener noreferrer">Open in new tab</a>}
-                  {isSavedCase&&<button type="button" className="btn sm" onClick={()=>document.getElementById('sunbiz-pdf-import')?.scrollIntoView({behavior:'smooth',block:'start'})}>Save downloaded PDF</button>
+                  {isSavedCase&&<button type="button" className="btn sm" onClick={()=>document.getElementById('sunbiz-pdf-import')?.scrollIntoView({behavior:'smooth',block:'start'})}>Save downloaded PDF</button>}
                 </div>
               </div>
               {officialUrl
