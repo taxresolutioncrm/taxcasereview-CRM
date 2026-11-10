@@ -9,7 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
-  'Nashville v3.1.89 light-mode parity: shared tax office secondary buttons, sidebar hover/selected states, forms, tables, KPI surfaces and keyboard focus stay consistent in light mode; semantic statuses, per-office branding and dark mode retain their existing rules',
+  'Nashville v3.1.89 light-mode parity: shared tax office secondary buttons (excluding primary/danger/success/warning/delete), sidebar hover/selected states, forms, tables, KPI surfaces and keyboard focus stay consistent in light mode; semantic statuses, per-office branding and dark mode retain their existing rules',
   'Direct Sunbiz-first workflow can select a verified CRM client, scan a downloaded Florida PDF, reuse an existing matching business or create its tenant-linked FormaCorp case, and save the PDF into client Business documents',
   'FormaCorp business PDF preview shows labeled state filing details and conflicts; existing client values remain protected and all saved businesses are scoped to the active office',
   'Florida Sunbiz PDF import previews the filing number, dates, addresses and registered agent; matching official-looking PDFs fill missing FormaCorp business fields without overwriting staff entries, then sync the linked client summary without mixing different companies',
