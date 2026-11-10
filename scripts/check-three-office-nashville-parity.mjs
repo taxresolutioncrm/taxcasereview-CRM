@@ -44,6 +44,36 @@ for(const sel of [
 ]) assert(lightPolish.includes(sel),'Light mode regression: missing '+sel)
 assert(!lightPolish.includes('html.dark'),'Nashville light-mode rules must not override dark mode')
 
+const dashboardSource=read('src/pages/Dashboard.jsx')
+assert(lightPolish.includes('Nashville v3.1.90 follow-up'),'Nashville 3.1.90 dashboard light-mode follow-up missing')
+for(const cls of [
+ 'tax-dashboard-theme-root',
+ 'tax-dashboard-timezones',
+ 'tax-dashboard-widget-title',
+ 'tax-dashboard-tas-skeleton',
+ 'tax-dashboard-tas-entry',
+ 'tax-dashboard-tas-text',
+ 'tax-dashboard-tas-link',
+ 'tax-dashboard-tip-panel',
+ 'tax-dashboard-tip-text',
+ 'tax-dashboard-tip-dot',
+]) {
+  assert(dashboardSource.includes(cls),'Dashboard widget missing class '+cls)
+  assert(lightPolish.includes('html.light .'+cls),'Light stylesheet missing widget rule '+cls)
+}
+assert(!dashboardSource.includes('onMouseEnter={e => e.currentTarget.style.background='),
+  'Direct inline hover mutations would override the light-theme IRS widget')
+for(const zone of ['Eastern','Central','Mountain','Pacific','Alaska','Hawaii']) {
+  assert(dashboardSource.includes("label: '"+zone+"'"),'Clock zone lost: '+zone)
+}
+assert(dashboardSource.includes('setInterval(() => setTime(new Date()), 1000)'),'Live timezone clock update removed')
+assert(dashboardSource.includes('tasFeeds.map((item, i)'),'Taxpayer Advocate feed integration removed')
+assert(dashboardSource.includes('CRM_TIPS[tipIdx].tip'),'Rotating tip text removed')
+assert(dashboardSource.includes('setTipIdx(i)'),'Tip navigation removed')
+assert(lightPolish.includes('html.light .tax-dashboard-tas-entry:hover'),'Article hover state missing')
+assert(lightPolish.includes('html.light .tax-dashboard-tip-dot.is-active'),'Light mode active tip indicator missing')
+
+
 const formacorp=read('src/pages/FormaCorp.jsx')
 assert(formacorp.includes("client_id:linkedClient.id"),'FormaCorp must save a stable CRM client ID')
 assert(formacorp.includes("await syncFormationBusiness(payload,linkedClient.id)"),'Formation saves must sync business information')
