@@ -5767,7 +5767,7 @@ function CommandCenter() {
   const [gscConnected, setGscConnected] = useState(false)
   const [gscError, setGscError] = useState('')
   const [gscCached, setGscCached] = useState(false)
-  const [gscRangeDays, setGscRangeDays] = useState(28)
+  const [gscRangeDays, setGscRangeDays] = useState(0)
   // PoolVerge Clarity is a separate API integration, not a Google metric.
   const [poolClarity, setPoolClarity] = useState(null)
   const [poolClarityError, setPoolClarityError] = useState('')
@@ -6605,10 +6605,10 @@ function CommandCenter() {
               <span style={{ fontSize:16 }}>🔵</span>
               <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>Google Search Console</div>
               <div style={{display:'flex',gap:5,marginLeft:8}}>
-                {[7,28,90].map(days=>(
+                {[0,7,28,90].map(days=>(
                   <button key={days} onClick={()=>setGscRangeDays(days)} disabled={gscLoading}
                     style={{border:'1px solid '+(gscRangeDays===days?'#6366f1':'rgba(255,255,255,.08)'),background:gscRangeDays===days?'rgba(99,102,241,.18)':'rgba(255,255,255,.03)',color:gscRangeDays===days?'#c7d2fe':'#64748b',borderRadius:6,padding:'4px 8px',fontSize:10,fontWeight:700,cursor:gscLoading?'default':'pointer'}}>
-                    {days}d
+                    {days===0?'Overall':`${days}d`}
                   </button>
                 ))}
               </div>
@@ -6628,7 +6628,7 @@ function CommandCenter() {
                   <div key={i} style={{ background:'rgba(255,255,255,.03)', borderRadius:8, padding:'14px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
                     <div style={{ fontSize:9, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4 }}>{m.label}</div>
                     <div style={{ fontSize:22, fontWeight:800, color:m.color }}>{m.value}</div>
-                    {sd && typeof m.delta==='number' && <div style={{fontSize:10,marginTop:3,color:m.delta>0?'#10b981':m.delta<0?'#f87171':'#64748b'}}>{m.delta>0?'+':''}{m.delta}{m.suffix} vs previous {gscRangeDays}d</div>}
+                    {sd && typeof m.delta==='number' && <div style={{fontSize:10,marginTop:3,color:m.delta>0?'#10b981':m.delta<0?'#f87171':'#64748b'}}>{m.delta>0?'+':''}{m.delta}{m.suffix} vs previous {gscData?.rangeDays}d</div>}
                   </div>
                 ))}
               </div>
@@ -6656,9 +6656,11 @@ function CommandCenter() {
                 </div>
               )}
               {gscError && !gscLoading && <div role="alert" style={{fontSize:12,color:'#fca5a5',marginTop:10,lineHeight:1.6}}>{gscError}</div>}
+              {gscCached && gscRangeDays===0 && <div style={{fontSize:11,color:'#fbbf24',marginTop:8}}>Overall history could not be refreshed. Any figures shown below are a saved 90-day snapshot, not lifetime totals.</div>}
               {gscCached && gscData?.cachedAt && <div style={{fontSize:11,color:'#fbbf24',marginTop:8}}>Last saved snapshot: {new Date(gscData.cachedAt).toLocaleString('en-US',{timeZone:'America/New_York'})}. These are not live figures.</div>}
               {gscConnected && gscData?.siteUrl && <div style={{ fontSize:11, color:'#475569', marginTop:8, lineHeight:1.6 }}>
-                {gscData.rangeLabel || ('Last '+gscRangeDays+' days')} · {gscData.siteUrl}
+                {gscData.rangeLabel || ('Last '+gscData.rangeDays+' days')} · {gscData.siteUrl}
+                {gscData.rangeStart&&gscData.rangeEnd ? <> · {gscData.rangeStart} to {gscData.rangeEnd}</> : null}
                 {gscData.dataThrough ? <> · Data through <strong style={{color:'#64748b'}}>{gscData.dataThrough}</strong></> : null}
                 {gscData.syncedAt ? <> · Refreshed {new Date(gscData.syncedAt).toLocaleString('en-US',{timeZone:'America/New_York'})}</> : null}
               </div>}
