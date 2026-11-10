@@ -22,7 +22,7 @@ export function rememberRecentClient(tenantId, employeeIdentity, client) {
   const key = recentClientsKey(tenantId, employeeIdentity)
   if (!key || !client?.id || !client?.name) return
   try {
-    const entry = { id:String(client.id),name:String(client.name),number:String(client.clientNum || client.clientNumber || '') }
+    const entry = { id:String(client.id),name:String(client.name),number:String(client.custnum || client.clientNum || client.clientNumber || '') }
     const rows = [entry,...getRecentClients(tenantId,employeeIdentity).filter(row => row.id !== entry.id)]
       .slice(0,MAX_RECENT_CLIENTS)
     localStorage.setItem(key,JSON.stringify(rows))
