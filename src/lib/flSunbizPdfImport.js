@@ -96,3 +96,51 @@ export async function parseFloridaSunbizPdf(file,expectedName) {
   if (!result.readable) throw new Error('PDF contains no extractable text. Obtain a searchable Sunbiz PDF; scanned images need manual review.')
   return result
 }
+
+export function normalizeFloridaFilingDate(value) {
+  const input=String(value||'').trim()
+  let year,month,day
+  let m=input.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if(m){year=+m[1];month=+m[2];day=+m[3]}
+  else {
+    m=input.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/)
+    if(!m) return ''
+    month=+m[1];day=+m[2];year=+m[3]
+    if(year<100) year+=2000
+  }
+  const date=new Date(Date.UTC(year,month-1,day))
+  if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return ''
+  if(year<1900||year>2100)return ''
+  return [year,String(month).padStart(2,'0'),String(day).padStart(2,'0')].join('-')
+}
+
+// Never replace CRM edits silently, and never treat an imported PDF as proof
+// of an approved formation or a successful government payment.
+export function planFloridaSunbizBusinessUpdate(parsed,existing={},kind='Filed Articles') {
+  if(!parsed?.canVerify) throw new Error('Florida PDF name and agency header must match first')
+  const isArticles=kind==='Filed Articles'||kind==='Certified Copy'
+  if(!isArticles) return {patch:{},conflicts:[]}
+  if(parsed.entityType && existing.entity_type &&
+    parsed.entityType!==existing.entity_type && !(parsed.entityType==='LLC' && existing.entity_type==='Professional LLC (PLLC)')) {
+    throw new Error('PDF entity type does not match this FormaCorp case')
+  }
+  const patch={}, conflicts=[]
+  const candidate={
+    principal_address:parsed.principalAddress,
+    mailing_address:parsed.mailingAddress,
+    registered_agent:parsed.registeredAgent,
+    registered_agent_address:parsed.registeredAgentAddress,
+    effective_date:normalizeFloridaFilingDate(parsed.effectiveDate),
+    state_file_num:parsed.documentNumber,
+    formation_date:normalizeFloridaFilingDate(parsed.filedDate),
+  }
+  for(const [field,value] of Object.entries(candidate)){
+    const next=String(value||'').trim(),current=String(existing[field]||'').trim()
+    if(!next)continue
+    if(!current)patch[field]=next
+    else if(current.toUpperCase().replace(/\s+/g,' ')!==next.toUpperCase().replace(/\s+/g,' ')) {
+      conflicts.push({field,current,fromPdf:next})
+    }
+  }
+  return {patch,conflicts}
+}
