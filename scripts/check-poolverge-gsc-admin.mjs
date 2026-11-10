@@ -36,6 +36,6 @@ checked(ui.includes("clarityConfiguredProducts"),'Clarity configured status visi
 checked(ui.includes("apiStatus==='live' && typeof sessions==='number' && sessions>0"),'Clarity live-session verification requires actual provider sessions')
 console.log('PASS PoolVerge ↔ RomyLabs GSC product-scoped regression contract')
 
-checked(ui.includes("const [gscRangeDays, setGscRangeDays] = useState(28)"), 'Search Console defaults to actionable 28-day reporting')
+checked(ui.includes("const [gscRangeDays, setGscRangeDays] = useState(0)"), 'Search Console defaults to overall available history')
 checked(ui.includes("range_days: rangeDays"), 'Search Console sends selected reporting window to provider API')
 checked(ui.includes("Data through"), 'Search Console displays provider freshness date')
