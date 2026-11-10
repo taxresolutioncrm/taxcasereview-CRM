@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+const api=readFileSync('supabase/functions/gsc-data/index.ts','utf8')
+const ui=readFileSync('src/pages/AdminPortal.jsx','utf8')
+assert.ok(ui.includes('useState(0)'), 'Overall is default')
+assert.ok(ui.includes('[0,7,28,90].map'), 'All expected filters available')
+assert.ok(ui.includes("days===0?'Overall'"), 'Overall filter visibly named')
+assert.ok(api.includes('range_days=0'), 'Server defaults to Overall')
+assert.ok(api.includes('start.setUTCMonth(start.getUTCMonth()-16)'), 'Overall requests available 16-month history')
+assert.ok(api.includes('overall?null:pct'), 'Overall suppresses fabricated deltas')
+assert.ok(api.includes('rangeStart:fmt(start),rangeEnd:fmt(end)'), 'Returned data has exact range')
+assert.ok(api.includes('fetchLive(token,siteUrl,key,90)'), 'OAuth sync retains canonical 90-day snapshots')
+assert.ok(api.includes('if (live.rangeDays === 90) await saveSnapshot'), 'Overall never overwrites 90-day snapshots')
+assert.ok(ui.includes('Any figures shown below are a saved 90-day snapshot'), 'Degraded Overall is explicitly labelled')
+console.log('PASS overall Search Console available-history contract')

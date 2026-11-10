@@ -68,13 +68,17 @@ async function getOAuthToken(supabase:any,settings:any){
   return d.access_token as string
 }
 
-async function fetchLive(token:string,siteUrl:string,productKey:string,rangeDays=90){
-  const allowed=[7,28,90]
-  const days=allowed.includes(Number(rangeDays))?Number(rangeDays):90
-  const end=new Date(); end.setDate(end.getDate()-2)
-  const start=new Date(end); start.setDate(start.getDate()-(days-1))
-  const prevEnd=new Date(start); prevEnd.setDate(prevEnd.getDate()-1)
-  const prevStart=new Date(prevEnd); prevStart.setDate(prevStart.getDate()-(days-1))
+async function fetchLive(token:string,siteUrl:string,productKey:string,rangeDays=0){
+  // "Overall" means all history still obtainable from Google Search Console
+  // (rolling 16 months). It cannot reconstruct previously expired data.
+  const overall=Number(rangeDays)===0
+  const days=[7,28,90].includes(Number(rangeDays))?Number(rangeDays):90
+  const end=new Date(); end.setUTCHours(12,0,0,0); end.setUTCDate(end.getUTCDate()-2)
+  const start=new Date(end)
+  if(overall){start.setUTCMonth(start.getUTCMonth()-16); start.setUTCDate(start.getUTCDate()+1)}
+  else start.setUTCDate(start.getUTCDate()-(days-1))
+  const prevEnd=new Date(start); prevEnd.setUTCDate(prevEnd.getUTCDate()-1)
+  const prevStart=new Date(prevEnd); prevStart.setUTCDate(prevStart.getUTCDate()-(days-1))
   const fmt=(d:Date)=>d.toISOString().slice(0,10)
   const post=async(body:any)=>{
     const r=await fetch(`${GSC_BASE}/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,{
@@ -86,23 +90,24 @@ async function fetchLive(token:string,siteUrl:string,productKey:string,rangeDays
   }
   const [cur,prev,queries]=await Promise.all([
     post({startDate:fmt(start),endDate:fmt(end),dimensions:[]}),
-    post({startDate:fmt(prevStart),endDate:fmt(prevEnd),dimensions:[]}),
+    overall ? Promise.resolve({rows:[]}) : post({startDate:fmt(prevStart),endDate:fmt(prevEnd),dimensions:[]}),
     post({startDate:fmt(start),endDate:fmt(end),dimensions:['query'],rowLimit:250}),
   ])
-  const c=cur.rows?.[0]||{}, p=prev.rows?.[0]||{}
+  const c=cur.rows?.[0]||{}, p=prev.rows?.[0]||{};
   const pct=(a:number,b:number)=>b?Math.round(((a-b)/b)*100):0
   return {
     mock:false,connected:true,degraded:false,cached:false,dataAvailable:true,product_key:productKey,siteUrl,
-    impressions:Math.round(c.impressions||0),impressionsChange:pct(c.impressions||0,p.impressions||0),
-    clicks:Math.round(c.clicks||0),clicksChange:pct(c.clicks||0,p.clicks||0),
-    ctr:Math.round((c.ctr||0)*1000)/10,ctrChange:Math.round(((c.ctr||0)-(p.ctr||0))*1000)/10,
-    avgPosition:Math.round((c.position||0)*10)/10,posChange:Math.round(((p.position||0)-(c.position||0))*10)/10,
+    impressions:Math.round(c.impressions||0),impressionsChange:overall?null:pct(c.impressions||0,p.impressions||0),
+    clicks:Math.round(c.clicks||0),clicksChange:overall?null:pct(c.clicks||0,p.clicks||0),
+    ctr:Math.round((c.ctr||0)*1000)/10,ctrChange:overall?null:Math.round(((c.ctr||0)-(p.ctr||0))*1000)/10,
+    avgPosition:Math.round((c.position||0)*10)/10,posChange:overall?null:Math.round(((p.position||0)-(c.position||0))*10)/10,
     topQueries:(queries.rows||[])
       .map((r:any)=>({query:r.keys?.[0]||'',pos:Math.round((r.position||0)*10)/10,clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0)}))
       .filter((r:any)=>r.query)
       .sort((a:any,b:any)=>b.impressions-a.impressions || b.clicks-a.clicks || a.pos-b.pos)
       .slice(0,10),
-    rangeLabel:days===7?'Last 7 days':days===28?'Last 28 days':'Last 90 days',rangeDays:days,
+    rangeLabel:overall?'Overall · available Google history (up to 16 months)':days===7?'Last 7 days':days===28?'Last 28 days':'Last 90 days',rangeDays:overall?0:days,
+    rangeStart:fmt(start),rangeEnd:fmt(end),
     dataThrough:fmt(end),syncedAt:new Date().toISOString(),authMode:'oauth'
   }
 }
@@ -138,7 +143,7 @@ async function syncAll(supabase:any,token:string){
   for(const key of LIVE_PRODUCTS){
     try{
       const siteUrl=await resolveSiteUrl(token,key)
-      const live=await fetchLive(token,siteUrl,key)
+      const live=await fetchLive(token,siteUrl,key,90)
       await saveSnapshot(supabase,live)
       results[key]=live
     }catch(e:any){
@@ -165,7 +170,7 @@ serve(async(req)=>{
     const {data:allowed,error:accessError}=await caller.rpc('_is_platform_admin')
     if(accessError || allowed!==true) return json({error:'Platform admin access required'},403)
     const body=await req.json().catch(()=>({}))
-    const {action,code,product_key='taxres_crm',range_days=90}=body
+    const {action,code,product_key='taxres_crm',range_days=0}=body
     if(!GSC_SITE_CANDIDATES[product_key]) return json({error:'Unsupported reporting product'},400)
     const {data:settings,error}=await supabase.from('settings').select('*').eq('tenant_id',ADMIN_TENANT).maybeSingle()
     if(error||!settings) return json({error:'Could not load Search Console settings'},500)
