@@ -885,8 +885,10 @@ export default function FormaCorp() {
     const {error:folderError}=await supabase.from('client_document_folders')
       .select('id').eq('tenant_id',tenantId).eq('client_id',client.id).limit(1)
     if(folderError) throw new Error('Business folder permissions or migration are not ready: '+folderError.message)
+    // Query the full current-office case list; a 500-row limit can miss an
+    // existing matching company and silently create a duplicate.
     const {data:currentCases,error:caseSearchError}=await supabase.from('formacorp')
-      .select('*').eq('tenant_id',tenantId).limit(500)
+      .select('id,tenant_id,client_id,entity_name').eq('tenant_id',tenantId)
     if(caseSearchError) throw new Error('Could not verify existing office businesses: '+caseSearchError.message)
     const matchName=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')
     const matching=(currentCases||[]).filter(c=>matchName(c.entity_name)===matchName(parsed.companyName))
@@ -1006,17 +1008,23 @@ export default function FormaCorp() {
     // and never overwrite an employee's existing values without review.
     const {patch,conflicts}=updatePlan
     let syncWarning=''
+    let caseSyncAllowed=true
     if (Object.keys(patch).length) {
       const {data:savedCase,error:metadataError}=await supabase.from('formacorp')
         .update(patch).eq('id',c.id).eq('tenant_id',tenantId).eq('client_id',client.id)
         .select('id').single()
       if (metadataError || !savedCase) {
+        caseSyncAllowed=false
         syncWarning='Business details require review: '+(metadataError?.message||'Case update not confirmed')
       } else {
         setDetail(d=>d?.id===c.id?({...d,...patch}):d)
-        try {await syncFormationBusiness({...caseRow,...patch},client.id)}
-        catch(error) {syncWarning='Client Business Info requires review: '+error.message}
       }
+    }
+    // Run for existing and newly created cases even when their PDF details
+    // were already present (the metadata patch can legitimately be empty).
+    if(caseSyncAllowed) {
+      try {await syncFormationBusiness({...caseRow,...patch},client.id)}
+      catch(error) {syncWarning='Client Business Info requires review: '+error.message}
     }
     if (conflicts.length) syncWarning=[syncWarning,
       'Existing values differ from PDF: '+conflicts.map(c=>c.field).join(', ')+'; values were preserved.'].filter(Boolean).join(' ')
