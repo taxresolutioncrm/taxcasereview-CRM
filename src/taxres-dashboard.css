@@ -163,4 +163,5 @@ html.light [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child)
   [data-card-idx] > div:nth-child(3) > div:first-child > div:first-child { font-size: 9px !important; min-height: 0 !important; margin-bottom: 3px !important; }
   [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(3) { font-size: 9px !important; margin-top: 2px !important; }
   [data-card-idx] .tax-kpi-icon-optional { display: none !important; }
+  .tax-mobile-parity [data-card-idx].tax-kpi-wide { grid-column: span 2 !important; }
 }
