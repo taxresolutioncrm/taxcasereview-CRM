@@ -294,6 +294,7 @@ html.light .tax-dashboard-tip-dot.is-active {
 
 /* Theme the whole right-hand news/tips rail, not only its inner cards.
    The previously unthemed slate rail remained dark in light mode. */
+html.light .tax-dashboard-theme-root > div:last-child,
 html.light .tax-dashboard-news-rail {
   background: #ffffff !important;
   color: #24364c !important;

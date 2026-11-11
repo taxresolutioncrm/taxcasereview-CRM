@@ -18,5 +18,6 @@ const checks=[
   ['tips navigation intact',source.includes('setTipIdx(i)')],
   ['tip indicators wrap instead of overflow',source.includes("flexWrap: 'wrap', gap: 4, justifyContent: 'center'")],
 ]
+assert(light.includes('html.light .tax-dashboard-theme-root > div:last-child,'),'Fallback light rail selector absent for cached lazy Dashboard chunks')
 for(const [name,pass]of checks)assert(pass,name)
 console.log('PASS shared tax office light dashboard news rail and dark parity ('+checks.length+' checks)')
