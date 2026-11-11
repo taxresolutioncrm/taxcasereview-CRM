@@ -20,15 +20,7 @@ begin
 
   delete from public.calevents c
    where c.id = p_event_id
-     and (
-       c.product_id = p_product_id
-       or (
-         p_product_id = 'romylabs'
-         and c.product_id is null
-         and c.tenant_id = 'a0000000-0000-0000-0000-000000000001'::uuid
-         and c."assignedTo" = 'Romy Cruz'
-       )
-     );
+     and c.product_id = p_product_id;
 
   get diagnostics v_deleted = row_count;
   return v_deleted = 1;
