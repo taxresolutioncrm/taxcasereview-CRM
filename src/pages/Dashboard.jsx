@@ -43,6 +43,7 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
     <div
       draggable
       data-card-idx={idx}
+      className={String(val ?? '').length > 11 ? 'tax-kpi-wide' : undefined}
       onDragStart={e => { e.currentTarget.style.opacity = '0.4'; onDragStart(e, idx) }}
       onDragOver={e => onDragOver(e, idx)}
       onDrop={e => { e.currentTarget.style.opacity = '1'; onDrop(e, idx) }}
@@ -80,15 +81,15 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
             overflow: 'hidden', overflowWrap: 'anywhere'
           }}>{label}</div>
           <div style={{
-            fontSize: 'clamp(22px, 1.55vw, 28px)', fontWeight: 900, color: color || 'var(--tx)', lineHeight: 1,
-            minHeight: 30, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip', letterSpacing: '-.02em'
-          }}>{val ?? '—'}</div>
+            fontSize: 'clamp(22px, 1.75vw, 27px)', fontWeight: 900, color: color || 'var(--tx)', lineHeight: 1,
+            minHeight: 30, whiteSpace: 'nowrap', overflow: 'visible', textOverflow: 'clip', letterSpacing: '-.035em', fontVariantNumeric: 'tabular-nums'
+          }} title={String(val ?? '—')}>{val ?? '—'}</div>
           {sub && <div style={{
             fontSize: 11, color: 'var(--t3)', marginTop: 6, lineHeight: 1.35,
             minHeight: 15, maxWidth: '100%', overflowWrap: 'anywhere'
           }}>{sub}</div>}
         </div>
-        {icon && <div style={{ fontSize: 28, opacity: .15, flexShrink: 0, marginLeft: 10 }}>{icon}</div>}
+        {icon && <div className="tax-kpi-icon-optional" style={{ fontSize: 28, opacity: .15, flexShrink: 0, marginLeft: 10 }}>{icon}</div>}
       </div>
     </div>
   )
