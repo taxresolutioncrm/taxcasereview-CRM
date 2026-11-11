@@ -236,3 +236,83 @@ CREATE POLICY shared_preparer_document_insert_restrict ON public.documents AS RE
 -- Verify after sandbox migration: zero null/mismatched tenant-client folder pairs,
 -- every parent shares its child's tenant/client, every assigned document matches,
 -- no folder cycles, and historical document counts remain unchanged.
+
+
+-- Archive both document references atomically using the caller's RLS identity.
+-- Any failure rolls back both INSERTs. Storage is uploaded first by the client;
+-- on RPC failure, the client removes only that unindexed new storage object.
+-- SECURITY INVOKER is essential: this is NOT a privileged service-role bypass.
+CREATE UNIQUE INDEX IF NOT EXISTS shared_sunbiz_document_hash_unique
+  ON public.documents(tenant_id,client_id,file_hash)
+  WHERE file_hash IS NOT NULL AND source='FormaCorp Sunbiz';
+
+CREATE OR REPLACE FUNCTION public.archive_shared_sunbiz_document(
+  p_case_id uuid, p_client_id text, p_folder_id uuid,
+  p_file_name text, p_original_file_name text, p_storage_path text,
+  p_file_hash text, p_file_size bigint, p_kind text
+) RETURNS text
+LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=public,pg_temp AS $$
+DECLARE
+  v_tenant uuid := public.current_tenant_id();
+  v_name text;
+  v_company text;
+  v_document_id text;
+BEGIN
+  IF v_tenant IS NULL OR
+     public.current_employee_permission('perm_documents') < 2 THEN
+    RAISE EXCEPTION 'Document edit permission required';
+  END IF;
+  IF p_kind NOT IN ('Filed Articles','Payment Receipt','Certificate of Status','Certified Copy')
+    OR p_file_name IS NULL OR p_storage_path IS NULL
+    OR p_file_hash !~ '^[a-f0-9]{64}$' OR p_file_size IS NULL
+    OR p_file_size < 1 OR p_file_size > 12582912 THEN
+    RAISE EXCEPTION 'Invalid official Sunbiz PDF metadata';
+  END IF;
+  SELECT name INTO v_name FROM public.clients
+    WHERE id=p_client_id AND tenant_id=v_tenant;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Client unavailable in active office'; END IF;
+  SELECT entity_name INTO v_company FROM public.formacorp
+    WHERE id=p_case_id AND tenant_id=v_tenant AND client_id=p_client_id AND state='FL';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Florida formation unavailable for this client'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.client_document_folders f
+    JOIN public.client_document_folders company ON company.id=f.parent_folder_id
+    JOIN public.client_document_folders root ON root.id=company.parent_folder_id
+    WHERE f.id=p_folder_id AND f.tenant_id=v_tenant AND f.client_id=p_client_id
+      AND f.name='Formation Documents'
+      AND company.name=v_company AND company.tenant_id=v_tenant
+      AND company.client_id=p_client_id AND root.name='Business'
+      AND root.parent_folder_id IS NULL AND root.tenant_id=v_tenant
+      AND root.client_id=p_client_id
+  ) THEN
+    RAISE EXCEPTION 'Formation Documents folder does not match this client and business';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.documents
+    WHERE tenant_id=v_tenant AND client_id=p_client_id AND file_hash=p_file_hash
+  ) THEN
+    RAISE EXCEPTION 'This PDF already exists in the selected client document file';
+  END IF;
+  INSERT INTO public.documents(
+    tenant_id,client_id,client,clientname,name,"docType",
+    client_document_folder_id,file_name,original_file_name,file_url,
+    storage_path,file_size,file_hash,source,notes
+  ) VALUES (
+    v_tenant,p_client_id,v_name,v_name,p_kind||' — '||v_company,'Formation Documents',
+    p_folder_id,p_file_name,p_original_file_name,
+    'storage://documents/'||p_storage_path,p_storage_path,p_file_size,p_file_hash,
+    'FormaCorp Sunbiz','Staff-imported Sunbiz PDF; approval and state payment are independently verified'
+  ) RETURNING id INTO v_document_id;
+  INSERT INTO public.formacorp_documents(
+    tenant_id,case_id,document_type,file_name,storage_path,source
+  ) VALUES (
+    v_tenant,p_case_id,'Florida Sunbiz — '||p_kind,p_file_name,p_storage_path,'Sunbiz PDF import'
+  );
+  RETURN v_document_id;
+END $$;
+REVOKE ALL ON FUNCTION public.archive_shared_sunbiz_document(
+  uuid,text,uuid,text,text,text,text,bigint,text
+) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.archive_shared_sunbiz_document(
+  uuid,text,uuid,text,text,text,text,bigint,text
+) TO authenticated;
