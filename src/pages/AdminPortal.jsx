@@ -35,7 +35,6 @@ const NASH_TENANT           = '489ace07-1a6b-4864-833a-4f8420568b40'
 const DEMO_DIRECTORY_TENANT = '518808b4-10dd-47fd-900e-6c3fc1ff2e7e'
 const DEMO_RUNTIME_TENANT   = 'a0000000-0000-0000-0000-000000000001'
 const DEMO_TENANT           = DEMO_RUNTIME_TENANT
-const TAXRESCRM_TENANT      = DEMO_RUNTIME_TENANT
 const STATUS_COLOR = { active:'#10b981', trial:'#f59e0b', past_due:'#f97316', cancelled:'#ef4444', suspended:'#ef4444' }
 const TIER_COLOR   = { starter:'#6366f1', growth:'#0ea5e9', pro:'#10b981' }
 
@@ -1242,8 +1241,6 @@ function Overview() {
     navigate(`/crm-admin/offices/${row.id}`)
   }
 
-  const h = new Date().getHours()
-  const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
 
   const KPI = [
     { label:'Monthly Recurring', val: `$${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981' },
