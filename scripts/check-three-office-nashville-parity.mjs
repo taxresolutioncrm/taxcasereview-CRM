@@ -44,9 +44,32 @@ for(const sel of [
 ]) assert(lightPolish.includes(sel),'Light mode regression: missing '+sel)
 assert(!lightPolish.includes('html.dark'),'Nashville light-mode rules must not override dark mode')
 
+
+/* v3.1.91 KPI font parity: only the theme-neutral baseline owns geometry.
+   Reject light-specific dimensions / numeric truncation regressions. */
+const kpiBaseline=read('src/taxres-dashboard.css')
+const kpiOfficeCards=read('src/tax-office-dashboard-cards.css')
+for(const required of [
+  'font-size: clamp(22px, 1.75vw, 27px) !important',
+  'font-size: clamp(17px, 4.7vw, 21px) !important',
+  'font-variant-numeric: tabular-nums',
+  'white-space: nowrap !important',
+  'repeat(3, minmax(0,1fr))',
+  '.tax-mobile-parity [data-card-idx].tax-kpi-wide'
+]) assert(kpiBaseline.includes(required),'Missing shared KPI contract: '+required)
+for(const block of lightPolish.matchAll(/html\\.light\\s+\\[data-card-idx\\][^{]*\\{([^}]*)\\}/g)) {
+  assert(!/(?:font-size|font-weight|line-height|min-height|height|padding|letter-spacing|text-overflow|grid-template-columns)\\s*:/.test(block[1]),'Light mode may not change KPI card geometry or font sizing')
+}
+assert(!/font-size\\s*:\\s*clamp/.test(kpiOfficeCards),'Office appearance file must not override shared KPI font size')
+assert(!/text-overflow\\s*:\\s*ellipsis/.test(kpiOfficeCards),'Office appearance file must not truncate values')
+assert(kpiOfficeCards.includes('repeat(2, minmax(0, 1fr))'),'Shared tax offices must preserve two-across mobile grid')
+
 const dashboardSource=read('src/pages/Dashboard.jsx')
 assert(lightPolish.includes('Nashville v3.1.90 follow-up'),'Nashville 3.1.90 dashboard light-mode follow-up missing')
 assert(dashboardSource.includes('tax-dashboard-theme-root'),'Shared dashboard theme scope class missing')
+assert(dashboardSource.includes("className={String(val ?? '').length > 11 ? 'tax-kpi-wide' : undefined}"),'Long financial values must expand on small phones')
+assert(dashboardSource.includes("title={String(val ?? '—')}"),'Financial amounts must remain retrievable in full')
+assert(dashboardSource.includes("overflow: 'visible'"),'KPI amounts must not be clipped by inline styles')
 for(const cls of [
  'tax-dashboard-timezones',
  'tax-dashboard-widget-title',
