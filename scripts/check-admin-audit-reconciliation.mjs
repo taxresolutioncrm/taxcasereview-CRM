@@ -38,4 +38,5 @@ for(const fn of ['seed_taxres_workflow_library(uuid)','process_fantasy_gmail_dra
 }
 assert.ok(!ui.includes('const TAXRESCRM_TENANT      = DEMO_RUNTIME_TENANT'),'Remove misleading unused tenant alias')
 assert.ok(!ui.includes("const greeting = h<12?'Good morning':'h<17'"),'Remove incorrect dead greeting')
-assert.ok(ui.includes('const h = new Date().getHours()'), 'Overview greeting hour must remain defined (browser crash regression)')\nconsole.log('PASS audited Admin Portal controls and migration contracts')
+assert.ok(ui.includes('const h = new Date().getHours()'), 'Overview greeting hour must remain defined (browser crash regression)')
+console.log('PASS audited Admin Portal controls and migration contracts')
