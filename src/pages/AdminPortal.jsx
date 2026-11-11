@@ -5494,25 +5494,8 @@ function CommandCenter() {
         upcomingDl:   (stats.upcoming_deadlines||[]).slice(0,5),
         todaySchedule:(stats.today_schedule||[]).slice(0,6),
         upcomingDemos:(taxresDemoRes?.data?.upcoming || []).slice(0,5),
-        // Marketing mock data (live when GA4 is connected)
-        marketing: {
-          visitorsToday: 247,  visitorsChange: 18,
-          sessions: 312,       sessionsChange: 14,
-          bounceRate: 38.2,    bounceChange: -4,
-          pagesPerSession: 3.1,
-          topSources: [
-            { label:'Organic Search', pct:62, color:'#6366f1' },
-            { label:'Direct',         pct:21, color:'#0ea5e9' },
-            { label:'Referral',       pct:11, color:'#10b981' },
-            { label:'Social',         pct:6,  color:'#f59e0b' },
-          ],
-          topPages: [
-            { path:'/features/irs-workflows', views:84, change:'+22%' },
-            { path:'/',                         views:71, change:'+8%'  },
-            { path:'/resources/transaction-codes', views:52, change:'+31%' },
-            { path:'/about',                    views:38, change:'+5%'  },
-          ],
-        },
+        // Real marketing analytics are loaded separately from GA4; never invent figures.
+        marketing: null,
         // Search data — populated from gscData state after fetch
         search: {
           impressions: 0, impressionsChange: 0,
@@ -8901,14 +8884,6 @@ export default function AdminPortal() {
       setFavicon('/romylabs-favicon.png')
     }
   }, [])
-
-  async function handleGSCConnect() {
-    const CLIENT_ID = '70057646964-vimoia1qkjtml9n3mplo0hme82m3t2qs.apps.googleusercontent.com'
-    const redirect  = window.location.origin + '/crm-admin/command-center'
-    const scope     = 'https://www.googleapis.com/auth/webmasters.readonly'
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`
-    window.location.href = url
-  }
 
   async function handleSignOut() {
     await supabase.auth.signOut()
