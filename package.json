@@ -1,7 +1,7 @@
 {
   "name": "tcr-client",
   "private": true,
-  "version": "3.2.101",
+  "version": "3.2.102",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
@@ -30,7 +30,7 @@
     "ui:quick-create": "node scripts/fix-quick-create-routes.mjs",
     "ui:navigation-audit": "node scripts/audit-ui-navigation.mjs",
     "source:verify-current": "git diff --exit-code -- src scripts package.json vite.config.js 2>/dev/null || (echo 'ERROR: prebuild repair scripts changed tracked source. Commit the source fix instead of building mutated source.' && exit 1)",
-    "prebuild": "npm run check-calendar-detail-delete && npm run check-gsc-overall-history && npm run check-poolverge-bing-route && npm run check-mobile-ux-parity && npm run check-billing-transaction-parity && npm run check-admin-product-ordering && npm run check-admin-calendar-preview && npm run check-time-entry-client-picker && npm run check-taxres-irs-inbox-guidance && npm run check-admin-portal-version && npm run check-release-modal && npm run check-release-versioning && npm run check-tcr-dashboard-reporting && npm run check-note-edit-performance && npm run check-note-edit-family-standard && npm run check-taxres-note-edit-audit && npm run check-tcr-note-edit-audit && npm run check-note-edit-audit && npm run check-taxres-nashville-handoff && npm run check-client-assignment-centurion-links && npm run check-ai-government-call-agent && npm run check-client-case-quick-actions && npm run check-client-task-scheduling && npm run check-formacorp-native && npm run check-centurion-saas-routing && npm run check-payments-date-excel && npm run check-three-office-nashville-parity && npm run check-three-office-auth && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run check-oculivo-lead-intake",
+    "prebuild": "npm run check-calendar-detail-delete && npm run check-gsc-overall-history && npm run check-poolverge-bing-route && npm run check-mobile-ux-parity && npm run check-billing-transaction-parity && npm run check-admin-product-ordering && npm run check-admin-calendar-preview && npm run check-time-entry-client-picker && npm run check-taxres-irs-inbox-guidance && npm run check-admin-portal-version && npm run check-release-modal && npm run check-release-versioning && npm run check-tcr-dashboard-reporting && npm run check-note-edit-performance && npm run check-note-edit-family-standard && npm run check-taxres-note-edit-audit && npm run check-tcr-note-edit-audit && npm run check-note-edit-audit && npm run check-taxres-nashville-handoff && npm run check-client-assignment-centurion-links && npm run check-ai-government-call-agent && npm run check-client-case-quick-actions && npm run check-client-task-scheduling && npm run check-formacorp-native && npm run check-centurion-saas-routing && npm run check-payments-date-excel && npm run check-three-office-nashville-parity && npm run check-shared-irs-form-4506 && npm run check-three-office-auth && npm run check-manual-sync && npm run check-dashboard-i18n && npm run manual:style && npm run storage:fix-display && npm run email:state-sync && npm run email:count-sync && npm run check-oculivo-lead-intake",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist --dotfiles",
@@ -89,7 +89,8 @@
     "check-mobile-ux-parity": "node scripts/check-mobile-ux-parity.mjs",
     "check-centurion-saas-routing": "node scripts/check-centurion-saas-routing.mjs",
     "check-payments-date-excel": "node scripts/check-payments-date-excel.mjs",
-    "check-three-office-nashville-parity": "node scripts/check-three-office-nashville-parity.mjs"
+    "check-three-office-nashville-parity": "node scripts/check-three-office-nashville-parity.mjs",
+    "check-shared-irs-form-4506": "node scripts/check-shared-irs-form-4506.mjs"
   },
   "dependencies": {
     "@signalwire/js": "^1.5.0",
