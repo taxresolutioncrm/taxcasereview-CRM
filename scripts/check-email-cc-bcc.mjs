@@ -7,7 +7,7 @@ assert.deepEqual(v.bcc,['hidden@example.com'])
 assert.throws(()=>validateEmailRecipients({to:'bad; first@example.com'}))
 assert.throws(()=>validateEmailRecipients({to:'first@example.com',cc:'first@example.com'}))
 for(const [path,strings]of Object.entries({
- 'src/pages/Email.jsx':['validateEmailRecipients','recipients.cc','recipients.bcc','CC (visible copies)','BCC (private copies)'],
+ 'src/pages/Email.jsx':['validateEmailRecipients','recipients.cc','recipients.bcc','aria-label="CC email recipients"','aria-label="BCC email recipients"'],
  'src/components/QuickEmail.jsx':['validateEmailRecipients','cc:recipients.cc','bcc:recipients.bcc'],
  'src/lib/gmailUtils.js':["'Cc: '","'Bcc: '",'...addressHeaders'],
  'supabase/functions/smtp-send/index.ts':['ccList=recipients(cc','bccList=recipients(bcc','to: allRecipients','bcc:opts.bcc.map','...(opts.cc?.length ?'],
