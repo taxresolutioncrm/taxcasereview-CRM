@@ -131,7 +131,10 @@ assert(/looksLikeFloridaAddress/.test(content), 'Florida registered-agent state-
 assert(/floridaEffectiveDateValid/.test(content), 'Florida effective-date statutory window guard is missing')
 assert(!/registered_agent:\s*'Self \(Owner\)'/.test(content), 'Florida filing must capture the actual registered-agent legal name')
 assert(/\['Entity Type','State','Details','Services','Review'\]/.test(content), 'FormaCorp guided wizard must expose the current five-step workflow')
-assert(/20260919-formacorp-family-parity-3/.test(fs.readFileSync('public/romylabs-admin-hotfix.js','utf8')), 'TaxRes-family deployment freshness guard is missing')
+const familyBuildMarker = JSON.parse(fs.readFileSync('public/taxres-build.json','utf8')).build
+assert(/^20[0-9]{6}-[a-z0-9-]+$/.test(familyBuildMarker),'TaxRes-family build marker is missing or malformed')
+assert(fs.readFileSync('public/romylabs-admin-hotfix.js','utf8').includes("var TAXRES_FAMILY_BUILD = '" + familyBuildMarker + "'"), 'TaxRes-family deployment freshness guard does not match build marker')
+assert(fs.readFileSync('index.html','utf8').includes('romylabs-admin-hotfix.js?v=' + familyBuildMarker),'HTML bootstrap asset must request current deployment freshness guard')
 assert(/"formacorp_wizard_steps": 5/.test(fs.readFileSync('public/taxres-build.json','utf8')), 'TaxRes-family build marker does not certify current FormaCorp wizard')
 assert(/At least 3 directors when directors are listed/.test(content), 'Florida nonprofit listed-director minimum guard is missing')
 assert(/Record State Submission/.test(content), 'State submission tracking control is missing')
