@@ -31,7 +31,7 @@
    * FormaCorp chunk in memory. On the first page load after a new release,
    * force exactly one cache-busted reload so Nashville/TCR/CloudCPA/Demo all
    * execute the same deployed bundle. */
-  var TAXRES_FAMILY_BUILD = '20260919-formacorp-family-parity-3';
+  var TAXRES_FAMILY_BUILD = '20261111-roster-search-theme-refresh-501';
   var isTaxResFamilyHost =
     host === 'taxrescrm.app' ||
     host === 'www.taxrescrm.app' ||
