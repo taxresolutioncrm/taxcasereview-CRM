@@ -36,4 +36,6 @@ assert.ok(!ui.includes('Pace based on'),'Misleading annual pace text removed')
 for(const fn of ['seed_taxres_workflow_library(uuid)','process_fantasy_gmail_drafts()','process_fantasy_report_outbox()','run_fantasy_daily_if_due()','send_fantasy_football_report(text)','send_fantasy_hockey_report(text)']){
   assert.ok(sql.includes('revoke execute on function public.'+fn),'Privileged maintenance must not be executable anonymously: '+fn)
 }
+assert.ok(!ui.includes('const TAXRESCRM_TENANT      = DEMO_RUNTIME_TENANT'),'Remove misleading unused tenant alias')
+assert.ok(!ui.includes("const greeting = h<12?'Good morning':'h<17'"),'Remove incorrect dead greeting')
 console.log('PASS audited Admin Portal controls and migration contracts')
