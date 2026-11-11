@@ -1,0 +1,51 @@
+name: RomyLabs Admin Release Browser Certification
+on:
+  pull_request:
+    paths:
+      - 'src/pages/AdminPortal.jsx'
+      - 'src/releaseInfo.js'
+      - 'scripts/check-admin-audit-reconciliation.mjs'
+      - 'package.json'
+      - 'supabase/migrations/**'
+      - 'e2e/romylabs-admin-release.spec.mjs'
+      - '.github/workflows/romylabs-admin-release-browser.yml'
+permissions:
+  contents: read
+jobs:
+  browser-certification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save @playwright/test@1.55.0
+      - name: Verify GitHub runner Chrome is available
+        run: google-chrome --version
+      - run: npm run build
+      - name: Launch isolated production-bundle preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/romylabs-preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/romylabs-preview.log
+          exit 1
+      - name: Browser QA desktop, tablet, mobile and integrations
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+        run: npx playwright test e2e/romylabs-admin-release.spec.mjs --browser=chromium --reporter=line
+      - name: Save failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: romylabs-admin-browser-debug
+          path: |
+            test-results/
+            /tmp/romylabs-preview.log
