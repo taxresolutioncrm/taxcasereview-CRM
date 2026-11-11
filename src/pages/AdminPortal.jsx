@@ -5508,7 +5508,7 @@ function CommandCenter() {
         },
         // Goals — real data where available
         goals: [
-          { label:'Monthly Demos',    current: Number(stats.today_demos||0), target:50,  unit:'demos',   color:'#6366f1', note:'demos today' },
+          { label:'Monthly Demos', current:null, target:50, unit:'demos', color:'#6366f1', note:'current calendar month' },
           { label:'Organic Search Sessions', current: null, target:5000, unit:'sessions', color:'#0ea5e9', note:'last 30 days · RomyLabs' },
           { label:'Platform MRR',     current: totalMRR||0,                  target:5000, unit:'$',       color:'#10b981' },
           { label:'Signed Offices',   current: activeTenants.length,         target:12,   unit:'firms',   color:'#f59e0b' },
@@ -6007,6 +6007,20 @@ function CommandCenter() {
   // GA4 active users are not equivalent to organic visitors. Report actual
   // organic-search sessions for RomyLabs, without inventing zero on failure.
   const [organicGoal, setOrganicGoal] = useState({current:null,dataThrough:null,error:''})
+  const [monthlyDemos, setMonthlyDemos] = useState({current:null,error:''})
+  useEffect(() => {
+    if (tab !== 'goals') return
+    let active = true
+    supabase.rpc('admin_monthly_calendar_event_count')
+      .then(({data:count,error}) => {
+        if (!active) return
+        setMonthlyDemos(error || typeof count !== 'number'
+          ? {current:null,error:error?.message||'Monthly demo count unavailable'}
+          : {current:count,error:''})
+      })
+      .catch(error => {if(active)setMonthlyDemos({current:null,error:String(error?.message||error)})})
+    return () => {active=false}
+  }, [tab])
   useEffect(() => {
     if (tab !== 'goals') return
     let active = true
@@ -6035,7 +6049,9 @@ function CommandCenter() {
   const displayedGoals = data?.goals?.map(goal =>
     goal.label === 'Organic Search Sessions'
       ? {...goal,current:organicGoal.current,note:organicGoal.dataThrough ? 'Data through '+organicGoal.dataThrough : (organicGoal.error||'Loading GA4')}
-      : goal
+      : goal.label === 'Monthly Demos'
+        ? {...goal,current:monthlyDemos.current,note:monthlyDemos.error||'Current month'}
+        : goal
   ) || []
 
   useEffect(() => {
@@ -7045,32 +7061,29 @@ function CommandCenter() {
         {tab==='goals' && (<>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18 }}>
             <div style={CC.card({padding:'26px 28px'})}>
-              <div style={CC.sectionLabel}>2026 Business goals</div>
+              <div style={CC.sectionLabel}>{new Date().getFullYear()} Business goals</div>
               {displayedGoals.map(g => <GoalBar key={g.label} {...g} />)}
             </div>
             <div style={CC.card({padding:'26px 28px'})}>
-              <div style={CC.sectionLabel}>Pace check</div>
+              <div style={CC.sectionLabel}>Goal status</div>
               {displayedGoals.map(g => {
                 const available = g.current !== null && g.current !== undefined && Number.isFinite(Number(g.current))
                 const pct = available ? Math.min(100,Math.round((Number(g.current)/g.target)*100)) : null
-                const now = new Date()
-                const dayOfYear = Math.floor((now-new Date(now.getFullYear(),0,0))/86400000)
-                const yearPct = Math.round(dayOfYear/365*100)
-                const ahead = pct !== null && pct >= yearPct
+                const targetReached = pct !== null && pct >= 100
                 return (
                   <div key={g.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
                     padding:'12px 0', borderBottom:'1px solid rgba(99,102,241,.1)' }}>
                     <div style={{ fontSize:13, color:'#e2e8f0', fontWeight:600 }}>{g.label}</div>
                     <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:20,
-                      background: ahead?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)',
-                      color: ahead?'#10b981':'#f59e0b' }}>
-                      {pct === null ? '— Awaiting data' : ahead ? '✓ On pace' : '⚠ Behind pace'}
+                      background:targetReached?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)',
+                      color:targetReached?'#10b981':'#fbbf24' }}>
+                      {pct === null ? '— Awaiting data' : targetReached ? '✓ Target reached' : 'In progress'}
                     </span>
                   </div>
                 )
               })}
               <div style={{ fontSize:11, color:'#475569', marginTop:16 }}>
-                Pace based on {Math.round((new Date()-new Date(new Date().getFullYear(),0,0))/86400000)} days elapsed in 2026.
+                Goal status shows attainment against each target; monthly and rolling-period goals are not measured against annual elapsed days.
               </div>
             </div>
           </div>
