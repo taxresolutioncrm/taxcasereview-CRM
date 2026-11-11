@@ -7,6 +7,7 @@ import { EMAIL_TEMPLATES as TEMPLATES } from '../lib/emailTemplatesList'
 import { useGmailSync } from '../context/GmailSyncContext'
 import { useApp } from '../context/AppContext'
 import { DOC_FOLDERS } from './Clients'
+import ReceivedEmailAttachments from '../components/ReceivedEmailAttachments'
 
 
 const TRIAGE = ['Inbox','Action Needed','Waiting','Sent','Spam','Archive']
@@ -1410,6 +1411,9 @@ export default function Email() {
                     const match = matchByEmail(selected.from_address || selected.recipient)
                     return (
                     <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <ReceivedEmailAttachments key={selected.id} email={selected} clients={clients}
+                        suggestedClient={linkedClientForEmail(selected)} user={user} tenantId={myTenantId}
+                        mailboxOwner={centralMailboxOwner} />
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         {selected.attachments.map((att, i) => (
                           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
