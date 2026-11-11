@@ -103,3 +103,31 @@ end;
 $$;
 revoke all on function public.admin_monthly_calendar_event_count(date) from public, anon;
 grant execute on function public.admin_monthly_calendar_event_count(date) to authenticated, service_role;
+
+-- Internal-only privileged maintenance functions have no end-user call sites.
+-- fantasy-daily-one uses pg_cron under postgres; workflow seeding runs
+-- under server-side owner context. Anonymous or staff RPC invocation is
+-- unnecessary and would permit security-definer side effects.
+revoke execute on function public.seed_taxres_workflow_library(uuid)
+  from public, anon, authenticated;
+grant execute on function public.seed_taxres_workflow_library(uuid) to service_role;
+
+revoke execute on function public.process_fantasy_gmail_drafts()
+  from public, anon, authenticated;
+grant execute on function public.process_fantasy_gmail_drafts() to service_role;
+
+revoke execute on function public.process_fantasy_report_outbox()
+  from public, anon, authenticated;
+grant execute on function public.process_fantasy_report_outbox() to service_role;
+
+revoke execute on function public.run_fantasy_daily_if_due()
+  from public, anon, authenticated;
+grant execute on function public.run_fantasy_daily_if_due() to service_role;
+
+revoke execute on function public.send_fantasy_football_report(text)
+  from public, anon, authenticated;
+grant execute on function public.send_fantasy_football_report(text) to service_role;
+
+revoke execute on function public.send_fantasy_hockey_report(text)
+  from public, anon, authenticated;
+grant execute on function public.send_fantasy_hockey_report(text) to service_role;
