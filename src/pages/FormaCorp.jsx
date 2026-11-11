@@ -9,6 +9,7 @@ import FormaCorpLifecycle from '../components/formacorp/FormaCorpLifecycle'
 import FormaCorpStateFeeModal from '../components/formacorp/FormaCorpStateFeeModal'
 import FloridaSunbizIntake from '../components/formacorp/FloridaSunbizIntake'
 import SunbizFilingWorkspace from '../components/formacorp/SunbizFilingWorkspace'
+import { parseFloridaSunbizPdf, planFloridaSunbizBusinessUpdate } from '../lib/flSunbizPdfImport'
 
 // S-Corporation is a federal tax election, not a state-law formation entity.
 // New formations choose the legal entity here; S-election lives in the lifecycle.
@@ -42,7 +43,7 @@ const FL_FIELDS = {
 }
 
 const BLANK = {
-  client_name:'', entity_name:'', entity_type:'LLC', state:'FL',
+  client_name:'', client_id:null, entity_name:'', entity_type:'LLC', state:'FL',
   owners:'', registered_agent:'', business_purpose:'',
   ein:'', state_file_num:'', stage:'Consultation',
   notes:'', formation_date:'', fee:'', fee_paid:false,
@@ -50,7 +51,7 @@ const BLANK = {
 }
 
 const WIZ_BLANK = {
-  entity_type: '', state: '', client_name: '', entity_name: '',
+  entity_type: '', state: '', client_name: '', client_id:null, entity_name: '',
   owners: '', registered_agent: '', business_purpose: '',
   service_plan:'Launch',
   ...FL_FIELDS,
@@ -474,9 +475,11 @@ export default function FormaCorp() {
   useEffect(() => { load() }, [])
 
   async function load() {
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if(tenantError||!tenantId) {showToast('Cannot load FormaCorp without a verified office','err');return}
     const [{ data:c }, { data:cl }, { data:sr }] = await Promise.all([
-      supabase.from('formacorp').select('*').order('created_at', { ascending:false }),
-      supabase.from('clients').select('id,name,email,phone'),
+      supabase.from('formacorp').select('*').eq('tenant_id',tenantId).order('created_at', { ascending:false }),
+      supabase.from('clients').select('id,name,email,phone,tenant_id').eq('tenant_id',tenantId),
       supabase.from('state_formation_requirements').select('*')
     ])
     setCases(c || [])
@@ -490,14 +493,14 @@ export default function FormaCorp() {
   function wFld(k,v) { setWForm(f=>({...f,[k]:v})) }
 
   function wSearchClient(val) {
-    wFld('client_name', val)
+    setWForm(f => ({...f,client_name:val,client_id:null}))
     if (val.length < 2) { setWSugg([]); setWShowSug(false); return }
     const m = clients.filter(c=>c.name.toLowerCase().includes(val.toLowerCase())).slice(0,6)
     setWSugg(m); setWShowSug(m.length > 0)
   }
 
   function chooseWizardClient(c) {
-    setWForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setWForm(f => ({ ...f, client_name:c.name, client_id:c.id, correspondence_email:f.correspondence_email || c.email || '' }))
     setWSugg([]); setWShowSug(false)
   }
 
@@ -507,15 +510,58 @@ export default function FormaCorp() {
     setWizard(true)
   }
 
+  async function linkedFormationClient(source) {
+    const {data:tenantId,error:tenantError} = await supabase.rpc('current_tenant_id')
+    if (tenantError || !tenantId) throw new Error('Unable to verify the current office')
+    let query = supabase.from('clients').select('id,name,tenant_id,business_name,businessType,ein,biz_street,biz_city,biz_state,biz_zip')
+      .eq('tenant_id',tenantId)
+    if (source.client_id) query=query.eq('id',source.client_id)
+    else query=query.eq('name',String(source.client_name||'').trim())
+    const {data,error} = await query.limit(2)
+    if (error) throw error
+    if (!data || data.length !== 1) throw new Error('Select one existing CRM client before saving this formation (unmatched or duplicate client name)')
+    if (source.client_id && data[0].name !== source.client_name) throw new Error('The selected client changed; please choose the client again')
+    return data[0]
+  }
+
+  async function syncFormationBusiness(caseRecord, linkedId) {
+    if (!linkedId) throw new Error('Formation has no verified CRM client link')
+    const client = await linkedFormationClient({client_id:linkedId,client_name:caseRecord.client_name})
+    const patch={}
+    // A client can own several companies: the one-business client summary cannot
+    // absorb fields from a different company. Each FormaCorp case remains independent.
+    if (client.business_name && client.business_name.trim().toUpperCase() !== String(caseRecord.entity_name||'').trim().toUpperCase()) return
+    if (!client.business_name && caseRecord.entity_name?.trim()) patch.business_name=caseRecord.entity_name.trim()
+    if (!client.businessType && caseRecord.entity_type?.trim()) patch.businessType=caseRecord.entity_type.trim()
+    if (!client.ein && caseRecord.ein?.trim()) patch.ein=caseRecord.ein.trim()
+    const address=String(caseRecord.principal_address||'').trim()
+    // Only parse structured US addresses. Do not put an entire address into a street-only field.
+    const match=address.match(/^(.+?),\s*([^,]+),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?$/i)
+    if (match) {
+      const [,street,city,state,zip]=match
+      if (!client.biz_street) patch.biz_street=street.trim()
+      if (!client.biz_city) patch.biz_city=city.trim()
+      if (!client.biz_state) patch.biz_state=state.toUpperCase()
+      if (!client.biz_zip) patch.biz_zip=zip
+    }
+    if (!Object.keys(patch).length) return
+    const {data,error}=await supabase.from('clients').update(patch)
+      .eq('id',client.id).eq('tenant_id',client.tenant_id).select('id').single()
+    if (error || !data) throw error || new Error('Client Business Info update was not confirmed')
+  }
+
   async function createFromWizard(source = wForm) {
     if (!source.client_name || !source.entity_name || !source.entity_type || !source.state) {
       showToast('Please complete all required fields', 'err'); return
     }
+    let linkedClient
+    try { linkedClient=await linkedFormationClient(source) }
+    catch(error) {showToast('Client link required: '+error.message,'err');return}
     setSaving(true)
     const req = stateReqs[source.state]
     const fee = req?.llc_filing_fee ? parseFloat(req.llc_filing_fee.replace(/[^0-9.]/g, '')) : null
     const payload = {
-      client_name:source.client_name, entity_name:source.entity_name, entity_type:source.entity_type, state:source.state,
+      client_name:linkedClient.name, client_id:linkedClient.id, entity_name:source.entity_name, entity_type:source.entity_type, state:source.state,
       owners:source.owners, registered_agent:source.registered_agent, business_purpose:source.business_purpose,
       principal_address:source.principal_address || '', mailing_address:source.mailing_address || '',
       registered_agent_address:source.registered_agent_address || '',
@@ -567,6 +613,8 @@ export default function FormaCorp() {
       good_standing_status:'Unknown',
       registered_agent_status:source.registered_agent==='Self (Owner)' ? 'Client / Self' : 'Third Party',
     }])
+    try {await syncFormationBusiness(payload,linkedClient.id)}
+    catch(error) {showToast('Formation created, but client Business Info sync failed: '+error.message,'err')}
     setSaving(false)
     if (lifecycleErr) { showToast('Formation created, but lifecycle setup needs attention: '+lifecycleErr.message, 'err') }
     else showToast('🏢 Formation case + launch lifecycle created!')
@@ -623,6 +671,10 @@ export default function FormaCorp() {
         .in('fl_filing_status',['Draft','Ready to Submit','Filing Queue','Action Required'])
         .select('id').single()
       if (error || !updated) throw error || new Error('No authorized draft was updated.')
+      if (prior.client_id) {
+        try {await syncFormationBusiness({...prior,...patch},prior.client_id)}
+        catch(syncError) {showToast('Filing saved, but client Business Info sync failed: '+syncError.message,'err')}
+      }
       setDetail(d=>d?.id===prior.id?({...d,...patch}):d)
       setFloridaEditCase(null)
       await load()
@@ -633,14 +685,14 @@ export default function FormaCorp() {
   }
 
   function searchClient(val) {
-    fld('client_name', val)
+    setForm(f => ({...f,client_name:val,client_id:null}))
     if (val.length < 2) { setSugg([]); setShowSug(false); return }
     const m = clients.filter(c=>c.name.toLowerCase().includes(val.toLowerCase())).slice(0,6)
     setSugg(m); setShowSug(m.length > 0)
   }
 
   function chooseClient(c) {
-    setForm(f => ({ ...f, client_name:c.name, correspondence_email:f.correspondence_email || c.email || '' }))
+    setForm(f => ({ ...f, client_name:c.name, client_id:c.id, correspondence_email:f.correspondence_email || c.email || '' }))
     setSugg([]); setShowSug(false)
   }
 
@@ -648,8 +700,11 @@ export default function FormaCorp() {
     if (!form.client_name || !form.entity_name || !form.entity_type) {
       showToast('Client, entity name and type required', 'err'); return
     }
+    let linkedClient
+    try { linkedClient=await linkedFormationClient(form) }
+    catch(error) {showToast('Client link required: '+error.message,'err');return}
     setSaving(true)
-    const payload = { ...form, fee: form.fee ? parseFloat(form.fee) : null, created_at: form.created_at || new Date().toISOString() }
+    const payload = { ...form, client_id:linkedClient.id, client_name:linkedClient.name, fee: form.fee ? parseFloat(form.fee) : null, created_at: form.created_at || new Date().toISOString() }
     if (isFloridaFormable(payload)) {
       payload.fl_state_fee = floridaStateFee(payload)
       payload.state_fee_amount = floridaStateFee(payload)
@@ -669,6 +724,8 @@ export default function FormaCorp() {
       : await supabase.from('formacorp').insert([payload])
     setSaving(false)
     if (error) { showToast('Error: '+error.message, 'err'); return }
+    try {await syncFormationBusiness(payload,linkedClient.id)}
+    catch(syncError) {showToast('Formation saved, but client Business Info sync failed: '+syncError.message,'err')}
     showToast(modal==='edit' ? '✅ Updated!' : '✅ Case created!')
     if (modal === 'edit' && detail?.id === form.id) setDetail(d => ({ ...d, ...payload }))
     setModal(false); setForm(BLANK); await load()
@@ -691,6 +748,10 @@ export default function FormaCorp() {
   async function updateFloridaCase(c, patch, toast, eventNote) {
     const { error } = await supabase.from('formacorp').update(patch).eq('id', c.id)
     if (error) { showToast('Florida filing update failed: '+error.message, 'err'); return false }
+    if (c.client_id) {
+      try {await syncFormationBusiness({...c,...patch},c.client_id)}
+      catch(syncError) {showToast('Filing saved, but client Business Info sync failed: '+syncError.message,'err')}
+    }
     if (eventNote) await recordFloridaEvent(c, patch.fl_filing_status || c.fl_filing_status || 'Draft', eventNote, patch)
     setDetail(d => d?.id===c.id ? ({...d,...patch}) : d)
     await load()
@@ -801,6 +862,171 @@ export default function FormaCorp() {
       fee_paid:true,
       stage:'State Filing',
     }, '✅ Recorded as submitted to Florida', 'State submission recorded')
+  }
+
+  async function importFreshFloridaPdf(file,kind,selectedClientId) {
+    if(!selectedClientId) throw new Error('Choose the existing CRM client before saving the Sunbiz PDF')
+    const preview=await parseFloridaSunbizPdf(file,'')
+    if(!preview.companyName || !preview.floridaHeader) {
+      throw new Error('The downloaded PDF must identify a Florida company and the Division of Corporations')
+    }
+    const parsed=await parseFloridaSunbizPdf(file,preview.companyName)
+    if(!parsed.canVerify) throw new Error('Cannot verify the business name from this Sunbiz PDF')
+    const entityType=parsed.entityType || (/\bP\.?L\.?L\.?C\.?$/i.test(parsed.companyName)?'Professional LLC (PLLC)':
+      /\bL\.?L\.?C\.?$/i.test(parsed.companyName)?'LLC':
+      /\b(?:INC\.?|CORP\.?|CORPORATION)$/i.test(parsed.companyName)?'C-Corp':'')
+    if(!entityType) throw new Error('Business entity type is not recognizable. Create a FormaCorp case for the correct entity type before importing.')
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if(tenantError || !tenantId) throw new Error('Unable to verify your active office')
+    const {data:client,error:clientError}=await supabase.from('clients')
+      .select('id,name,tenant_id').eq('id',String(selectedClientId)).eq('tenant_id',tenantId).single()
+    if(clientError || !client) throw new Error('The selected CRM client is not accessible in this office')
+    // Fail before inserting a case if the separate folder migration is absent.
+    const {error:folderError}=await supabase.from('client_document_folders')
+      .select('id').eq('tenant_id',tenantId).eq('client_id',client.id).limit(1)
+    if(folderError) throw new Error('Business folder permissions or migration are not ready: '+folderError.message)
+    // Query the full current-office case list; a 500-row limit can miss an
+    // existing matching company and silently create a duplicate.
+    const {data:currentCases,error:caseSearchError}=await supabase.from('formacorp')
+      .select('id,tenant_id,client_id,entity_name').eq('tenant_id',tenantId)
+    if(caseSearchError) throw new Error('Could not verify existing office businesses: '+caseSearchError.message)
+    const matchName=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')
+    const matching=(currentCases||[]).filter(c=>matchName(c.entity_name)===matchName(parsed.companyName))
+    if(matching.some(c=>String(c.client_id)!==String(client.id))){
+      throw new Error('A business with this legal name already belongs to a different client in this office. Review the client assignment.')
+    }
+    if(matching.length>1) throw new Error('Several FormaCorp cases match this company. Resolve duplicates before attaching the PDF.')
+    let business=matching[0]
+    if(!business){
+      const {data:created,error:createError}=await supabase.from('formacorp').insert([{
+        tenant_id:tenantId,client_id:client.id,client_name:client.name,
+        entity_name:parsed.companyName,entity_type:entityType,state:'FL',
+        principal_address:parsed.principalAddress||'',
+        mailing_address:parsed.mailingAddress||'',
+        registered_agent:parsed.registeredAgent||'',
+        registered_agent_address:parsed.registeredAgentAddress||'',
+        stage:'State Filing',fl_filing_status:'Draft',
+        fl_submission_method:'sunbiz_online',
+        notes:'Created from downloaded Florida Sunbiz PDF. State payment and approval must be confirmed separately.',
+      }]).select('*').single()
+      if(createError || !created) throw new Error('Could not create FormaCorp business: '+(createError?.message||'Insert not confirmed'))
+      business=created
+      // A newly imported company should appear in the lifecycle even if the staff
+      // entered everything on the government website rather than in the intake.
+      const {error:lifecycleError}=await supabase.from('formacorp_lifecycle').insert([{
+        case_id:created.id,service_plan:'Formation',
+        selected_services:['State Filing','Formation Documents','Compliance'],
+        ein_status:'Not Started',operating_agreement_status:'Not Started',
+        banking_status:'Not Started',annual_report_status:'Not Due',
+        good_standing_status:'Unknown',registered_agent_status:'Unknown',
+      }])
+      if(lifecycleError) showToast('Business created but lifecycle setup needs attention: '+lifecycleError.message,'err')
+    }
+    await importOfficialSunbizPdf(business,file,kind)
+    const {data:refreshed}=await supabase.from('formacorp').select('*')
+      .eq('id',business.id).eq('tenant_id',tenantId).single()
+    setDetail(refreshed||business)
+    setOfficialSunbizCase(null)
+  }
+
+  async function importOfficialSunbizPdf(c, file, kind) {
+    if (!c?.id || !c?.client_id || c.state !== 'FL') throw new Error('Select a saved Florida formation linked to an existing CRM client')
+    const validKinds=['Filed Articles','Payment Receipt','Certificate of Status','Certified Copy']
+    if (!validKinds.includes(kind)) throw new Error('Select a supported Florida document type')
+    const parsed=await parseFloridaSunbizPdf(file,c.entity_name)
+    if (!parsed.canVerify) throw new Error('The PDF name or Florida header did not match the selected formation; no document saved')
+    const {data:tenantId,error:tenantError}=await supabase.rpc('current_tenant_id')
+    if (tenantError || !tenantId || String(tenantId)!==String(c.tenant_id)) throw new Error('Cannot verify the current office')
+    const client=await linkedFormationClient({client_id:c.client_id,client_name:c.client_name})
+    const {data:caseRow,error:caseError}=await supabase.from('formacorp')
+      .select('id,tenant_id,client_id,client_name,entity_name,entity_type,state,state_file_num,formation_date,principal_address,mailing_address,registered_agent,registered_agent_address,effective_date,ein')
+      .eq('id',c.id).eq('tenant_id',tenantId).single()
+    if (caseError || !caseRow || caseRow.client_id !== client.id || caseRow.entity_name !== c.entity_name) {
+      throw new Error('The formation client or business changed; reload before importing')
+    }
+    // Reject incompatible entity types before creating folders or uploading anything.
+    const updatePlan=planFloridaSunbizBusinessUpdate(parsed,caseRow,kind)
+    // In the client document tree: Business / Legal company / Formation Documents.
+    // All three folder rows are tenant/client scoped and guarded by the folder migration's RLS.
+    async function folder(name,parentId) {
+      let query=supabase.from('client_document_folders')
+        .select('id').eq('tenant_id',tenantId).eq('client_id',client.id).eq('name',name)
+      query=parentId?query.eq('parent_folder_id',parentId):query.is('parent_folder_id',null)
+      const {data:existing,error:lookupError}=await query.limit(1).maybeSingle()
+      if (lookupError) throw new Error('Business document folders unavailable: '+lookupError.message)
+      if (existing) return existing.id
+      const {data:created,error:createError}=await supabase.from('client_document_folders').insert([{
+        tenant_id:tenantId,client_id:client.id,parent_folder_id:parentId,name,
+      }]).select('id').single()
+      if (created) return created.id
+      if (createError?.code==='23505') {
+        const {data:concurrent,error:retryError}=await query.limit(1).maybeSingle()
+        if (!retryError && concurrent) return concurrent.id
+      }
+      throw new Error('Could not create business document folder: '+(createError?.message||'Unknown error'))
+    }
+    const rootId=await folder('Business',null)
+    const companyId=await folder(caseRow.entity_name,rootId)
+    const folderId=await folder('Formation Documents',companyId)
+    const bytes=await file.arrayBuffer()
+    const digest=await crypto.subtle.digest('SHA-256',bytes)
+    const hash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')
+    const {data:existingDoc,error:duplicateError}=await supabase.from('documents')
+      .select('id,storage_path').eq('tenant_id',tenantId).eq('client_id',client.id)
+      .eq('file_hash',hash).limit(1).maybeSingle()
+    if (duplicateError) throw duplicateError
+    if (existingDoc) throw new Error('This PDF is already in the selected client document file')
+    const safeName=String(file.name).replace(/[^a-z0-9_.-]/gi,'_').slice(0,110)
+    const fileName=kind.replace(/ /g,'-')+'-'+Date.now()+'-'+safeName
+    const storagePath=tenantId+'/formacorp/'+c.id+'/official/'+fileName
+    const {error:uploadError}=await supabase.storage.from('documents')
+      .upload(storagePath,new Blob([bytes],{type:'application/pdf'}),{upsert:false,contentType:'application/pdf'})
+    if (uploadError) throw new Error('Sunbiz PDF storage failed: '+uploadError.message)
+    // One database transaction indexes the file in BOTH authorized document
+    // views. If either insert fails, neither row commits. The newly uploaded
+    // storage object is removed on failure, avoiding a half-indexed client file.
+    try {
+      const {data:documentId,error:archiveError}=await supabase.rpc('archive_shared_sunbiz_document',{
+        p_case_id:c.id,p_client_id:client.id,p_folder_id:folderId,
+        p_file_name:fileName,p_original_file_name:file.name,
+        p_storage_path:storagePath,p_file_hash:hash,p_file_size:file.size,
+        p_kind:kind,
+      })
+      if(archiveError || !documentId) {
+        throw new Error('Sunbiz document could not be indexed atomically: '+(archiveError?.message||'No document ID returned'))
+      }
+    } catch(error) {
+      const {error:cleanupError}=await supabase.storage.from('documents').remove([storagePath])
+      if(cleanupError) console.error('[FormaCorp] Could not clean unindexed Sunbiz PDF',cleanupError)
+      throw error
+    }
+    // Labeled PDF data fills missing fields only. Never assume approval or payment
+    // and never overwrite an employee's existing values without review.
+    const {patch,conflicts}=updatePlan
+    let syncWarning=''
+    let caseSyncAllowed=true
+    if (Object.keys(patch).length) {
+      const {data:savedCase,error:metadataError}=await supabase.from('formacorp')
+        .update(patch).eq('id',c.id).eq('tenant_id',tenantId).eq('client_id',client.id)
+        .select('id').single()
+      if (metadataError || !savedCase) {
+        caseSyncAllowed=false
+        syncWarning='Business details require review: '+(metadataError?.message||'Case update not confirmed')
+      } else {
+        setDetail(d=>d?.id===c.id?({...d,...patch}):d)
+      }
+    }
+    // Run for existing and newly created cases even when their PDF details
+    // were already present (the metadata patch can legitimately be empty).
+    if(caseSyncAllowed) {
+      try {await syncFormationBusiness({...caseRow,...patch},client.id)}
+      catch(error) {syncWarning='Client Business Info requires review: '+error.message}
+    }
+    if (conflicts.length) syncWarning=[syncWarning,
+      'Existing values differ from PDF: '+conflicts.map(c=>c.field).join(', ')+'; values were preserved.'].filter(Boolean).join(' ')
+    if (syncWarning) showToast('PDF archived. '+syncWarning,'err')
+    await load()
+    if (!syncWarning) showToast('✅ Sunbiz PDF matched, business fields synchronized and file saved to Client → Business → '+caseRow.entity_name+' → Formation Documents and FormaCorp. Confirm approval separately.')
   }
 
   async function saveOfficialSunbizReceipt(c, receipt) {
@@ -1268,7 +1494,7 @@ export default function FormaCorp() {
       {editCaseModal}
 
       {floridaIntake && <FloridaSunbizIntake saving={saving} onClose={()=>setFloridaIntake(false)} onSave={createFromWizard}/>}
-      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)}/>}
+      {officialSunbizCase && <SunbizFilingWorkspace caseRecord={officialSunbizCase} onClose={()=>setOfficialSunbizCase(null)} onRecordReceipt={data=>saveOfficialSunbizReceipt(officialSunbizCase,data)} onImportPdf={(file,kind,selectedClientId)=>officialSunbizCase?.id ? importOfficialSunbizPdf(officialSunbizCase,file,kind) : importFreshFloridaPdf(file,kind,selectedClientId)} clients={clients}/>}
 
       {wizard && (
         <div className="modal-bg open" onClick={e=>e.target===e.currentTarget&&setWizard(false)}>

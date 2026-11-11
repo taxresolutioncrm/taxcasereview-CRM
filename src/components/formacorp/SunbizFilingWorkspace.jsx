@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { parseFloridaSunbizPdf, planFloridaSunbizBusinessUpdate } from '../../lib/flSunbizPdfImport'
 import './SunbizFilingWorkspace.css'
 
 const URLS = {
@@ -28,7 +29,7 @@ const GROUPS = [
   ] },
 ]
 
-export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordReceipt}) {
+export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordReceipt, onImportPdf, clients=[]}) {
   const isSavedCase=!!caseRecord?.id
   const officialUrl=URLS[caseRecord?.entity_type||'LLC']
   const isPreviouslyRecorded=!!caseRecord?.fl_submitted_at
@@ -38,6 +39,32 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
     reference:caseRecord?.fl_confirmation_url||'',
   })
   const [recording,setRecording]=useState(false)
+  const [pdfFile,setPdfFile]=useState(null)
+  const [pdfResult,setPdfResult]=useState(null)
+  const [pdfError,setPdfError]=useState('')
+  const [pdfKind,setPdfKind]=useState('Filed Articles')
+  const [selectedClientId,setSelectedClientId]=useState('')
+  const [importing,setImporting]=useState(false)
+  const readPdf=async file=>{
+    setPdfFile(null);setPdfResult(null);setPdfError('')
+    if(!file)return
+    try {
+      const parsed=await parseFloridaSunbizPdf(file,caseRecord?.entity_name)
+      if(!parsed.companyName)throw new Error('The PDF does not contain a recognizable company name. No business data was changed.')
+      if(isSavedCase && !parsed.nameMatches)throw new Error('Business-name mismatch. PDF: '+parsed.companyName+'; FormaCorp: '+caseRecord.entity_name+'. Select the correct business before importing.')
+      if(!parsed.floridaHeader)throw new Error('Cannot identify Florida Division of Corporations text in this PDF.')
+      setPdfFile(file);setPdfResult(parsed)
+    } catch(err){setPdfError(err?.message||String(err))}
+  }
+  const importPdf=async()=>{
+    if(!pdfFile||(!pdfResult?.canVerify && isSavedCase)||!pdfResult?.floridaHeader||(!isSavedCase&&!selectedClientId)||!onImportPdf||importing)return
+    setImporting(true);setPdfError('')
+    try {
+      await onImportPdf(pdfFile,pdfKind,selectedClientId)
+      setPdfFile(null);setPdfResult(null)
+    } catch(error){setPdfError(error?.message||String(error))}
+    finally{setImporting(false)}
+  }
   const [copied,setCopied]=useState('')
   const copy=async(label,value)=>{
     if(!value)return
@@ -113,6 +140,7 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
                 <div className="sunbiz-browser-toolbar">
                   <span className="sunbiz-browser-address">efile.sunbiz.org</span>
                   {officialUrl&&<a className="btn sm" href={officialUrl} target="_blank" rel="noopener noreferrer">Open in new tab</a>}
+                  <button type="button" className="btn sm" onClick={()=>document.getElementById('sunbiz-pdf-import')?.scrollIntoView({behavior:'smooth',block:'start'})}>Save downloaded PDF</button>
                 </div>
               </div>
               {officialUrl
@@ -127,6 +155,62 @@ export default function SunbizFilingWorkspace({caseRecord, onClose, onRecordRece
           </section>
         </div>
 
+        {<section id="sunbiz-pdf-import" className="sunbiz-confirmation" aria-label="Import downloaded Sunbiz PDF">
+          <div className="sunbiz-confirmation-body">
+            <h3>{isSavedCase?'Save downloaded Sunbiz PDF to this client’s business file':'Create the client business file from the downloaded Sunbiz PDF'}</h3>
+            <p className="sunbiz-helper">Finish filing and payment on Florida’s official site, then select the downloaded PDF. FormaCorp verifies the company name and saves the PDF in the business file. If no formation case exists yet, choose the existing CRM client so FormaCorp can create the business. Approval is never assumed from a PDF upload.</p>
+            {!isSavedCase&&<label>CRM client *
+              <select value={selectedClientId} onChange={e=>setSelectedClientId(e.target.value)} disabled={importing}>
+                <option value="">— Select the correct CRM client —</option>
+                {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>}
+            <label>Sunbiz document type
+              <select value={pdfKind} onChange={e=>setPdfKind(e.target.value)} disabled={importing}>
+                <option>Filed Articles</option>
+                <option>Payment Receipt</option>
+                <option>Certificate of Status</option>
+                <option>Certified Copy</option>
+              </select>
+            </label>
+            <label>Downloaded PDF
+              <input type="file" accept=".pdf,application/pdf" disabled={importing} onChange={e=>readPdf(e.target.files?.[0])}/>
+            </label>
+            {pdfResult&&<div role="status" className="sunbiz-helper">
+              <strong>Florida PDF matched: {pdfResult.companyName}</strong>
+              <p>Confirm the extracted fields below before saving. Blank values are not guessed; existing values are preserved.</p>
+              {[
+                ['Entity type',pdfResult.entityType],
+                ['Document number',pdfResult.documentNumber],
+                ['Filing date',pdfResult.filedDate],
+                ['Principal address',pdfResult.principalAddress],
+                ['Mailing address',pdfResult.mailingAddress],
+                ['Registered agent',pdfResult.registeredAgent],
+                ['Agent address',pdfResult.registeredAgentAddress],
+                ['Effective date',pdfResult.effectiveDate],
+              ].filter(([,value])=>!!value).map(([label,value])=><div className="sunbiz-data-row" key={label}>
+                <span className="sunbiz-data-label">{label}</span>
+                <strong className="sunbiz-data-value">{value}</strong>
+              </div>)}
+              {(()=>{
+                try {
+                  const {patch,conflicts}=planFloridaSunbizBusinessUpdate({...pdfResult,canVerify:pdfResult.canVerify||(!!pdfResult.companyName&&!!pdfResult.floridaHeader&&!isSavedCase)},caseRecord,pdfKind)
+                  return <div>
+                    <p>{Object.keys(patch).length} missing field(s) can be filled automatically.</p>
+                    {!!conflicts.length&&<div role="alert">
+                      <strong>Needs review — existing CRM values will NOT be overwritten:</strong>
+                      {conflicts.map(item=><div key={item.field}>{item.field}: CRM "{item.current}" / PDF "{item.fromPdf}"</div>)}
+                    </div>}
+                  </div>
+                } catch(error){return <p role="alert">{error.message}</p>}
+              })()}
+            </div>}
+            {pdfError&&<p role="alert" style={{color:'var(--red,#dc2626)'}}>{pdfError}</p>}
+            <button className="btn pri" type="button" onClick={importPdf} disabled={!pdfFile||!pdfResult?.floridaHeader||!pdfResult?.companyName||(isSavedCase&&!pdfResult?.canVerify)||(!isSavedCase&&!selectedClientId)||importing}>
+              {importing?'Saving PDF…':isSavedCase?'Verify and save to client business file':'Create business in FormaCorp and save PDF'}
+            </button>
+          </div>
+        </section>}
         {isSavedCase&&<details className="sunbiz-confirmation">
           <summary>Record official Florida confirmation {isPreviouslyRecorded?'· Already recorded':'· After submission'}</summary>
           <div className="sunbiz-confirmation-body">

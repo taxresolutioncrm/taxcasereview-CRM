@@ -1,4 +1,5 @@
 const fs = require('fs')
+require('child_process').execFileSync(process.execPath,['scripts/check-florida-sunbiz-pdf-import.mjs'],{stdio:'inherit'})
 
 const files = [
   'src/pages/FormaCorp.jsx',
@@ -17,6 +18,19 @@ const files = [
 const content = files.map(p => fs.readFileSync(p,'utf8')).join('\n')
 const officialWorkspace = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.jsx','utf8')
 const officialWorkspaceStyles = fs.readFileSync('src/components/formacorp/SunbizFilingWorkspace.css','utf8')
+const floridaPdfParser = fs.readFileSync('src/lib/flSunbizPdfImport.js','utf8')
+assertPdfImportSource()
+function assertPdfImportSource() {
+  for (const term of ['parseFloridaSunbizPdf','parseFloridaSunbizText','extractPdfText','nameMatches','floridaHeader','canVerify']) {
+    if (!floridaPdfParser.includes(term)) throw new Error('Sunbiz PDF parser missing '+term)
+  }
+  const importer = fs.readFileSync('src/pages/FormaCorp.jsx','utf8')
+  for(const term of ['importOfficialSunbizPdf','importFreshFloridaPdf','client_document_folders','p_folder_id:folderId',"supabase.rpc('archive_shared_sunbiz_document'",'p_file_hash:hash','onImportPdf=','!parsed.canVerify','client_id:c.client_id','selectedClientId','matching.length>1']) {
+    if(!importer.includes(term)) throw new Error('FormaCorp PDF import missing '+term)
+  }
+  if(!officialWorkspace.includes('Verify and save to client business file')) throw new Error('Sunbiz PDF upload action missing')
+}
+
 const failures = []
 const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 

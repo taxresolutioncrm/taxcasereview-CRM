@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
@@ -8,6 +8,7 @@ import { OPEN_STATUSES } from '../../lib/caseStatuses'
 import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from '../../lib/centurionBrand'
 import { getReleaseInfo } from '../../releaseInfo'
+import { getRecentClients, RECENT_CLIENTS_EVENT, recentClientsKey } from '../../lib/recentClients'
 
 const LOGO = '/logo.png'
 
@@ -142,6 +143,18 @@ export default function Sidebar() {
   const [logoUrl, setLogoUrl] = useState(() => FIRM.logoUrl || null)
   const [activeTenantId, setActiveTenantId] = useState(() => FIRM.tenantId || '')
   const [showReleaseNotes, setShowReleaseNotes] = useState(false)
+  const [recentClientSearch, setRecentClientSearch] = useState('')
+  const [recentClients, setRecentClients] = useState([])
+  useEffect(() => {
+    const refresh = () => setRecentClients(getRecentClients(activeTenantId, user?.email))
+    refresh()
+    const onChange = event => {
+      if (!event.detail?.key || event.detail.key === recentClientsKey(activeTenantId, user?.email)) refresh()
+    }
+    window.addEventListener(RECENT_CLIENTS_EVENT, onChange)
+    window.addEventListener('storage', refresh)
+    return () => { window.removeEventListener(RECENT_CLIENTS_EVENT, onChange); window.removeEventListener('storage', refresh) }
+  }, [activeTenantId, user?.email])
   const releaseInfo = getReleaseInfo(activeTenantId || FIRM.tenantId || '')
 
   useEffect(() => {
@@ -702,8 +715,8 @@ export default function Sidebar() {
               if (item.section && !can('view', item.section) && !tierLocked) return null
               const Icon = item.icon
               return (
+                <Fragment key={item.path}>
                 <NavLink
-                  key={item.path}
                   to={item.path}
                   end={item.path === '/'}
                   className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${tierLocked ? ' tier-locked' : ''}`}
@@ -731,6 +744,29 @@ export default function Sidebar() {
                       : (BADGE_COUNTS[item.badge] > 0 && <span className={`nav-badge${item.badgeWarn ? ' warn' : ''}`}>{BADGE_COUNTS[item.badge]}</span>)
                   )}
                 </NavLink>
+                {item.path === '/clients' && !tierLocked && (
+                  <div data-testid="sidebar-recent-clients" style={{padding:'6px 9px 8px 12px',margin:'2px 6px 5px',maxWidth:'100%',background:'rgba(148,163,184,.06)',borderRadius:9}}>
+                    <input
+                      aria-label="Search recent clients"
+                      placeholder="Search recent clients…"
+                      value={recentClientSearch}
+                      onChange={event => setRecentClientSearch(event.target.value)}
+                      style={{width:'100%',minWidth:0,boxSizing:'border-box',fontSize:12,padding:'7px 9px',border:'1px solid var(--br)',borderRadius:6,background:'var(--s2)',color:'var(--tx)'}}
+                    />
+                    <div style={{fontSize:10,fontWeight:800,color:'var(--t3)',margin:'6px 0 3px'}}>Recent clients</div>
+                    {recentClients.filter(client => (client.name+' '+client.number).toLowerCase().includes(recentClientSearch.trim().toLowerCase())).map(client => (
+                      <NavLink key={client.id} to={'/clients/'+encodeURIComponent(client.id)}
+                        onClick={() => setMobileNavOpen(false)}
+                        style={{display:'block',padding:'6px 5px',minHeight:32,boxSizing:'border-box',fontSize:12,color:'var(--tx)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
+                        title={client.name+' '+client.number}>
+                        {client.name}{client.number ? ' · '+client.number : ''}
+                      </NavLink>
+                    ))}
+                    {recentClients.length === 0 && <div style={{fontSize:10,color:'var(--t3)'}}>No recently viewed clients</div>}
+                    {recentClients.length > 0 && !recentClients.some(client => (client.name+' '+client.number).toLowerCase().includes(recentClientSearch.trim().toLowerCase())) && <div style={{fontSize:10,color:'var(--t3)'}}>No matches.</div>}
+                  </div>
+                )}
+                </Fragment>
               )
             })}
           </div>

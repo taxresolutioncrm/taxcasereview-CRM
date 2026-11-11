@@ -100,69 +100,30 @@ html.light .search-input:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent) !important;
 }
 
-html.light .btn:not(.pri) {
+html.light .btn:not(.pri):not(.danger):not(.success):not(.warning):not(.del) {
   background: #f8fafc;
   border-color: #d6e0ea;
   color: #24364c !important;
 }
 
-html.light .btn:not(.pri):hover {
+html.light .btn:not(.pri):not(.danger):not(.success):not(.warning):not(.del):hover {
   background: #eef4f9;
   border-color: #c8d5e2;
 }
 
-/* Dashboard KPI cards: restore readable labels/values in light mode and
-   prevent the compressed/clipped appearance seen at desktop widths. */
-html.light .page-content div:has(> [data-card-idx]) {
-  gap: 14px !important;
-}
-
+/* Light theme affects KPI surfaces only. Shared geometry and font sizes
+   are defined once in taxres-dashboard.css for BOTH light and dark modes. */
 html.light [data-card-idx] {
-  min-width: 0 !important;
-  min-height: 132px !important;
-  padding: 19px 18px 17px !important;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
-  border: 1px solid #d9e3ed !important;
+  border-color: #d9e3ed !important;
   box-shadow: 0 8px 20px rgba(35,54,77,.075) !important;
 }
-
-html.light [data-card-idx]:hover {
-  border-color: #c7d7e6 !important;
-  box-shadow: 0 12px 28px rgba(35,54,77,.11) !important;
-}
-
-html.light [data-card-idx] > div:nth-child(3) {
-  align-items: center !important;
-}
-
-html.light [data-card-idx] > div:nth-child(3) > div:first-child {
-  min-width: 0 !important;
-  overflow: visible !important;
-}
-
 html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:first-child {
   color: #60758c !important;
-  font-size: 10.5px !important;
-  line-height: 1.32 !important;
-  min-height: 28px !important;
-  max-width: none !important;
-  -webkit-line-clamp: 2 !important;
-  overflow-wrap: normal !important;
-  word-break: normal !important;
 }
-
-html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
-  font-size: clamp(28px, 2vw, 34px) !important;
-  line-height: 1.02 !important;
-  max-width: 100% !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-
 html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(3) {
   color: #7b8ea4 !important;
 }
-
 html.light [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
   background: #f0f5fa !important;
   border-color: #dce6ef !important;
@@ -198,8 +159,135 @@ html.light .page-content {
   background-image: linear-gradient(180deg, #eef3f8 0%, #f3f6fa 46%, #eef3f8 100%);
 }
 
-@media (max-width: 1100px) {
+
+/* Nashville v3.1.89 parity — shared TaxRes / TCR / Centurion.
+   Scoped exclusively to html.light. Keep primary, danger, success, warning,
+   office branding, and existing dark-theme rules unchanged. */
+html.light {
+  color-scheme: light;
+  --polish-panel: #fff;
+  --polish-panel-soft: #f8fbff;
+  --polish-shadow: 0 8px 22px rgba(33, 51, 74, .065);
+  --polish-shadow-hover: 0 12px 28px rgba(33, 51, 74, .11);
+}
+
+html.light .nav-badge {
+  box-shadow: 0 0 0 2px #f8fafc !important;
+}
+
+html.light .nav-item:hover {
+  background: #edf3f9 !important;
+  color: #142033 !important;
+}
+
+html.light .nav-item.active {
+  background: color-mix(in srgb, var(--blue) 13%, #fff) !important;
+  color: var(--blue) !important;
+  box-shadow: inset 3px 0 0 var(--blue) !important;
+}
+
+html.light .btn:not(.pri):not(.danger):not(.success):not(.warning):not(.del) {
+  background: #f8fafc !important;
+  border-color: #d6e0ea !important;
+  color: #24364c !important;
+  box-shadow: 0 1px 2px rgba(31,49,71,.04) !important;
+}
+
+html.light .btn:not(.pri):not(.danger):not(.success):not(.warning):not(.del):hover:not(:disabled) {
+  background: #edf3f9 !important;
+  border-color: #b9cadb !important;
+}
+
+html.light button:focus-visible,
+html.light .btn:focus-visible,
+html.light a:focus-visible,
+html.light input:focus-visible,
+html.light textarea:focus-visible,
+html.light select:focus-visible {
+  outline: 2px solid var(--blue, #1a7fd4);
+  outline-offset: 2px;
+}
+
+html.light .field input,
+html.light .field textarea,
+html.light .field select,
+html.light .search-input {
+  background: #fff !important;
+  border-color: #d1dce8 !important;
+  color: #142033 !important;
+}
+
+html.light th {
+  background: #f3f6fa !important;
+  color: #40536a !important;
+}
+
+html.light tbody tr:hover td {
+  background: #f3f7fb !important;
+}
+
+html.light .card > div[style*="borderBottom"]:hover {
+  background: #f3f7fb !important;
+}
+
+html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
+  text-shadow: none !important;
+}
+
+html.light .bdg:not(.blue):not(.bb):not(.bg):not(.ba):not(.br):not(.bc) {
+  border-color: rgba(49,70,94,.14) !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 640px) {
   html.light [data-card-idx] {
-    min-height: 120px !important;
+    min-width: 0 !important;
   }
+}
+
+
+/* Nashville v3.1.90 follow-up: dashboard elements with hard-coded inline
+   dark colors. Shared tax theme classes, exclusively active in light mode. */
+html.light .tax-dashboard-timezones {
+  background: #fff !important;
+  border: 1px solid #dbe4ee !important;
+  box-shadow: 0 6px 18px rgba(33,51,74,.06) !important;
+}
+html.light .tax-dashboard-timezones [style*="color: var(--t2)"] {
+  color: #24364c !important;
+}
+html.light .tax-dashboard-widget-title {
+  color: #162338 !important;
+}
+html.light .tax-dashboard-tas-skeleton {
+  background: #f3f6fa !important;
+}
+html.light .tax-dashboard-tas-entry {
+  background: #f7faff !important;
+  background-image: none !important;
+  border: 1px solid #dce6f0 !important;
+  box-shadow: 0 4px 12px rgba(33,51,74,.045) !important;
+}
+html.light .tax-dashboard-tas-entry:hover {
+  background: #eef5ff !important;
+  border-color: #b8d0e8 !important;
+}
+html.light .tax-dashboard-tas-text,
+html.light .tax-dashboard-tip-text {
+  color: #24364c !important;
+}
+html.light .tax-dashboard-tas-link {
+  color: #1768b0 !important;
+}
+html.light .tax-dashboard-tip-panel {
+  background: #f7fbf7 !important;
+  background-image: none !important;
+  border: 1px solid #d5e8d7 !important;
+  box-shadow: 0 4px 12px rgba(33,51,74,.045) !important;
+}
+html.light .tax-dashboard-tip-dot:not(.is-active) {
+  background: #cad8e8 !important;
+}
+html.light .tax-dashboard-tip-dot.is-active {
+  background: var(--blue, #1a7fd4) !important;
 }

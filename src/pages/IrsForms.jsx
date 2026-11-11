@@ -21,6 +21,9 @@ const IRS_FORMS = [
   { num: '433-D',  label: 'Installment Agreement',            url: 'https://www.irs.gov/pub/irs-pdf/f433d.pdf',   formType: '433d'  },
   { num: '433-F',  label: 'Collection Info (General)',        url: 'https://www.irs.gov/pub/irs-pdf/f433f.pdf',   formType: '433f'  },
   { num: '433-H',  label: 'Installment Agreement Request & CIS', url: 'https://www.irs.gov/pub/irs-pdf/f433h.pdf', formType: '433h' },
+  // IRS Form 4506 requests a COPY, not a transcript. Official PDF is XFA.
+  // Never run unsupported XFA through AcroForm or generic cover-sheet prefill.
+  { num: '4506',   label: 'Request for Copy of Tax Return', url: 'https://www.irs.gov/pub/irs-pdf/f4506.pdf', blankOnly: true },
   { num: '4506-T', label: 'Request for Transcript',           url: 'https://www.irs.gov/pub/irs-pdf/f4506t.pdf',  formType: '4506t' },
   { num: '4549',   label: 'Exam Changes (Audit)',             url: 'https://www.irs.gov/pub/irs-pdf/f4549.pdf',   formType: '4549'  },
   { num: '656',    label: 'Offer in Compromise',              url: 'https://www.irs.gov/pub/irs-pdf/f656.pdf',    formType: '656'   },
@@ -444,11 +447,12 @@ export default function IrsForms() {
                 </a>
                 <button
                   className="btn pri"
-                  style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center', opacity: selectedClientId ? 1 : 0.45 }}
-                  disabled={!selectedClientId}
+                  style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center', opacity: selectedClientId && !f.blankOnly ? 1 : 0.45 }}
+                  disabled={!selectedClientId || !!f.blankOnly}
+                  title={f.blankOnly ? 'Official IRS Form 4506 uses XFA; automatic pre-fill is unavailable. Open the official PDF instead.' : undefined}
                   onClick={() => {
                     const c = clients.find(x => x.id === selectedClientId)
-                    if (!c) return
+                    if (!c || f.blankOnly) return
                     // Forms with a formType key route to the IRSFormFiller (real pdf-lib pre-fill)
                     if (f.formType) {
                       setFillerClient({...c, address: c.street, business_name: c.business_name, _formType: f.formType})
@@ -458,7 +462,7 @@ export default function IrsForms() {
                     }
                   }}
                 >
-                  ✏️ Pre-fill
+                  {f.blankOnly ? 'Official PDF only' : '✏️ Pre-fill'}
                 </button>
               </div>
               <button type="button" className="btn sec" disabled={!selectedClientId}
@@ -590,7 +594,7 @@ export default function IrsForms() {
             <div className="fg2">
               <div className="field"><label>Form Number</label>
                 <select value={form.formNumber} onChange={e => fld('formNumber', e.target.value)}>
-                  {['2848', '8821', '433-A', '433-B', '433-F', '656', '9465', '843', '911', '4506-T'].map(f =>
+                  {['2848', '8821', '433-A', '433-B', '433-F', '656', '9465', '843', '911', '4506', '4506-T'].map(f =>
                     <option key={f}>{f}</option>
                   )}
                 </select>

@@ -1,6 +1,6 @@
 import { validateFile, maybeCompressImage } from '../lib/uploadUtils'
 import { formatMoneyInput, parseMoney } from '../lib/money'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { FIRM, label } from '../lib/firmBranding'
@@ -19,7 +19,7 @@ function safePermLevel(value, fallback = 0) {
 }
 
 // Base access levels — these are the actual permission presets (never change these keys)
-const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Sales Manager', 'Tax Associate', 'EA', 'CPA', 'Attorney', 'Tax Advisor', 'Sales Rep', 'View Only']
+const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Manager', 'Sales Manager', 'Tax Associate', 'Tax Preparer', 'EA', 'CPA', 'Attorney', 'Tax Advisor', 'Sales Rep', 'View Only']
 // Display labels for each access level — pulled from FIRM.labels or defaults
 function getRoleLabels() {
   const l = FIRM.labels || {}
@@ -27,6 +27,7 @@ function getRoleLabels() {
     'Super Admin':   'Super Admin',
     'Admin':         l.associateRole || 'Admin',
     'Tax Associate': l.paraRole || 'Tax Associate',
+    'Tax Preparer': 'Tax Preparer',
     'EA':            'EA',
     'CPA':           'CPA',
     'Attorney':      'Attorney',
@@ -37,7 +38,7 @@ function getRoleLabels() {
     'View Only':     'View Only',
   }
 }
-const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'EA': '#14b8a6', 'CPA': '#22c55e', 'Attorney': '#a855f7', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Sales Rep': '#8b5cf6' }
+const ROLE_COLORS = { 'Super Admin': '#ef4444', 'Admin': '#f59e0b', 'Tax Associate': '#3b82f6', 'Tax Preparer': '#0d9488', 'EA': '#14b8a6', 'CPA': '#22c55e', 'Attorney': '#a855f7', 'View Only': '#64748b', 'Tax Advisor': '#10b981', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Sales Rep': '#8b5cf6' }
 // Role display colors (for the role badge — role is the title, access is the permission level)
 const TITLE_COLORS = { 'Super Admin': '#ef4444', 'Associate': '#10b981', 'Para': '#0ea5e9', 'Manager': '#06b6d4', 'Sales Manager': '#0d9488', 'Staff': '#64748b', 'Sales': '#8b5cf6', 'Sales Rep': '#8b5cf6' }
 
@@ -67,6 +68,7 @@ const ROLE_PERM_DEFAULTS = {
   'Super Admin': { perm_leads:3, perm_clients:3, perm_billing:3, perm_schedule:3, perm_documents:3, perm_irs:3, perm_comms:3, perm_reports:3, perm_hr:3, perm_settings:3 },
   'Admin':       { perm_leads:2, perm_clients:2, perm_billing:2, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:1, perm_settings:1 },
   'Tax Associate':       { perm_leads:1, perm_clients:1, perm_billing:0, perm_schedule:1, perm_documents:1, perm_irs:1, perm_comms:2, perm_reports:0, perm_hr:0, perm_settings:0 },
+  'Tax Preparer':        { perm_leads:0, perm_clients:2, perm_billing:0, perm_schedule:1, perm_documents:2, perm_irs:2, perm_comms:1, perm_reports:0, perm_hr:0, perm_settings:0 },
   'EA':                  { perm_leads:1, perm_clients:2, perm_billing:1, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:0, perm_settings:1 },
   'CPA':                 { perm_leads:1, perm_clients:2, perm_billing:1, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:0, perm_settings:1 },
   'Attorney':            { perm_leads:1, perm_clients:2, perm_billing:1, perm_schedule:2, perm_documents:2, perm_irs:2, perm_comms:2, perm_reports:2, perm_hr:0, perm_settings:1 },
@@ -230,7 +232,7 @@ function employeeLoginLabel(value) {
 }
 
 export default function Employees() {
-  const { showToast, can, user, planTier } = useApp()
+  const { showToast, can, user, planTier, myTenantId } = useApp()
   const [employees, setEmployees] = useState([])
   const [lastLoginByEmail, setLastLoginByEmail] = useState({})
   const [confirmDel, setConfirmDel] = useState(null)
@@ -240,6 +242,7 @@ export default function Employees() {
   const [form, setForm]           = useState(blankEmp)
   const [tab, setTab]             = useState('info')
   const [saving, setSaving]       = useState(false)
+  const saveInFlightRef = useRef(false)
   const [saveError, setSaveError] = useState('')
   const [resetEmail, setResetEmail] = useState('')
   const [showReset, setShowReset]   = useState(false)
@@ -402,43 +405,71 @@ export default function Employees() {
   }
 
   async function save(silent = false) {
-    if (!form.name || !form.email) { if (!silent) showToast('Name and email required', 'err'); return false }
+    if (saveInFlightRef.current) return false
+    if (!form.name?.trim() || !form.email?.trim()) {
+      setSaveError('Employee name and email are required')
+      if (!silent) showToast('Name and email required', 'err')
+      return false
+    }
+    saveInFlightRef.current = true
     setSaving(true)
     setSaveError('')
-    let payload = toDbPayload(form)
-    let error, data
-    // Retry loop: if PostgREST rejects an unknown column, strip it and retry (same pattern as Clients.jsx)
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (editing) {
-        ;({ error } = await supabase.from('employees').update(payload).eq('id', editing))
+    const wasCreating = !editing
+    const officeId = myTenantId || FIRM.tenantId
+    let payload = {...toDbPayload({...form, email:String(form.email).trim().toLowerCase(), name:String(form.name).trim()}),tenant_id:officeId}
+    let error = null
+    let data = null
+    try {
+      if (!officeId) throw new Error('Office tenant is not resolved; employee was not saved.')
+      if (wasCreating) {
+        // Detect an existing same-office employee before any write; the database
+        // unique email constraint also protects against concurrent submissions.
+        const {data:existing,error:lookupError} = await supabase.from('employees')
+          .select('id,name').eq('tenant_id',officeId).ilike('email',payload.email).limit(1)
+        if (lookupError) throw lookupError
+        if (existing?.length) throw new Error('This email already belongs to an employee in this office. Edit the existing record instead.')
+      }
+      for (let attempt = 0; attempt < 12; attempt++) {
+        if (wasCreating) {
+          ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
+        } else {
+          const result = await supabase.from('employees').update(payload).eq('id',editing).eq('tenant_id',officeId).select('id').maybeSingle()
+          error = result.error
+          data = result.data
+          if (!error && !data?.id) throw new Error('Employee update did not affect a record in this office.')
+        }
+        if (!error) break
+        const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
+          || error.message?.match(/Could not find the '(\w+)' column/i)
+        // Never silently drop fields that control office identity, roles or permissions.
+        if (match && match[1] in payload && !['tenant_id','access','role'].includes(match[1]) && !match[1].startsWith('perm_')) {
+          const { [match[1]]: _, ...rest } = payload
+          payload = rest
+          continue
+        }
+        break
+      }
+      if (error) throw error
+      if (wasCreating && !data?.id) throw new Error('Employee was not confirmed saved by the database.')
+      if (wasCreating) setEditing(data.id)
+      await load()
+      if (!silent) {
+        if (wasCreating) { setInviteTarget(data); setInviteVia('email') }
+        setShowForm(false)
+        showToast(wasCreating ? 'Employee created successfully.' : 'Employee updated successfully.', 'ok')
       } else {
-        ;({ error, data } = await supabase.from('employees').insert([payload]).select().single())
-        if (!error && data?.id) setEditing(data.id)
+        showToast(wasCreating ? 'Employee created and saved.' : 'Auto-saved', 'ok')
       }
-      if (!error) break
-      const match = error.message?.match(/column ['"]?(\w+)['"]? (of relation .* )?does not exist/i)
-        || error.message?.match(/Could not find the '(\w+)' column/i)
-      if (match && match[1] in payload) {
-        const { [match[1]]: _, ...rest } = payload
-        payload = rest
-        continue
-      }
-      break
+      return true
+    } catch (err) {
+      const message = err?.message || 'Unknown database save error'
+      setSaveError(message)
+      if (!silent) showToast('Employee save failed: '+message,'err')
+      return false
+    } finally {
+      saveInFlightRef.current = false
+      setSaving(false)
     }
-    setSaving(false)
-    if (error) { setSaveError(error.message); if (!silent) showToast('Save error: ' + error.message, 'err'); return false }
-    const createdNow = !editing && data?.id
-    if (!silent) {
-      if (createdNow) {
-        setInviteTarget(data)
-        setInviteVia('email')
-      } else showToast('Employee updated!')
-      setShowForm(false)
-    } else {
-      showToast('Auto-saved', 'ok')
-    }
-    load()
-    return true
   }
 
   async function deactivateEmployee(emp) {
@@ -738,7 +769,7 @@ export default function Employees() {
             {/* Tabs */}
             <div style={{ display: 'flex', gap: 4, padding: '12px 24px 0', borderBottom: '1px solid var(--br)' }}>
               {['info', ...(can('edit','employees') || form.email === user?.email ? ['irs'] : []), 'pay', ...(editing ? ['documents'] : []), ...(hasPlanFeature(planTier, 'advanced_user_permissions') ? ['permissions'] : [])].map(t => (
-                <button key={t} onClick={async () => { if (showForm && !editing) { await save(true) } setTab(t) }} style={{
+                <button key={t} onClick={async () => { if (showForm && !editing) { const saved=await save(true); if(!saved)return } setTab(t) }} style={{
                   padding: '8px 18px', borderRadius: '8px 8px 0 0',
                   border: '1px solid var(--br)', borderBottom: tab === t ? '1px solid var(--sf)' : '1px solid var(--br)',
                   background: tab === t ? 'var(--sf)' : 'var(--s2)',
