@@ -1435,7 +1435,7 @@ export default function Clients() {
   const { id: urlId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const openedFromCases = searchParams.get('from') === 'cases'
-  const { user, searchQ, myTenantId } = useApp()
+  const { user, searchQ, setSearchQ, myTenantId } = useApp()
 
   // Cache office communications settings at load time
   const settingsRef = useRef(null)
@@ -1467,6 +1467,10 @@ export default function Clients() {
   const [clientSearch, setClientSearch] = useState('')
   // Sync TopBar search into local clientSearch so both inputs work
   useEffect(() => { setClientSearch(searchQ) }, [searchQ])
+  const clearClientRosterSearch = () => {
+    setClientSearch('')
+    setSearchQ('')
+  }
   const [sortCol, setSortCol] = useState('name')
   const [sortDir, setSortDir] = useState('asc')
 
@@ -4287,13 +4291,31 @@ export default function Clients() {
         <div className="ch">
           <span className="ct">{showArchived?'Archived Clients':'Client Roster'} <span style={{fontSize:12,fontWeight:500,color:'var(--t3)',marginLeft:6}}>({filtered.length})</span>{showArchived && <span style={{fontSize:11,fontWeight:500,color:'var(--t3)',marginLeft:8}}>· permanently deleted 30 days after archiving · Restore to keep</span>}</span>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-            <input
-              type="search"
-              placeholder="Search clients…"
-              value={clientSearch}
-              onChange={e=>setClientSearch(e.target.value)}
-              style={{padding:'5px 10px',borderRadius:6,border:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',fontSize:13,width:200,outline:'none'}}
-            />
+            <div style={{position:'relative',width:200,maxWidth:'100%',flexShrink:0}}>
+              <input
+                type="text"
+                aria-label="Search client roster"
+                placeholder="Search clients…"
+                value={clientSearch}
+                onChange={e=>setClientSearch(e.target.value)}
+                onKeyDown={e=>{
+                  if(e.key==='Escape' && clientSearch){
+                    e.preventDefault()
+                    e.stopPropagation()
+                    clearClientRosterSearch()
+                  }
+                }}
+                style={{padding:'5px 34px 5px 10px',boxSizing:'border-box',borderRadius:6,border:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',fontSize:13,width:'100%',outline:'none'}}
+              />
+              {clientSearch.length>0 && <button
+                type="button"
+                aria-label="Clear client roster search"
+                title="Clear search"
+                onMouseDown={e=>e.preventDefault()}
+                onClick={clearClientRosterSearch}
+                style={{position:'absolute',top:'50%',right:5,transform:'translateY(-50%)',background:'transparent',border:0,color:'var(--t2)',cursor:'pointer',fontSize:18,lineHeight:1,width:26,height:26,padding:0,display:'grid',placeItems:'center'}}
+              >×</button>}
+            </div>
             {['All','Individual','Business'].map(f=>(
               <span key={f} className={`chip${filter===f?' on':''}`} onClick={()=>setFilter(f)}>{f}</span>
             ))}
