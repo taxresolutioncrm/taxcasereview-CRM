@@ -7116,27 +7116,28 @@ function CommandCenter() {
             <div style={CC.card({padding:'22px 24px'})}>
               <div style={CC.sectionLabel}>Connect APIs</div>
               {[
-                { label:'GA4 · TaxRes',          key:'ga4',     status: 'connected · G-M6J80B65LG', color: '#10b981' },
-                { label:'GA4 · RomyLabs',         key:'ga4rl',   status: 'connected · G-2MSNYF9XBE', color: '#10b981' },
-                { label:'Google Search Console', key:'gsc',     status: gscConnected ? 'connected' : 'not connected', color: gscConnected ? '#10b981' : '#f59e0b' },
-                { label:'Clarity · TaxRes',       key:'clarity', status:'connected · xyck7g2mfl', color:'#10b981' },
-                { label:'Clarity · RomyLabs',     key:'claritrl',status:'connected · y54zqoj6c2', color:'#10b981' },
-                { label:'Bing Webmaster',        key:'bing',    status: bingConnected ? 'connected' : 'not connected', color: bingConnected ? '#10b981' : '#64748b' },
+                { label:'GA4 · TaxRes',          key:'ga4',     status:ga4LiveProducts.includes('taxres_crm')?'live':ga4EnabledProducts.includes('taxres_crm')?'configured':'not configured' },
+                { label:'GA4 · RomyLabs',         key:'ga4rl',   status:ga4LiveProducts.includes('romylabs')?'live':ga4EnabledProducts.includes('romylabs')?'configured':'not configured' },
+                { label:'Google Search Console', key:'gsc',     status:gscLiveProducts.includes('taxres_crm')?'live':'not configured' },
+                { label:'Clarity · TaxRes',       key:'clarity', status:clarityRows.find(row=>row.product_id==='taxres_crm')?.status||'not configured' },
+                { label:'Clarity · RomyLabs',     key:'claritrl',status:clarityRows.find(row=>row.product_id==='romylabs')?.status||'not configured' },
+                { label:'Bing Webmaster',        key:'bing',    status:bingConnected?'live for selected SEO product':'check in Search tab' },
               ].map((api,i) => (
                 <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
                   padding:'11px 0', borderBottom: i<3?'1px solid rgba(99,102,241,.1)':'none' }}>
                   <div>
                     <div style={{ fontSize:13, color:'#e2e8f0', fontWeight:600 }}>{api.label}</div>
-                    <div style={{ fontSize:10, color:api.color, fontWeight:600, textTransform:'uppercase', marginTop:2 }}>{api.status}</div>
+                    <div style={{ fontSize:10, color:api.status==='live'?'#10b981':'#94a3b8', fontWeight:600, textTransform:'uppercase', marginTop:2 }}>{api.status}</div>
                   </div>
                   <button onClick={()=>{
-                    if(api.key==='gsc') handleGSCConnect()
-                    else if(api.key==='ga4') alert('GA4 TaxRes: G-M6J80B65LG — connected')
-                    else if(api.key==='ga4rl') alert('GA4 RomyLabs: G-2MSNYF9XBE — connected')
-                    else if(api.key==='bing') alert('Bing: Send your API key to connect')
-                    else if(api.key==='clarity') alert('Clarity TaxRes: xyck7g2mfl — connected')
-                    else if(api.key==='claritrl') alert('Clarity RomyLabs: y54zqoj6c2 — connected')
-                  }} style={{ ...S.btn('ghost'), fontSize:11, padding:'5px 14px' }}>Connect</button>
+                    if(api.key==='ga4' || api.key==='ga4rl') {
+                      setMarketingProduct(api.key==='ga4'?'taxres_crm':'romylabs')
+                      setTab('marketing')
+                    } else {
+                      setSeoProduct(api.key==='claritrl'?'romylabs':'taxres_crm')
+                      setTab('search')
+                    }
+                  }} style={{ ...S.btn('ghost'), fontSize:11, padding:'5px 14px' }}>View integration</button>
                 </div>
               ))}
               <div style={{ fontSize:11, color:'#475569', marginTop:14 }}>
