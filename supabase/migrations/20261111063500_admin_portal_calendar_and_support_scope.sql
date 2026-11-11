@@ -96,7 +96,8 @@ begin
   select count(*)::integer into v_count
     from public.calevents c
    where c.date::date >= date_trunc('month',p_month)::date
-     and c.date::date < (date_trunc('month',p_month) + interval '1 month')::date;
+     and c.date::date < (date_trunc('month',p_month) + interval '1 month')::date
+     and c."eventType" = 'Product Demo';
   return coalesce(v_count,0);
 end;
 $$;
