@@ -4,6 +4,9 @@ on:
     paths:
       - 'src/pages/AdminPortal.jsx'
       - 'src/releaseInfo.js'
+      - 'scripts/check-admin-audit-reconciliation.mjs'
+      - 'package.json'
+      - 'supabase/migrations/**'
       - 'e2e/romylabs-admin-release.spec.mjs'
       - '.github/workflows/romylabs-admin-release-browser.yml'
 permissions:
