@@ -7205,6 +7205,7 @@ function SupportCenterTab({ supabase }) {
   const [tickets, setTickets]       = useState(null)
   const [loading, setLoading]       = useState(true)
   const [supportError, setSupportError] = useState('')
+  const [statusSaveError, setStatusSaveError] = useState('')
   const [showQa, setShowQa]         = useState(false)
   const [filter, setFilter]         = useState('all')       // product_id or 'all'
   const [statusFilter, setStatus]   = useState('all')       // 'Open'|'In Progress'|'Resolved'|'all'
@@ -7292,13 +7293,20 @@ function SupportCenterTab({ supabase }) {
 
   async function changeStatus(status) {
     if (!selected) return
-    // update_ticket_status() is tenant-scoped and won't update non-TaxRes tickets
-    // (those have tenant_id=NULL). Use direct table update with platform admin check.
-    await supabase
+    // update_ticket_status() is tenant-scoped and cannot handle some external
+    // tickets. Verify actual affected rows rather than showing false success.
+    const ticketId = selected.id
+    const { data: updatedRows, error } = await supabase
       .from('support_tickets')
       .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', selected.id)
-    setSelected(s => ({ ...s, status }))
+      .eq('id', ticketId)
+      .select('id,status')
+    if (error || !Array.isArray(updatedRows) || !updatedRows.some(row => row.id === ticketId && row.status === status)) {
+      setStatusSaveError(error?.message || 'Ticket status was not saved. Verify your permissions and retry.')
+      return
+    }
+    setStatusSaveError('')
+    setSelected(current => current?.id === ticketId ? { ...current, status } : current)
     load()
   }
 
@@ -7328,6 +7336,7 @@ function SupportCenterTab({ supabase }) {
       <div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
           <div style={{ fontSize:17, fontWeight:800, color:'#fff' }}>🎫 Support Center</div>
+          {statusSaveError && <div role="alert" style={{color:'#fca5a5',fontSize:12}}>{statusSaveError}</div>}
           <label style={{fontSize:11,color:'#cbd5e1',display:'flex',alignItems:'center',gap:6}}>
             <input type="checkbox" checked={showQa} onChange={e=>setShowQa(e.target.checked)} /> Show QA/test tickets
           </label>
