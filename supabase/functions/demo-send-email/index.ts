@@ -89,6 +89,16 @@ serve(async (req) => {
 
     const body = await req.json()
     const to = safe(body.to).toLowerCase()
+    const list = (input:unknown, label:string):string[] => {
+      const addresses=(Array.isArray(input)?input:String(input||'').split(/[;,]/))
+        .map((v:unknown)=>String(v).trim().toLowerCase()).filter(Boolean)
+      if(addresses.length>25 || addresses.some((v:string)=>!/^[^\\s@,;<>]+@[^\\s@,;<>]+\\.[^\\s@,;<>]+$/.test(v)))
+        throw new Error('Invalid '+label+' recipient list')
+      return [...new Set(addresses)]
+    }
+    const cc = list(body.cc,'CC'), bcc = list(body.bcc,'BCC')
+    if ([to,...cc,...bcc].length>25 || new Set([to,...cc,...bcc]).size !== [to,...cc,...bcc].length)
+      throw new Error('Duplicate or excessive To/CC/BCC recipients')
     const subject = safe(body.subject)
     const text = String(body.text || '').trim()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
@@ -108,6 +118,8 @@ serve(async (req) => {
       body: JSON.stringify({
         route_id: route.id,
         to,
+        cc,
+        bcc,
         subject,
         text_body: text,
         html_body: bodyHtml(text),

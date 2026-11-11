@@ -3,6 +3,7 @@ import { FIRM } from '../lib/firmBranding'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { sendGmailEmail } from '../lib/gmailUtils'
+import { validateEmailRecipients } from '../lib/emailRecipients'
 import { EMAIL_TEMPLATES, applyTemplate } from '../lib/emailTemplatesList'
 
 // ── Quick Email (click-to-email from a lead/client record) ──
@@ -13,7 +14,7 @@ import { EMAIL_TEMPLATES, applyTemplate } from '../lib/emailTemplatesList'
 
 export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
   const { user } = useApp()
-  const [form, setForm] = useState({ to: contact?.email || '', subject: '', body: '' })
+  const [form, setForm] = useState({ to: contact?.email || '', cc:'', bcc:'', subject: '', body: '' })
   const [state, setState] = useState('idle') // idle | sending | sent | error
   const [errMsg, setErrMsg] = useState('')
   const [signature, setSignature] = useState({ text: '', logoUrl: '' })
@@ -44,14 +45,17 @@ export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
 
   async function send() {
     if (!form.to.trim() || !form.subject.trim() || !form.body.trim()) { setErrMsg('To, subject, and message are all required.'); setState('error'); return }
+    let recipients
+    try { recipients=validateEmailRecipients(form) }
+    catch(e) { setState('error');setErrMsg(e.message);return }
     setState('sending'); setErrMsg('')
     let sentVia = null
     try {
-      await sendGmailEmail(supabase, { to: form.to.trim(), subject: form.subject, body: form.body, senderEmployeeEmail: user?.email })
+      await sendGmailEmail(supabase, { to: recipients.to, cc:recipients.cc, bcc:recipients.bcc, subject: form.subject, body: form.body, senderEmployeeEmail: user?.email })
       sentVia = 'personal'
     } catch {
       try {
-        await sendGmailEmail(supabase, { to: form.to.trim(), subject: form.subject, body: form.body })
+        await sendGmailEmail(supabase, { to: recipients.to, cc:recipients.cc, bcc:recipients.bcc, subject: form.subject, body: form.body })
         sentVia = 'firm'
       } catch (e2) {
         setState('error'); setErrMsg('Send failed: ' + e2.message + ' — connect Gmail on the Email page, or check the firm account in Settings.')
@@ -123,7 +127,13 @@ export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
               <div style={{ display: 'grid', gap: 12 }}>
                 <div>
                   <label style={label}>To</label>
-                  <input style={input} type="email" value={form.to} onChange={e => setForm(f => ({ ...f, to: e.target.value }))} />
+                  <input style={input} type="text" value={form.to} onChange={e => setForm(f => ({ ...f, to: e.target.value }))} />
+                </div>
+                <div><label style={label}>CC (optional)</label>
+                  <input style={input} type="text" value={form.cc} onChange={e=>setForm(f=>({...f,cc:e.target.value}))} />
+                </div>
+                <div><label style={label}>BCC (optional)</label>
+                  <input style={input} type="text" value={form.bcc} onChange={e=>setForm(f=>({...f,bcc:e.target.value}))} />
                 </div>
                 <div>
                   <label style={label}>Subject</label>
