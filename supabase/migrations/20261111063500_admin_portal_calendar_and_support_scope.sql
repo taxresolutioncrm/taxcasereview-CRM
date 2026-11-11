@@ -68,3 +68,13 @@ end;
 $$;
 revoke all on function public.admin_update_support_ticket_status(uuid,text) from public, anon;
 grant execute on function public.admin_update_support_ticket_status(uuid,text) to authenticated, service_role;
+
+-- Defense-in-depth: the legacy logs already have tenant-scoped RLS in
+-- production, but anonymous roles retain unnecessary table-level ALL grants.
+-- Authenticated CRM fax/call UI and service_role webhooks are unchanged.
+revoke all privileges on table public.call_logs, public.fax_logs from anon;
+
+-- No public.sms_logs table exists in this database. Do not invent it.
+-- The admin-only scope metrics RPC already verifies _is_platform_admin();
+-- removing anonymous EXECUTE tightens the exposed RPC surface.
+revoke execute on function public.admin_taxres_crm_scope_metrics(uuid) from anon;
