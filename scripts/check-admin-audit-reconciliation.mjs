@@ -33,4 +33,7 @@ assert.ok(sql.includes('c."eventType" = \'Product Demo\''),'Monthly demos must c
 assert.ok(ui.includes("rpc('admin_monthly_calendar_event_count')"),'Monthly Demos must be loaded from actual database aggregate')
 assert.ok(ui.includes('Goal status'),'Goals must not pretend a rolling monthly metric is an annual pace')
 assert.ok(!ui.includes('Pace based on'),'Misleading annual pace text removed')
+for(const fn of ['seed_taxres_workflow_library(uuid)','process_fantasy_gmail_drafts()','process_fantasy_report_outbox()','run_fantasy_daily_if_due()','send_fantasy_football_report(text)','send_fantasy_hockey_report(text)']){
+  assert.ok(sql.includes('revoke execute on function public.'+fn),'Privileged maintenance must not be executable anonymously: '+fn)
+}
 console.log('PASS audited Admin Portal controls and migration contracts')
