@@ -111,58 +111,19 @@ html.light .btn:not(.pri):not(.danger):not(.success):not(.warning):not(.del):hov
   border-color: #c8d5e2;
 }
 
-/* Dashboard KPI cards: restore readable labels/values in light mode and
-   prevent the compressed/clipped appearance seen at desktop widths. */
-html.light .page-content div:has(> [data-card-idx]) {
-  gap: 14px !important;
-}
-
+/* Light theme affects KPI surfaces only. Shared geometry and font sizes
+   are defined once in taxres-dashboard.css for BOTH light and dark modes. */
 html.light [data-card-idx] {
-  min-width: 0 !important;
-  min-height: 132px !important;
-  padding: 19px 18px 17px !important;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
-  border: 1px solid #d9e3ed !important;
+  border-color: #d9e3ed !important;
   box-shadow: 0 8px 20px rgba(35,54,77,.075) !important;
 }
-
-html.light [data-card-idx]:hover {
-  border-color: #c7d7e6 !important;
-  box-shadow: 0 12px 28px rgba(35,54,77,.11) !important;
-}
-
-html.light [data-card-idx] > div:nth-child(3) {
-  align-items: center !important;
-}
-
-html.light [data-card-idx] > div:nth-child(3) > div:first-child {
-  min-width: 0 !important;
-  overflow: visible !important;
-}
-
 html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:first-child {
   color: #60758c !important;
-  font-size: 10.5px !important;
-  line-height: 1.32 !important;
-  min-height: 28px !important;
-  max-width: none !important;
-  -webkit-line-clamp: 2 !important;
-  overflow-wrap: normal !important;
-  word-break: normal !important;
 }
-
-html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
-  font-size: clamp(28px, 2vw, 34px) !important;
-  line-height: 1.02 !important;
-  max-width: 100% !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-
 html.light [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(3) {
   color: #7b8ea4 !important;
 }
-
 html.light [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
   background: #f0f5fa !important;
   border-color: #dce6ef !important;
@@ -196,12 +157,6 @@ html.light .pill {
 /* Reduce the glaring page-to-card contrast while keeping cards clearly distinct. */
 html.light .page-content {
   background-image: linear-gradient(180deg, #eef3f8 0%, #f3f6fa 46%, #eef3f8 100%);
-}
-
-@media (max-width: 1100px) {
-  html.light [data-card-idx] {
-    min-height: 120px !important;
-  }
 }
 
 
