@@ -20,7 +20,7 @@ const checks=[
   ['tip counter shown',source.includes('{tipIdx + 1} of {CRM_TIPS.length}')],
   ['dozens of dots removed',!source.includes('tax-dashboard-tip-dot is-active')],
   ['rail uses live theme tokens',source.includes("background: 'var(--sf)', color: 'var(--tx)', border: '1px solid var(--br)'")],
-  ['titles use theme tokens',source.includes("color: 'var(--tx)' }}>Taxpayer Advocate") && source.includes("color: 'var(--tx)' }}>CRM Tips")],
+  ['titles use theme tokens',source.includes(`color: 'var(--tx)' }}>Taxpayer Advocate`) && source.includes(`color: 'var(--tx)' }}>CRM Tips`)],
 ]
 assert(light.includes('html.light .tax-dashboard-theme-root > div:last-child,'),'Fallback light rail selector absent for cached lazy Dashboard chunks')
 for(const [name,pass]of checks)assert(pass,name)
