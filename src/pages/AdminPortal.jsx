@@ -35,7 +35,6 @@ const NASH_TENANT           = '489ace07-1a6b-4864-833a-4f8420568b40'
 const DEMO_DIRECTORY_TENANT = '518808b4-10dd-47fd-900e-6c3fc1ff2e7e'
 const DEMO_RUNTIME_TENANT   = 'a0000000-0000-0000-0000-000000000001'
 const DEMO_TENANT           = DEMO_RUNTIME_TENANT
-const TAXRESCRM_TENANT      = DEMO_RUNTIME_TENANT
 const STATUS_COLOR = { active:'#10b981', trial:'#f59e0b', past_due:'#f97316', cancelled:'#ef4444', suspended:'#ef4444' }
 const TIER_COLOR   = { starter:'#6366f1', growth:'#0ea5e9', pro:'#10b981' }
 
@@ -1242,8 +1241,6 @@ function Overview() {
     navigate(`/crm-admin/offices/${row.id}`)
   }
 
-  const h = new Date().getHours()
-  const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
 
   const KPI = [
     { label:'Monthly Recurring', val: `$${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981' },
@@ -3299,13 +3296,14 @@ function MiniBar({ pct, color }) {
 }
 
 function GoalBar({ label, current, target, unit, color }) {
-  const pct = Math.min(100, Math.round((current/target)*100))
-  const fmt = (v) => unit==='$' ? `$${Number(v).toLocaleString('en-US',{maximumFractionDigits:0})}` : `${Number(v).toLocaleString()}${unit!=='$'&&unit!=='demos'&&unit!=='firms'&&unit!=='visitors'?' '+unit:''}`
+  const available = current !== null && current !== undefined && Number.isFinite(Number(current))
+  const pct = available ? Math.min(100, Math.round((Number(current)/target)*100)) : 0
+  const fmt = (v) => v == null ? '—' : unit==='$' ? `$${Number(v).toLocaleString('en-US',{maximumFractionDigits:0})}` : `${Number(v).toLocaleString()}${unit!=='$'&&unit!=='demos'&&unit!=='firms'&&unit!=='visitors'&&unit!=='sessions'?' '+unit:''}`
   return (
     <div style={{ marginBottom:18 }}>
       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
         <div style={{ fontSize:12, fontWeight:600, color:'#e2e8f0' }}>{label}</div>
-        <div style={{ fontSize:11, color:'#64748b' }}>{fmt(current)} / {fmt(target)} · <span style={{ color }}>{pct}%</span></div>
+        <div style={{ fontSize:11, color:'#64748b' }}>{fmt(current)} / {fmt(target)} · <span style={{ color }}>{available ? pct+'%' : 'Unavailable'}</span></div>
       </div>
       <MiniBar pct={pct} color={color} />
     </div>
@@ -5494,25 +5492,8 @@ function CommandCenter() {
         upcomingDl:   (stats.upcoming_deadlines||[]).slice(0,5),
         todaySchedule:(stats.today_schedule||[]).slice(0,6),
         upcomingDemos:(taxresDemoRes?.data?.upcoming || []).slice(0,5),
-        // Marketing mock data (live when GA4 is connected)
-        marketing: {
-          visitorsToday: 247,  visitorsChange: 18,
-          sessions: 312,       sessionsChange: 14,
-          bounceRate: 38.2,    bounceChange: -4,
-          pagesPerSession: 3.1,
-          topSources: [
-            { label:'Organic Search', pct:62, color:'#6366f1' },
-            { label:'Direct',         pct:21, color:'#0ea5e9' },
-            { label:'Referral',       pct:11, color:'#10b981' },
-            { label:'Social',         pct:6,  color:'#f59e0b' },
-          ],
-          topPages: [
-            { path:'/features/irs-workflows', views:84, change:'+22%' },
-            { path:'/',                         views:71, change:'+8%'  },
-            { path:'/resources/transaction-codes', views:52, change:'+31%' },
-            { path:'/about',                    views:38, change:'+5%'  },
-          ],
-        },
+        // Real marketing data comes from GA4; do not report demo figures as actual.
+        marketing: null,
         // Search data — populated from gscData state after fetch
         search: {
           impressions: 0, impressionsChange: 0,
@@ -5524,8 +5505,8 @@ function CommandCenter() {
         },
         // Goals — real data where available
         goals: [
-          { label:'Monthly Demos',    current: Number(stats.today_demos||0), target:50,  unit:'demos',   color:'#6366f1', note:'demos today' },
-          { label:'Organic Visitors', current: ga4Data?.users ?? 0,          target:5000, unit:'visitors', color:'#0ea5e9', note: ga4Data ? null : 'connect GA4' },
+          { label:'Monthly Demos', current:null, target:50, unit:'demos', color:'#6366f1', note:'current calendar month' },
+          { label:'Organic Search Sessions', current: null, target:5000, unit:'sessions', color:'#0ea5e9', note:'last 30 days · RomyLabs' },
           { label:'Platform MRR',     current: totalMRR||0,                  target:5000, unit:'$',       color:'#10b981' },
           { label:'Signed Offices',   current: activeTenants.length,         target:12,   unit:'firms',   color:'#f59e0b' },
         ],
@@ -6020,6 +6001,55 @@ function CommandCenter() {
   const [marketingProduct, setMarketingProduct] = useState('taxres_crm')
   const [ga4Data, setGa4Data] = useState(null)
   const [ga4Loading, setGa4Loading] = useState(false)
+  // GA4 active users are not equivalent to organic visitors. Report actual
+  // organic-search sessions for RomyLabs, without inventing zero on failure.
+  const [organicGoal, setOrganicGoal] = useState({current:null,dataThrough:null,error:''})
+  const [monthlyDemos, setMonthlyDemos] = useState({current:null,error:''})
+  useEffect(() => {
+    if (tab !== 'goals') return
+    let active = true
+    supabase.rpc('admin_monthly_calendar_event_count')
+      .then(({data:count,error}) => {
+        if (!active) return
+        setMonthlyDemos(error || typeof count !== 'number'
+          ? {current:null,error:error?.message||'Monthly demo count unavailable'}
+          : {current:count,error:''})
+      })
+      .catch(error => {if(active)setMonthlyDemos({current:null,error:String(error?.message||error)})})
+    return () => {active=false}
+  }, [tab])
+  useEffect(() => {
+    if (tab !== 'goals') return
+    let active = true
+    const start = new Date()
+    start.setUTCDate(start.getUTCDate()-30)
+    supabase.from('marketing_ga4_traffic')
+      .select('date,channel,sessions')
+      .eq('product_id','romylabs')
+      .gte('date',start.toISOString().slice(0,10))
+      .in('channel',['Organic Search','__TOTAL__'])
+      .order('date',{ascending:false})
+      .then(({data:rows,error}) => {
+        if (!active) return
+        if (error || !Array.isArray(rows)) {
+          setOrganicGoal({current:null,dataThrough:null,error:error?.message||'GA4 reporting unavailable'})
+          return
+        }
+        const hasReporting = rows.some(row => row.channel === '__TOTAL__')
+        const relevant = rows.filter(row => row.channel === 'Organic Search')
+        const current = hasReporting ? relevant.reduce((sum,row)=>sum+Number(row.sessions||0),0) : null
+        setOrganicGoal({current,dataThrough:rows[0]?.date||null,error:hasReporting?'':'No recorded GA4 reporting days'})
+      })
+      .catch(error => { if (active) setOrganicGoal({current:null,dataThrough:null,error:String(error?.message||error)}) })
+    return () => { active = false }
+  }, [tab])
+  const displayedGoals = data?.goals?.map(goal =>
+    goal.label === 'Organic Search Sessions'
+      ? {...goal,current:organicGoal.current,note:organicGoal.dataThrough ? 'Data through '+organicGoal.dataThrough : (organicGoal.error||'Loading GA4')}
+      : goal.label === 'Monthly Demos'
+        ? {...goal,current:monthlyDemos.current,note:monthlyDemos.error||'Current month'}
+        : goal
+  ) || []
 
   useEffect(() => {
     if (tab === 'search') fetchBing(seoProduct)
@@ -7028,31 +7058,29 @@ function CommandCenter() {
         {tab==='goals' && (<>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:18 }}>
             <div style={CC.card({padding:'26px 28px'})}>
-              <div style={CC.sectionLabel}>2026 Business goals</div>
-              {data.goals.map(g => <GoalBar key={g.label} {...g} />)}
+              <div style={CC.sectionLabel}>{new Date().getFullYear()} Business goals</div>
+              {displayedGoals.map(g => <GoalBar key={g.label} {...g} />)}
             </div>
             <div style={CC.card({padding:'26px 28px'})}>
-              <div style={CC.sectionLabel}>Pace check</div>
-              {data.goals.map(g => {
-                const pct = Math.min(100,Math.round((g.current/g.target)*100))
-                const now = new Date()
-                const dayOfYear = Math.floor((now-new Date(now.getFullYear(),0,0))/86400000)
-                const yearPct = Math.round(dayOfYear/365*100)
-                const ahead = pct >= yearPct
+              <div style={CC.sectionLabel}>Goal status</div>
+              {displayedGoals.map(g => {
+                const available = g.current !== null && g.current !== undefined && Number.isFinite(Number(g.current))
+                const pct = available ? Math.min(100,Math.round((Number(g.current)/g.target)*100)) : null
+                const targetReached = pct !== null && pct >= 100
                 return (
                   <div key={g.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
                     padding:'12px 0', borderBottom:'1px solid rgba(99,102,241,.1)' }}>
                     <div style={{ fontSize:13, color:'#e2e8f0', fontWeight:600 }}>{g.label}</div>
                     <span style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:20,
-                      background: ahead?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)',
-                      color: ahead?'#10b981':'#f59e0b' }}>
-                      {ahead ? '✓ On pace' : '⚠ Behind pace'}
+                      background:targetReached?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)',
+                      color:targetReached?'#10b981':'#fbbf24' }}>
+                      {pct === null ? '— Awaiting data' : targetReached ? '✓ Target reached' : 'In progress'}
                     </span>
                   </div>
                 )
               })}
               <div style={{ fontSize:11, color:'#475569', marginTop:16 }}>
-                Pace based on {Math.round((new Date()-new Date(new Date().getFullYear(),0,0))/86400000)} days elapsed in 2026.
+                Goal status shows attainment against each target; monthly and rolling-period goals are not measured against annual elapsed days.
               </div>
             </div>
           </div>
@@ -7098,27 +7126,28 @@ function CommandCenter() {
             <div style={CC.card({padding:'22px 24px'})}>
               <div style={CC.sectionLabel}>Connect APIs</div>
               {[
-                { label:'GA4 · TaxRes',          key:'ga4',     status: 'connected · G-M6J80B65LG', color: '#10b981' },
-                { label:'GA4 · RomyLabs',         key:'ga4rl',   status: 'connected · G-2MSNYF9XBE', color: '#10b981' },
-                { label:'Google Search Console', key:'gsc',     status: gscConnected ? 'connected' : 'not connected', color: gscConnected ? '#10b981' : '#f59e0b' },
-                { label:'Clarity · TaxRes',       key:'clarity', status:'connected · xyck7g2mfl', color:'#10b981' },
-                { label:'Clarity · RomyLabs',     key:'claritrl',status:'connected · y54zqoj6c2', color:'#10b981' },
-                { label:'Bing Webmaster',        key:'bing',    status: bingConnected ? 'connected' : 'not connected', color: bingConnected ? '#10b981' : '#64748b' },
+                { label:'GA4 · TaxRes',          key:'ga4',     status:ga4LiveProducts.includes('taxres_crm')?'live':ga4EnabledProducts.includes('taxres_crm')?'configured':'not configured' },
+                { label:'GA4 · RomyLabs',         key:'ga4rl',   status:ga4LiveProducts.includes('romylabs')?'live':ga4EnabledProducts.includes('romylabs')?'configured':'not configured' },
+                { label:'Google Search Console', key:'gsc',     status:gscLiveProducts.includes('taxres_crm')?'live':'not configured' },
+                { label:'Clarity · TaxRes',       key:'clarity', status:clarityRows.find(row=>row.product_id==='taxres_crm')?.status||'not configured' },
+                { label:'Clarity · RomyLabs',     key:'claritrl',status:clarityRows.find(row=>row.product_id==='romylabs')?.status||'not configured' },
+                { label:'Bing Webmaster',        key:'bing',    status:bingConnected?'live for selected SEO product':'check in Search tab' },
               ].map((api,i) => (
                 <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
                   padding:'11px 0', borderBottom: i<3?'1px solid rgba(99,102,241,.1)':'none' }}>
                   <div>
                     <div style={{ fontSize:13, color:'#e2e8f0', fontWeight:600 }}>{api.label}</div>
-                    <div style={{ fontSize:10, color:api.color, fontWeight:600, textTransform:'uppercase', marginTop:2 }}>{api.status}</div>
+                    <div style={{ fontSize:10, color:api.status==='live'?'#10b981':'#94a3b8', fontWeight:600, textTransform:'uppercase', marginTop:2 }}>{api.status}</div>
                   </div>
                   <button onClick={()=>{
-                    if(api.key==='gsc') handleGSCConnect()
-                    else if(api.key==='ga4') alert('GA4 TaxRes: G-M6J80B65LG — connected')
-                    else if(api.key==='ga4rl') alert('GA4 RomyLabs: G-2MSNYF9XBE — connected')
-                    else if(api.key==='bing') alert('Bing: Send your API key to connect')
-                    else if(api.key==='clarity') alert('Clarity TaxRes: xyck7g2mfl — connected')
-                    else if(api.key==='claritrl') alert('Clarity RomyLabs: y54zqoj6c2 — connected')
-                  }} style={{ ...S.btn('ghost'), fontSize:11, padding:'5px 14px' }}>Connect</button>
+                    if(api.key==='ga4' || api.key==='ga4rl') {
+                      setMarketingProduct(api.key==='ga4'?'taxres_crm':'romylabs')
+                      setTab('marketing')
+                    } else {
+                      setSeoProduct(api.key==='claritrl'?'romylabs':'taxres_crm')
+                      setTab('search')
+                    }
+                  }} style={{ ...S.btn('ghost'), fontSize:11, padding:'5px 14px' }}>View integration</button>
                 </div>
               ))}
               <div style={{ fontSize:11, color:'#475569', marginTop:14 }}>
@@ -7222,6 +7251,7 @@ function SupportCenterTab({ supabase }) {
   const [tickets, setTickets]       = useState(null)
   const [loading, setLoading]       = useState(true)
   const [supportError, setSupportError] = useState('')
+  const [statusSaveError, setStatusSaveError] = useState('')
   const [showQa, setShowQa]         = useState(false)
   const [filter, setFilter]         = useState('all')       // product_id or 'all'
   const [statusFilter, setStatus]   = useState('all')       // 'Open'|'In Progress'|'Resolved'|'all'
@@ -7309,13 +7339,19 @@ function SupportCenterTab({ supabase }) {
 
   async function changeStatus(status) {
     if (!selected) return
-    // update_ticket_status() is tenant-scoped and won't update non-TaxRes tickets
-    // (those have tenant_id=NULL). Use direct table update with platform admin check.
-    await supabase
-      .from('support_tickets')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', selected.id)
-    setSelected(s => ({ ...s, status }))
+    // External-product tickets can have NULL tenant_id; use the explicit
+    // platform-admin RPC and only show success after its database confirmation.
+    const ticketId = selected.id
+    const { data: updated, error } = await supabase.rpc('admin_update_support_ticket_status', {
+      p_ticket_id: ticketId,
+      p_status: status,
+    })
+    if (error || updated !== true) {
+      setStatusSaveError(error?.message || 'Ticket status was not saved. Verify your permissions and retry.')
+      return
+    }
+    setStatusSaveError('')
+    setSelected(current => current?.id === ticketId ? { ...current, status } : current)
     load()
   }
 
@@ -7345,6 +7381,7 @@ function SupportCenterTab({ supabase }) {
       <div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
           <div style={{ fontSize:17, fontWeight:800, color:'#fff' }}>🎫 Support Center</div>
+          {statusSaveError && <div role="alert" style={{color:'#fca5a5',fontSize:12}}>{statusSaveError}</div>}
           <label style={{fontSize:11,color:'#cbd5e1',display:'flex',alignItems:'center',gap:6}}>
             <input type="checkbox" checked={showQa} onChange={e=>setShowQa(e.target.checked)} /> Show QA/test tickets
           </label>
@@ -8901,14 +8938,6 @@ export default function AdminPortal() {
       setFavicon('/romylabs-favicon.png')
     }
   }, [])
-
-  async function handleGSCConnect() {
-    const CLIENT_ID = '70057646964-vimoia1qkjtml9n3mplo0hme82m3t2qs.apps.googleusercontent.com'
-    const redirect  = window.location.origin + '/crm-admin/command-center'
-    const scope     = 'https://www.googleapis.com/auth/webmasters.readonly'
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`
-    window.location.href = url
-  }
 
   async function handleSignOut() {
     await supabase.auth.signOut()
