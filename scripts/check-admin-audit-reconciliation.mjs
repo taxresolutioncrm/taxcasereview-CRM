@@ -20,4 +20,8 @@ assert.ok(ui.includes(".in('channel',['Organic Search','__TOTAL__'])"),'Organic 
 assert.ok(ui.includes("goal.label === 'Organic Search Sessions'"),'Organic goal rendered from derived state')
 assert.ok(ui.includes("const displayedGoals = data?.goals?.map("),'Goals react to GA4 result')
 assert.ok(ui.includes("const available = current !== null"),'Unknown GA4 must not report zero')
+assert.ok(ui.includes('>View integration</button>'),'System API controls navigate to actual integration views')
+assert.ok(!ui.includes("alert('GA4 TaxRes:"),'No simulated connection confirmation')
+assert.ok(!ui.includes("alert('Bing: Send your API key"),'No dead Bing API connect alert')
+assert.ok(ui.includes("setTab('marketing')") && ui.includes("setTab('search')"),'Integration controls navigate to live tabs')
 console.log('PASS audited Admin Portal controls and migration contracts')
