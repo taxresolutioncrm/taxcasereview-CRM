@@ -7,11 +7,12 @@ import { EMAIL_TEMPLATES as TEMPLATES } from '../lib/emailTemplatesList'
 import { useGmailSync } from '../context/GmailSyncContext'
 import { useApp } from '../context/AppContext'
 import { DOC_FOLDERS } from './Clients'
+import { validateEmailRecipients } from '../lib/emailRecipients'
 
 
 const TRIAGE = ['Inbox','Action Needed','Waiting','Sent','Spam','Archive']
 const TRIAGE_COLORS = { 'Action Needed':'var(--bad)', 'Waiting':'var(--warn)', 'Inbox':'var(--blue)', 'Sent':'var(--ok)', 'Spam':'#f59e0b', 'Archive':'var(--t3)' }
-const BLANK = { recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'' }
+const BLANK = { cc:'', bcc:'', recipient:'', clientName:'', subject:'', body:'', triage:'Sent', status:'Sent', routeId:'', replyFrom:'', threadId:'', inReplyTo:'', references:'', productId:'' }
 const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
 
 export default function Email() {
@@ -458,8 +459,13 @@ export default function Email() {
 
   async function send() {
     if (!form.subject || !form.body) { showToast('Subject and body required'); return }
-    if (!form.recipient) { showToast('Recipient email address required to send'); return }
-    if (saving) return
+    let recipients
+    try { recipients=validateEmailRecipients({to:form.recipient,cc:form.cc,bcc:form.bcc}) }
+    catch(e) { showToast(e.message);return }
+    if(saving)return
+    if((recipients.cc.length||recipients.bcc.length)&&(isCloudCpaPlatformRelay||(isNashville&&m365Connected))) {
+      showToast('CC/BCC is unsupported on this legacy route; nothing was sent.');return
+    }
     if (composeAttachments.length && (form.routeId || isDemoMailbox || isCloudCpaPlatformRelay || (isNashville && m365Connected) || !gmailConnected)) {
       showToast('Attachments are supported with connected Gmail new messages. This mailbox does not support attachments here; nothing was sent.')
       return
@@ -477,7 +483,9 @@ export default function Email() {
         const { data, error } = await supabase.functions.invoke('smtp-send', {
           body: {
             route_id: form.routeId,
-            to: form.recipient,
+            to: recipients.to,
+            cc: recipients.cc,
+            bcc: recipients.bcc,
             subject: form.subject,
             text_body: form.body,
             from_name: form.replyFrom ? form.replyFrom.split('@')[0] : undefined,
@@ -500,7 +508,9 @@ export default function Email() {
       try {
         const { data, error } = await supabase.functions.invoke('demo-send-email', {
           body: {
-            to: form.recipient,
+            to: recipients.to[0],
+            cc: recipients.cc,
+            bcc: recipients.bcc,
             subject: form.subject,
             text: form.body,
             clientName: form.clientName || undefined,
@@ -563,7 +573,7 @@ export default function Email() {
           mimeType:file.type || 'application/octet-stream',
           base64Data:await fileAsBase64(file),
         })))
-        await sendGmailEmail(supabase, { to: form.recipient, subject: form.subject, body: form.body, attachments, senderEmployeeEmail: user?.email })
+        await sendGmailEmail(supabase, { to: recipients.to, cc:recipients.cc, bcc:recipients.bcc, subject: form.subject, body: form.body, attachments, senderEmployeeEmail: user?.email })
         status = 'Sent'
       } catch (e) {
         setSaving(false)
@@ -573,7 +583,7 @@ export default function Email() {
     }
 
     if (!alreadyStored) {
-      const { routeId, replyFrom, threadId, inReplyTo, references, productId, m365MessageId, ...loggableForm } = form
+      const { routeId, replyFrom, threadId, inReplyTo, references, productId, m365MessageId, cc, bcc, ...loggableForm } = form
       const emailRow = { ...loggableForm, status, created_at: new Date().toISOString(), mailbox_owner: centralMailboxOwner || user?.email || null }
       if (isDemoMailbox) {
         emailRow.tenant_id = DEMO_TENANT_ID
@@ -1508,7 +1518,13 @@ export default function Email() {
               </div>
             )}
             <div className="field"><label>To (email address)</label>
-              <input type="email" value={form.recipient} onChange={e => fld('recipient', e.target.value)} placeholder="client@email.com" />
+              <input type="text" value={form.recipient} onChange={e => fld('recipient', e.target.value)} placeholder="first@email.com; second@email.com" />
+            </div>
+            <div className="field"><label>CC (visible copies)</label>
+              <input type="text" value={form.cc || ''} onChange={e => fld('cc', e.target.value)} placeholder="Comma or semicolon separated" />
+            </div>
+            <div className="field"><label>BCC (private copies)</label>
+              <input type="text" value={form.bcc || ''} onChange={e => fld('bcc', e.target.value)} placeholder="Comma or semicolon separated" />
             </div>
             <div className="field"><label>Subject *</label>
               <input value={form.subject} onChange={e => fld('subject', e.target.value)} placeholder="Email subject…" />

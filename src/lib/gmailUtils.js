@@ -192,7 +192,15 @@ function textToHtml(text) {
 // firm address regardless of who's logged in when the automation fires.
 // attachments (optional): [{ filename, mimeType, base64Data }] — base64Data
 // is the standard (non-url) base64 encoding of the raw file bytes.
-export async function sendGmailEmail(supabase, { to, subject, body, fromName, attachments = [], senderEmployeeEmail }) {
+export async function sendGmailEmail(supabase, { to, cc = [], bcc = [], subject, body, fromName, attachments = [], senderEmployeeEmail }) {
+  const visibleTo=Array.isArray(to)?to:[to]
+  const visibleCc=Array.isArray(cc)?cc:[cc]
+  const privateBcc=Array.isArray(bcc)?bcc:[bcc]
+  const addressHeaders = [
+    'To: '+visibleTo.join(', '),
+    ...(visibleCc.length?['Cc: '+visibleCc.join(', ')]:[]),
+    ...(privateBcc.length?['Bcc: '+privateBcc.join(', ')]:[]),
+  ]
   let token, senderAddress, sig, fromDisplayName
 
   if (senderEmployeeEmail) {
@@ -242,7 +250,7 @@ export async function sendGmailEmail(supabase, { to, subject, body, fromName, at
   let message
   if (attachments.length === 0) {
     const headers = [
-      `To: ${to}`,
+      ...addressHeaders,
       `From: ${from}`,
       `Subject: ${encodedSubject}`,
       `Date: ${new Date().toUTCString()}`,
@@ -272,7 +280,7 @@ export async function sendGmailEmail(supabase, { to, subject, body, fromName, at
       `--${boundary}--`,
     ]
     const headers = [
-      `To: ${to}`,
+      ...addressHeaders,
       `From: ${from}`,
       `Subject: ${encodedSubject}`,
       `Date: ${new Date().toUTCString()}`,

@@ -24,7 +24,7 @@ const validEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
 
 function buildRawEmail(opts: {
   from: string, fromName: string,
-  to: string | string[], subject: string,
+  to: string | string[], cc?: string[], subject: string,
   textBody: string, htmlBody?: string,
   messageId?: string, inReplyTo?: string, references?: string,
 }): string {
@@ -36,6 +36,7 @@ function buildRawEmail(opts: {
   let raw = [
     `From: ${safeHeader(opts.fromName)} <${safeHeader(opts.from)}>`,
     `To: ${toList}`,
+    ...(opts.cc?.length ? [`Cc: ${opts.cc.map(safeHeader).join(', ')}`] : []),
     `Subject: ${safeHeader(opts.subject)}`,
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: ${msgId}`,
@@ -98,7 +99,7 @@ async function sendViaSMTP(opts: {
 
 async function sendViaStalwartJmap(opts: {
   host: string, username: string, password: string, fromAddress: string, fromName: string,
-  to: string[], subject: string, textBody: string, htmlBody?: string,
+  to: string[], cc?: string[], bcc?: string[], subject: string, textBody: string, htmlBody?: string,
   messageId: string, inReplyTo?: string, references?: string, replyTo?: string,
 }) {
   const base = `https://${String(opts.host || '').replace(/^https?:\/\//,'').replace(/\/$/,'')}`
@@ -137,6 +138,8 @@ async function sendViaStalwartJmap(opts: {
   const createEmail:any = {
     from:[{email:exactFrom,name:opts.fromName||undefined}],
     to:opts.to.map(email=>({email})),
+    ...(opts.cc?.length ? {cc:opts.cc.map(email=>({email}))} : {}),
+    ...(opts.bcc?.length ? {bcc:opts.bcc.map(email=>({email}))} : {}),
     ...(validEmail(replyTo) ? { replyTo:[{email:replyTo}] } : {}),
     subject:opts.subject,
     mailboxIds:{[drafts.id]:true},
@@ -201,12 +204,19 @@ serve(async (req) => {
     const {data:isPlatformAdmin}=await userClient.rpc('_is_platform_admin')
 
     const {
-      account_id, route_id, to, subject, text_body, html_body, from_name,
+      account_id, route_id, to, cc = [], bcc = [], subject, text_body, html_body, from_name,
       in_reply_to, references, client_id, case_id, thread_id,
     } = await req.json()
 
-    const toList = (Array.isArray(to) ? to : [to]).map((x: unknown) => safeHeader(x)).filter(validEmail).slice(0, 25)
-    if (!toList.length || !safeHeader(subject)) throw new Error('Recipient and subject are required')
+    const recipients=(value:unknown,label:string) => {
+      const values=(Array.isArray(value)?value:String(value||'').split(/[;,]/)).map((x:unknown)=>String(x).trim()).filter(Boolean)
+      if(values.length>25||values.some((x:string)=>!validEmail(x)||/[\r\n]/.test(x))) throw new Error('Invalid '+label+' recipient list')
+      return [...new Set(values.map((x:string)=>x.toLowerCase()))]
+    }
+    const toList=recipients(to,'To'),ccList=recipients(cc,'CC'),bccList=recipients(bcc,'BCC')
+    const allRecipients=[...toList,...ccList,...bccList]
+    if(!toList.length||allRecipients.length>25||new Set(allRecipients).size!==allRecipients.length||!safeHeader(subject))
+      throw new Error('Invalid or duplicated To/CC/BCC recipients or missing subject')
 
     if (route_id) {
       const { data: route, error: routeError } = await svc.from('romylabs_mailboxes')
@@ -254,6 +264,8 @@ serve(async (req) => {
         fromAddress:exactFrom,
         fromName:from_name || route.display_name || exactFrom,
         to:toList,
+        cc:ccList,
+        bcc:bccList,
         subject:safeHeader(subject),
         textBody:String(text_body || ''),
         htmlBody:html_body ? String(html_body) : undefined,
@@ -271,7 +283,7 @@ serve(async (req) => {
         mailbox_owner: route.inbox_owner || callerEmail,
         sender: exactFrom,
         from_address: exactFrom,
-        recipients: toList,
+        recipients: [...toList,...ccList],
         recipient: toList[0],
         subject: safeHeader(subject),
         body: String(text_body || ''),
@@ -325,6 +337,7 @@ serve(async (req) => {
       from: account.email_address,
       fromName: from_name || account.display_name || account.email_address,
       to: toList,
+      cc: ccList,
       subject: safeHeader(subject),
       textBody: String(text_body || ''),
       htmlBody: html_body ? String(html_body) : undefined,
@@ -335,7 +348,7 @@ serve(async (req) => {
 
     await sendViaSMTP({
       smtpHost: account.smtp_host, smtpPort: account.smtp_port, useSsl: account.use_ssl,
-      username: account.email_address, password, rawEmail, from: account.email_address, to: toList,
+      username: account.email_address, password, rawEmail, from: account.email_address, to: allRecipients,
     })
 
     await svc.from('emails').insert([{
@@ -346,7 +359,7 @@ serve(async (req) => {
       mailbox_owner: account.employee_email,
       sender: account.email_address,
       from_address: account.email_address,
-      recipients: toList,
+      recipients: [...toList,...ccList],
       recipient: toList[0],
       subject: safeHeader(subject),
       body: String(text_body || ''),

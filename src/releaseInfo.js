@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Email Compose and Quick Email accept comma/semicolon-separated To, CC and BCC lists; validate recipients before sending; preserve Gmail/SMTP sender accounts and never expose BCC in SMTP headers',
   'Sunbiz PDF archival is now atomic across client Business documents and FormaCorp with a tenant-scoped SECURITY INVOKER transaction, duplicate-hash protection and storage cleanup on failure; client Business Info synchronizes even when a case already contains the PDF metadata',
   'IRS Form 4506 (Rev. 4-2025) is now separately listed under IRS Forms & Docs with the official IRS PDF link, existing fax/document routing and Form 4506 tracking; its XFA PDF is explicitly not supported for automatic pre-fill, while Form 4506-T stays unchanged',
   'Nashville v3.1.91 dashboard font parity: KPI typography and geometry now come from shared dashboard CSS in light and dark modes; removed conflicting light-only sizing and duplicate office-specific KPI sizing, adjusted narrow desktop columns and preserved two-across mobile with wide financial tiles when needed',
@@ -270,7 +271,7 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.103',
+  version: '3.2.104',
   releasedAt: 'Pending production deployment',
   title: 'RomyLabs Admin Portal 3.2.103 — Consolidated Tax CRM Release Candidate',
   changes: [...SHARED_NASHVILLE_PARITY_CHANGES, 'Calendar event detail Delete and pending invite Decline now show a working confirmation dialog; an event disappears only after verified database deletion', 'Search Console defaults to Overall, showing all currently available Google performance data (up to 16 months) with exact dates; 7, 28, and 90-day views remain selectable', 'Overall disables invalid previous-period comparisons and labels 90-day saved fallback totals accurately', ...SPANISH_DASHBOARD_CHANGES, ...PAYMENTS_NASHVILLE_PARITY_CHANGES, 'Credential Vault product dropdowns list active products alphabetically by name, with All Products at the top and unchanged product IDs and access', 'Google Search Console reporting now supports live 7-day, 28-day and 90-day windows with previous-period deltas, exact data-through dates and refresh timestamps across all connected products', '90-day Search Console remains the canonical cached snapshot while shorter windows are fetched live on demand', 'PoolVerge Lakeside Pools office displays across the product hierarchy and office details using the registered, existing office ID; no duplicate tenant or fabricated usage', 'RomyLabs Billing offers registered external offices and distinguishes those without a subscription account, preserving the TaxRes picker; E-Signatures uses the PoolVerge label', 'Added an authenticated, product-scoped GA4 daily refresh coordinator; existing on-demand analytics and tracking are unchanged', 'TaxRes weekly owner growth report now isolates TaxRes GA4 rows, avoids double-counting channel and total rows, and preserves live owner/cron authentication', 'Microsoft Clarity metric cards now match Bing Webmaster Tools styling across all registered businesses, including responsive sizing and compact metadata', 'Fixed PoolVerge Bing Webmaster Tools reporting: add missing PoolVerge domain mapping while preserving other properties', 'Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
@@ -279,7 +280,7 @@ const DEFAULT_RELEASE = {
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.87',
+    version: '3.2.88',
     releasedAt: 'Pending production deployment',
     title: 'TCR 3.2.87 — Consolidated Tax CRM Release Candidate',
     changes: IRS_WORKFLOW_CHANGES,
@@ -303,7 +304,7 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.88',
+    version: '3.2.89',
     releasedAt: 'Pending production deployment',
     title: 'Centurion 3.2.88 — Consolidated Tax CRM Release Candidate',
     changes: [...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
