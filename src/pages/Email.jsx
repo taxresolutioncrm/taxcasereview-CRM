@@ -1517,31 +1517,51 @@ export default function Email() {
                 <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 3 }}>Locked to the mailbox that received this conversation.</div>
               </div>
             )}
-            <div className="field"><label>To (email address)</label>
-              <input type="text" value={form.recipient} onChange={e => fld('recipient', e.target.value)} placeholder="first@email.com; second@email.com" />
+            <div data-email-compose-recipients style={{display:'flex',flexDirection:'column',gap:12,minWidth:0,marginBottom:14}}>
+              <div className="field" style={{margin:0,minWidth:0}}><label>To *</label>
+                <input type="text" value={form.recipient} onChange={e => fld('recipient', e.target.value)} placeholder="name@example.com" aria-label="To email recipients" />
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,240px),1fr))',gap:12,minWidth:0}}>
+                <div className="field" style={{margin:0,minWidth:0}}><label>CC <span style={{fontWeight:400,textTransform:'none',letterSpacing:0}}>(visible)</span></label>
+                  <input type="text" value={form.cc || ''} onChange={e => fld('cc', e.target.value)} placeholder="Add CC recipients" aria-label="CC email recipients" />
+                </div>
+                <div className="field" style={{margin:0,minWidth:0}}><label>BCC <span style={{fontWeight:400,textTransform:'none',letterSpacing:0}}>(private)</span></label>
+                  <input type="text" value={form.bcc || ''} onChange={e => fld('bcc', e.target.value)} placeholder="Add BCC recipients" aria-label="BCC email recipients" />
+                </div>
+              </div>
+              <div style={{fontSize:11,color:'var(--t3)',lineHeight:1.4}}>Separate multiple addresses with a comma or semicolon.</div>
             </div>
-            <div className="field"><label>CC (visible copies)</label>
-              <input type="text" value={form.cc || ''} onChange={e => fld('cc', e.target.value)} placeholder="Comma or semicolon separated" />
-            </div>
-            <div className="field"><label>BCC (private copies)</label>
-              <input type="text" value={form.bcc || ''} onChange={e => fld('bcc', e.target.value)} placeholder="Comma or semicolon separated" />
-            </div>
-            <div className="field"><label>Subject *</label>
+            <div className="field" style={{marginBottom:14}}><label>Subject *</label>
               <input value={form.subject} onChange={e => fld('subject', e.target.value)} placeholder="Email subject…" />
             </div>
 
-            {/* Quick templates */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Quick Templates</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {TEMPLATES.map(t => (
-                  <button key={t.label} className="btn sec" style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => useTemplate(t)}>{t.label}</button>
+            {/* Keep the common templates one tap away, without 20+ buttons
+                consuming the whole compose viewport. All originals remain in the selector. */}
+            <div data-email-compose-templates style={{marginBottom:14,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:8}}>
+                <label style={{fontSize:11,fontWeight:700,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.06em',margin:0}}>Quick templates</label>
+                <span style={{fontSize:11,color:'var(--t3)'}}>Optional</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',minWidth:0}}>
+                {TEMPLATES.slice(0,3).map(t=>(
+                  <button type="button" key={t.label} className="btn sec" onClick={()=>useTemplate(t)}
+                    style={{fontSize:11,padding:'6px 10px',borderRadius:7,whiteSpace:'normal',textAlign:'left'}}>{t.label}</button>
                 ))}
+                <select aria-label="Browse all email templates" defaultValue="" onChange={e=>{
+                  const chosen=TEMPLATES.find(t=>t.label===e.target.value)
+                  if(chosen)useTemplate(chosen)
+                  e.target.value=''
+                }} style={{width:'auto',maxWidth:'100%',minWidth:156,padding:'7px 10px',fontSize:12,borderRadius:7,flex:'0 1 auto'}}>
+                  <option value="">All templates ({TEMPLATES.length})…</option>
+                  {TEMPLATES.map(t=><option key={t.label} value={t.label}>{t.label}</option>)}
+                </select>
               </div>
             </div>
 
-            <div className="field"><label>Body *</label>
-              <textarea value={form.body} onChange={e => fld('body', e.target.value)} rows={14} spellCheck={true} lang="en" style={{ minHeight: 280, fontFamily: 'inherit', lineHeight: 1.7 }} placeholder="Email body…" />
+            <div className="field" style={{minWidth:0,marginBottom:14}}><label>Body *</label>
+              <textarea value={form.body} onChange={e => fld('body', e.target.value)} rows={8} spellCheck={true} lang="en"
+                style={{minHeight:190,maxHeight:'55vh',resize:'vertical',fontFamily:'inherit',lineHeight:1.6}}
+                placeholder="Write your email…" />
             </div>
 
             <div className="field" data-email-compose-attachments>
