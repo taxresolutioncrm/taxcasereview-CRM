@@ -77,4 +77,4 @@ revoke all privileges on table public.call_logs, public.fax_logs from anon;
 -- No public.sms_logs table exists in this database. Do not invent it.
 -- The admin-only scope metrics RPC already verifies _is_platform_admin();
 -- removing anonymous EXECUTE tightens the exposed RPC surface.
-revoke execute on function public.admin_taxres_crm_scope_metrics(uuid) from anon;
+revoke execute on function public.admin_taxres_crm_scope_metrics(uuid) from public, anon;
