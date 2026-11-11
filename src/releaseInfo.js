@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Final shared dashboard sidebar stabilization: theme-token backgrounds and text in source, accessible Previous/Next tip controls, no dot strip, preserved RSS links and rotating tips; all 3 offices',
   'Light-mode right sidebar source-level fix: theme-native surface and legible titles/links for Taxpayer Advocate and CRM Tips, and accessible Previous/Next tip navigation instead of dozens of dots',
   'Light dashboard news rail now has a structural selector compatible with already-cached Dashboard JS chunks lacking the recently added class, preserving dark-mode semantics and feed behavior',
   'Dashboard light mode now themes the entire Taxpayer Advocate and CRM Tips right sidebar, including rail background, readable headings, link cards and wrapped tip indicators, while preserving dark mode and RSS/tip behavior',
