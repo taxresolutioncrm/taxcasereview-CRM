@@ -15,8 +15,12 @@ const checks=[
   ['light tips contrast',light.includes('html.light .tax-dashboard-news-rail .tax-dashboard-tip-panel')],
   ['dark mode unmodified',!light.includes('html.dark .tax-dashboard-news-rail')],
   ['articles still linked',source.includes('tasFeeds.map((item, i)')],
-  ['tips navigation intact',source.includes('setTipIdx(i)')],
-  ['tip indicators wrap instead of overflow',source.includes("flexWrap: 'wrap', gap: 4, justifyContent: 'center'")],
+  ['tips navigation intact',source.includes('setTipIdx(i =>')],
+  ['tip navigation is accessible',source.includes('aria-label="CRM tip navigation"') && source.includes('Previous CRM tip') && source.includes('Next CRM tip')],
+  ['tip counter shown',source.includes('{tipIdx + 1} of {CRM_TIPS.length}')],
+  ['dozens of dots removed',!source.includes('tax-dashboard-tip-dot is-active')],
+  ['rail uses live theme tokens',source.includes("background: 'var(--sf)', color: 'var(--tx)', border: '1px solid var(--br)'")],
+  ['titles use theme tokens',source.includes("color: 'var(--tx)' }}>Taxpayer Advocate") && source.includes("color: 'var(--tx)' }}>CRM Tips")],
 ]
 assert(light.includes('html.light .tax-dashboard-theme-root > div:last-child,'),'Fallback light rail selector absent for cached lazy Dashboard chunks')
 for(const [name,pass]of checks)assert(pass,name)

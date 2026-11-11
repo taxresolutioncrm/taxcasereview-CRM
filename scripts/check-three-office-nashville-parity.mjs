@@ -92,7 +92,7 @@ for(const zone of ['Eastern','Central','Mountain','Pacific','Alaska','Hawaii']) 
 assert(dashboardSource.includes('setInterval(() => setTime(new Date()), 1000)'),'Live timezone clock update removed')
 assert(dashboardSource.includes('tasFeeds.map((item, i)'),'Taxpayer Advocate feed integration removed')
 assert(dashboardSource.includes('CRM_TIPS[tipIdx].tip'),'Rotating tip text removed')
-assert(dashboardSource.includes('setTipIdx(i)'),'Tip navigation removed')
+assert(dashboardSource.includes('setTipIdx(i =>'),'Tip navigation removed')
 assert(lightPolish.includes('html.light .tax-dashboard-tas-entry:hover'),'Article hover state missing')
 assert(lightPolish.includes('html.light .tax-dashboard-tip-dot.is-active'),'Light mode active tip indicator missing')
 
