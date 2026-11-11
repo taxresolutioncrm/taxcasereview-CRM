@@ -1242,7 +1242,6 @@ function Overview() {
   }
 
   const h = new Date().getHours()
-  const greeting = h<12?'Good morning':'h<17'?'Good afternoon':'Good evening'
 
   const KPI = [
     { label:'Monthly Recurring', val: `$${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981' },
