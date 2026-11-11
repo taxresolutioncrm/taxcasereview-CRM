@@ -10,7 +10,7 @@ assert.ok(ui.includes("rpc('admin_update_support_ticket_status'"),'Support statu
 assert.ok(ui.includes("statusSaveError && <div role=\"alert\""),'Failed ticket status update is visible')
 const sql=readFileSync('supabase/migrations/20261111063500_admin_portal_calendar_and_support_scope.sql','utf8')
 assert.ok(sql.includes('c.product_id = p_product_id'),'Calendar delete requires matching product')
-assert.ok(sql.includes("p_product_id = 'romylabs'") && sql.includes('c.product_id is null'),'Legacy RomyLabs event compatibility restricted')
+assert.ok(!sql.includes('c."assignedTo" ='),'Calendar deletion must not depend on hardcoded employee name')
 assert.ok(sql.includes('public._is_platform_admin()'),'Privileged calendar and support operations check platform admin')
 assert.ok(sql.includes('p_ticket_id uuid') && sql.includes('t.tenant_id is null'),'Support ticket RPC supports external product records')
 assert.ok(sql.includes('revoke all on function public.admin_update_support_ticket_status(uuid,text) from public, anon'),'Anonymous support RPC forbidden')
