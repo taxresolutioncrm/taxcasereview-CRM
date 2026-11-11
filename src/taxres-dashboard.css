@@ -8,7 +8,7 @@
 
 [data-card-idx] {
   min-height: 126px !important;
-  padding: 20px 20px 18px !important;
+  padding: 16px 14px !important;
   border-radius: 14px !important;
   border: 1px solid rgba(125, 165, 205, .18) !important;
   background:
@@ -48,15 +48,19 @@
 
 [data-card-idx] > div:nth-child(3) {
   padding-top: 7px !important;
-  gap: 14px !important;
+  gap: 8px !important;
   align-items: center !important;
+  min-width: 0 !important;
 }
+
+[data-card-idx] > div:nth-child(3) > div:first-child { min-width: 0 !important; flex: 1 1 auto !important; }
 
 /* Metric label */
 [data-card-idx] > div:nth-child(3) > div:first-child > div:first-child {
-  margin-bottom: 9px !important;
-  font-size: 10px !important;
-  line-height: 1.2 !important;
+  margin-bottom: 8px !important;
+  min-height: 25px !important;
+  font-size: 10.5px !important;
+  line-height: 1.25 !important;
   font-weight: 800 !important;
   letter-spacing: .105em !important;
   color: #9DB8CF !important;
@@ -64,10 +68,16 @@
 
 /* Metric value */
 [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
-  font-size: clamp(29px, 2.05vw, 35px) !important;
-  line-height: .98 !important;
+  font-size: clamp(22px, 1.75vw, 27px) !important;
+  line-height: 1 !important;
+  min-height: 30px !important;
   font-weight: 900 !important;
   letter-spacing: -.035em !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  max-width: 100% !important;
   text-shadow: none !important;
 }
 
@@ -81,9 +91,11 @@
 
 /* Consistent, quiet icon tile instead of a floating faded emoji. */
 [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
-  width: 44px !important;
-  height: 44px !important;
-  min-width: 44px !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  flex-shrink: 0 !important;
+  margin-left: 4px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -117,7 +129,7 @@ html.light [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child)
   [data-card-idx] { min-height: 118px !important; }
 }
 
-/* Phone: one clean column; no squeezed financial metrics. */
+/* Phone: shared geometry, tenant-specific two-column grid retained by tax-office cards. */
 @media (max-width: 640px) {
   .page-content div:has(> [data-card-idx]) {
     grid-template-columns: 1fr !important;
@@ -129,12 +141,26 @@ html.light [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child)
     border-radius: 12px !important;
   }
   [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(2) {
-    font-size: 29px !important;
+    font-size: clamp(17px, 4.7vw, 21px) !important;
+    min-height: 0 !important;
   }
   [data-card-idx] > div:nth-child(3) > div:last-child:not(:first-child) {
-    width: 40px !important;
-    height: 40px !important;
-    min-width: 40px !important;
-    font-size: 21px !important;
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    margin-left: 2px !important;
+    font-size: 17px !important;
   }
+}
+
+/* Source of truth for dashboard KPI layout in both themes. Narrow laptops
+   use three cards per row so amounts stay readable without ellipses. */
+@media (min-width: 1101px) and (max-width: 1500px) {
+  .page-content div:has(> [data-card-idx]) { grid-template-columns: repeat(3, minmax(0,1fr)) !important; }
+}
+@media (max-width: 640px) {
+  [data-card-idx] > div:nth-child(3) { gap: 4px !important; }
+  [data-card-idx] > div:nth-child(3) > div:first-child > div:first-child { font-size: 9px !important; min-height: 0 !important; margin-bottom: 3px !important; }
+  [data-card-idx] > div:nth-child(3) > div:first-child > div:nth-child(3) { font-size: 9px !important; margin-top: 2px !important; }
+  [data-card-idx] .tax-kpi-icon-optional { display: none !important; }
 }
