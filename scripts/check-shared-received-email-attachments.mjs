@@ -12,7 +12,7 @@ for(const [ok,message] of [
  [bulk.includes('authorizedMailbox') && bulk.includes('mailboxOwner'),'mailbox-owner isolation'],
  [bulk.includes("supabase.rpc('current_tenant_id')"),'authoritative office resolution'],
  [bulk.includes("p_column:'perm_documents'"),'document permission guard'],
- [bulk.includes("eq('tenant_id',tenantId).eq('id', selected.id)"),'exact client and office query'],
+ [/\.eq\('tenant_id',\s*tenantId\)\.eq\('id',\s*selected\.id\)/.test(bulk),'exact client and office query'],
  [bulk.includes('client_document_folder_id:folderId'),'client document folder ID'],
  [bulk.includes("upsert:false"),'storage never overwrites'],
  [bulk.includes("eq('storage_path',path)"),'repeat-filing duplicate avoidance'],
