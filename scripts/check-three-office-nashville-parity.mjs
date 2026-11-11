@@ -99,6 +99,9 @@ assert(lightPolish.includes('html.light .tax-dashboard-tip-dot.is-active'),'Ligh
 
 const formacorp=read('src/pages/FormaCorp.jsx')
 assert(formacorp.includes("client_id:linkedClient.id"),'FormaCorp must save a stable CRM client ID')
+assert(formacorp.includes("supabase.rpc('archive_shared_sunbiz_document'"),'Sunbiz PDF must atomically index both document views')
+assert(!formacorp.includes("let indexed=false\n    try {\n      const {error:docError}=await supabase.from('documents').insert"),'Sunbiz importer must not use partial sequential inserts')
+assert(formacorp.includes('if(caseSyncAllowed)'),'Sunbiz metadata import must synchronize existing and newly created business cases')
 assert(formacorp.includes("await syncFormationBusiness(payload,linkedClient.id)"),'Formation saves must sync business information')
 assert(formacorp.includes("eq('tenant_id',tenantId)"),'Formation client lookup must be tenant-scoped')
 assert(formacorp.includes("eq('id',client.id).eq('tenant_id',client.tenant_id)"),'Business Info writes must be tenant and client scoped')
@@ -136,6 +139,8 @@ assert(clients.includes(".delete()\n      .eq('id',doc.id).eq('tenant_id',tenant
 assert(clients.includes('deleteFolder(item)')&&clients.includes('renameFolder(item)'),'Folder maintenance controls required')
 assert(sql.includes('ENABLE ROW LEVEL SECURITY') && sql.includes('current_employee_permission')&&sql.includes('current_tenant_id'),'Folder DB RLS must enforce tenant and permissions')
 assert(sql.includes('validate_shared_document_folder')&&sql.includes('validate_shared_client_folder'),'Folder hierarchy + document ownership DB constraints required')
+assert(sql.includes('SECURITY INVOKER')&&sql.includes('archive_shared_sunbiz_document'),'Atomic Sunbiz indexing must run as invoker under RLS')
+assert(sql.includes('shared_sunbiz_document_hash_unique'),'Sunbiz imports must prevent duplicate document hashes')
 assert(sql.includes('reject_nonempty_shared_folder_delete') && sql.includes('legacy documents'),'Folder deletion must fail with documents, children, or ambiguous legacy docs')
 assert(sql.includes('shared_preparer_client_select_restrict') && sql.includes('shared_preparer_document_select_restrict'), 'Tax Preparer client/document row scoping must be enforced with restrictive RLS')
 assert(sql.includes("e.access='Tax Preparer'") && sql.includes("e.tenant_id=public.current_tenant_id()"), 'Prep assignment checker must scope by authenticated office and role')
