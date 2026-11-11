@@ -22,7 +22,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm install --no-save @playwright/test@1.55.0
-      - run: npx playwright install --with-deps chromium
+      - name: Verify GitHub runner Chrome is available
+        run: google-chrome --version
       - run: npm run build
       - name: Launch isolated production-bundle preview
         run: |
