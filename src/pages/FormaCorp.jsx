@@ -982,26 +982,22 @@ export default function FormaCorp() {
     const {error:uploadError}=await supabase.storage.from('documents')
       .upload(storagePath,new Blob([bytes],{type:'application/pdf'}),{upsert:false,contentType:'application/pdf'})
     if (uploadError) throw new Error('Sunbiz PDF storage failed: '+uploadError.message)
-    let indexed=false
+    // One database transaction indexes the file in BOTH authorized document
+    // views. If either insert fails, neither row commits. The newly uploaded
+    // storage object is removed on failure, avoiding a half-indexed client file.
     try {
-      const {error:docError}=await supabase.from('documents').insert([{
-        tenant_id:tenantId,client_id:client.id,client:client.name,clientname:client.name,
-        name:kind+' — '+caseRow.entity_name,docType:'Formation Documents',
-        client_document_folder_id:folderId,
-        file_name:fileName,original_file_name:file.name,
-        file_url:'storage://documents/'+storagePath,storage_path:storagePath,
-        file_size:file.size,file_hash:hash,source:'FormaCorp Sunbiz',
-        notes:'Florida Sunbiz PDF imported by staff; name checked against linked formation. State authenticity and approval are separately verified.',
-      }])
-      if (docError) throw new Error('Client business document index failed: '+docError.message)
-      indexed=true
-      const {error:caseDocError}=await supabase.from('formacorp_documents').insert([{
-        tenant_id:tenantId,case_id:c.id,document_type:'Florida Sunbiz — '+kind,
-        file_name:fileName,storage_path:storagePath,source:'Sunbiz PDF import',
-      }])
-      if (caseDocError) throw new Error('PDF is in the client business file, but FormaCorp index failed: '+caseDocError.message)
+      const {data:documentId,error:archiveError}=await supabase.rpc('archive_shared_sunbiz_document',{
+        p_case_id:c.id,p_client_id:client.id,p_folder_id:folderId,
+        p_file_name:fileName,p_original_file_name:file.name,
+        p_storage_path:storagePath,p_file_hash:hash,p_file_size:file.size,
+        p_kind:kind,
+      })
+      if(archiveError || !documentId) {
+        throw new Error('Sunbiz document could not be indexed atomically: '+(archiveError?.message||'No document ID returned'))
+      }
     } catch(error) {
-      if(!indexed) await supabase.storage.from('documents').remove([storagePath])
+      const {error:cleanupError}=await supabase.storage.from('documents').remove([storagePath])
+      if(cleanupError) console.error('[FormaCorp] Could not clean unindexed Sunbiz PDF',cleanupError)
       throw error
     }
     // Labeled PDF data fills missing fields only. Never assume approval or payment
