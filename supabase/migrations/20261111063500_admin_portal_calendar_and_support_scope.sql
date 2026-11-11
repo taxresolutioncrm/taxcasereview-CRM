@@ -78,3 +78,27 @@ revoke all privileges on table public.call_logs, public.fax_logs from anon;
 -- The admin-only scope metrics RPC already verifies _is_platform_admin();
 -- removing anonymous EXECUTE tightens the exposed RPC surface.
 revoke execute on function public.admin_taxres_crm_scope_metrics(uuid) from public, anon;
+
+-- Goals previously mislabelled today's appointment count as "Monthly Demos".
+-- This protected read-only aggregate uses the actual calendar month.
+create or replace function public.admin_monthly_calendar_event_count(p_month date default current_date)
+returns integer
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare v_count integer;
+begin
+  if not public._is_platform_admin() then
+    raise exception 'not authorized';
+  end if;
+  select count(*)::integer into v_count
+    from public.calevents c
+   where c.date::date >= date_trunc('month',p_month)::date
+     and c.date::date < (date_trunc('month',p_month) + interval '1 month')::date;
+  return coalesce(v_count,0);
+end;
+$$;
+revoke all on function public.admin_monthly_calendar_event_count(date) from public, anon;
+grant execute on function public.admin_monthly_calendar_event_count(date) to authenticated, service_role;
