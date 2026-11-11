@@ -24,4 +24,8 @@ assert.ok(ui.includes('>View integration</button>'),'System API controls navigat
 assert.ok(!ui.includes("alert('GA4 TaxRes:"),'No simulated connection confirmation')
 assert.ok(!ui.includes("alert('Bing: Send your API key"),'No dead Bing API connect alert')
 assert.ok(ui.includes("setTab('marketing')") && ui.includes("setTab('search')"),'Integration controls navigate to live tabs')
+assert.ok(sql.includes('revoke all privileges on table public.call_logs, public.fax_logs from anon;'),'Legacy log tables revoke anonymous grants without altering staff access')
+assert.ok(sql.includes('from public, anon;'),'Public inherited access must be revoked for admin metrics')
+const postflight=readFileSync('supabase/verification/20261111_admin_portal_audit_readonly.sql','utf8')
+assert.ok(postflight.includes('preserved_calendar_event_count') && postflight.includes('preserved_support_ticket_count'),'Postflight verifies preservation of records')
 console.log('PASS audited Admin Portal controls and migration contracts')
