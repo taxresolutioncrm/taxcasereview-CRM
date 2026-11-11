@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+test.use({channel:'chrome'})
 
 const ADMIN = 'https://admin.romylabs.com'
 const SUPABASE = 'https://mpxgxfqdbquzkrvvejkh.supabase.co'
