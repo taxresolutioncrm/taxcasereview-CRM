@@ -93,7 +93,7 @@ assert(dashboardSource.includes('tasFeeds.map((item, i)'),'Taxpayer Advocate fee
 assert(dashboardSource.includes('CRM_TIPS[tipIdx].tip'),'Rotating tip text removed')
 assert(dashboardSource.includes('setTipIdx(i =>') && dashboardSource.includes('Previous CRM tip') && dashboardSource.includes('Next CRM tip'),'Accessible tip navigation missing')
 assert(lightPolish.includes('html.light .tax-dashboard-tas-entry:hover'),'Article hover state missing')
-assert(lightPolish.includes('html.light .tax-dashboard-tip-dot.is-active'),'Light mode active tip indicator missing')
+assert(dashboardSource.includes('aria-label="CRM tip navigation"') && dashboardSource.includes('aria-label="Previous CRM tip"') && dashboardSource.includes('aria-label="Next CRM tip"'),'Accessible tip controls must replace obsolete dot indicator')
 
 
 const formacorp=read('src/pages/FormaCorp.jsx')
