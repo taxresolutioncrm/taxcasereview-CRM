@@ -31,7 +31,7 @@ Deno.serve(req=>{
   if(url.searchParams.get('audio')==='1'){
     return new Response(audio.slice(),{headers:{'Content-Type':'audio/wav','Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}})
   }
-  const playUrl=url.origin+url.pathname+'?audio=1'
+  const playUrl=(Deno.env.get('SUPABASE_URL')||'').replace(/\/$/,'')+'/functions/v1/romylabs-ringback?audio=1'
   const cxml='<?xml version="1.0" encoding="UTF-8"?><Response><Play loop="0">'+playUrl+'</Play></Response>'
   return new Response(cxml,{headers:{'Content-Type':'text/xml; charset=utf-8','Cache-Control':'no-store'}})
 })
