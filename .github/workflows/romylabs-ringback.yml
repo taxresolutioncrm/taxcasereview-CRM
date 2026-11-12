@@ -1,0 +1,25 @@
+name: RomyLabs inbound voice isolation checks
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/romylabs-ivr-route/**'
+      - 'supabase/functions/romylabs-ringback/**'
+      - 'supabase/config.toml'
+      - 'tests/romylabs-phone-flow.test.mjs'
+      - '.github/workflows/romylabs-ringback.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  romylabs-inbound:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify RomyLabs inbound ringback and unrelated-office isolation
+        run: node tests/romylabs-phone-flow.test.mjs
