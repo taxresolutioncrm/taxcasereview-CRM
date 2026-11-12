@@ -49,8 +49,11 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const DAYS   = Array.from({length:31},(_,i)=>String(i+1).padStart(2,'0'))
 const YDOB   = Array.from({length:100},(_,i)=>new Date().getFullYear()-18-i)
 
-const IRS_STATUS_OPTIONS = ['ACS','Notice Status','Queue for ACS','Currently Not Collectible','Installment Agreement','Garnishment','Levy Issued','Levied','Lien Filed','Appeals','Litigation','Released','Other']
+const IRS_STATUS_OPTIONS = ['ACS','RO','Notice Status','Queue for ACS','Currently Not Collectible','Installment Agreement','Garnishment','Levy Issued','Levied','Lien Filed','Appeals','Litigation','Released','Other']
 
+const STATE_STATUS_OPTIONS = IRS_STATUS_OPTIONS.filter(status => status !== 'RO')
+const isLegacyProfileChange = n => n?.note_type === 'System' && /^\s*✏️\s*Updated:/i.test(n?.text || '')
+const isHumanCaseNote = n => !['System','Email','SMS','Fax'].includes(n?.note_type) && !isLegacyProfileChange(n)
 const BLANK_DEP = { name:'', ssn:'', dob:'', relationship:'Child' }
 const BLANK = {
   clientType:'Individual', name:'', business_name:'', taxAssociate:'', clientAdmin:'', salesRep:'', phone:'', phone2:'', email:'',
@@ -1512,6 +1515,7 @@ export default function Clients() {
   const [uploadingDoc,setUploadingDoc]= useState(false)
   const [docForm,     setDocForm]     = useState({ name:'', docType:'IRS Notice', notes:'' })
   const [relNotes,    setRelNotes]    = useState([])
+  const [noteFeedMode, setNoteFeedMode] = useState('case')
   const [notesExpanded, setNotesExpanded] = useState(false)
   const [newNote,     setNewNote]     = useState('')
   const [noteVisibleToClient, setNoteVisibleToClient] = useState(false)
@@ -1997,7 +2001,16 @@ export default function Clients() {
     load()
     if (data) {
       const changes = summarizeFieldChanges(before, data)
-      if (changes.length) { await logAction(data.name, `✏️ Updated: ${changes.join(', ')}`); loadRelated(data.name) }
+      if (changes.length) {
+        await logAction(data.name, `✏️ Client profile updated (${changes.length} fields)`)
+        await logActivity(supabase, {
+          employeeName: resolveActorName(user, employees), employeeEmail: user?.email,
+          action: 'client_profile_updated', category: 'client',
+          description: 'Client profile updated', entityName: data.name, entityId: data.id,
+          meta: { changed_field_count: changes.length },
+        })
+        loadRelated(data.name, data.id)
+      }
     }
   }
 
@@ -2835,7 +2848,7 @@ export default function Clients() {
                     <span className="bdg ba" style={{fontSize:13,fontWeight:700,padding:'5px 12px',borderRadius:20}}>{c.stateStatus==='Other'?(c.stateStatusOther||'Other'):(c.stateStatus||'—')}</span>
                     <select value={c.stateStatus||''} onChange={e=>applyStatusField('stateStatus',e.target.value)} style={{fontSize:12,padding:'5px 8px',borderRadius:8,background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',cursor:'pointer'}}>
                       <option value="">—</option>
-                      {IRS_STATUS_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
+                      {STATE_STATUS_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
                     </select>
                     {c.stateStatus==='Other'&&(
                       <input key={'stateOther-'+c.id} defaultValue={c.stateStatusOther||''}
@@ -2972,13 +2985,13 @@ export default function Clients() {
           {/* Overview Tab */}
           {detailTab==='overview'&&(
             <div style={{padding:16}}>
-              {(relNotes.length>0||c.notes)&&(
+              {(relNotes.some(isHumanCaseNote)||c.notes)&&(
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',color:'var(--t3)',marginBottom:6}}>Case Notes</div>
-                  {relNotes.length>0?(
+                  {relNotes.some(isHumanCaseNote)?(
                     <>
-                      <div style={{fontSize:13,color:'var(--t2)',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{relNotes[0].text}</div>
-                      <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>{relNotes[0].author||'Staff'} · {relNotes[0].created_at?new Date(relNotes[0].created_at).toLocaleString():''}</div>
+                      <div style={{fontSize:13,color:'var(--t2)',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{relNotes.find(isHumanCaseNote)?.text}</div>
+                      <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>{relNotes.find(isHumanCaseNote)?.author||'Staff'} · {relNotes.find(isHumanCaseNote)?.created_at?new Date(relNotes.find(isHumanCaseNote).created_at).toLocaleString():''}</div>
                     </>
                   ):(
                     <div style={{fontSize:13,color:'var(--t2)',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{c.notes}</div>
@@ -3138,15 +3151,19 @@ export default function Clients() {
                         return
                       }
                       setNewNote('');setNoteVisibleToClient(false)
-                      const{data}=await supabase.from('client_notes').select('*').eq('clientname',c.name).order('created_at',{ascending:false})
+                      const{data}=await supabase.from('client_notes').select('*').eq('tenant_id',myTenantId).eq('clientname',c.name).order('created_at',{ascending:false})
                       if(data)setRelNotes(data)
                     }}>
                     {addingNote?'…':'+ Add'}
                   </button>
                 </div>
               </div>
-              {relNotes.length===0&&<div style={{color:'var(--t3)',fontSize:13,textAlign:'center',padding:'20px 0'}}>No notes yet.</div>}
-              {relNotes.length>0 && (() => {
+              <div role="group" aria-label="Notes and system history" style={{display:'flex',gap:8,marginBottom:12}}>
+                <button type="button" className="btn sec" aria-pressed={noteFeedMode==='case'} onClick={()=>setNoteFeedMode('case')}>Case Notes</button>
+                <button type="button" className="btn sec" aria-pressed={noteFeedMode==='history'} onClick={()=>setNoteFeedMode('history')}>History</button>
+              </div>
+              {relNotes.filter(n=>noteFeedMode==='case'?isHumanCaseNote(n):!isHumanCaseNote(n)).length===0&&<div style={{color:'var(--t3)',fontSize:13,textAlign:'center',padding:'20px 0'}}>No notes yet.</div>}
+              {relNotes.some(n=>noteFeedMode==='case'?isHumanCaseNote(n):!isHumanCaseNote(n)) && (() => {
                 const typeConfig = {
                   'Email':  { icon: '📧', color: '#2563eb', bg: 'rgba(37,99,235,.12)' },
                   'SMS':    { icon: '💬', color: '#0891b2', bg: 'rgba(8,145,178,.12)' },
@@ -3170,7 +3187,7 @@ export default function Clients() {
                 const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
                 const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate() - 7)
                 const todayNotes = [], weekNotes = [], monthMap = new Map()
-                relNotes.forEach(n => {
+                relNotes.filter(n=>noteFeedMode==='case'?isHumanCaseNote(n):!isHumanCaseNote(n)).forEach(n => {
                   const d = n.created_at ? new Date(n.created_at) : null
                   if (d && d >= startOfToday) todayNotes.push(n)
                   else if (d && d >= startOfWeek) weekNotes.push(n)
@@ -3216,12 +3233,16 @@ export default function Clients() {
                                 <span style={{fontSize:11,color:'var(--t3)'}}>{n.created_at ? new Date(n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : ''}</span>
                                 {n.visible_to_client && <span style={{fontSize:10,fontWeight:700,color:'var(--ok)',background:'rgba(34,197,94,.12)',padding:'1px 7px',borderRadius:99}}>👁 Client can see this</span>}
                               </div>
-                              <EditableNote
-                                note={n}
-                                kind="client"
-                                onSaved={patch=>setRelNotes(prev=>prev.map(x=>x.id===patch.id?patch:x))}
-                                onReload={()=>loadRelated(c.name)}
-                              />
+                              {isLegacyProfileChange(n)
+                                ? <div style={{fontSize:13,color:'var(--tx)'}}>✏️ Client profile updated (legacy change details hidden)</div>
+                                : n.note_type === 'System'
+                                  ? <div style={{fontSize:13,color:'var(--tx)',whiteSpace:'pre-wrap'}}>{n.text}</div>
+                                  : <EditableNote
+                                      note={n}
+                                      kind="client"
+                                      onSaved={patch=>setRelNotes(prev=>prev.map(x=>x.id===patch.id?patch:x))}
+                                      onReload={()=>loadRelated(c.name)}
+                                    />}
                             </div>
                           </div>
                         )
@@ -4692,7 +4713,7 @@ function ClientFormModal({form,fld,reps,officeOptions=[],saving,onSave,onClose,t
             <div className="field"><label>State Status</label>
               <select value={form.stateStatus||''} onChange={e=>fld('stateStatus',e.target.value)}>
                 <option value="">— Select —</option>
-                {IRS_STATUS_OPTIONS.map(o=><option key={o}>{o}</option>)}
+                {STATE_STATUS_OPTIONS.map(o=><option key={o}>{o}</option>)}
               </select>
               {form.stateStatus==='Other'&&<input style={{marginTop:6}} value={form.stateStatusOther||''} onChange={e=>fld('stateStatusOther',e.target.value)} placeholder="Specify status"/>}
             </div>
