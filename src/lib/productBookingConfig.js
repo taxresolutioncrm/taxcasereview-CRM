@@ -128,6 +128,15 @@ export const PRODUCT_BOOKING_CONFIGS = {
     calendarLabel: '[PoolVerge]', notifyEmail: 'romy@romylabs.com',
     replyTo: 'romy@romylabs.com', fromName: 'PoolVerge', inactive: false,
   },
+  settlelift: {
+    key: 'settlelift', name: 'SettleLift',
+    logo: 'https://settlelift.com/assets/settlelift-logo.svg',
+    favicon: 'https://settlelift.com/favicon.svg', logoAlt: 'SettleLift',
+    headline: 'Schedule a SettleLift Demo',
+    types: ['Product Demo', 'Debt Settlement Operations Consultation', 'Follow-Up Call'],
+    calendarLabel: '[SettleLift]', notifyEmail: 'romy@settlelift.com',
+    replyTo: 'romy@settlelift.com', fromName: 'SettleLift', inactive: false,
+  },
   barbers_salons: {
     key: 'barbers_salons', name: 'ChairStyle', logo: '', favicon: '',
     logoAlt: 'ChairStyle', headline: 'Ask About ChairStyle Development',
@@ -181,6 +190,7 @@ export const PRODUCT_BADGE_COLORS = {
   bocasync:   { bg: '#1a2e1a', text: '#34d399', label: 'BocaSync'   },
   groundivo:  { bg: '#17351f', text: '#9bdc34', label: 'GroundIVO'  },
   pool_crm: { bg:'#144c56',text:'#5eead4',label:'PoolVerge' },
+  settlelift: { bg:'#101b36',text:'#90b4ff',label:'SettleLift' },
   barbers_salons: { bg:'#4a224f',text:'#f0abfc',label:'ChairStyle' },
   health_insurance: { bg:'#173452',text:'#93c5fd',label:'Health Insurance Agency CRM' },
   oculivo:     { bg: '#312e81', text: '#67e8f9', label: 'Oculivo'    },

@@ -13,6 +13,7 @@ const BOOKING_KINDS = new Set([
   'booking_reschedule_firm_notification',
 ])
 const PRODUCT_BRANDS: any = {
+  settlelift: { name: 'SettleLift', email: 'romy@settlelift.com' },
   romylabs: { name: 'RomyLabs', email: 'romy@romylabs.com' },
   camvella: { name: 'Camvella', email: 'romy@camvella.com' },
   arcvena: { name: 'Arcvena', email: 'romy@arcvena.com' },
