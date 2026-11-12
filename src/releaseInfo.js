@@ -9,7 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
-  'Nashville v3.2.4 parity: client Case Notes exclude automated profile changes, History retains concise actor-attributed audit entries with legacy field values masked',
+  'Nashville v3.2.4 parity: client Case Notes exclude automated profile and communication changes, History retains concise actor-attributed audit entries with legacy field values masked',
   'Email read/unread actions verify tenant- and mailbox-scoped persisted CRM state before reflecting the change and refreshing the sidebar badge',
   'Current IRS Status adds RO for clients and leads without modifying any State Status choices',
   'Received Email Attach All and inline preview for TCR, TaxRes and Centurion: authorized Gmail mailbox, exact client ID/folder, private storage, duplicate-safe repeat filing, per-file status, PDF/image/plain-text preview, preserving original Download and Compose',
