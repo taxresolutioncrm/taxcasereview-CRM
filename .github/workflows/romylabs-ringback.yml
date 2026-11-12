@@ -23,3 +23,22 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify RomyLabs inbound ringback and unrelated-office isolation
         run: node tests/romylabs-phone-flow.test.mjs
+
+      - name: Probe deployed RomyLabs ringback CXML and audio without placing calls
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          const base='https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/romylabs-ringback'
+          const xml=await fetch(base)
+          assert.equal(xml.status,200,'Ringback CXML must be public HTTP 200')
+          assert.match(xml.headers.get('content-type')||'',/text\/xml/)
+          assert.match(await xml.text(),/<Play loop="0">/)
+          const wav=await fetch(base+'?audio=1')
+          assert.equal(wav.status,200,'Ringback WAV must be public HTTP 200')
+          assert.match(wav.headers.get('content-type')||'',/audio\/wav/)
+          const bytes=new Uint8Array(await wav.arrayBuffer())
+          assert.equal(new TextDecoder().decode(bytes.subarray(0,4)),'RIFF')
+          assert.equal(new TextDecoder().decode(bytes.subarray(8,12)),'WAVE')
+          assert.ok(bytes.length>90000,'Expected six-second ringback sample')
+          console.log('PASS deployed RomyLabs conference ringback CXML and WAV media')
+          NODE
