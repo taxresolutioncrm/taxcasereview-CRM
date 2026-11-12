@@ -8,6 +8,13 @@ assert(sidebar.includes('v{releaseInfo.version}'),'visible sidebar production ve
 assert(sidebar.includes("What's New"),'release notes panel missing');
 assert(sidebar.includes('getReleaseInfo'),'sidebar must resolve per-office release metadata');
 assert(release.includes('OFFICE_RELEASES'),'per-office version support missing');
+for (const office of ['Tax Case Review','Centurion Firm']) {
+  const section = release.split('// ' + office)[1]?.split(/\n\s*},/)[0] || ''
+  assert(/version:\s*DEFAULT_RELEASE\.version/.test(section),
+    office + ' must use the shared CRM version instead of a diverging office number')
+}
+assert(release.includes("'a0000000-0000-0000-0000-000000000001': {\n    ...DEFAULT_RELEASE,"),
+  'TaxRes must use the shared release manifest')
 assert(pkg.version === '3.0.0' || /^3\.\d+\.\d+$/.test(pkg.version),'current formal-versioning line must remain in major version 3');
 assert(release.includes('Formal semantic versioning begins with this release baseline'),'formal v3.0.0 baseline disclosure missing');
 const nashvilleBlock = release.match(/'489ace07-1a6b-4864-833a-4f8420568b40':[\s\S]*?\n  },/)?.[0] || '';
@@ -22,7 +29,9 @@ function officeVersion(contents, office) {
   const marker = '// ' + office
   const index = contents.indexOf(marker)
   assert(index >= 0, office + ': release entry missing')
-  const match = contents.slice(index).match(/version:\s*'([0-9]+\.[0-9]+\.[0-9]+)'/)
+  const entry = contents.slice(index).split(/\n\s*},/)[0]
+  if (/version:\s*DEFAULT_RELEASE\.version/.test(entry)) return versionFrom(contents, 'shared CRM release')
+  const match = entry.match(/version:\s*'([0-9]+\.[0-9]+\.[0-9]+)'/)
   assert(match, office + ': invalid office version')
   return match[1]
 }
@@ -121,7 +130,7 @@ if (manifestCommits.length > 1 && !isNonfunctionalReleaseCandidate) {
       assert(/changes:\s*(?:ADMIN_DEMO_TASK_CHANGES|\[[^\]]*\.\.\.ADMIN_DEMO_TASK_CHANGES[^\]]*\])/.test(release),
         'Admin Portal-only functional changes require Admin Portal release notes')
     } else {
-      assert(release.includes("changes: IRS_WORKFLOW_CHANGES"),
+      assert(release.includes("changes: [...SHARED_NASHVILLE_PARITY_CHANGES, ...IRS_WORKFLOW_CHANGES]"),
         'Shared CRM functional changes require office release notes')
     }
   }

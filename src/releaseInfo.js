@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Shared TCR, TaxRes and Centurion release numbers now derive from one CRM version, so the three offices display identical version numbers after every common deployment; office-specific branding and historical release notes remain separate',
   'Client Roster search has one accessible in-field clear button and Esc-to-clear. Both local roster and global header search reset, preserving office, archive, status, representative and pipeline filters.',
   'Shared app refresh marker advanced for the published dashboard update so new page loads evict stale lazy-dashboard chunks and show theme-aware sidebar with Previous/Next tips.',
   'Final shared dashboard sidebar stabilization: theme-token backgrounds and text in source, accessible Previous/Next tip controls, no dot strip, preserved RSS links and rotating tips; all 3 offices',
@@ -278,19 +279,19 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.110',
+  version: '3.2.111',
   releasedAt: 'Pending production deployment',
-  title: 'RomyLabs Admin Portal 3.2.110 — Root-Cause Audit Stabilization',
+  title: `TaxRes ${'${DEFAULT_RELEASE.version}'} — Shared Tax CRM`,
   changes: [...SHARED_NASHVILLE_PARITY_CHANGES, "Fixed authenticated Admin Portal blank screen caused by missing hour binding in Overview greeting", "Calendar deletion now requires exact product match in guarded SQL", "Support status mutations use protected RPC and verify success", "RomyLabs goals show actual organic-search sessions and monthly Product Demos", "Integration controls navigate to actual reporting views; unused fake metrics and OAuth helper removed", "Anonymous SQL privileges reduced for logs and maintenance routines", 'Calendar event detail Delete and pending invite Decline now show a working confirmation dialog; an event disappears only after verified database deletion', 'Search Console defaults to Overall, showing all currently available Google performance data (up to 16 months) with exact dates; 7, 28, and 90-day views remain selectable', 'Overall disables invalid previous-period comparisons and labels 90-day saved fallback totals accurately', ...SPANISH_DASHBOARD_CHANGES, ...PAYMENTS_NASHVILLE_PARITY_CHANGES, 'Credential Vault product dropdowns list active products alphabetically by name, with All Products at the top and unchanged product IDs and access', 'Google Search Console reporting now supports live 7-day, 28-day and 90-day windows with previous-period deltas, exact data-through dates and refresh timestamps across all connected products', '90-day Search Console remains the canonical cached snapshot while shorter windows are fetched live on demand', 'PoolVerge Lakeside Pools office displays across the product hierarchy and office details using the registered, existing office ID; no duplicate tenant or fabricated usage', 'RomyLabs Billing offers registered external offices and distinguishes those without a subscription account, preserving the TaxRes picker; E-Signatures uses the PoolVerge label', 'Added an authenticated, product-scoped GA4 daily refresh coordinator; existing on-demand analytics and tracking are unchanged', 'TaxRes weekly owner growth report now isolates TaxRes GA4 rows, avoids double-counting channel and total rows, and preserves live owner/cron authentication', 'Microsoft Clarity metric cards now match Bing Webmaster Tools styling across all registered businesses, including responsive sizing and compact metadata', 'Fixed PoolVerge Bing Webmaster Tools reporting: add missing PoolVerge domain mapping while preserving other properties', 'Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 
 const OFFICE_RELEASES = {
   // Tax Case Review
   '61a89aef-0e7e-4ea2-b222-44ab2024655a': {
-    version: '3.2.93',
+    version: DEFAULT_RELEASE.version,
     releasedAt: 'Pending production deployment',
-    title: 'TCR 3.2.87 — Consolidated Tax CRM Release Candidate',
-    changes: IRS_WORKFLOW_CHANGES,
+    title: `TCR ${DEFAULT_RELEASE.version} — Shared Tax CRM`,
+    changes: [...SHARED_NASHVILLE_PARITY_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 
   // TaxRes administrative/default office
@@ -311,10 +312,10 @@ const OFFICE_RELEASES = {
 
   // Centurion Firm
   '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a': {
-    version: '3.2.94',
+    version: DEFAULT_RELEASE.version,
     releasedAt: 'Pending production deployment',
-    title: 'Centurion 3.2.88 — Consolidated Tax CRM Release Candidate',
-    changes: [...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
+    title: `Centurion ${DEFAULT_RELEASE.version} — Shared Tax CRM`,
+    changes: [...SHARED_NASHVILLE_PARITY_CHANGES, ...CENTURION_MOBILE_CHANGES, ...IRS_WORKFLOW_CHANGES],
   },
 }
 
