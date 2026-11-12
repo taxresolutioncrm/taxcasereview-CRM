@@ -53,7 +53,7 @@ const IRS_STATUS_OPTIONS = ['ACS','RO','Notice Status','Queue for ACS','Currentl
 
 const STATE_STATUS_OPTIONS = IRS_STATUS_OPTIONS.filter(status => status !== 'RO')
 const isLegacyProfileChange = n => n?.note_type === 'System' && /^\s*✏️\s*Updated:/i.test(n?.text || '')
-const isHumanCaseNote = n => !['System','Email','SMS','Fax'].includes(n?.note_type) && !isLegacyProfileChange(n)
+const isHumanCaseNote = n => !['System','Email','SMS','Fax','Call'].includes(n?.note_type) && !isLegacyProfileChange(n)
 const BLANK_DEP = { name:'', ssn:'', dob:'', relationship:'Child' }
 const BLANK = {
   clientType:'Individual', name:'', business_name:'', taxAssociate:'', clientAdmin:'', salesRep:'', phone:'', phone2:'', email:'',
