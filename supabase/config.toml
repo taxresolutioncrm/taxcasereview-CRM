@@ -33,6 +33,9 @@ verify_jwt = false
 verify_jwt = false
 [functions.romylabs-ivr-route]
 verify_jwt = false
+[functions.romylabs-ringback]
+# Public SignalWire conference waiting media (no data access).
+verify_jwt = false
 [functions.romylabs-voicemail-prompt]
 verify_jwt = false
 [functions.romylabs-voicemail-recorded]

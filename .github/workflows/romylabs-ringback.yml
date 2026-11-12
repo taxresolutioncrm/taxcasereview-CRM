@@ -1,0 +1,45 @@
+name: RomyLabs inbound voice isolation checks
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/romylabs-ivr-route/**'
+      - 'supabase/functions/romylabs-ringback/**'
+      - 'supabase/config.toml'
+      - 'tests/romylabs-phone-flow.test.mjs'
+      - '.github/workflows/romylabs-ringback.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  romylabs-inbound:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify RomyLabs inbound ringback and unrelated-office isolation
+        run: node tests/romylabs-phone-flow.test.mjs
+
+      - name: Probe deployed RomyLabs ringback CXML and audio without placing calls
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          const base='https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/romylabs-ringback'
+          const xml=await fetch(base)
+          console.log('Ringback CXML response:',xml.status,xml.headers.get('content-type'),(await xml.clone().text()).slice(0,280))
+          assert.equal(xml.status,200,'Ringback CXML must be public HTTP 200')
+          assert.match(await xml.text(),/<Play loop="0">/)
+          const wav=await fetch(base+'?audio=1')
+          console.log('Ringback WAV response:',wav.status,wav.headers.get('content-type'))
+          assert.equal(wav.status,200,'Ringback WAV must be public HTTP 200')
+          assert.match(wav.headers.get('content-type')||'',/audio\/wav/)
+          const bytes=new Uint8Array(await wav.arrayBuffer())
+          assert.equal(new TextDecoder().decode(bytes.subarray(0,4)),'RIFF')
+          assert.equal(new TextDecoder().decode(bytes.subarray(8,12)),'WAVE')
+          assert.ok(bytes.length>90000,'Expected six-second ringback sample')
+          console.log('PASS deployed RomyLabs conference ringback CXML and WAV media')
+          NODE

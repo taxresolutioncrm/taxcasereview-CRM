@@ -62,5 +62,5 @@ serve(async req=>{
 
   const statusCb=attr(`${base}/caller-hangup?conf=${encodeURIComponent(conf)}&tenant=${ADMIN_TENANT}`)
   const recordingCb=attr(`${base}/call-recorded?tenant=${ADMIN_TENANT}&callsid=${encodeURIComponent(callSid)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
-  return xml(`<Dial><Conference startConferenceOnEnter="false" endConferenceOnExit="false" statusCallback="${statusCb}" statusCallbackEvent="leave end" statusCallbackMethod="POST" record="record-from-start" recordingStatusCallback="${recordingCb}">${conf}</Conference></Dial>`)
+  return xml(`<Dial><Conference startConferenceOnEnter="false" endConferenceOnExit="false" waitUrl="${base}/romylabs-ringback?audio=1" waitMethod="GET" beep="false" statusCallback="${statusCb}" statusCallbackEvent="leave end" statusCallbackMethod="POST" record="record-from-start" recordingStatusCallback="${recordingCb}">${conf}</Conference></Dial>`)
 })
