@@ -759,28 +759,31 @@ export default function Email() {
     }
   }
 
+  // Server gateway owns provider + CRM persistence; verify scoped result before UI.
+  async function persistReadState(email, isRead) {
+    if (!email?.id || !myTenantId || !user?.email) throw new Error('Mailbox context unavailable')
+    const owner = String(centralMailboxOwner || user.email).trim()
+    if (String(email.mailbox_owner || '').toLowerCase() !== owner.toLowerCase()) throw new Error('Message belongs to a different mailbox')
+    await runMailboxAction(email.id, isRead ? 'read' : 'unread')
+    const { data, error } = await supabase.from('emails')
+      .select('id,is_read').eq('id', email.id).eq('tenant_id', myTenantId)
+      .ilike('mailbox_owner', owner).single()
+    if (error || !data || data.is_read !== isRead) throw new Error(error?.message || 'Mailbox read status not confirmed')
+    setEmails(rows => rows.map(row => row.id === email.id ? { ...row, is_read: isRead } : row))
+    setSelected(prev => prev?.id === email.id ? { ...prev, is_read: isRead } : prev)
+    scheduleFolderCountsRefresh()
+    window.dispatchEvent(new CustomEvent('shared-tax:mail-read-state-changed', {
+      detail: { tenantId: myTenantId, mailboxOwner: owner.toLowerCase(), messageId: email.id },
+    }))
+  }
   async function markRead(email) {
     if (email.is_read) return
-    setEmails(es => es.map(e => e.id === email.id ? { ...e, is_read: true } : e))
-    if (selected?.id === email.id) setSelected(prev => ({ ...prev, is_read: true }))
-    try {
-      await runMailboxAction(email.id, 'read')
-    } catch (e) {
-      await load()
-      showToast('Could not mark email read: ' + e.message)
-    }
+    try { await persistReadState(email, true) }
+    catch (e) { await load(); showToast('Could not mark email read: ' + e.message) }
   }
-
   async function markUnread(email) {
-    setEmails(es => es.map(e => e.id === email.id ? { ...e, is_read: false } : e))
-    if (selected?.id === email.id) setSelected(prev => ({ ...prev, is_read: false }))
-    try {
-      await runMailboxAction(email.id, 'unread')
-      showToast('Marked as new')
-    } catch (e) {
-      await load()
-      showToast('Could not mark email unread: ' + e.message)
-    }
+    try { await persistReadState(email, false); showToast('Marked as new') }
+    catch (e) { await load(); showToast('Could not mark email unread: ' + e.message) }
   }
 
   function openEmail(email, index) {
