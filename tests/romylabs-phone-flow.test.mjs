@@ -142,7 +142,7 @@ const generalIvrSource=readFileSync(new URL('../supabase/functions/ivr-route/ind
 const configSource=readFileSync(new URL('../supabase/config.toml', import.meta.url),'utf8')
 transformSync(romyIvrSource,{loader:'ts'})
 transformSync(romyRingbackSource,{loader:'ts'})
-assert.match(romyIvrSource,/startConferenceOnEnter="false" endConferenceOnExit="false" waitUrl="\$\{base\}\/romylabs-ringback" waitMethod="GET"/)
+assert.match(romyIvrSource,/startConferenceOnEnter="false" endConferenceOnExit="false" waitUrl="\$\{base\}\/romylabs-ringback\?audio=1" waitMethod="GET"/)
 assert.match(romyRingbackSource,/<Play loop="0">/)
 assert.match(romyRingbackSource,/Content-Type':'audio\/wav'/)
 assert.match(romyRingbackSource,/const CYCLE_SECONDS=6/)
