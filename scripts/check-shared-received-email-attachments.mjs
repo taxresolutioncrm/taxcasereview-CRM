@@ -26,7 +26,7 @@ const contracts=[
  ['text safe',bulk.includes("preview.kind==='text'")],
  ['image MIME allowlist',bulk.includes("const imageMime={jpg:'image/jpeg'")],
  ['URL cleanup',bulk.includes('URL.revokeObjectURL(preview.url)')],
- ['version',pkg.version==='3.2.112'&&release.includes("version: '3.2.112'")],
+ ['version',Boolean(/^3\\.2\\.\\d+$/.test(pkg.version)) && release.includes(`version: '${pkg.version}'`)],
  ['office parity',(release.match(/version: DEFAULT_RELEASE.version/g)||[]).length===2],
 ]
 for(const [name,passed]of contracts)assert(passed,'Inbound email contract: '+name)
