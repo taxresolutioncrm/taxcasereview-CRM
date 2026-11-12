@@ -30,6 +30,7 @@ jobs:
           import assert from 'node:assert/strict'
           const base='https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/romylabs-ringback'
           const xml=await fetch(base)
+          console.log('Ringback CXML response:',xml.status,xml.headers.get('content-type'),(await xml.clone().text()).slice(0,280))
           assert.equal(xml.status,200,'Ringback CXML must be public HTTP 200')
           assert.match(xml.headers.get('content-type')||'',/text\/xml/)
           assert.match(await xml.text(),/<Play loop="0">/)
