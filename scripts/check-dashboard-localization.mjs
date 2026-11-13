@@ -43,6 +43,6 @@ assert(i18n.includes("'MTD 2nd Trades': 'Cobros posteriores del mes'"), 'Later-c
 
 
 if (!dash.includes("whiteSpace: 'nowrap'")) throw new Error('Dashboard stat values are allowed to wrap again')
-if (!dash.includes("gridTemplateColumns: 'repeat(5, minmax(0, 1fr))'")) throw new Error('Dashboard stat grid lost minmax(0,1fr) hardening')
+if (!dash.includes("gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))'")) throw new Error('Dashboard stat grid lost responsive no-overflow hardening')
 
 console.log('Tax Case dashboard localization/format contract PASS')
