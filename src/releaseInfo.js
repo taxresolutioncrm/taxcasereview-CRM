@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'The five department home links live inside a compact collapsible Department Homes sidebar group instead of expanding the main Overview menu',
   'Each enabled department now has an actual Home route, sidebar link, and Office Overview shortcut, with existing workflows and employee permissions preserved',
   'The CRM Manual explains department-specific landing pages and the shared Office Overview, with maintained navigation mapping for all five Home links',
   'Five focused department homepages for Tax Resolution, Tax Preparation, Bookkeeping, Business Formation and HR & Payroll with shortcuts to existing approved tools',
