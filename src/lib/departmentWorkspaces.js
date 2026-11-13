@@ -19,6 +19,22 @@ const WORKSPACE_PATHS = Object.freeze({
   '/formacorp': 'formation',
 })
 
+// A focused workspace intentionally keeps only daily tools in the sidebar.
+// Advanced shared tools are not deleted or re-permissioned; staff can still
+// open authorized deep links. Existing employees' permissions remain intact.
+const FOCUSED_COMMON_PATHS = new Set([
+  '/', '/leads', '/clients', '/email', '/calendar', '/tasks', '/dialer',
+  '/sms', '/fax', '/documents', '/esign', '/invoices', '/payments',
+  '/employees', '/settings', '/reports', '/workflows',
+])
+export function isNavigationVisible(pathname, departments) {
+  const enabled = normalizeDepartments(departments)
+  if (enabled.length === 4) return true
+  const root='/' + String(pathname||'').split('/').filter(Boolean)[0]
+  const department=departmentForPath(root)
+  return department ? enabled.includes(department) : FOCUSED_COMMON_PATHS.has(root)
+}
+
 // Shared workspace tools (clients, leads, documents, communications, billing,
 // staff and administration) remain usable according to existing role permissions.
 // Nashvile is a separate application; this is only a defensive default in the
