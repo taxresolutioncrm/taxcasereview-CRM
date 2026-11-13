@@ -1,5 +1,3 @@
-// Sandbox source snapshot for Nashville's separately deployed platform-metrics function.
-// This file does not auto-deploy to Nashville. Promote separately only after acceptance.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -8,7 +6,8 @@ const cors = {
 }
 const NASHVILLE_TENANT = '489ace07-1a6b-4864-833a-4f8420568b40'
 const ROMYLABS_SUPABASE_URL = 'https://mpxgxfqdbquzkrvvejkh.supabase.co'
-const ROMYLABS_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1weGd4ZnFkYnF1emtydnZlamtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTk5MzksImV4cCI6MjA5NDg3NTkzOX0.puvhU1MV5nGOykizeTkwCpRR7NKKaGsVpA8oqjVjmu4'
+// SEC-002 fix: key stored in Supabase Edge Function Secrets as ROMYLABS_ANON_KEY
+const ROMYLABS_ANON_KEY = Deno.env.get('ROMYLABS_ANON_KEY') ?? ''
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
   headers: { ...cors, 'Content-Type': 'application/json' },
@@ -64,7 +63,7 @@ Deno.serve(async (req) => {
       sb.from('leads').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null),
       sb.from('leads').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null),
       sb.from('tasks').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).eq('done', false),
-      sb.from('employees').select('id,name,email,role,access,avatar_url').eq('tenant_id', NASHVILLE_TENANT).eq('status', 'Active'),
+      sb.from('employees').select('email').eq('tenant_id', NASHVILLE_TENANT).eq('status', 'Active'),
       sb.from('time_entries').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT),
       sb.from('billing_time_entries').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT),
       sb.from('cases').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT),
@@ -141,7 +140,6 @@ Deno.serve(async (req) => {
         since: tenant.created_at,
         mrr: tenant.monthly_rate ?? null,
         employee_count: activeEmployees.length,
-        employees: activeEmployees.map((e: any) => ({ id: e.id, name: e.name || '', email: e.email || '', role: e.role || e.access || '', avatar_url: e.avatar_url || null, last_activity: null })),
         active_staff: activeEmployees.length,
         total_clients: totalClients.count || 0,
         client_count: totalClients.count || 0,
