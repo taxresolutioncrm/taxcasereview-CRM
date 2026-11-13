@@ -51,7 +51,10 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
       onDrop={e => { e.currentTarget.style.opacity = '1'; onDrop(e, idx) }}
       onDragEnd={e => { e.currentTarget.style.opacity = '1'; onDragEnd() }}
       onClick={() => onCardClick(to)}
-      title="Drag to rearrange"
+      title={to ? 'Click to open '+label+'; drag to rearrange' : 'Drag to rearrange'}
+      role={to?'button':undefined}
+      tabIndex={to?0:undefined}
+      onKeyDown={e=>{if(to && (e.key==='Enter'||e.key===' ')){e.preventDefault();onCardClick(to)}}}
       style={{
         background: '#10283f',
         border: '1px solid #24435f',
@@ -468,8 +471,8 @@ export default function Dashboard() {
     (!card.to || isRouteInDepartments(card.to,officeDepartments,hrFeatures))
     && (!resolutionOnly || focusedResolutionCards.has(card.label))
     && (!card.to || can('view',card.to==='/'?'dashboard': ({
-      '/taxreturns':'taxreturns','/books':'bookkeeping','/formacorp':'formacorp',
-      '/timeclock':'kiosk','/payroll':'payroll',
+      '/taxreturns':'taxreturns','/books':'books','/formacorp':'formacorp',
+      '/timeclock':'dashboard','/payroll':'payroll',
     })[card.to] || card.to.slice(1)))
   )
 
@@ -611,7 +614,7 @@ export default function Dashboard() {
       <div className="detail-2col" style={{ display: 'grid', gridTemplateColumns: isTaxAdvisor ? '1fr' : '1fr 1fr', gap: 14 }}>
 
 
-        {!isTaxAdvisor && (
+        {!isTaxAdvisor && !focusOnly && (
         <>
         {/* Active Cases */}
         <div className="card">
@@ -689,7 +692,7 @@ export default function Dashboard() {
         </>
         )}
 
-        {showRecentClients ? (
+        {(focusOnly && oneDepartment==='hr') ? null : showRecentClients ? (
           /* Recent Clients — Tax Associate / Manager work client files day-to-day */
           <div className="card">
             <div className="ch">
@@ -699,7 +702,7 @@ export default function Dashboard() {
             {recentClients.length === 0
               ? <div style={{ color: 'var(--t3)', fontSize: 13, padding: '8px 0' }}>No clients yet</div>
               : recentClients.map(c => (
-                <div key={c.id} onClick={() => navigate('/clients')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--br)', cursor: 'pointer' }}>
+                <div key={c.id} onClick={() => navigate('/clients/'+encodeURIComponent(c.id))} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--br)', cursor: 'pointer' }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--ok)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                     {(c.name || '?')[0].toUpperCase()}
                   </div>
@@ -746,7 +749,7 @@ export default function Dashboard() {
             ['📁 New Case', '/cases', 'cases'], ['✅ New Task', '/tasks', 'tasks'],
             ['🧾 New Invoice', '/invoices', 'invoices'], ['⏰ Add Deadline', '/deadlines', 'deadlines'],
             ['📅 Schedule', '/calendar', 'calendar'], ['💬 Team Chat', '/chat', 'chat'],
-          ].filter(([, , section]) => can('edit', section)).map(([label, to]) => (
+          ].filter(([, to, section]) => can('edit', section) && isRouteInDepartments(to,officeDepartments,hrFeatures) && (!focusOnly || (oneDepartment==='hr' ? false : oneDepartment==='preparation' ? !['/cases','/deadlines'].includes(to) : oneDepartment==='bookkeeping' ? !['/cases','/deadlines'].includes(to) : oneDepartment==='formation' ? !['/cases','/deadlines'].includes(to) : true))).map(([label, to]) => (
             <button key={label} className="btn" style={{ justifyContent: 'flex-start', fontSize: 13, padding: '9px 12px' }} onClick={() => navigate(to)}>
               {label}
             </button>
@@ -756,7 +759,7 @@ export default function Dashboard() {
       </div>
 
       {/* TAS Sidebar — right side, all roles */}
-      {(
+      {officeDepartments.includes('resolution') && (
         <div className="tax-dashboard-news-rail" style={{ display: 'flex', flexDirection: 'column', gap: 16, width: 230, flexShrink: 0, minWidth: 0, boxSizing: 'border-box', background: 'var(--sf)', color: 'var(--tx)', border: '1px solid var(--br)', borderRadius: 14, padding: 12 }}>
           <TASWidget />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28 }}>
