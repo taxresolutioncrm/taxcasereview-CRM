@@ -417,7 +417,10 @@ async function loadPlatformOfficeRowsFresh() {
         total_collected:0,
         transaction_count:0,
         status:office.status || (office.is_active === false ? 'inactive' : 'active'),
-        plan_tier:office.plan || office.subscription_status || cfg.label,
+        plan_tier:office.plan_tier || office.plan || office.subscription_status || (existing >= 0 ? rows[existing].plan_tier : null),
+        tenant_code:office.tenant_code || (existing >= 0 ? rows[existing].tenant_code : null),
+        primary_contact_name:office.primary_contact_name || (existing >= 0 ? rows[existing].primary_contact_name : null),
+        primary_contact_email:office.primary_contact_email || (existing >= 0 ? rows[existing].primary_contact_email : null),
         effective_monthly:Number(office.mrr || 0),
         // Never use office creation/registry timestamps as user activity.
         last_activity:office.last_activity || (singleOffice ? aggregateLastActivity : null),
@@ -1468,41 +1471,57 @@ function ExternalProductOfficePage({ productKey }) {
     let cancelled=false
     ;(async()=>{
       setLoading(true); setError('')
-      const {data,error:invokeError}=await supabase.functions.invoke('hub-proxy',{body:{product:productKey}})
+      // Resolve both sources independently. The product metrics feed owns current
+      // operational status/counts; the central registry stores signed-sale and
+      // office contact details. A successful metrics call can still omit those
+      // fields, so never return early before enriching the matching office.
+      const [metricsResult, registryResult, billingResult] = await Promise.all([
+        supabase.functions.invoke('hub-proxy',{body:{product:productKey}}),
+        supabase.rpc('admin_romylabs_office_registry'),
+        supabase.rpc('admin_romylabs_billing_totals'),
+      ])
       if(cancelled) return
+      const {data,error:invokeError}=metricsResult
+      const {data:registryRows,error:registryError}=registryResult
+      const {data:billingRows}=billingResult
       setMetrics(data?.metrics || {})
-      const {data:billingRows}=await supabase.rpc('admin_romylabs_billing_totals')
-      if(cancelled) return
       const account=(Array.isArray(billingRows)?billingRows:[]).find(b=>String(b.external_tenant_id)===officeId && (b.product_key===productKey || (productKey==='nashville'&&b.product_key==='taxres_crm')))
       setBilling(account||null)
       const offices=Array.isArray(data?.offices)?data.offices:[]
       const liveMatch=offices.find(o=>String(o.id)===officeId)
-      if(liveMatch){
-        setOffice(liveMatch)
-        setLoading(false)
-        return
-      }
-
-      // The central RomyLabs office registry is the durable fallback for
-      // required demo offices and any product office whose live metrics feed is
-      // temporarily unavailable or does not expose that office.
-      const {data:registryRows,error:registryError}=await supabase.rpc('admin_romylabs_office_registry')
-      if(cancelled) return
-      const registryMatch=(Array.isArray(registryRows)?registryRows:[]).find(
-        r=>r.product_key===productKey && String(r.external_office_id)===officeId
+      // Nashville is isolated in its own database, but some historical
+      // central office registry entries use the 'taxres_crm' product key.
+      const registryMatch=(Array.isArray(registryRows)?registryRows:[]).find(r=>
+        String(r.external_office_id)===officeId &&
+        (r.product_key===productKey || (productKey==='nashville' && r.product_key==='taxres_crm'))
       )
-      if(registryMatch){
-        setOffice({
+      if(liveMatch || registryMatch){
+        const registered=registryMatch ? {
           id:registryMatch.external_office_id,
           name:registryMatch.firm_name,
           status:registryMatch.status,
           is_active:!['inactive','suspended','cancelled'].includes(String(registryMatch.status||'').toLowerCase()),
           since:registryMatch.created_at,
+          tenant_code:registryMatch.metadata?.tenant_code || null,
           primary_contact_name:registryMatch.primary_contact_name || null,
           primary_contact_email:registryMatch.primary_contact_email || null,
           phone:registryMatch.primary_contact_phone || null,
           mrr:registryMatch.monthly_amount,
-        })
+          seats:registryMatch.seats,
+        } : {}
+        // Live fields override only when supplied. An absent metric never
+        // deletes a known contact/contract field from the office registry.
+        const merged={...registered}
+        if(liveMatch) for(const [key,value] of Object.entries(liveMatch)){
+          if(value!==null && value!==undefined && value!=='')merged[key]=value
+        }
+        // Live status is authoritative. Do not let an old cancelled registry
+        // value silently override an active Nashville CRM.
+        if(liveMatch && typeof liveMatch.is_active==='boolean'){
+          merged.status=liveMatch.is_active?'active':'inactive'
+          merged.is_active=liveMatch.is_active
+        }
+        setOffice(merged)
         setLoading(false)
         return
       }
@@ -1556,7 +1575,7 @@ function ExternalProductOfficePage({ productKey }) {
   const recentActions=Array.isArray(office.recent_actions)?office.recent_actions:[]
   const employees=Array.isArray(office.employees)?office.employees:[]
   return (
-    <div style={{padding:'28px 36px',maxWidth:1050}}>
+    <div style={{padding:'clamp(16px,3vw,32px)',maxWidth:1180,margin:'0 auto'}}>
       <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:28}}>
         <button onClick={()=>navigate('/crm-admin/offices')} style={{...S.btn('ghost'),padding:'6px 12px',fontSize:12}}>← Back</button>
         <div style={{width:14,height:14,borderRadius:'50%',background:cfg.color||'#6366f1'}}/>
@@ -1576,16 +1595,16 @@ function ExternalProductOfficePage({ productKey }) {
       <div style={{display:'flex',gap:2,marginBottom:20,borderBottom:'1px solid rgba(99,102,241,.15)'}}>
         {tabs.map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{padding:'8px 18px',borderRadius:'8px 8px 0 0',border:'none',cursor:'pointer',fontSize:13,fontWeight:tab.toLowerCase()===tb?700:400,marginBottom:-1,background:tab.toLowerCase()===tb?'rgba(99,102,241,.15)':'transparent',color:tab.toLowerCase()===tb?'#a5b4fc':'#475569',borderBottom:tab.toLowerCase()===tb?'2px solid #6366f1':'2px solid transparent'}}>{tb.charAt(0).toUpperCase()+tb.slice(1)}</button>)}
       </div>
-      {tab.toLowerCase()==='overview'&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+      {tab.toLowerCase()==='overview'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,340px),1fr))',gap:16}}>
         <div style={{...S.card,padding:18}}>
           <div style={{fontSize:12,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:12}}>Firm Details</div>
           {detailRows.map(([k,v])=><div key={k} style={{display:'flex',gap:8,padding:'5px 0',borderBottom:'1px solid rgba(99,102,241,.07)',fontSize:13}}>
-            <span style={{color:'#475569',width:120,flexShrink:0}}>{k}</span><span style={{color:'#e2e8f0'}}>{v}</span>
+            <span style={{color:'#94a3b8',width:124,flexShrink:0}}>{k}</span><span style={{color:'#e2e8f0'}}>{v}</span>
           </div>)}
         </div>
         <div><div style={{...S.card,padding:18,marginBottom:16}}>
           <div style={{fontSize:12,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:12}}>Admin Actions</div>
-          {recentActions.length===0?<div style={{color:'#475569',fontSize:13}}>No admin actions available.</div>:recentActions.slice(0,8).map((action,i)=><div key={action.id||i} style={{padding:'6px 0',borderBottom:'1px solid rgba(99,102,241,.07)',fontSize:12}}>
+          {recentActions.length===0?<div style={{color:'#94a3b8',fontSize:13,lineHeight:1.5}}>No recorded admin actions for this office.</div>:recentActions.slice(0,8).map((action,i)=><div key={action.id||i} style={{padding:'6px 0',borderBottom:'1px solid rgba(99,102,241,.07)',fontSize:12}}>
             <span style={{color:'#6366f1',fontWeight:600}}>{action.action||action.type}</span><span style={{color:'#475569'}}> · {action.created_at?fmtAgo(action.created_at):'—'}</span>
           </div>)}
         </div></div>
@@ -2162,6 +2181,7 @@ function OfficesList() {
   const [loadError, setLoadError] = useState('')
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState('all')
+  const [refreshKey,setRefreshKey] = useState(0)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -2179,7 +2199,7 @@ function OfficesList() {
       }
     })()
     return()=>{cancelled=true}
-  }, [])
+  }, [refreshKey])
 
   function openOffice(row) {
     if (row.is_product_main) {
@@ -2211,61 +2231,69 @@ function OfficesList() {
   }
 
   return (
-    <div style={{ padding:'28px 36px', width:'100%', maxWidth:1180, boxSizing:'border-box' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, marginBottom:18 }}>
+    <div style={{ padding:'clamp(16px,3vw,32px)', width:'100%', maxWidth:1360, margin:'0 auto', boxSizing:'border-box' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, marginBottom:24, flexWrap:'wrap' }}>
         <div>
-          <div style={{ fontSize:22, fontWeight:800, color:'#fff' }}>🏢 All Offices</div>
-          <div style={{fontSize:11,color:'#475569',marginTop:4}}>Grouped by CRM family so main products, demos, and customer offices stay together.</div>
+          <div style={{ fontSize:23, fontWeight:800, color:'#f8fafc' }}>All Offices</div>
+          <div style={{fontSize:12,color:'#94a3b8',marginTop:6}}>Manage CRM products, demo environments, and customer offices in one place.</div>
         </div>
-        <button onClick={()=>navigate('/crm-admin/provision')} style={S.btn('primary')}>➕ New Office</button>
+        <div style={{display:'flex',alignItems:'center',gap:9}}>
+          <button type="button" onClick={()=>{setRows(null);setRefreshKey(k=>k+1)}} disabled={!rows} style={{...S.btn('ghost'),fontSize:12,padding:'9px 13px'}} aria-label="Refresh office directory">↻ Refresh</button>
+          <button onClick={()=>navigate('/crm-admin/provision')} style={{...S.btn('primary'),fontSize:12,padding:'9px 16px'}}>＋ New Office</button>
+        </div>
       </div>
 
-      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:18,padding:'10px 12px',borderRadius:10,background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.12)'}}>
+      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:18,padding:'12px',borderRadius:12,background:'rgba(255,255,255,.025)',border:'1px solid rgba(99,102,241,.12)'}}>
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search office, product, plan, or status…"
           style={{flex:'1 1 280px',minWidth:220,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(99,102,241,.25)',background:'#0f0e1a',color:'#e2e8f0',outline:'none'}}/>
         {[['all','All'],['main','Main CRMs'],['offices','Customer Offices'],['demo','Demos']].map(([key,label])=>(
-          <button key={key} onClick={()=>setScope(key)} style={{...S.btn(scope===key?'primary':'ghost'),fontSize:11,padding:'7px 11px'}}>{label}</button>
+          <button key={key} onClick={()=>setScope(key)} style={{...S.btn(scope===key?'primary':'ghost'),fontSize:12,padding:'8px 12px'}}>{label}</button>
         ))}
       </div>
 
       {loadError && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:16}}>Unable to load offices: {loadError}</div>}
       {!rows ? <Spinner /> : groups.length===0 && !loadError ? <div style={{color:'#64748b',fontSize:13}}>No matching offices.</div> : (
-        <div style={{display:'flex',flexDirection:'column',gap:18}}>
+        <div style={{display:'flex',flexDirection:'column',gap:26}}>
           {groups.map(group=>(
             <section key={group.key}>
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                <div style={{fontSize:11,fontWeight:800,color:'#a5b4fc',textTransform:'uppercase',letterSpacing:'.08em'}}>{group.label}</div>
-                <div style={{fontSize:9,color:'#475569'}}>{group.rows.length} {group.rows.length===1?'row':'rows'}</div>
+                <div style={{fontSize:12,fontWeight:800,color:'#c4b5fd',textTransform:'uppercase',letterSpacing:'.08em'}}>{group.label}</div>
+                <div style={{fontSize:11,color:'#94a3b8'}}>{group.rows.length} {group.rows.length===1?'row':'rows'}</div>
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(340px,1fr))', gap:10 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(100%,310px),1fr))', gap:12 }}>
                 {group.rows.map(r=>{
                   const activeStaff=r.employee_count==null?null:Number(r.employee_count)
                   const seats=Number(r.billing_seats||0)>0?Number(r.billing_seats):activeStaff
-                  return <div key={r.id} data-romylabs-product={r.product} style={{ ...S.card, padding:'15px 16px', display:'flex', alignItems:'center', gap:13, cursor:'pointer',
-                    borderColor:r.is_product_main?'rgba(99,102,241,.35)':undefined, background:r.is_product_main?'rgba(99,102,241,.055)':undefined }}
-                    onClick={()=>openOffice(r)}>
-                    <div style={{ width:38,height:38,borderRadius:10,flexShrink:0,
-                      background:r.brand_color?r.brand_color+'33':'rgba(99,102,241,.15)',
-                      border:`2px solid ${r.brand_color||'#6366f1'}44`,
-                      display:'flex',alignItems:'center',justifyContent:'center',
-                      fontSize:15,fontWeight:800,color:r.brand_color||'#6366f1' }}>{(r.firm_name||'?')[0]}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                        <div style={{fontSize:14,fontWeight:800,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.firm_name}</div>
-                        {r.is_product_main && <span style={S.badge('#64748b')}>Main CRM</span>}
-                        {r.is_demo && <span style={S.badge('#f59e0b')}>Demo</span>}
+                  return <div key={r.id} data-romylabs-product={r.product}
+                    role="button" tabIndex={0}
+                    onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openOffice(r)}}}
+                    onClick={()=>openOffice(r)}
+                    style={{...S.card,padding:18,minWidth:0,cursor:'pointer',display:'flex',flexDirection:'column',justifyContent:'space-between',gap:18,
+                      borderRadius:13,borderColor:r.is_product_main?'rgba(99,102,241,.4)':'rgba(148,163,184,.19)',
+                      background:r.is_product_main?'rgba(99,102,241,.055)':undefined}}>
+                    <div style={{display:'flex',alignItems:'flex-start',gap:12,minWidth:0}}>
+                      <div aria-hidden="true" style={{width:40,height:40,borderRadius:11,flex:'0 0 40px',
+                        background:r.brand_color?r.brand_color+'24':'rgba(99,102,241,.12)',
+                        border:`1px solid ${r.brand_color||'#6366f1'}66`,
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:16,fontWeight:800,color:r.brand_color||'#a5b4fc'}}>{(r.firm_name||'?')[0]}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:14,fontWeight:750,lineHeight:1.4,color:'#f8fafc',overflowWrap:'anywhere'}}>{r.firm_name}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginTop:6}}>
+                          {r.is_product_main&&<span style={S.badge('#64748b')}>Main CRM</span>}
+                          {r.is_demo&&<span style={S.badge('#f59e0b')}>Demo</span>}
+                        </div>
                       </div>
-                      <div style={{fontSize:10,color:'#475569',marginTop:3}}>
-                        {r.is_product_main
-                          ? (r.app_url || 'Product workspace')
-                          : `Seats / Staff: ${seats==null?'—':seats.toLocaleString()} / ${activeStaff==null?'—':activeStaff.toLocaleString()} · ${r.client_count==null?'—':Number(r.client_count).toLocaleString()} clients`}
-                      </div>
+                      <span style={{...S.badge(STATUS_COLOR[r.status]||'#64748b'),flexShrink:0}}>{r.status}</span>
                     </div>
-                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:5,flexShrink:0}}>
-                      <span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span>
-                      <button onClick={e=>{e.stopPropagation();openOffice(r)}} style={{...S.btn('ghost'),padding:'5px 10px',fontSize:10}}>
-                        {r.is_product_main?'Open App ↗':'Open →'}
-                      </button>
+                    <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:12,borderTop:'1px solid rgba(148,163,184,.12)',paddingTop:12}}>
+                      <div style={{fontSize:11,lineHeight:1.6,color:'#94a3b8',minWidth:0,overflowWrap:'anywhere'}}>
+                        {r.is_product_main
+                          ? <span>{r.app_url||'Product workspace'}</span>
+                          : <><span>{seats==null?'—':seats.toLocaleString()} seats · {activeStaff==null?'—':activeStaff.toLocaleString()} staff</span>
+                            <div>{r.client_count==null?'Client count unavailable':Number(r.client_count).toLocaleString()+' clients'}</div></>}
+                      </div>
+                      <span style={{color:'#a5b4fc',fontSize:12,fontWeight:700,whiteSpace:'nowrap',flexShrink:0}}>{r.is_product_main?'Open App ↗':'View Office →'}</span>
                     </div>
                   </div>
                 })}
