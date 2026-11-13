@@ -51,6 +51,8 @@ assert.ok(adminUI.includes(".upsert({"))
 assert.ok(adminUI.includes("onConflict:'tenant_id'"))
 assert.ok(adminUI.includes('const confirmed=normalizeDepartments(data.departments,[])'))
 assert.ok(adminUI.includes("row.id!==NASHVILLE"))
+assert.ok(adminUI.includes('id:TAXRES'), 'Platform TaxRes office must appear in department selector')
+assert.ok(migration.includes('cardinality(departments) between 1 and 4'), 'Empty department sets must be rejected at the database')
 
 assert.ok(!migration.includes('NASHVILLE_TENANT_ID'))
 console.log('PASS: shared CRM tenant workspace department defaults, navigation, routing, dashboard and SQL contract')
