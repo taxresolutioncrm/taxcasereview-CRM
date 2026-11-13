@@ -42,7 +42,7 @@ export function normalizeHrFeatures(value, fallback=ALL_HR_FEATURES) {
   return HR_FEATURE_KEYS.filter(key=>value.includes(key))
 }
 export function isHrFeatureEnabled(pathname, features=ALL_HR_FEATURES) {
-  const root='/' + String(pathname||'').split('/').filter(Boolean)[0]
+  const root='/' + (String(pathname||'').split('/').filter(Boolean)[0] || '')
   const selected=normalizeHrFeatures(features)
   if (HR_TIME_PATHS.has(root)) return selected.includes('time_tracking')
   if (HR_PAYROLL_PATHS.has(root)) return selected.includes('payroll')
@@ -51,7 +51,7 @@ export function isHrFeatureEnabled(pathname, features=ALL_HR_FEATURES) {
 export function isNavigationVisible(pathname, departments, hrFeatures=ALL_HR_FEATURES) {
   const enabled = normalizeDepartments(departments)
   if (enabled.length === DEPARTMENT_KEYS.length) return isHrFeatureEnabled(pathname,hrFeatures)
-  const root='/' + String(pathname||'').split('/').filter(Boolean)[0]
+  const root='/' + (String(pathname||'').split('/').filter(Boolean)[0] || '')
   const department=departmentForPath(pathname)
   return department ? enabled.includes(department) && isHrFeatureEnabled(pathname,hrFeatures) : FOCUSED_COMMON_PATHS.has(root)
 }
