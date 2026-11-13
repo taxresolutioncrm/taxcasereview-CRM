@@ -9,6 +9,9 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Owner-only Settings > Office Departments toggles tenant-specific modules with read-back verification, compact navigation and resolution-focused dashboard',
+  'RomyLabs owner may configure each office\'s active departments from Settings → Office Departments; non-owner office administrators cannot modify workspace switches',
+  'Focused offices see a compact sidebar and resolution-first KPI list; full-feature offices retain existing navigation, with no client data deletion or permission changes',
   'Departmentalized CRM pilot: Centurion defaults to a focused Tax Resolution workspace; TCR and TaxRes retain all department navigation; business formation, bookkeeping and tax prep are separately selectable workspace modules',
   'Department settings are additive and tenant-scoped; existing employee permissions, plan tiers, records and Supabase isolation remain unchanged; Nashville remains an independent full-feature deployment',
   'Final closeout: audited client-note refreshes enforce active tenant; Centurion invitations and password setup return to the correct branded office; removed duplicate GitHub Pages push deployment trigger',
