@@ -10,7 +10,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
   'Restore the complete role-authorized Tax Resolution KPI set on original Home, including MTD collections and accounts receivable, for resolution-only offices',
-  'Responsive KPI grid balances one-department cards across desktop and mobile without duplicate Home pages, preserving existing Payments navigation and office switches',
+  'Responsive KPI grid balances one-department cards across desktop, tablet and mobile without duplicate Home pages, preserving existing Payments navigation and office switches',
   'Root-route navigation is now normalized so Home stays visible for focused offices, including resolution-only Centurion; approved department-specific metrics link to their existing screens',
   'The original Home button is restored for every office, retaining the existing dashboard layout, with tenant-scoped departmental metrics and clickable routes to the correct CRM information',
   'Focused tax preparation, bookkeeping, formation and HR offices display counts from their actual office source tables rather than unrelated IRS and sales KPIs; the original multi-service dashboard remains available',
