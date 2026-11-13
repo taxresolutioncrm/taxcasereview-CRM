@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import RomyLabsAgreementPanel from '../components/admin/RomyLabsAgreementPanel'
 import { PLAN_OPTIONS, normalizePlanTier, planLabel } from '../lib/planTiers'
-import { OFFICE_PRODUCTS, officePrice } from '../lib/productOfficePricing'
+import { OFFICE_PRODUCTS, officePrice, officePlanName, officePlanLimit } from '../lib/productOfficePricing'
 import { ALL_DEPARTMENTS, ALL_HR_FEATURES } from '../lib/departmentWorkspaces'
 
 const PLATFORM_ADMIN_EMAILS = ['romy@taxcasereview.org', 'romy@taxrescrm.net', 'romy@romylabs.com', 'info@romylabs.com']
@@ -248,9 +248,15 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
   const standardRate = officePrice(productKey, form.plan_tier)
   const seatsNumber = Number(seats)
   const enteredRate = billingMode === 'per_seat' ? Number(customSeatRate) : standardRate
-  const total = billingMode === 'flat' ? Number(flatMonthly) : seatsNumber * enteredRate
+  const total = billingMode === 'flat' ? Number(flatMonthly)
+    : billingMode === 'per_seat' ? seatsNumber * enteredRate
+    : product?.billingUnit === 'seat' ? seatsNumber * standardRate : standardRate
   const validMoney = value => /^\\d+(?:\\.\\d{1,2})?$/.test(value) && Number(value) >= 0
-  const pricingValid = product?.provisioning === 'taxres' && standardRate !== null &&
+  const previewValid = (billingMode === 'standard' ? standardRate !== null : true) &&
+    Number.isSafeInteger(seatsNumber) && seatsNumber > 0 && seatsNumber <= 100000 &&
+    (billingMode === 'standard' || (billingMode === 'per_seat' && validMoney(customSeatRate)) ||
+      (billingMode === 'flat' && validMoney(flatMonthly)))
+  const pricingValid = product?.provisioning === 'taxres' && previewValid &&
     Number.isSafeInteger(seatsNumber) && seatsNumber > 0 && seatsNumber <= 100000 &&
     (billingMode === 'standard' || (billingMode === 'per_seat' && validMoney(customSeatRate)) ||
       (billingMode === 'flat' && validMoney(flatMonthly)))
@@ -358,14 +364,15 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
               </select>
             </div>
             {product?.provisioning !== 'taxres' && <div role="status" style={{padding:'12px 14px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:8,color:'var(--tx)',fontSize:12.5,lineHeight:1.6}}>
-              {product.label} has its own isolated CRM backend. Its approved three-tier price catalog and separate provisioning connection must be configured before offices can be created here. No TaxRes tenant will be created for this product.
+              {product.label} uses an isolated CRM backend. Published prices appear below when verified; office creation stays disabled until this product's dedicated provisioning connection is available. No TaxRes tenant will be created for this product.
             </div>}
             <div className="field"><label htmlFor="office-plan">Pricing Tier *</label>
               <select id="office-plan" value={form.plan_tier} onChange={e=>fld('plan_tier',e.target.value)}>
-                {PLAN_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}{officePrice(productKey,p.value)!==null?' — '+money(officePrice(productKey,p.value))+'/user/mo':' — Rate not configured'}</option>)}
+                {PLAN_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}{officePlanName(productKey,p.value)!==p.label?' ('+officePlanName(productKey,p.value)+')':''}{officePrice(productKey,p.value)!==null?' — '+money(officePrice(productKey,p.value))+'/'+(product?.billingUnit||'office')+'/mo':' — Custom quote'}</option>)}
               </select>
             </div>
-            <div className="field"><label htmlFor="billing-seats">Purchased Seats *</label>
+            {officePlanLimit(productKey,form.plan_tier)&&<div style={{fontSize:12,color:'var(--t2)'}}>{officePlanLimit(productKey,form.plan_tier)}</div>}
+            <div className="field"><label htmlFor="billing-seats">{product?.billingUnit==='seat'?'Purchased Seats *':'Office Users / Seats *'}</label>
               <input id="billing-seats" type="number" min="1" max="100000" step="1" value={seats} onChange={e=>setSeats(e.target.value)} />
             </div>
             <div className="field"><label htmlFor="billing-mode">Office Billing *</label>
@@ -378,8 +385,8 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
             {billingMode==='per_seat' && <div className="field"><label htmlFor="custom-seat-rate">Custom Rate ($/user/month)</label><input id="custom-seat-rate" type="number" min="0" step="0.01" value={customSeatRate} onChange={e=>setCustomSeatRate(e.target.value)} placeholder="Enter negotiated seat rate" /></div>}
             {billingMode==='flat' && <div className="field"><label htmlFor="flat-monthly">Flat Office Rate ($/month)</label><input id="flat-monthly" type="number" min="0" step="0.01" value={flatMonthly} onChange={e=>setFlatMonthly(e.target.value)} placeholder="Enter negotiated monthly total" /></div>}
             <div aria-live="polite" style={{borderTop:'1px solid var(--br)',paddingTop:13,display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-              <div><div style={{color:'var(--t3)',fontSize:11,fontWeight:700,textTransform:'uppercase'}}>Estimated Monthly</div><div style={{fontSize:12,color:'var(--t2)'}}>{Number.isSafeInteger(seatsNumber)&&seatsNumber>0?seatsNumber+' purchased seat(s)':'Enter valid seat count'} · {billingMode==='standard'?'Standard':billingMode==='per_seat'?'Custom per-seat':'Flat-rate override'}</div></div>
-              <strong style={{color:'var(--tx)',fontSize:22}}>{pricingValid && Number.isFinite(total)?money(total):'—'}</strong>
+              <div><div style={{color:'var(--t3)',fontSize:11,fontWeight:700,textTransform:'uppercase'}}>Estimated Monthly</div><div style={{fontSize:12,color:'var(--t2)'}}>{Number.isSafeInteger(seatsNumber)&&seatsNumber>0?seatsNumber+' office user(s)':'Enter valid user count'} · {billingMode==='standard'?'Published '+(product?.billingUnit||'office')+' rate':billingMode==='per_seat'?'Custom per-seat':'Flat-rate override'}</div></div>
+              <strong style={{color:'var(--tx)',fontSize:22}}>{previewValid && Number.isFinite(total)?money(total):'Custom quote'}</strong>
             </div>
             <div style={{fontSize:11.5,color:'var(--t3)'}}>Pricing is stored only for this office. Changing this office does not modify the product's standard rate card or any other tenant.</div>
           </div>
