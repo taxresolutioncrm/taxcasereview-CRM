@@ -213,7 +213,7 @@ export default function TimeEntry({ clientId, clientName, embed = false, newEntr
       )}
 
       {filterClientId && <div role="status" style={{padding:'11px 14px',border:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',borderRadius:10,marginBottom:12,fontSize:13}}>
-        <strong>⏱ Automatically tracked client work:</strong> {autoMinutes.toFixed(1)} minutes · {autoSessions.length} sessions.
+        <strong>⏱ Recently tracked client work:</strong> {autoMinutes.toFixed(1)} minutes · {autoSessions.length} recent sessions.
         <span style={{display:'block',marginTop:4,fontSize:11,color:'var(--t2)'}}>Time is recorded while staff actively view this client. Hidden and idle tabs pause. These sessions are not payroll hours or billable charges; manually approved billing entries remain separate.</span>
       </div>}
 
