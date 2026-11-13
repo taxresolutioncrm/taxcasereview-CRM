@@ -109,4 +109,22 @@ assert.ok(!dashboard.includes('aria-label="Department homepages"'),'Unexpected d
 assert.ok(isNavigationVisible('/', ['resolution']), 'Original Home must be visible for resolution-only Centurion')
 assert.ok(isNavigationVisible('/', all), 'Original Home must be visible for all-feature offices')
 
+// One and only one original Home route; dashboard data comes from the proper tenant.
+for(const key of ['preparation','bookkeeping','formation','time_tracking','payroll']){
+  assert.ok(dashboard.includes("['"+key+"',"),"Missing genuine "+key+" source count")
+}
+for(const table of ['tax_returns','bookkeeping','formacorp','timeentries','payrollruns']){
+  assert.ok(dashboard.includes("['"+(table==='tax_returns'?'preparation':table==='timeentries'?'time_tracking':table==='payrollruns'?'payroll':table==='formacorp'?'formation':'bookkeeping')+"','"+table+"']"),"Unexpected source for "+table)
+}
+for(const route of ['/taxreturns','/books','/formacorp','/timeclock','/payroll']){
+  assert.ok(dashboard.includes("'"+route+"'"),'Focused Home missing drill-through '+route)
+}
+assert.ok(dashboard.includes("const scoped=q=>tf(q,officeTenantId)"),'Dashboard must query active office tenant')
+assert.ok(dashboard.includes(".eq('tenant_id',tenantId)"),'Active office scope must be applied in queries')
+assert.ok(dashboard.includes("onClick={() => navigate('/clients/'+encodeURIComponent(c.id))}"),'Recent clients must open their own profile')
+assert.ok(dashboard.includes("officeDepartments.includes('resolution') && ("),'Resolution-only news rail must not spill into unrelated departments')
+assert.ok(dashboard.includes("isRouteInDepartments(to,officeDepartments,hrFeatures)"),'Quick actions must respect the enabled office features')
+assert.ok(dashboard.includes("role={to?'button':undefined}"),'KPI drill-through must be keyboard accessible')
+assert.ok(!dashboard.includes('aria-label="Department homepages"'),'No new department home cards are authorized')
+assert.ok(!app.includes('DepartmentHome'),'No separate department page should exist')
 console.log('PASS: shared CRM tenant workspace department defaults, navigation, routing, dashboard and SQL contract')
