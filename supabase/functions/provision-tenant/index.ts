@@ -71,6 +71,30 @@ serve(async (req) => {
     if (!firm_name || !tenant_code || !admin_email)
       return json({ error: 'firm_name, tenant_code, and admin_email are required' }, 400)
 
+    // This provisioner belongs only to the TaxRes project. Other products have
+    // separate isolated backends and must never be silently provisioned here.
+    if (b.product_key && b.product_key !== 'taxres_crm')
+      return json({error:'Selected CRM requires its own provisioning connection; no office created'}, 400)
+
+    const tierRates: Record<string, number> = {starter:79,professional:99,enterprise:129}
+    const tier = String(b.plan_tier || 'starter').toLowerCase()
+    if (!Object.prototype.hasOwnProperty.call(tierRates, tier))
+      return json({error:'Invalid plan tier'},400)
+    const billingMode = b.billing_mode || 'standard'
+    if (!['standard','per_seat','flat'].includes(billingMode))
+      return json({error:'Invalid billing mode'},400)
+    const seats = Number(b.billing_seats ?? 1)
+    const customRate = Number(b.custom_rate)
+    const flatRate = Number(b.flat_rate)
+    if (!Number.isSafeInteger(seats) || seats < 1 || seats > 100000)
+      return json({error:'Seats must be a whole number greater than zero'},400)
+    if (billingMode === 'per_seat' && (!Number.isFinite(customRate) || customRate < 0 || customRate > 1000000 || Math.abs(Math.round(customRate * 100) - customRate * 100) > 0.00001))
+      return json({error:'Custom seat rate must be a valid non-negative dollar amount'},400)
+    if (billingMode === 'flat' && (!Number.isFinite(flatRate) || flatRate < 0 || flatRate > 100000000 || Math.abs(Math.round(flatRate * 100) - flatRate * 100) > 0.00001))
+      return json({error:'Flat monthly rate must be a valid non-negative dollar amount'},400)
+    const seatRate = billingMode === 'per_seat' ? customRate : tierRates[tier]
+    const flatOverride = billingMode === 'flat' ? flatRate : null
+
     // Validate workspace access before provisioning any tenant or login.
     // Existing provisioning clients that omit these fields retain all features.
     const departments = validateChoices(b.departments ?? [...DEPARTMENTS], DEPARTMENTS, false)
@@ -115,6 +139,28 @@ serve(async (req) => {
       return json({ error: rollbackError
         ? 'Department setup failed and the new office requires administrator cleanup: ' + rollbackError.message
         : 'Department setup could not be verified. Office creation was rolled back; no login issued.' }, 500)
+    }
+
+    // Save the contractual rate and purchased seats before creating auth.
+    // Fail closed if the values cannot be confirmed; no partial-price office.
+    const {error:billingError} = await admin.from('tenants').update({
+      per_seat_rate: seatRate,
+      monthly_rate: flatOverride,
+      billing_seats: seats,
+    }).eq('id',tid)
+    const {data:pricing, error:pricingReadError} = billingError
+      ? {data:null,error:billingError}
+      : await admin.from('tenants').select('per_seat_rate,monthly_rate,billing_seats').eq('id',tid).single()
+    if (pricingReadError || !pricing || Number(pricing.per_seat_rate)!==seatRate ||
+        Number(pricing.billing_seats)!==seats ||
+        (flatOverride===null ? pricing.monthly_rate!==null : Number(pricing.monthly_rate)!==flatOverride)) {
+      await admin.from('tenant_department_config').delete().eq('tenant_id',tid)
+      await admin.from('employees').delete().eq('tenant_id',tid)
+      await admin.from('settings').delete().eq('tenant_id',tid)
+      const {error:rollbackError}=await admin.from('tenants').delete().eq('id',tid)
+      return json({error:rollbackError
+        ? 'Billing setup failed; office requires administrator cleanup: '+rollbackError.message
+        : 'Billing setup could not be verified. Office creation rolled back.'},500)
     }
 
     // ── mint the admin login (email must match the employee email) ──
