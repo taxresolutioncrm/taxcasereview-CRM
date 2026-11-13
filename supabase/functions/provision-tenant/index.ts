@@ -88,9 +88,9 @@ serve(async (req) => {
     const flatRate = Number(b.flat_rate)
     if (!Number.isSafeInteger(seats) || seats < 1 || seats > 100000)
       return json({error:'Seats must be a whole number greater than zero'},400)
-    if (billingMode === 'per_seat' && (!Number.isFinite(customRate) || customRate < 0 || customRate > 1000000 || Math.round(customRate * 100) !== customRate * 100))
+    if (billingMode === 'per_seat' && (!Number.isFinite(customRate) || customRate < 0 || customRate > 1000000 || Math.abs(Math.round(customRate * 100) - customRate * 100) > 0.00001))
       return json({error:'Custom seat rate must be a valid non-negative dollar amount'},400)
-    if (billingMode === 'flat' && (!Number.isFinite(flatRate) || flatRate < 0 || flatRate > 100000000 || Math.round(flatRate * 100) !== flatRate * 100))
+    if (billingMode === 'flat' && (!Number.isFinite(flatRate) || flatRate < 0 || flatRate > 100000000 || Math.abs(Math.round(flatRate * 100) - flatRate * 100) > 0.00001))
       return json({error:'Flat monthly rate must be a valid non-negative dollar amount'},400)
     const seatRate = billingMode === 'per_seat' ? customRate : tierRates[tier]
     const flatOverride = billingMode === 'flat' ? flatRate : null
