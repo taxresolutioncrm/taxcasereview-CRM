@@ -9,6 +9,8 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Restore the complete role-authorized Tax Resolution KPI set on original Home, including MTD collections and accounts receivable, for resolution-only offices',
+  'Responsive KPI grid balances one-department cards across desktop, tablet and mobile without duplicate Home pages, preserving existing Payments navigation and office switches',
   'Root-route navigation is now normalized so Home stays visible for focused offices, including resolution-only Centurion; approved department-specific metrics link to their existing screens',
   'The original Home button is restored for every office, retaining the existing dashboard layout, with tenant-scoped departmental metrics and clickable routes to the correct CRM information',
   'Focused tax preparation, bookkeeping, formation and HR offices display counts from their actual office source tables rather than unrelated IRS and sales KPIs; the original multi-service dashboard remains available',
@@ -301,9 +303,9 @@ const FORMACORP_VAULT_FIX_CHANGES = [
 ]
 
 const DEFAULT_RELEASE = {
-  version: '3.2.117',
+  version: '3.2.118',
   releasedAt: 'Pending production deployment',
-  title: 'TaxRes 3.2.117 — Shared Tax CRM',
+  title: 'TaxRes 3.2.118 — Shared Tax CRM',
   changes: [...SHARED_NASHVILLE_PARITY_CHANGES, "Fixed authenticated Admin Portal blank screen caused by missing hour binding in Overview greeting", "Calendar deletion now requires exact product match in guarded SQL", "Support status mutations use protected RPC and verify success", "RomyLabs goals show actual organic-search sessions and monthly Product Demos", "Integration controls navigate to actual reporting views; unused fake metrics and OAuth helper removed", "Anonymous SQL privileges reduced for logs and maintenance routines", 'Calendar event detail Delete and pending invite Decline now show a working confirmation dialog; an event disappears only after verified database deletion', 'Search Console defaults to Overall, showing all currently available Google performance data (up to 16 months) with exact dates; 7, 28, and 90-day views remain selectable', 'Overall disables invalid previous-period comparisons and labels 90-day saved fallback totals accurately', ...SPANISH_DASHBOARD_CHANGES, ...PAYMENTS_NASHVILLE_PARITY_CHANGES, 'Credential Vault product dropdowns list active products alphabetically by name, with All Products at the top and unchanged product IDs and access', 'Google Search Console reporting now supports live 7-day, 28-day and 90-day windows with previous-period deltas, exact data-through dates and refresh timestamps across all connected products', '90-day Search Console remains the canonical cached snapshot while shorter windows are fetched live on demand', 'PoolVerge Lakeside Pools office displays across the product hierarchy and office details using the registered, existing office ID; no duplicate tenant or fabricated usage', 'RomyLabs Billing offers registered external offices and distinguishes those without a subscription account, preserving the TaxRes picker; E-Signatures uses the PoolVerge label', 'Added an authenticated, product-scoped GA4 daily refresh coordinator; existing on-demand analytics and tracking are unchanged', 'TaxRes weekly owner growth report now isolates TaxRes GA4 rows, avoids double-counting channel and total rows, and preserves live owner/cron authentication', 'Microsoft Clarity metric cards now match Bing Webmaster Tools styling across all registered businesses, including responsive sizing and compact metadata', 'Fixed PoolVerge Bing Webmaster Tools reporting: add missing PoolVerge domain mapping while preserving other properties', 'Each registered business can connect its own encrypted Microsoft Clarity Data Export token in Admin Portal SEO', 'Business-specific Clarity statistics remain separated and PoolVerge reporting stays unchanged', ...TAXRES_MOBILE_CHANGES, ...MOBILE_UX_CHANGES, ...OFFICE_ACCESS_CHANGES, ...ADMIN_DEMO_TASK_CHANGES],
 }
 

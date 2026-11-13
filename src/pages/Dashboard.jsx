@@ -442,8 +442,8 @@ export default function Dashboard() {
   // All-feature offices keep their established role-specific layout.
   // Focused offices get real data from the existing modules, with drill-through
   // to the corresponding authorized route (never fabricated placeholder totals).
-  const resolutionOnly = officeDepartments.length === 1 && officeDepartments[0] === 'resolution'
-  const focusedResolutionCards = new Set(['Active Cases','Open Leads','Clients','Open Tasks','Upcoming DL','Overdue DL','Unpaid Invoices'])
+  // Tax Resolution remains the original full financial + casework dashboard.
+  // Do not suppress payment or AR KPIs when it is the office's sole department.
   const oneDepartment = officeDepartments.length===1 ? officeDepartments[0] : null
   const focusOnly = oneDepartment && oneDepartment!=='resolution'
   const countCard=(label,key,to,icon,sub)=>({
@@ -469,7 +469,6 @@ export default function Dashboard() {
   ] : []
   const ALL_ROLE_CARDS = (focusOnly ? focusedCards : ROLE_CARDS).filter(card =>
     (!card.to || isRouteInDepartments(card.to,officeDepartments,hrFeatures))
-    && (!resolutionOnly || focusedResolutionCards.has(card.label))
     && (!card.to || can('view',card.to==='/'?'dashboard': ({
       '/taxreturns':'taxreturns','/books':'books','/formacorp':'formacorp',
       '/timeclock':'dashboard','/payroll':'payroll',
@@ -593,10 +592,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {officeDepartments.length !== 5 && <div role="status" style={{marginBottom:12,color:'var(--t2)',fontSize:13,fontWeight:700}}>{workspaceLabel(officeDepartments)} Workspace · Only the departments your office uses</div>}
+      {officeDepartments.length !== 5 && <div role="status" style={{marginBottom:14,color:'var(--t2)',fontSize:13,fontWeight:700}}>{workspaceLabel(officeDepartments)}</div>}
       {/* Stat cards — drag to rearrange, auto-saves per employee */}
       <div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 14 }}>
           {orderedCards.map((card, idx) => (
             <StatCard key={card.label} card={card} idx={idx}
               onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}
