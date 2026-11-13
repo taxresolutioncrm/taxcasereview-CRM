@@ -9,6 +9,8 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Each enabled department now has an actual Home route, sidebar link, and Office Overview shortcut, with existing workflows and employee permissions preserved',
+  'The CRM Manual explains department-specific landing pages and the shared Office Overview, with maintained navigation mapping for all five Home links',
   'Five focused department homepages for Tax Resolution, Tax Preparation, Bookkeeping, Business Formation and HR & Payroll with shortcuts to existing approved tools',
   'Office Overview includes links to each enabled department homepage; disabled departments remain hidden from navigation and direct department-home URLs',
   'RomyLabs Admin Portal and TaxRes CRM Settings now share one platform-owner Office Departments switchboard and its five workspaces and independent HR feature controls',
