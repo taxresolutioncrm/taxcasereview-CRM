@@ -19,6 +19,17 @@
 
 ---
 
+## Verified closeout addendum — 2026-11-13 (subsequent to original Claude report)
+
+The original audit below is retained as its historical snapshot. Its F-2 and F-3 pending statuses are superseded by this verified addendum.
+
+- **F-3 — LIVE DATABASE CONFIGURATION VERIFIED:** Read-only checks against the shared production Supabase project `mpxgxfqdbquzkrvvejkh` confirm `public.client_notes` has `relrowsecurity=true`. Its authenticated `tenant_scoped_staff_only` policy is **PERMISSIVE**, `FOR ALL`, with both `USING` and `WITH CHECK` restricting `tenant_id = (SELECT current_tenant_id())`. The additional `central_legacy_nashville_quarantine` policy is **RESTRICTIVE**, `FOR ALL`. No RLS migration is needed for F-3. This is a database configuration verification, **not** an authenticated multi-user penetration test.
+- **F-2 — FIXED IN SOURCE:** The Centurion `TRC-004` invitation now emits `office=centurion`, with source regression assertions added to `scripts/check-shared-tax-notes-email-ro-parity.mjs`. The shared password page consumes the `office` parameter without using it for authorization. Live invite delivery, password setup and function deployment remain unverified.
+- **Final source branch:** `release/shared-tax-v3.2.113-final-closeout-20261113`, combining the original v3.2.113 parity, Claude F-1/F-4, and this F-2 fix. Do not merge the superseded PR #8418 independently.
+- **Release verdict:** Source fixes are staged. Do not claim all three offices are production-certified until the final branch's CI gates, authenticated tenant isolation and critical user flows, and live Cloudflare deployments are verified. No production deployment is asserted by this report.
+
+---
+
 ## PART I — SCOPE AND ARCHITECTURE
 
 ### Shared Codebase Architecture
