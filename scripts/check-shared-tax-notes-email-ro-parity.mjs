@@ -34,4 +34,7 @@ assert.ok(invite.includes("tenant?.tenant_code==='TRC-004'?'centurion'"), 'Centu
 assert.match(invite, /office=\$\{encodeURIComponent\(office\)\}/, 'Invitation links must carry the resolved office code')
 assert.ok(familyPassword.includes("const office=params.get('office')||''"), 'Shared password setup must accept office code')
 assert.ok(familyPassword.includes("const isNashville=office==='nashville'"), 'Nashville password routing remains unchanged')
+assert.ok(familyPassword.includes("const isCenturion=office==='centurion'"), 'Centurion office code must activate its password flow')
+assert.ok(familyPassword.includes("'https://centurionfirm.taxrescrm.app/login?family=ready'"), 'Centurion password completion must return to the correct CRM hostname')
+assert.ok(familyPassword.includes("isCenturion?'?office=centurion':''"), 'Token cleanup must preserve Centurion office context')
 console.log('Shared tax notes, read-badge, IRS RO source regression: PASS')
