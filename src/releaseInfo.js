@@ -11,6 +11,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 const SHARED_NASHVILLE_PARITY_CHANGES = [
   'RomyLabs Admin Portal All Offices now uses cleaner responsive cards, readable status and action details, accessible keyboard navigation, and a manual refresh control',
   'Nashville office detail joins verified central contact information with live dedicated-project data, retaining live status and office identity without altering tenant records',
+  'Nashville authenticated metrics feed preserves the deployed secret-backed security configuration while exposing verified office contact and plan metadata',
   'New Office now supports product-aware published rates, preserved Starter / Professional / Enterprise control tiers, negotiated seat or monthly pricing, and fail-closed tenant-isolated provisioning',
   'Reports & Analytics tabs, Tax Returns KPI and firm summary now respect the enabled office departments; tax-resolution-only offices retain casework, collections and shared billing reports without unrelated preparation, formation or bookkeeping sections',
   'Restore the complete role-authorized Tax Resolution KPI set on original Home, including MTD collections and accounts receivable, for resolution-only offices',
