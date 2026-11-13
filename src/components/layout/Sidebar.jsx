@@ -8,7 +8,7 @@ import { OPEN_STATUSES } from '../../lib/caseStatuses'
 import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from '../../lib/centurionBrand'
 import { getReleaseInfo } from '../../releaseInfo'
-import { useOfficeDepartments } from '../../hooks/useOfficeDepartments'
+import { useOfficeWorkspace } from '../../hooks/useOfficeDepartments'
 import { isNavigationVisible, workspaceLabel } from '../../lib/departmentWorkspaces'
 import { getRecentClients, RECENT_CLIENTS_EVENT, recentClientsKey } from '../../lib/recentClients'
 
@@ -158,10 +158,10 @@ export default function Sidebar() {
     return () => { window.removeEventListener(RECENT_CLIENTS_EVENT, onChange); window.removeEventListener('storage', refresh) }
   }, [activeTenantId, user?.email])
   const releaseInfo = getReleaseInfo(activeTenantId || FIRM.tenantId || '')
-  const officeDepartments = useOfficeDepartments(myTenantId || activeTenantId)
+  const {departments:officeDepartments,hrFeatures} = useOfficeWorkspace(myTenantId || activeTenantId)
   const visibleSections = SECTIONS.map(section => ({
     ...section,
-    items:section.items.filter(item => isNavigationVisible(item.path,officeDepartments)),
+    items:section.items.filter(item => isNavigationVisible(item.path,officeDepartments,hrFeatures)),
   })).filter(section => section.items.length > 0)
 
   useEffect(() => {

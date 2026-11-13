@@ -17,7 +17,7 @@ import ImpersonationBanner from './components/ImpersonationBanner'
 import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
 import { usesMobileParity } from './lib/mobileParityTenants'
-import { useOfficeDepartments } from './hooks/useOfficeDepartments'
+import { useOfficeWorkspace } from './hooks/useOfficeDepartments'
 import { isRouteInDepartments } from './lib/departmentWorkspaces'
 
 
@@ -228,8 +228,8 @@ function RequireAuth({ children }) {
 // Blocks a route by role permission OR plan tier
 function Guard({ section, children }) {
   const { can, planTier, myTenantId } = useApp()
-  const officeDepartments = useOfficeDepartments(myTenantId)
-  const routeAllowedByOffice = isRouteInDepartments(window.location.pathname,officeDepartments)
+  const {departments:officeDepartments,hrFeatures} = useOfficeWorkspace(myTenantId)
+  const routeAllowedByOffice = isRouteInDepartments(window.location.pathname,officeDepartments,hrFeatures)
   const requiredTier = ROUTE_PLAN_MINIMUM[section]
   const tierBlocked = requiredTier && !planAtLeast(planTier, requiredTier)
   if (!routeAllowedByOffice) {
@@ -275,7 +275,7 @@ function Guard({ section, children }) {
 
 function Shell() {
   const { openModal, closeModal, realtimeOk, myTenantId } = useApp()
-  const officeDepartments = useOfficeDepartments(myTenantId)
+  const {departments:officeDepartments,hrFeatures} = useOfficeWorkspace(myTenantId)
   const navigate = useNavigate()
   const [showRealtimeWarning, setShowRealtimeWarning] = React.useState(false)
 
@@ -303,7 +303,7 @@ function Shell() {
           ['✅ Task',    '/tasks'],
           ['📄 Invoice', '/invoices'],
           ['💰 Payment', '/payments'],
-        ].filter(([,path]) => isRouteInDepartments(path,officeDepartments)).map(([label, path]) => (
+        ].filter(([,path]) => isRouteInDepartments(path,officeDepartments,hrFeatures)).map(([label, path]) => (
           <button key={label} onClick={() => { closeModal(); navigate(path) }} className="btn lg full" style={{ justifyContent:'flex-start', gap:10 }}>
             {label}
           </button>
