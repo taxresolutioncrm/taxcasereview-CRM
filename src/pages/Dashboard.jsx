@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { OPEN_STATUSES } from '../lib/caseStatuses'
 import { FIRM } from '../lib/firmBranding'
+import { useOfficeDepartments } from '../hooks/useOfficeDepartments'
+import { isRouteInDepartments, workspaceLabel } from '../lib/departmentWorkspaces'
 
 // When Romy is impersonating a tenant via the admin portal, his auth email
 // (romy@taxrescrm.net) has no employee row in that tenant, so current_tenant_id()
@@ -97,7 +99,8 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { user, role, employeeName, can } = useApp()
+  const { user, role, employeeName, can, myTenantId } = useApp()
+  const officeDepartments = useOfficeDepartments(myTenantId || FIRM.tenantId)
   const [metrics, setMetrics] = useState({})
   const [recentCases, setRecentCases] = useState([])
   const [tasks, setTasks] = useState([])
@@ -360,7 +363,7 @@ export default function Dashboard() {
 
 
   // All cards available per role — label is the unique key
-  const ALL_ROLE_CARDS = isTaxAdvisor ? [
+  const ROLE_CARDS = isTaxAdvisor ? [
     { label: 'Open Leads',           val: metrics.myOpenLeads,   color: 'var(--warn)', to: '/leads',     icon: '👤', sub: 'Assigned to you' },
     { label: 'Closed Leads',         val: metrics.myClosedLeads, color: 'var(--ok)',   to: '/leads',     icon: '🏁', sub: 'Assigned to you' },
     { label: 'MTD 1st Trades',       val: '$' + Math.round(metrics.my1stTradeMtd || 0).toLocaleString(), color: 'var(--ok)', to: '/leads', icon: '💰', sub: 'Inv. fees sold · your leads' },
@@ -399,6 +402,15 @@ export default function Dashboard() {
     { label: 'Overdue DL',    val: metrics.overdueDl,     color: metrics.overdueDl > 0 ? 'var(--bad)' : 'var(--ok)', to: '/deadlines', icon: '🚨' },
     { label: 'AR Outstanding', val: '$' + Math.round(metrics.arOutstanding || 0).toLocaleString(), color: '#ef4444', to: '/ar', icon: '💳', sub: 'Scheduled installments' },
   ]
+
+  // Centurion's focused office workspace starts with operational casework,
+  // not the full sales/billing dashboard. No KPI data or layouts are deleted.
+  const resolutionOnly = officeDepartments.length === 1 && officeDepartments[0] === 'resolution'
+  const focusedResolutionCards = new Set(['Active Cases','Open Leads','Clients','Open Tasks','Upcoming DL','Overdue DL','Unpaid Invoices'])
+  const ALL_ROLE_CARDS = ROLE_CARDS.filter(card =>
+    (!card.to || isRouteInDepartments(card.to,officeDepartments))
+    && (!resolutionOnly || focusedResolutionCards.has(card.label))
+  )
 
   // Ordered cards: apply saved order or use default
   const defaultOrder = ALL_ROLE_CARDS.map(c => c.label)
@@ -517,6 +529,7 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {officeDepartments.length !== 4 && <div role="status" style={{marginBottom:12,color:'var(--t2)',fontSize:13,fontWeight:700}}>{workspaceLabel(officeDepartments)} Workspace · Only the departments your office uses</div>}
       {/* Stat cards — drag to rearrange, auto-saves per employee */}
       <div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 14 }}>

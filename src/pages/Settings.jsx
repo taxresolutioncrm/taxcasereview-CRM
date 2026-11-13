@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import BookingSettings from '../components/BookingSettings'
+import OfficeDepartmentsSettings from '../components/settings/OfficeDepartmentsSettings'
 import { useApp } from '../context/AppContext'
 import { loadFirmBranding } from '../lib/firmBranding'
 
 const BUCKET = 'firm-assets'
 const NASHVILLE_TENANT_ID = '489ace07-1a6b-4864-833a-4f8420568b40'
+const PLATFORM_OWNER_EMAILS = new Set(['info@romylabs.com','romy@romylabs.com','romy@taxrescrm.net','romy@taxcasereview.org'])
 
 async function resolveSettingsTenantId() {
   const { data, error } = await supabase.rpc('current_tenant_id')
@@ -17,6 +19,7 @@ export default function Settings() {
   const { showToast, user, role, myTenantId } = useApp()
   const isPrivileged = ['Super Admin','Admin'].includes(role)
   const isNashville = myTenantId === NASHVILLE_TENANT_ID
+  const isPlatformOwner = Boolean(user?.id && PLATFORM_OWNER_EMAILS.has(String(user.email||'').toLowerCase())) && !isNashville
   const [tab, setTab] = useState(isPrivileged ? 'firm' : 'mysignature')
   const [saving, setSaving] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
@@ -423,18 +426,20 @@ export default function Settings() {
   // Tax Advisor / Tax Associate / Manager only ever see their own signature
   // editor + the live status page (read-only) — nothing firm-wide.
   const tabs = isPrivileged
-    ? ['firm', 'integrations', 'booking', 'branding', 'import', 'users', 'security', 'storage', 'statuses', 'billing', 'uptime']
-    : ['mysignature', 'uptime']
+    ? ['firm', ...(isPlatformOwner ? ['departments'] : []), 'integrations', 'booking', 'branding', 'import', 'users', 'security', 'storage', 'statuses', 'billing', 'uptime']
+    : ['mysignature', ...(isPlatformOwner ? ['departments'] : []), 'uptime']
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: 860, margin: '0 auto' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
         {tabs.map(t => (
           <button key={t} className={`btn${tab === t ? ' pri' : ''}`} onClick={() => setTab(t)} style={{ whiteSpace: 'nowrap' }}>
-            {t === 'firm' ? '🏢 Firm Info' : t === 'integrations' ? '🔌 Integrations' : t === 'booking' ? '📅 Online Booking' : t === 'branding' ? '🎨 Branding' : t === 'import' ? '📥 Import Data' : t === 'users' ? '👥 Users' : t === 'security' ? '🔒 Security' : t === 'storage' ? '💾 Storage' : t === 'statuses' ? '🏷️ Workflow Statuses' : t === 'billing' ? '⏱️ Billing Rates' : t === 'mysignature' ? '✍️ My Signature' : '🟢 Uptime'}
+            {t === 'firm' ? '🏢 Firm Info' : t === 'departments' ? '🧩 Office Departments' : t === 'integrations' ? '🔌 Integrations' : t === 'booking' ? '📅 Online Booking' : t === 'branding' ? '🎨 Branding' : t === 'import' ? '📥 Import Data' : t === 'users' ? '👥 Users' : t === 'security' ? '🔒 Security' : t === 'storage' ? '💾 Storage' : t === 'statuses' ? '🏷️ Workflow Statuses' : t === 'billing' ? '⏱️ Billing Rates' : t === 'mysignature' ? '✍️ My Signature' : '🟢 Uptime'}
           </button>
         ))}
       </div>
+
+      {tab === 'departments' && isPlatformOwner && <OfficeDepartmentsSettings user={user} showToast={showToast} />}
 
       {tab === 'firm' && isPrivileged && (
         <div className="card">
