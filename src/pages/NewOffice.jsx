@@ -387,14 +387,14 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
             <label style={{display:'block',fontWeight:800,fontSize:14,marginBottom:5}}>Office Departments</label>
             <p style={{fontSize:12,color:'var(--t2)',lineHeight:1.6,margin:'0 0 14px'}}>Choose what this office sees from day one. You can change it later from either CRM Settings or the RomyLabs Admin Portal. This is separate from plan tiers and staff permissions.</p>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:10}}>
-              {ALL_DEPARTMENTS.map(key=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13,fontWeight:650,color:'var(--tx)',cursor:'pointer'}}>
-                <input type="checkbox" aria-label={'Enable '+DEPARTMENT_LABELS[key]} checked={form.departments.includes(key)} onChange={e=>toggleDepartment(key,e.target.checked)} />
+              {ALL_DEPARTMENTS.map(key=><label key={key} style={{display:'flex',gap:10,alignItems:'center',minWidth:0,fontSize:13,lineHeight:1.4,fontWeight:650,color:'var(--tx)',cursor:'pointer',overflowWrap:'anywhere'}}>
+                <input type="checkbox" style={{width:18,height:18,flex:'0 0 18px',margin:0}} aria-label={'Enable '+DEPARTMENT_LABELS[key]} checked={form.departments.includes(key)} onChange={e=>toggleDepartment(key,e.target.checked)} />
                 {DEPARTMENT_LABELS[key]}
               </label>)}
             </div>
             {form.departments.includes('hr') && <div style={{borderTop:'1px solid var(--br)',marginTop:13,paddingTop:12,display:'flex',gap:16,flexWrap:'wrap'}}>
               {[{key:'time_tracking',name:'Time Tracking'},{key:'payroll',name:'Payroll Processing'}].map(item=><label key={item.key} style={{display:'flex',alignItems:'center',gap:7,fontSize:12,color:'var(--tx)'}}>
-                <input type="checkbox" checked={form.hr_features.includes(item.key)} onChange={e=>toggleHrFeature(item.key,e.target.checked)} />{item.name}
+                <input type="checkbox" style={{width:18,height:18,flex:'0 0 18px',margin:0}} checked={form.hr_features.includes(item.key)} onChange={e=>toggleHrFeature(item.key,e.target.checked)} />{item.name}
               </label>)}
             </div>}
             {!form.departments.length && <p role="alert" style={{color:'var(--bad)',fontSize:12}}>Select at least one department.</p>}
