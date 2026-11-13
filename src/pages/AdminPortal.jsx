@@ -417,7 +417,10 @@ async function loadPlatformOfficeRowsFresh() {
         total_collected:0,
         transaction_count:0,
         status:office.status || (office.is_active === false ? 'inactive' : 'active'),
-        plan_tier:office.plan || office.subscription_status || cfg.label,
+        plan_tier:office.plan_tier || office.plan || office.subscription_status || (existing >= 0 ? rows[existing].plan_tier : null),
+        tenant_code:office.tenant_code || (existing >= 0 ? rows[existing].tenant_code : null),
+        primary_contact_name:office.primary_contact_name || (existing >= 0 ? rows[existing].primary_contact_name : null),
+        primary_contact_email:office.primary_contact_email || (existing >= 0 ? rows[existing].primary_contact_email : null),
         effective_monthly:Number(office.mrr || 0),
         // Never use office creation/registry timestamps as user activity.
         last_activity:office.last_activity || (singleOffice ? aggregateLastActivity : null),
