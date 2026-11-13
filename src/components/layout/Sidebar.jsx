@@ -9,7 +9,7 @@ import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from '../../lib/centurionBrand'
 import { getReleaseInfo } from '../../releaseInfo'
 import { useOfficeDepartments } from '../../hooks/useOfficeDepartments'
-import { isRouteInDepartments, workspaceLabel } from '../../lib/departmentWorkspaces'
+import { isNavigationVisible, workspaceLabel } from '../../lib/departmentWorkspaces'
 import { getRecentClients, RECENT_CLIENTS_EVENT, recentClientsKey } from '../../lib/recentClients'
 
 const LOGO = '/logo.png'
@@ -161,7 +161,7 @@ export default function Sidebar() {
   const officeDepartments = useOfficeDepartments(myTenantId || activeTenantId)
   const visibleSections = SECTIONS.map(section => ({
     ...section,
-    items:section.items.filter(item => isRouteInDepartments(item.path,officeDepartments)),
+    items:section.items.filter(item => isNavigationVisible(item.path,officeDepartments)),
   })).filter(section => section.items.length > 0)
 
   useEffect(() => {
@@ -678,7 +678,7 @@ export default function Sidebar() {
         }
       </div>
 
-      <div aria-label="Active office departments" style={{fontSize:11,fontWeight:800,color:'var(--t2)',padding:'10px 15px 4px'}}>{workspaceLabel(officeDepartments)} Workspace</div>
+      {officeDepartments.length !== 4 && <div aria-label="Active office departments" style={{fontSize:11,fontWeight:800,color:'var(--t2)',padding:'10px 15px 4px'}}>{workspaceLabel(officeDepartments)} Workspace</div>}
       {visibleSections.map(section => {
         const isOpen = section.always || openKey === section.key
         const hasActive = !section.always && section.items.some(i => i.path !== '/' && location.pathname.startsWith(i.path))
