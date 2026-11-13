@@ -57,7 +57,8 @@ Deno.serve(async (req) => {
   try {
     // Total cards use non-deleted records; active counts remain separate operational metrics.
     const todayEt = new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
-    const [totalClients, activeClients, totalLeads, activeLeads, tasks, employees, timeEntries, billing, cases, invoices, esigns, demos, storage, activity] = await Promise.all([
+    const [tenantDetails, totalClients, activeClients, totalLeads, activeLeads, tasks, employees, timeEntries, billing, cases, invoices, esigns, demos, storage, activity] = await Promise.all([
+      sb.from('tenants').select('id,tenant_code,firm_name,firm_address,firm_phone,plan_tier,status,primary_contact_name,primary_contact_email,contract_start_date,contract_end_date,monthly_rate,per_seat_rate,notes,created_at').eq('id',NASHVILLE_TENANT).single(),
       sb.from('clients').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null),
       sb.from('clients').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null).eq('status', 'Active'),
       sb.from('leads').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null),
@@ -73,6 +74,8 @@ Deno.serve(async (req) => {
       sb.rpc('platform_storage_metrics'),
       sb.from('activity_log').select('created_at').eq('tenant_id', NASHVILLE_TENANT).order('created_at', { ascending: false }).limit(1),
     ])
+    if(tenantDetails.error || !tenantDetails.data) return json({ok:false,error:'Nashville office details unavailable'},503)
+    const tenant=tenantDetails.data
     const storageData = storage.data || {}
     const activeEmployees = employees.data || []
     const staffEmails = new Set(activeEmployees.map((employee: any) => String(employee.email || '').trim().toLowerCase()).filter(Boolean))
@@ -121,9 +124,22 @@ Deno.serve(async (req) => {
       },
       offices: [{
         id: NASHVILLE_TENANT,
-        name: 'Nashville Tax Solutions',
-        is_active: true,
-        mrr: 0,
+        name: tenant.firm_name || 'Nashville Tax Solutions',
+        tenant_code: tenant.tenant_code,
+        plan_tier: tenant.plan_tier,
+        status: tenant.status,
+        is_active: tenant.status === 'active',
+        primary_contact_name: tenant.primary_contact_name,
+        primary_contact_email: tenant.primary_contact_email,
+        phone: tenant.firm_phone,
+        firm_address: tenant.firm_address,
+        contract_start_date: tenant.contract_start_date,
+        contract_end_date: tenant.contract_end_date,
+        per_seat_rate: tenant.per_seat_rate,
+        monthly_rate: tenant.monthly_rate,
+        notes: tenant.notes,
+        since: tenant.created_at,
+        mrr: tenant.monthly_rate ?? null,
         employee_count: activeEmployees.length,
         employees: activeEmployees.map((e: any) => ({ id: e.id, name: e.name || '', email: e.email || '', role: e.role || e.access || '', avatar_url: e.avatar_url || null, last_activity: null })),
         active_staff: activeEmployees.length,
