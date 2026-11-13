@@ -12,8 +12,8 @@ import { isRouteInDepartments, isHrFeatureEnabled, workspaceLabel } from '../lib
 // returns NULL and RLS returns 0 rows. Fix: scope every data query explicitly
 // to FIRM.tenantId when it's available — safe for all sessions since FIRM is
 // always loaded with the correct tenant before Dashboard mounts.
-function tf(q) {
-  return FIRM.tenantId ? q.eq('tenant_id', FIRM.tenantId) : q
+function tf(q, tenantId = FIRM.tenantId) {
+  return tenantId ? q.eq('tenant_id',tenantId) : q
 }
 
 const TCR_TENANT_ID = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
@@ -133,6 +133,7 @@ export default function Dashboard() {
   }, [])
 
   async function load() {
+    const scoped=q=>tf(q,officeTenantId)
     if (FIRM.tenantId === NASHVILLE_TENANT_ID) {
       const { data: snapshot, error: snapshotError } = await supabase.rpc('nashville_dashboard_snapshot', {
         p_employee_name: employeeName || ''
@@ -156,16 +157,16 @@ export default function Dashboard() {
       { data: deadlines }, { data: arScheduled },
     ] = await Promise.all([
       (FIRM.tenantId === TCR_TENANT_ID
-        ? tf(supabase.from('leads').select('*')).is('deleted_at', null)
-        : tf(supabase.from('leads').select('*'))
+        ? scoped(supabase.from('leads').select('*')).is('deleted_at', null)
+        : scoped(supabase.from('leads').select('*'))
       ).order('created_at', { ascending: false }),
-      tf(supabase.from('clients').select('*').is('deleted_at', null)).order('created_at', { ascending: false }),
-      tf(supabase.from('cases').select('*')).order('created_at', { ascending: false }),
-      tf(supabase.from('tasks').select('*').not('deleted','is',true)).order('created_at', { ascending: false }),
-      tf(supabase.from('invoices').select('id,total,status,clientName')),
-      tf(supabase.from('payments').select('id,amount,status,created_at,source,enrolled_by')),
-      tf(supabase.from('deadlines').select('*')).order('dueDate', { ascending: true }),
-      tf(supabase.from('payments').select('amount,payment_status,scheduled_date').eq('payment_status', 'Scheduled')),
+      scoped(supabase.from('clients').select('*').is('deleted_at', null)).order('created_at', { ascending: false }),
+      scoped(supabase.from('cases').select('*')).order('created_at', { ascending: false }),
+      scoped(supabase.from('tasks').select('*').not('deleted','is',true)).order('created_at', { ascending: false }),
+      scoped(supabase.from('invoices').select('id,total,status,clientName')),
+      scoped(supabase.from('payments').select('id,amount,status,created_at,source,enrolled_by')),
+      scoped(supabase.from('deadlines').select('*')).order('dueDate', { ascending: true }),
+      scoped(supabase.from('payments').select('amount,payment_status,scheduled_date').eq('payment_status', 'Scheduled')),
     ])
 
     // Real tenant-scoped source tables for each optional practice area.
@@ -182,7 +183,7 @@ export default function Dashboard() {
       : officeDepartments.includes('hr') && hrFeatures.includes(key))
     const departmentResults = await Promise.all(countSources.map(async ([key,table]) => {
       const q=supabase.from(table).select('id',{count:'exact',head:true})
-      const {count,error} = await (officeTenantId ? q.eq('tenant_id',officeTenantId) : q)
+      const {count,error} = await scoped(q)
       if(error){console.error('[Dashboard] '+table+' count failed:',error.message);return [key,null]}
       return [key,count ?? 0]
     }))
