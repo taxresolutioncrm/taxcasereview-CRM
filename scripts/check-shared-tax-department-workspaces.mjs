@@ -99,4 +99,19 @@ assert.ok(provision.includes("admin.from('tenant_department_config').upsert"), '
 assert.ok(provision.includes("if (readError || !confirmed)"), 'Provisioning must fail closed on configuration verification')
 assert.ok(provision.indexOf("tenant_department_config').upsert") < provision.indexOf('admin.auth.admin.createUser'), 'Departments must be persisted before office admin login')
 assert.ok(!provision.includes('nashville.taxrescrm.app'), 'Separate Nashville office must not be reconfigured')
+
+const homes=read('src/pages/DepartmentHome.jsx')
+for(const key of all){
+  assert.equal(departmentForPath('/workspace/'+key),key,'Dedicated home route identifies '+key)
+  assert.ok(isRouteInDepartments('/workspace/'+key,[key]),key+' office can open its homepage')
+  assert.equal(isRouteInDepartments('/workspace/'+key,['resolution'].filter(k=>k!==key)),false,key+' home must be blocked when disabled')
+  assert.ok(homes.includes(key+':{'),key+' homepage must exist')
+  assert.ok(sidebar.includes("path:'/workspace/"+key+"'"),key+' must have a sidebar Home entry')
+}
+assert.ok(app.includes('path="/workspace/:department"'),'Department home route must be registered')
+assert.ok(homes.includes('if(!departments.includes(department))'),'Dedicated department homes must reject disabled departments')
+assert.ok(homes.includes('isRouteInDepartments(action.path,departments,hrFeatures)'),'Department shortcuts must honor office-enabled features')
+assert.ok(dashboard.includes('aria-label="Department homepages"'),'Office Overview must link to department homes')
+assert.ok(dashboard.includes("officeDepartments.includes(key)"),'Overview must display enabled department homes only')
+
 console.log('PASS: shared CRM tenant workspace department defaults, navigation, routing, dashboard and SQL contract')
