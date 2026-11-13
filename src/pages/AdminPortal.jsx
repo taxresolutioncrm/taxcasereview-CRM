@@ -1468,41 +1468,57 @@ function ExternalProductOfficePage({ productKey }) {
     let cancelled=false
     ;(async()=>{
       setLoading(true); setError('')
-      const {data,error:invokeError}=await supabase.functions.invoke('hub-proxy',{body:{product:productKey}})
+      // Resolve both sources independently. The product metrics feed owns current
+      // operational status/counts; the central registry stores signed-sale and
+      // office contact details. A successful metrics call can still omit those
+      // fields, so never return early before enriching the matching office.
+      const [metricsResult, registryResult, billingResult] = await Promise.all([
+        supabase.functions.invoke('hub-proxy',{body:{product:productKey}}),
+        supabase.rpc('admin_romylabs_office_registry'),
+        supabase.rpc('admin_romylabs_billing_totals'),
+      ])
       if(cancelled) return
+      const {data,error:invokeError}=metricsResult
+      const {data:registryRows,error:registryError}=registryResult
+      const {data:billingRows}=billingResult
       setMetrics(data?.metrics || {})
-      const {data:billingRows}=await supabase.rpc('admin_romylabs_billing_totals')
-      if(cancelled) return
       const account=(Array.isArray(billingRows)?billingRows:[]).find(b=>String(b.external_tenant_id)===officeId && (b.product_key===productKey || (productKey==='nashville'&&b.product_key==='taxres_crm')))
       setBilling(account||null)
       const offices=Array.isArray(data?.offices)?data.offices:[]
       const liveMatch=offices.find(o=>String(o.id)===officeId)
-      if(liveMatch){
-        setOffice(liveMatch)
-        setLoading(false)
-        return
-      }
-
-      // The central RomyLabs office registry is the durable fallback for
-      // required demo offices and any product office whose live metrics feed is
-      // temporarily unavailable or does not expose that office.
-      const {data:registryRows,error:registryError}=await supabase.rpc('admin_romylabs_office_registry')
-      if(cancelled) return
-      const registryMatch=(Array.isArray(registryRows)?registryRows:[]).find(
-        r=>r.product_key===productKey && String(r.external_office_id)===officeId
+      // Nashville is isolated in its own database, but some historical
+      // central office registry entries use the 'taxres_crm' product key.
+      const registryMatch=(Array.isArray(registryRows)?registryRows:[]).find(r=>
+        String(r.external_office_id)===officeId &&
+        (r.product_key===productKey || (productKey==='nashville' && r.product_key==='taxres_crm'))
       )
-      if(registryMatch){
-        setOffice({
+      if(liveMatch || registryMatch){
+        const registered=registryMatch ? {
           id:registryMatch.external_office_id,
           name:registryMatch.firm_name,
           status:registryMatch.status,
           is_active:!['inactive','suspended','cancelled'].includes(String(registryMatch.status||'').toLowerCase()),
           since:registryMatch.created_at,
+          tenant_code:registryMatch.metadata?.tenant_code || null,
           primary_contact_name:registryMatch.primary_contact_name || null,
           primary_contact_email:registryMatch.primary_contact_email || null,
           phone:registryMatch.primary_contact_phone || null,
           mrr:registryMatch.monthly_amount,
-        })
+          seats:registryMatch.seats,
+        } : {}
+        // Live fields override only when supplied. An absent metric never
+        // deletes a known contact/contract field from the office registry.
+        const merged={...registered}
+        if(liveMatch) for(const [key,value] of Object.entries(liveMatch)){
+          if(value!==null && value!==undefined && value!=='')merged[key]=value
+        }
+        // Live status is authoritative. Do not let an old cancelled registry
+        // value silently override an active Nashville CRM.
+        if(liveMatch && typeof liveMatch.is_active==='boolean'){
+          merged.status=liveMatch.is_active?'active':'inactive'
+          merged.is_active=liveMatch.is_active
+        }
+        setOffice(merged)
         setLoading(false)
         return
       }
