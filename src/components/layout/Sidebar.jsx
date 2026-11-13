@@ -535,12 +535,20 @@ export default function Sidebar() {
     const poll = setInterval(loadEmailTaskCounts, 180000)
     function onVisible() { if (document.visibilityState === 'visible') loadEmailTaskCounts() }
     document.addEventListener('visibilitychange', onVisible)
+    let debounce
+    function onReadStateChanged(event) {
+      if (event.detail?.tenantId !== activeTenantId) return
+      if (event.detail?.mailboxOwner !== String(user.email || '').trim().toLowerCase()) return
+      clearTimeout(debounce)
+      debounce = setTimeout(loadEmailTaskCounts, 120)
+    }
+    window.addEventListener('shared-tax:mail-read-state-changed', onReadStateChanged)
     const ch = supabase.channel('sidebar-email-tasks-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'emails' }, loadEmailTaskCounts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, loadEmailTaskCounts)
       .subscribe()
-    return () => { supabase.removeChannel(ch); clearInterval(poll); document.removeEventListener('visibilitychange', onVisible) }
-  }, [user])
+    return () => { supabase.removeChannel(ch); clearInterval(poll); clearTimeout(debounce); window.removeEventListener('shared-tax:mail-read-state-changed', onReadStateChanged); document.removeEventListener('visibilitychange', onVisible) }
+  }, [user, activeTenantId])
 
   // Chat badge — count messages (rebuild) newer than when this user last had /chat open
   useEffect(() => {

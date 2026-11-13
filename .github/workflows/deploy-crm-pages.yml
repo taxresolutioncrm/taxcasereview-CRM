@@ -1,17 +1,9 @@
 name: Deploy TCR CRM
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'scripts/**'
-      - 'index.html'
-      - 'vite.config.*'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/deploy-crm-pages.yml'
+  # Manual QA / emergency fallback only. Standard deployment is Cloudflare Pages
+  # (push to main → CF auto-build). Do NOT add push/pull_request/schedule triggers
+  # here — see AGENTS.md. The gh-pages branch receives this fallback build only.
   workflow_dispatch:
 
 permissions:

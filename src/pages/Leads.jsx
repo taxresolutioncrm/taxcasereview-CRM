@@ -91,7 +91,9 @@ const BLANK = {
   services:[], salesRep:'', contractFee:'', trade1Amount:'', trade1Date:'', trade2Amount:'', trade2Date:'', trade3Amount:'', trade3Date:''
 }
 
-const IRS_STATUS_OPTIONS = ['ACS','Notice Status','Queue for ACS','Currently Not Collectible','Installment Agreement','Garnishment','Levy Issued','Levied','Lien Filed','Appeals','Litigation','Released','Other']
+const IRS_STATUS_OPTIONS = ['ACS','RO','Notice Status','Queue for ACS','Currently Not Collectible','Installment Agreement','Garnishment','Levy Issued','Levied','Lien Filed','Appeals','Litigation','Released','Other']
+
+const STATE_STATUS_OPTIONS = IRS_STATUS_OPTIONS.filter(status => status !== 'RO')
 
 function Bdg({s,style}) { return <span className={`bdg ${STATUS_C[s]||'bn'}`} style={style}>{s}</span> }
 // Resolves the logged-in user's display name against the employees table by
@@ -2118,7 +2120,7 @@ export default function Leads() {
                 <div className="field"><label>State Status</label>
                   <select value={form.stateStatus||''} onChange={e=>fld('stateStatus',e.target.value)}>
                     <option value="">— Select —</option>
-                    {IRS_STATUS_OPTIONS.map(o=><option key={o}>{o}</option>)}
+                    {STATE_STATUS_OPTIONS.map(o=><option key={o}>{o}</option>)}
                   </select>
                   {form.stateStatus==='Other'&&<input style={{marginTop:6}} value={form.stateStatusOther||''} onChange={e=>fld('stateStatusOther',e.target.value)} placeholder="Specify status"/>}
                 </div>
