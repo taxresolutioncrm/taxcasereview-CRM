@@ -5,10 +5,12 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import RomyLabsAgreementPanel from '../components/admin/RomyLabsAgreementPanel'
 import { PLAN_OPTIONS, normalizePlanTier, planLabel } from '../lib/planTiers'
+import { ALL_DEPARTMENTS, ALL_HR_FEATURES } from '../lib/departmentWorkspaces'
 
 const PLATFORM_ADMIN_EMAILS = ['romy@taxcasereview.org', 'romy@taxrescrm.net', 'romy@romylabs.com', 'info@romylabs.com']
 const TCR_TENANT = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
-const BLANK = { firm_name:'', tenant_code:'', admin_name:'', admin_email:'', firm_phone:'', brand_color:'#2563eb', plan_tier:'starter' }
+const BLANK = { firm_name:'', tenant_code:'', admin_name:'', admin_email:'', firm_phone:'', brand_color:'#2563eb', plan_tier:'starter', departments:['resolution'], hr_features:[...ALL_HR_FEATURES] }
+const DEPARTMENT_LABELS = { resolution:'Tax Resolution',preparation:'Tax Preparation',bookkeeping:'Bookkeeping & Accounting',formation:'Business Formation',hr:'HR & Payroll' }
 const STATUS_COLORS = { active:'#10b981', trial:'#f59e0b', past_due:'#f97316', cancelled:'#ef4444' }
 
 function fmtBytes(n) {
@@ -238,12 +240,15 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
   const [copied, setCopied] = useState(false)
 
   function fld(k, v) { setForm(f => ({ ...f, [k]: v })) }
+  function toggleDepartment(key, checked) {setForm(f=>({...f,departments:ALL_DEPARTMENTS.filter(k=>k===key?checked:f.departments.includes(k))}))}
+  function toggleHrFeature(key,checked) {setForm(f=>({...f,hr_features:ALL_HR_FEATURES.filter(k=>k===key?checked:f.hr_features.includes(k))}))}
   function slugify(name) { return name.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 12) }
 
   async function submit() {
     if (!form.firm_name.trim() || !form.tenant_code.trim() || !form.admin_email.trim()) {
       showToast('Firm name, office code, and admin email are required'); return
     }
+    if (!form.departments.length) { showToast('Enable at least one office department before creating the office'); return }
     setSaving(true)
     const { data, error } = await supabase.functions.invoke('provision-tenant', {
       body: {
@@ -251,6 +256,7 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
         admin_name: form.admin_name.trim(), admin_email: form.admin_email.trim().toLowerCase(),
         firm_phone: form.firm_phone.trim() || null, brand_color: form.brand_color || null,
         plan_tier: form.plan_tier,
+        departments: form.departments, hr_features: form.hr_features,
       }
     })
     setSaving(false)
@@ -328,7 +334,23 @@ function NewOfficeForm({ onDone, onCancel, showToast, prefill }) {
               {PLAN_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label + ' — $' + p.price + '/user/mo'}</option>)}
             </select>
           </div>
-          <button className="btn pri" disabled={saving} onClick={submit} style={{marginTop:8,alignSelf:'flex-start',padding:'10px 24px'}}>
+          <div className="field" style={{padding:'14px 16px',background:'var(--s2)',border:'1px solid var(--br)',borderRadius:10}}>
+            <label style={{display:'block',fontWeight:800,fontSize:14,marginBottom:5}}>Office Departments</label>
+            <p style={{fontSize:12,color:'var(--t2)',lineHeight:1.6,margin:'0 0 14px'}}>Choose what this office sees from day one. You can change it later from either CRM Settings or the RomyLabs Admin Portal. This is separate from plan tiers and staff permissions.</p>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:10}}>
+              {ALL_DEPARTMENTS.map(key=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13,fontWeight:650,color:'var(--tx)',cursor:'pointer'}}>
+                <input type="checkbox" aria-label={'Enable '+DEPARTMENT_LABELS[key]} checked={form.departments.includes(key)} onChange={e=>toggleDepartment(key,e.target.checked)} />
+                {DEPARTMENT_LABELS[key]}
+              </label>)}
+            </div>
+            {form.departments.includes('hr') && <div style={{borderTop:'1px solid var(--br)',marginTop:13,paddingTop:12,display:'flex',gap:16,flexWrap:'wrap'}}>
+              {[{key:'time_tracking',name:'Time Tracking'},{key:'payroll',name:'Payroll Processing'}].map(item=><label key={item.key} style={{display:'flex',alignItems:'center',gap:7,fontSize:12,color:'var(--tx)'}}>
+                <input type="checkbox" checked={form.hr_features.includes(item.key)} onChange={e=>toggleHrFeature(item.key,e.target.checked)} />{item.name}
+              </label>)}
+            </div>}
+            {!form.departments.length && <p role="alert" style={{color:'var(--bad)',fontSize:12}}>Select at least one department.</p>}
+          </div>
+          <button className="btn pri" disabled={saving||!form.departments.length} onClick={submit} style={{marginTop:8,alignSelf:'flex-start',padding:'10px 24px'}}>
             {saving ? 'Creating office…' : 'Create Office'}
           </button>
         </div>
