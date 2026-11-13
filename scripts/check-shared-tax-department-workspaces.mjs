@@ -100,18 +100,31 @@ assert.ok(provision.includes("if (readError || !confirmed)"), 'Provisioning must
 assert.ok(provision.indexOf("tenant_department_config').upsert") < provision.indexOf('admin.auth.admin.createUser'), 'Departments must be persisted before office admin login')
 assert.ok(!provision.includes('nashville.taxrescrm.app'), 'Separate Nashville office must not be reconfigured')
 
-const homes=read('src/pages/DepartmentHome.jsx')
-for(const key of all){
-  assert.equal(departmentForPath('/workspace/'+key),key,'Dedicated home route identifies '+key)
-  assert.ok(isRouteInDepartments('/workspace/'+key,[key]),key+' office can open its homepage')
-  assert.equal(isRouteInDepartments('/workspace/'+key,['resolution'].filter(k=>k!==key)),false,key+' home must be blocked when disabled')
-  assert.ok(homes.includes(key+':{'),key+' homepage must exist')
-  assert.ok(sidebar.includes("path:'/workspace/"+key+"'"),key+' must have a sidebar Home entry')
-}
-assert.ok(app.includes('path="/workspace/:department"'),'Department home route must be registered')
-assert.ok(homes.includes('if(!departments.includes(department))'),'Dedicated department homes must reject disabled departments')
-assert.ok(homes.includes('isRouteInDepartments(action.path,departments,hrFeatures)'),'Department shortcuts must honor office-enabled features')
-assert.ok(dashboard.includes('aria-label="Department homepages"'),'Office Overview must link to department homes')
-assert.ok(dashboard.includes("officeDepartments.includes(key)"),'Overview must display enabled department homes only')
+// Keep the ORIGINAL Home route and sidebar item, with no invented department Home pages.
+assert.ok(sidebar.includes("path: '/',          icon: GridIcon,    label: 'Home'"), 'Original Home sidebar tab must remain')
+assert.ok(app.includes('<Route path="/"            element={<Dashboard />} />'),'Original Home must open shared Dashboard')
+assert.ok(!sidebar.includes("key: 'departmenthomes'"), 'Unexpected Department Homes sidebar group')
+assert.ok(!app.includes('path="/workspace/:department"'), 'Unexpected department homepage route')
+assert.ok(!dashboard.includes('aria-label="Department homepages"'),'Unexpected department cards on Home')
+assert.ok(isNavigationVisible('/', ['resolution']), 'Original Home must be visible for resolution-only Centurion')
+assert.ok(isNavigationVisible('/', all), 'Original Home must be visible for all-feature offices')
 
+// One and only one original Home route; dashboard data comes from the proper tenant.
+for(const key of ['preparation','bookkeeping','formation','time_tracking','payroll']){
+  assert.ok(dashboard.includes("['"+key+"',"),"Missing genuine "+key+" source count")
+}
+for(const table of ['tax_returns','bookkeeping','formacorp','timeentries','payrollruns']){
+  assert.ok(dashboard.includes("['"+(table==='tax_returns'?'preparation':table==='timeentries'?'time_tracking':table==='payrollruns'?'payroll':table==='formacorp'?'formation':'bookkeeping')+"','"+table+"']"),"Unexpected source for "+table)
+}
+for(const route of ['/taxreturns','/books','/formacorp','/timeclock','/payroll']){
+  assert.ok(dashboard.includes("'"+route+"'"),'Focused Home missing drill-through '+route)
+}
+assert.ok(dashboard.includes("const scoped=q=>tf(q,officeTenantId)"),'Dashboard must query active office tenant')
+assert.ok(dashboard.includes(".eq('tenant_id',tenantId)"),'Active office scope must be applied in queries')
+assert.ok(dashboard.includes("onClick={() => navigate('/clients/'+encodeURIComponent(c.id))}"),'Recent clients must open their own profile')
+assert.ok(dashboard.includes("officeDepartments.includes('resolution') && ("),'Resolution-only news rail must not spill into unrelated departments')
+assert.ok(dashboard.includes("isRouteInDepartments(to,officeDepartments,hrFeatures)"),'Quick actions must respect the enabled office features')
+assert.ok(dashboard.includes("role={to?'button':undefined}"),'KPI drill-through must be keyboard accessible')
+assert.ok(!dashboard.includes('aria-label="Department homepages"'),'No new department home cards are authorized')
+assert.ok(!app.includes('DepartmentHome'),'No separate department page should exist')
 console.log('PASS: shared CRM tenant workspace department defaults, navigation, routing, dashboard and SQL contract')

@@ -4,16 +4,15 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { OPEN_STATUSES } from '../lib/caseStatuses'
 import { FIRM } from '../lib/firmBranding'
-import { useOfficeDepartments } from '../hooks/useOfficeDepartments'
+import { useOfficeWorkspace } from '../hooks/useOfficeDepartments'
 import { isRouteInDepartments, workspaceLabel } from '../lib/departmentWorkspaces'
 
 // When Romy is impersonating a tenant via the admin portal, his auth email
 // (romy@taxrescrm.net) has no employee row in that tenant, so current_tenant_id()
 // returns NULL and RLS returns 0 rows. Fix: scope every data query explicitly
-// to FIRM.tenantId when it's available — safe for all sessions since FIRM is
-// always loaded with the correct tenant before Dashboard mounts.
-function tf(q) {
-  return FIRM.tenantId ? q.eq('tenant_id', FIRM.tenantId) : q
+// to the active office tenant ID, while RLS enforces the user's effective access.
+function tf(q, tenantId = FIRM.tenantId) {
+  return tenantId ? q.eq('tenant_id',tenantId) : q
 }
 
 const TCR_TENANT_ID = '61a89aef-0e7e-4ea2-b222-44ab2024655a'
@@ -51,7 +50,10 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
       onDrop={e => { e.currentTarget.style.opacity = '1'; onDrop(e, idx) }}
       onDragEnd={e => { e.currentTarget.style.opacity = '1'; onDragEnd() }}
       onClick={() => onCardClick(to)}
-      title="Drag to rearrange"
+      title={to ? 'Click to open '+label+'; drag to rearrange' : 'Drag to rearrange'}
+      role={to?'button':undefined}
+      tabIndex={to?0:undefined}
+      onKeyDown={e=>{if(to && (e.key==='Enter'||e.key===' ')){e.preventDefault();onCardClick(to)}}}
       style={{
         background: '#10283f',
         border: '1px solid #24435f',
@@ -100,8 +102,10 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user, role, employeeName, can, myTenantId } = useApp()
-  const officeDepartments = useOfficeDepartments(myTenantId || FIRM.tenantId)
+  const officeTenantId = myTenantId || FIRM.tenantId
+  const {departments:officeDepartments,hrFeatures} = useOfficeWorkspace(officeTenantId)
   const [metrics, setMetrics] = useState({})
+  const [departmentCounts,setDepartmentCounts] = useState({})
   const [recentCases, setRecentCases] = useState([])
   const [tasks, setTasks] = useState([])
   const [deadlines, setDeadlines] = useState([])
@@ -111,13 +115,24 @@ export default function Dashboard() {
   const [time, setTime] = useState(new Date())
   const [tasFeeds, setTasFeeds] = useState([])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    setLoading(true)
+    setMetrics({})
+    setDepartmentCounts({})
+    setRecentCases([])
+    setTasks([])
+    setDeadlines([])
+    setRecentClients([])
+    setRecentLeads([])
+    void load()
+  }, [officeTenantId])
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
 
   async function load() {
+    const scoped=q=>tf(q,officeTenantId)
     if (FIRM.tenantId === NASHVILLE_TENANT_ID) {
       const { data: snapshot, error: snapshotError } = await supabase.rpc('nashville_dashboard_snapshot', {
         p_employee_name: employeeName || ''
@@ -141,17 +156,37 @@ export default function Dashboard() {
       { data: deadlines }, { data: arScheduled },
     ] = await Promise.all([
       (FIRM.tenantId === TCR_TENANT_ID
-        ? tf(supabase.from('leads').select('*')).is('deleted_at', null)
-        : tf(supabase.from('leads').select('*'))
+        ? scoped(supabase.from('leads').select('*')).is('deleted_at', null)
+        : scoped(supabase.from('leads').select('*'))
       ).order('created_at', { ascending: false }),
-      tf(supabase.from('clients').select('*').is('deleted_at', null)).order('created_at', { ascending: false }),
-      tf(supabase.from('cases').select('*')).order('created_at', { ascending: false }),
-      tf(supabase.from('tasks').select('*').not('deleted','is',true)).order('created_at', { ascending: false }),
-      tf(supabase.from('invoices').select('id,total,status,clientName')),
-      tf(supabase.from('payments').select('id,amount,status,created_at,source,enrolled_by')),
-      tf(supabase.from('deadlines').select('*')).order('dueDate', { ascending: true }),
-      tf(supabase.from('payments').select('amount,payment_status,scheduled_date').eq('payment_status', 'Scheduled')),
+      scoped(supabase.from('clients').select('*').is('deleted_at', null)).order('created_at', { ascending: false }),
+      scoped(supabase.from('cases').select('*')).order('created_at', { ascending: false }),
+      scoped(supabase.from('tasks').select('*').not('deleted','is',true)).order('created_at', { ascending: false }),
+      scoped(supabase.from('invoices').select('id,total,status,clientName')),
+      scoped(supabase.from('payments').select('id,amount,status,created_at,source,enrolled_by')),
+      scoped(supabase.from('deadlines').select('*')).order('dueDate', { ascending: true }),
+      scoped(supabase.from('payments').select('amount,payment_status,scheduled_date').eq('payment_status', 'Scheduled')),
     ])
+
+    // Real tenant-scoped source tables for each optional practice area.
+    // Avoid invented counts or copying resolution KPIs into unrelated departments.
+    const countSources = [
+      ['preparation','tax_returns'],
+      ['bookkeeping','bookkeeping'],
+      ['formation','formacorp'],
+      ['time_tracking','timeentries'],
+      ['payroll','payrollruns'],
+    ].filter(([key]) => key==='preparation' ? officeDepartments.includes('preparation')
+      : key==='bookkeeping' ? officeDepartments.includes('bookkeeping')
+      : key==='formation' ? officeDepartments.includes('formation')
+      : officeDepartments.includes('hr') && hrFeatures.includes(key))
+    const departmentResults = await Promise.all(countSources.map(async ([key,table]) => {
+      const q=supabase.from(table).select('id',{count:'exact',head:true})
+      const {count,error} = await scoped(q)
+      if(error){console.error('[Dashboard] '+table+' count failed:',error.message);return [key,null]}
+      return [key,count ?? 0]
+    }))
+    setDepartmentCounts(Object.fromEntries(departmentResults))
 
     const now = new Date()
     const thisMonth = now.toISOString().slice(0, 7)
@@ -403,13 +438,42 @@ export default function Dashboard() {
     { label: 'AR Outstanding', val: '$' + Math.round(metrics.arOutstanding || 0).toLocaleString(), color: '#ef4444', to: '/ar', icon: '💳', sub: 'Scheduled installments' },
   ]
 
-  // Centurion's focused office workspace starts with operational casework,
-  // not the full sales/billing dashboard. No KPI data or layouts are deleted.
+  // The SAME original Home dashboard adapts to the selected office departments.
+  // All-feature offices keep their established role-specific layout.
+  // Focused offices get real data from the existing modules, with drill-through
+  // to the corresponding authorized route (never fabricated placeholder totals).
   const resolutionOnly = officeDepartments.length === 1 && officeDepartments[0] === 'resolution'
   const focusedResolutionCards = new Set(['Active Cases','Open Leads','Clients','Open Tasks','Upcoming DL','Overdue DL','Unpaid Invoices'])
-  const ALL_ROLE_CARDS = ROLE_CARDS.filter(card =>
-    (!card.to || isRouteInDepartments(card.to,officeDepartments))
+  const oneDepartment = officeDepartments.length===1 ? officeDepartments[0] : null
+  const focusOnly = oneDepartment && oneDepartment!=='resolution'
+  const countCard=(label,key,to,icon,sub)=>({
+    label,val:departmentCounts[key]==null?'—':departmentCounts[key],
+    color:'var(--blue)',to,icon,sub:departmentCounts[key]==null?'Data unavailable':sub,
+  })
+  const focusedCards = oneDepartment==='preparation' ? [
+    countCard('Tax Returns','preparation','/taxreturns','🧾','Office tax returns'),
+    {label:'Clients',val:metrics.totalClients,to:'/clients',icon:'🏢',color:'var(--ok)'},
+    {label:'Open Tasks',val:metrics.openTasks,to:'/tasks',icon:'✅',color:'var(--blue)'},
+  ] : oneDepartment==='bookkeeping' ? [
+    countCard('Bookkeeping Entries','bookkeeping','/books','📚','Recorded ledger entries'),
+    {label:'Clients',val:metrics.totalClients,to:'/clients',icon:'🏢',color:'var(--ok)'},
+    {label:'Unpaid Invoices',val:metrics.unpaidInvoices,to:'/invoices',icon:'🧾',color:'var(--warn)'},
+    {label:'Open Tasks',val:metrics.openTasks,to:'/tasks',icon:'✅',color:'var(--blue)'},
+  ] : oneDepartment==='formation' ? [
+    countCard('Business Formations','formation','/formacorp','🏢','Saved entity records'),
+    {label:'Clients',val:metrics.totalClients,to:'/clients',icon:'👥',color:'var(--ok)'},
+    {label:'Open Tasks',val:metrics.openTasks,to:'/tasks',icon:'✅',color:'var(--blue)'},
+  ] : oneDepartment==='hr' ? [
+    ...(hrFeatures.includes('time_tracking') ? [countCard('Employee Time Entries','time_tracking','/timeclock','🕒','Recorded staff shifts')] : []),
+    ...(hrFeatures.includes('payroll') ? [countCard('Payroll Runs','payroll','/payroll','💵','Recorded payroll runs')] : []),
+  ] : []
+  const ALL_ROLE_CARDS = (focusOnly ? focusedCards : ROLE_CARDS).filter(card =>
+    (!card.to || isRouteInDepartments(card.to,officeDepartments,hrFeatures))
     && (!resolutionOnly || focusedResolutionCards.has(card.label))
+    && (!card.to || can('view',card.to==='/'?'dashboard': ({
+      '/taxreturns':'taxreturns','/books':'books','/formacorp':'formacorp',
+      '/timeclock':'dashboard','/payroll':'payroll',
+    })[card.to] || card.to.slice(1)))
   )
 
   // Ordered cards: apply saved order or use default
@@ -530,19 +594,6 @@ export default function Dashboard() {
       </div>
 
       {officeDepartments.length !== 5 && <div role="status" style={{marginBottom:12,color:'var(--t2)',fontSize:13,fontWeight:700}}>{workspaceLabel(officeDepartments)} Workspace · Only the departments your office uses</div>}
-      <section aria-label="Department homepages" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}>
-        {[
-          ['resolution','⚖️','Tax Resolution'],
-          ['preparation','🧾','Tax Preparation'],
-          ['bookkeeping','📚','Bookkeeping'],
-          ['formation','🏢','Business Formation'],
-          ['hr','🕒','HR & Payroll'],
-        ].filter(([key])=>officeDepartments.includes(key)).map(([key,icon,label])=>(
-          <button key={key} type="button" onClick={()=>navigate('/workspace/'+key)} style={{textAlign:'left',padding:'13px 15px',borderRadius:11,background:'var(--s2)',border:'1px solid var(--br)',color:'var(--tx)',cursor:'pointer',fontSize:13,fontWeight:750}}>
-            <span style={{fontSize:19,marginRight:8}} aria-hidden="true">{icon}</span>{label} <span style={{color:'var(--t2)',float:'right'}}>→</span>
-          </button>
-        ))}
-      </section>
       {/* Stat cards — drag to rearrange, auto-saves per employee */}
       <div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 14 }}>
@@ -563,7 +614,7 @@ export default function Dashboard() {
       <div className="detail-2col" style={{ display: 'grid', gridTemplateColumns: isTaxAdvisor ? '1fr' : '1fr 1fr', gap: 14 }}>
 
 
-        {!isTaxAdvisor && (
+        {!isTaxAdvisor && !focusOnly && (
         <>
         {/* Active Cases */}
         <div className="card">
@@ -641,7 +692,7 @@ export default function Dashboard() {
         </>
         )}
 
-        {showRecentClients ? (
+        {(focusOnly && oneDepartment==='hr') ? null : showRecentClients ? (
           /* Recent Clients — Tax Associate / Manager work client files day-to-day */
           <div className="card">
             <div className="ch">
@@ -651,7 +702,7 @@ export default function Dashboard() {
             {recentClients.length === 0
               ? <div style={{ color: 'var(--t3)', fontSize: 13, padding: '8px 0' }}>No clients yet</div>
               : recentClients.map(c => (
-                <div key={c.id} onClick={() => navigate('/clients')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--br)', cursor: 'pointer' }}>
+                <div key={c.id} onClick={() => navigate('/clients/'+encodeURIComponent(c.id))} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--br)', cursor: 'pointer' }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--ok)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                     {(c.name || '?')[0].toUpperCase()}
                   </div>
@@ -698,7 +749,7 @@ export default function Dashboard() {
             ['📁 New Case', '/cases', 'cases'], ['✅ New Task', '/tasks', 'tasks'],
             ['🧾 New Invoice', '/invoices', 'invoices'], ['⏰ Add Deadline', '/deadlines', 'deadlines'],
             ['📅 Schedule', '/calendar', 'calendar'], ['💬 Team Chat', '/chat', 'chat'],
-          ].filter(([, , section]) => can('edit', section)).map(([label, to]) => (
+          ].filter(([, to, section]) => can('edit', section) && isRouteInDepartments(to,officeDepartments,hrFeatures) && (!focusOnly || (oneDepartment==='hr' ? false : oneDepartment==='preparation' ? !['/cases','/deadlines'].includes(to) : oneDepartment==='bookkeeping' ? !['/cases','/deadlines'].includes(to) : oneDepartment==='formation' ? !['/cases','/deadlines'].includes(to) : true))).map(([label, to]) => (
             <button key={label} className="btn" style={{ justifyContent: 'flex-start', fontSize: 13, padding: '9px 12px' }} onClick={() => navigate(to)}>
               {label}
             </button>
@@ -708,7 +759,7 @@ export default function Dashboard() {
       </div>
 
       {/* TAS Sidebar — right side, all roles */}
-      {(
+      {officeDepartments.includes('resolution') && (
         <div className="tax-dashboard-news-rail" style={{ display: 'flex', flexDirection: 'column', gap: 16, width: 230, flexShrink: 0, minWidth: 0, boxSizing: 'border-box', background: 'var(--sf)', color: 'var(--tx)', border: '1px solid var(--br)', borderRadius: 14, padding: 12 }}>
           <TASWidget />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28 }}>

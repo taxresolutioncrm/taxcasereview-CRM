@@ -2,7 +2,6 @@
 // Existing employee permissions and database RLS remain the security boundary.
 export const DEPARTMENT_KEYS = Object.freeze(['resolution','preparation','bookkeeping','formation','hr'])
 export const ALL_DEPARTMENTS = Object.freeze([...DEPARTMENT_KEYS])
-export const DEPARTMENT_HOME_PATHS = Object.freeze(Object.fromEntries(DEPARTMENT_KEYS.map(key => [key, '/workspace/' + key])))
 export const HR_FEATURE_KEYS = Object.freeze(['time_tracking','payroll'])
 export const ALL_HR_FEATURES = Object.freeze([...HR_FEATURE_KEYS])
 export const CENTURION_TENANT_ID = '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'
@@ -43,7 +42,7 @@ export function normalizeHrFeatures(value, fallback=ALL_HR_FEATURES) {
   return HR_FEATURE_KEYS.filter(key=>value.includes(key))
 }
 export function isHrFeatureEnabled(pathname, features=ALL_HR_FEATURES) {
-  const root='/' + String(pathname||'').split('/').filter(Boolean)[0]
+  const root='/' + (String(pathname||'').split('/').filter(Boolean)[0] || '')
   const selected=normalizeHrFeatures(features)
   if (HR_TIME_PATHS.has(root)) return selected.includes('time_tracking')
   if (HR_PAYROLL_PATHS.has(root)) return selected.includes('payroll')
@@ -52,7 +51,7 @@ export function isHrFeatureEnabled(pathname, features=ALL_HR_FEATURES) {
 export function isNavigationVisible(pathname, departments, hrFeatures=ALL_HR_FEATURES) {
   const enabled = normalizeDepartments(departments)
   if (enabled.length === DEPARTMENT_KEYS.length) return isHrFeatureEnabled(pathname,hrFeatures)
-  const root='/' + String(pathname||'').split('/').filter(Boolean)[0]
+  const root='/' + (String(pathname||'').split('/').filter(Boolean)[0] || '')
   const department=departmentForPath(pathname)
   return department ? enabled.includes(department) && isHrFeatureEnabled(pathname,hrFeatures) : FOCUSED_COMMON_PATHS.has(root)
 }
@@ -72,9 +71,7 @@ export function normalizeDepartments(value, fallback=ALL_DEPARTMENTS) {
 }
 export function departmentForPath(pathname) {
   const clean = String(pathname || '').split(/[?#]/,1)[0]
-  const segments = clean.split('/').filter(Boolean)
-  if (segments[0] === 'workspace' && DEPARTMENT_KEYS.includes(segments[1])) return segments[1]
-  const root = '/' + segments[0]
+  const root = '/' + clean.split('/').filter(Boolean)[0]
   return WORKSPACE_PATHS[root] || null
 }
 export function isRouteInDepartments(pathname, departments, hrFeatures=ALL_HR_FEATURES) {
