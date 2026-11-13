@@ -530,19 +530,6 @@ export default function Dashboard() {
       </div>
 
       {officeDepartments.length !== 5 && <div role="status" style={{marginBottom:12,color:'var(--t2)',fontSize:13,fontWeight:700}}>{workspaceLabel(officeDepartments)} Workspace · Only the departments your office uses</div>}
-      <section aria-label="Department homepages" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}>
-        {[
-          ['resolution','⚖️','Tax Resolution'],
-          ['preparation','🧾','Tax Preparation'],
-          ['bookkeeping','📚','Bookkeeping'],
-          ['formation','🏢','Business Formation'],
-          ['hr','🕒','HR & Payroll'],
-        ].filter(([key])=>officeDepartments.includes(key)).map(([key,icon,label])=>(
-          <button key={key} type="button" onClick={()=>navigate('/workspace/'+key)} style={{textAlign:'left',padding:'13px 15px',borderRadius:11,background:'var(--s2)',border:'1px solid var(--br)',color:'var(--tx)',cursor:'pointer',fontSize:13,fontWeight:750}}>
-            <span style={{fontSize:19,marginRight:8}} aria-hidden="true">{icon}</span>{label} <span style={{color:'var(--t2)',float:'right'}}>→</span>
-          </button>
-        ))}
-      </section>
       {/* Stat cards — drag to rearrange, auto-saves per employee */}
       <div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 14 }}>
