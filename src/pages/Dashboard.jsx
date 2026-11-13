@@ -595,7 +595,7 @@ export default function Dashboard() {
       {officeDepartments.length !== 5 && <div role="status" style={{marginBottom:14,color:'var(--t2)',fontSize:13,fontWeight:700}}>{workspaceLabel(officeDepartments)}</div>}
       {/* Stat cards — drag to rearrange, auto-saves per employee */}
       <div>
-        <div style={{ display: 'grid', repeat(auto-fit, minmax(min(100%, 220px), 1fr)), gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 14 }}>
           {orderedCards.map((card, idx) => (
             <StatCard key={card.label} card={card} idx={idx}
               onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}
