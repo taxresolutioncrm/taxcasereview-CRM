@@ -19,7 +19,7 @@ async function fetchText(url) {
 for (const target of targets) {
   try {
     const {res, text: html} = await fetchText(target.url)
-    const jsSources = [...html.matchAll(/<script\\b[^>]*\\bsrc=["']([^"']+\\.js(?:\\?[^"']*)?)["']/gi)].map(x => new URL(x[1],res.url).href)
+    const jsSources = [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+\.js(?:\?[^"']*)?)["']/gi)].map(x => new URL(x[1],res.url).href)
     const loaded = []
     const discovered = [...jsSources]
     const seen = new Set()
@@ -30,10 +30,10 @@ for (const target of targets) {
       seen.add(url)
       try {
         const asset = await fetchText(url)
-        if (!asset.res.ok || !/javascript|text\\/plain|octet-stream/.test(asset.res.headers.get('content-type')||'')) continue
+        if (!asset.res.ok || !/javascript|text\/plain|octet-stream/.test(asset.res.headers.get('content-type')||'')) continue
         loaded.push({url, http: asset.res.status, bytes:asset.text.length})
         versionSeen ||= asset.text.includes(requiredVersion)
-        const references = [...asset.text.matchAll(/(?:["'(])((?:\\/assets\\/|\\.\\/)[\\w.-]+\\.js)(?:["')])/g)]
+        const references = [...asset.text.matchAll(/(?:["'(])((?:\/assets\/|\.\/)[\w.-]+\.js)(?:["')])/g)]
         for (const m of references) {
           if (discovered.length>=100) break
           const next = new URL(m[1],url).href
