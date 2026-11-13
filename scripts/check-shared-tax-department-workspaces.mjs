@@ -47,7 +47,7 @@ assert.ok(app.includes('const routeAllowedByOffice = isRouteInDepartments(window
 assert.ok(app.includes('filter(([,path]) => isRouteInDepartments(path,officeDepartments,hrFeatures))'))
 assert.ok(!dashboard.includes('focusedResolutionCards'), 'Resolution-only office must not hide financial KPIs')
 for(const label of ['MTD 1st Trades','MTD 2nd Trades','AR Outstanding','Unpaid Invoices','Active Cases','Open Leads','Open Tasks','Clients','Upcoming DL','Overdue DL']) {
-  assert.ok(dashboard.includes("label: '"+label+"'"), 'Tax Resolution Home missing '+label)
+  assert.ok(new RegExp('label:\\s*\\x27'+label+'\\x27').test(dashboard), 'Tax Resolution Home missing '+label)
 }
 assert.ok(dashboard.includes('repeat(auto-fit, minmax(min(100%, 220px), 1fr))'), 'Dashboard KPI grid must adapt to different office card counts')
 assert.ok(isNavigationVisible('/payments',['resolution']), 'Payments must remain accessible in a focused Tax Resolution office')
