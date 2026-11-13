@@ -5,13 +5,12 @@ import { useApp } from '../context/AppContext'
 import { OPEN_STATUSES } from '../lib/caseStatuses'
 import { FIRM } from '../lib/firmBranding'
 import { useOfficeWorkspace } from '../hooks/useOfficeDepartments'
-import { isRouteInDepartments, isHrFeatureEnabled, workspaceLabel } from '../lib/departmentWorkspaces'
+import { isRouteInDepartments, workspaceLabel } from '../lib/departmentWorkspaces'
 
 // When Romy is impersonating a tenant via the admin portal, his auth email
 // (romy@taxrescrm.net) has no employee row in that tenant, so current_tenant_id()
 // returns NULL and RLS returns 0 rows. Fix: scope every data query explicitly
-// to FIRM.tenantId when it's available — safe for all sessions since FIRM is
-// always loaded with the correct tenant before Dashboard mounts.
+// to the active office tenant ID, while RLS enforces the user's effective access.
 function tf(q, tenantId = FIRM.tenantId) {
   return tenantId ? q.eq('tenant_id',tenantId) : q
 }
