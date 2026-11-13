@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 // Read-only public Cloudflare deployment checks. No login credentials, database writes, or deployments.
 const targets = [
-  { office: 'TCR', url: 'https://app.taxrescrm.app/login' },
+  { office: 'TCR / TaxRes shared login', url: 'https://taxrescrm.app/login' },
   { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login' },
   { office: 'TaxRes shared password', url: 'https://taxrescrm.app/family-password?office=centurion' },
 ]
