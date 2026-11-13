@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {
   defaultDepartments, normalizeDepartments, departmentForPath,
-  isRouteInDepartments, workspaceLabel, CENTURION_TENANT_ID, NASHVILLE_TENANT_ID
+  isRouteInDepartments, isNavigationVisible, workspaceLabel, CENTURION_TENANT_ID, NASHVILLE_TENANT_ID
 } from '../src/lib/departmentWorkspaces.js'
 const all=['resolution','preparation','bookkeeping','formation']
 const tcr='61a89aef-0e7e-4ea2-b222-44ab2024655a'
@@ -11,6 +11,10 @@ assert.deepEqual(defaultDepartments(CENTURION_TENANT_ID),['resolution'])
 for (const tenant of [tcr,taxres,NASHVILLE_TENANT_ID]) assert.deepEqual(defaultDepartments(tenant),all)
 assert.deepEqual(normalizeDepartments(['resolution','unknown','resolution']),['resolution'])
 assert.equal(workspaceLabel(['resolution']),'Tax Resolution')
+assert.equal(isNavigationVisible('/books',['resolution']),false)
+assert.equal(isNavigationVisible('/training',['resolution']),false)
+assert.equal(isNavigationVisible('/cases',['resolution']),true)
+assert.equal(isNavigationVisible('/training',all),true)
 for (const route of ['/cases','/cases/123','/irsforms','/irsportal','/deadlines','/stateforms','/irsreference','/ai-government-calls']) {
   assert.equal(departmentForPath(route),'resolution',route)
   assert.ok(isRouteInDepartments(route,['resolution']),route)
@@ -28,7 +32,7 @@ const app=read('src/App.jsx')
 const dashboard=read('src/pages/Dashboard.jsx')
 const migration=read('supabase/migrations/20261113164500_tenant_department_workspaces.sql')
 assert.ok(sidebar.includes('visibleSections.map(section =>'))
-assert.ok(sidebar.includes('isRouteInDepartments(item.path,officeDepartments)'))
+assert.ok(sidebar.includes('isNavigationVisible(item.path,officeDepartments)'))
 assert.ok(app.includes('const routeAllowedByOffice = isRouteInDepartments(window.location.pathname,officeDepartments)'))
 assert.ok(app.includes('filter(([,path]) => isRouteInDepartments(path,officeDepartments))'))
 assert.ok(dashboard.includes('focusedResolutionCards'))
