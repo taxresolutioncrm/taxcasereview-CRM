@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Final closeout: audited client-note refreshes enforce active tenant; Centurion invitations and password setup return to the correct branded office; removed duplicate GitHub Pages push deployment trigger',
   'Nashville v3.2.4 parity: client Case Notes exclude automated profile and communication changes, History retains concise actor-attributed audit entries with legacy field values masked',
   'Email read/unread actions verify tenant- and mailbox-scoped persisted CRM state before reflecting the change and refreshing the sidebar badge',
   'Current IRS Status adds RO for clients and leads without modifying any State Status choices',
