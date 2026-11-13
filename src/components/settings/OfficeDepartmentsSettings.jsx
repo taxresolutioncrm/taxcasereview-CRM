@@ -10,6 +10,7 @@ const DEPARTMENTS = [
 ]
 const CENTURION = '8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'
 const NASHVILLE = '489ace07-1a6b-4864-833a-4f8420568b40'
+const TAXRES = 'a0000000-0000-0000-0000-000000000001'
 
 export default function OfficeDepartmentsSettings({ user, showToast }) {
   const [offices,setOffices] = useState([])
@@ -30,8 +31,11 @@ export default function OfficeDepartmentsSettings({ user, showToast }) {
         if(officeResult.error) throw officeResult.error
         if(configResult.error) throw configResult.error
         if(cancelled) return
-        const rows=(Array.isArray(officeResult.data)?officeResult.data:[])
+        const rows=[...(Array.isArray(officeResult.data)?officeResult.data:[]), {
+          id:TAXRES,firm_name:'TaxRes CRM',tenant_code:'ADMIN',status:'active',
+        }]
           .filter(row=>row?.id && row.id!==NASHVILLE && row.status!=='deleted')
+          .filter((row,i,all)=>all.findIndex(other=>other.id===row.id)===i)
           .sort((a,b)=>String(a.firm_name||'').localeCompare(String(b.firm_name||'')))
         const configured=Object.fromEntries((configResult.data||[]).map(row=>[
           row.tenant_id,normalizeDepartments(row.departments,defaultDepartments(row.tenant_id)),
