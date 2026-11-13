@@ -23,6 +23,7 @@ import SavedCardsPanel from '../components/SavedCardsPanel'
 import SplitPaymentModal from '../components/SplitPaymentModal'
 import FinancialProfile from './FinancialProfile'
 import TimeEntry from './TimeEntry'
+import { useAutoClientWorkTracking } from '../hooks/useAutoClientWorkTracking'
 import ClientActivityReport from './ClientActivityReport'
 import OrganizerView from '../components/OrganizerView'
 import { supabase } from '../lib/supabase'
@@ -2592,6 +2593,12 @@ export default function Clients() {
   const reps=employees.length>0?employees.map(e=>e.name):['Romy Cruz','Dana Richard','Yesenia Gonzalez']
   const stageIdx=c=>PIPELINE_STAGES.findIndex(s=>s.key===(c.pipelineStage||DEFAULT_PIPELINE_STAGE))
 
+  // Client focus time is tracked separately from payroll and invoiceable time.
+  // This hook is mounted unconditionally to preserve React hook ordering.
+  const {trackedSeconds:clientFocusSeconds,status:clientFocusStatus}=useAutoClientWorkTracking({
+    clientId:detail?.id,clientName:detail?.name,tenantId:myTenantId,user,
+  })
+
   // ── Detail View ──────────────────────────────────────────────────────────────
   if (detail) {
     const c=detail
@@ -2864,6 +2871,7 @@ export default function Clients() {
             {['61a89aef-0e7e-4ea2-b222-44ab2024655a','a0000000-0000-0000-0000-000000000001','8fd9a2ac-95df-4bf0-99e9-cda4b20eae4a'].includes(FIRM.tenantId) && (
             <div style={{marginTop:12,display:'flex',gap:8,flexWrap:'wrap'}}>
               <button type="button" className="btn sec" style={{padding:'8px 14px',fontSize:13,fontWeight:700}} onClick={()=>{setDetailTab('tasks');setTaskSubTab('time');setLogTimeRequest(n=>n+1)}}>⏱ Log Time</button>
+              <span role="status" title="Automatically captures active time in this client profile. Pauses when hidden or idle. Does not create a billable charge or payroll hours." style={{fontSize:12,color:'var(--t2)',alignSelf:'center',fontWeight:600}}>⏱ Auto client time: {Math.floor(clientFocusSeconds/60)}m {String(clientFocusSeconds%60).padStart(2,'0')}s {clientFocusStatus==='paused'?'· Paused':clientFocusStatus==='sync-error'?'· Sync retry needed':'· Active'} · Not billed</span>
             </div>
             )}
           </div>
