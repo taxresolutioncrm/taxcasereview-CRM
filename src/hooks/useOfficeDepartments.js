@@ -1,27 +1,35 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { defaultDepartments, normalizeDepartments } from '../lib/departmentWorkspaces'
+import {
+  ALL_HR_FEATURES, defaultDepartments, normalizeDepartments, normalizeHrFeatures,
+} from '../lib/departmentWorkspaces'
 
-// No cross-office fallback: tenant changes immediately reset the displayed
-// workspace. Configuration is optional until the additive migration is applied.
-export function useOfficeDepartments(tenantId) {
-  const [state, setState] = useState(() => ({
-    tenantId: tenantId || '', departments:defaultDepartments(tenantId),
-  }))
+// Office display preferences only. Supabase RLS and employee permissions
+// remain the independent authorization boundaries.
+export function useOfficeWorkspace(tenantId) {
   const scope = tenantId || ''
-  const departments = state.tenantId === scope ? state.departments : defaultDepartments(scope)
+  const [state,setState] = useState(() => ({
+    tenantId:scope, departments:defaultDepartments(scope), hrFeatures:[...ALL_HR_FEATURES],
+  }))
   useEffect(() => {
     let cancelled=false
-    setState({ tenantId:scope, departments:defaultDepartments(scope) })
-    if (!scope) return () => { cancelled=true }
-    supabase.from('tenant_department_config').select('departments')
+    setState({tenantId:scope,departments:defaultDepartments(scope),hrFeatures:[...ALL_HR_FEATURES]})
+    if (!scope) return () => {cancelled=true}
+    supabase.from('tenant_department_config').select('departments,hr_features')
       .eq('tenant_id',scope).maybeSingle().then(({data,error}) => {
-        // A missing table or row during rollout must not change other tenants'
-        // existing feature access. Centurion remains resolution-only by default.
-        if (cancelled || error || !data) return
-        setState({tenantId:scope,departments:normalizeDepartments(data.departments,defaultDepartments(scope))})
+        if(cancelled || error || !data) return
+        setState({
+          tenantId:scope,
+          departments:normalizeDepartments(data.departments,defaultDepartments(scope)),
+          hrFeatures:normalizeHrFeatures(data.hr_features),
+        })
       })
-    return () => { cancelled=true }
+    return ()=>{cancelled=true}
   },[scope])
-  return departments
+  return state.tenantId===scope
+    ? {departments:state.departments,hrFeatures:state.hrFeatures}
+    : {departments:defaultDepartments(scope),hrFeatures:[...ALL_HR_FEATURES]}
+}
+export function useOfficeDepartments(tenantId) {
+  return useOfficeWorkspace(tenantId).departments
 }
