@@ -1,5 +1,3 @@
-// Sandbox source snapshot for Nashville's separately deployed platform-metrics function.
-// This file does not auto-deploy to Nashville. Promote separately only after acceptance.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -8,7 +6,8 @@ const cors = {
 }
 const NASHVILLE_TENANT = '489ace07-1a6b-4864-833a-4f8420568b40'
 const ROMYLABS_SUPABASE_URL = 'https://mpxgxfqdbquzkrvvejkh.supabase.co'
-const ROMYLABS_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1weGd4ZnFkYnF1emtydnZlamtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTk5MzksImV4cCI6MjA5NDg3NTkzOX0.puvhU1MV5nGOykizeTkwCpRR7NKKaGsVpA8oqjVjmu4'
+// SEC-002 fix: key stored in Supabase Edge Function Secrets as ROMYLABS_ANON_KEY
+const ROMYLABS_ANON_KEY = Deno.env.get('ROMYLABS_ANON_KEY') ?? ''
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
   headers: { ...cors, 'Content-Type': 'application/json' },
@@ -57,13 +56,14 @@ Deno.serve(async (req) => {
   try {
     // Total cards use non-deleted records; active counts remain separate operational metrics.
     const todayEt = new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
-    const [totalClients, activeClients, totalLeads, activeLeads, tasks, employees, timeEntries, billing, cases, invoices, esigns, demos, storage, activity] = await Promise.all([
+    const [tenantDetails, totalClients, activeClients, totalLeads, activeLeads, tasks, employees, timeEntries, billing, cases, invoices, esigns, demos, storage, activity] = await Promise.all([
+      sb.from('tenants').select('id,tenant_code,firm_name,firm_address,firm_phone,plan_tier,status,primary_contact_name,primary_contact_email,contract_start_date,contract_end_date,monthly_rate,per_seat_rate,notes,created_at').eq('id',NASHVILLE_TENANT).single(),
       sb.from('clients').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null),
       sb.from('clients').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null).eq('status', 'Active'),
       sb.from('leads').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null),
       sb.from('leads').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).is('deleted_at', null),
       sb.from('tasks').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT).eq('done', false),
-      sb.from('employees').select('id,name,email,role,access,avatar_url').eq('tenant_id', NASHVILLE_TENANT).eq('status', 'Active'),
+      sb.from('employees').select('email').eq('tenant_id', NASHVILLE_TENANT).eq('status', 'Active'),
       sb.from('time_entries').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT),
       sb.from('billing_time_entries').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT),
       sb.from('cases').select('id', { count: 'exact', head: true }).eq('tenant_id', NASHVILLE_TENANT),
@@ -73,6 +73,8 @@ Deno.serve(async (req) => {
       sb.rpc('platform_storage_metrics'),
       sb.from('activity_log').select('created_at').eq('tenant_id', NASHVILLE_TENANT).order('created_at', { ascending: false }).limit(1),
     ])
+    if(tenantDetails.error || !tenantDetails.data) return json({ok:false,error:'Nashville office details unavailable'},503)
+    const tenant=tenantDetails.data
     const storageData = storage.data || {}
     const activeEmployees = employees.data || []
     const staffEmails = new Set(activeEmployees.map((employee: any) => String(employee.email || '').trim().toLowerCase()).filter(Boolean))
@@ -121,11 +123,23 @@ Deno.serve(async (req) => {
       },
       offices: [{
         id: NASHVILLE_TENANT,
-        name: 'Nashville Tax Solutions',
-        is_active: true,
-        mrr: 0,
+        name: tenant.firm_name || 'Nashville Tax Solutions',
+        tenant_code: tenant.tenant_code,
+        plan_tier: tenant.plan_tier,
+        status: tenant.status,
+        is_active: tenant.status === 'active',
+        primary_contact_name: tenant.primary_contact_name,
+        primary_contact_email: tenant.primary_contact_email,
+        phone: tenant.firm_phone,
+        firm_address: tenant.firm_address,
+        contract_start_date: tenant.contract_start_date,
+        contract_end_date: tenant.contract_end_date,
+        per_seat_rate: tenant.per_seat_rate,
+        monthly_rate: tenant.monthly_rate,
+        notes: tenant.notes,
+        since: tenant.created_at,
+        mrr: tenant.monthly_rate ?? null,
         employee_count: activeEmployees.length,
-        employees: activeEmployees.map((e: any) => ({ id: e.id, name: e.name || '', email: e.email || '', role: e.role || e.access || '', avatar_url: e.avatar_url || null, last_activity: null })),
         active_staff: activeEmployees.length,
         total_clients: totalClients.count || 0,
         client_count: totalClients.count || 0,
