@@ -1,0 +1,27 @@
+name: Shared Tax CRM live browser acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'e2e/shared-tax-live-browser.spec.mjs'
+      - '.github/workflows/shared-tax-live-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install browser test dependencies
+        run: |
+          npm ci
+          npm install --no-save @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Test actual production shared tax CRM login, Centurion branding, password setup and mobile UI
+        run: npx playwright test e2e/shared-tax-live-browser.spec.mjs --browser=chromium --reporter=line
