@@ -8,6 +8,7 @@ create table if not exists public.tenant_department_config (
   updated_by uuid,
   constraint tenant_department_config_known_keys check (
     departments <@ array['resolution','preparation','bookkeeping','formation']::text[]
+    and cardinality(departments) between 1 and 4
   )
 );
 
