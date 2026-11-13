@@ -24,7 +24,7 @@ function fmtH(h) { return `${Number(h || 0).toFixed(2)}h` }
 
 export default function TimeEntry({ clientId, clientName, embed = false, newEntryRequest = 0 }) {
   const [searchParams] = useSearchParams()
-  const { user, employeeName, showToast } = useApp()
+  const { user, employeeName, showToast, myTenantId } = useApp()
 
   // If embedded in Clients page, clientId/clientName come as props.
   // If standalone page, read from URL or show all entries.
@@ -73,14 +73,14 @@ export default function TimeEntry({ clientId, clientName, embed = false, newEntr
     const refresh=async()=>{
       const {data,error}=await supabase.from('client_work_sessions')
         .select('id,employee_email,elapsed_seconds,started_at')
-        .eq('client_id',filterClientId).order('started_at',{ascending:false}).limit(100)
+        .eq('tenant_id',myTenantId).eq('client_id',filterClientId).order('started_at',{ascending:false}).limit(100)
       if(!cancelled && !error)setAutoSessions(data||[])
     }
     void refresh()
     const onUpdate=e=>{if(e.detail?.clientId===filterClientId)void refresh()}
     window.addEventListener('taxres:client-work-updated',onUpdate)
     return ()=>{cancelled=true;window.removeEventListener('taxres:client-work-updated',onUpdate)}
-  },[filterClientId])
+  },[filterClientId,myTenantId])
   const autoMinutes=autoSessions.reduce((sum,session)=>sum+Number(session.elapsed_seconds||0),0)/60
 
 
