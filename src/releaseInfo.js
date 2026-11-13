@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Department settings closeout: owner office selector includes the TaxRes platform tenant; department sets cannot be empty; Centurion remains resolution-only while Nashville is untouched',
   'Owner-only Settings > Office Departments toggles tenant-specific modules with read-back verification, compact navigation and resolution-focused dashboard',
   'RomyLabs owner may configure each office\'s active departments from Settings → Office Departments; non-owner office administrators cannot modify workspace switches',
   'Focused offices see a compact sidebar and resolution-first KPI list; full-feature offices retain existing navigation, with no client data deletion or permission changes',
