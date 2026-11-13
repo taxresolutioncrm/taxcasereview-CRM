@@ -17,6 +17,8 @@ import ImpersonationBanner from './components/ImpersonationBanner'
 import EsignAuditBridge from './components/EsignAuditBridge'
 import { ROUTE_PLAN_MINIMUM, planAtLeast, planLabel } from './lib/planTiers'
 import { usesMobileParity } from './lib/mobileParityTenants'
+import { useOfficeDepartments } from './hooks/useOfficeDepartments'
+import { isRouteInDepartments } from './lib/departmentWorkspaces'
 
 
 const TAXRES_FAMILY_BUILD = __TAXRES_BUILD__
@@ -225,9 +227,17 @@ function RequireAuth({ children }) {
 
 // Blocks a route by role permission OR plan tier
 function Guard({ section, children }) {
-  const { can, planTier } = useApp()
+  const { can, planTier, myTenantId } = useApp()
+  const officeDepartments = useOfficeDepartments(myTenantId)
+  const routeAllowedByOffice = isRouteInDepartments(window.location.pathname,officeDepartments)
   const requiredTier = ROUTE_PLAN_MINIMUM[section]
   const tierBlocked = requiredTier && !planAtLeast(planTier, requiredTier)
+  if (!routeAllowedByOffice) {
+    return <div role="status" style={{padding:32,color:'var(--t2)',maxWidth:480,margin:'10vh auto',textAlign:'center'}}>
+      <div style={{fontSize:19,fontWeight:800,marginBottom:10}}>Not part of this office workspace</div>
+      This department is not enabled for your office. Your existing records have not been deleted.
+    </div>
+  }
   if (tierBlocked) {
     return (
       <div style={{
@@ -265,6 +275,7 @@ function Guard({ section, children }) {
 
 function Shell() {
   const { openModal, closeModal, realtimeOk, myTenantId } = useApp()
+  const officeDepartments = useOfficeDepartments(myTenantId)
   const navigate = useNavigate()
   const [showRealtimeWarning, setShowRealtimeWarning] = React.useState(false)
 
@@ -292,7 +303,7 @@ function Shell() {
           ['✅ Task',    '/tasks'],
           ['📄 Invoice', '/invoices'],
           ['💰 Payment', '/payments'],
-        ].map(([label, path]) => (
+        ].filter(([,path]) => isRouteInDepartments(path,officeDepartments)).map(([label, path]) => (
           <button key={label} onClick={() => { closeModal(); navigate(path) }} className="btn lg full" style={{ justifyContent:'flex-start', gap:10 }}>
             {label}
           </button>
