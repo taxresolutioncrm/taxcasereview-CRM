@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto'
 
 // Read-only public Cloudflare deployment checks. No login credentials, database writes, or deployments.
 const targets = [
-  { office: 'TCR / TaxRes shared login', url: 'https://taxrescrm.app/login?release=3.2.116' },
-  { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login?release=3.2.116' },
+  { office: 'TCR / TaxRes shared login', url: 'https://taxrescrm.app/login?release=3.2.117' },
+  { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login?release=3.2.117' },
   { office: 'TaxRes shared password', url: 'https://taxrescrm.app/family-password?office=centurion' },
 ]
-const requiredVersion = '3.2.116'
+const requiredVersion = '3.2.117'
 const results = []
 async function fetchText(url) {
   const res = await fetch(url, {
