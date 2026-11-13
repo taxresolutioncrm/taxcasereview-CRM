@@ -4,8 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { OPEN_STATUSES } from '../lib/caseStatuses'
 import { FIRM } from '../lib/firmBranding'
-import { useOfficeDepartments } from '../hooks/useOfficeDepartments'
-import { isRouteInDepartments, workspaceLabel } from '../lib/departmentWorkspaces'
+import { useOfficeWorkspace } from '../hooks/useOfficeDepartments'
+import { isRouteInDepartments, isHrFeatureEnabled, workspaceLabel } from '../lib/departmentWorkspaces'
 
 // When Romy is impersonating a tenant via the admin portal, his auth email
 // (romy@taxrescrm.net) has no employee row in that tenant, so current_tenant_id()
@@ -100,8 +100,10 @@ function StatCard({ card, idx, onDragStart, onDragOver, onDrop, onDragEnd, onCar
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user, role, employeeName, can, myTenantId } = useApp()
-  const officeDepartments = useOfficeDepartments(myTenantId || FIRM.tenantId)
+  const officeTenantId = myTenantId || FIRM.tenantId
+  const {departments:officeDepartments,hrFeatures} = useOfficeWorkspace(officeTenantId)
   const [metrics, setMetrics] = useState({})
+  const [departmentCounts,setDepartmentCounts] = useState({})
   const [recentCases, setRecentCases] = useState([])
   const [tasks, setTasks] = useState([])
   const [deadlines, setDeadlines] = useState([])
@@ -111,7 +113,17 @@ export default function Dashboard() {
   const [time, setTime] = useState(new Date())
   const [tasFeeds, setTasFeeds] = useState([])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    setLoading(true)
+    setMetrics({})
+    setDepartmentCounts({})
+    setRecentCases([])
+    setTasks([])
+    setDeadlines([])
+    setRecentClients([])
+    setRecentLeads([])
+    void load()
+  }, [officeTenantId])
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000)
     return () => clearInterval(t)
@@ -152,6 +164,26 @@ export default function Dashboard() {
       tf(supabase.from('deadlines').select('*')).order('dueDate', { ascending: true }),
       tf(supabase.from('payments').select('amount,payment_status,scheduled_date').eq('payment_status', 'Scheduled')),
     ])
+
+    // Real tenant-scoped source tables for each optional practice area.
+    // Avoid invented counts or copying resolution KPIs into unrelated departments.
+    const countSources = [
+      ['preparation','tax_returns'],
+      ['bookkeeping','bookkeeping'],
+      ['formation','formacorp'],
+      ['time_tracking','timeentries'],
+      ['payroll','payrollruns'],
+    ].filter(([key]) => key==='preparation' ? officeDepartments.includes('preparation')
+      : key==='bookkeeping' ? officeDepartments.includes('bookkeeping')
+      : key==='formation' ? officeDepartments.includes('formation')
+      : officeDepartments.includes('hr') && hrFeatures.includes(key))
+    const departmentResults = await Promise.all(countSources.map(async ([key,table]) => {
+      const q=supabase.from(table).select('id',{count:'exact',head:true})
+      const {count,error} = await (officeTenantId ? q.eq('tenant_id',officeTenantId) : q)
+      if(error){console.error('[Dashboard] '+table+' count failed:',error.message);return [key,null]}
+      return [key,count ?? 0]
+    }))
+    setDepartmentCounts(Object.fromEntries(departmentResults))
 
     const now = new Date()
     const thisMonth = now.toISOString().slice(0, 7)
@@ -403,13 +435,42 @@ export default function Dashboard() {
     { label: 'AR Outstanding', val: '$' + Math.round(metrics.arOutstanding || 0).toLocaleString(), color: '#ef4444', to: '/ar', icon: '💳', sub: 'Scheduled installments' },
   ]
 
-  // Centurion's focused office workspace starts with operational casework,
-  // not the full sales/billing dashboard. No KPI data or layouts are deleted.
+  // The SAME original Home dashboard adapts to the selected office departments.
+  // All-feature offices keep their established role-specific layout.
+  // Focused offices get real data from the existing modules, with drill-through
+  // to the corresponding authorized route (never fabricated placeholder totals).
   const resolutionOnly = officeDepartments.length === 1 && officeDepartments[0] === 'resolution'
   const focusedResolutionCards = new Set(['Active Cases','Open Leads','Clients','Open Tasks','Upcoming DL','Overdue DL','Unpaid Invoices'])
-  const ALL_ROLE_CARDS = ROLE_CARDS.filter(card =>
-    (!card.to || isRouteInDepartments(card.to,officeDepartments))
+  const oneDepartment = officeDepartments.length===1 ? officeDepartments[0] : null
+  const focusOnly = oneDepartment && oneDepartment!=='resolution'
+  const countCard=(label,key,to,icon,sub)=>({
+    label,val:departmentCounts[key]==null?'—':departmentCounts[key],
+    color:'var(--blue)',to,icon,sub:departmentCounts[key]==null?'Data unavailable':sub,
+  })
+  const focusedCards = oneDepartment==='preparation' ? [
+    countCard('Tax Returns','preparation','/taxreturns','🧾','Office tax returns'),
+    {label:'Clients',val:metrics.totalClients,to:'/clients',icon:'🏢',color:'var(--ok)'},
+    {label:'Open Tasks',val:metrics.openTasks,to:'/tasks',icon:'✅',color:'var(--blue)'},
+  ] : oneDepartment==='bookkeeping' ? [
+    countCard('Bookkeeping Entries','bookkeeping','/books','📚','Recorded ledger entries'),
+    {label:'Clients',val:metrics.totalClients,to:'/clients',icon:'🏢',color:'var(--ok)'},
+    {label:'Unpaid Invoices',val:metrics.unpaidInvoices,to:'/invoices',icon:'🧾',color:'var(--warn)'},
+    {label:'Open Tasks',val:metrics.openTasks,to:'/tasks',icon:'✅',color:'var(--blue)'},
+  ] : oneDepartment==='formation' ? [
+    countCard('Business Formations','formation','/formacorp','🏢','Saved entity records'),
+    {label:'Clients',val:metrics.totalClients,to:'/clients',icon:'👥',color:'var(--ok)'},
+    {label:'Open Tasks',val:metrics.openTasks,to:'/tasks',icon:'✅',color:'var(--blue)'},
+  ] : oneDepartment==='hr' ? [
+    ...(hrFeatures.includes('time_tracking') ? [countCard('Employee Time Entries','time_tracking','/timeclock','🕒','Recorded staff shifts')] : []),
+    ...(hrFeatures.includes('payroll') ? [countCard('Payroll Runs','payroll','/payroll','💵','Recorded payroll runs')] : []),
+  ] : []
+  const ALL_ROLE_CARDS = (focusOnly ? focusedCards : ROLE_CARDS).filter(card =>
+    (!card.to || isRouteInDepartments(card.to,officeDepartments,hrFeatures))
     && (!resolutionOnly || focusedResolutionCards.has(card.label))
+    && (!card.to || can('view',card.to==='/'?'dashboard': ({
+      '/taxreturns':'taxreturns','/books':'bookkeeping','/formacorp':'formacorp',
+      '/timeclock':'kiosk','/payroll':'payroll',
+    })[card.to] || card.to.slice(1)))
   )
 
   // Ordered cards: apply saved order or use default
