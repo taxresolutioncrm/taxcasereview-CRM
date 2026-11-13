@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'Final client Time & Billing display distinguishes automatically captured nonbillable recent sessions, with additional explicit tenant filtering and no changes to employee payroll or invoiceable entries',
   'Fifth configurable workspace HR & Payroll with independent Time Tracking and Payroll Processing navigation, while employee management remains a shared office function',
   'Automatic client-profile engagement time is recorded in tenant-isolated client work sessions, pauses when idle or hidden, and never creates payroll hours or billable entries',
   'Department settings closeout: owner office selector includes the TaxRes platform tenant; department sets cannot be empty; Centurion remains resolution-only while Nashville is untouched',
