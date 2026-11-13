@@ -25,6 +25,7 @@ const UniversalOfficeESign = lazy(() => import('../components/admin/UniversalOff
 
 const ESignaturesHub = lazy(() => import('./ESignaturesHub'))
 const NewOffice    = lazy(() => import('./NewOffice'))
+const OfficeDepartmentsSettings = lazy(() => import('../components/settings/OfficeDepartmentsSettings'))
 const Support      = lazy(() => import('./Support'))
 const CalendarPage = lazy(() => import('./Calendar'))
 const TrainingPage = lazy(() => import('./MeetTrainingHub'))
@@ -623,6 +624,15 @@ async function loadPlatformOfficeRows(forceRefresh = false) {
   return platformOfficeRowsInflight
 }
 
+function AdminOfficeDepartments() {
+  const { user, showToast } = useApp()
+  return <div style={{padding:'28px 30px',maxWidth:940}}>
+    <h1 style={{fontSize:22,color:'#fff',margin:'0 0 10px'}}>Office Departments &amp; Access</h1>
+    <p style={{fontSize:13,color:'#94a3b8',lineHeight:1.6,margin:'0 0 22px'}}>This is the same department configuration managed in CRM Settings. Select any shared TaxRes CRM office, enable its workspaces, and save. Changes made here appear in the CRM. Nashville is separately deployed and remains full-featured.</p>
+    <OfficeDepartmentsSettings user={user} showToast={showToast}/>
+  </div>
+}
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 // Operational items only — Marketing/Content/LinkedIn/Search/System live in Command Center tabs
 const NAV = [
@@ -638,6 +648,7 @@ const NAV = [
   { path:'/crm-admin/chat',           label:'Chat (All)',      icon:'💬' },
   { path:'/crm-admin/provision',      label:'+ New Office',   icon:'➕' },
   { path:'/crm-admin/offices',        label:'Offices',         icon:'🏢' },
+  { path:'/crm-admin/departments',    label:'Office Departments', icon:'🧩' },
   { path:'/crm-admin/esign',          label:'E-Signatures',    icon:'✍️' },
   { path:'/crm-admin/demo',           label:'Demo Mgmt',       icon:'🎭' },
   { path:'/crm-admin/employees',      label:'Employees',       icon:'👥' },
@@ -9047,6 +9058,7 @@ export default function AdminPortal() {
             <Route path="/linkedin/callback" element={<AdminRouteErrorBoundary><LinkedInPublisher/></AdminRouteErrorBoundary>}/>
             <Route index                   element={<Overview key={window.location.pathname + window.location.search}/>}/>
             <Route path="/offices"        element={<OfficesList/>}/>
+            <Route path="/departments"    element={<AdminRouteErrorBoundary><AdminOfficeDepartments/></AdminRouteErrorBoundary>}/>
             <Route path="/esign"          element={<AdminRouteErrorBoundary><ESignaturesHub/></AdminRouteErrorBoundary>}/>
             <Route path="/offices/:id"    element={<OfficePageRouter/>}/>
             <Route path="/provision"      element={<div style={{padding:8}}><NewOffice/></div>}/>

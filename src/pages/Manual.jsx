@@ -9,6 +9,14 @@ const MANUAL_SECTIONS = [
     content: [
       { type: 'lead', text: 'TaxRes CRM is the shared operating platform for Tax Case Review and other central TaxRes-family offices. Core workflows, controls, release standards, branding, providers, permissions, and integrations remain tenant-isolated.' },
       { type: 'flow', items: ['New Lead', 'Financial Intake', 'Send Full Package', 'Client Signs ⭐', 'Tasks Auto-Created', 'Active Client', 'Resolution ✓'] },
+      { type:'h3', text:'Your office and department homepages' },
+      { type:'info', text:'Home opens your shared Office Overview. Each enabled department also has its own focused Home page: Tax Resolution, Tax Preparation, Bookkeeping & Accounting, Business Formation, or HR & Payroll. From that homepage, select the existing tool you need. Offices see only the departments enabled by the platform owner; HR Time Tracking and Payroll Processing can be switched separately. No underlying client, payroll, or billing record is deleted when a department is hidden.' },
+      { type:'steps', items:[
+        { title:'Open Home', desc:'Use Home in the sidebar to see shared office status and links to departments enabled for your office.' },
+        { title:'Select a department homepage', desc:'Choose the Tax Resolution, Preparation, Bookkeeping, Business Formation, or HR & Payroll Home link in the Overview sidebar group.' },
+        { title:'Use the daily tool shortcuts', desc:'Each department homepage links to its own existing workflows. Employee permissions and plan access still apply when you open a tool.' },
+        { title:'Change office departments', desc:'The platform owner may switch modules from CRM Settings → Office Departments or RomyLabs Admin Portal → Office Departments. The selections use the same tenant configuration.' },
+      ] },
       { type: 'h3', text: 'Core features' },
       { type: 'cards', items: [
         { icon: '🎯', title: 'Lead pipeline', body: 'Capture leads, send investigation packages, collect e-signatures, and convert to active clients — the pipeline tracks every stage automatically.' },

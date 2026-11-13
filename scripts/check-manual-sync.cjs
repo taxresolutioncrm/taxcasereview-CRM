@@ -9,6 +9,11 @@ const assert = (ok,msg) => { if(!ok) failures.push(msg) }
 // Any new sidebar workflow must be mapped to a maintained manual section here.
 // When an existing workflow changes, update its manual section in the same release.
 const routeToManual = {
+  '/workspace/resolution':'overview',
+  '/workspace/preparation':'overview',
+  '/workspace/bookkeeping':'overview',
+  '/workspace/formation':'overview',
+  '/workspace/hr':'overview',
   '/email':'email',
   '/email-blast':'email-blast',
   '/chat':'chat',

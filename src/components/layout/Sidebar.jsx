@@ -45,12 +45,24 @@ const SECTIONS = [
     always: true,
     items: [
       { path: '/',          icon: GridIcon,    label: 'Home',     section: null },
+
       { path: '/email',     icon: EmailIcon,   label: 'Email',         badge: 'email',    section: 'email' },
       { path: '/chat',      icon: ChatIcon,    label: 'Team Chat',     badge: 'chat',     section: 'chat' },
       { path: '/calendar',  icon: CalIcon,     label: 'Calendar',      badge: 'calendar', section: 'calendar' },
       { path: '/tasks',     icon: TaskIcon,    label: 'Tasks',         badge: 'tasks',    section: 'tasks' },
       { path: '/dialer',    icon: DialIcon,    label: 'Dialer',        badge: 'voicemails', section: 'dialer' },
       { path: '/ai-intelligence', icon: FormIcon, label: 'AI Intelligence' },
+    ]
+  },
+  {
+    key: 'departmenthomes',
+    label: 'Department Homes',
+    items: [
+      { path:'/workspace/resolution', icon:CaseIcon, label:'Tax Resolution Home', section:null },
+      { path:'/workspace/preparation', icon:ReturnIcon, label:'Tax Preparation Home', section:null },
+      { path:'/workspace/bookkeeping', icon:BooksIcon, label:'Bookkeeping Home', section:null },
+      { path:'/workspace/formation', icon:CorpIcon, label:'Business Formation Home', section:null },
+      { path:'/workspace/hr', icon:PayrollIcon, label:'HR & Payroll Home', section:null },
     ]
   },
   {
@@ -678,7 +690,7 @@ export default function Sidebar() {
         }
       </div>
 
-      {officeDepartments.length !== 4 && <div aria-label="Active office departments" style={{fontSize:11,fontWeight:800,color:'var(--t2)',padding:'10px 15px 4px'}}>{workspaceLabel(officeDepartments)} Workspace</div>}
+      {officeDepartments.length !== 5 && <div aria-label="Active office departments" style={{fontSize:11,fontWeight:800,color:'var(--t2)',padding:'10px 15px 4px'}}>{workspaceLabel(officeDepartments)} Workspace</div>}
       {visibleSections.map(section => {
         const isOpen = section.always || openKey === section.key
         const hasActive = !section.always && section.items.some(i => i.path !== '/' && location.pathname.startsWith(i.path))
