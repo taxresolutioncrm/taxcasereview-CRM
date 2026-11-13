@@ -66,6 +66,23 @@ export default function TimeEntry({ clientId, clientName, embed = false, newEntr
   }, [filterClient, filterClientId])
 
   useEffect(() => { load() }, [load])
+  const [autoSessions,setAutoSessions]=useState([])
+  useEffect(()=>{
+    if(!filterClientId) {setAutoSessions([]);return}
+    let cancelled=false
+    const refresh=async()=>{
+      const {data,error}=await supabase.from('client_work_sessions')
+        .select('id,employee_email,elapsed_seconds,started_at')
+        .eq('client_id',filterClientId).order('started_at',{ascending:false}).limit(100)
+      if(!cancelled && !error)setAutoSessions(data||[])
+    }
+    void refresh()
+    const onUpdate=e=>{if(e.detail?.clientId===filterClientId)void refresh()}
+    window.addEventListener('taxres:client-work-updated',onUpdate)
+    return ()=>{cancelled=true;window.removeEventListener('taxres:client-work-updated',onUpdate)}
+  },[filterClientId])
+  const autoMinutes=autoSessions.reduce((sum,session)=>sum+Number(session.elapsed_seconds||0),0)/60
+
 
   // Load tasks when client changes in the form
   useEffect(() => {
@@ -194,6 +211,11 @@ export default function TimeEntry({ clientId, clientName, embed = false, newEntr
           <div style={{ fontSize: 13, color: 'var(--t3)' }}>Track billable hours by client and activity type.</div>
         </div>
       )}
+
+      {filterClientId && <div role="status" style={{padding:'11px 14px',border:'1px solid var(--br)',background:'var(--s2)',color:'var(--tx)',borderRadius:10,marginBottom:12,fontSize:13}}>
+        <strong>⏱ Automatically tracked client work:</strong> {autoMinutes.toFixed(1)} minutes · {autoSessions.length} sessions.
+        <span style={{display:'block',marginTop:4,fontSize:11,color:'var(--t2)'}}>Time is recorded while staff actively view this client. Hidden and idle tabs pause. These sessions are not payroll hours or billable charges; manually approved billing entries remain separate.</span>
+      </div>}
 
       {/* WIP Summary cards */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
