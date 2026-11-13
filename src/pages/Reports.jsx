@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FIRM } from '../lib/firmBranding'
+import { useOfficeWorkspace } from '../hooks/useOfficeDepartments'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { exportPDF, exportExcel } from '../lib/exportUtils'
@@ -24,7 +25,13 @@ const TABS = [
 ]
 
 export default function Reports() {
-  const { user } = useApp()
+  const { user, myTenantId } = useApp()
+  const { departments: officeDepartments } = useOfficeWorkspace(myTenantId || FIRM.tenantId)
+  const reportDepartment = { taxreturns:'preparation', formacorp:'formation', books:'bookkeeping', cases:'resolution' }
+  const visibleTabs = TABS.filter(item => !reportDepartment[item.key] || officeDepartments.includes(reportDepartment[item.key]))
+  useEffect(() => {
+    if (!visibleTabs.some(item => item.key === tab)) setTab('overview')
+  }, [officeDepartments, tab])
   const navigate = useNavigate()
   const [tab, setTab] = useState('overview')
   const [loading, setLoading] = useState(true)
@@ -350,7 +357,7 @@ export default function Reports() {
 
       {/* Tab Bar */}
       <div style={{display:'flex',gap:4,flexWrap:'wrap',borderBottom:'1px solid var(--br)',marginBottom:16,paddingBottom:6}}>
-        {TABS.map(t=>(
+        {visibleTabs.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
             style={{flex:'0 0 auto',padding:'10px 10px',fontSize:13,fontWeight:tab===t.key?700:500,
               borderBottom:tab===t.key?'3px solid var(--blue)':'3px solid transparent',
@@ -447,14 +454,14 @@ export default function Reports() {
       {tab==='overview'&&(
         <div>
           <SectionTitle title="Key Metrics"/>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(9,1fr)',gap:10,marginBottom:20}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,110px),1fr))',gap:10,marginBottom:20}}>
             <StatCard icon="👥" label="Total Clients"    value={clients.length}   sub={`+${fClients.length} in range`} color="var(--blue)"/>
             <StatCard icon="📋" label="Total Leads"      value={leads.length}     sub={`${conversionRate}% conversion`} color="var(--warn)"/>
             <StatCard icon="📁" label="Active Cases"     value={openCases}        sub={`of ${cases.length} total`} color={openCases>0?'var(--warn)':'var(--ok)'}/>
             <StatCard icon="💰" label="Revenue Collected" value={'$'+Math.round(totalRevenue).toLocaleString()} color="var(--ok)"/>
             <StatCard icon="⏳" label="AR Outstanding"   value={'$'+Math.round(pendingRevenue).toLocaleString()} color="var(--warn)"/>
             <StatCard icon="💳" label="Invoices Paid"    value={invoices.filter(i=>i.status==='Paid').length} sub={`of ${invoices.length} total`} color="var(--ok)"/>
-            <StatCard icon="🧾" label="Tax Returns"      value={taxReturns.length} color="var(--blue)"/>
+            {officeDepartments.includes('preparation') && <StatCard icon="🧾" label="Tax Returns"      value={taxReturns.length} color="var(--blue)"/>}
             <StatCard icon="✍️" label="E-Sign Awaiting"  value={esigns.filter(e=>e.status==='Awaiting').length} color="var(--warn)"/>
             <StatCard icon="⚠️" label="Overdue Deadlines" value={overdueDl} color={overdueDl>0?'var(--bad)':'var(--ok)'}/>
           </div>
@@ -486,9 +493,13 @@ export default function Reports() {
                   ['✅ Tasks Completed',tasks.filter(t=>t.done).length,'📌 Tasks Open',tasks.filter(t=>!t.done).length],
                   ['💰 Revenue Collected','$'+Math.round(totalRevenue).toLocaleString(),'⏳ AR Outstanding','$'+Math.round(pendingRevenue).toLocaleString()],
                   ['💳 Invoices Paid',invoices.filter(i=>i.status==='Paid').length,'✍️ E-Signs Awaiting',esigns.filter(e=>e.status==='Awaiting').length],
-                  ['🧾 Tax Returns',taxReturns.length,'🏢 FormaCorp Filings',formacorp.length],
-                  ['📒 Bookkeeping Entries',bookkeeping.length,'⚠️ Overdue Deadlines',overdueDl],
-                  ['📅 Total Deadlines',deadlines.length,'',''],
+
+                   ...(officeDepartments.includes('preparation') ? [['🧾 Tax Returns',taxReturns.length,'','']] : []),
+                   ...(officeDepartments.includes('formation') ? [['🏢 FormaCorp Filings',formacorp.length,'','']] : []),
+
+                   ...(officeDepartments.includes('bookkeeping') ? [['📒 Bookkeeping Entries',bookkeeping.length,'','']] : []),
+                   ['⚠️ Overdue Deadlines',overdueDl,'📅 Total Deadlines',deadlines.length],
+
                 ].map(([l1,v1,l2,v2],i)=>(
                   <tr key={i} style={{borderBottom:'1px solid var(--br)'}}>
                     <td style={{padding:'11px 8px',color:'var(--t2)',fontWeight:500}}>{l1}</td>
@@ -760,7 +771,7 @@ export default function Reports() {
       )}
 
       {/* ── CASES ── */}
-      {tab==='cases'&&(
+      {tab==='cases' && officeDepartments.includes('resolution') && (
         <div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:16}}>
             <StatCard icon="📁" label="Total Cases"  value={cases.length} color="var(--blue)"/>
@@ -874,7 +885,7 @@ export default function Reports() {
       )}
 
       {/* ── TAX RETURNS ── */}
-      {tab==='taxreturns'&&(
+      {tab==='taxreturns' && officeDepartments.includes('preparation') && (
         <div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:16}}>
             <StatCard icon="🧾" label="Total Returns"  value={taxReturns.length} color="var(--blue)"/>
@@ -1010,7 +1021,7 @@ export default function Reports() {
       )}
 
       {/* ── FORMACORP ── */}
-      {tab==='formacorp'&&(
+      {tab==='formacorp' && officeDepartments.includes('formation') && (
         <div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:16}}>
             <StatCard icon="🏢" label="Total Filings" value={formacorp.length} color="var(--blue)"/>
@@ -1070,7 +1081,7 @@ export default function Reports() {
       )}
 
       {/* ── BOOKS & LEDGER ── */}
-      {tab==='books'&&(
+      {tab==='books' && officeDepartments.includes('bookkeeping') && (
         <div>
           {(()=>{
             const income  = bookkeeping.filter(e=>e.type==='Income'||e.amount>0)
