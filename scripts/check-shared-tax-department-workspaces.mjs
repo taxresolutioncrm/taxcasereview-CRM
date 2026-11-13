@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {
   defaultDepartments, normalizeDepartments, departmentForPath,
-  isRouteInDepartments, isNavigationVisible, workspaceLabel, CENTURION_TENANT_ID, NASHVILLE_TENANT_ID
+  isRouteInDepartments, isNavigationVisible, isHrFeatureEnabled, normalizeHrFeatures, workspaceLabel, CENTURION_TENANT_ID, NASHVILLE_TENANT_ID
 } from '../src/lib/departmentWorkspaces.js'
-const all=['resolution','preparation','bookkeeping','formation']
+const all=['resolution','preparation','bookkeeping','formation','hr']
 const tcr='61a89aef-0e7e-4ea2-b222-44ab2024655a'
 const taxres='a0000000-0000-0000-0000-000000000001'
 assert.deepEqual(defaultDepartments(CENTURION_TENANT_ID),['resolution'])
@@ -15,6 +15,14 @@ assert.equal(isNavigationVisible('/books',['resolution']),false)
 assert.equal(isNavigationVisible('/training',['resolution']),false)
 assert.equal(isNavigationVisible('/cases',['resolution']),true)
 assert.equal(isNavigationVisible('/training',all),true)
+assert.equal(isNavigationVisible('/timeclock',all,['time_tracking']),true)
+assert.equal(isNavigationVisible('/payroll',all,['time_tracking']),false)
+assert.equal(isNavigationVisible('/payroll',all,['payroll']),true)
+assert.equal(isNavigationVisible('/timeclock',['resolution']),false)
+assert.equal(isRouteInDepartments('/timeclock',['resolution','hr'],['payroll']),false)
+assert.equal(isRouteInDepartments('/payroll',['resolution','hr'],['time_tracking']),false)
+assert.equal(isHrFeatureEnabled('/payroll',['payroll']),true)
+assert.deepEqual(normalizeHrFeatures(['payroll','invalid']),['payroll'])
 for (const route of ['/cases','/cases/123','/irsforms','/irsportal','/deadlines','/stateforms','/irsreference','/ai-government-calls']) {
   assert.equal(departmentForPath(route),'resolution',route)
   assert.ok(isRouteInDepartments(route,['resolution']),route)
@@ -31,6 +39,8 @@ const sidebar=read('src/components/layout/Sidebar.jsx')
 const app=read('src/App.jsx')
 const dashboard=read('src/pages/Dashboard.jsx')
 const migration=read('supabase/migrations/20261113164500_tenant_department_workspaces.sql')
+const hrMigration=read('supabase/migrations/20261113190000_hr_payroll_department_preferences.sql')
+const clientTimeMigration=read('supabase/migrations/20261113190500_client_focused_work_sessions.sql')
 assert.ok(sidebar.includes('visibleSections.map(section =>'))
 assert.ok(sidebar.includes('isNavigationVisible(item.path,officeDepartments)'))
 assert.ok(app.includes('const routeAllowedByOffice = isRouteInDepartments(window.location.pathname,officeDepartments)'))
@@ -55,4 +65,23 @@ assert.ok(adminUI.includes('id:TAXRES'), 'Platform TaxRes office must appear in 
 assert.ok(migration.includes('cardinality(departments) between 1 and 4'), 'Empty department sets must be rejected at the database')
 
 assert.ok(!migration.includes('NASHVILLE_TENANT_ID'))
+assert.ok(hrMigration.includes("'time_tracking','payroll'"))
+assert.ok(hrMigration.includes('cardinality(departments) between 1 and 5'))
+assert.ok(hrMigration.includes("'61a89aef-0e7e-4ea2-b222-44ab2024655a'"))
+assert.ok(!hrMigration.includes("489ace07-1a6b-4864-833a-4f8420568b40'::uuid"))
+assert.ok(clientTimeMigration.includes('client_work_sessions_insert_self'))
+assert.ok(clientTimeMigration.includes('client_work_sessions_update_self'))
+assert.ok(clientTimeMigration.includes('tenant_id = (select public.current_tenant_id())'))
+assert.ok(!clientTimeMigration.includes('billing_time_entries'))
+const clientScreen=read('src/pages/Clients.jsx')
+const timeScreen=read('src/pages/TimeEntry.jsx')
+const workHook=read('src/hooks/useAutoClientWorkTracking.js')
+assert.ok(clientScreen.includes('useAutoClientWorkTracking({'))
+assert.ok(timeScreen.includes('Automatically tracked client work'))
+assert.ok(workHook.includes("document.hidden||now-lastActivity>90000"))
+assert.ok(workHook.includes(".upsert(payload,{onConflict:'id'})"))
+assert.ok(workHook.includes('tenant_id:tenantId'))
+assert.ok(workHook.includes('Math.min(5500'))
+assert.ok(adminUI.includes('HR & Payroll features'))
+assert.ok(adminUI.includes("hr_features:hrFeatures"))
 console.log('PASS: shared CRM tenant workspace department defaults, navigation, routing, dashboard and SQL contract')
