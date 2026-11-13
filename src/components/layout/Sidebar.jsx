@@ -8,6 +8,8 @@ import { OPEN_STATUSES } from '../../lib/caseStatuses'
 import { ROUTE_PLAN_MINIMUM, planAtLeast } from '../../lib/planTiers'
 import { CENTURION_TENANT_ID, CENTURION_LOGO_DATA_URL } from '../../lib/centurionBrand'
 import { getReleaseInfo } from '../../releaseInfo'
+import { useOfficeDepartments } from '../../hooks/useOfficeDepartments'
+import { isRouteInDepartments, workspaceLabel } from '../../lib/departmentWorkspaces'
 import { getRecentClients, RECENT_CLIENTS_EVENT, recentClientsKey } from '../../lib/recentClients'
 
 const LOGO = '/logo.png'
@@ -137,7 +139,7 @@ const SECTIONS = [
 ]
 
 export default function Sidebar() {
-  const { user, logout, can, role, mobileNavOpen, setMobileNavOpen, employeeName, planTier } = useApp()
+  const { user, logout, can, role, mobileNavOpen, setMobileNavOpen, employeeName, planTier, myTenantId } = useApp()
   const location = useLocation()
   const navigate = useNavigate()
   const [logoUrl, setLogoUrl] = useState(() => FIRM.logoUrl || null)
@@ -156,6 +158,11 @@ export default function Sidebar() {
     return () => { window.removeEventListener(RECENT_CLIENTS_EVENT, onChange); window.removeEventListener('storage', refresh) }
   }, [activeTenantId, user?.email])
   const releaseInfo = getReleaseInfo(activeTenantId || FIRM.tenantId || '')
+  const officeDepartments = useOfficeDepartments(myTenantId || activeTenantId)
+  const visibleSections = SECTIONS.map(section => ({
+    ...section,
+    items:section.items.filter(item => isRouteInDepartments(item.path,officeDepartments)),
+  })).filter(section => section.items.length > 0)
 
   useEffect(() => {
     if (!showReleaseNotes) return undefined
@@ -174,7 +181,7 @@ export default function Sidebar() {
   // Determine which section contains the active route
   function activeSection() {
     const p = location.pathname
-    for (const s of SECTIONS) {
+    for (const s of visibleSections) {
       if (s.always) continue
       if (s.items.some(i => i.path !== '/' && (p === i.path || p.startsWith(i.path + '/')))) return s.key
     }
@@ -671,7 +678,8 @@ export default function Sidebar() {
         }
       </div>
 
-      {SECTIONS.map(section => {
+      <div aria-label="Active office departments" style={{fontSize:11,fontWeight:800,color:'var(--t2)',padding:'10px 15px 4px'}}>{workspaceLabel(officeDepartments)} Workspace</div>
+      {visibleSections.map(section => {
         const isOpen = section.always || openKey === section.key
         const hasActive = !section.always && section.items.some(i => i.path !== '/' && location.pathname.startsWith(i.path))
 
