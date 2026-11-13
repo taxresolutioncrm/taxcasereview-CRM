@@ -1,0 +1,23 @@
+name: Shared Tax CRM live Cloudflare release verification
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/verify-shared-tax-live-release.mjs'
+      - '.github/workflows/verify-shared-tax-live-release.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate live verification script
+        run: node --check scripts/verify-shared-tax-live-release.mjs
+      - name: Probe actual public TCR, TaxRes and Centurion Cloudflare deployments
+        run: node scripts/verify-shared-tax-live-release.mjs
