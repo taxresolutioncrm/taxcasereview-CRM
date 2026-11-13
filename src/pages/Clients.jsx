@@ -2690,7 +2690,7 @@ export default function Clients() {
       const {error:noteErr}=await insertClientNote({clientname:c.name,content:note,created_by:actor,created_at:new Date().toISOString()})
       if(noteErr)showToast('File status updated, but note logging failed: '+noteErr.message)
       else {
-        const {data:notesData}=await supabase.from('client_notes').select('*').eq('clientname',c.name).order('created_at',{ascending:false})
+        const {data:notesData}=await supabase.from('client_notes').select('*').eq('tenant_id',myTenantId).eq('clientname',c.name).order('created_at',{ascending:false})
         if(notesData)setRelNotes(notesData)
       }
     }
@@ -2708,7 +2708,7 @@ export default function Clients() {
       const {error:noteErr}=await insertClientNote({clientname:c.name,content:noteContent,created_by:actor,created_at:new Date().toISOString()})
       if(noteErr){showToast('Stage updated, but failed to log note: '+noteErr.message)}
       else if(detail?.id===c.id){
-        const{data:notesData}=await supabase.from('client_notes').select('*').eq('clientname',c.name).order('created_at',{ascending:false})
+        const{data:notesData}=await supabase.from('client_notes').select('*').eq('tenant_id',myTenantId).eq('clientname',c.name).order('created_at',{ascending:false})
         if(notesData)setRelNotes(notesData)
       }
     }
