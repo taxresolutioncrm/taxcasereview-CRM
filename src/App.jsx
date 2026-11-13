@@ -175,6 +175,7 @@ const Support = lazyWithRecovery('Support', () => import('./pages/Support'))
 // when you actually navigate to it, instead of all ~30 pages loading upfront
 // in one giant bundle. This is what was making the whole CRM feel slow.
 const Dashboard     = lazyWithRecovery('Dashboard', () => import('./pages/Dashboard'))
+const DepartmentHome = lazyWithRecovery('DepartmentHome', () => import('./pages/DepartmentHome'))
 const TimeOff       = lazyWithRecovery('TimeOff', () => import('./pages/TimeOff'))
 const Leads         = lazyWithRecovery('Leads', () => import('./pages/Leads'))
 const Clients       = lazyWithRecovery('Clients', () => import('./pages/Clients'))
@@ -331,6 +332,7 @@ function Shell() {
           }>
           <Routes>
             <Route path="/"            element={<Dashboard />} />
+            <Route path="/workspace/:department" element={<DepartmentHome />} />
             <Route path="/leads/:id"    element={<Guard section="leads"><Leads /></Guard>} />
             <Route path="/leads"       element={<Guard section="leads"><Leads /></Guard>} />
             <Route path="/clients"     element={<Guard section="clients"><Clients /></Guard>} />
