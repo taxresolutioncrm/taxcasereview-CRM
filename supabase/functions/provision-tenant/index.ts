@@ -21,6 +21,16 @@ const corsHeaders = {
 }
 
 const PLATFORM_ADMIN_EMAILS = ['romy@taxcasereview.org', 'romy@taxrescrm.net', 'romy@romylabs.com', 'info@romylabs.com']
+const DEPARTMENTS = ['resolution','preparation','bookkeeping','formation','hr'] as const
+const HR_FEATURES = ['time_tracking','payroll'] as const
+
+function validateChoices(value: unknown, permitted: readonly string[], allowEmpty: boolean): string[] | null {
+  if (!Array.isArray(value) || value.some(x => typeof x !== 'string' || !permitted.includes(x))) return null
+  const normalized = permitted.filter(key => value.includes(key))
+  if (new Set(value).size !== value.length) return null
+  return (allowEmpty || normalized.length > 0) ? normalized : null
+}
+
 
 function genPassword(): string {
   const bytes = new Uint8Array(18)
@@ -61,6 +71,13 @@ serve(async (req) => {
     if (!firm_name || !tenant_code || !admin_email)
       return json({ error: 'firm_name, tenant_code, and admin_email are required' }, 400)
 
+    // Validate workspace access before provisioning any tenant or login.
+    // Existing provisioning clients that omit these fields retain all features.
+    const departments = validateChoices(b.departments ?? [...DEPARTMENTS], DEPARTMENTS, false)
+    const hrFeatures = validateChoices(b.hr_features ?? [...HR_FEATURES], HR_FEATURES, true)
+    if (!departments || !hrFeatures)
+      return json({ error: 'Choose valid, unique departments (at least one), and valid HR features' }, 400)
+
     // ── provision the DB rows (atomic; checks code + email uniqueness) ──
     const { data: prov, error: provErr } = await admin.rpc('provision_tenant', {
       p_firm_name: firm_name,
@@ -73,6 +90,33 @@ serve(async (req) => {
     })
     if (provErr) return json({ error: provErr.message }, 400)
 
+    const tid = (prov as { tenant_id?: string } | null)?.tenant_id
+    if (!tid) return json({ error: 'Provisioning did not return an office identifier; no login was created' }, 500)
+
+    // Persist the exact selected workspace before the office admin gets a login.
+    // Settings and RomyLabs Admin Portal use this same central table.
+    const { error: deptError } = await admin.from('tenant_department_config').upsert({
+      tenant_id: tid, departments, hr_features: hrFeatures, updated_by: user.id,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id' })
+    const { data: stored, error: readError } = deptError
+      ? { data: null, error: deptError }
+      : await admin.from('tenant_department_config')
+        .select('departments,hr_features').eq('tenant_id', tid).single()
+    const confirmed = stored &&
+      JSON.stringify(stored.departments) === JSON.stringify(departments) &&
+      JSON.stringify(stored.hr_features) === JSON.stringify(hrFeatures)
+    if (readError || !confirmed) {
+      // Fail closed and roll back provisioning rather than creating an office
+      // with a broader workspace than the owner selected.
+      await admin.from('employees').delete().eq('tenant_id', tid)
+      await admin.from('settings').delete().eq('tenant_id', tid)
+      const { error: rollbackError } = await admin.from('tenants').delete().eq('id', tid)
+      return json({ error: rollbackError
+        ? 'Department setup failed and the new office requires administrator cleanup: ' + rollbackError.message
+        : 'Department setup could not be verified. Office creation was rolled back; no login issued.' }, 500)
+    }
+
     // ── mint the admin login (email must match the employee email) ──
     const password = genPassword()
     const { error: authErr } = await admin.auth.admin.createUser({
@@ -83,7 +127,6 @@ serve(async (req) => {
     })
     if (authErr) {
       // roll back so we never leave a tenant that can't be logged into
-      const tid = (prov as any)?.tenant_id
       if (tid) {
         await admin.from('employees').delete().eq('email', admin_email)
         await admin.from('settings').delete().eq('tenant_id', tid)
