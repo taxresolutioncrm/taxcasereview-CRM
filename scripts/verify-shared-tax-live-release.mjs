@@ -6,7 +6,7 @@ const targets = [
   { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login' },
   { office: 'TaxRes shared password', url: 'https://taxrescrm.app/family-password?office=centurion' },
 ]
-const requiredVersion = '3.2.113'
+const requiredVersion = '3.2.114'
 const results = []
 async function fetchText(url) {
   const res = await fetch(url, {
