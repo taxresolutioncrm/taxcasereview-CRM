@@ -5,6 +5,9 @@ const api=source('supabase/functions/gsc-data/index.ts')
 const ui=source('src/pages/AdminPortal.jsx')
 const checked=(condition,label)=>{assert(condition,label);console.log('PASS',label)}
 checked(api.includes("'pool_crm'") && api.includes('sc-domain:poolverge.com'), 'PoolVerge supported by Search Console domain-property routing')
+checked(api.includes("'settlelift'") && api.includes("settlelift:['sc-domain:settlelift.com','https://settlelift.com/','https://www.settlelift.com/']"), 'Existing SettleLift Search Console domain and URL-prefix properties are supported')
+checked(api.includes("'barbers_salons'") && api.includes("barbers_salons:['sc-domain:chairstyle.net','https://chairstyle.net/','https://www.chairstyle.net/']"), 'ChairStyle product key resolves to its existing chairstyle.net properties')
+checked(api.includes("'pool_crm','settlelift','barbers_salons'"), 'Both new products remain eligible for authorized Google synchronization')
 checked(api.includes('https://poolverge.com/') && api.includes('https://www.poolverge.com/'), 'PoolVerge URL-prefix properties supported without mixing domains')
 checked(api.includes("caller.rpc('_is_platform_admin')"), 'GSC OAuth credentials only used after platform-admin authorization')
 
