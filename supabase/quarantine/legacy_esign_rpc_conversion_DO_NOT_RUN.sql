@@ -1,3 +1,9 @@
+-- HISTORICAL ONLY / DO NOT EXECUTE.
+-- This unnumbered legacy migration included anonymous grants for ID-only e-sign RPCs.
+-- Superseded in production by migration 20261114014500_esign_legacy_rpc_public_execute_lockdown.sql
+-- and v3.2.121 service-role-only permissions. Kept here solely as audit evidence.
+-- DO NOT MOVE BACK INTO THE ACTIVE MIGRATION FOLDER OR APPLY MANUALLY.
+
 -- ============================================================
 -- E-Sign RPC Conversion
 -- Replaces SignPage.jsx's direct anon table access (esigns, leads,
