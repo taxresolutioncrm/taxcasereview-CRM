@@ -57,7 +57,7 @@ try{
  const anonymous=client()
  for(const [rpc,args] of [['esign_load',{p_id:'es_00000000-0000-0000-0000-000000000000'}],['esign_mark_signed',{p_id:'es_00000000-0000-0000-0000-000000000000',p_signed_name:'Test',p_signer_full_name:'Test',p_signer_ip:'',p_signed_user_agent:''}]]){
   const {error}=await anonymous.rpc(rpc,args)
-  check('anonymous '+rpc+' execution denied',!!error&&(/permission denied|42501|not found|schema cache|Could not find/i).test(error.message||''),error?'server declined request':'unexpected success')
+  check('anonymous '+rpc+' execution denied',!!error&&(/permission denied|42501|Could not find the function|schema cache/i).test(error.message||''),error?'server declined request':'unexpected success')
  }
  const res=await fetch(url+'/functions/v1/stripe-set-autopay',{method:'POST',headers:{'Content-Type':'application/json',apikey:anon},body:JSON.stringify({clientId:staff[0].ownClientId,enabled:false})})
  check('anonymous autopay modification rejected',res.status===401||res.status===403,'HTTP '+res.status)
