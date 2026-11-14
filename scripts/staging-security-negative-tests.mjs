@@ -55,12 +55,15 @@ try{
  const {data:changed,error:roErr}=await ro.c.from('clients').update({name:'STAGING_PENTEST_READONLY_WRITE'}).eq('id',ro.account.ownClientId).select('id')
  check('read-only account cannot edit own synthetic client',!!roErr||(Array.isArray(changed)&&changed.length===0))
  const anonymous=client()
- for(const [rpc,args] of [['esign_load',{p_id:'es_00000000-0000-0000-0000-000000000000'}],['esign_mark_signed',{p_id:'es_00000000-0000-0000-0000-000000000000',p_signed_name:'Test',p_signer_full_name:'Test',p_signer_ip:'',p_signed_user_agent:''}]]){
+ for(const [rpc,args] of [['esign_load',{p_id:'es_00000000-0000-0000-0000-000000000000'}],['esign_mark_signed',{p_id:'es_00000000-0000-0000-0000-000000000000',p_signed_name:'Test',p_signer_full_name:'Test',p_signer_ip:'',p_signed_user_agent:''}],['esign_finalize',{p_id:'es_00000000-0000-0000-0000-000000000000',p_client_name:'STAGING_PENTEST',p_doc_type:'Test',p_signed_by:'Test',p_signer_ip:'',p_signed_at:'2026-11-14T00:00:00Z',p_saved_doc_type:'E-Signatures',p_cert_url:null,p_attachments:[],p_cert_size:null}]]){
   const {error}=await anonymous.rpc(rpc,args)
   check('anonymous '+rpc+' execution denied',!!error&&(/permission denied|42501|Could not find the function|schema cache/i).test(error.message||''),error?'server declined request':'unexpected success')
  }
  const res=await fetch(url+'/functions/v1/stripe-set-autopay',{method:'POST',headers:{'Content-Type':'application/json',apikey:anon},body:JSON.stringify({clientId:staff[0].ownClientId,enabled:false})})
  check('anonymous autopay modification rejected',res.status===401||res.status===403,'HTTP '+res.status)
+}catch(error){
+ checks.push({name:'security test halted',pass:false,detail:String(error?.message||error)})
+ throw error
 }finally{
  for(const {c} of clients){try{await c.auth.signOut()}catch{}}
  const result={testedAt:new Date().toISOString(),project_ref:ref,environment:'dedicated staging only',synthetic_only:true,checks,passed:checks.length>0&&checks.every(x=>x.pass)}
