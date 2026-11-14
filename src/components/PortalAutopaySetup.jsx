@@ -9,17 +9,19 @@ import StripePaymentMethodModal from './StripePaymentMethodModal'
 // Step 2: pick a monthly amount, save via the stripe-set-autopay function.
 // This never charges anything itself — it only saves the plan. Actual
 // charging still goes through the existing staff-run autopay batch.
-export default function PortalAutopaySetup({ client, suggestedAmount, onClose, onSaved, showToast }) {
+export default function PortalAutopaySetup({ client, suggestedAmount, portalToken, onClose, onSaved, showToast }) {
   const [needsCard, setNeedsCard] = useState(!client.default_payment_method_id)
   const [amount, setAmount] = useState(suggestedAmount > 0 ? String(suggestedAmount.toFixed(2)) : '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
   async function handleConfirm() {
+    if (!portalToken) { setErr('Please sign in to your client portal again.'); return }
     const numAmount = parseFloat(amount)
     if (!numAmount || numAmount <= 0) { setErr('Enter a valid monthly amount'); return }
     setSaving(true); setErr('')
     const { data, error } = await supabase.functions.invoke('stripe-set-autopay', {
+      headers: { 'x-portal-token': portalToken },
       body: { clientId: client.id, enabled: true, amount: numAmount }
     })
     setSaving(false)
