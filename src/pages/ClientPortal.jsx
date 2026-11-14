@@ -224,6 +224,7 @@ export default function ClientPortal() {
     const nextCharge = new Date(); nextCharge.setDate(nextCharge.getDate() + 1)
     const nextChargeStr = nextCharge.toISOString().split('T')[0]
     const { data, error } = await supabase.functions.invoke('stripe-set-autopay', {
+      headers: { 'x-portal-token': portalToken },
       body: { clientId: client.id, enabled: true, amount: monthlyAmount, frequency: 'monthly', nextChargeDate: nextChargeStr }
     })
     if (error || data?.error) { showToast('❌ ' + (data?.error || error?.message || 'Error setting plan')); setPlanLocking(false); return }
@@ -236,7 +237,7 @@ export default function ClientPortal() {
 
   async function cancelAutopay() {
     if (!confirm('Turn off monthly payments?')) return
-    const { data, error } = await supabase.functions.invoke('stripe-set-autopay', { body: { clientId: client.id, enabled: false } })
+    const { data, error } = await supabase.functions.invoke('stripe-set-autopay', { headers: { 'x-portal-token': portalToken }, body: { clientId: client.id, enabled: false } })
     if (error || data?.error) { showToast('❌ ' + (data?.error || error.message)); return }
     showToast('Monthly payments turned off')
     refreshClientAutopay()
