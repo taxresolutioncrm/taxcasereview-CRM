@@ -1,0 +1,38 @@
+name: Shared Tax CRM — Synthetic Staging Security Test
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-negative-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      STAGING_SUPABASE_URL: ${{ secrets.STAGING_SECURITY_SUPABASE_URL }}
+      STAGING_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SECURITY_ANON_KEY }}
+      STAGING_TEST_ACCOUNTS_JSON: ${{ secrets.STAGING_SECURITY_TEST_ACCOUNTS_JSON }}
+      STAGING_ALLOW_SYNTHETIC_WRITES: YES
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Verify staging configuration is isolated and present
+        run: |
+          if [ -z "$STAGING_SUPABASE_URL" ] || [ -z "$STAGING_SUPABASE_ANON_KEY" ] || [ -z "$STAGING_TEST_ACCOUNTS_JSON" ]; then
+            echo "BLOCKED: staging credentials or synthetic test accounts are not configured"
+            exit 2
+          fi
+      - name: Run synthetic-only negative access tests
+        run: node scripts/staging-security-negative-tests.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shared-tax-staging-security-evidence
+          path: artifacts/staging-security-negative-tests.json
+          if-no-files-found: warn
+          retention-days: 14
