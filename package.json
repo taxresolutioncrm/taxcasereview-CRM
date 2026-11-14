@@ -7,6 +7,7 @@
     "dev": "vite --port 5173",
     "check-admin-calendar-preview": "node scripts/check-admin-calendar-preview.cjs",
     "check-shared-tax-department-workspaces": "node scripts/check-shared-tax-department-workspaces.mjs",
+    "check-esign-public-rpc-lockdown": "node scripts/check-esign-public-rpc-lockdown.mjs",
     "check-calendar-detail-delete": "node scripts/check-calendar-detail-delete.mjs",
     "check-gsc-overall-history": "node scripts/check-gsc-overall-history.mjs",
     "check-poolverge-bing-route": "node scripts/check-poolverge-bing-route.mjs",
