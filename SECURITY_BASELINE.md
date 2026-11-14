@@ -14,6 +14,7 @@
 | Three employee-portal definer functions lacked `pg_temp` in search path | Fixed live | v3.2.124 PR #8439; `emp_clients(text)`, `emp_cases(text)`, `emp_sms_threads(text)` have `search_path=public, pg_temp`; bodies and grants were not rewritten. |
 | Eight internal privileged functions cited in Claude H-3 | Already compliant live | PostgreSQL catalog checked eight exact names, all `search_path=public, pg_temp` (including ticket and LinkedIn functions). |
 | Untimestamped legacy migration with grants to anon | Archived | Historical `esign_rpc_conversion.sql` removed from active `supabase/migrations`; preserved in `supabase/quarantine/legacy_esign_rpc_conversion_DO_NOT_RUN.sql`. Never execute archive in production. |
+| Mutable SQL function search paths (13 warnings) | Fixed live | v3.2.126 PR #8441 and `20261114062000_search_path_advisor_closure.sql` pin `pg_catalog, public, pg_temp` on thirteen SECURITY INVOKER functions without changes to code bodies or grants; Supabase Security Advisor warning cleared (13 → 0). |
 
 ## Security architecture to validate during independent review
 
@@ -25,11 +26,12 @@
 
 ## Outstanding items — do not represent as passed
 
-1. Complete authorization/abuse-case review of remaining Supabase Advisor privileged-function warnings. Counts after v3.2.121: 58 anon-callable and 166 authenticated-callable privileged functions, **warnings, not automatically exploitable vulnerabilities**. Some are trigger-only and not callable as normal RPC endpoints.
-2. Validate or replace UUID-only public organizer/financial-intake links where necessary; establish appropriate rate limits, expiration/revocation and abuse monitoring. Cloudflare Pages rules do not automatically protect a separate Supabase REST endpoint hostname.
+1. Complete authorization/abuse-case review of remaining Supabase Advisor privileged-function warnings. Counts verified again after v3.2.126: 58 anon-callable and 166 authenticated-callable privileged functions, **warnings, not automatically exploitable vulnerabilities**. Some are trigger-only and not callable as normal RPC endpoints.
+2. Validate or replace UUID-only public organizer/financial-intake links where necessary; establish appropriate rate limits, expiration/revocation and abuse monitoring. Live database checks confirm public organizer/intake save functions accept a record UUID as their only capability but reject edits after submission; there is no separate expiry/revocation credential field in those form tables. Cloudflare Pages rules do not automatically protect a separate Supabase REST endpoint hostname.
 3. Obtain a real authenticated smoke test for enabling/disabling autopay, as well as denied anonymous, expired, cross-tenant, and read-only-employee attempts, without using real payment changes.
 4. Verify all three production frontends serve the latest shared release and test authenticated Home/Reports/Payments/department restrictions.
 5. Independent, authorized staging penetration test; MFA/session revocation, disaster recovery restore test, incident response tabletop, software dependency review and WISP/FTC applicability review.
+6. Supabase Advisor also reports 26 RLS-enabled tables without policies (often deliberately inaccessible) and one `pg_net` extension in `public`. Confirm their intended design and avoid blind schema moves. Search-path mutation warnings are now zero.
 
 ## External reviewer minimum evidence pack
 
