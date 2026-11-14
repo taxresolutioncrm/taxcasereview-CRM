@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+const edge=readFileSync('supabase/functions/stripe-set-autopay/index.ts','utf8')
+const portal=readFileSync('src/pages/ClientPortal.jsx','utf8')
+const modal=readFileSync('src/components/PortalAutopaySetup.jsx','utf8')
+assert.ok(edge.includes("req.headers.get('x-portal-token')"), 'autopay must validate portal session header')
+for(const tokenCheck of [".from('portal_sessions')", ".eq('token',token)", "!s.is_lead", "String(s.client_id)===String(clientId)", "String(s.tenant_id||'')===String(client.tenant_id)", "new Date(s.expires_at).getTime()>Date.now()"])
+  assert.ok(edge.includes(tokenCheck), 'Missing portal session constraint: '+tokenCheck)
+assert.ok(edge.includes("uc.rpc('current_employee_permission',{p_column:'perm_billing'})"), 'staff must have billing edit permission')
+assert.ok(edge.includes('Number(billingPermission)>=2'), 'billing permission insufficient')
+assert.ok(edge.includes(".eq('tenant_id',client.tenant_id)"), 'autopay writes must be tenant-scoped')
+assert.ok(portal.includes("headers: { 'x-portal-token': portalToken }"), 'client portal must include token in autopay calls')
+assert.ok((portal.match(/'x-portal-token': portalToken/g)||[]).length>=2,'enable and cancel must both pass token')
+assert.ok(modal.includes("'x-portal-token': portalToken"),'modal must pass portal token')
+console.log('PASS: authenticated tenant/billing and exact unexpired client portal authorization for autopay')
