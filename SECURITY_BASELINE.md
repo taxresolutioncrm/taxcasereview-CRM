@@ -38,3 +38,11 @@
 Provide the exact production source commit; DB migration ledger and role grants (excluding secret values); security advisor export; RLS/role matrix; Cloudflare deployment IDs; anonymous-denial screenshots/logs; Edge Function version and checksums; signed-off browser regression reports; and documented residual risks with owners and retest status.
 
 **Status:** Critical defects reported by Claude have been remediated and independently checked in the live backend. Final independent review and full operational sign-off **remain pending**.
+
+## November 14 — Staging pen-test readiness and live read-only verification
+
+- **Automation delivered:** v3.2.127, PR #8443, adds a manual-only, production-blocked synthetic isolation harness and `docs/STAGING_SECURITY_PENETRATION_TEST.md`. Static safety/build and browser certification passed. **No authenticated staging penetration test has run**, because the connected shared Supabase project currently has no development branch or configured synthetic multi-office users; the existing Nashville sandbox is a separate backend and cannot prove this shared platform's isolation.
+- **Live read-only RLS check:** `clients`, `leads`, `cases`, `documents`, `esigns`, `client_notes`, `tenant_department_config`, `client_work_sessions`, `portal_sessions`, and `client_sensitive_fields` all have RLS enabled. RLS enablement alone is not a proof that each policy is correct.
+- **Quarantine policy audit:** All **103** `central_legacy_nashville_quarantine` policies are **RESTRICTIVE**, meaning they cannot independently grant access to other tenants. No policy change was made. A preliminary review that omitted the `permissive` catalog column was corrected after full PostgreSQL verification.
+- **Live security advisor:** 0 mutable-search-path warnings, 58 anonymous-callable privileged-function warnings, 166 authenticated-callable privileged-function warnings, 26 no-policy RLS informational notices, and 1 extension-in-public warning. These are distinct from verified exploitable findings.
+- **External-review verdict:** Verified backend remediation is substantial, but the independent staging attack simulation, authenticated negative testing and Cloudflare production parity are **NOT CERTIFIED**. Do not claim PASS for those items until executed with evidence.
