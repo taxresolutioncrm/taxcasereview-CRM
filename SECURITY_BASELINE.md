@@ -4,6 +4,15 @@
 
 **Assessment date:** 2026-11-14. This document records verified controls and remaining review work; it is **not a penetration-test certificate** and must not be used to assert that any system is "100% bulletproof".
 
+## November 14 — Production security correction v3.2.128
+
+- **Legacy client-portal upload RPC:** Fixed live by PR #8445 and migration `20261114203000_portal_legacy_upload_rpc_lockdown.sql`. Anonymous and authenticated EXECUTE privileges are revoked on `public.portal_action_upload_document(text,text,text,text,bigint)`, service-role access retained. PostgreSQL role-grant catalog was rechecked after migration.
+- **Existing supported upload path:** `portal-action` validates the portal session, accepted MIME types and size, creates its own tenant/client-specific storage key, uploads the bytes to storage and inserts the document record. The frontend uses this path and does not invoke the retired RPC. Source regression and frontend/browser CI passed.
+- **Live Security Advisor as of this check:** 57 anon-callable privileged-function warnings, 165 authenticated-callable privileged-function warnings, 26 RLS-without-policy informational notices, 1 extension-in-public warning and **0** mutable function search-path warnings. These are not all demonstrated exploitable vulnerabilities; each privileged RPC must be assessed according to its intended access model.
+- **Public organizer and financial-intake bearer links:** remain UUID-only. Current live counts, queried in aggregate without disclosing client data: one open organizer older than 90 days, five open financial intakes (three older than 90 days). A blind 90-day cutoff would break real open forms. Safe expiry, revocation, regeneration and rate controls require migration plus workflow-compatible tests; **NOT certified completed**.
+- **Authenticated pentest / true cross-office negative access:** **NOT executed** with signed-in synthetic accounts. The existing staging-only test harness is CI-certified, but a dedicated three-office test environment or equivalent non-production test accounts were not available. Do not represent static code certification as a completed penetration test.
+- **Live Cloudflare delivery:** exact deployed hashes for each of the three frontends were not independently available, and therefore deployment parity remains **UNVERIFIED**; a green GitHub build alone does not establish that the sites are serving the release.
+
 ## Confirmed remediation and evidence
 
 | Risk | Status | Evidence / check |
@@ -26,7 +35,7 @@
 
 ## Outstanding items — do not represent as passed
 
-1. Complete authorization/abuse-case review of remaining Supabase Advisor privileged-function warnings. Counts verified again after v3.2.126: 58 anon-callable and 166 authenticated-callable privileged functions, **warnings, not automatically exploitable vulnerabilities**. Some are trigger-only and not callable as normal RPC endpoints.
+1. Complete authorization/abuse-case review of remaining Supabase Advisor privileged-function warnings. Latest verified after v3.2.128: 57 anon-callable and 165 authenticated-callable privileged functions, **warnings, not automatically exploitable vulnerabilities**. Some are trigger-only and not callable as normal RPC endpoints.
 2. Validate or replace UUID-only public organizer/financial-intake links where necessary; establish appropriate rate limits, expiration/revocation and abuse monitoring. Live database checks confirm public organizer/intake save functions accept a record UUID as their only capability but reject edits after submission; there is no separate expiry/revocation credential field in those form tables. Cloudflare Pages rules do not automatically protect a separate Supabase REST endpoint hostname.
 3. Obtain a real authenticated smoke test for enabling/disabling autopay, as well as denied anonymous, expired, cross-tenant, and read-only-employee attempts, without using real payment changes.
 4. Verify all three production frontends serve the latest shared release and test authenticated Home/Reports/Payments/department restrictions.
