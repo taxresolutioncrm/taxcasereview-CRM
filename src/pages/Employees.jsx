@@ -502,10 +502,9 @@ export default function Employees() {
       const path = `docs/${form.name.replace(/\s+/g,'-')}/${Date.now()}_${file.name}`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
       if (!upErr) {
-        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
         const { data: inserted, error: insErr } = await supabase.from('documents').insert([{
           name: file.name, employee: form.name, docType: nextDocLabel,
-          file_url: urlData?.signedUrl || '', file_name: file.name, file_size: file.size,
+          file_url: 'storage://documents/' + path, storage_path: path, file_name: file.name, file_size: file.size,
           created_at: new Date().toISOString()
         }]).select().single()
         if (!insErr && inserted) setEmpDocs(prev => [inserted, ...prev])
@@ -517,9 +516,27 @@ export default function Employees() {
     }
   }
 
+  async function viewEmployeeDocument(doc) {
+    const raw=String(doc.file_url || '')
+    let path=doc.storage_path || (raw.startsWith('storage://documents/') ? raw.slice('storage://documents/'.length) : '')
+    if(!path){
+      try {const parsed=new URL(raw);path=decodeURIComponent(parsed.pathname.split('/documents/')[1]||'')}catch(_){}
+    }
+    if(!path){showToast('Document storage path is unavailable','err');return}
+    // The caller is already authenticated in this office and the storage
+    // SELECT policy checks the user's employee document permission.
+    const {data,error}=await supabase.storage.from('documents').createSignedUrl(path,300)
+    if(error||!data?.signedUrl){showToast('You cannot access this document','err');return}
+    window.open(data.signedUrl,'_blank','noopener,noreferrer')
+  }
+
   async function removeDoc(doc) {
     if (doc.file_name) {
-      const path = doc.file_url?.split('/documents/')[1]
+      const raw = String(doc.file_url || '')
+      let path = doc.storage_path || (raw.startsWith('storage://documents/') ? raw.slice('storage://documents/'.length) : '')
+      if (!path) {
+        try { const parsed=new URL(raw);path=decodeURIComponent(parsed.pathname.split('/documents/')[1]||'') } catch (_) {}
+      }
       if (path) await supabase.storage.from('documents').remove([path]).catch(()=>{})
     }
     const { error } = await supabase.from('documents').delete().eq('id', doc.id)
@@ -1071,7 +1088,7 @@ export default function Employees() {
                               {d.docType}
                             </span>
                           )}
-                          {d.file_url && <a href={d.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--b2)', flexShrink: 0 }}>View</a>}
+                          {(d.storage_path || d.file_url) && <button type="button" onClick={() => viewEmployeeDocument(d)} style={{fontSize:11,color:'var(--b2)',flexShrink:0,background:'transparent',border:0,cursor:'pointer',padding:0}}>View</button>}
                           <button onClick={() => removeDoc(d)} style={{ background: 'none', border: 'none', color: 'var(--bad)', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>×</button>
                         </div>
                       ))}
