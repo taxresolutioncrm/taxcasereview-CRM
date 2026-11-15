@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 
 // Read-only public Cloudflare deployment checks. No login credentials, database writes, or deployments.
 const targets = [
-  { office: 'TCR / TaxRes shared login', url: 'https://taxrescrm.app/login?release=3.2.117' },
-  { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login?release=3.2.117' },
+  { office: 'TCR / TaxRes shared login', url: 'https://taxrescrm.app/login?release=security-verify' },
+  { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login?release=security-verify' },
   { office: 'TaxRes shared password', url: 'https://taxrescrm.app/family-password?office=centurion' },
 ]
-const requiredVersion = '3.2.117'
+const requiredVersion = JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version
 const results = []
 async function fetchText(url) {
   const res = await fetch(url, {
