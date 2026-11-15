@@ -103,11 +103,14 @@ serve(async(req)=>{
       .upsert({product_id:productId,project_id:projectId,metrics,fetched_at:syncedAt,attempted_at:syncedAt,last_error:null},
         {onConflict:'product_id'})
     if(saveError)return reply({error:'Clarity connected, but statistics could not be saved'},503)
-    if(metrics.sessions!==null && metrics.sessions>0) {
-      await supabase.from('product_traffic_channels')
-        .update({status:'live',last_verified_at:syncedAt,updated_at:syncedAt})
-        .eq('product_id',productId).eq('channel_key','clarity').eq('tracking_id',projectId)
-    }
+    // Credential verification succeeds regardless of site traffic. Keep
+    // "connected" distinct from "live" (positive observed sessions).
+    const {error:statusError}=await supabase.from('product_traffic_channels')
+      .update({status:metrics.sessions!==null && metrics.sessions>0?'live':'connected',
+        last_verified_at:syncedAt,updated_at:syncedAt,
+        notes:'Existing Microsoft Clarity project verified by authenticated Data Export API. Session count may be zero.'})
+      .eq('product_id',productId).eq('channel_key','clarity').eq('tracking_id',projectId)
+    if(statusError)return reply({error:'Clarity verified but connected status could not be saved'},503)
     return reply({project_id:projectId,product_id:productId,tracking_configured:true,
       api_status:'live',connected:true,cached:false,range_days:3,
       metrics,synced_at:syncedAt,
@@ -130,6 +133,18 @@ serve(async(req)=>{
   if(!token)return reply({...base,connected:false,api_status:'token_required',
     message:'Clarity tracking is installed. Connect the existing project with a Data Export API token in this Admin Portal to display session metrics.',
     ...(current?{last_snapshot:current}: {})})
+  // Restore durable connection status from the verified snapshot when an older
+  // deployment left this business labelled "configured". Do not make another
+  // Microsoft request or mark zero sessions as live traffic.
+  if(current) {
+    const {error:statusError}=await supabase.from('product_traffic_channels')
+      .update({status:Number(row?.metrics?.sessions)>0?'live':'connected',
+        last_verified_at:row!.fetched_at,updated_at:new Date().toISOString(),
+        notes:'Microsoft Clarity Data Export API verified; zero sessions are allowed.'})
+      .eq('product_id',productId).eq('channel_key','clarity')
+      .eq('tracking_id',projectId).eq('status','configured')
+    if(statusError)return reply({error:'Clarity status synchronization unavailable'},503)
+  }
   // Clarity limits data exports to 10 requests/project/day. This atomic claim
   // permits at most one request per 12 hours even across concurrent page loads.
   const twelveHoursAgo=new Date(Date.now()-12*60*60*1000).toISOString()
@@ -159,13 +174,14 @@ serve(async(req)=>{
     const {error:writeError}=await supabase.from('romylabs_clarity_business_cache')
       .update({metrics,fetched_at:syncedAt,last_error:null}).eq('product_id',productId)
     if(writeError)throw new Error('Cannot persist verified Clarity analytics')
-    // Mark "live" only after the provider actually returns recorded sessions.
-    if(metrics.sessions!==null && metrics.sessions>0) {
-      await supabase.from('product_traffic_channels')
-        .update({status:'live',last_verified_at:syncedAt,updated_at:syncedAt,
-          notes:'selected business Clarity project verified through successful authenticated Data Export API session metrics.'})
-        .eq('product_id',productId).eq('channel_key','clarity').eq('tracking_id',projectId)
-    }
+    // Persist API connectivity even when Microsoft reports zero sessions.
+    // Reserve "live" for positive verified site traffic.
+    const {error:statusError}=await supabase.from('product_traffic_channels')
+      .update({status:metrics.sessions!==null && metrics.sessions>0?'live':'connected',
+        last_verified_at:syncedAt,updated_at:syncedAt,
+        notes:'Selected business Clarity project verified through authenticated Data Export API; sessions may be zero.'})
+      .eq('product_id',productId).eq('channel_key','clarity').eq('tracking_id',projectId)
+    if(statusError)throw new Error('Clarity verified but connection status could not be saved')
     return reply({...base,connected:true,cached:false,api_status:'live',
       metrics,synced_at:syncedAt})
   } catch(error) {
