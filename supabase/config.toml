@@ -289,3 +289,8 @@ verify_jwt = true
 
 [functions.ga4-portfolio-refresh]
 verify_jwt = false
+
+# Public client portal OTP endpoint validates one-time email codes server-side.
+# No unauthenticated caller may read client records or the OTP database.
+[functions.portal-email-login]
+verify_jwt = false
