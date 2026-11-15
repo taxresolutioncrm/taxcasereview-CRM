@@ -229,6 +229,10 @@ export function AppProvider({ children }) {
             window.location.href = '/settings?reset_password=1'
             return
           }
+          if (new URLSearchParams(window.location.search).get('reset_password') === '1') {
+            setUser(data.session.user);setRole('View Only');setPerms(null);setEmployeeName('')
+            return
+          }
           if(!await verifiedSessionOrRedirect() || !authGateActive)return
           setUser(data.session.user)
           loadRole(data.session.user.email).catch(err => {
@@ -257,6 +261,11 @@ export function AppProvider({ children }) {
         // before regular CRM tenant permissions become available.
         setUser(session.user);setRole('View Only');setPerms(null);setEmployeeName('')
         window.location.href = '/settings?reset_password=1'
+        return
+      }
+      if (new URLSearchParams(window.location.search).get('reset_password') === '1') {
+        // Invite/recovery token is authorized for setup only, not staff role hydration.
+        setUser(session.user);setRole('View Only');setPerms(null);setEmployeeName('')
         return
       }
       // Defer Auth API calls until after the Auth state-change callback returns.
