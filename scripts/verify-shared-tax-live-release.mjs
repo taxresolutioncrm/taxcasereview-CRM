@@ -22,10 +22,12 @@ for (const target of targets) {
     const {res, text: html} = await fetchText(target.url)
     const jsSources = [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+\.js(?:\?[^"']*)?)["']/gi)].map(x => new URL(x[1],res.url).href)
     const loaded = []
+    const versionsFound = new Set()
     const discovered = [...jsSources]
     const seen = new Set()
     let versionSeen = html.includes(requiredVersion)
-    for (let i=0; i<discovered.length && seen.size<80 && !versionSeen; i++) {
+    for(const match of html.matchAll(/3\\.2\\.\\d+/g))versionsFound.add(match[0])
+    for (let i=0; i<discovered.length && seen.size<220 && !versionSeen; i++) {
       const url = discovered[i]
       if (seen.has(url)) continue
       seen.add(url)
@@ -33,10 +35,11 @@ for (const target of targets) {
         const asset = await fetchText(url)
         if (!asset.res.ok || !/javascript|text\/plain|octet-stream/.test(asset.res.headers.get('content-type')||'')) continue
         loaded.push({url, http: asset.res.status, bytes:asset.text.length})
+        for(const match of asset.text.matchAll(/3\\.2\\.\\d+/g))versionsFound.add(match[0])
         versionSeen ||= asset.text.includes(requiredVersion)
         const references = [...asset.text.matchAll(/(?:["'(])((?:\/assets\/|\.\/)[\w.-]+\.js)(?:["')])/g)]
         for (const m of references) {
-          if (discovered.length>=100) break
+          if (discovered.length>=300) break
           const next = new URL(m[1],url).href
           if (!seen.has(next)) discovered.push(next)
         }
@@ -49,7 +52,7 @@ for (const target of targets) {
       bytes:html.length,htmlSha256:createHash('sha256').update(html).digest('hex').slice(0,16),
       appHtml:html.includes('id="root"') || html.includes("id='root'"),
       scriptsFound:jsSources.length,scriptsFetched:loaded.filter(x=>x.http===200).length,
-      releaseMarkerFound:versionSeen,
+      releaseMarkerFound:versionSeen,versionsFound:[...versionsFound].sort(),
       sha:process.env.GITHUB_SHA?.slice(0,12)||null,
     }
     response.pass = response.status===200 && response.appHtml && response.scriptsFetched>0 && versionSeen
