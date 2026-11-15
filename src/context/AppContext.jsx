@@ -204,17 +204,32 @@ export function AppProvider({ children }) {
   }
 
   useEffect(() => {
+    let authGateActive = true
+    // Supabase Auth may emit SIGNED_IN with an aal1 token while MFA is pending.
+    // Do not hydrate CRM state or privileged owner role until the factor is verified.
+    async function verifiedSessionOrRedirect() {
+      const {data, error}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if(error)throw error
+      if(data?.nextLevel==='aal2' && data?.currentLevel!=='aal2') {
+        setUser(null);setPerms(null);setRole('View Only');setEmployeeName('')
+        if(window.location.pathname!=='/login' && window.location.pathname!=='/account-security'
+          && window.location.pathname!=='/family-password') window.location.replace('/login?mfa=1')
+        return false
+      }
+      return true
+    }
     loadBrandColor()
     loadFirmBranding()   // fills FIRM for email/document templates
     supabase.auth.getSession()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (error) throw error
-        if (data?.session?.user) {
+        if (data?.session?.user && authGateActive) {
           const inviteSetup = new URLSearchParams(window.location.search).get('invite') === '1'
           if (inviteSetup) {
             window.location.href = '/settings?reset_password=1'
             return
           }
+          if(!await verifiedSessionOrRedirect() || !authGateActive)return
           setUser(data.session.user)
           loadRole(data.session.user.email).catch(err => {
             console.error('[auth] Employee role hydration failed', err)
@@ -228,7 +243,7 @@ export function AppProvider({ children }) {
       })
       .finally(() => setChecking(false))
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      if(!session?.user) {setUser(null);setRole('Tax Associate');setPerms(null);setEmployeeName('');return}
       if (_event === 'PASSWORD_RECOVERY' && session?.user) {
         if (window.location.pathname === '/family-password') return
         window.location.href = '/settings?reset_password=1'
@@ -238,7 +253,17 @@ export function AppProvider({ children }) {
         window.location.href = '/settings?reset_password=1'
         return
       }
-      if (session?.user) {
+      // Defer Auth API calls until after the Auth state-change callback returns.
+      // Do not start tenant RPCs or set owner state for an unverified MFA session.
+      window.setTimeout(async () => {
+        if(!authGateActive)return
+        try {if(!await verifiedSessionOrRedirect() || !authGateActive)return}
+        catch(err){
+          console.error('[auth] MFA assurance verification failed',err)
+          setUser(null);setPerms(null);setRole('View Only');setEmployeeName('')
+          return
+        }
+        setUser(session.user)
         // If this is an admin impersonation session (arrived via ImpersonateGate),
         // set the tenant override so current_tenant_id() returns the impersonated tenant.
         // On a NORMAL login (SIGNED_IN without the ?imp=1 marker), always clear any
@@ -271,11 +296,9 @@ export function AppProvider({ children }) {
             }).catch(() => {})
           })
         }
-      } else {
-        setRole('Tax Associate'); setPerms(null); setEmployeeName('')
-      }
+      },0)
     })
-    return () => listener.subscription.unsubscribe()
+    return () => {authGateActive=false;listener.subscription.unsubscribe()}
   }, [])
 
   // Recover cleanly when Chrome wakes a backgrounded/idle tab. Browser timer
@@ -898,6 +921,13 @@ export function AppProvider({ children }) {
 
   async function loadRole(email) {
     if (!email) return
+    // Defense in depth: this runs for profile refresh and impersonation as well
+    // as login. An aal1 session with a verified factor must never gain owner role.
+    const {data:mfaLevel,error:mfaError}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    if(mfaError || (mfaLevel?.nextLevel==='aal2' && mfaLevel?.currentLevel!=='aal2')){
+      setRole('View Only');setPerms(null);setEmployeeName('')
+      return
+    }
     const normalizedEmail = String(email).trim().toLowerCase()
 
     // During impersonation, always Super Admin regardless of actual employee record

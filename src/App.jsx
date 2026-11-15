@@ -145,6 +145,7 @@ class PageErrorBoundary extends React.Component {
 // first paint with no extra network round-trip, since these are the very
 // first thing a visitor (employee or client) sees.
 import Login      from './pages/Login'
+import MfaSecuritySettings from './components/settings/MfaSecuritySettings'
 import FamilyPassword from './pages/FamilyPassword'
 const Kiosk = lazyWithRecovery('Kiosk', () => import('./pages/Kiosk'))
 const BookAppointment = lazyWithRecovery('BookAppointment', () => import('./pages/BookAppointment'))
@@ -548,9 +549,11 @@ function AuthRouter() {
     <Routes>
       <Route path="/impersonate" element={<ImpersonateGate />} />
       <Route path="/family-password" element={<FamilyPassword />} />
+      <Route path="/account-security" element={<div style={{minHeight:'100vh',padding:24,background:'var(--bg)',color:'var(--tx)'}}><MfaSecuritySettings standalone /></div>} />
       <Route path="/login" element={
         user &&
         new URLSearchParams(window.location.search).get('switch') !== '1' &&
+        new URLSearchParams(window.location.search).get('mfa') !== '1' &&
         (window.location.hostname.toLowerCase() !== 'admin.romylabs.com' || isPlatformOwner(user?.email))
           ? <Navigate to="/" replace />
           : <Login />
