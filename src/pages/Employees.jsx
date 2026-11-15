@@ -130,7 +130,7 @@ function toDbPayload(form) {
     sor_short_id:      sorShortId,
     sor_username:      sorUsername,
     employee_id:       employeeId,
-    portal_pin:        form.portalPin || null,
+    ...(portalPin ? { portal_pin: portalPin } : {}),
     pto_balance:       numOrNull(pto_balance),
     sick_balance:      numOrNull(sick_balance),
     vacation_balance:  numOrNull(vacation_balance),
@@ -158,7 +158,7 @@ function fromDbRow(emp) {
     filingStatus:     emp.filing_status || emp.filingStatus || 'Single',
     employeeId:       emp.employee_id ?? '',
     ssn:              emp.ssn ?? '',
-    portalPin:        emp.portal_pin ?? '',
+    portalPin:        '', // Never populate an employee PIN field from stored hash/legacy secret.
     caf:              emp.caf ?? '',
     ptin:             emp.ptin ?? '',
     sorShortId:       emp.sor_short_id ?? emp.sorShortId ?? '',
@@ -960,7 +960,7 @@ export default function Employees() {
                       <input value={form.ssn} onChange={e => setForm(f => ({ ...f, ssn: e.target.value }))} placeholder="XXX-XX-XXXX" maxLength={11} />
                     </div>
                     <div className="field">
-                      <label>Portal PIN <span style={{ fontSize: 11, color: 'var(--t3)', fontWeight: 400 }}>(4–6 digits, required to log into Employee Portal)</span></label>
+                      <label>Portal PIN <span style={{ fontSize: 11, color: 'var(--t3)', fontWeight: 400 }}>(4–6 digits; leave blank to keep existing PIN)</span></label>
                       <input type="password" value={form.portalPin} onChange={e => setForm(f => ({ ...f, portalPin: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="••••" maxLength={6} inputMode="numeric" />
                     </div>
                   </div>
