@@ -50,5 +50,5 @@ check(businessApi.includes("status:metrics.sessions!==null && metrics.sessions>0
 check(businessApi.includes("last_verified_at:row!.fetched_at"),'Previously verified cached token status can be restored to connected without additional Microsoft calls')
 check(ui.includes("['live','connected'].includes(r.status)"),'Product selector recognizes persistent Clarity connected status across products')
 check(ui.includes("r.status!==nextStatus"),'Clarity registry refresh avoids no-op state update fetch loops')
-check(ui.includes("r.tracking_id === data.project_id"),'Verified connection status stays scoped to correct Clarity project')
+check(ui.includes("r.tracking_id===data.project_id"),'Verified connection status stays scoped to correct Clarity project')
 console.log('PASS PoolVerge Microsoft Clarity integration contract')
