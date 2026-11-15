@@ -84,11 +84,11 @@ export default function ClientPortal() {
   const [pin, setPin] = useState('')
   const [authError, setAuthError] = useState('')
   const [checkingAuth, setCheckingAuth] = useState(false)
-  // Same email + last-4-of-SSN login clients already know. The check now
-  // runs server-side inside a Postgres function (portal_login) instead of
-  // in the browser, so the full SSN never has to be fetched into the page
-  // to be compared — the browser only ever gets back an opaque session
-  // token on success, stored for this tab only.
+  const [codeRequested, setCodeRequested] = useState(false)
+  const [sendingCode, setSendingCode] = useState(false)
+  // Passwordless client access: a server-generated, one-use email code
+  // replaces the predictable SSN-last-four credential. Only the opaque
+  // portal session token is stored for the browser tab; no code is persisted.
   const [portalToken, setPortalToken] = useState(() => sessionStorage.getItem('tcr_portal_token_' + id) || '')
   // Firm logo for this portal — pulled via the anon-safe public-meta RPC so a
   // logged-out client still sees THEIR firm's branding (not a shared file).
@@ -153,20 +153,39 @@ export default function ClientPortal() {
     if (portalToken) loadAllData(portalToken)
   }, [id])
 
+  async function sendCode() {
+    if (!emailInput.trim() || sendingCode) return
+    setSendingCode(true)
+    setAuthError('')
+    setPin('')
+    try {
+      const {data,error}=await supabase.functions.invoke('portal-email-login', {
+        body:{action:'request',client_id:id,email:emailInput.trim()},
+      })
+      if(error || data?.error) throw new Error(data?.error || error?.message || 'Could not request a verification code')
+      setCodeRequested(true)
+    } catch(e) {
+      setAuthError(e.message || 'Could not send a code. Contact your office.')
+    } finally {setSendingCode(false)}
+  }
+
   async function checkAuth() {
+    if (pin.length !== 6 || !codeRequested || checkingAuth) return
     setCheckingAuth(true)
     setAuthError('')
-    const { data, error } = await supabase.rpc('portal_login', { p_id: id, p_email: emailInput, p_pin: pin })
-    setCheckingAuth(false)
-    const row = Array.isArray(data) ? data[0] : data
-    if (error || !row?.token) {
-      setAuthError(error?.message || "That information doesn't match what we have on file. Contact your representative if you need help accessing your portal.")
-      return
-    }
-    sessionStorage.setItem('tcr_portal_token_' + id, row.token)
-    setPortalToken(row.token)
-    setUnlocked(true)
-    loadAllData(row.token)
+    try {
+      const {data,error}=await supabase.functions.invoke('portal-email-login', {
+        body:{action:'verify',client_id:id,email:emailInput.trim(),code:pin},
+      })
+      if(error || !data?.token) throw new Error(data?.error || 'Incorrect or expired code. Request a new one.')
+      setPin('')
+      sessionStorage.setItem('tcr_portal_token_' + id,data.token)
+      setPortalToken(data.token)
+      setUnlocked(true)
+      loadAllData(data.token)
+    } catch(e) {
+      setAuthError(e.message || 'Verification failed')
+    } finally {setCheckingAuth(false)}
   }
 
   async function loadAllData(token) {
@@ -333,18 +352,30 @@ export default function ClientPortal() {
         </div>
         <div style={{ marginBottom: 12 }}>
           <label style={styles.label}>Email Address</label>
-          <input value={emailInput} onChange={e => { setEmailInput(e.target.value); setAuthError('') }} placeholder="you@email.com" type="email" style={styles.textInput} />
+          <input value={emailInput} onChange={e => { setEmailInput(e.target.value); setAuthError(''); setCodeRequested(false); setPin('') }} placeholder="you@email.com" type="email" autoComplete="email" style={styles.textInput} />
         </div>
-        <div style={{ marginBottom: 4 }}>
-          <label style={styles.label}>Last 4 Digits of SSN</label>
-          <input value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setAuthError('') }}
-            onKeyDown={e => e.key === 'Enter' && !checkingAuth && checkAuth()} placeholder="••••" maxLength={4} inputMode="numeric"
-            style={{ ...styles.textInput, fontSize: 20, letterSpacing: 6, textAlign: 'center' }} />
-        </div>
-        {authError && <div style={{ color: '#f87171', fontSize: 12, textAlign: 'center', marginTop: 10 }}>{authError}</div>}
-        <button onClick={checkAuth} disabled={pin.length !== 4 || !emailInput.trim() || checkingAuth} style={{ ...styles.bigBtn, opacity: (pin.length === 4 && emailInput.trim() && !checkingAuth) ? 1 : 0.5 }}>
-          {checkingAuth ? 'Verifying…' : 'View My Information'}
-        </button>
+        {codeRequested ? <>
+          <div style={{fontSize:12,color:'#94a3b8',lineHeight:1.5,marginBottom:12}}>If your email matches your client record, check your inbox for a six-digit, one-time sign-in code. It expires in 10 minutes.</div>
+          <div style={{ marginBottom: 4 }}>
+            <label style={styles.label}>Email Verification Code</label>
+            <input value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setAuthError('') }}
+              onKeyDown={e => e.key === 'Enter' && !checkingAuth && checkAuth()} placeholder="••••••" maxLength={6}
+              inputMode="numeric" autoComplete="one-time-code" aria-label="Six-digit email verification code"
+              style={{ ...styles.textInput, fontSize: 20, letterSpacing: 6, textAlign: 'center' }} />
+          </div>
+          {authError && <div role="alert" style={{ color: '#f87171', fontSize: 12, textAlign: 'center', marginTop: 10 }}>{authError}</div>}
+          <button onClick={checkAuth} disabled={pin.length !== 6 || checkingAuth} style={{ ...styles.bigBtn, opacity: pin.length === 6 && !checkingAuth ? 1 : 0.5 }}>
+            {checkingAuth ? 'Verifying…' : 'Securely Sign In'}
+          </button>
+          <button type="button" onClick={sendCode} disabled={sendingCode} style={{display:'block',margin:'12px auto 0',border:0,background:'transparent',color:'#93c5fd',cursor:'pointer',fontSize:12}}>
+            {sendingCode ? 'Sending…' : 'Send another code'}
+          </button>
+        </> : <>
+          {authError && <div role="alert" style={{ color: '#f87171', fontSize: 12, textAlign: 'center', marginTop: 10 }}>{authError}</div>}
+          <button onClick={sendCode} disabled={!emailInput.trim() || sendingCode} style={{ ...styles.bigBtn, opacity: emailInput.trim() && !sendingCode ? 1 : 0.5 }}>
+            {sendingCode ? 'Sending…' : 'Email My Sign-In Code'}
+          </button>
+        </>}
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', textAlign: 'center', marginTop: 16 }}>
           Your information is private and only visible with this verification.
         </div>
