@@ -449,7 +449,6 @@ function InlinePortalForm({ client, onClose, showToast, tenantId }) {
   const [done, setDone] = useState(null)
 
   const url = window.location.origin + '/portal/' + client?.id
-  const last4 = (client?.ssn || '').replace(/\D/g, '').slice(-4)
 
   async function send() {
     setSending(true)
@@ -538,7 +537,7 @@ function InlinePortalForm({ client, onClose, showToast, tenantId }) {
       <a href="${url}" style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;padding:16px 40px;border-radius:10px;letter-spacing:.02em">
         Access My Client Portal →
       </a>
-      <div style="font-size:12px;color:#94a3b8;margin-top:12px">You'll verify with your email + last 4 digits of your SSN</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:12px">You'll receive a one-time verification code at your email address</div>
     </div>
 
     <!-- Trust bar -->
@@ -579,7 +578,7 @@ function InlinePortalForm({ client, onClose, showToast, tenantId }) {
     if ((sendVia === 'sms' || sendVia === 'both') && client?.phone) {
       try {
         const { data: smsData, error: smsErr } = await supabase.functions.invoke('send-sms', {
-          body: { to: client.phone, body: `Hi ${client.name}, your ${firmName()} Client Portal is ready! View your case, documents, invoices, and more here: ${url} (you'll need your email + last 4 of your SSN to log in)`, client_id: client.id || null }
+          body: { to: client.phone, body: `Hi ${client.name}, your ${firmName()} Client Portal is ready! View your case, documents, invoices, and more here: ${url} (sign in using the one-time verification code sent to your email)`, client_id: client.id || null }
         })
         if (!smsErr && smsData?.success) smsSent = true
       } catch (e) { console.error('SMS error:', e) }
@@ -612,7 +611,7 @@ function InlinePortalForm({ client, onClose, showToast, tenantId }) {
         <div>📧 {client?.email || <span style={{color:'var(--warn)'}}>No email on file</span>}</div>
         <div>📱 {client?.phone || <span style={{color:'var(--warn)'}}>No phone on file</span>}</div>
         <div style={{marginTop:6}}>
-          🔒 Access requires email + last 4 of SSN: {last4 && client?.email ? <strong style={{color:'var(--tx)'}}>{client.email} / ***{last4}</strong> : <span style={{color:'var(--bad)'}}>{!last4 && !client?.email ? 'No SSN or email on file' : !last4 ? 'No SSN on file' : 'No email on file'} — client won't be able to unlock the portal</span>}
+          🔒 Access requires a one-time code sent to the client's email: {client?.email ? <strong style={{color:'var(--tx)'}}>{client.email}</strong> : <span style={{color:'var(--bad)'}}>No email on file — add a valid email before inviting the client</span>}
         </div>
       </div>
       <div className="field"><label>Send Via</label>
