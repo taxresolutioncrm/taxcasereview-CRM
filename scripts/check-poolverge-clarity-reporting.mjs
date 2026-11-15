@@ -51,4 +51,7 @@ check(businessApi.includes("last_verified_at:row!.fetched_at"),'Previously verif
 check(ui.includes("['live','connected'].includes(r.status)"),'Product selector recognizes persistent Clarity connected status across products')
 check(ui.includes("r.status!==nextStatus"),'Clarity registry refresh avoids no-op state update fetch loops')
 check(ui.includes("r.tracking_id===data.project_id"),'Verified connection status stays scoped to correct Clarity project')
+const statusMigration=file('supabase/migrations/20261115162000_clarity_connected_status_distinct_from_live.sql')
+check(statusMigration.includes("'connected'::text") && statusMigration.includes("'live'::text") &&
+  statusMigration.includes("'configured'::text"),'Clarity connected state supported by database CHECK without removing existing statuses')
 console.log('PASS PoolVerge Microsoft Clarity integration contract')
