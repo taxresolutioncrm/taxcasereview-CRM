@@ -21,7 +21,7 @@ export default function Settings() {
   const isPrivileged = ['Super Admin','Admin'].includes(role)
   const isNashville = myTenantId === NASHVILLE_TENANT_ID
   const isPlatformOwner = Boolean(user?.id && PLATFORM_OWNER_EMAILS.has(String(user.email||'').toLowerCase())) && !isNashville
-  const [tab, setTab] = useState(isPrivileged ? 'firm' : 'mysignature')
+  const [tab, setTab] = useState(new URLSearchParams(window.location.search).get('reset_password') === '1' ? 'security' : (isPrivileged ? 'firm' : 'mysignature'))
   const [saving, setSaving] = useState(false)
   const [logoUrl, setLogoUrl] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -414,7 +414,7 @@ export default function Settings() {
 
   async function changePassword() {
     if (pw.next !== pw.confirm) return showToast('Passwords do not match', 'err')
-    if (pw.next.length < 6) return showToast('Min 6 characters', 'err')
+    if (pw.next.length < 12) return showToast('Use at least 12 characters for your new password.', 'err')
     setSaving(true)
     const { error } = await supabase.auth.updateUser({ password: pw.next })
     setSaving(false)
@@ -1346,7 +1346,7 @@ export default function Settings() {
 
       {tab === 'security' && <MfaSecuritySettings />}
 
-      {tab === 'security' && isPrivileged && (
+      {tab === 'security' && (
         <div className="card">
           <div className="card-header"><span className="card-title">Change Password</span></div>
           <div style={{ padding: '0 20px 20px', maxWidth: 400 }}>
