@@ -2,7 +2,39 @@
 
 **Scope:** TCR / TaxRes / Centurion, shared Supabase project `mpxgxfqdbquzkrvvejkh`. Nashville operates independently and was not changed.
 
-**Assessment date:** 2026-11-14. This document records verified controls and remaining review work; it is **not a penetration-test certificate** and must not be used to assert that any system is "100% bulletproof".
+**Assessment date:** 2026-11-15 (latest evidence below; original audit retained). This document records verified controls and remaining review work; it is **not a penetration-test certificate** and must not be used to assert that any system is "100% bulletproof".
+
+## November 15, 2026 — Current verified security state (supersedes older outstanding flags below)
+
+**Production backend/source:** v3.2.132, merged commit `a47fcb363796d5d9b36b56bc509d6a420632807a`. Changes are scoped to the shared TCR/TaxRes/Centurion project; no Nashville project changes.
+
+### Confirmed deployed fixes
+
+- **v3.2.129**, PR #8447: 60-day default expiry and explicit revocation timestamps for new financial-intake and tax-organizer links; 90-day compatibility grace on existing records; all six public load/save/submit RPCs enforce expiry and revocation server-side. Existing draft answers preserved during link reissue.
+- **v3.2.130**, PR #8449: failed PIN logins now persist rate-limit counters (instead of rolling them back on exception) for employee portal, time-clock kiosk and client portal. Three synthetic negative checks passed in a rollback-only transaction; no test counters left behind.
+- **v3.2.131**, PR #8450: four database triggers immediately revoke opaque sessions on employee deactivation/PIN change, client/lead deletion or credential change, and office suspension.
+- **v3.2.132**, PR #8451: revocation also covers changes to employee email/role/individual permission levels and client/lead email. Clears expired and invalid-identity opaque sessions; after production application, **0 employee portal sessions and 0 client portal sessions remained**, and the four triggers were enabled. This does **not** revoke unrelated Supabase Auth refresh tokens; core RLS tenant resolution independently checks employee active status.
+- Prior **v3.2.121 / v3.2.123 / v3.2.128** address the anonymous e-sign bypass, autopay unauthorized mutation, and legacy URL-only document-upload bypass. **v3.2.126** cleared 13 mutable search-path warnings.
+
+### Live non-destructive authorization evidence
+
+- In a single rollback-only transaction, the database simulated the `authenticated` PostgreSQL role with claims from a real active non-owner staff identity in each of the **three** offices. The RLS tenant resolver matched each expected office and yielded **zero cross-tenant visible rows** in each of seven tables: clients, leads, cases, documents, esigns, tax_organizer_responses, financial_intake_responses. **21 cross-tenant read checks PASS.** This validates key database RLS logic, **not** real end-to-end sign-in/session behavior or write-denial under live staff JWTs. No names, emails, records or answers were returned.
+- Storage audit: `documents`, `romylabs-esign`, `office-agreements`, `training-recordings`, `chat-attachments`, `chat-emojis`, and `voicemails` are private buckets; `avatars` and `firm-assets` are intentionally public. The documents policies enforce tenant context and employee document permissions.
+- Live public frontend probe at v3.2.129: TCR/TaxRes shared login, Centurion login and shared password route each returned HTTP 200 and the matching release marker. Later v3.2.132 frontend publication has not been independently proven; v3.2.132 database migrations **are** verified.
+- Latest Supabase Advisor: **0 mutable-search-path warnings**, **57 anonymous** and **165 authenticated privileged-function advisories** (not equivalent to 222 exploits), **26 no-policy-RLS INFO** tables, **1 pg_net extension-in-public WARN**. The `client_sensitive_fields` table is RLS-enabled with no direct anon/authenticated SELECT/INSERT. Do not invent deny-all policies just to suppress INFO.
+- Database Auth `mfa_factors` currently reports **0 verified factors**, meaning mandatory MFA cannot be truthfully claimed active.
+
+### Required final hardening before unrestricted security sign-off
+
+1. **Replace SSN-last-four client PIN authentication** with independently verifiable email one-time codes or strong unique credentials, and validate actual message delivery, rate limits and migration for existing users. Do not silently lock out customers by removing the only live method before replacement acceptance.
+2. **TOTP MFA enrollment, verification and server-side AAL2 authorization** for staff/admins. A factor belongs to each person's authenticator device; no operator can enroll it for them. Enrollment and locked-out-account recovery must be tested before mandating it for the entire workforce.
+3. Migrate **long-lived stored signed document URLs** to path-based on-demand short-lived download URLs with proper client/staff authorization, preserving historical document previews/attachments and signed certificates.
+4. Complete the **independent authorized penetration test** with actual signed-in multi-office users, denied writes, session invalidation, backup restore and incident response; in-production read-only JWT simulations do not replace it.
+5. Assess each remaining privileged-function warning and dependency, including `pg_net`; a blanket revoke or extension relocation can break production workflows.
+
+**Verdict: VERIFIED HARDENED; NOT YET INDEPENDENTLY CERTIFIED.** Do not report `PASS` for the above unresolved activities or imply that every Supabase Advisor warning is exploitable.
+
+---
 
 ## November 14 — Production security correction v3.2.128
 
