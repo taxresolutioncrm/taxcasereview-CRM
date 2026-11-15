@@ -14,6 +14,7 @@ check(ui.includes("tab !== 'search' || seoProduct !== 'pool_crm'"),'Clarity endp
 check(ui.includes('https://clarity.microsoft.com/projects/view/z31rnrvbns/dashboard'),'Clarity project deep link is exact and product-specific')
 check(ui.includes("Connect existing PoolVerge Clarity analytics"),'Owner can connect Microsoft Clarity securely inside the Admin Portal')
 check(ui.includes("Clarity Tracking Installed") && !ui.includes("Clarity Setup · Verify Sessions"),'Website tracking no longer falsely appears uninstalled')
+check(ui.includes('businessClarity?.connected === true') && ui.includes('businessClarity?.product_id === seoProduct') && ui.includes('r.tracking_id === businessClarity.project_id'),'Verified business Clarity API connection appears Connected even when current session count is zero, scoped to the selected project')
 check(ui.includes("apiStatus==='live' && typeof sessions==='number' && sessions>0"),'Verified-live badge requires real positive session metrics')
 check(ui.includes('Dashboard recordings and heatmaps remain in Microsoft Clarity'),'Recordings are never copied to central CRM')
 check(api.includes("caller.rpc('_is_platform_admin')"),'Clarity export is restricted to platform administrators')
