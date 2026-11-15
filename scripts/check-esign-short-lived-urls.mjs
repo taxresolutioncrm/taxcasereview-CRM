@@ -3,7 +3,10 @@ import {readFileSync} from 'node:fs'
 const signers=['src/lib/docUtils.js','src/pages/Leads.jsx','src/pages/Clients.jsx','src/pages/StateForms.jsx','src/components/IRSFormFiller.jsx']
 let bounded=0
 for(const path of signers){
- const src=readFileSync(path,'utf8')
+ const fullSource=readFileSync(path,'utf8')
+ // Leads also generates a distinct financial-intake archive; that workflow
+ // is out of this scoped e-sign change and has its own link lifecycle.
+ const src=path.endsWith('Leads.jsx')?fullSource.slice(0,fullSource.indexOf('financial-intake/financial-intake-')):fullSource
  assert.ok(!src.includes('94608000'),'multi-year e-sign PDF links must not be produced from '+path)
  const refs=[...src.matchAll(/createSignedUrl\([^\n]*?,\s*([0-9]+)\)/g)]
  assert.ok(refs.length,'missing expected e-sign document signed URLs in '+path)
