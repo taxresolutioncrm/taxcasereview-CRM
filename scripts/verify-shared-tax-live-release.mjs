@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 
 // Read-only public Cloudflare deployment checks. No login credentials, database writes, or deployments.
 const targets = [
-  { office: 'TCR / TaxRes shared login', url: 'https://taxrescrm.app/login?release=security-verify-v3133' },
-  { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login?release=security-verify-v3133' },
+  { office: 'TCR / TaxRes shared login', url: 'https://taxrescrm.app/login?release=security-verify-v3134' },
+  { office: 'Centurion', url: 'https://centurionfirm.taxrescrm.app/login?release=security-verify-v3134' },
   { office: 'TaxRes shared password', url: 'https://taxrescrm.app/family-password?office=centurion' },
 ]
 const requiredVersion = JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version
