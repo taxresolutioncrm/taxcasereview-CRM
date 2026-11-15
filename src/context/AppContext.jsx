@@ -921,6 +921,13 @@ export function AppProvider({ children }) {
 
   async function loadRole(email) {
     if (!email) return
+    // Defense in depth: this runs for profile refresh and impersonation as well
+    // as login. An aal1 session with a verified factor must never gain owner role.
+    const {data:mfaLevel,error:mfaError}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    if(mfaError || (mfaLevel?.nextLevel==='aal2' && mfaLevel?.currentLevel!=='aal2')){
+      setRole('View Only');setPerms(null);setEmployeeName('')
+      return
+    }
     const normalizedEmail = String(email).trim().toLowerCase()
 
     // During impersonation, always Super Admin regardless of actual employee record
