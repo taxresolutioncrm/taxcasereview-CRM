@@ -14,6 +14,6 @@ for(const fragment of [
 ])assert.ok(sql.includes(fragment),'missing safe failed-login behavior '+fragment)
 assert.ok(emp.includes('if (error || !data?.token)'),'employee UI must treat returned error JSON as failed sign-in')
 assert.ok(kiosk.includes('if(error||!data?.token)'),'time-clock UI must reject returned error JSON')
-assert.ok(portal.includes('if (error || !row?.token)'),'client portal must reject zero-row sign-ins')
+assert.ok(portal.includes('if(error || !data?.token)') && portal.includes("functions.invoke('portal-email-login'"),'client portal must reject failed email-code sign-ins')
 assert.ok(!/ALTER TABLE|TRUNCATE|DROP TABLE|GRANT |REVOKE /i.test(sql.replace(/^--.*$/gm,'')),'migration must not mutate tables or function permissions')
 console.log('PASS: employee, kiosk and client portal logins now commit failure counters without weakening successful authentication')
