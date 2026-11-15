@@ -650,8 +650,8 @@ function InlineOrganizerForm({ client, onClose, showToast, tenantId }) {
     let orgId
     if (!tenantId) { setSending(false); showToast('Could not resolve office tenant. Refresh and try again.'); return }
     const { data: existing } = await supabase.from('tax_organizer_responses')
-      .select('id').eq('tenant_id', tenantId).eq('client_name', client.name).eq('tax_year', year.trim()).maybeSingle()
-    if (existing) {
+      .select('id,status,public_access_expires_at,public_access_revoked_at').eq('tenant_id', tenantId).eq('client_name', client.name).eq('tax_year', year.trim()).order('created_at',{ascending:false}).limit(1).maybeSingle()
+    if (existing && existing.status !== 'Submitted' && !existing.public_access_revoked_at && Date.parse(existing.public_access_expires_at || '') > Date.now()) {
       orgId = existing.id
     } else {
       const { data: created, error: createErr } = await supabase.from('tax_organizer_responses').insert([{

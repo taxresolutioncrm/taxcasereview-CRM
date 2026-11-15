@@ -39,7 +39,7 @@ export default function OrganizerView({ clientName }) {
   async function load() {
     setLoading(true)
     const { data } = await supabase.from('tax_organizer_responses')
-      .select('*').eq('client_name', clientName).order('tax_year', { ascending: false })
+      .select('*').eq('client_name', clientName).order('tax_year', { ascending: false }).order('created_at', { ascending: false })
     setRecords(data || [])
     setSelectedId(data && data.length ? data[0].id : null)
     setLoading(false)
@@ -56,6 +56,7 @@ export default function OrganizerView({ clientName }) {
   const record = records.find(r => r.id === selectedId) || records[0]
   const answers = record.answers || {}
   const organizerUrl = window.location.origin + '/organizer/' + record.id
+  const linkActive = !record.public_access_revoked_at && Date.parse(record.public_access_expires_at || '') > Date.now()
 
   return (
     <div style={{padding:16}}>
@@ -65,7 +66,7 @@ export default function OrganizerView({ clientName }) {
             <option key={r.id} value={r.id}>{r.tax_year} — {r.status === 'Submitted' ? 'Submitted' : 'Sent, Not Yet Submitted'}</option>
           ))}
         </select>
-        <a href={organizerUrl} target="_blank" rel="noreferrer" style={{fontSize:12, color:'var(--blue)'}}>Open form ↗</a>
+        {linkActive ? <a href={organizerUrl} target="_blank" rel="noreferrer" style={{fontSize:12, color:'var(--blue)'}}>Open form ↗</a> : <span style={{fontSize:12,color:'var(--t3)'}}>Link expired or revoked · Send a new Tax Organizer link</span>}
       </div>
       <div style={{marginBottom:14}}>
         <span className={`bdg ${record.status==='Submitted' ? 'bg' : 'ba'}`} style={{fontSize:12}}>

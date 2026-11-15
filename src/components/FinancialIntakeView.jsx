@@ -48,6 +48,7 @@ export default function FinancialIntakeView({ clientName }) {
 
   const answers = record.answers || {}
   const intakeUrl = window.location.origin + '/financial-intake/' + record.id
+  const linkActive = !record.public_access_revoked_at && Date.parse(record.public_access_expires_at || '') > Date.now()
 
   return (
     <div style={{padding:16}}>
@@ -58,7 +59,7 @@ export default function FinancialIntakeView({ clientName }) {
           </span>
           {record.submitted_at && <span style={{marginLeft:10, fontSize:12, color:'var(--t3)'}}>Submitted {new Date(record.submitted_at).toLocaleString()}</span>}
         </div>
-        <a href={intakeUrl} target="_blank" rel="noreferrer" style={{fontSize:12, color:'var(--blue)'}}>Open form ↗</a>
+        {linkActive ? <a href={intakeUrl} target="_blank" rel="noreferrer" style={{fontSize:12, color:'var(--blue)'}}>Open form ↗</a> : <span style={{fontSize:12,color:'var(--t3)'}}>Link expired or revoked · Send a new Financial Intake link</span>}
       </div>
 
       {FINANCIAL_INTAKE_STEPS.filter(s => s.id !== 'intro' && s.id !== 'done').map(step => {
