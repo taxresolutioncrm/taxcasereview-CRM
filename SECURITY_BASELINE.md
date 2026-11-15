@@ -4,6 +4,15 @@
 
 **Assessment date:** 2026-11-15 (latest evidence below; original audit retained). This document records verified controls and remaining review work; it is **not a penetration-test certificate** and must not be used to assert that any system is "100% bulletproof".
 
+## November 15 — v3.2.133 TOTP second-factor enablement (verified backend)
+
+- **PR #8453 merged**, both production-equivalent build and desktop/tablet/mobile browser certification passed. The public CRM now offers authenticator TOTP enrollment in Security settings and `/account-security`, and login verification when the current account has a verified factor.
+- **Applied migration** `20261115220000_verified_totp_aal2_tenant_gate.sql`. Live catalog confirmed `current_tenant_id()` and `_is_platform_admin()` invoke a new internal `_mfa_assurance_sufficient()` guard, so a user with a verified MFA factor must present an `aal2` JWT to obtain employee tenant context or platform owner authorization. Ordinary and anonymous users cannot directly execute this internal guard; `service_role` can.
+- Live Auth currently has **zero verified MFA factors**. MFA enrollment is therefore **available but not yet universal or enforced for unenrolled employees**. Existing credentials still work until users enroll. Never claim universal mandatory MFA or staff completion without actual device enrollment and account recovery testing.
+- Existing client portal still permits SSN-last-four PIN access; this is a **remaining high-priority replacement project**, not remediated by TOTP for employee Auth. Switching it off without a tested client-specific email-code/password system would deny clients access.
+- The system still needs a short-lived, refreshed document URL mechanism in place of some legacy stored long-lived signed URLs; private storage buckets and tenant RLS are confirmed, but that is not proof old URLs can be safely revoked today.
+- External independent authenticated read/write penetration testing, disaster-recovery restoration, and full Security Advisor manual review are separate sign-off requirements.
+
 ## November 15, 2026 — Current verified security state (supersedes older outstanding flags below)
 
 **Production backend/source:** v3.2.132, merged commit `a47fcb363796d5d9b36b56bc509d6a420632807a`. Changes are scoped to the shared TCR/TaxRes/Centurion project; no Nashville project changes.
