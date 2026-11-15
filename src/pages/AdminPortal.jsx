@@ -5869,11 +5869,12 @@ function CommandCenter() {
         else {
           setBusinessClarity(data)
           if(data?.connected && data?.product_id===seoProduct) {
-            setClarityRows(rows=>rows.map(r=>
-              r.product_id===seoProduct && r.tracking_id===data.project_id
-                ? {...r,status:Number(data.metrics?.sessions)>0?'live':'connected'}
-                : r
-            ))
+            setClarityRows(rows=>{
+              const nextStatus=Number(data.metrics?.sessions)>0?'live':'connected'
+              if(!rows.some(r=>r.product_id===seoProduct && r.tracking_id===data.project_id && r.status!==nextStatus)) return rows
+              return rows.map(r=>r.product_id===seoProduct && r.tracking_id===data.project_id
+                ? {...r,status:nextStatus} : r)
+            })
           }
         }
       }).catch(error=>{if(!cancelled)setBusinessClarityError(String(error?.message||error))})
@@ -5899,11 +5900,12 @@ function CommandCenter() {
       setBusinessClarity(data)
       // Keep the directory badges in sync immediately after a successful
       // connect; the registry is also updated durably by the Edge Function.
-      setClarityRows(rows=>rows.map(r=>
-        r.product_id===seoProduct && r.tracking_id===data.project_id
-          ? {...r,status:Number(data.metrics?.sessions)>0?'live':'connected'}
-          : r
-      ))
+      setClarityRows(rows=>{
+        const nextStatus=Number(data.metrics?.sessions)>0?'live':'connected'
+        if(!rows.some(r=>r.product_id===seoProduct && r.tracking_id===data.project_id && r.status!==nextStatus)) return rows
+        return rows.map(r=>r.product_id===seoProduct && r.tracking_id===data.project_id
+          ? {...r,status:nextStatus} : r)
+      })
       setBusinessClarityToken('')
       setBusinessClarityTick(v=>v+1)
     }catch(error){setBusinessClarityError(String(error?.message||error))}
