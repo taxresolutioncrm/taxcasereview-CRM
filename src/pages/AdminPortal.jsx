@@ -6665,7 +6665,15 @@ function CommandCenter() {
           <ProductReportingSelector value={seoProduct} onChange={setSeoProduct} channel="seo"
             gscConnected={gscConnected} activeGscProduct={seoProduct}
             registryProducts={reportingProducts} seoConnectedProducts={gscLiveProducts}
-            clarityConnectedProducts={clarityRows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id)}
+            clarityConnectedProducts={Array.from(new Set([
+              ...clarityRows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id),
+              // A verified Data Export API connection remains connected when
+              // Microsoft's current three-day report has zero sessions.
+              ...(businessClarity?.connected === true &&
+                  businessClarity?.product_id === seoProduct &&
+                  clarityRows.some(r => r.product_id === seoProduct && r.tracking_id === businessClarity.project_id)
+                ? [seoProduct] : []),
+            ]))}
             clarityConfiguredProducts={clarityRows.filter(r => r.status === 'configured' && r.tracking_id).map(r => r.product_id)} />
           <>
 
