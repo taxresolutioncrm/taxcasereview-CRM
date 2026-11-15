@@ -823,31 +823,31 @@ export default function Sidebar() {
             style={{
               width:'min(560px,94vw)',maxHeight:'80vh',overflowY:'auto',
               background:'#0f2237',border:'1px solid #2a4761',borderRadius:14,
-              boxShadow:'0 28px 100px rgba(0,0,0,.65)',padding:22,color:'var(--tx)',
+              boxShadow:'0 28px 100px rgba(0,0,0,.65)',padding:22,color:'#f1f5f9',
               position:'relative',zIndex:1
             }}
           >
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16}}>
               <div>
-                <div style={{fontSize:11,fontWeight:800,color:'var(--blue)',textTransform:'uppercase',letterSpacing:'.08em'}}>What's New</div>
+                <div style={{fontSize:11,fontWeight:800,color:'#fca311',textTransform:'uppercase',letterSpacing:'.08em'}}>What's New</div>
                 <div style={{fontSize:20,fontWeight:900,marginTop:3}}>{releaseInfo.title}</div>
-                <div style={{fontSize:11,color:'var(--t3)',marginTop:4}}>Production release · {releaseInfo.releasedAt}</div>
+                <div style={{fontSize:11,color:'#b5c9dc',marginTop:4}}>Production release · {releaseInfo.releasedAt}</div>
               </div>
               <button
                 type="button"
                 onClick={()=>setShowReleaseNotes(false)}
                 aria-label="Close release notes"
-                style={{background:'none',border:'none',color:'var(--t3)',fontSize:24,cursor:'pointer',lineHeight:1,padding:4}}
+                style={{background:'none',border:'none',color:'#b5c9dc',fontSize:24,cursor:'pointer',lineHeight:1,padding:4}}
               >×</button>
             </div>
-            <div style={{marginTop:16,padding:'10px 12px',borderRadius:10,background:'rgba(255,255,255,.035)',border:'1px solid var(--br)'}}>
-              <div style={{fontSize:11,color:'var(--t3)'}}>Current production version</div>
+            <div style={{marginTop:16,padding:'10px 12px',borderRadius:10,background:'#182e45',border:'1px solid #35536e'}}>
+              <div style={{fontSize:11,color:'#b5c9dc'}}>Current production version</div>
               <div style={{fontSize:22,fontWeight:900,marginTop:2}}>v{releaseInfo.version}</div>
             </div>
             <div style={{marginTop:16}}>
               {(releaseInfo.changes || []).map((item,i)=>(
                 <div key={i} style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12,lineHeight:1.55,marginBottom:9}}>
-                  <span style={{color:'var(--blue)',fontWeight:900}}>•</span>
+                  <span style={{color:'#fca311',fontWeight:900}}>•</span>
                   <span>{item}</span>
                 </div>
               ))}
