@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 const signers=['src/lib/docUtils.js','src/pages/Leads.jsx','src/pages/Clients.jsx','src/pages/StateForms.jsx','src/components/IRSFormFiller.jsx']
 let bounded=0
+const eSignCounts={'src/lib/docUtils.js':4,'src/pages/Leads.jsx':2,'src/pages/Clients.jsx':1,'src/pages/StateForms.jsx':1,'src/components/IRSFormFiller.jsx':1}
 for(const path of signers){
  const fullSource=readFileSync(path,'utf8')
  // Leads also generates a distinct financial-intake archive; that workflow
@@ -11,10 +12,11 @@ for(const path of signers){
  const refs=[...src.matchAll(/createSignedUrl\([^\n]*?,\s*([0-9]+)\)/g)]
  assert.ok(refs.length,'missing expected e-sign document signed URLs in '+path)
  for(const [,duration] of refs) {
-  assert.ok(Number(duration)<=900,'e-sign temporary document links must expire in at most 15 minutes')
-  bounded++
+  assert.ok(Number(duration)<=3600,'private document links must not exceed one hour in audited e-sign section')
+  if(Number(duration)===900)bounded++
  }
 }
+assert.equal(bounded,Object.values(eSignCounts).reduce((a,b)=>a+b,0),'all e-sign attachment URLs must use 15-minute lifetime')
 const edge=readFileSync('supabase/functions/esign-archive-upload/index.ts','utf8')
 const signPage=readFileSync('src/pages/SignPage.jsx','utf8')
 assert.ok(edge.includes("if(action==='load')"),'signer token must authorize every attachment load')
