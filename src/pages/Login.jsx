@@ -192,6 +192,9 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [loginStatus, setLoginStatus] = useState('')
+  const [mfaPending,setMfaPending] = useState(null)
+  const [mfaCode,setMfaCode] = useState('')
+  const [mfaBusy,setMfaBusy] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [resetSent, setResetSent] = useState(false)
   const [branding, setBranding] = useState(null)
@@ -335,6 +338,63 @@ export default function Login() {
     }
   }
 
+  async function finishSignedInLogin(user) {
+    const signedInEmail = user?.email?.toLowerCase() || ''
+    const isAdminLogin = isAdminHost && ROMYLABS_OWNERS.includes(signedInEmail)
+    if (isAdminLogin) {
+      try { sessionStorage.removeItem('admin_impersonation') } catch (_) {}
+      try { await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null }) } catch (_) {}
+    }
+    login(user)
+    showToast(lang === 'es' ? '¡Bienvenido de nuevo!' : 'Welcome back!')
+    if (isAdminLogin) window.location.href = '/crm-admin'
+  }
+
+  async function loadMfaChallenge(user) {
+    const {data:factors,error}=await supabase.auth.mfa.listFactors()
+    if(error)throw error
+    const factor=(factors?.totp||[]).find(x=>x.status==='verified')
+    if(!factor?.id)throw new Error('Your MFA authenticator is unavailable. Contact the administrator to recover access.')
+    setMfaPending({factorId:factor.id,user})
+    setMfaCode('')
+    setPassword('')
+  }
+
+  useEffect(()=>{
+    if(new URLSearchParams(window.location.search).get('mfa')!=='1')return
+    let active=true
+    ;(async()=>{
+      const {data:session}=await supabase.auth.getSession()
+      if(!session?.session?.user||!active)return
+      const {data:assurance,error}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if(error)throw error
+      if(assurance?.nextLevel==='aal2' && assurance?.currentLevel!=='aal2') await loadMfaChallenge(session.session.user)
+    })().catch(err=>{if(active)setError(err.message||'MFA setup could not be loaded')})
+    return()=>{active=false}
+  },[])
+
+  async function verifyMfa(e) {
+    e.preventDefault()
+    if(!mfaPending||!/^\\d{6}$/.test(mfaCode))return
+    setMfaBusy(true);setError('')
+    try {
+      const {error}=await supabase.auth.mfa.challengeAndVerify({factorId:mfaPending.factorId,code:mfaCode})
+      if(error)throw error
+      const {data:assurance,error:levelError}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if(levelError || assurance?.currentLevel!=='aal2')throw levelError||new Error('The second-factor verification did not finish.')
+      const user=mfaPending.user
+      setMfaPending(null);setMfaCode('')
+      await finishSignedInLogin(user)
+    }catch(err){setError(err.message||'Invalid verification code')}
+    finally{setMfaBusy(false)}
+  }
+
+  async function cancelMfa(){
+    setMfaPending(null);setMfaCode('');setError('')
+    try {await supabase.auth.signOut()} catch (_) {}
+    window.history.replaceState({},'', '/login')
+  }
+
   async function submit(e) {
     e.preventDefault()
     if (!email || !password) return setError(t.required)
@@ -374,22 +434,13 @@ export default function Login() {
         return
       }
 
-      const isAdminLogin = isAdminHost && ownerLogin
-
-      // Defense in depth: the Admin Portal must always start with NO tenant
-      // context. A previous Jump In can leave both a browser marker and a
-      // durable DB override behind, so clear both before routing to /crm-admin.
-      if (isAdminLogin) {
-        try { sessionStorage.removeItem('admin_impersonation') } catch (_) {}
-        try { await supabase.rpc('set_admin_tenant_override', { p_tenant_id: null }) } catch (_) {}
+      const {data:assurance,error:assuranceError}=await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if(assuranceError)throw assuranceError
+      if(assurance?.nextLevel==='aal2' && assurance?.currentLevel!=='aal2'){
+        await loadMfaChallenge(data.user)
+        return
       }
-
-      login(data.user)
-      showToast(lang === 'es' ? '¡Bienvenido de nuevo!' : 'Welcome back!')
-
-      if (isAdminLogin) {
-        window.location.href = '/crm-admin'
-      }
+      await finishSignedInLogin(data.user)
     } catch (err) {
       const transient = isTransientAuthError(err)
       setError(transient
@@ -447,7 +498,14 @@ export default function Login() {
             <p className="tcr-login-sub2">{t.sub}</p>
             {error && <div className="tcr-login-error2">{error}</div>}
 
-            <form onSubmit={submit} noValidate>
+            {mfaPending ? <form onSubmit={verifyMfa} noValidate>
+              <p style={{fontSize:13,color:'#334155',lineHeight:1.6}}>Your account requires the six-digit code from your authenticator app.</p>
+              <div className="tcr-login-field2"><label htmlFor="tcr-mfa-code">Authenticator code</label>
+                <input id="tcr-mfa-code" type="text" inputMode="numeric" autoComplete="one-time-code" value={mfaCode} onChange={e=>setMfaCode(e.target.value.replace(/\\D/g,'').slice(0,6))} maxLength={6} autoFocus />
+              </div>
+              <button type="submit" disabled={mfaBusy||mfaCode.length!==6} className="tcr-login-btn2">{mfaBusy?'Verifying…':'Verify authenticator'}</button>
+              <button type="button" onClick={cancelMfa} style={{marginTop:12,border:0,background:'transparent',color:'#1A7FD4',cursor:'pointer'}}>Use a different account</button>
+            </form> : <form onSubmit={submit} noValidate>
               <div className="tcr-login-field2">
                 <label htmlFor="tcr-email">{t.email}</label>
                 <input ref={emailInputRef} id="tcr-email" type="email" value={email} onInput={e => setEmail(e.currentTarget.value)} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" autoFocus />
@@ -476,7 +534,7 @@ export default function Login() {
                 {lang==='es'?'Enlace de restablecimiento enviado. Revise su correo.':'Password reset link sent. Check your email.'}
               </div>}
               <button type="submit" disabled={loading} className="tcr-login-btn2">{loading ? t.signingIn : t.signIn}</button>
-            </form>
+            </form>}
 
             <div className="tcr-login-footer2">{isAdminHost ? t.platform : t.powered}</div>
           </div>
