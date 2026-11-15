@@ -628,7 +628,7 @@ function InlinePortalForm({ client, onClose, showToast, tenantId }) {
       </div>
       <div style={{display:'flex',gap:8,marginTop:14}}>
         <button className="btn sec" style={{flex:1,justifyContent:'center'}} onClick={onClose}>Cancel</button>
-        <button className="btn sm" style={{flex:1,justifyContent:'center',background:'#0ea5e9',color:'#fff',borderColor:'#0ea5e9'}} onClick={send} disabled={sending || !last4 || !client?.email}>
+        <button className="btn sm" style={{flex:1,justifyContent:'center',background:'#0ea5e9',color:'#fff',borderColor:'#0ea5e9'}} onClick={send} disabled={sending || !client?.email}>
           {sending?'Sending…':'🔓 Send Portal Link'}
         </button>
       </div>
