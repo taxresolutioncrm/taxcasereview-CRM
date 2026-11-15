@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import BookingSettings from '../components/BookingSettings'
 import OfficeDepartmentsSettings from '../components/settings/OfficeDepartmentsSettings'
+import MfaSecuritySettings from '../components/settings/MfaSecuritySettings'
 import { useApp } from '../context/AppContext'
 import { loadFirmBranding } from '../lib/firmBranding'
 
@@ -427,7 +428,7 @@ export default function Settings() {
   // editor + the live status page (read-only) — nothing firm-wide.
   const tabs = isPrivileged
     ? ['firm', ...(isPlatformOwner ? ['departments'] : []), 'integrations', 'booking', 'branding', 'import', 'users', 'security', 'storage', 'statuses', 'billing', 'uptime']
-    : ['mysignature', ...(isPlatformOwner ? ['departments'] : []), 'uptime']
+    : ['mysignature', 'security', ...(isPlatformOwner ? ['departments'] : []), 'uptime']
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: 860, margin: '0 auto' }}>
@@ -1342,6 +1343,8 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {tab === 'security' && <MfaSecuritySettings />}
 
       {tab === 'security' && isPrivileged && (
         <div className="card">
