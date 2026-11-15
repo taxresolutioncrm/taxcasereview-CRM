@@ -229,6 +229,10 @@ export function AppProvider({ children }) {
             window.location.href = '/settings?reset_password=1'
             return
           }
+          if (new URLSearchParams(window.location.search).get('reset_password') === '1') {
+            setUser(data.session.user);setRole('View Only');setPerms(null);setEmployeeName('')
+            return
+          }
           if(!await verifiedSessionOrRedirect() || !authGateActive)return
           setUser(data.session.user)
           loadRole(data.session.user.email).catch(err => {
@@ -245,12 +249,23 @@ export function AppProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if(!session?.user) {setUser(null);setRole('Tax Associate');setPerms(null);setEmployeeName('');return}
       if (_event === 'PASSWORD_RECOVERY' && session?.user) {
+        // Password recovery is a short-lived authenticated setup flow.
+        // Render only with view-only UI defaults; do not hydrate staff roles.
+        setUser(session.user);setRole('View Only');setPerms(null);setEmployeeName('')
         if (window.location.pathname === '/family-password') return
         window.location.href = '/settings?reset_password=1'
         return
       }
       if (_event === 'SIGNED_IN' && session?.user && new URLSearchParams(window.location.search).get('invite') === '1') {
+        // Invited employees need authenticated access to their setup screen,
+        // before regular CRM tenant permissions become available.
+        setUser(session.user);setRole('View Only');setPerms(null);setEmployeeName('')
         window.location.href = '/settings?reset_password=1'
+        return
+      }
+      if (new URLSearchParams(window.location.search).get('reset_password') === '1') {
+        // Invite/recovery token is authorized for setup only, not staff role hydration.
+        setUser(session.user);setRole('View Only');setPerms(null);setEmployeeName('')
         return
       }
       // Defer Auth API calls until after the Auth state-change callback returns.
