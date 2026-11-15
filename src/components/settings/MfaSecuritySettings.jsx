@@ -74,7 +74,7 @@ export default function MfaSecuritySettings({standalone=false}){
    </div>)}
    {setup?<div style={{marginTop:16}}>
      <p style={{fontSize:13}}>Scan this QR code in your authenticator app. If you cannot scan, enter the secret manually. Never share it.</p>
-     <img src={'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(setup.qr)} alt="Authenticator setup QR code" style={{width:190,height:190,maxWidth:'100%',background:'#fff',padding:10}}/>
+     <img src={setup.qr.startsWith('data:')?setup.qr:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(setup.qr)} alt="Authenticator setup QR code" style={{width:190,height:190,maxWidth:'100%',background:'#fff',padding:10}}/>
      {setup.secret&&<div style={{fontSize:12,margin:'10px 0',overflowWrap:'anywhere'}}>Manual setup key: <strong>{setup.secret}</strong></div>}
      <label style={{display:'block',fontSize:13,marginTop:10}}>Six-digit verification code</label>
      <input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} inputMode="numeric" autoComplete="one-time-code" maxLength={6} style={{maxWidth:180,display:'block',margin:'8px 0',padding:9}}/>
