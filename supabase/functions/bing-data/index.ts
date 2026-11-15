@@ -17,6 +17,7 @@ const PRODUCT_SITES: Record<string,string> = {
   groundivo: 'https://groundivo.com/',
   oculivo: 'https://oculivo.com/',
   restore_relay: 'https://restorerelay.com/',
+  settlelift: 'https://settlelift.com/',
   romylabs: 'https://romylabs.com/',
 }
 
