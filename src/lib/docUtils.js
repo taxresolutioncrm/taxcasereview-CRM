@@ -1095,7 +1095,7 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
     const { error: agErr } = await supabase.storage.from('documents')
       .upload(agreementPath, new Blob([agreementBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
     if (agErr) throw agErr
-    const { data: agUrl, error: agSignErr } = await supabase.storage.from('documents').createSignedUrl(agreementPath, 94608000)
+    const { data: agUrl, error: agSignErr } = await supabase.storage.from('documents').createSignedUrl(agreementPath, 900)
     if (agSignErr || !agUrl?.signedUrl) throw agSignErr || new Error('Could not create secure agreement link')
     pdfAttachments.push({ formType: 'agreement', label: 'Tax Service Agreement', url: agUrl.signedUrl, storage_path: agreementPath })
   } catch (e) {
@@ -1112,7 +1112,7 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
       const { error: upErr } = await supabase.storage.from('documents')
         .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
       if (upErr) throw upErr
-      const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 900)
       if (signErr || !urlData?.signedUrl) throw signErr || new Error('Could not create secure document link')
       pdfAttachments.push({ formType, label: FORM_LABELS[formType], url: urlData.signedUrl, storage_path: path })
     } catch (e) {
@@ -1144,7 +1144,7 @@ export async function sendFullPackage(client, supabase, tenantIdOverride = '') {
         const { error: upErr } = await supabase.storage.from('documents')
           .upload(path, new Blob([mergedBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
         if (upErr) throw upErr
-        const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+        const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 900)
         if (signErr || !urlData?.signedUrl) throw signErr || new Error('Could not create secure State POA link')
         const partyLabel = stateParties.length > 1
           ? ` (${party === 'business' ? 'Business' : 'Personal'})`
@@ -1208,7 +1208,7 @@ export async function sendAddendumForSignature(record, opts, supabase, sentBy, t
   const { error: upErr } = await supabase.storage.from('documents')
     .upload(path, new Blob([bytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
   if (upErr) return { error: upErr.message }
-  const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+  const { data: urlData, error: signErr } = await supabase.storage.from('documents').createSignedUrl(path, 900)
   if (signErr || !urlData?.signedUrl) return { error: signErr?.message || 'Could not create secure addendum link' }
   const pdfAttachments = [{ formType: 'addendum', label: 'Service Addendum', url: urlData.signedUrl, storage_path: path }]
 

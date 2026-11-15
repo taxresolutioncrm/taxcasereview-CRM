@@ -279,7 +279,7 @@ function LeadInlineEsign({ lead, onClose, tenantId }) {
         const path=`${officeTenant}/docs/${lead?.id || 'lead'}/esign-custom/${Date.now()}-${customFile.name}`
         const{error:upErr}=await supabase.storage.from('documents').upload(path,customFile,{upsert:true})
         if(upErr) throw upErr
-        const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path,94608000)
+        const{data:u,error:signErr}=await supabase.storage.from('documents').createSignedUrl(path,900)
         if(signErr || !u?.signedUrl) throw signErr || new Error('Could not create secure document link')
         pdfAttachments=[{formType:'custom',label:customFile.name,url:u.signedUrl,storage_path:path}]
       }catch(e){
@@ -811,7 +811,7 @@ export default function Leads() {
         const path = `${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA${suffix}_${stamp}.pdf`
         const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
         if (upErr) throw new Error(upErr.message)
-        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+        const { data: urlData } = await supabase.storage.from('documents').createSignedUrl(path,900)
         const partyLabel = parties.length > 1 ? ` (${party==='business'?'Business':'Personal'})` : ''
         poaAttachments.push({ formType:`state_poa${suffix}`, label:`${formDef.state} POA — ${formDef.label}${partyLabel}`, url:urlData?.signedUrl||'', storage_path:path })
       }

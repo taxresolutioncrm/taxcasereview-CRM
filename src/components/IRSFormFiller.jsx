@@ -109,7 +109,7 @@ export default function IRSFormFiller({ client, onClose }) {
         .upload(path, blob, { upsert: true, contentType: 'application/pdf' });
       if (upErr) throw new Error(upErr.message);
 
-      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000);
+      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 900);
       if (signedUrlErr || !urlData?.signedUrl) throw new Error(signedUrlErr?.message || 'Could not create secure IRS form link');
       const label = FORM_LABELS[formType] || formType;
 
