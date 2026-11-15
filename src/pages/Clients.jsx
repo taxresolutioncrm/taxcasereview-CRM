@@ -2273,7 +2273,7 @@ export default function Clients() {
       const path = `${myTenantId}/docs/${safeName}/state-poa/${formDef.state}_POA_${Date.now()}.pdf`
       const { error: upErr } = await supabase.storage.from('documents').upload(path, pdfBlob, { upsert:true, contentType:'application/pdf' })
       if (upErr) throw new Error(upErr.message)
-      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 94608000)
+      const { data: urlData, error: signedUrlErr } = await supabase.storage.from('documents').createSignedUrl(path, 900)
       if (signedUrlErr || !urlData?.signedUrl) throw new Error(signedUrlErr?.message || 'Could not create secure State POA link')
       const { data: esign, error: esignErr } = await supabase.from('esigns').insert([{
         doc_type: `State POA — ${formDef.state} (${formDef.num})`,
