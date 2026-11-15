@@ -11,4 +11,7 @@ assert.ok(!/last 4|last four|\bSSN\b/i.test(invite), 'Client invite must not req
 assert.ok(invite.includes('client?.email'), 'Email identity must remain visible')
 assert.ok(invite.includes('disabled={sending || !client?.email}'), 'Invite send must require email, not SSN')
 assert.ok(!invite.includes('last4'), 'Removed SSN variable must not be referenced')
-console.log('PASS: client portal invitation uses email OTP only')
+const dashboard=readFileSync('src/pages/Dashboard.jsx','utf8')
+assert.ok(dashboard.includes('one-time verification code delivered to their email'), 'Dashboard help must describe email OTP')
+assert.ok(!dashboard.includes('Clients log into their portal with just their email and last 4 digits of their SSN'), 'Dashboard must not teach retired SSN login')
+console.log('PASS: client portal invitation and dashboard help use email OTP only')
