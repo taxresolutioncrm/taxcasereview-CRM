@@ -421,6 +421,11 @@ export default function Settings() {
     if (error) return showToast(error.message, 'err')
     showToast('Password updated!')
     setPw({ next: '', confirm: '' })
+    if (new URLSearchParams(window.location.search).get('reset_password') === '1') {
+      // Password reset/invite sessions are setup-only, not continuing CRM access.
+      await supabase.auth.signOut()
+      window.location.replace('/login')
+    }
   }
 
   const set = k => e => setFirm(f => ({ ...f, [k]: e.target.value }))
