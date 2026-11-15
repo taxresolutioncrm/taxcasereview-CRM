@@ -45,4 +45,10 @@ check(ui.includes("setPoolClarityToken('')"),'Secret input cleared after verifie
 check(!ui.includes('stored in Supabase Edge Function secrets as'), 'User-facing message no longer falsely requires manual secret configuration')
 check(!api.includes("console.log(candidate)") && !api.includes("reply({api_token"),'Clarity API token is never logged or returned')
 
+const businessApi=file('supabase/functions/business-clarity-data/index.ts')
+check(businessApi.includes("status:metrics.sessions!==null && metrics.sessions>0?'live':'connected'"),'Business Clarity API stores verified connection with zero sessions without falsely recording live traffic')
+check(businessApi.includes("last_verified_at:row!.fetched_at"),'Previously verified cached token status can be restored to connected without additional Microsoft calls')
+check(ui.includes("['live','connected'].includes(r.status)"),'Product selector recognizes persistent Clarity connected status across products')
+check(ui.includes("r.status!==nextStatus"),'Clarity registry refresh avoids no-op state update fetch loops')
+check(ui.includes("r.tracking_id===data.project_id"),'Verified connection status stays scoped to correct Clarity project')
 console.log('PASS PoolVerge Microsoft Clarity integration contract')
