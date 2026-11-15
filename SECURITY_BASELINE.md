@@ -4,6 +4,12 @@
 
 **Assessment date:** 2026-11-15 (latest evidence below; original audit retained). This document records verified controls and remaining review work; it is **not a penetration-test certificate** and must not be used to assert that any system is "100% bulletproof".
 
+## November 15 — v3.2.134 password-recovery compatibility
+
+- **v3.2.134 PR #8455:** Fixes a regression introduced by MFA session gating: password recovery and employee invitations now land on a restricted setup-only session with **View Only** UI defaults, no ordinary CRM role hydration. The Security tab opens for setup; setting a new password requires at least **12 characters**, and the session is signed out after the change. Existing Supabase MFA challenge and server-side enrolled-user AAL2 restrictions are unchanged. Production-equivalent build and browser CI both passed.
+- Neither this hotfix nor the initial opt-in TOTP release automatically enrolls a physical authenticator for any employee. Mandatory-all-staff MFA **remains outstanding** until actual enrollment and tested lockout recovery.
+- As of the latest live check, all three shared CRM public URLs served v3.2.133. The separate current-v3.2.134 release check is run with the attached read-only CI workflow; do not assert current live deployment until it passes.
+
 ## November 15 — v3.2.133 TOTP second-factor enablement (verified backend)
 
 - **PR #8453 merged**, both production-equivalent build and desktop/tablet/mobile browser certification passed. The public CRM now offers authenticator TOTP enrollment in Security settings and `/account-security`, and login verification when the current account has a verified factor.
