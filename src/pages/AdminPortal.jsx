@@ -5866,7 +5866,16 @@ function CommandCenter() {
       .then(({data,error})=>{
         if(cancelled)return
         if(error||data?.error) setBusinessClarityError(data?.error||error?.message||'Clarity unavailable')
-        else setBusinessClarity(data)
+        else {
+          setBusinessClarity(data)
+          if(data?.connected && data?.product_id===seoProduct) {
+            setClarityRows(rows=>rows.map(r=>
+              r.product_id===seoProduct && r.tracking_id===data.project_id
+                ? {...r,status:Number(data.metrics?.sessions)>0?'live':'connected'}
+                : r
+            ))
+          }
+        }
       }).catch(error=>{if(!cancelled)setBusinessClarityError(String(error?.message||error))})
       .finally(()=>{if(!cancelled)setBusinessClarityLoading(false)})
     return()=>{cancelled=true}
@@ -5888,6 +5897,13 @@ function CommandCenter() {
         throw new Error(reason)
       }
       setBusinessClarity(data)
+      // Keep the directory badges in sync immediately after a successful
+      // connect; the registry is also updated durably by the Edge Function.
+      setClarityRows(rows=>rows.map(r=>
+        r.product_id===seoProduct && r.tracking_id===data.project_id
+          ? {...r,status:Number(data.metrics?.sessions)>0?'live':'connected'}
+          : r
+      ))
       setBusinessClarityToken('')
       setBusinessClarityTick(v=>v+1)
     }catch(error){setBusinessClarityError(String(error?.message||error))}
@@ -6666,7 +6682,7 @@ function CommandCenter() {
             gscConnected={gscConnected} activeGscProduct={seoProduct}
             registryProducts={reportingProducts} seoConnectedProducts={gscLiveProducts}
             clarityConnectedProducts={Array.from(new Set([
-              ...clarityRows.filter(r => r.status === 'live' && r.tracking_id).map(r => r.product_id),
+              ...clarityRows.filter(r => ['live','connected'].includes(r.status) && r.tracking_id).map(r => r.product_id),
               // A verified Data Export API connection remains connected when
               // Microsoft's current three-day report has zero sessions.
               ...(businessClarity?.connected === true &&
