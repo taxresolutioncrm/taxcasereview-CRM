@@ -9,7 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
-  'Security: client portal invitations by email, SMS and staff screen now explain verified email one-time codes instead of retired SSN-last-four login',
+  'Security: client portal invitations by email, SMS and staff screen now explain verified email one-time codes instead of retired SSN-last-four login, and sending no longer requires an SSN',
   'RomyLabs Admin Portal Bing Webmaster reporting now resolves the existing SettleLift property, preserving the shared owner API key and all other product mappings',
   'Security: employee portal PIN editor never displays stored secrets or overwrites existing PINs on unrelated saves; supports secure hashed PIN storage',
   'Security: retire direct SSN-last-four client portal login and its legacy Edge Function; invalidate previously issued weak portal sessions now that verified-email sign-in is live',
