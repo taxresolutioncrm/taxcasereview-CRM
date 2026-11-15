@@ -9,7 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
-  'Security: TOTP authenticator enrollment and verified login challenge, server-enforced MFA for enrolled staff and admin roles, no forced rollout before device enrollment',
+  'Security: TOTP setup/verification, login challenge and Auth session/role hydration gating; server-enforced AAL2 for enrolled accounts, while unenrolled staff retain access during onboarding',
   'Security: invalidate portal tokens on employee role/permission or email changes, client email updates, and remove expired or invalidated sessions',
   'Security: revoke employee and client portal session tokens immediately on employee deactivation, credential changes, customer deletion or office suspension',
   'Security: persist employee, kiosk and client portal PIN failure lockouts by returning a generic unsuccessful response instead of rolling back the rate-limit counter',
