@@ -294,7 +294,7 @@ export default function Dashboard() {
     { icon: '🗄️', tip: 'Archive a lead to hide it from the active list — restore it anytime from the Archived view.' },
     { icon: '📞', tip: 'Click a lead phone number to dial them instantly through the built-in SignalWire dialer.' },
     { icon: '🏢', tip: 'The Client Portal lets clients view documents, make payments, and sign forms — no app needed.' },
-    { icon: '🔐', tip: 'Clients log into their portal with just their email and last 4 digits of their SSN.' },
+    { icon: '🔐', tip: 'Clients sign into their portal using a one-time verification code delivered to their email.' },
     { icon: '💳', tip: 'Send a payment link via SMS or email from the Payments tab on any client file.' },
     { icon: '📊', tip: 'The Financial Profile tab builds a full TO Worksheet with all six 433 forms and an OIC calculator.' },
     { icon: '📝', tip: 'The Filing Requirements section tracks which returns a client still needs to file.' },
