@@ -1467,14 +1467,14 @@ export default function Leads() {
     let intakeId
     if (!myTenantId) { setIntakeSending(false); showToast('Office tenant is not resolved yet. Refresh and try again.'); return }
     const { data: existing } = await supabase.from('financial_intake_responses')
-      .select('id').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
-    if (existing) {
+      .select('id,answers,status,public_access_expires_at,public_access_revoked_at').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at',{ascending:false}).limit(1).maybeSingle()
+    if (existing && existing.status !== 'Submitted' && !existing.public_access_revoked_at && Date.parse(existing.public_access_expires_at || '') > Date.now()) {
       intakeId = existing.id
     } else {
       const { data: created, error: createErr } = await supabase.from('financial_intake_responses').insert([{
         tenant_id: myTenantId, client_id: l.id || null,
         client_name: l.name, client_email: l.email || '', status: 'Sent',
-        answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        answers: existing?.status === 'Submitted' ? {} : (existing?.answers || {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }]).select().single()
       if (createErr) { setIntakeSending(false); showToast('Error: '+createErr.message); return }
       intakeId = created.id
@@ -1521,14 +1521,14 @@ export default function Leads() {
     let intakeId = null
     try {
       const { data: existingIntake, error: intakeLookupErr } = await supabase.from('financial_intake_responses')
-        .select('id')
+        .select('id,answers,status,public_access_expires_at,public_access_revoked_at')
         .eq('tenant_id', myTenantId)
         .eq('client_name', l.name)
         .order('created_at',{ascending:false})
         .limit(1)
         .maybeSingle()
       if (intakeLookupErr) throw intakeLookupErr
-      if (existingIntake?.id) {
+      if (existingIntake?.id && existingIntake.status !== 'Submitted' && !existingIntake.public_access_revoked_at && Date.parse(existingIntake.public_access_expires_at || '') > Date.now()) {
         intakeId = existingIntake.id
       } else {
         const { data: newIntake, error: intakeCreateErr } = await supabase.from('financial_intake_responses').insert([{
@@ -1537,7 +1537,7 @@ export default function Leads() {
           client_name: l.name,
           client_email: l.email || '',
           status: 'Sent',
-          answers: {},
+          answers: existingIntake?.status === 'Submitted' ? {} : (existingIntake?.answers || {}),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }]).select().single()
@@ -1822,9 +1822,9 @@ export default function Leads() {
     let intakeAlreadySubmitted = false
     try {
       const { data: existingIntake } = await supabase.from('financial_intake_responses')
-        .select('id, status, answers, submitted_at').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at', { ascending: false }).limit(1).maybeSingle()
+        .select('id, status, answers, submitted_at, public_access_expires_at, public_access_revoked_at').eq('tenant_id', myTenantId).eq('client_name', l.name).order('created_at', { ascending: false }).limit(1).maybeSingle()
 
-      if (existingIntake) {
+      if (existingIntake && (existingIntake.status === 'Submitted' || (!existingIntake.public_access_revoked_at && Date.parse(existingIntake.public_access_expires_at || '') > Date.now()))) {
         // Already has one (sent or submitted while a lead) -- leave it as
         // the carried-over record. Don't re-send the email if they've
         // already submitted; that would be a confusing "fill this out"
@@ -1867,7 +1867,7 @@ export default function Leads() {
         const { data: intakeRec, error: intakeErr } = await supabase.from('financial_intake_responses').insert([{
           tenant_id: myTenantId, client_id: l.id || null,
           client_name: l.name, client_email: l.email || '', status: 'Sent',
-          answers: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+          answers: existingIntake?.status === 'Submitted' ? {} : (existingIntake?.answers || {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         }]).select().single()
         if (!intakeErr && intakeRec) {
           const intakeUrl = window.location.origin + '/financial-intake/' + intakeRec.id
