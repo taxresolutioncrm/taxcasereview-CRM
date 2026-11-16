@@ -726,6 +726,41 @@ function AdminDialer() {
   const [smsBody,setSmsBody] = useState('')
   const [selectedSmsPhone,setSelectedSmsPhone] = useState('')
   const [smsToast,setSmsToast] = useState('')
+  const [ivrSettings,setIvrSettings] = useState(null)
+  const [ivrInitial,setIvrInitial] = useState(null)
+  const [ivrLoading,setIvrLoading] = useState(false)
+  const [ivrSaving,setIvrSaving] = useState(false)
+  const [ivrNotice,setIvrNotice] = useState('')
+  const weekdays=[['Sun',0],['Mon',1],['Tue',2],['Wed',3],['Thu',4],['Fri',5],['Sat',6]]
+  const ivrFields=[
+    ['menu_greeting','Business-hours menu greeting','Message played before callers press 1–5'],
+    ['after_hours_greeting','After-hours greeting','Message played outside your configured business hours'],
+    ['voicemail_greeting','Voicemail greeting','Message played when someone chooses voicemail or nobody answers'],
+  ]
+  const ivrChanged=ivrSettings&&ivrInitial&&JSON.stringify(ivrSettings)!==JSON.stringify(ivrInitial)
+  async function loadIvrSettings(){
+    setIvrLoading(true)
+    setIvrNotice('')
+    try{
+      const {data,error}=await supabase.functions.invoke('romylabs-phone-state',{body:{action:'ivr_settings_get'}})
+      if(error||!data?.ok||!data.settings)throw new Error(data?.error||error?.message||'IVR settings unavailable')
+      const value={...data.settings};delete value.updated_at
+      setIvrSettings(value);setIvrInitial(value)
+    }catch(error){setIvrNotice('Unable to load IVR settings: '+String(error?.message||error))}
+    finally{setIvrLoading(false)}
+  }
+  async function saveIvrSettings(){
+    if(!ivrSettings||ivrSaving)return
+    setIvrSaving(true);setIvrNotice('')
+    try{
+      const {data,error}=await supabase.functions.invoke('romylabs-phone-state',{body:{action:'ivr_settings_save',settings:ivrSettings}})
+      if(error||!data?.ok||!data.settings)throw new Error(data?.error||error?.message||'Save failed')
+      const value={...data.settings};delete value.updated_at
+      setIvrSettings(value);setIvrInitial(value);setIvrNotice('IVR and voicemail settings saved.')
+    }catch(error){setIvrNotice('Could not save: '+String(error?.message||error))}
+    finally{setIvrSaving(false)}
+  }
+  useEffect(()=>{if(tab==='ivr'&&!ivrSettings)void loadIvrSettings()},[tab])
 
   const loadVoicemails = useCallback(async () => {
     setVmLoading(true)
@@ -867,6 +902,7 @@ function AdminDialer() {
     ['sms','SMS',unreadSms],
     ['voicemail','Voicemail',unreadVm],
     ['recordings','Recordings',0],
+    ['ivr','IVR & Voicemail Settings',0],
   ]
 
   return (
@@ -972,6 +1008,65 @@ function AdminDialer() {
           </div>)}
         </section>
       </>}
+
+      {tab==='ivr'&&<section aria-label="RomyLabs IVR and voicemail configuration" style={{...S.card,padding:'clamp(16px,2vw,24px)',borderRadius:16,maxWidth:1000}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:20}}>
+          <div><div style={{fontSize:18,fontWeight:900,color:'#f8fafc'}}>IVR &amp; Voicemail Settings</div>
+            <p style={{fontSize:12,color:'#94a3b8',marginTop:6}}>Manage the actual RomyLabs phone menu, greetings and voicemail routing. All hours use America/New_York.</p></div>
+          <button type="button" onClick={loadIvrSettings} disabled={ivrLoading||ivrSaving} style={{...S.btn('ghost'),padding:'9px 14px'}}>↻ Reload</button>
+        </div>
+        {ivrLoading&&!ivrSettings?<Spinner/>:!ivrSettings?<p style={{color:'#fca5a5',fontSize:13}}>{ivrNotice||'Unable to load settings.'}</p>:<>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,250px),1fr))',gap:12,marginBottom:18}}>
+            <div style={{padding:15,background:'rgba(99,102,241,.06)',border:'1px solid rgba(139,92,246,.18)',borderRadius:12}}>
+              <div style={{fontSize:12,fontWeight:800,color:'#f8fafc',marginBottom:7}}>Business hours · Eastern</div>
+              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                {[['opening_hour','Opens'],['closing_hour','Closes']].map(([key,label])=><label key={key} style={{fontSize:11,color:'#cbd5e1',flex:'1 1 100px'}}>
+                  {label}
+                  <select value={ivrSettings[key]} onChange={e=>setIvrSettings(v=>({...v,[key]:Number(e.target.value)}))}
+                    style={{display:'block',width:'100%',marginTop:5,padding:'10px',borderRadius:8,background:'#0d0c1a',color:'#fff',border:'1px solid rgba(139,92,246,.3)'}}>
+                    {Array.from({length:key==='opening_hour'?24:24},(_,i)=>key==='opening_hour'?i:i+1).map(n=><option key={n} value={n}>{String(n%24).padStart(2,'0')}:00</option>)}
+                  </select>
+                </label>)}
+              </div>
+              <div style={{fontSize:11,color:'#94a3b8',marginTop:11,marginBottom:7}}>Open days</div>
+              <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                {weekdays.map(([label,day])=><button key={day} type="button" aria-pressed={ivrSettings.weekdays.includes(day)} onClick={()=>setIvrSettings(v=>({...v,weekdays:v.weekdays.includes(day)?v.weekdays.filter(x=>x!==day):[...v.weekdays,day].sort()}))}
+                  style={{padding:'7px 9px',borderRadius:8,border:'1px solid rgba(139,92,246,.3)',background:ivrSettings.weekdays.includes(day)?'rgba(99,102,241,.25)':'transparent',color:ivrSettings.weekdays.includes(day)?'#e0e7ff':'#94a3b8',cursor:'pointer',fontSize:11,fontWeight:700}}>{label}</button>)}
+              </div>
+            </div>
+            <div style={{padding:15,background:'rgba(99,102,241,.06)',border:'1px solid rgba(139,92,246,.18)',borderRadius:12}}>
+              <div style={{fontSize:12,fontWeight:800,color:'#f8fafc',marginBottom:8}}>Voicemail behavior</div>
+              {[['no_answer_seconds','Send unanswered calls to voicemail after',15,60,'seconds'],['voicemail_max_seconds','Maximum voicemail recording',30,300,'seconds']].map(([key,label,min,max,unit])=><label key={key} style={{display:'block',fontSize:11,color:'#cbd5e1',marginBottom:12}}>{label}
+                <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5}}>
+                  <input type="number" min={min} max={max} step="1" value={ivrSettings[key]}
+                    onChange={e=>setIvrSettings(v=>({...v,[key]:Number(e.target.value)}))}
+                    style={{width:90,padding:'9px',borderRadius:8,background:'#0d0c1a',color:'#fff',border:'1px solid rgba(139,92,246,.3)'}}/>
+                  <span style={{fontSize:11,color:'#94a3b8'}}>{unit}</span>
+                </div>
+              </label>)}
+              <p style={{fontSize:11,color:'#94a3b8',lineHeight:1.5}}>Outside business hours, calls go directly to voicemail. During business hours, unanswered department calls route to voicemail after the configured timeout.</p>
+            </div>
+          </div>
+          <div style={{display:'grid',gap:14}}>
+            {ivrFields.map(([key,label,hint])=><label key={key} style={{display:'block',fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{label}
+              <span style={{display:'block',fontSize:11,fontWeight:400,color:'#94a3b8',margin:'5px 0 8px'}}>{hint}</span>
+              <textarea rows={key==='menu_greeting'?4:3} maxLength={1100} value={ivrSettings[key]||''} onChange={e=>setIvrSettings(v=>({...v,[key]:e.target.value}))}
+                style={{width:'100%',boxSizing:'border-box',resize:'vertical',padding:'12px 13px',borderRadius:10,background:'#0d0c1a',color:'#fff',border:'1px solid rgba(139,92,246,.3)',fontSize:13,lineHeight:1.55}}/>
+            </label>)}
+          </div>
+          <div style={{marginTop:18,padding:'13px 15px',background:'rgba(99,102,241,.06)',border:'1px solid rgba(139,92,246,.18)',borderRadius:11}}>
+            <div style={{fontSize:12,fontWeight:800,color:'#f8fafc',marginBottom:8}}>Current menu routing</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{ivrOptions.map(([d,label])=><span key={d} style={{fontSize:11,color:'#cbd5e1',padding:'7px 9px',borderRadius:7,background:'rgba(255,255,255,.04)'}}><b style={{color:'#c6ff00'}}>{d}</b> · {label}</span>)}</div>
+            <p style={{fontSize:11,color:'#94a3b8',margin:'10px 0 0'}}>Menu destinations remain on their existing secured RomyLabs routing. This screen changes hours, prompts, and voicemail timing—not phone numbers or tenant ownership.</p>
+          </div>
+          <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center',gap:10,marginTop:18,flexWrap:'wrap'}}>
+            {ivrChanged&&<span style={{fontSize:11,color:'#fbbf24'}}>Unsaved changes</span>}
+            <button type="button" onClick={()=>setIvrSettings({...ivrInitial})} disabled={!ivrChanged||ivrSaving} style={S.btn('ghost')}>Discard</button>
+            <button type="button" onClick={saveIvrSettings} disabled={!ivrChanged||ivrSaving||ivrLoading} style={{...S.btn('primary'),opacity:ivrChanged&&!ivrSaving?1:.5,minWidth:140}}>{ivrSaving?'Saving…':'Save IVR Settings'}</button>
+          </div>
+          {ivrNotice&&<p role="status" style={{color:ivrNotice.startsWith('IVR and')?'#34d399':'#fca5a5',fontSize:12,marginTop:12}}>{ivrNotice}</p>}
+        </>}
+      </section>}
 
       {tab==='sms' && <div style={{...S.card,overflow:'hidden'}}>
         <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
