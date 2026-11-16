@@ -31,7 +31,14 @@ serve(async req=>{
   const {data:ivr,error:ivrError}=await db.from('romylabs_ivr_settings')
     .select('menu_greeting,after_hours_greeting,opening_hour,closing_hour,weekdays,voicemail_max_seconds')
     .eq('tenant_id',ADMIN_TENANT).maybeSingle()
-  if(ivrError||!ivr)return xml('<Hangup/>',503)
+  // A temporary settings-store failure must not interrupt incoming calls.
+  // Fall back to the last known safe phone menu defaults; never route to another tenant.
+  if(ivrError||!ivr)console.error('[romylabs-receive-call] IVR settings unavailable; using safe defaults')
+  const ivrConfig=ivr||{
+    menu_greeting:'Thanks for calling RomyLabs. How can I help? For sales, press 1. For support, press 2. For billing, press 3. To speak with a representative, press 4. Or, to leave a voicemail, press 5.',
+    after_hours_greeting:'Thanks for calling RomyLabs. We are closed right now. Our regular hours are Monday through Friday, nine A M to six P M Eastern. Leave your name, number, and a short message after the tone, and we will get back to you the next business day.',
+    opening_hour:9,closing_hour:18,weekdays:[1,2,3,4,5],voicemail_max_seconds:180,
+  }
 
   if(normalize(from)===romy){
     const cutoff=new Date(Date.now()-15*60*1000).toISOString()
@@ -49,11 +56,11 @@ serve(async req=>{
   })
   if(historyErr&&historyErr.code!=='23505')console.error('[romylabs-receive-call] history insert',historyErr)
 
-  if(!businessHours(new Date(),ivr)){
+  if(!businessHours(new Date(),ivrConfig)){
     await db.from('incoming_calls').update({status:'missed',department:'After Hours'})
       .eq('tenant_id',ADMIN_TENANT).eq('callsid',callSid).eq('status','menu')
-    return xml(`<Say voice="openai.alloy" language="en-US">${escapeXml(ivr.after_hours_greeting)}</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="${Number(ivr.voicemail_max_seconds)}" finishOnKey="#" playBeep="true"/>`)
+    return xml(`<Say voice="openai.alloy" language="en-US">${escapeXml(ivrConfig.after_hours_greeting)}</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="${Number(ivrConfig.voicemail_max_seconds)}" finishOnKey="#" playBeep="true"/>`)
   }
 
-  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="openai.alloy" language="en-US">${escapeXml(ivr.menu_greeting)}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
+  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="openai.alloy" language="en-US">${escapeXml(ivrConfig.menu_greeting)}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
 })
