@@ -4,6 +4,7 @@ create table if not exists public.romylabs_stripe_settings (
   stripe_account_id text,
   mode text not null default 'disabled' check(mode in ('disabled','test','live')),
   webhook_configured boolean not null default false,
+  webhook_verified_at timestamptz,
   updated_at timestamptz not null default now()
 );
 insert into public.romylabs_stripe_settings(id,mode) values(true,'disabled') on conflict(id) do nothing;
