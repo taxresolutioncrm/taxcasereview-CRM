@@ -1149,6 +1149,7 @@ function AdminDialer() {
 function Overview() {
   const [stats, setStats] = useState(null)
   const [loadError, setLoadError] = useState('')
+  const [metricsWarnings, setMetricsWarnings] = useState([])
   const [refreshingMetrics, setRefreshingMetrics] = useState(false)
   const [refreshError, setRefreshError] = useState('')
   const [lastManualRefresh, setLastManualRefresh] = useState(null)
@@ -1167,12 +1168,14 @@ function Overview() {
         if(cancelled) return
         setStats(rows)
         setExternalMetrics(productMetrics)
+        setMetricsWarnings(warnings || [])
         // Partial external metrics failures must not present as a fatal Overview error
         // because the central RomyLabs registry remains the office-directory fallback.
         setLoadError('')
       } catch(error) {
         if(cancelled) return
         setStats([])
+        setMetricsWarnings([])
         setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
         setLoadError(error?.message || 'Unable to load platform offices')
       }
@@ -1193,6 +1196,7 @@ function Overview() {
       }
       setStats(rows)
       setExternalMetrics(nextExternalMetrics)
+      setMetricsWarnings(warnings || [])
       setLoadError('')
       setLastManualRefresh(new Date())
     } catch (error) {
@@ -1472,6 +1476,9 @@ function Overview() {
         ))}
       </div>
 
+      {metricsWarnings.length>0 && <div role="status" style={{padding:'12px 15px',marginBottom:14,borderRadius:10,background:'rgba(245,158,11,.075)',border:'1px solid rgba(245,158,11,.22)',color:'#fbbf24',fontSize:12,lineHeight:1.65}}>
+        <strong>Some CRM metrics are unavailable.</strong> Unknown counts are not zero. {metricsWarnings.join('; ')}
+      </div>}
       {loadError && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:16}}>Unable to load platform offices: {loadError}</div>}
       <div style={{ fontSize:12, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>All Offices</div>
       <div style={{ ...S.card, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch' }}>
