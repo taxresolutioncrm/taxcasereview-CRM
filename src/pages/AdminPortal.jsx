@@ -917,7 +917,7 @@ function AdminDialer() {
                   placeholder="Enter or tap a number" inputMode="tel" autoComplete="tel"
                   style={{flex:1,minWidth:0,width:'100%',boxSizing:'border-box',background:'#0d0c1a',color:'#fff',border:'1px solid rgba(139,92,246,.35)',borderRadius:11,padding:'14px 16px',fontSize:21,letterSpacing:'.045em',fontVariantNumeric:'tabular-nums',outlineOffset:2}}/>
                 <button type="button" onClick={eraseDialDigit} disabled={calling||!number} aria-label="Delete last digit" title="Delete last digit"
-                  style={{minWidth:48,height:50,borderRadius:11,border:'1px solid rgba(139,92,246,.32)',color:'#c4b5fd',background:'rgba(99,102,241,.08)',cursor:calling||!number?'not-allowed':'pointer',opacity:calling||!number?.5:1,fontSize:19}}>⌫</button>
+                  style={{minWidth:48,height:50,borderRadius:11,border:'1px solid rgba(139,92,246,.32)',color:'#c4b5fd',background:'rgba(99,102,241,.08)',cursor:calling||!number?'not-allowed':'pointer',opacity:(calling||!number)?0.5:1,fontSize:19}}>⌫</button>
               </div>
             </div>
             <div aria-label="Telephone keypad" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:10,maxWidth:380,width:'100%',alignSelf:'center'}}>
