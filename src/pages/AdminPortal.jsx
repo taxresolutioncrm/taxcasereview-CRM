@@ -500,11 +500,11 @@ async function loadPlatformOfficeRowsFresh() {
       // Distinguish a real zero-payment billing account from no billing account.
       total_collected:billing ? Number(billing.total_collected || 0) : null,
       transaction_count:billing ? Number(billing.transaction_count || 0) : null,
-      // The RomyLabs billing ledger is authoritative for subscription MRR/seats
-      // when an account exists. CRM usage data must never overwrite billing.
+      // The RomyLabs billing ledger is authoritative. A missing billing record
+      // means unknown — not $0 revenue or an unverified subscription amount.
       effective_monthly:billing
         ? Number(billing.effective_monthly || 0)
-        : Number(row.effective_monthly || 0),
+        : null,
       billing_seats:billing?.billing_seats ?? row.billing_seats ?? null,
       per_seat_rate:billing?.per_seat_rate ?? row.per_seat_rate ?? null,
     }
@@ -543,13 +543,22 @@ async function loadPlatformOfficeRowsFresh() {
   // Unknown values remain null; revenue is sourced only from the central billing overlay.
   const productOfficeTotals = productKey => {
     const offices = rows.filter(row => crmFamilyKey(row.product) === productKey && row.counts_as_office !== false)
+    // An incomplete remote feed must not be described as a complete sum.
+    // Keep partial values available for diagnostics, but mark missing coverage.
+    const knownCounts = key => offices.filter(row => row[key] !== null && row[key] !== undefined && Number.isFinite(Number(row[key])))
     const sumKnown = key => {
-      const known = offices.map(row => row[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)))
-      return known.length ? known.reduce((sum,v) => sum + Number(v), 0) : null
+      const known = knownCounts(key)
+      return known.length && offices.length
+        ? known.reduce((sum,row) => sum + Number(row[key]),0)
+        : null
     }
+    const coverage = Object.fromEntries(['employee_count','client_count','cases_count','billing_seats'].map(key => [
+      key, { known:knownCounts(key).length, total:offices.length }
+    ]))
     const recent = offices.map(row => row.last_activity).filter(Boolean)
       .map(value => new Date(value).getTime()).filter(Number.isFinite)
     return {
+      metric_coverage:coverage,
       employee_count:sumKnown('employee_count'),
       billing_seats:sumKnown('billing_seats'),
       client_count:sumKnown('client_count'),
@@ -593,8 +602,16 @@ async function loadPlatformOfficeRowsFresh() {
 
 
 
-      status:'active',
-      plan_tier:'Main CRM',
+      // Product rollout status is not the same as an active customer tenant.
+      // Building products must never appear Active only because their marketing
+      // record is published. Conversely, do not infer production readiness from
+      // a working app URL or a nonempty demo database.
+      status:String(product.lifecycle||'').toLowerCase()==='live'?'CRM Live'
+        : String(product.lifecycle||'').toLowerCase()==='available'?'Available'
+        : String(product.lifecycle||'').toLowerCase()==='building'?'In Development'
+        : String(product.lifecycle||'').toLowerCase()==='coming_soon'?'Coming Soon'
+        : 'Unverified',
+      plan_tier:'Product',
 
 
     })
@@ -1502,12 +1519,14 @@ function Overview() {
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{(() => {
                   const staff = r.employee_count == null ? null : Number(r.employee_count)
-                  const seats = effectiveSeatCount(r)
-                  return (r.billing_seats == null && staff == null)
-                    ? '—'
-                    : `${Number(seats).toLocaleString()} / ${staff == null ? '—' : staff.toLocaleString()}`
+                  const purchased = r.billing_seats == null ? null : Number(r.billing_seats)
+                  const seats = purchased ?? staff
+                  const coverage = r.is_product_main ? r.metric_coverage?.employee_count : null
+                  const partial = coverage && coverage.known < coverage.total
+                  return seats == null && staff == null ? '—'
+                    : `${seats==null?'—':seats.toLocaleString()} / ${staff == null ? '—' : staff.toLocaleString()}${partial?' (partial)':''}`
                 })()}</td>
-                <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : Number(r.client_count).toLocaleString()}</td>
+                <td style={{ ...S.td, color:'#94a3b8' }}>{r.client_count == null ? '—' : `${Number(r.client_count).toLocaleString()}${r.is_product_main && r.metric_coverage?.client_count?.known < r.metric_coverage?.client_count?.total ? ' (partial)' : ''}`}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.cases_count == null ? '—' : Number(r.cases_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.transaction_count == null ? '—' : Number(r.transaction_count).toLocaleString()}</td>
                 <td style={{ ...S.td, color:'#94a3b8' }}>{r.storage_bytes == null ? '—' : fmtBytes(r.storage_bytes)}</td>
