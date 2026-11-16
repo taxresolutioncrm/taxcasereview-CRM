@@ -708,7 +708,7 @@ function AdminDialer() {
   const location = useLocation()
   const {
     relayStatus, calling, active, elapsed,
-    startCall, endCall, cancelCall,
+    startCall, endCall, cancelCall, sendDTMF,
   } = useCall()
   const [tab,setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') === 'sms' ? 'sms' : 'phone')
   useEffect(() => { if (new URLSearchParams(location.search).get('tab') === 'sms') setTab('sms') }, [location.search])
@@ -843,6 +843,25 @@ function AdminDialer() {
     startCall({id:null,name:name || phone || 'RomyLabs Call',phone,status:'Manual',entityType:null})
   }
 
+  // The keypad is intentionally bound to the existing SignalWire call context.
+  // Before a call it edits the dialed destination; during a call it sends DTMF
+  // to the remote IVR and never changes the original destination number.
+  const dialPad = [
+    ['1',''],['2','ABC'],['3','DEF'],
+    ['4','GHI'],['5','JKL'],['6','MNO'],
+    ['7','PQRS'],['8','TUV'],['9','WXYZ'],
+    ['*',''],['0','+'],['#',''],
+  ]
+  function pressDialDigit(digit) {
+    if(calling) { sendDTMF(digit);return }
+    setNumber(prev => String(prev||'').length < 24 ? String(prev||'')+digit : prev)
+  }
+  function eraseDialDigit() {
+    if(calling) return
+    setNumber(prev=>String(prev||'').slice(0,-1))
+  }
+  const ivrOptions=[['1','Sales'],['2','Support'],['3','Billing'],['4','Representative'],['5','Voicemail']]
+
   const tabs=[
     ['phone','Phone',0],
     ['sms','SMS',unreadSms],
@@ -874,36 +893,84 @@ function AdminDialer() {
       </div>
 
       {tab==='phone' && <>
-        <div style={{display:'grid',gridTemplateColumns:'minmax(320px,560px) 1fr',gap:16,alignItems:'start'}}>
-          <div style={{ ...S.card, padding:22 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', gap:12, marginBottom:16, alignItems:'end' }}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,390px),1fr))',gap:16,alignItems:'start'}}>
+          <section aria-label="RomyLabs dial pad" style={{...S.card,padding:'clamp(16px,2vw,24px)',borderRadius:16,display:'flex',flexDirection:'column',gap:16}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
               <div>
-                <div style={{ fontSize:10, color:'#64748b', fontWeight:800, textTransform:'uppercase', marginBottom:5 }}>Outbound identity</div>
-                <div style={{ background:'#12111f', color:'#e2e8f0', border:'1px solid rgba(99,102,241,.3)', borderRadius:8, padding:'8px 10px', fontSize:12, fontWeight:800 }}>RomyLabs Main Line · (561) 420-6999</div>
+                <div style={{fontSize:15,fontWeight:900,color:'#f8fafc'}}>Phone dialer</div>
+                <div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>Make calls from your RomyLabs number</div>
+              </div>
+              <span style={{fontSize:11,fontWeight:700,color:relayStatus==='ready'?'#34d399':'#fbbf24',padding:'6px 10px',background:relayStatus==='ready'?'rgba(16,185,129,.1)':'rgba(245,158,11,.1)',borderRadius:20}}>
+                {relayStatus==='ready'?'● Line ready':'● '+relayStatus}
+              </span>
+            </div>
+            <div style={{padding:'12px 14px',background:'rgba(99,102,241,.07)',border:'1px solid rgba(139,92,246,.18)',borderRadius:10}}>
+              <div style={{fontSize:10,fontWeight:800,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'.09em'}}>Outbound caller ID</div>
+              <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginTop:6}}>RomyLabs Main Line · (561) 420-6999</div>
+            </div>
+            <div>
+              <label htmlFor="romylabs-dial-number" style={{fontSize:11,fontWeight:800,color:'#a5b4fc',display:'block',marginBottom:8}}>{calling?'Current call':'Number to call'}</label>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <input id="romylabs-dial-number" aria-label="Phone number to call" type="tel" value={number} disabled={calling}
+                  onChange={e=>setNumber(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();placeCall()}}}
+                  placeholder="Enter or tap a number" inputMode="tel" autoComplete="tel"
+                  style={{flex:1,minWidth:0,width:'100%',boxSizing:'border-box',background:'#0d0c1a',color:'#fff',border:'1px solid rgba(139,92,246,.35)',borderRadius:11,padding:'14px 16px',fontSize:21,letterSpacing:'.045em',fontVariantNumeric:'tabular-nums',outlineOffset:2}}/>
+                <button type="button" onClick={eraseDialDigit} disabled={calling||!number} aria-label="Delete last digit" title="Delete last digit"
+                  style={{minWidth:48,height:50,borderRadius:11,border:'1px solid rgba(139,92,246,.32)',color:'#c4b5fd',background:'rgba(99,102,241,.08)',cursor:calling||!number?'not-allowed':'pointer',opacity:calling||!number?.5:1,fontSize:19}}>⌫</button>
               </div>
             </div>
-            <input value={number} onChange={e=>setNumber(e.target.value)} onKeyDown={e=>e.key==='Enter'&&placeCall()} placeholder="Enter phone number" inputMode="tel" autoComplete="tel"
-              style={{width:'100%',boxSizing:'border-box',background:'#0d0c1a',color:'#fff',border:'1px solid rgba(99,102,241,.3)',borderRadius:10,padding:'14px 16px',fontSize:20,letterSpacing:'.04em',marginBottom:12}}/>
-            {!calling ? <button onClick={placeCall} disabled={!canCall} style={{...S.btn('primary'),width:'100%',padding:'12px 18px',opacity:canCall?1:.5}}>📞 Call</button> :
-              <div><div style={{fontSize:14,color:'#e2e8f0',marginBottom:12}}>Calling <strong>{active?.name||active?.phone||number}</strong><span style={{color:'#64748b'}}> · {Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,'0')}</span></div>
-              <div style={{display:'flex',gap:8}}><button onClick={()=>endCall()} style={{...S.btn('danger'),flex:1}}>End Call</button><button onClick={cancelCall} style={S.btn('ghost')}>Cancel</button></div></div>}
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(150px,1fr))',gap:10}}>
-            {[['1','Sales'],['2','Support'],['3','Billing'],['4','Representative'],['5','Voicemail']].map(([digit,label])=><div key={digit} style={{...S.card,padding:'13px 15px',display:'flex',alignItems:'center',gap:9}}>
-              <span style={{width:26,height:26,borderRadius:7,display:'grid',placeItems:'center',background:'rgba(198,255,0,.12)',color:'#C6FF00',fontWeight:900}}>{digit}</span>
-              <span style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{label}</span>
-            </div>)}
-          </div>
+            <div aria-label="Telephone keypad" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:10,maxWidth:380,width:'100%',alignSelf:'center'}}>
+              {dialPad.map(([digit,letters])=><button key={digit} type="button" onClick={()=>pressDialDigit(digit)}
+                aria-label={calling?'Send tone '+digit:'Dial '+digit} title={calling?'Send DTMF '+digit:'Enter '+digit}
+                style={{height:68,borderRadius:12,border:'1px solid rgba(139,92,246,.23)',background:'linear-gradient(145deg,rgba(32,31,56,.96),rgba(18,17,35,.96))',color:'#f8fafc',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:2,transition:'border-color .15s,transform .15s'}}>
+                <span style={{fontSize:24,fontWeight:750,lineHeight:1}}>{digit}</span>
+                <span style={{fontSize:9,fontWeight:800,color:'#94a3b8',letterSpacing:'.12em',minHeight:11}}>{letters}</span>
+              </button>)}
+            </div>
+            {calling ? <div style={{padding:'13px',background:'rgba(16,185,129,.07)',border:'1px solid rgba(16,185,129,.18)',borderRadius:11}}>
+              <div style={{fontSize:12,color:'#e2e8f0',marginBottom:10}}>In call with <strong>{active?.name||active?.phone||number}</strong> <span style={{color:'#a5b4fc',fontVariantNumeric:'tabular-nums'}}>· {Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,'0')}</span></div>
+              <div style={{fontSize:11,color:'#94a3b8',marginBottom:11}}>Tap keypad digits to send tones to the person or phone menu.</div>
+              <div style={{display:'flex',gap:9,flexWrap:'wrap'}}>
+                <button onClick={()=>endCall()} style={{...S.btn('danger'),flex:1,minHeight:42}}>End Call</button>
+                <button onClick={cancelCall} style={{...S.btn('ghost'),minHeight:42}}>Cancel</button>
+              </div>
+            </div> : <button onClick={placeCall} disabled={!canCall} style={{...S.btn('primary'),width:'100%',minHeight:48,fontSize:14,opacity:canCall?1:.5,justifyContent:'center'}}>☎ Call now</button>}
+            <div style={{textAlign:'center',fontSize:11,color:'#94a3b8'}}>{calling?'Keypad is active for phone-menu tones':relayStatus==='ready'?'Ready to place a call':'Calling becomes available once the line is ready'}</div>
+          </section>
+
+          <aside aria-label="RomyLabs inbound phone menu" style={{...S.card,padding:'clamp(16px,2vw,24px)',borderRadius:16}}>
+            <div style={{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',marginBottom:15}}>
+              <div><div style={{fontSize:15,fontWeight:900,color:'#f8fafc'}}>Incoming call menu</div>
+                <div style={{fontSize:11,color:'#94a3b8',marginTop:5}}>What callers hear when dialing your main line</div></div>
+              <span style={{fontSize:10,fontWeight:800,color:'#c4b5fd',background:'rgba(139,92,246,.1)',padding:'6px 10px',borderRadius:20}}>IVR extensions</span>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))',gap:10}}>
+              {ivrOptions.map(([digit,label])=><div key={digit} style={{padding:'13px 14px',border:'1px solid rgba(139,92,246,.22)',borderRadius:11,background:'rgba(139,92,246,.035)',display:'flex',alignItems:'center',gap:11,minHeight:42}}>
+                <span style={{width:34,height:34,flex:'0 0 34px',borderRadius:10,display:'grid',placeItems:'center',background:'rgba(198,255,0,.12)',color:'#C6FF00',fontWeight:900,fontSize:16}}>{digit}</span>
+                <span style={{fontSize:13,fontWeight:800,color:'#e2e8f0'}}>{label}</span>
+              </div>)}
+            </div>
+            <div style={{fontSize:11,color:'#94a3b8',marginTop:16,lineHeight:1.6}}>These are inbound routing choices. The dial pad on the left places outbound calls and sends tones during a call.</div>
+          </aside>
         </div>
-        <div style={{...S.card,marginTop:16}}>
-          <div style={{padding:'13px 16px',borderBottom:'1px solid rgba(99,102,241,.12)',display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontSize:14,fontWeight:900,color:'#fff'}}>Recent Calls</div><div style={{fontSize:10,color:'#64748b'}}>Inbound, missed and outbound RomyLabs activity</div></div><button onClick={loadRecentCalls} style={{...S.btn('ghost'),padding:'6px 10px',fontSize:11}}>Refresh</button></div>
-          {callsLoading?<Spinner/>:recentCalls.length===0?<div style={{padding:30,textAlign:'center',color:'#475569',fontSize:12}}>No RomyLabs call activity yet.</div>:recentCalls.slice(0,30).map((call,i)=><div key={call.id} onClick={()=>loadRecentCallIntoDialer(call)} role={call.phone?'button':undefined} tabIndex={call.phone?0:undefined} onKeyDown={e=>{if(call.phone&&(e.key==='Enter'||e.key===' ')){e.preventDefault();loadRecentCallIntoDialer(call)}}} style={{padding:'10px 16px',display:'flex',alignItems:'center',gap:12,borderBottom:i<Math.min(recentCalls.length,30)-1?'1px solid rgba(99,102,241,.08)':'none',cursor:call.phone?'pointer':'default'}}>
-            <div style={{width:30,height:30,borderRadius:9,display:'grid',placeItems:'center',background:call.direction==='Inbound'?'rgba(16,185,129,.1)':'rgba(99,102,241,.1)'}}>{call.direction==='Inbound'?'↙':'↗'}</div>
-            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:800,color:'#e2e8f0'}}>{call.name||call.phone||'RomyLabs Call'}</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>{call.phone||'—'} · {call.created_at?new Date(call.created_at).toLocaleString():'—'}</div></div>
-            <span style={{fontSize:10,fontWeight:800,padding:'3px 8px',borderRadius:999,background:String(call.status).toLowerCase()==='missed'?'rgba(239,68,68,.12)':'rgba(99,102,241,.12)',color:String(call.status).toLowerCase()==='missed'?'#fca5a5':'#a5b4fc'}}>{call.status}</span>
-            {call.phone&&<button disabled={relayStatus!=='ready'||calling} onClick={e=>{e.stopPropagation();callBack(call.phone,call.name)}} style={{...S.btn('ghost'),padding:'4px 8px',fontSize:9,opacity:relayStatus==='ready'&&!calling?1:.45}}>Call Back</button>}
+
+        <section aria-label="RomyLabs recent calls" style={{...S.card,marginTop:18,borderRadius:15,overflow:'hidden'}}>
+          <div style={{padding:'16px 18px',borderBottom:'1px solid rgba(139,92,246,.17)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+            <div><div style={{fontSize:15,fontWeight:900,color:'#f8fafc'}}>Recent calls</div>
+              <div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>Select a call to load its number into the dialer</div></div>
+            <button onClick={loadRecentCalls} disabled={callsLoading} style={{...S.btn('ghost'),padding:'8px 12px',fontSize:11}}>{callsLoading?'Refreshing…':'↻ Refresh'}</button>
+          </div>
+          {callsLoading?<Spinner/>:recentCalls.length===0?<div style={{padding:32,textAlign:'center',color:'#94a3b8',fontSize:12}}>No RomyLabs calls to show yet.</div>:recentCalls.slice(0,30).map((call,i)=><div key={call.id||i} onClick={()=>loadRecentCallIntoDialer(call)} role={call.phone?'button':undefined} tabIndex={call.phone?0:undefined}
+            onKeyDown={e=>{if(call.phone&&(e.key==='Enter'||e.key===' ')){e.preventDefault();loadRecentCallIntoDialer(call)}}}
+            style={{padding:'13px 18px',display:'flex',alignItems:'center',gap:12,borderBottom:i<Math.min(recentCalls.length,30)-1?'1px solid rgba(139,92,246,.1)':'none',cursor:call.phone?'pointer':'default',flexWrap:'wrap'}}>
+            <div aria-hidden="true" style={{width:36,height:36,flex:'0 0 36px',borderRadius:11,display:'grid',placeItems:'center',background:call.direction==='Inbound'?'rgba(16,185,129,.11)':'rgba(99,102,241,.13)',color:call.direction==='Inbound'?'#34d399':'#a5b4fc',fontSize:17}}>{call.direction==='Inbound'?'↙':'↗'}</div>
+            <div style={{flex:'1 1 180px',minWidth:0}}><div style={{fontSize:13,fontWeight:800,color:'#f1f5f9',overflowWrap:'anywhere'}}>{call.name||call.phone||'RomyLabs Call'}</div>
+              <div style={{fontSize:11,color:'#94a3b8',marginTop:4,overflowWrap:'anywhere'}}>{call.phone||'—'} · {call.created_at?new Date(call.created_at).toLocaleString():'—'}</div></div>
+            <span style={{fontSize:11,fontWeight:800,padding:'5px 10px',borderRadius:999,background:String(call.status).toLowerCase()==='missed'?'rgba(239,68,68,.12)':'rgba(99,102,241,.12)',color:String(call.status).toLowerCase()==='missed'?'#fca5a5':'#c4b5fd'}}>{call.status||'Unknown'}</span>
+            {call.phone&&<button disabled={relayStatus!=='ready'||calling} onClick={e=>{e.stopPropagation();callBack(call.phone,call.name)}} style={{...S.btn('ghost'),padding:'8px 11px',fontSize:11,opacity:relayStatus==='ready'&&!calling?1:.5}}>Call Back</button>}
           </div>)}
-        </div>
+        </section>
       </>}
 
       {tab==='sms' && <div style={{...S.card,overflow:'hidden'}}>
