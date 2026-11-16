@@ -77,6 +77,8 @@ serve(async req=>{
       const {data:entry,error:entryError}=await db.from('romylabs_stripe_checkout_sessions')
         .select('session_id,invoice_id,amount_cents,livemode,status').eq('session_id',checkout.id).maybeSingle()
       if(entryError)throw Error('Could not verify Checkout against billing records')
+      if(!entry && /^[-0-9a-f]{36}$/i.test(String(checkout.metadata?.romylabs_invoice_id||'')))
+        throw Error('Invoice Checkout has not been registered yet; retry delivery')
       if(entry){
         if(Boolean(entry.livemode)!==Boolean(event.livemode)||
           Number(checkout.amount_total)!==Number(entry.amount_cents)||
@@ -103,8 +105,32 @@ serve(async req=>{
         }
       }
     }
-    // Refund/dispute/fraud warnings are retained in the signed audit ledger for
-    // review; never silently reverse or suspend an existing tenant.
+    // Refund, dispute and early fraud warning events must reach the operator.
+    // Record actionable collection alerts only for charges that belong to the
+    // RomyLabs SaaS ledger; never touch unrelated customer-facing CRM charges.
+    if(['charge.refunded','charge.dispute.created','radar.early_fraud_warning.created'].includes(event.type)){
+      const obj=event.data?.object||{}
+      const paymentIntent=String(obj.payment_intent||'')
+      if(paymentIntent.startsWith('pi_')){
+        const {data:payment}=await db.from('romylabs_subscription_payments')
+          .select('account_id,invoice_id').eq('provider','stripe')
+          .eq('provider_payment_id',paymentIntent).maybeSingle()
+        if(payment){
+          const {data:prior}=await db.from('romylabs_collection_events')
+            .select('id').eq('account_id',payment.account_id)
+            .contains('detail',{stripe_event_id:event.id}).limit(1)
+          if(!prior?.length){
+            const {error:alertError}=await db.from('romylabs_collection_events').insert({
+              account_id:payment.account_id,invoice_id:payment.invoice_id,
+              event_type:'manual_hold',channel:'stripe',
+              detail:{stripe_event_id:event.id,stripe_event_type:event.type,review_required:true,
+                note:'Review in Stripe Dashboard before manually reconciling funds; no automatic suspension'}
+            })
+            if(alertError)throw Error('Could not register Stripe finance review alert')
+          }
+        }
+      }
+    }
     const {error:completeError}=await db.from('romylabs_stripe_webhook_events')
       .update({processed_at:now,last_error:null}).eq('event_id',event.id)
     if(completeError)throw Error('Could not finalize signed event')
