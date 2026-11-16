@@ -38,7 +38,7 @@ must("action:'ivr_settings_save'",'IVR settings must save through the real serve
 must('Unsaved changes','Unsaved IVR edits must be visible')
 for(const action of ["action==='ivr_settings_get'","action==='ivr_settings_save'"])assert.ok(phoneState.includes(action),'Missing phone-state action: '+action)
 assert.ok(phoneState.includes("userClient.rpc('_is_platform_admin')"),'Only platform admins can manage the IVR')
-assert.ok(receive.includes("romylabs_ivr_settings")&&receive.includes('escapeXml(ivrConfig.menu_greeting)')&&receive.includes("businessHours(new Date(),ivr)"),'Inbound menu uses persisted greeting and Eastern hours')
+assert.ok(receive.includes("romylabs_ivr_settings")&&receive.includes('escapeXml(ivrConfig.menu_greeting)')&&receive.includes("businessHours(new Date(),ivrConfig)"),'Inbound menu uses persisted greeting and Eastern hours')
 assert.ok(receive.includes('escapeXml(ivrConfig.after_hours_greeting)'),'After-hours greeting uses approved settings')
 assert.ok(route.includes('Number(ivr?.no_answer_seconds??28)*1000'),'No-answer watchdog uses configured timeout')
 assert.ok(voicemail.includes('escapeXml(active.voicemail_greeting)')&&voicemail.includes('active.voicemail_max_seconds'),'Voicemail greeting and max length come from settings')
