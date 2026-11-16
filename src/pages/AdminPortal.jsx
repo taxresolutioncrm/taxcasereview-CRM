@@ -282,6 +282,23 @@ async function loadPlatformOfficeRowsFresh() {
     results = results.map(item => byKey.has(item.productKey) ? { ...item, ...byKey.get(item.productKey) } : item)
   }
 
+  // The platform metrics cache exposes when an external CRM last supplied
+  // trustworthy source data. A stale stored zero must never look like a fresh
+  // measurement merely because the Admin Portal loaded today.
+  const {data:metricsCacheRows,error:metricsCacheError}=await supabase
+    .from('romylabs_metrics_cache').select('product_key,updated_at')
+  const metricSyncByProduct=new Map((metricsCacheRows||[]).map(row=>[String(row.product_key),row.updated_at]))
+  const isMetricCacheStale=key=>{
+    const stamp=metricSyncByProduct.get(String(key))
+    const time=stamp?new Date(stamp).getTime():NaN
+    return Number.isFinite(time) && (Date.now()-time)>48*60*60*1000
+  }
+  if(metricsCacheError)warnings.push('Metrics sync timestamps unavailable')
+  for(const [productKey,stamp] of metricSyncByProduct){
+    if(isMetricCacheStale(productKey))
+      warnings.push(`${productKey} cached usage was last synchronized ${new Date(stamp).toLocaleDateString()}; verify current values`)
+  }
+
   for (const result of tenantFeedResults) {
     if (result.error || result.data?.ok === false) {
       warnings.push(`${result.name} usage feed unavailable`)
@@ -615,6 +632,14 @@ async function loadPlatformOfficeRowsFresh() {
 
 
     })
+  }
+
+  for(let i=0;i<rows.length;i++){
+    const sourceKey=String(rows[i].product||'taxres_crm')
+    rows[i]={...rows[i],
+      metrics_cache_updated_at:metricSyncByProduct.get(sourceKey)||null,
+      metrics_cache_stale:isMetricCacheStale(sourceKey),
+    }
   }
 
   rows.sort((a,b) =>
@@ -1521,6 +1546,7 @@ function Overview() {
                   <span style={{ marginLeft:r.is_product_main?0:14 }}>
                     {r.is_product_main ? <button type="button" aria-expanded={!collapsedProducts.has(r.product)} aria-label={`${collapsedProducts.has(r.product) ? 'Expand' : 'Collapse'} ${r.firm_name} offices`} onClick={() => toggleProduct(r.product)} style={{border:0,background:'transparent',color:'inherit',font:'inherit',fontWeight:'inherit',cursor:'pointer',padding:'6px 0',textAlign:'left'}}><span aria-hidden="true" style={{display:'inline-block',width:16,color:'#94a3b8',fontSize:12}}>{collapsedProducts.has(r.product) ? '▸' : '▾'}</span>{r.firm_name}</button> : `↳ ${r.firm_name}`}
                   </span>
+                  {r.metrics_cache_stale && <span title={`Cached usage last synchronized ${new Date(r.metrics_cache_updated_at).toLocaleString()}; verify current CRM reporting`} style={{marginLeft:9,fontSize:10,fontWeight:700,color:'#fbbf24'}}>⚠ Old sync</span>}
                 </td>
                 <td style={S.td}><span style={S.badge(STATUS_COLOR[r.status]||'#64748b')}>{r.status}</span></td>
                 <td style={S.td}><span style={S.badge(TIER_COLOR[r.plan_tier]||'#64748b')}>{r.plan_tier||'—'}</span></td>
