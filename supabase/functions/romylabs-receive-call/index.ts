@@ -4,7 +4,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const ADMIN_TENANT='a0000000-0000-0000-0000-000000000001'
 const xml=(s:string,status=200)=>new Response(`<?xml version="1.0" encoding="UTF-8"?><Response>${s}</Response>`,{status,headers:{'Content-Type':'text/xml'}})
 const normalize=(v:string)=>{const d=String(v||'').replace(/\D/g,'');return d.length===10?`+1${d}`:(d.length===11&&d.startsWith('1')?`+${d}`:'')}
-function businessHours(d:Date){const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'numeric',hour12:false}).formatToParts(d),wd=p.find(x=>x.type==='weekday')?.value,h=Number(p.find(x=>x.type==='hour')?.value||0);return !['Sat','Sun'].includes(String(wd))&&h>=9&&h<18}
+const escapeXml=(v:string)=>String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')
+function businessHours(d:Date,settings:any){
+  const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'numeric',hour12:false}).formatToParts(d)
+  const day=p.find(x=>x.type==='weekday')?.value||''
+  const dayIndex:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}
+  const hour=Number(p.find(x=>x.type==='hour')?.value||0)%24
+  const days=Array.isArray(settings?.weekdays)?settings.weekdays:[1,2,3,4,5]
+  return days.includes(dayIndex[day])&&hour>=Number(settings?.opening_hour??9)&&hour<Number(settings?.closing_hour??18)
+}
 async function verify(secret:string,url:string,params:Record<string,string>,sig:string){if(!secret||!sig)return false;let s=url;for(const k of Object.keys(params).sort())s+=k+(params[k]??'');const enc=new TextEncoder(),key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-1'},false,['sign']),raw=await crypto.subtle.sign('HMAC',key,enc.encode(s)),expected=btoa(String.fromCharCode(...new Uint8Array(raw)));if(expected.length!==sig.length)return false;let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^sig.charCodeAt(i);return diff===0}
 
 serve(async req=>{
@@ -20,6 +28,10 @@ serve(async req=>{
   const romy=normalize(adminSettings?.sw_inbound_did||'')
   if(!callSid||!romy||normalize(to)!==romy)return xml('<Hangup/>',403)
   const base=`${Deno.env.get('SUPABASE_URL')}/functions/v1`
+  const {data:ivr,error:ivrError}=await db.from('romylabs_ivr_settings')
+    .select('menu_greeting,after_hours_greeting,opening_hour,closing_hour,weekdays,voicemail_max_seconds')
+    .eq('tenant_id',ADMIN_TENANT).maybeSingle()
+  if(ivrError||!ivr)return xml('<Hangup/>',503)
 
   if(normalize(from)===romy){
     const cutoff=new Date(Date.now()-15*60*1000).toISOString()
@@ -37,12 +49,11 @@ serve(async req=>{
   })
   if(historyErr&&historyErr.code!=='23505')console.error('[romylabs-receive-call] history insert',historyErr)
 
-  if(!businessHours(new Date())){
+  if(!businessHours(new Date(),ivr)){
     await db.from('incoming_calls').update({status:'missed',department:'After Hours'})
       .eq('tenant_id',ADMIN_TENANT).eq('callsid',callSid).eq('status','menu')
-    return xml(`<Say voice="openai.alloy" language="en-US">Thanks for calling RomyLabs. We're closed right now. Our regular hours are Monday through Friday, nine A M to six P M Eastern. Leave your name, number, and a short message after the tone, and we'll get back to you the next business day.</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="180" playBeep="true"/>`)
+    return xml(`<Say voice="openai.alloy" language="en-US">${escapeXml(ivr.after_hours_greeting)}</Say><Record action="${base}/romylabs-voicemail-recorded" maxLength="${Number(ivr.voicemail_max_seconds)}" finishOnKey="#" playBeep="true"/>`)
   }
 
-  const prompt="Thanks for calling RomyLabs. How can I help? For sales, press 1. For support, press 2. For billing, press 3. To speak with a representative, press 4. Or, to leave a voicemail, press 5."
-  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="openai.alloy" language="en-US">${prompt}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
+  return xml(`<Gather numDigits="1" timeout="8" action="${base}/romylabs-ivr-route" method="POST"><Say voice="openai.alloy" language="en-US">${escapeXml(ivr.menu_greeting)}</Say></Gather><Redirect method="POST">${base}/romylabs-ivr-route</Redirect>`)
 })
