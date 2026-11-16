@@ -55,8 +55,14 @@ serve(async req=>{
       const account=await stripe(key,'account')
       if(account.id!==accountId)return json({error:'That Stripe key belongs to another merchant account'},403)
       await secret(mode==='live'?'romylabs_stripe_live_key':'romylabs_stripe_test_key',key)
+      // Do not discard a signing secret provisioned for the same Stripe
+      // merchant through the connected Stripe account. A fresh signed ping is
+      // still required before any real Checkout becomes available.
+      const webhookConfigured=Boolean(await secret(mode==='live'?'romylabs_stripe_live_webhook':'romylabs_stripe_test_webhook'))
       const {error}=await db.from('romylabs_stripe_settings').update({
-        stripe_account_id:accountId,mode:'disabled',webhook_configured:false,webhook_verified_at:null,updated_at:new Date().toISOString()
+        stripe_account_id:accountId,mode:'disabled',
+        webhook_configured:webhookConfigured,webhook_verified_at:null,
+        updated_at:new Date().toISOString()
       }).eq('id',true)
       if(error)return json({error:'Verified Stripe credentials could not be recorded'},503)
       return json({ok:true,merchant:account.business_profile?.name||'Romy Labs, LLC',
