@@ -96,8 +96,8 @@ export const PRODUCT_BOOKING_CONFIGS = {
   oculivo: {
     key:           'oculivo',
     name:          'Oculivo',
-    logo:          '/oculivo-logo.svg?v=20260907-1',
-    favicon:       '/oculivo-logo.svg?v=20260907-1',
+    logo:          '/oculivo-brand-logo.png?v=20261116-1',
+    favicon:       '/oculivo-favicon.png?v=20261116-1',
     logoAlt:       'Oculivo',
     headline:      'Schedule an Oculivo Demo',
     types:         ['Oculivo Product Demo', 'Eye-Care Practice Consultation', 'Oculivo Follow-Up Call'],

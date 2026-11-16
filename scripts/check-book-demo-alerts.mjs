@@ -16,9 +16,10 @@ for (const key of keys) {
   assert.match(brand,new RegExp(key==='taxres_crm'?'\\[TaxRes CRM\\]':key==='restore_relay'?'\\[Restore Relay\\]':key==='romylabs'?'\\[RomyLabs\\]':key==='camvella'?'\\[Camvella\\]':key==='arcvena'?'\\[Arcvena\\]':key==='bocasync'?'\\[BocaSync\\]':key==='oculivo'?'\\[Oculivo\\]' :key==='groundivo'?'\\[GroundIVO\\]':key==='pool_crm'?'\\[PoolVerge\\]':key==='barbers_salons'?'\\[Barbers & Salons CRM\\]':'\\[Health Insurance Agency CRM\\]'),'Missing calendar brand: '+key)
 }
 assert.ok(book.includes("booking_create_product"),'booking writes must persist product identity')
-assert.ok(book.includes("productCfg.key==='taxres_crm'?productCfg.favicon:(data.logo_url||productCfg.favicon)"),'TaxRes booking favicon must not be overridden by tenant logo metadata')
+assert.ok(book.includes("(productCfg.key==='taxres_crm'||productCfg.key==='oculivo')?productCfg.favicon:(data.logo_url||productCfg.favicon)"),'TaxRes and Oculivo booking favicons must not be overridden by tenant logos')
 assert.ok(book.includes("booking_firm_notification"),'firm notification must be requested')
 assert.ok(book.includes("booking_confirmation"),'client confirmation must be requested')
+assert.ok(cfg.includes("'/oculivo-brand-logo.png?v=20261116-1'") && cfg.includes("'/oculivo-favicon.png?v=20261116-1'"),'Oculivo booking uses the approved logo and favicon')
 assert.ok(cfg.includes("productParam === 'aquagrid'"),'Legacy PoolVerge alias missing')
 assert.ok(mail.includes("booking_token"),'mail must validate booking token')
 assert.ok(mail.includes("romylabs_stalwart_transport_for_product"),'Internal bookings must use RomyLabs Stalwart')
