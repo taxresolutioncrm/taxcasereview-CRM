@@ -100,6 +100,44 @@ serve(async req=>{
     const body=await req.json().catch(()=>({}))
     const action=String(body?.action||'')
 
+    // Platform-admin-only IVR/voicemail configuration, isolated to RomyLabs.
+    if(action==='ivr_settings_get'){
+      const {data,error}=await db.from('romylabs_ivr_settings')
+        .select('menu_greeting,after_hours_greeting,voicemail_greeting,opening_hour,closing_hour,weekdays,no_answer_seconds,voicemail_max_seconds,updated_at')
+        .eq('tenant_id',TENANT).single()
+      return error?json({error:'IVR settings unavailable'},503):json({ok:true,settings:data})
+    }
+    if(action==='ivr_settings_save'){
+      const v=body?.settings
+      if(!v||typeof v!=='object'||Array.isArray(v))return json({error:'Invalid IVR settings'},400)
+      const promptFields=['menu_greeting','after_hours_greeting','voicemail_greeting'] as const
+      const prompts:Record<string,string>={}
+      for(const field of promptFields){
+        const value=v[field]
+        if(typeof value!=='string'||value.trim().length<20||value.trim().length>1100)
+          return json({error:field+' must contain 20–1100 characters'},400)
+        prompts[field]=value.trim()
+      }
+      const open=Number(v.opening_hour),close=Number(v.closing_hour)
+      const seconds=Number(v.no_answer_seconds),maxLength=Number(v.voicemail_max_seconds)
+      const days=v.weekdays
+      if(!Number.isSafeInteger(open)||open<0||open>23||
+         !Number.isSafeInteger(close)||close<1||close>24||close<=open ||
+         !Number.isSafeInteger(seconds)||seconds<15||seconds>60||
+         !Number.isSafeInteger(maxLength)||maxLength<30||maxLength>300||
+         !Array.isArray(days)||days.length<1||days.length>7||
+         new Set(days).size!==days.length||days.some((d:any)=>!Number.isSafeInteger(d)||d<0||d>6))
+        return json({error:'Invalid business hours or voicemail settings'},400)
+      const updates={...prompts,opening_hour:open,closing_hour:close,weekdays:days,
+        no_answer_seconds:seconds,voicemail_max_seconds:maxLength,updated_at:new Date().toISOString()}
+      const {data,error}=await db.from('romylabs_ivr_settings')
+        .update(updates).eq('tenant_id',TENANT)
+        .select('menu_greeting,after_hours_greeting,voicemail_greeting,opening_hour,closing_hour,weekdays,no_answer_seconds,voicemail_max_seconds,updated_at')
+        .single()
+      if(error||!data)return json({error:'IVR settings could not be saved'},503)
+      return json({ok:true,settings:data})
+    }
+
     async function signedRecordingUrl(rec:any){
       const raw=String(rec?.recording_url||'')
       if(!raw)return ''

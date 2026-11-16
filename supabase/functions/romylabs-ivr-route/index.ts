@@ -17,6 +17,9 @@ serve(async req=>{
   const {data:adminSettings}=await db.from('settings').select('sw_inbound_did').eq('tenant_id',ADMIN_TENANT).limit(1).maybeSingle()
   const romy=normalize(adminSettings?.sw_inbound_did||'')
   if(!callSid||!romy||normalize(to)!==romy)return xml('<Hangup/>',403)
+  const {data:ivr,error:ivrError}=await db.from('romylabs_ivr_settings')
+    .select('no_answer_seconds').eq('tenant_id',ADMIN_TENANT).maybeSingle()
+  if(ivrError||!ivr)console.error('[romylabs-ivr-route] IVR timeout unavailable; preserving 28-second safety default')
   if(digits==='5'||!['1','2','3','4'].includes(digits)){
     await db.from('incoming_calls').update({status:'missed',department:digits==='5'?'Voicemail':'No Selection'})
       .eq('tenant_id',ADMIN_TENANT).eq('callsid',callSid).in('status',['menu','ringing'])
@@ -36,7 +39,7 @@ serve(async req=>{
 
   // Server-side no-answer watchdog. The browser also has a voicemail timeout,
   // but RomyLabs must still reach voicemail when nobody has the Admin Portal open.
-  const noAnswer = new Promise<void>(resolve => setTimeout(resolve, 28000)).then(async()=>{
+  const noAnswer = new Promise<void>(resolve => setTimeout(resolve, Number(ivr?.no_answer_seconds??28)*1000)).then(async()=>{
     try{
       const {data:row}=await db.from('incoming_calls').select('status').eq('tenant_id',ADMIN_TENANT).eq('callsid',callSid).limit(1).maybeSingle()
       if(row?.status!=='ringing')return
@@ -62,5 +65,5 @@ serve(async req=>{
 
   const statusCb=attr(`${base}/caller-hangup?conf=${encodeURIComponent(conf)}&tenant=${ADMIN_TENANT}`)
   const recordingCb=attr(`${base}/call-recorded?tenant=${ADMIN_TENANT}&callsid=${encodeURIComponent(callSid)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
-  return xml(`<Dial><Conference startConferenceOnEnter="false" endConferenceOnExit="false" statusCallback="${statusCb}" statusCallbackEvent="leave end" statusCallbackMethod="POST" record="record-from-start" recordingStatusCallback="${recordingCb}">${conf}</Conference></Dial>`)
+  return xml(`<Dial><Conference startConferenceOnEnter="false" endConferenceOnExit="false" waitUrl="${base}/romylabs-ringback?audio=1" waitMethod="GET" beep="false" statusCallback="${statusCb}" statusCallbackEvent="leave end" statusCallbackMethod="POST" record="record-from-start" recordingStatusCallback="${recordingCb}">${conf}</Conference></Dial>`)
 })
