@@ -9,6 +9,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
+  'RomyLabs Communications adds a working numeric dial pad and a secure IVR & Voicemail Settings screen with editable greetings, Eastern business hours, call-to-voicemail timeout and voicemail duration; all live routing reads private RomyLabs settings',
   'RomyLabs Communications now features a functional touch dial pad, in-call SignalWire DTMF tones, responsive call and IVR panels, and polished recent-call actions without changing SMS, voicemail, or recordings',
   'Release notes dialog uses fixed high-contrast text, labels and version-card borders in light and dark modes so all updates remain readable',
   'Clarity reporting distinguishes authenticated API connected from positive traffic live in the office status constraint; SettleLift remains Connected when 0 sessions are recorded',
