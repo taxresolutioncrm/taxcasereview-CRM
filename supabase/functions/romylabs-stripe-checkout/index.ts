@@ -38,11 +38,12 @@ serve(async req=>{
     const active=String(settings.mode||'disabled')
     const hasLive=Boolean(await secret('romylabs_stripe_live_key'))
     const hasTest=Boolean(await secret('romylabs_stripe_test_key'))
+    const internalBillingReady=Boolean(Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
     return json({ok:true,merchant:'Romy Labs, LLC',account_id:settings.stripe_account_id||null,
       mode:active,live_key_configured:hasLive,test_key_configured:hasTest,
       webhook_configured:Boolean(settings.webhook_configured),
-      webhook_verified:Boolean(settings.webhook_verified_at),
-      checkout_ready:active!=='disabled'&&Boolean(settings.webhook_verified_at)})
+      webhook_verified:Boolean(settings.webhook_verified_at),internal_billing_ready:internalBillingReady,
+      checkout_ready:active!=='disabled'&&Boolean(settings.webhook_verified_at)&&internalBillingReady})
   }
   if(action==='connect'){
     const key=String(input.restricted_key||'').trim()
@@ -81,7 +82,7 @@ serve(async req=>{
     }catch{return json({error:'Could not save webhook signing secret'},503)}
   }
   if(action==='checkout'){
-    if(settings.mode==='disabled'||!settings.webhook_verified_at)
+    if(settings.mode==='disabled'||!settings.webhook_verified_at||!Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
       return json({error:'Stripe checkout is not enabled. Verify the signed webhook first.'},409)
     const mode=String(settings.mode)
     const key=await secret(mode==='live'?'romylabs_stripe_live_key':'romylabs_stripe_test_key')
@@ -103,15 +104,15 @@ serve(async req=>{
       mode:'payment',
       customer_email:String(account.billing_email),
       client_reference_id:invoice.id,
-      success_url:'https://admin.romylabs.com/crm-admin/billing?checkout=returned',
-      cancel_url:'https://admin.romylabs.com/crm-admin/billing?checkout=cancelled',
+      success_url:'https://romylabs.com/?payment=received',
+      cancel_url:'https://romylabs.com/?payment=cancelled',
       'line_items[0][price_data][currency]':'usd',
       'line_items[0][price_data][unit_amount]':String(remaining),
       'line_items[0][price_data][product_data][name]':'RomyLabs SaaS invoice '+invoice.invoice_number,
       'line_items[0][quantity]':'1',
       'metadata[romylabs_invoice_id]':invoice.id,
       'payment_intent_data[metadata][romylabs_invoice_id]':invoice.id,
-      integration_identifier:'romylabs_'+crypto.randomUUID().replaceAll('-','').slice(0,8)
+      integration_identifier:'romylabs_'+Array.from(crypto.getRandomValues(new Uint8Array(8)),n=>String.fromCharCode(97+n%26)).join('')
     })
     try{
       const session=await stripe(key,'checkout/sessions',params,'romylabs-invoice-'+invoice.id+'-'+remaining+'-'+mode)
