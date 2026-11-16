@@ -16,4 +16,11 @@ for(const needle of [
 }
 assert.ok(!ui.includes("status:'active',\n      plan_tier:'Main CRM'"),'Synthetic product rows cannot be marked as active operating offices')
 assert.ok(ui.includes("counts_as_office:false"),'Product headers cannot count as additional offices')
+for(const needle of [
+  ".from('romylabs_metrics_cache').select('product_key,updated_at')",
+  "Date.now()-time)>48*60*60*1000",
+  "metrics_cache_stale:isMetricCacheStale(sourceKey)",
+  "⚠ Old sync",
+  "cached usage was last synchronized",
+]) assert.ok(ui.includes(needle),'Metrics freshness check missing '+needle)
 console.log('PASS honest portfolio product status and partial office metric coverage')
