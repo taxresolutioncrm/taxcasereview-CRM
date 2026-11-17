@@ -1,0 +1,21 @@
+name: Karbon migration preflight safety tests
+on:
+  pull_request:
+    paths:
+      - 'tools/karbon-migration/**'
+      - 'scripts/check-karbon-migration-preflight.mjs'
+      - 'package.json'
+      - '.github/workflows/karbon-migration-preflight.yml'
+jobs:
+  read-only-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run synthetic-data migration integrity tests
+        run: node scripts/check-karbon-migration-preflight.mjs
