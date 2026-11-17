@@ -1,4 +1,7 @@
 // TaxRes-family production release manifest.
+// Repository tooling note (no customer release/version change): Karbon read-only
+// migration preflight and local staging artifacts are developer-only and do not
+// change the CRM interface, database, authentication or production customer data.
 // TCR, TaxRes and Centurion share one release version; Nashville stays independent.
 // Shared code does not make Nashville part of a central release.
 
