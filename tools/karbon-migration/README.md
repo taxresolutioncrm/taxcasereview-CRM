@@ -48,6 +48,22 @@ node tools/karbon-migration/preflight.mjs \
 ```
 Exit 0 = structurally ready for further **sandbox** review; exit 2 = blocking links/mappings/integrity problems; exit 1 = invalid input/operation. Do **not** place exported PII or reports into GitHub or paste them into issue comments.
 
+### Produce a local-only staging packet (no database writes)
+
+After a passing preflight, the companion staging tool creates a deterministic, **private** local JSON packet containing the authorized source records, source keys, target-tenant ID, approved existing employee profile mappings, and file hashes. This is an input artifact for future **isolated** importer development; it does not import anything or turn on email/SMS, payroll, or billing.
+
+```bash
+node tools/karbon-migration/stage.mjs \
+  --input /path/to/secure-export \
+  --employee-map /path/to/approved-existing-employees.json \
+  --tenant 11111111-1111-4111-8111-111111111111 \
+  --out /path/outside/export-directory/staging-packet.json
+```
+
+The staging command requires complete JSON exports for all five dataset groups, verifies document paths and SHA-256 checksums, and **refuses** a packet if preflight finds missing client relationships, duplicate keys, or unapproved assignees. It refuses CSV at this step; convert a validated authorized CSV export to a complete JSON array before staging. The staging packet includes original exported PII, so **store it securely with limited access and delete it according to the firm's approved retention policy. Never commit it, email it or upload it to an issue.**
+
+Neither a preflight report nor a local staging packet is evidence of a completed migration. They have not established historical Karbon API export completeness or tested database insertion, role preservation, user sign-in, communication history, or restore.
+
 ### Required next development gates
 1. **Read-only authorized extraction:** confirm the firm's Karbon subscription/API access; traverse pagination; inventory metadata and totals for contacts, work, notes, documents, time entries, email history and custom fields, recording any unavailable entities. Prefer provider-supported exports; do not scrape logged-in user sessions or store customer API keys in git.
 2. **Tenant-safe staging importer:** build idempotent source-key mappings to a dedicated isolated tenant. Preserve timestamps, user associations and original source keys in a mapping journal. Explicitly suppress emails/SMS, external integrations, invoice creation, recurring jobs and notifications in staging.
