@@ -11,6 +11,7 @@ import {resolve,join,dirname} from 'node:path'
 import {tmpdir} from 'node:os'
 import {spawnSync} from 'node:child_process'
 import {createHash} from 'node:crypto'
+import {fileURLToPath} from 'node:url'
 const sha=value=>createHash('sha256').update(value).digest('hex')
 const types=['contacts','work-items','notes','documents','communications']
 const keys={
@@ -38,7 +39,7 @@ function main(a){
  const workdir=mkdtempSync(join(tmpdir(),'karbon-stage-'))
  try{
   const preflightPath=join(workdir,'preflight.json')
-  const run=spawnSync(process.execPath,[new URL('./preflight.mjs',import.meta.url).pathname,'--input',dir,'--tenant',a.tenant,'--employee-map',mapFile,'--out',preflightPath],{encoding:'utf8'})
+  const run=spawnSync(process.execPath,[fileURLToPath(new URL('./preflight.mjs',import.meta.url)),'--input',dir,'--tenant',a.tenant,'--employee-map',mapFile,'--out',preflightPath],{encoding:'utf8'})
   if(run.status!==0)throw Error('Preflight BLOCKED: '+(run.stderr||run.stdout||'Review reconciliation findings').slice(0,400))
   const preflight=JSON.parse(readFileSync(preflightPath,'utf8'))
   if(preflight.decision!=='READY_FOR_SANDBOX_REVIEW'||preflight.blocking_issue_count)throw Error('Preflight did not pass')
