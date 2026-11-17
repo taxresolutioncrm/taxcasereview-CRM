@@ -127,16 +127,28 @@ async function saveSnapshot(supabase:any,x:any){
 
 async function readSnapshot(supabase:any,productKey:string,reason:string){
   const {data}=await supabase.from('marketing_gsc_snapshots').select('*').eq('product_id',productKey).maybeSingle()
+  const nowIso=new Date().toISOString()
+  const cachedAt=data?.synced_at||null
+  const staleHours=cachedAt?Math.max(0,Math.round((Date.now()-new Date(cachedAt).getTime())/3600000)):null
+  await supabase.from('product_traffic_channels').update({
+    status:'degraded',
+    updated_at:nowIso,
+    notes:data
+      ? `Search Console live fetch failed; showing cached snapshot from ${cachedAt}. Reason: ${reason}`
+      : `Search Console live fetch failed and no cached snapshot exists. Reason: ${reason}`
+  }).eq('product_id',productKey).eq('channel_key','search_console')
   if(!data) return {
-    mock:true,connected:false,reauth_required:true,degraded:true,cached:false,dataAvailable:false,reason,
+    mock:true,connected:false,reauth_required:/REAUTH_REQUIRED/.test(reason),degraded:true,cached:false,dataAvailable:false,reason,
     product_key:productKey,siteUrl:GSC_SITE_CANDIDATES[productKey]?.[0]||'',
-    impressions:null,clicks:null,ctr:null,avgPosition:null,topQueries:[]
+    impressions:null,clicks:null,ctr:null,avgPosition:null,topQueries:[],staleHours:null
   }
   return {
     mock:false,connected:false,reauth_required:/REAUTH_REQUIRED/.test(reason),degraded:true,cached:true,dataAvailable:true,reason,
-    product_key:productKey,siteUrl:data.site_url,rangeLabel:'Last 3 months',rangeDays:90,impressions:Number(data.impressions),impressionsChange:0,
+    product_key:productKey,siteUrl:data.site_url,
+    rangeLabel:`STALE CACHE · last synced ${String(data.synced_at||'unknown')}`,rangeDays:90,
+    impressions:Number(data.impressions),impressionsChange:0,
     clicks:Number(data.clicks),clicksChange:0,ctr:Number(data.ctr),ctrChange:0,avgPosition:Number(data.avg_position),
-    posChange:0,topQueries:data.top_queries||[],dataThrough:data.data_through,cachedAt:data.synced_at
+    posChange:0,topQueries:data.top_queries||[],dataThrough:data.data_through,cachedAt:data.synced_at,staleHours
   }
 }
 
