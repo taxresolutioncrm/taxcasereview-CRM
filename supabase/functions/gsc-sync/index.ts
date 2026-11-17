@@ -95,7 +95,7 @@ Deno.serve(async req=>{
    }catch(e:any){
     const reason=String(e?.message||e)
     product_snapshots[productKey]={ok:false,error:reason}
-    await supabase.from('product_traffic_channels').update({status:'degraded',updated_at:new Date().toISOString(),notes:`Scheduled Search Console sync failed: ${reason}`}).eq('product_id',productKey).eq('channel_key','search_console')
+    await supabase.from('product_traffic_channels').update({status:'connected',updated_at:new Date().toISOString(),notes:`Scheduled Search Console sync failed: ${reason}`}).eq('product_id',productKey).eq('channel_key','search_console')
    }
   }
   return json({ok:true,site_url:siteUrl,date_range:{start:fmt(startDate),end:fmt(endDate)},query_rows:queryRows.length,page_rows:pageRows.length,upserted:inserted,synced_at:now.toISOString(),product_snapshots})

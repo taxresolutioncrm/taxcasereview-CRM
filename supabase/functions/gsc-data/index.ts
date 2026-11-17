@@ -131,7 +131,7 @@ async function readSnapshot(supabase:any,productKey:string,reason:string){
   const cachedAt=data?.synced_at||null
   const staleHours=cachedAt?Math.max(0,Math.round((Date.now()-new Date(cachedAt).getTime())/3600000)):null
   await supabase.from('product_traffic_channels').update({
-    status:'degraded',
+    status:'connected',
     updated_at:nowIso,
     notes:data
       ? `Search Console live fetch failed; showing cached snapshot from ${cachedAt}. Reason: ${reason}`
