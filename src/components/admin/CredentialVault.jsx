@@ -22,6 +22,8 @@ const FALLBACK_PRODUCTS = [
 ]
 
 const alphabeticalProducts = list => [...list].sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity:'base', numeric:true }))
+// Stripe is an owner credential category, not a RomyLabs SaaS product or CRM tenant.
+const vaultProducts = list => alphabeticalProducts([...list.filter(p => p.product_id !== 'stripe'), { product_id:'stripe', name:'Stripe' }])
 
 const SYMBOLS = '!@#$%^&*()-_=+[]{};:,.?'
 function securePassword(length=24, useSymbols=true) {
@@ -45,7 +47,7 @@ function maskSecret() { return '••••••••••••••••
 
 export default function CredentialVault() {
   const [entries, setEntries] = useState([])
-  const [products, setProducts] = useState(() => alphabeticalProducts(FALLBACK_PRODUCTS))
+  const [products, setProducts] = useState(() => vaultProducts(FALLBACK_PRODUCTS))
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -73,7 +75,7 @@ export default function CredentialVault() {
     ])
     if (error) notify(error.message)
     setEntries(data || [])
-    if (productRes.data?.length) setProducts(alphabeticalProducts(productRes.data))
+    if (productRes.data?.length) setProducts(vaultProducts(productRes.data))
     setLoading(false)
   }
 
