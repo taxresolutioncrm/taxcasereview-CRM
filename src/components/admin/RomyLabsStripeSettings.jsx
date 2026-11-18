@@ -103,6 +103,15 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
         Subscribe the endpoint to account.updated, checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, charge.refunded, charge.dispute.created, and radar.early_fraud_warning.created. Send a signed account.updated event to certify delivery. Never paste sk_ or whsec_ secrets in a chat or public repository.
       </div>
     </div>}
+    {Array.isArray(info?.webhook_recent_events)&&info.webhook_recent_events.length>0&&
+      <details style={{marginTop:13,padding:'10px 12px',border:'1px solid rgba(139,92,246,.16)',borderRadius:9}}>
+        <summary style={{fontSize:12,fontWeight:800,color:'#cbd5e1',cursor:'pointer'}}>Webhook delivery history ({info.webhook_recent_events.length} recent events)</summary>
+        <div style={{display:'grid',gap:6,marginTop:12}}>{info.webhook_recent_events.map(e=>
+          <div key={e.id} style={{display:'flex',justifyContent:'space-between',gap:10,fontSize:11,flexWrap:'wrap',color:e.failed?'#fca5a5':e.processed?'#86efac':'#fbbf24'}}>
+            <span>{e.type} · {e.mode}</span><span>{e.failed?'Requires review':e.processed?'Processed':'Pending'} · {e.received_at?new Date(e.received_at).toLocaleString():'—'}</span>
+          </div>)}
+        </div>
+      </details>}
     <div style={{marginTop:16,borderTop:'1px solid rgba(139,92,246,.15)',paddingTop:14}}>
       <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:9}}>Collect an outstanding RomyLabs invoice</div>
       {!ready?<p style={{fontSize:12,color:'#94a3b8',margin:'0'}}>Checkout links unlock only after the merchant key and signature-verified webhook are configured. No live charges can be created from this screen yet.</p>
