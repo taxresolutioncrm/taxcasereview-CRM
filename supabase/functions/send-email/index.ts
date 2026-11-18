@@ -496,7 +496,7 @@ serve(async (req) => {
         } else if (body.kind === 'booking_reschedule_firm_notification') {
           to = reply; subject = `Booking rescheduled: ${safe(ev.clientName || 'Client')} — ${whenShort(d, t)}`; html = `<p><strong>${n}</strong> rescheduled their <strong>${typ}</strong> to ${when}. The calendar is already updated.</p>`
         } else {
-          to = reply; subject = `${isTaxResSalesDemo ? 'New Lead' : 'New booking'}: ${safe(ev.clientName || 'Client')} — ${whenShort(d, t)}`; html = `<p><strong>${n}</strong> just booked online:</p><p><strong>${typ}</strong><br>${when}<br>Email: ${esc(ev.contact_email || '—')}</p><p>The appointment is on the CRM calendar.</p>`
+          to = reply; subject = `${isTaxResSalesDemo ? 'New Lead —' : 'New booking:'} ${safe(ev.clientName || 'Client')} — ${whenShort(d, t)}`; html = `<p><strong>${n}</strong> just booked online:</p><p><strong>${typ}</strong><br>${when}<br>Email: ${esc(ev.contact_email || '—')}</p><p>The appointment is on the CRM calendar.</p>`
         }
       }
     }
