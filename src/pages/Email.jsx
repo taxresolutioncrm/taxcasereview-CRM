@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { FIRM } from '../lib/firmBranding'
 import { supabase } from '../lib/supabase'
 import { sendGmailEmail, downloadGmailAttachment, fetchGmailAttachmentBlob } from '../lib/gmailUtils'
-import { EMAIL_TEMPLATES as TEMPLATES } from '../lib/emailTemplatesList'
+import { EMAIL_TEMPLATES as TEMPLATES, EMAIL_TEMPLATE_CATEGORIES, emailTemplateCategory } from '../lib/emailTemplatesList'
 import { useGmailSync } from '../context/GmailSyncContext'
 import { useApp } from '../context/AppContext'
 import { DOC_FOLDERS } from './Clients'
@@ -36,7 +36,9 @@ export default function Email() {
   const [toast, setToast]       = useState('')
   const [emailContextMenu, setEmailContextMenu] = useState(null)
   const [emailContextSubmenu, setEmailContextSubmenu] = useState(null)
-  const [view, setView]         = useState('inbox') // inbox | compose | templates
+  const [view, setView]         = useState('inbox')
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateCategory, setTemplateCategory] = useState('') // inbox | compose | templates
   const [searchParams] = useSearchParams()
   useEffect(() => { if (searchParams.get('new') === '1') { setForm(BLANK); setView('compose') } }, [searchParams])
   useEffect(() => {
@@ -1626,9 +1628,21 @@ export default function Email() {
         {view === 'templates' && (
           <div style={{ flex: 1, overflow: 'auto', padding: 32 }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--tx)', marginBottom: 20 }}>📋 Email Templates</div>
+            <div style={{display:'flex', gap:10, flexWrap:'wrap', marginBottom:18}}>
+              <input aria-label="Search email templates" placeholder="Search templates…" value={templateSearch} onChange={e=>setTemplateSearch(e.target.value)}
+                style={{flex:'1 1 220px', padding:'10px 12px', background:'var(--s2)', color:'var(--tx)', border:'1px solid var(--br)', borderRadius:8}} />
+              <select aria-label="Filter email template category" value={templateCategory} onChange={e=>setTemplateCategory(e.target.value)}
+                style={{flex:'1 1 220px', padding:'10px 12px', background:'var(--s2)', color:'var(--tx)', border:'1px solid var(--br)', borderRadius:8}}>
+                <option value="">All categories</option>
+                {EMAIL_TEMPLATE_CATEGORIES.map(category=><option key={category} value={category}>{category}</option>)}
+              </select>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
-              {TEMPLATES.map(t => (
+              {TEMPLATES.filter(t=>(!templateCategory || emailTemplateCategory(t)===templateCategory) &&
+                (!templateSearch.trim() || (t.label+' '+t.subject+' '+emailTemplateCategory(t)).toLowerCase().includes(templateSearch.trim().toLowerCase())))
+                .map(t => (
                 <div key={t.label} className="card" style={{ padding: 20 }}>
+                  <div style={{fontSize:10, color:'var(--t3)', marginBottom:4}}>{emailTemplateCategory(t)}</div>
                   <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--tx)', marginBottom: 4 }}>{t.label}</div>
                   <div style={{ fontSize: 12, color: 'var(--blue)', marginBottom: 10 }}>{t.subject}</div>
                   <div style={{ fontSize: 12, color: 'var(--t3)', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'hidden' }}>{t.body}</div>
