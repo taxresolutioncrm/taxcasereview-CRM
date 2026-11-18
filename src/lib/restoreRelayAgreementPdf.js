@@ -6,7 +6,7 @@ export async function createRestoreRelayAgreementPdf({customer,monthlyPrice='399
   const name=String(customer||'').trim()
   if(!name)throw Error('Customer legal business name is required')
   const amount=Number(monthlyPrice)
-  if(!Number.isFinite(amount)||amount<=0||!Number.isInteger(Math.round(amount*100))||!Number.isInteger(Number(months))||Number(months)<1||Number(months)>36)throw Error('Invalid agreement price or term')
+  if(!Number.isFinite(amount)||amount<=0||Math.abs(amount*100-Math.round(amount*100))>0.00001||!Number.isInteger(Number(months))||Number(months)<1||Number(months)>36)throw Error('Invalid agreement price or term')
   const total=(Math.round(amount*100)*Number(months)/100).toFixed(2)
   const dollars=n=>'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
   const pdf=await PDFDocument.create()
