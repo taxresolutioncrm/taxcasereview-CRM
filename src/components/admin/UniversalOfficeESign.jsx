@@ -98,7 +98,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       const signaturePage=result.signaturePage
       setFile(uploaded);setPdf(document);setPage(signaturePage)
       setTitle(`Restore Relay Professional Plan — ${customer} — ${contractSetup.months} Month Agreement`)
-      setFields([{id:crypto.randomUUID(),type:'signature',label:'Customer Signature',page:signaturePage,x:.12,y:.57,w:.36,h:.055,required:true}])
+      setFields([{id:crypto.randomUUID(),type:'signature',label:'Customer Signature',page:signaturePage,x:.12,y:Math.max(.05,Math.min(.91,result.signatureTop)),w:.36,h:.055,required:true}])
       setMsg('Agreement generated. Review the PDF and adjust the signature field before sending.')
     }catch(e){setError(String(e?.message||e))}
     finally{setWorking(false)}
