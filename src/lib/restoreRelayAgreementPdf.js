@@ -62,13 +62,12 @@ export async function createRestoreRelayAgreementPdf({customer,monthlyPrice='399
   write('CUSTOMER AUTHORIZED REPRESENTATIVE',{size:11,strong:true,color:purple,space:12})
   write('Legal business: '+name)
   write('Printed name and title: _______________________________________________')
+  const signatureTop=(H-y-15)/H
   write('Signature: __________________________________________________________')
   write('Date: __________________________')
   y-=6
-  write('PROVIDER: ROMY LABS, LLC',{size:11,strong:true,color:purple})
-  write('Authorized representative: ____________________________________________')
-  write('Signature: __________________________________________________________')
-  write('Date: __________________________')
+  write('PROVIDER ACCEPTANCE',{size:11,strong:true,color:purple})
+  write('Provider accepts this Agreement by activating the subscribed service after the Customer signs and completes the initial payment.')
   const out=await pdf.save()
-  return {bytes:out,signaturePage:pdf.getPageCount(),fileName:'Restore-Relay-'+name.replace(/[^a-z0-9-]/gi,'-').replace(/-+/g,'-').slice(0,65)+'-Agreement.pdf'}
+  return {bytes:out,signaturePage:pdf.getPageCount(),signatureTop,fileName:'Restore-Relay-'+name.replace(/[^a-z0-9-]/gi,'-').replace(/-+/g,'-').slice(0,65)+'-Agreement.pdf'}
 }
