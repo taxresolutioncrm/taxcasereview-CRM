@@ -482,7 +482,10 @@ serve(async (req) => {
           && String(tenant_id || '') === 'a0000000-0000-0000-0000-000000000001'
           && String(ev.eventType || '').trim() === 'Product Demo'
         const brandName = isTaxResSalesDemo ? 'TaxRes CRM' : (pb?.name || ts?.name || ts?.firmname || 'TaxRes CRM')
-        const reply = isTaxResSalesDemo ? 'romy@taxrescrm.net' : (pb?.email || ts?.email || ts?.firmemail || ts?.smtp_email || 'romy@taxrescrm.net')
+        const isTcrBooking = String(tenant_id || '') === '61a89aef-0e7e-4ea2-b222-44ab2024655a'
+        const reply = isTaxResSalesDemo ? 'romy@taxrescrm.net'
+          : isTcrBooking ? 'romy@taxcasereview.org'
+          : (pb?.email || ts?.email || ts?.firmemail || ts?.smtp_email || 'romy@taxrescrm.net')
         from_name = brandName; from_email = reply
         const n = esc(ev.clientName || 'there'), typ = esc(ev.eventType || 'Appointment'), d = String(ev.date), t = String(ev.time).slice(0, 5), when = esc(whenLong(d, t))
         if (body.kind === 'booking_confirmation') {
