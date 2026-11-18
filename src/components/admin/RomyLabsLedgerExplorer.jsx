@@ -23,7 +23,7 @@ function downloadCsv(filename,header,rows){
 function Summary({title,value}){return <div style={{padding:'12px 14px',background:'rgba(255,255,255,.035)',border:'1px solid rgba(99,102,241,.16)',borderRadius:10}}><div style={{color:'#94a3b8',fontSize:10,fontWeight:700}}>{title}</div><div style={{fontSize:19,fontWeight:900,color:'#f8fafc',marginTop:5}}>{value}</div></div>}
 function Status({value}){return <span style={{fontWeight:800,color:value==='paid'||value==='succeeded'?'#34d399':value==='open'||value==='pending'?'#fbbf24':value==='failed'||value==='refunded'?'#f87171':'#cbd5e1'}}>{value||'—'}</span>}
 
-export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments=[]}){
+export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments=[],events=[]}){
   const [tab,setTab]=useState('payments')
   const [search,setSearch]=useState('')
   const [method,setMethod]=useState('all')
@@ -32,6 +32,7 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
   const [to,setTo]=useState('')
   const [limit,setLimit]=useState(100)
   const byId=useMemo(()=>new Map(accounts.map(a=>[a.id,a])),[accounts])
+  const alerts=useMemo(()=>events.filter(e=>['manual_hold','payment_failed','suspension_pending'].includes(e.event_type)).slice().sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,12),[events])
   const providers=useMemo(()=>[...new Set(payments.map(p=>p.provider||'manual'))].sort(),[payments])
   const statuses=tab==='payments'?['succeeded','pending','failed','refunded','partially_refunded']:['open','paid','uncollectible','void']
   const rows=useMemo(()=>{
@@ -66,6 +67,13 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
       <div><div style={{fontSize:14,fontWeight:900,color:'#f8fafc'}}>Payment Transactions & Invoice Ledger</div><div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>One ledger for RomyLabs SaaS offices. Stripe, ACH and manual payments; office customer payments stay separate.</div></div>
       <button type="button" style={button} onClick={exportRows}>Export {tab==='payments'?'Transactions':'Invoices'} CSV ({rows.length})</button>
     </div>
+    {alerts.length>0&&<details style={{marginBottom:12,padding:'10px 13px',border:'1px solid rgba(245,158,11,.25)',borderRadius:10}}>
+      <summary style={{fontSize:12,fontWeight:800,color:'#fbbf24',cursor:'pointer'}}>Collection exceptions & finance review ({alerts.length} recent)</summary>
+      <div style={{display:'grid',gap:8,marginTop:12}}>{alerts.map(e=><div key={e.id} style={{fontSize:11,color:'#cbd5e1',display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+        <span>{byId.get(e.account_id)?.account_name||'Unknown office'} · {String(e.event_type||'').replaceAll('_',' ')}</span>
+        <span>{day(e.created_at)} · {e.detail?.stripe_event_type||e.channel||'billing review'}</span>
+      </div>)}</div>
+    </details>}
     <div style={{display:'flex',gap:8,marginBottom:12}}>{[['payments','Payments'],['invoices','Invoices']].map(([value,label])=><button type="button" key={value} onClick={()=>changeTab(value)} style={{...button,background:tab===value?'rgba(99,102,241,.3)':'transparent',borderColor:tab===value?'#818cf8':'rgba(99,102,241,.2)'}}>{label} ({value==='payments'?payments.length:invoices.length})</button>)}</div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:12}}>
       <Summary title="Matching records" value={rows.length.toLocaleString()}/>
