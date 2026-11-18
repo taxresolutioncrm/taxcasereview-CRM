@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import RomyLabsStripeSettings from './RomyLabsStripeSettings'
+import RomyLabsHelcimSettings from './RomyLabsHelcimSettings'
 
 const money = cents => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(cents||0)/100)
 const date = value => value ? new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'
@@ -223,6 +224,7 @@ export default function RomyLabsBilling() {
       <div style={{display:'flex',gap:8,flexShrink:0,marginLeft:'auto'}}><button onClick={()=>openPayment(null)} style={{padding:'8px 14px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',fontWeight:800,cursor:'pointer'}}>+ Record Manual Payment</button><button onClick={load} style={{padding:'7px 13px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',fontWeight:700,cursor:'pointer'}}>Refresh</button></div>
     </div>
     <RomyLabsStripeSettings invoices={invoices} onRefresh={load}/>
+    <RomyLabsHelcimSettings/>
     {notice && <div role="status" style={{position:'fixed',top:20,right:20,zIndex:12000,maxWidth:480,padding:13,borderRadius:10,background:'#0f2b22',border:'1px solid rgba(16,185,129,.45)',color:'#86efac',fontWeight:800,boxShadow:'0 16px 45px rgba(0,0,0,.45)'}}>{notice}</div>}
     {error && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:18}}>Billing error: {error}</div>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(150px,1fr))',gap:12,marginBottom:20}}>{kpis.map(([labelText,value,color])=><div key={labelText} style={{...card,padding:'17px 18px'}}><div style={{fontSize:10,color:'#64748b',fontWeight:800,textTransform:'uppercase'}}>{labelText}</div><div style={{fontSize:26,color,fontWeight:900,marginTop:8}}>{data?value:'…'}</div></div>)}</div>
