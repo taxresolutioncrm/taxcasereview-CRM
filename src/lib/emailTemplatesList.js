@@ -30,3 +30,23 @@ export function applyTemplate(t, name) {
   const n = (name || '').trim() || '{name}'
   return { subject: t.subject, body: t.body.replace(/{name}/g, n) }
 }
+
+
+export const EMAIL_TEMPLATE_CATEGORIES = [
+  'Welcome and onboarding', 'IRS and state correspondence',
+  'Case updates and follow-ups', 'Document requests',
+  'Billing and payment notices', 'Appointments and reminders',
+  'General correspondence'
+]
+
+// Categorization is presentation-only: approved template subjects and bodies remain unchanged.
+export function emailTemplateCategory(template) {
+  const label = template.label
+  if (/Welcome/i.test(label)) return 'Welcome and onboarding'
+  if (/Documents?|Document Request/i.test(label)) return 'Document requests'
+  if (/Payment|Strike — Payment|Receipt/i.test(label)) return 'Billing and payment notices'
+  if (/Appointment|Reminder/i.test(label)) return 'Appointments and reminders'
+  if (/IRS Notice|Not Responsible|Revoke POA/i.test(label)) return 'IRS and state correspondence'
+  if (/Update|Investigation|OIC|Installment|Abatement|Garnishment|Resolution Complete/i.test(label)) return 'Case updates and follow-ups'
+  return 'General correspondence'
+}
