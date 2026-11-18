@@ -830,7 +830,7 @@ export default function Sidebar() {
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16}}>
               <div>
                 <div style={{fontSize:11,fontWeight:800,color:'#fca311',textTransform:'uppercase',letterSpacing:'.08em'}}>What's New</div>
-                <div style={{fontSize:20,fontWeight:900,marginTop:3}}>{releaseInfo.title}</div>
+                <div style={{fontSize:20,fontWeight:900,marginTop:3,color:'#f1f5f9'}}>{releaseInfo.title}</div>
                 <div style={{fontSize:11,color:'#b5c9dc',marginTop:4}}>Production release · {releaseInfo.releasedAt}</div>
               </div>
               <button
@@ -842,13 +842,13 @@ export default function Sidebar() {
             </div>
             <div style={{marginTop:16,padding:'10px 12px',borderRadius:10,background:'#182e45',border:'1px solid #35536e'}}>
               <div style={{fontSize:11,color:'#b5c9dc'}}>Current production version</div>
-              <div style={{fontSize:22,fontWeight:900,marginTop:2}}>v{releaseInfo.version}</div>
+              <div style={{fontSize:22,fontWeight:900,marginTop:2,color:'#f1f5f9'}}>v{releaseInfo.version}</div>
             </div>
             <div style={{marginTop:16}}>
               {(releaseInfo.changes || []).map((item,i)=>(
-                <div key={i} style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12,lineHeight:1.55,marginBottom:9}}>
+                <div key={i} style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12,lineHeight:1.55,marginBottom:9,color:'#f1f5f9'}}>
                   <span style={{color:'#fca311',fontWeight:900}}>•</span>
-                  <span>{item}</span>
+                  <span style={{color:'#f1f5f9'}}>{item}</span>
                 </div>
               ))}
             </div>
