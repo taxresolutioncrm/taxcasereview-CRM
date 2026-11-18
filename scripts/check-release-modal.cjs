@@ -15,4 +15,8 @@ assert(!modal.includes("color:'var(--tx)'"),'release modal must not inherit ligh
 assert(!modal.includes("color:'var(--t3)'"),'release modal secondary text must remain legible in light theme')
 assert(modal.includes("color:'#b5c9dc'"),'release modal secondary text contrast missing')
 assert(modal.includes("background:'#182e45',border:'1px solid #35536e'"),'version panel must contrast on dark modal')
+assert(modal.includes("fontSize:20,fontWeight:900,marginTop:3,color:'#f1f5f9'"),'release title must have its own readable foreground despite global div CSS')
+assert(modal.includes("fontSize:22,fontWeight:900,marginTop:2,color:'#f1f5f9'"),'release version must have explicit contrast')
+assert(modal.includes("marginBottom:9,color:'#f1f5f9'"),'release bullet rows must be readable in both modes')
+assert(modal.includes("<span style={{color:'#f1f5f9'}}>{item}</span>"),'release bullet text must not inherit a dark span selector')
 console.log('PASS release notes modal portal/stacking guard');
