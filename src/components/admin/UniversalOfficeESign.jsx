@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react'
 import EnvelopeDetails from './EnvelopeDetails'
+import {createRestoreRelayAgreementPdf} from '../../lib/restoreRelayAgreementPdf'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -25,6 +26,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   const [docs,setDocs]=useState([])
   const [firmDocs,setFirmDocs]=useState([])
   const [file,setFile]=useState(null)
+  const [contractSetup,setContractSetup]=useState({business:firmName||'',monthly:'399.99',months:6,additionalTerms:''})
   const [pdf,setPdf]=useState(null)
   const [page,setPage]=useState(1)
   const [size,setSize]=useState({w:0,h:0})
@@ -80,6 +82,26 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       const doc=await pdfjsLib.getDocument({data:bytes}).promise
       setFile(f);setPdf(doc);setPage(1);setFields([]);setTitle(f.name.replace(/\.pdf$/i,''))
     }catch(err){setError('Could not open this PDF: '+(err.message||String(err)))}
+  }
+
+  async function useRestoreRelayTemplate(){
+    if(working)return
+    setWorking(true);setError('');setMsg('')
+    try{
+      const customer=contractSetup.business.trim()
+      if(!customer)throw Error('Enter the customer legal business name before creating the agreement.')
+      const result=await createRestoreRelayAgreementPdf({customer,monthlyPrice:contractSetup.monthly,months:Number(contractSetup.months),additionalTerms:contractSetup.additionalTerms})
+      const uploaded=new File([result.bytes],result.fileName,{type:'application/pdf'})
+      const document=await pdfjsLib.getDocument({data:new Uint8Array(result.bytes)}).promise
+      // The final page includes both parties' signature lines; required customer signature
+      // is positioned over the Customer signature line for visual review prior to sending.
+      const signaturePage=result.signaturePage
+      setFile(uploaded);setPdf(document);setPage(signaturePage)
+      setTitle(`Restore Relay Professional Plan — ${customer} — ${contractSetup.months} Month Agreement`)
+      setFields([{id:crypto.randomUUID(),type:'signature',label:'Customer Signature',page:signaturePage,x:.12,y:.57,w:.36,h:.055,required:true}])
+      setMsg('Agreement generated. Review the PDF and adjust the signature field before sending.')
+    }catch(e){setError(String(e?.message||e))}
+    finally{setWorking(false)}
   }
 
   function addField(e){
@@ -226,6 +248,21 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
         <div><div style={{fontSize:16,fontWeight:900,color:'#fff'}}>Documents & E-Sign</div><div style={{fontSize:11,color:'#64748b',marginTop:3}}>Upload a contract, place signature fields, and send it like DocuSign.</div></div>
         <label style={{padding:'9px 12px',borderRadius:8,background:'#6366f1',color:'#fff',fontWeight:900,fontSize:11,cursor:'pointer'}}>+ Upload Contract<input type="file" accept="application/pdf,.pdf" onChange={chooseFile} style={{display:'none'}}/></label>
       </div>
+
+      {productKey==='restore_relay'&&<div style={{padding:13,marginBottom:15,borderRadius:10,background:'rgba(16,185,129,.055)',border:'1px solid rgba(16,185,129,.24)'}}>
+        <div style={{fontSize:12,fontWeight:900,color:'#a7f3d0',marginBottom:5}}>Restore Relay · Subscription Agreement Template</div>
+        <div style={{fontSize:10,color:'#94a3b8',marginBottom:12}}>Generate the office contract here, review it, then use the existing Send for Signature action to email the customer. No separate PDF upload required.</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginBottom:10}}>
+          <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Customer legal business name<input value={contractSetup.business} onChange={e=>setContractSetup(s=>({...s,business:e.target.value}))} style={inputStyle}/></label>
+          <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Monthly price (USD)<input type="number" min=".01" step=".01" value={contractSetup.monthly} onChange={e=>setContractSetup(s=>({...s,monthly:e.target.value}))} style={inputStyle}/></label>
+          <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Months<input type="number" min="1" max="36" step="1" value={contractSetup.months} onChange={e=>setContractSetup(s=>({...s,months:e.target.value}))} style={inputStyle}/></label>
+        </div>
+        <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Additional terms (optional, reviewed before sending)<textarea rows={2} value={contractSetup.additionalTerms} onChange={e=>setContractSetup(s=>({...s,additionalTerms:e.target.value}))} style={{...inputStyle,resize:'vertical'}}/></label>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginTop:11,flexWrap:'wrap'}}>
+          <button type="button" disabled={working} onClick={useRestoreRelayTemplate} style={{padding:'9px 12px',borderRadius:8,border:'none',background:'#059669',color:'#fff',fontWeight:900,cursor:'pointer'}}>Generate Agreement for E-Sign</button>
+          <span style={{fontSize:10,color:'#94a3b8'}}>Total: ${Number.isFinite(Number(contractSetup.monthly)*Number(contractSetup.months))?(Number(contractSetup.monthly)*Number(contractSetup.months)).toLocaleString('en-US',{style:'currency',currency:'USD'}):'—'} · No automatic renewal</span>
+        </div>
+      </div>}
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:8,marginBottom:12}}>
         <label style={{fontSize:9,color:'#64748b',fontWeight:800,textTransform:'uppercase'}}>Document title<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Service Agreement" style={inputStyle}/></label>
