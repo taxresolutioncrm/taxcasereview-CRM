@@ -81,7 +81,7 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
       <Summary title={tab==='payments'?'Collected in filtered records':'Paid value in filtered records'} value={money(total)}/>
       {tab==='invoices'&&<Summary title="Outstanding balance" value={money(open)}/>}
     </div>
-    <div style={{display:'grid',gridTemplateColumns:'minmax(190px,2fr) repeat(4,minmax(125px,1fr))',gap:8,marginBottom:12}}>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:8,marginBottom:12}}>
       <input aria-label="Search billing transactions" placeholder="Search office, invoice, email or reference" style={input} value={search} onChange={e=>{setSearch(e.target.value);setLimit(100)}}/>
       {tab==='payments'?<select style={input} aria-label="Filter payment method" value={method} onChange={e=>setMethod(e.target.value)}><option value="all">All methods</option>{providers.map(x=><option key={x} value={x}>{x}</option>)}</select>:<div/>}
       <select style={input} aria-label="Filter billing status" value={status} onChange={e=>{setStatus(e.target.value);setLimit(100)}}><option value="all">All statuses</option>{statuses.map(x=><option key={x} value={x}>{x}</option>)}</select>
