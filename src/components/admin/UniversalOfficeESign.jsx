@@ -26,7 +26,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   const [docs,setDocs]=useState([])
   const [firmDocs,setFirmDocs]=useState([])
   const [file,setFile]=useState(null)
-  const [contractSetup,setContractSetup]=useState({business:firmName||'',monthly:'399.99',months:6,additionalTerms:''})
+  const [contractSetup,setContractSetup]=useState({business:firmName||'',monthly:'399.00',months:6,additionalTerms:''})
   const [pdf,setPdf]=useState(null)
   const [page,setPage]=useState(1)
   const [size,setSize]=useState({w:0,h:0})
