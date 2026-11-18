@@ -2,7 +2,7 @@ import {PDFDocument,StandardFonts,rgb} from 'pdf-lib'
 
 // Source template for the existing RomyLabs Office Documents & E-Sign flow.
 // Generates a reviewable PDF; the existing signature envelope sends the email.
-export async function createRestoreRelayAgreementPdf({customer,monthlyPrice='399.99',months=6,additionalTerms=''}) {
+export async function createRestoreRelayAgreementPdf({customer,monthlyPrice='399.00',months=6,additionalTerms=''}) {
   const name=String(customer||'').trim()
   if(!name)throw Error('Customer legal business name is required')
   const amount=Number(monthlyPrice)
