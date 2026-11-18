@@ -12,7 +12,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
-  'TaxRes CRM marketing Product Demo leads now use the TaxRes CRM sales mailbox and New Lead notification subject; Tax Case Review office bookings and tenant-specific mailboxes retain their existing routing',
+  'TaxRes CRM marketing Product Demo leads now use the TaxRes CRM sales mailbox and New Lead — notification subject; Tax Case Review office bookings and tenant-specific mailboxes retain their existing routing',
   'Added a nonproduction, read-only Karbon migration preflight and staging packet tool for authorized pilot planning; client imports and automated cutover are not enabled',
   'RomyLabs Billing adds secure Stripe merchant setup and hosted invoice Checkout, using signed webhooks and the existing platform subscription payment ledger; live payments stay locked until credential and webhook verification',
   'RomyLabs Admin Portal flags cached CRM metrics last refreshed over 48 hours ago, distinguishing old stored zeros from current live measurements and showing sync freshness in All Offices',
