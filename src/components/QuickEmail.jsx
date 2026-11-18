@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../context/AppContext'
 import { sendGmailEmail } from '../lib/gmailUtils'
 import { validateEmailRecipients } from '../lib/emailRecipients'
-import { EMAIL_TEMPLATES, applyTemplate } from '../lib/emailTemplatesList'
+import { EMAIL_TEMPLATES, EMAIL_TEMPLATE_CATEGORIES, emailTemplateCategory, applyTemplate } from '../lib/emailTemplatesList'
 
 // ── Quick Email (click-to-email from a lead/client record) ──
 // Sends from the logged-in rep's connected Gmail (their signature); falls
@@ -18,6 +18,8 @@ export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
   const [state, setState] = useState('idle') // idle | sending | sent | error
   const [errMsg, setErrMsg] = useState('')
   const [signature, setSignature] = useState({ text: '', logoUrl: '' })
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateCategory, setTemplateCategory] = useState('')
 
   // Same resolution as the Email page: personal signature first, firm fallback.
   useEffect(() => {
@@ -115,13 +117,25 @@ export default function QuickEmail({ contact, kind, leadId, onSent, onClose }) {
             <>
               <div style={{ marginBottom: 12 }}>
                 <label style={label}>Templates</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {EMAIL_TEMPLATES.map(t => (
-                    <button key={t.label} onClick={() => setForm(f => ({ ...f, ...applyTemplate(t, contact?.name) }))}
-                      style={{ background: 'rgba(15,23,42,0.55)', border: '1px solid var(--line)', borderRadius: 7, color: 'inherit', padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                      {t.label}
-                    </button>
-                  ))}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <input aria-label="Search email templates" placeholder="Search templates…" value={templateSearch} onChange={e => setTemplateSearch(e.target.value)}
+                    style={{ ...input, flex: '1 1 180px', minWidth: 140 }} />
+                  <select aria-label="Filter email template category" value={templateCategory} onChange={e => setTemplateCategory(e.target.value)}
+                    style={{ ...input, flex: '1 1 180px', minWidth: 140 }}>
+                    <option value="">All categories</option>
+                    {EMAIL_TEMPLATE_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 160, overflowY: 'auto' }}>
+                  {EMAIL_TEMPLATES.filter(t => (!templateCategory || emailTemplateCategory(t) === templateCategory) &&
+                    (!templateSearch.trim() || (t.label + ' ' + t.subject + ' ' + emailTemplateCategory(t)).toLowerCase().includes(templateSearch.trim().toLowerCase())))
+                    .map(t => (
+                      <button type="button" key={t.label} title={emailTemplateCategory(t)}
+                        onClick={() => setForm(f => ({ ...f, ...applyTemplate(t, contact?.name) }))}
+                        style={{ background: 'rgba(15,23,42,0.55)', border: '1px solid var(--line)', borderRadius: 7, color: 'inherit', padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                        {t.label}
+                      </button>
+                    ))}
                 </div>
               </div>
               <div style={{ display: 'grid', gap: 12 }}>
