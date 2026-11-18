@@ -83,6 +83,15 @@ export default function Documents() {
     })
   }
   const fileRef = useRef(null)
+  // Cancel discards only the unsaved selection/form. Already saved documents remain untouched.
+  function cancelDocumentUpload() {
+    if (saving) return
+    setModal(false)
+    setFile(null)
+    setForm({ name:'', client:'', docType:'IRS Docs', notes:'' })
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
 
   const ALL_FOLDERS = [...(Array.isArray(ROOT_FOLDERS) ? ROOT_FOLDERS : []), ...customFolders]
 
@@ -497,14 +506,14 @@ export default function Documents() {
         </div>
       )}
 
-      {modal&&<div className="modal-overlay" onClick={()=>setModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="modal-header"><h2>Upload Document</h2><button className="modal-close" onClick={()=>setModal(false)}>×</button></div>
+      {modal&&<div className="modal-overlay" onClick={cancelDocumentUpload}><div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-header"><h2>Upload Document</h2><button className="modal-close" disabled={saving} onClick={cancelDocumentUpload}>×</button></div>
         <div className="form-group"><label>Document Name *</label><input className="input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. 2024 Tax Return" /></div>
         <div className="form-group"><label>Client / Lead</label><select className="select" value={form.client} onChange={e=>setForm({...form,client:e.target.value})}><option value="">General / Unassigned</option>{people.map(p=><option key={p.key} value={p.key}>{p.name}{p.type==='lead'?' (Lead)':''}</option>)}</select></div>
         <div className="form-group"><label>Folder *</label><select className="select" value={form.docType} onChange={e=>setForm({...form,docType:e.target.value})}>{ALL_FOLDERS.map(f=><option key={f}>{f}</option>)}</select></div>
         <div className="form-group"><label>File</label><input ref={fileRef} type="file" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const v=validateFile(f);if(!v.ok){showToast('❌ '+v.error);e.target.value='';return}if(v.warn)showToast('⚠️ '+v.warn);const c=await maybeCompressImage(f);setFile(c)}} /></div>
         <div className="form-group"><label>Notes</label><textarea className="textarea" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} /></div>
-        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button className="btn" onClick={()=>setModal(false)}>Cancel</button><button className="btn primary" disabled={saving} onClick={upload}>{saving?'Saving…':'Upload'}</button></div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button className="btn" disabled={saving} onClick={cancelDocumentUpload}>Cancel</button><button className="btn primary" disabled={saving} onClick={upload}>{saving?'Saving…':'Upload'}</button></div>
       </div></div>}
     </div>
   )
