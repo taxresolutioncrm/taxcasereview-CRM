@@ -475,7 +475,14 @@ serve(async (req) => {
         const { data: ts } = await admin.from('settings').select('name,firmname,email,firmemail,smtp_email,tenant_id').eq('tenant_id', tenant_id).maybeSingle()
         const product = String(ev.product_id || 'taxres_crm'), pb = PRODUCT_BRANDS[product]
         bookingProductId = product; bookingRecordId = String(ev.id)
-        const brandName = pb?.name || ts?.name || ts?.firmname || 'TaxRes CRM', reply = pb?.email || ts?.email || ts?.firmemail || ts?.smtp_email || 'romy@taxrescrm.net'
+        // The public TaxRes CRM sales booking page uses the shared default booking tenant.
+        // Route only its product-demo bookings to TaxRes CRM sales; preserve all
+        // tenant-specific office appointments (including Tax Case Review / TCR).
+        const isTaxResSalesDemo = product === 'taxres_crm'
+          && String(tenant_id || '') === 'a0000000-0000-0000-0000-000000000001'
+          && String(ev.eventType || '').trim() === 'Product Demo'
+        const brandName = isTaxResSalesDemo ? 'TaxRes CRM' : (pb?.name || ts?.name || ts?.firmname || 'TaxRes CRM')
+        const reply = isTaxResSalesDemo ? 'romy@taxrescrm.net' : (pb?.email || ts?.email || ts?.firmemail || ts?.smtp_email || 'romy@taxrescrm.net')
         from_name = brandName; from_email = reply
         const n = esc(ev.clientName || 'there'), typ = esc(ev.eventType || 'Appointment'), d = String(ev.date), t = String(ev.time).slice(0, 5), when = esc(whenLong(d, t))
         if (body.kind === 'booking_confirmation') {
@@ -489,7 +496,7 @@ serve(async (req) => {
         } else if (body.kind === 'booking_reschedule_firm_notification') {
           to = reply; subject = `Booking rescheduled: ${safe(ev.clientName || 'Client')} — ${whenShort(d, t)}`; html = `<p><strong>${n}</strong> rescheduled their <strong>${typ}</strong> to ${when}. The calendar is already updated.</p>`
         } else {
-          to = reply; subject = `New booking: ${safe(ev.clientName || 'Client')} — ${whenShort(d, t)}`; html = `<p><strong>${n}</strong> just booked online:</p><p><strong>${typ}</strong><br>${when}<br>Email: ${esc(ev.contact_email || '—')}</p><p>The appointment is on the CRM calendar.</p>`
+          to = reply; subject = `${isTaxResSalesDemo ? 'New Lead' : 'New booking'}: ${safe(ev.clientName || 'Client')} — ${whenShort(d, t)}`; html = `<p><strong>${n}</strong> just booked online:</p><p><strong>${typ}</strong><br>${when}<br>Email: ${esc(ev.contact_email || '—')}</p><p>The appointment is on the CRM calendar.</p>`
         }
       }
     }
