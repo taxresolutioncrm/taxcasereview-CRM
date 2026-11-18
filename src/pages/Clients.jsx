@@ -1438,7 +1438,7 @@ export default function Clients() {
   const { id: urlId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const openedFromCases = searchParams.get('from') === 'cases'
-  const { user, searchQ, setSearchQ, myTenantId } = useApp()
+  const { user, searchQ, setSearchQ, myTenantId, can } = useApp()
 
   // Cache office communications settings at load time
   const settingsRef = useRef(null)
@@ -1494,6 +1494,12 @@ export default function Clients() {
   const [saving,    setSaving]    = useState(false)
   const [toast,     setToast]     = useState('')
   const [detail,    setDetail]    = useState(null)
+  const [staffNoteEditing, setStaffNoteEditing] = useState(false)
+  const [staffNoteDraft, setStaffNoteDraft] = useState('')
+  const [staffNoteOriginal, setStaffNoteOriginal] = useState(null)
+  const [staffNoteSaving, setStaffNoteSaving] = useState(false)
+  const [staffNoteError, setStaffNoteError] = useState('')
+
   const [showFlow,  setShowFlow]  = useState(false)
   // Addendum + 2nd Trade combined modal
   const [addModal,    setAddModal]    = useState(false)
@@ -2571,12 +2577,62 @@ export default function Clients() {
     setEditModal(true)
   }
 
+  function beginStaffNoteEdit(client) {
+    if (!can('edit', 'clients') || !client?.id) return
+    setStaffNoteOriginal(client.internal_note ?? null)
+    setStaffNoteDraft(client.internal_note || '')
+    setStaffNoteError('')
+    setStaffNoteEditing(true)
+  }
+
+  async function saveStaffNote(client) {
+    if (!can('edit', 'clients') || !myTenantId || !client?.id || staffNoteSaving) return
+    setStaffNoteSaving(true)
+    setStaffNoteError('')
+    const nextNote = staffNoteDraft.trim() || null
+    try {
+      // Compare-and-set: a colleague's newer note must never be overwritten silently.
+      let update = supabase.from('clients').update({ internal_note: nextNote })
+        .eq('id', client.id).eq('tenant_id', myTenantId)
+      update = staffNoteOriginal === null
+        ? update.is('internal_note', null)
+        : update.eq('internal_note', staffNoteOriginal)
+      const { data, error } = await update.select('id,internal_note').maybeSingle()
+      if (error) throw error
+      if (!data) {
+        const { data: current } = await supabase.from('clients')
+          .select('internal_note').eq('id', client.id).eq('tenant_id', myTenantId).maybeSingle()
+        setStaffNoteError(current?.internal_note !== staffNoteOriginal
+          ? 'This note changed while you were editing. Copy your draft before refreshing; no changes were saved.'
+          : 'Cannot save this note with your current permissions. No changes were saved.')
+        return
+      }
+      setDetail(prev => prev?.id === client.id ? { ...prev, internal_note: data.internal_note } : prev)
+      setClients(prev => prev.map(row => row.id === client.id ? { ...row, internal_note: data.internal_note } : row))
+      setStaffNoteEditing(false)
+      const actor = getActor(user)
+      // Audit metadata deliberately excludes note text.
+      await logActivity(supabase, {
+        employeeName: actor.name, employeeEmail: actor.email,
+        action: 'client_staff_note_updated', category: 'client',
+        description: 'Updated internal staff note', entityName: client.name, entityId: client.id,
+        meta: { tenant_id: myTenantId, field: 'internal_note' },
+      })
+    } catch (error) {
+      setStaffNoteError('Could not save staff note: ' + (error?.message || 'unknown error'))
+    } finally {
+      setStaffNoteSaving(false)
+    }
+  }
+
   function openDetail(c, opts = {}) {
     // Record actual opens, not client creation or dashboard list rendering.
     // History is intentionally local to this employee, tenant and browser.
     if (c?.id && myTenantId && user?.email) rememberRecentClient(myTenantId, user.email, c)
     if (!opts.preserveTab) setDetailTab('overview')
     setDetail(c)
+    setStaffNoteEditing(false)
+    setStaffNoteError('')
     setRelCases([]);setRelTasks([]);setRelInvoices([]);setRelSms([]);setRelDeadlines([])
     loadRelated(c.name, c.id)
     const qs = opts.preserveTab ? searchParams.toString() : ''
@@ -2772,10 +2828,28 @@ export default function Clients() {
                 </div>
               </div>
             </div>
-            {c.internal_note && (
-              <div style={{maxWidth:280,background:'rgba(245,158,11,.12)',border:'1.5px solid #f59e0b',borderRadius:8,padding:'8px 12px',fontSize:11,lineHeight:1.5}}>
-                <div style={{fontWeight:700,color:'#f59e0b',marginBottom:3,display:'flex',alignItems:'center',gap:4}}>📌 Staff Note</div>
-                <div style={{color:'var(--tx)'}}>{c.internal_note}</div>
+            {(c.internal_note || can('edit', 'clients')) && (
+              <div style={{maxWidth:330,background:'rgba(245,158,11,.12)',border:'1.5px solid #f59e0b',borderRadius:8,padding:'8px 12px',fontSize:11,lineHeight:1.5}}>
+                <div style={{fontWeight:700,color:'#f59e0b',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>📌 Staff Note (Internal)</div>
+                {staffNoteEditing ? (
+                  <div>
+                    <textarea aria-label="Edit internal staff note" value={staffNoteDraft} onChange={e=>setStaffNoteDraft(e.target.value)}
+                      style={{width:'100%',minHeight:90,resize:'vertical',background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',borderRadius:6,padding:8,whiteSpace:'pre-wrap'}} />
+                    {staffNoteError && <div role="alert" style={{color:'var(--bad)',whiteSpace:'pre-wrap',marginTop:6}}>{staffNoteError}</div>}
+                    <div style={{display:'flex',gap:6,marginTop:8}}>
+                      <button type="button" className="btn pri" disabled={staffNoteSaving} onClick={()=>saveStaffNote(c)}>{staffNoteSaving?'Saving…':'Save'}</button>
+                      <button type="button" className="btn sec" disabled={staffNoteSaving} onClick={()=>{setStaffNoteEditing(false);setStaffNoteError('')}}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div role={can('edit', 'clients') ? 'button' : undefined} tabIndex={can('edit', 'clients') ? 0 : undefined}
+                    onClick={()=>beginStaffNoteEdit(c)}
+                    onKeyDown={e=>{if((e.key==='Enter'||e.key===' ') && can('edit','clients')){e.preventDefault();beginStaffNoteEdit(c)}}}
+                    title={can('edit', 'clients') ? 'Click to edit staff note' : 'Staff note — view only'}
+                    style={{color:'var(--tx)',whiteSpace:'pre-wrap',cursor:can('edit','clients')?'pointer':'default'}}>
+                    {c.internal_note || 'Click to add a staff note'}
+                  </div>
+                )}
               </div>
             )}
           </div>
