@@ -21,7 +21,7 @@ assert.ok(book.includes("(productCfg.key==='taxres_crm'||productCfg.key==='oculi
 assert.ok(book.includes("booking_firm_notification"),'firm notification must be requested')
 assert.ok(cfg.includes("notifyEmail:   'romy@taxrescrm.net'") && cfg.includes("replyTo:       'romy@taxrescrm.net'"),'TaxRes CRM sales booking config must use TaxRes CRM mailbox, not TCR')
 assert.ok(mail.includes("const isTaxResSalesDemo = product === 'taxres_crm'") && mail.includes("String(tenant_id || '') === 'a0000000-0000-0000-0000-000000000001'") && mail.includes("String(ev.eventType || '').trim() === 'Product Demo'"),'Sales routing must be scoped to TaxRes CRM demo bookings, not TCR appointments')
-assert.ok(mail.includes("const reply = isTaxResSalesDemo ? 'romy@taxrescrm.net'") && mail.includes("isTaxResSalesDemo ? 'New Lead' : 'New booking'"),'TaxRes CRM sales bookings must notify Romy with New Lead subject')
+assert.ok(mail.includes("const reply = isTaxResSalesDemo ? 'romy@taxrescrm.net'") && mail.includes("isTaxResSalesDemo ? 'New Lead —' : 'New booking:'"),'TaxRes CRM sales bookings must notify Romy with New Lead subject')
 assert.ok(book.includes("booking_confirmation"),'client confirmation must be requested')
 assert.ok(cfg.includes("'/oculivo-brand-logo.png?v=20261116-1'") && cfg.includes("'/oculivo-favicon.png?v=20261116-1'"),'Oculivo booking uses the approved logo and favicon')
 assert.ok(cfg.includes("productParam === 'aquagrid'"),'Legacy PoolVerge alias missing')
