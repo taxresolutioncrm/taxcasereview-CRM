@@ -240,7 +240,7 @@ export default function RomyLabsBilling() {
         <span style={{color:'#94a3b8'}}>{products.find(([key])=>key===office.product_key)?.[1]||office.product_key} · Not linked to billing</span>
       </div>)}
     </details>}
-    <RomyLabsLedgerExplorer accounts={accounts} invoices={invoices} payments={payments}/>
+    <RomyLabsLedgerExplorer accounts={accounts} invoices={invoices} payments={payments} events={events}/>
 
     {paymentOpen && <div style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={e=>e.target===e.currentTarget&&setPaymentOpen(false)}><form onSubmit={savePayment} style={{width:620,maxWidth:'96vw',maxHeight:'92vh',overflowY:'auto',background:'#0f0e1a',border:'1px solid rgba(99,102,241,.28)',borderRadius:16,padding:24,boxShadow:'0 24px 80px rgba(0,0,0,.55)'}}><div style={{display:'flex',justifyContent:'space-between',gap:12,marginBottom:20}}><div><div style={{fontSize:20,fontWeight:900,color:'#fff'}}>Record Manual Payment</div><div style={{fontSize:12,color:'#64748b',marginTop:4}}>Zelle, ACH, check, wire, cash, or another offline payment.</div></div><button type="button" onClick={()=>setPaymentOpen(false)} style={{background:'none',border:0,color:'#64748b',fontSize:22,cursor:'pointer'}}>✕</button></div>
       {error && <div role="alert" style={{marginBottom:14,padding:12,borderRadius:9,background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.35)',color:'#fecaca',fontSize:12,fontWeight:700}}>Payment error: {error}</div>}
