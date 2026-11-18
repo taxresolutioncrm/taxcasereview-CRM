@@ -128,7 +128,7 @@ serve(async req=>{
         livemode:mode==='live',status:'created'
       },{onConflict:'session_id'})
       if(insertError)return json({error:'Could not register checkout session; do not send link'},503)
-      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining})
+      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,invoice_number:invoice.invoice_number,billing_email:account.billing_email,account_name:account.account_name})
     }catch(error){return json({error:String((error as Error).message||'Could not create Stripe checkout')},502)}
   }
   return json({error:'Unsupported action'},400)
