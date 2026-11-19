@@ -116,6 +116,21 @@ serve(async req=>{
          price?.currency!=='usd'||price?.unit_amount!==39900||
          price?.recurring?.interval!=='month'||price?.recurring?.interval_count!==1)
         return json({error:'Existing Restore Relay $399/month price failed validation'},409)
+      // Fail closed BEFORE exposing a recurring checkout if this restricted key
+      // cannot manage subscription schedules. An intentionally nonexistent
+      // subscription must return Stripe's resource_missing (400), never 2xx.
+      // No customer, charge, link, or schedule is created by this probe.
+      const check=await fetch('https://api.stripe.com/v1/subscription_schedules',{
+        method:'POST',headers:{
+          Authorization:'Bearer '+key,
+          'Stripe-Version':'2026-09-30.endive',
+          'Content-Type':'application/x-www-form-urlencoded'
+        },
+        body:new URLSearchParams({from_subscription:'sub_romylabs_permission_probe_nonexistent'})
+      })
+      const probe=await check.json().catch(()=>({}))
+      if(check.status!==400||probe?.error?.code!=='resource_missing')
+        return json({error:'Stripe restricted key must allow subscription schedule writes before generating a payment link. No customer was charged.'},409)
       // Locate an existing tagged link rather than producing a second live link
       // on refresh/retry. Never reuse the legacy one-time or $400 links.
       const existing=await stripe(key,'payment_links?limit=100')
