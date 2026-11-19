@@ -66,7 +66,8 @@ serve(async req=>{
     // verification event may activate invoice checkout, but never a charge.
     if(event.type==='ping'||(event.type==='account.updated' && event.data?.object?.object==='account' && event.data?.object?.id==='acct_1UaFszFomt0HrzTf')||
       (event.type==='customer.created' && event.data?.object?.object==='customer' &&
-       event.data?.object?.metadata?.romylabs_webhook_verification==='2026-11-18-signed-delivery')){
+       (event.data?.object?.metadata?.romylabs_webhook_verification==='2026-11-18-signed-delivery' ||
+        event.data?.object?.description==='RomyLabs webhook verification 2026-11-19'))){
       const {error}=await db.from('romylabs_stripe_settings').update({
         webhook_verified_at:now,webhook_configured:true,mode:verifiedMode,updated_at:now
       }).eq('id',true)
