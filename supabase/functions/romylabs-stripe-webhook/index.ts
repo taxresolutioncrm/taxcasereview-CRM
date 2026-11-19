@@ -72,6 +72,78 @@ serve(async req=>{
       }).eq('id',true)
       if(error)throw Error('Could not confirm webhook connection')
     }
+    // Schedule only our explicitly tagged Restore Relay six-payment checkout.
+    // A one-time Checkout, a different CRM office, or an unrelated Stripe
+    // subscription must never be rescheduled by this merchant webhook.
+    if(event.type==='checkout.session.completed'&&
+       event.data?.object?.metadata?.romylabs_term==='restore_relay_six_payments_v1'){
+      const checkout=event.data.object
+      const subscriptionId=String(checkout.subscription||'')
+      if(verifiedMode!=='live'||checkout.mode!=='subscription'||
+         checkout.livemode!==true||!/^sub_[A-Za-z0-9]+$/.test(subscriptionId)||
+         checkout.currency!=='usd'||Number(checkout.amount_subtotal)!==39900)
+        throw Error('Restore Relay checkout did not match verified $399/month subscription')
+      const stripeRequest=async(path:string,params?:URLSearchParams,idem?:string)=>{
+        const headers:Record<string,string>={
+          Authorization:'Bearer '+String(key),
+          'Stripe-Version':'2026-09-30.endive'
+        }
+        if(params)headers['Content-Type']='application/x-www-form-urlencoded'
+        if(idem)headers['Idempotency-Key']=idem
+        const result=await fetch('https://api.stripe.com/v1/'+path,{
+          method:params?'POST':'GET',headers,body:params
+        })
+        const obj=await result.json().catch(()=>({}))
+        if(!result.ok)throw Error('Stripe subscription scheduling failed ('+result.status+
+          '): '+String(obj?.error?.code||obj?.error?.type||'provider_error'))
+        return obj
+      }
+      const sub=await stripeRequest('subscriptions/'+subscriptionId)
+      const targetPrice='price_1Ud2Q6Fomt0HrzTfApwGodx0'
+      if(sub?.livemode!==true||sub?.items?.data?.length!==1||
+         sub.items.data[0]?.price?.id!==targetPrice||
+         sub.items.data[0]?.quantity!==1||
+         sub.items.data[0]?.price?.recurring?.interval!=='month'||
+         sub.items.data[0]?.price?.recurring?.interval_count!==1||
+         sub?.trial_end&&Number(sub.trial_end)>Math.floor(Date.now()/1000))
+        throw Error('Restore Relay Stripe subscription has unexpected price or trial')
+      let schedule:any
+      if(sub.schedule){
+        const id=typeof sub.schedule==='string'?sub.schedule:sub.schedule.id
+        schedule=await stripeRequest('subscription_schedules/'+id)
+      }else{
+        schedule=await stripeRequest('subscription_schedules',
+          new URLSearchParams({from_subscription:subscriptionId}),
+          'romylabs-six-term-schedule-'+subscriptionId)
+      }
+      if(schedule?.subscription!==subscriptionId||!schedule?.id)
+        throw Error('Subscription schedule identity mismatch')
+      const phase=schedule.phases?.[0]
+      if(!phase?.start_date||!Number.isSafeInteger(Number(phase.start_date)))
+        throw Error('Stripe did not supply a subscription schedule start date')
+      if(schedule.end_behavior!=='cancel'||
+         !phase.end_date||Number(phase.end_date)-Number(phase.start_date)<130*86400||
+         Number(phase.end_date)-Number(phase.start_date)>210*86400){
+        const params=new URLSearchParams({
+          end_behavior:'cancel',proration_behavior:'none',
+          'phases[0][items][0][price]':targetPrice,
+          'phases[0][items][0][quantity]':'1',
+          'phases[0][start_date]':String(phase.start_date),
+          'phases[0][duration][interval]':'month',
+          'phases[0][duration][interval_count]':'6'
+        })
+        schedule=await stripeRequest('subscription_schedules/'+schedule.id,params,
+          'romylabs-six-term-finalize-'+subscriptionId)
+      }
+      const finalPhase=schedule?.phases?.[0]
+      if(schedule?.end_behavior!=='cancel'||schedule?.subscription!==subscriptionId||
+         finalPhase?.items?.length!==1||
+         finalPhase.items[0]?.price!==targetPrice||
+         !finalPhase?.end_date||
+         Number(finalPhase.end_date)-Number(finalPhase.start_date)<130*86400||
+         Number(finalPhase.end_date)-Number(finalPhase.start_date)>210*86400)
+        throw Error('Six-month cancellation schedule could not be verified')
+    }
     if(['checkout.session.completed','checkout.session.async_payment_succeeded',
         'checkout.session.async_payment_failed'].includes(event.type)){
       const checkout=event.data?.object||{}
