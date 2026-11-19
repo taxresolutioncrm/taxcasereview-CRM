@@ -248,7 +248,7 @@ const EMAIL_PARITY_CHANGES = [
 ]
 
 const ADMIN_DEMO_TASK_CHANGES = [
-  'Restore Relay office onboarding now combines the $399 six-month e-sign agreement and verified Stripe first-installment payment link into a single email; restores that link when resending',
+  'Restore Relay office onboarding now combines the $399 six-month e-sign agreement and Stripe initial-payment link in a single email, with an owner checkout-price confirmation and a stored link for resends',
   'Credential Vault now includes a separate Stripe password and API key category, alphabetically listed without registering Stripe as a CRM product',
   'PoolVerge Clarity can now be connected securely inside Admin Portal SEO using the existing Microsoft project and a verified Data Export token',
   'Clarity API credentials are encrypted in Supabase Vault and never shown to other users; the existing Cloudflare tracking project remains untouched',
