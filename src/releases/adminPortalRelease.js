@@ -11,13 +11,13 @@ const ADMIN_PORTAL_BASELINE = Object.freeze({
 })
 
 export const ADMIN_PORTAL_RELEASE = Object.freeze({
-  version: '3.0.1',
+  version: '3.0.2',
   productionDate: null, // Set only on confirmed production deployment.
-  title: 'Search Console Trend Visibility',
+  title: 'Restore Relay Agreement and Initial Stripe Payment',
   changes: [
-    'Google Search Console adds live 7-day, 28-day and 90-day reporting windows.',
-    'Search Console KPI cards show previous-period movement instead of only a rolling 90-day total.',
-    'Search Console displays the provider data-through date and the most recent refresh time.',
+    'Restore Relay prospect and office agreements include one email with an e-sign link and a verified $399 initial-installment Stripe link.',
+    'The six-month agreement is $399 per month ($2,394 total) with no automatic renewal.',
+    'Resent e-sign requests and pre-onboarding prospect agreements preserve the original Stripe payment link; unrelated office signing workflows remain unchanged.',
   ],
 })
 

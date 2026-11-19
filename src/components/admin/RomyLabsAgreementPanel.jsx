@@ -1,5 +1,6 @@
 // Signed-sale handoff: signed agreements can launch office onboarding and remain linked to the office record.
 import React, { useEffect, useMemo, useState } from 'react'
+import {normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail} from '../../lib/restoreRelayPaymentProtocol'
 
 const money = v => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(v||0))
 const dt = v => v ? new Date(v).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '—'
@@ -22,9 +23,12 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
   const [working,setWorking]=useState(false)
   const [msg,setMsg]=useState('')
   const [error,setError]=useState('')
+  const [stripePaymentUrl,setStripePaymentUrl]=useState('')
+  const [stripeAmountConfirmed,setStripeAmountConfirmed]=useState(false)
+  const restoreSale=prospect?.product==='restore_relay'
 
-  const seats = Math.max(Number(prospect?.seats||1),1)
-  const monthly = Number(prospect?.mrr_potential||0)
+  const seats = restoreSale ? 10 : Math.max(Number(prospect?.seats||1),1)
+  const monthly = restoreSale ? 399 : Number(prospect?.mrr_potential||0)
   const pricePerSeat = seats>0 && monthly>0 ? monthly/seats : 0
   const brand = BRAND[prospect?.product] || {name:'RomyLabs',email:'info@romylabs.com'}
 
@@ -37,10 +41,11 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
   }
   useEffect(()=>{load()},[prospect?.id])
 
-  async function sendEmail(payload){
+  async function sendEmail(payload,paymentUrl=''){
+    const stripeLink=paymentUrl || payload.restore_relay_stripe_payment_url || ''
     const signUrl=payload.sign_url
-    const subject=`${brand.name} Agreement — ${prospect.firm_name}`
-    const html=`<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${brand.name} Subscription Agreement</h2><p>Hi ${prospect.contact_name||'there'},</p><p>Your agreement for <strong>${brand.name}</strong> is ready to review and sign electronically.</p><div style="background:#f5f7fb;border-radius:10px;padding:14px 16px;margin:18px 0"><strong>${prospect.firm_name}</strong><br>${payload.seats||seats} seats · ${money(payload.monthly_amount??monthly)}/month</div><p><a href="${signUrl}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Review & Sign Agreement</a></p><p style="font-size:12px;color:#64748b">This secure signing link expires in 14 days. If you have questions, reply to this email.</p><p>Best Regards,<br><strong>${brand.name}</strong><br>RomyLabs</p></div>`
+    const subject=stripeLink ? `Restore Relay Agreement + $399 Payment — ${prospect.firm_name}` : `${brand.name} Agreement — ${prospect.firm_name}`
+    const html=stripeLink ? restoreRelaySigningAndPaymentEmail({signUrl,paymentUrl:stripeLink,recipientName:prospect.contact_name,customerName:prospect.firm_name,title:"Restore Relay Professional Plan — Six-Month Subscription Agreement"}) : `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${brand.name} Subscription Agreement</h2><p>Hi ${prospect.contact_name||'there'},</p><p>Your agreement for <strong>${brand.name}</strong> is ready to review and sign electronically.</p><div style="background:#f5f7fb;border-radius:10px;padding:14px 16px;margin:18px 0"><strong>${prospect.firm_name}</strong><br>${payload.seats||seats} seats · ${money(payload.monthly_amount??monthly)}/month</div><p><a href="${signUrl}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Review & Sign Agreement</a></p><p style="font-size:12px;color:#64748b">This secure signing link expires in 14 days. If you have questions, reply to this email.</p><p>Best Regards,<br><strong>${brand.name}</strong><br>RomyLabs</p></div>`
     const {data,error:e}=await supabase.functions.invoke('send-email',{body:{
       to: prospect.contact_email,
       subject,
@@ -54,7 +59,14 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
 
   async function createAndSend(){
     if(!prospect?.contact_email){setError('Add a prospect email before sending an agreement.');return}
-    if(!window.confirm(`Create and email a ${brand.name} agreement to ${prospect.contact_email}?`)) return
+    let checkedLink=''
+    if(restoreSale){
+      try{checkedLink=normalizeStripePaymentLink(stripePaymentUrl)}catch(e){setError(e.message);return}
+      if(!stripeAmountConfirmed){setError('Confirm the live Stripe link charges exactly $399 for the first installment (not $399.99 or an uncapped subscription).');return}
+    }
+    if(!window.confirm(restoreSale
+      ? `Send ONE email to ${prospect.contact_email} with BOTH the six-month $399 agreement signing link and Stripe first-payment link?`
+      : `Create and email a ${brand.name} agreement to ${prospect.contact_email}?`)) return
     setWorking(true);setError('');setMsg('')
     try{
       const {data,error:e}=await supabase.rpc('admin_romylabs_create_sales_agreement',{
@@ -65,11 +77,17 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
         p_expires_days:14,
       })
       if(e||!data?.ok) throw new Error(e?.message||data?.error||'Agreement creation failed')
-      await sendEmail(data)
+      if(restoreSale){
+        const stored=await supabase.rpc('admin_romylabs_set_sales_agreement_stripe_link',{
+          p_agreement_id:data.agreement_id,p_payment_url:checkedLink
+        })
+        if(stored.error||stored.data!==true)throw new Error(stored.error?.message||'Could not attach Stripe payment link. Agreement was not emailed.')
+      }
+      await sendEmail(data,checkedLink)
       const sent=await supabase.rpc('admin_romylabs_mark_agreement_sent',{p_agreement_id:data.agreement_id})
       if(sent.error) throw sent.error
       await supabase.from('prospect_activities').insert({prospect_id:prospect.id,activity_type:'proposal',body:`Agreement emailed to ${prospect.contact_email} · ${seats} seats · ${money(monthly)}/mo`,actor:'info@romylabs.com'})
-      setMsg(`Agreement sent to ${prospect.contact_email} ✓`)
+      setMsg(restoreSale ? `ONE email sent to ${prospect.contact_email} with signing and Stripe $399 payment links ✓` : `Agreement sent to ${prospect.contact_email} ✓`)
       await load(); await onChanged?.()
     }catch(e){setError(e.message||String(e))}
     setWorking(false)
@@ -81,8 +99,9 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
     try{
       const {data,error:e}=await supabase.rpc('admin_romylabs_refresh_agreement_link',{p_agreement_id:row.id})
       if(e||!data?.ok) throw new Error(e?.message||data?.error||'Could not refresh signing link')
-      await sendEmail(data)
-      setMsg('Fresh signing link emailed ✓'); await load()
+      const link=restoreSale?normalizeStripePaymentLink(row.restore_relay_stripe_payment_url):''
+      await sendEmail(data,link)
+      setMsg(restoreSale?'Fresh signing and original Stripe payment links emailed together ✓':'Fresh signing link emailed ✓'); await load()
     }catch(e){setError(e.message||String(e))}
     setWorking(false)
   }
@@ -112,8 +131,15 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
         style={{padding:'6px 10px',borderRadius:7,border:'none',background:'#6366f1',color:'#fff',fontSize:10,fontWeight:800,cursor:createDisabled?'not-allowed':'pointer',opacity:createDisabled?.5:1}}>{working?'Working…':'+ Create & Email Agreement'}</button>
     </div>
 
+    {restoreSale&&<div style={{display:'grid',gap:8,marginBottom:12,padding:12,border:'1px solid rgba(16,185,129,.24)',background:'rgba(16,185,129,.05)',borderRadius:10}}>
+      <strong style={{fontSize:11,color:'#a7f3d0'}}>Restore Relay · $399/month × 6 · $2,394 total · up to 10 users · no automatic renewal</strong>
+      <label style={{fontSize:10,color:'#cbd5e1'}}>Stripe Payment Link for FIRST $399 installment (required)
+        <input type="url" value={stripePaymentUrl} onChange={e=>{setStripePaymentUrl(e.target.value);setStripeAmountConfirmed(false)}} placeholder="https://buy.stripe.com/..." style={{width:'100%',boxSizing:'border-box',marginTop:5,padding:9,border:'1px solid #475569',borderRadius:7,background:'#0f172a',color:'#fff'}}/>
+      </label>
+      <label style={{display:'flex',gap:8,alignItems:'flex-start',fontSize:10,color:'#cbd5e1'}}><input type="checkbox" checked={stripeAmountConfirmed} onChange={e=>setStripeAmountConfirmed(e.target.checked)}/>I opened this LIVE Stripe link and confirmed it charges $399.00 for the first installment, not $399.99 or an uncapped recurring subscription.</label>
+    </div>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:10}}>
-      {[['Seats',seats],['Per Seat',pricePerSeat?money(pricePerSeat):'—'],['Monthly',monthly?money(monthly):'—']].map(([l,v])=><div key={l} style={{background:'rgba(255,255,255,.03)',borderRadius:7,padding:'7px 9px'}}><div style={{fontSize:8,color:'#334155',fontWeight:800,textTransform:'uppercase'}}>{l}</div><div style={{fontSize:11,color:'#e2e8f0',fontWeight:700,marginTop:2}}>{v}</div></div>)}
+      {(restoreSale?[['Included Users','Up to 10'],['Term','6 months'],['Monthly','$399.00']]:[['Seats',seats],['Per Seat',pricePerSeat?money(pricePerSeat):'—'],['Monthly',monthly?money(monthly):'—']]).map(([l,v])=><div key={l} style={{background:'rgba(255,255,255,.03)',borderRadius:7,padding:'7px 9px'}}><div style={{fontSize:8,color:'#334155',fontWeight:800,textTransform:'uppercase'}}>{l}</div><div style={{fontSize:11,color:'#e2e8f0',fontWeight:700,marginTop:2}}>{v}</div></div>)}
     </div>
 
     {loading?<div style={{fontSize:11,color:'#475569'}}>Loading agreements…</div>:rows.length===0?<div style={{fontSize:11,color:'#475569'}}>No agreement created yet.</div>:rows.slice(0,4).map(row=>{
