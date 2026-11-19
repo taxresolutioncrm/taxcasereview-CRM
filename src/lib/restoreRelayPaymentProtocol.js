@@ -1,5 +1,7 @@
 // Fixed-term Restore Relay Professional sale. The payment link pays the first
 // installment only; recurring charges require a separate Stripe mandate/schedule.
+// Live link independently verified against Stripe: active, one-time, $399, quantity 1.
+export const RESTORE_RELAY_FIRST_PAYMENT_URL = 'https://buy.stripe.com/6oU5kD8Ywfdd32Qbz60kE01'
 export const RESTORE_RELAY_MONTHLY_CENTS = 39900
 export const RESTORE_RELAY_MONTHS = 6
 export const RESTORE_RELAY_TOTAL_CENTS = RESTORE_RELAY_MONTHLY_CENTS * RESTORE_RELAY_MONTHS
