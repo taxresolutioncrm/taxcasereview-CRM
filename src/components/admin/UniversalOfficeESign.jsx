@@ -152,9 +152,13 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
         const {data:linkResult,error:linkError}=await supabase.functions.invoke('romylabs-stripe-checkout',{
           body:{action:'restore_relay_six_month_link',office_name:contractSetup.business.trim()||firmName,office_ref:String(externalOfficeId)}
         })
+        // Supabase FunctionsHttpError otherwise hides the JSON cause behind
+        // "Edge Function returned a non-2xx status code".
+        const checkoutFailure=linkError?.context && typeof linkError.context.clone==='function'
+          ? await linkError.context.clone().json().catch(()=>null) : null
         if(linkError||!linkResult?.ok||linkResult?.monthly_amount_cents!==39900||
            linkResult?.number_of_payments!==6)
-          throw new Error(linkResult?.error||linkError?.message||'Verified six-payment Stripe link is unavailable. No email was sent.')
+          throw new Error(linkResult?.error||checkoutFailure?.error||linkError?.message||'Verified six-payment Stripe link is unavailable. No email was sent.')
         confirmedStripeLink=normalizeStripePaymentLink(linkResult.link_url)
       }
       path=`${productKey}/${externalOfficeId}/${Date.now()}-${clean(file.name)}`
