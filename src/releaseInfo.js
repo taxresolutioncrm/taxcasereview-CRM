@@ -395,3 +395,4 @@ export function getReleaseInfo(tenantId) {
 }
 
 export { DEFAULT_RELEASE, OFFICE_RELEASES }
+
