@@ -89,4 +89,12 @@ assert.match(webhookFn,/from_subscription/)
 assert.match(webhookFn,/end_behavior:'cancel'/)
 assert.match(webhookFn,/interval_count\]':'6'/)
 
+const lifecycle=readFileSync('supabase/functions/office-agreement-file/index.ts','utf8')
+assert.match(lifecycle,/sendOwnerLifecycleNotice\(admin,doc,'viewed'\)/)
+assert.match(lifecycle,/sendSignedCopy\(admin,doc,officeFacingSignedBytes\)/)
+assert.match(lifecycle,/recipientAddress=String\(recipientOverride\|\|'romy@romylabs.com'\)/)
+assert.match(lifecycle,/owner_signed_copy_sent/)
+assert.match(lifecycle,/owner_viewed_notification_sent/)
+assert.match(lifecycle,/sendSignedCopy\(admin,doc,officeFacingSignedBytes,String\(doc.signer_email\)\)/)
+
 console.log('PASS Restore Relay $399/6-month PDF, live Stripe link gating, one-email template, resend persistence and tenant authorization')
