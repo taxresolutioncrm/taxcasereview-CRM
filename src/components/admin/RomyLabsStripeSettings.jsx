@@ -8,6 +8,7 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
   const [info,setInfo]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState('')
   const [key,setKey]=useState(''),[secret,setSecret]=useState(''),[mode,setMode]=useState('test')
   const [busy,setBusy]=useState(false),[expanded,setExpanded]=useState(false),[paying,setPaying]=useState('')
+  const [restoreLink,setRestoreLink]=useState('')
   const invoke=async body=>{
     const {data,error:e}=await supabase.functions.invoke('romylabs-stripe-checkout',{body})
     if(e){
@@ -71,6 +72,18 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     }catch(e){setError(String(e?.message||e))}
     finally{setPaying('')}
   }
+  async function createRestoreRelayLink(){
+    if(busy||!info?.checkout_ready||info?.mode!=='live')return
+    setBusy(true);setError('');setMessage('')
+    try{
+      const data=await invoke({action:'restore_relay_six_month_link'})
+      setRestoreLink(data.link_url)
+      try{await navigator.clipboard.writeText(data.link_url)
+        setMessage('Verified Restore Relay $399/month six-payment checkout link copied. The signed Stripe webhook schedules cancellation after the sixth monthly billing period.')
+      }catch(_){setMessage('Restore Relay checkout link is ready below. Copy it into the six-month e-sign agreement.')}
+    }catch(e){setError(String(e?.message||e))}
+    finally{setBusy(false)}
+  }
   const ready=info?.checkout_ready===true
   return <section style={main} aria-label="RomyLabs Stripe merchant payments">
     <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap'}}>
@@ -125,6 +138,24 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
           </div>)}
         </div>
       </details>}
+    <div style={{marginTop:16,borderTop:'1px solid rgba(139,92,246,.15)',paddingTop:14}}>
+      <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:7}}>Restore Relay · six-month office subscription</div>
+      <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 11px',lineHeight:1.6}}>
+        Calico GC LLC · $399 per month · six monthly billing periods. The first payment is collected at checkout;
+        the signed webhook automatically schedules cancellation after period six.
+        Do not send a separate one-time payment link.
+      </p>
+      <button type="button" onClick={createRestoreRelayLink}
+        disabled={!ready||info?.mode!=='live'||busy}
+        style={{...btn,opacity:ready&&info?.mode==='live'&&!busy?1:.45}}>
+        {busy?'Creating and verifying…':'Create / Copy six-payment link'}
+      </button>
+      {restoreLink&&<div style={{display:'flex',gap:7,alignItems:'center',marginTop:10,flexWrap:'wrap'}}>
+        <input readOnly aria-label="Restore Relay six-month payment link"
+          value={restoreLink} style={{...input,flex:'1 1 280px',minWidth:0}}/>
+        <button type="button" style={btn} onClick={()=>navigator.clipboard.writeText(restoreLink)}>Copy</button>
+      </div>}
+    </div>
     <div style={{marginTop:16,borderTop:'1px solid rgba(139,92,246,.15)',paddingTop:14}}>
       <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:9}}>Collect an outstanding RomyLabs invoice</div>
       {!ready?<p style={{fontSize:12,color:'#94a3b8',margin:'0'}}>Checkout links unlock only after the merchant key and signature-verified webhook are configured. No live charges can be created from this screen yet.</p>
