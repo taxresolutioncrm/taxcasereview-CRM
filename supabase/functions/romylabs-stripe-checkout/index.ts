@@ -39,7 +39,14 @@ serve(async req=>{
     const hasLive=Boolean(await secret('romylabs_stripe_live_key'))
     const hasTest=Boolean(await secret('romylabs_stripe_test_key'))
     const internalBillingReady=Boolean(Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
-    return json({ok:true,merchant:'Romy Labs, LLC',account_id:settings.stripe_account_id||null,
+    const {data:recentEvents,error:eventsError}=await db.from('romylabs_stripe_webhook_events')
+      .select('event_id,event_type,livemode,received_at,processed_at,last_error')
+      .order('received_at',{ascending:false}).limit(12)
+    return json({ok:true,webhook_recent_events:eventsError?[]:(recentEvents||[]).map(e=>({
+      id:e.event_id,type:e.event_type,mode:e.livemode?'live':'test',
+      received_at:e.received_at,processed:!!e.processed_at,
+      failed:!!e.last_error
+    })),merchant:'Romy Labs, LLC',account_id:settings.stripe_account_id||null,
       mode:active,live_key_configured:hasLive,test_key_configured:hasTest,
       webhook_configured:Boolean(settings.webhook_configured),
       webhook_verified:Boolean(settings.webhook_verified_at),internal_billing_ready:internalBillingReady,
@@ -128,7 +135,7 @@ serve(async req=>{
         livemode:mode==='live',status:'created'
       },{onConflict:'session_id'})
       if(insertError)return json({error:'Could not register checkout session; do not send link'},503)
-      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining})
+      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,invoice_number:invoice.invoice_number,billing_email:account.billing_email,account_name:account.account_name})
     }catch(error){return json({error:String((error as Error).message||'Could not create Stripe checkout')},502)}
   }
   return json({error:'Unsupported action'},400)

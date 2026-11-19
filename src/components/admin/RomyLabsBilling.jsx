@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import RomyLabsStripeSettings from './RomyLabsStripeSettings'
+import RomyLabsLedgerExplorer from './RomyLabsLedgerExplorer'
+import RomyLabsInvoiceSetup from './RomyLabsInvoiceSetup'
 
 const money = cents => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(cents||0)/100)
 const date = value => value ? new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'
@@ -222,6 +224,7 @@ export default function RomyLabsBilling() {
       <div style={{minWidth:0,flex:'1 1 420px'}}><div style={{fontSize:22,fontWeight:900,color:'#fff'}}>💳 RomyLabs Billing & Collections</div><div style={{fontSize:13,color:'#64748b',marginTop:5}}>RomyLabs SaaS subscriptions only — separate from each CRM's customer, patient, or client billing.</div></div>
       <div style={{display:'flex',gap:8,flexShrink:0,marginLeft:'auto'}}><button onClick={()=>openPayment(null)} style={{padding:'8px 14px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',fontWeight:800,cursor:'pointer'}}>+ Record Manual Payment</button><button onClick={load} style={{padding:'7px 13px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',fontWeight:700,cursor:'pointer'}}>Refresh</button></div>
     </div>
+    <RomyLabsInvoiceSetup accounts={accounts} invoices={invoices} officeRegistry={officeRegistry} onRefresh={load}/>
     <RomyLabsStripeSettings invoices={invoices} onRefresh={load}/>
     {notice && <div role="status" style={{position:'fixed',top:20,right:20,zIndex:12000,maxWidth:480,padding:13,borderRadius:10,background:'#0f2b22',border:'1px solid rgba(16,185,129,.45)',color:'#86efac',fontWeight:800,boxShadow:'0 16px 45px rgba(0,0,0,.45)'}}>{notice}</div>}
     {error && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:18}}>Billing error: {error}</div>}
@@ -237,32 +240,7 @@ export default function RomyLabsBilling() {
         <span style={{color:'#94a3b8'}}>{products.find(([key])=>key===office.product_key)?.[1]||office.product_key} · Not linked to billing</span>
       </div>)}
     </details>}
-    <div style={{marginTop:18}}>
-      <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:12,marginBottom:9}}>
-        <div style={{fontSize:12,fontWeight:900,color:'#e2e8f0',textTransform:'uppercase',letterSpacing:'.06em'}}>Payment Transactions</div>
-        <div style={{fontSize:11,color:'#64748b'}}>Manual and processor subscription payments</div>
-      </div>
-      <div style={{...card,overflowX:'auto'}}>
-        <table style={{width:'100%',minWidth:900,borderCollapse:'collapse'}}>
-          <thead><tr>{['Paid Date','Account','Amount','Method','Status','Reference'].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
-          <tbody>
-            {sortedPayments.length===0
-              ? <tr><td colSpan={6} style={{...td,textAlign:'center',padding:22}}>No subscription payments recorded.</td></tr>
-              : sortedPayments.slice(0,50).map(p=>{
-                  const account=accounts.find(a=>a.id===p.account_id)
-                  return <tr key={p.id}>
-                    <td style={td}>{date(p.paid_at||p.created_at)}</td>
-                    <td style={{...td,color:'#e2e8f0',fontWeight:700}}>{account?.account_name||'Unknown account'}</td>
-                    <td style={{...td,color:'#10b981',fontWeight:900}}>{money(p.amount_cents)}</td>
-                    <td style={td}>{p.provider||'manual'}</td>
-                    <td style={td}><span style={badge(p.status==='succeeded'?'active':p.status||'active')}>{p.status||'succeeded'}</span></td>
-                    <td style={{...td,maxWidth:320,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={p.provider_payment_id||p.reference||''}>{p.provider_payment_id||p.reference||'—'}</td>
-                  </tr>
-                })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <RomyLabsLedgerExplorer accounts={accounts} invoices={invoices} payments={payments} events={events}/>
 
     {paymentOpen && <div style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={e=>e.target===e.currentTarget&&setPaymentOpen(false)}><form onSubmit={savePayment} style={{width:620,maxWidth:'96vw',maxHeight:'92vh',overflowY:'auto',background:'#0f0e1a',border:'1px solid rgba(99,102,241,.28)',borderRadius:16,padding:24,boxShadow:'0 24px 80px rgba(0,0,0,.55)'}}><div style={{display:'flex',justifyContent:'space-between',gap:12,marginBottom:20}}><div><div style={{fontSize:20,fontWeight:900,color:'#fff'}}>Record Manual Payment</div><div style={{fontSize:12,color:'#64748b',marginTop:4}}>Zelle, ACH, check, wire, cash, or another offline payment.</div></div><button type="button" onClick={()=>setPaymentOpen(false)} style={{background:'none',border:0,color:'#64748b',fontSize:22,cursor:'pointer'}}>✕</button></div>
       {error && <div role="alert" style={{marginBottom:14,padding:12,borderRadius:9,background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.35)',color:'#fecaca',fontSize:12,fontWeight:700}}>Payment error: {error}</div>}
