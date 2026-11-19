@@ -115,6 +115,71 @@ function SlackImport({ tenantId, onBack, showToast }) {
   )
 }
 
+// Founder-only pre-sale workspace. A customer can sign/pay before their CRM
+// office exists; successful signed sales continue into normal provisioning.
+function RestoreRelayPreSaleComposer(){
+  const [draft,setDraft]=useState({firm_name:'',contact_name:'',contact_email:''})
+  const [rows,setRows]=useState([])
+  const [selectedId,setSelectedId]=useState('')
+  const [loading,setLoading]=useState(true)
+  const [busy,setBusy]=useState(false)
+  const [error,setError]=useState('')
+  const [message,setMessage]=useState('')
+  async function load(){
+    const {data,error:e}=await supabase.rpc('admin_romylabs_restore_relay_presale_prospects')
+    setLoading(false)
+    if(e){setError(e.message);return}
+    const list=Array.isArray(data)?data:[]
+    setRows(list)
+    setSelectedId(current=>list.some(p=>p.id===current)?current:(list[0]?.id||''))
+  }
+  useEffect(()=>{load()},[])
+  async function createProspect(e){
+    e.preventDefault()
+    if(busy)return
+    setBusy(true);setError('');setMessage('')
+    const {data,error:e2}=await supabase.rpc('admin_romylabs_create_restore_relay_presale_prospect',{
+      p_firm_name:draft.firm_name.trim(),
+      p_contact_name:draft.contact_name.trim(),
+      p_contact_email:draft.contact_email.trim()
+    })
+    if(e2){setError(e2.message);setBusy(false);return}
+    await load()
+    setSelectedId(data)
+    setMessage('Customer sales record ready. Add the Stripe $399 Payment Link below, then send one combined agreement email.')
+    setBusy(false)
+  }
+  const selected=rows.find(p=>p.id===selectedId)
+  return <section style={{marginBottom:22,border:'1px solid rgba(16,185,129,.3)',borderRadius:12,padding:16,background:'rgba(16,185,129,.035)'}}>
+    <div style={{fontSize:15,fontWeight:900,color:'var(--tx)',marginBottom:4}}>Restore Relay — Pre-Sale Contract & Payment</div>
+    <div style={{fontSize:12,color:'var(--t3)',lineHeight:1.5,marginBottom:12}}>
+      Send the six-month $399 subscription agreement and the first Stripe payment link in ONE email, before creating the customer's CRM office.
+    </div>
+    <form onSubmit={createProspect} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:9}}>
+      <label style={{fontSize:11,color:'var(--t2)'}}>Customer legal business name
+        <input required value={draft.firm_name} onChange={e=>setDraft(x=>({...x,firm_name:e.target.value}))} placeholder="Business LLC" style={{width:'100%',boxSizing:'border-box',padding:9,background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',borderRadius:7}}/>
+      </label>
+      <label style={{fontSize:11,color:'var(--t2)'}}>Authorized signer name
+        <input required value={draft.contact_name} onChange={e=>setDraft(x=>({...x,contact_name:e.target.value}))} style={{width:'100%',boxSizing:'border-box',padding:9,background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',borderRadius:7}}/>
+      </label>
+      <label style={{fontSize:11,color:'var(--t2)'}}>Signer email
+        <input required type="email" value={draft.contact_email} onChange={e=>setDraft(x=>({...x,contact_email:e.target.value}))} style={{width:'100%',boxSizing:'border-box',padding:9,background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',borderRadius:7}}/>
+      </label>
+      <button className="btn pri" type="submit" disabled={busy} style={{alignSelf:'end',minHeight:35}}>{busy?'Preparing…':'+ Prepare Contract'}</button>
+    </form>
+    {loading?<p style={{fontSize:11,color:'var(--t3)'}}>Loading sales records…</p>:rows.length>0&&<label style={{display:'block',fontSize:11,marginTop:13,color:'var(--t2)'}}>Select pending Restore Relay sale
+      <select value={selectedId} onChange={e=>setSelectedId(e.target.value)} style={{display:'block',marginTop:5,padding:8,width:'100%',background:'var(--s2)',color:'var(--tx)',border:'1px solid var(--br)',borderRadius:7}}>
+        {rows.map(p=><option key={p.id} value={p.id}>{p.firm_name} — {p.contact_email||'No email'} ({p.stage})</option>)}
+      </select>
+    </label>}
+    {error&&<p role="alert" style={{fontSize:11,color:'#ef4444'}}>{error}</p>}
+    {message&&<p role="status" style={{fontSize:11,color:'#10b981'}}>{message}</p>}
+    {selected&&<div style={{marginTop:14,borderTop:'1px solid var(--br)',paddingTop:10}}>
+      <RomyLabsAgreementPanel key={selected.id} prospect={selected} supabase={supabase} onChanged={load}/>
+    </div>}
+  </section>
+}
+
 export default function NewOffice() {
   const { user, showToast } = useApp()
   const [searchParams] = useSearchParams()
@@ -177,6 +242,8 @@ export default function NewOffice() {
       <div style={{color:'var(--t3)',fontSize:13,marginBottom:24}}>
         Every office running on this platform, each on its own isolated tenant. Click one for contract info, contacts, phone numbers, and agreement files.
       </div>
+
+      <RestoreRelayPreSaleComposer/>
 
       <div style={{border:'1px solid var(--br)',borderRadius:10,overflow:'hidden'}}>
         {offices === null ? (

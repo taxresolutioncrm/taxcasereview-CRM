@@ -5,6 +5,8 @@ on:
       - 'src/lib/restoreRelayAgreementPdf.js'
       - 'src/lib/restoreRelayPaymentProtocol.js'
       - 'src/components/admin/UniversalOfficeESign.jsx'
+      - 'src/pages/NewOffice.jsx'
+      - 'supabase/migrations/20261118222500_restore_relay_presale_prospect_composer.sql'
       - 'tests/restore-relay-contract-stripe-email.test.mjs'
       - 'supabase/migrations/20261118213000_restore_relay_office_esign_stripe_link.sql'
       - '.github/workflows/restore-relay-stripe-contract.yml'
