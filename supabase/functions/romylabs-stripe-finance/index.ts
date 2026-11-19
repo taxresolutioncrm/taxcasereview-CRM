@@ -40,9 +40,10 @@ serve(async req=>{
     if(!res.ok)throw Error(res.status===403?'Permission required in Stripe restricted key':String(body?.error?.code||'Stripe read unavailable'))
     return body
   }
-  const types=['payment_intents','subscriptions','invoices','payouts','refunds','disputes','balance'] as const
+  const types=['payment_intents','subscriptions','invoices','payouts','refunds','disputes','balance_transactions','balance'] as const
   const paths=['payment_intents?limit=50','subscriptions?status=all&limit=50',
-    'invoices?limit=50','payouts?limit=50','refunds?limit=50','disputes?limit=50','balance']
+    'invoices?limit=50','payouts?limit=50','refunds?limit=50','disputes?limit=50',
+    'balance_transactions?limit=50','balance']
   const results=await Promise.allSettled(paths.map(path=>fetchStripe(path)))
   const data:Record<string,unknown>={}
   const errors:Record<string,string>={}
@@ -68,6 +69,7 @@ serve(async req=>{
         if(types[i]==='invoices')return {...compact(v,['id','number','customer','status','currency','created','amount_due','amount_paid','amount_remaining','hosted_invoice_url']),
           subscription_id:String(v.parent?.subscription_details?.subscription||'')}
         if(types[i]==='payouts')return compact(v,['id','amount','currency','status','created','arrival_date','method','failure_code'])
+        if(types[i]==='balance_transactions')return compact(v,['id','amount','fee','net','currency','type','reporting_category','created','source','available_on','status'])
         if(types[i]==='refunds')return compact(v,['id','amount','currency','status','created','payment_intent','reason'])
         return compact(v,['id','amount','currency','status','created','payment_intent','reason'])
       })}
