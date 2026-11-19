@@ -150,7 +150,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
         // single-customer link. Never trust a pasted one-time payment URL or
         // a user checkbox as proof of a bounded subscription.
         const {data:linkResult,error:linkError}=await supabase.functions.invoke('romylabs-stripe-checkout',{
-          body:{action:'restore_relay_six_month_link'}
+          body:{action:'restore_relay_six_month_link',office_name:contractSetup.business.trim()||firmName,office_ref:String(externalOfficeId)}
         })
         if(linkError||!linkResult?.ok||linkResult?.monthly_amount_cents!==39900||
            linkResult?.number_of_payments!==6)
