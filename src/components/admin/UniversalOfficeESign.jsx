@@ -154,7 +154,11 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   async function sendMail(url,recipient,titleText,eventName='sent',paymentUrl='',customerName=''){
     const html=paymentUrl ? restoreRelaySigningAndPaymentEmail({signUrl:url,paymentUrl,recipientName:recipient.name,customerName:customerName||firmName,title:titleText}) : `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${brand.name} — Signature Requested</h2><p>Hi ${recipient.name||'there'},</p><p><strong>${firmName}</strong> has a document ready for your review and electronic signature.</p><div style="background:#f5f7fb;border-radius:10px;padding:14px 16px;margin:18px 0"><strong>${titleText}</strong></div><p><a href="${url}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Review & Sign Document</a></p><p style="font-size:12px;color:#64748b">This secure signing link expires in 14 days.</p><p>Best Regards,<br><strong>${brand.name}</strong><br>RomyLabs</p></div>`
     const {data,error:e}=await supabase.functions.invoke('send-email',{body:{kind:'office_esign_request',product_key:productKey,external_office_id:String(externalOfficeId),to:recipient.email,subject:paymentUrl?`Restore Relay Agreement + $399 Payment — ${customerName||firmName}`:`Signature Requested: ${titleText}`,html,tenant_id:'a0000000-0000-0000-0000-000000000001',from_name:brand.name,esign_event:eventName}})
-    if(e||!data?.success)throw new Error(e?.message||data?.error||'Email send failed')
+    const serverError=e?.context&&typeof e.context.clone==='function'
+      ?await e.context.clone().json().catch(()=>null):null
+    if(e||!data?.success)throw new Error(data?.error||serverError?.error||e?.message||'Email send failed')
+    if(data?.esign_state_sync?.ok===false)throw new Error('Email accepted but envelope status did not update. Do not resend: '+String(data.esign_state_sync.error||'status sync failed'))
+
   }
 
   async function sendDocument(){
@@ -279,7 +283,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   }
 
   async function resend(row){
-    if(!window.confirm(`Send a fresh signing link to ${row.signer_email}?`))return
+    if(!window.confirm(`${row.status==='pending'?'Send the existing prepared signing request':'Resend a fresh signing link'} to ${row.signer_email}?`))return
     setWorking(true);setError('');setMsg('')
     try{
       const {data,error:e}=await supabase.rpc('admin_romylabs_refresh_office_signing_link',{p_document_id:row.id,p_expires_days:14})
@@ -287,7 +291,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       const storedStripeLink=String(row.envelope_settings?.restore_relay_first_installment_stripe_link||'')
       if(storedStripeLink)normalizeStripePaymentLink(storedStripeLink)
       await sendMail(`${window.location.origin}${data.sign_url}`,{name:row.signer_name,email:row.signer_email},row.title,'resent',storedStripeLink,row.firm_name)
-      setMsg('Fresh signing link sent ✓');await load()
+      setMsg('Signing link sent and recorded ✓');await load()
     }catch(e){setError(e.message||String(e))}
     setWorking(false)
   }
@@ -441,7 +445,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
               {row.decline_reason&&<span style={{color:'#f87171'}}>Declined: {row.decline_reason}</span>}
             </div>
             {!['signed','void','declined'].includes(row.status)&&<div style={{display:'flex',gap:6}}>
-              <button disabled={working} onClick={()=>resend(row)} style={smallBtn}>Resend</button>
+              <button disabled={working} onClick={()=>resend(row)} style={smallBtn}>{row.status==='pending'?'Send Now':'Resend'}</button>
               <button disabled={working} onClick={()=>voidDoc(row)} style={{...smallBtn,color:'#f87171',borderColor:'rgba(239,68,68,.25)',background:'rgba(239,68,68,.06)'}}>Void</button>
             </div>}
           </div>

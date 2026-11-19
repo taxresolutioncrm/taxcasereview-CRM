@@ -97,4 +97,14 @@ assert.match(lifecycle,/owner_signed_copy_sent/)
 assert.match(lifecycle,/owner_viewed_notification_sent/)
 assert.match(lifecycle,/sendSignedCopy\(admin,doc,officeFacingSignedBytes,String\(doc.signer_email\)\)/)
 
+// Unsent Calico envelope must be sent as-is, with the correct live mailbox.
+const routedMailMigration=readFileSync('supabase/migrations/20261119195700_restore_relay_esign_mailbox_route.sql','utf8')
+assert.doesNotMatch(routedMailMigration,/v_product = 'restore_relay' then/,
+  'Do not force a personal mailbox for Restore Relay contract delivery')
+assert.match(routedMailMigration,/romylabs_mailboxes m/)
+assert.match(routedMailMigration,/m.active = true/)
+assert.match(routedMailMigration,/m.outbound_from/)
+assert.match(routedMailMigration,/like 'stalwart%'/)
+assert.match(ui,/row.status==='pending'\?'Send Now':'Resend'/)
+assert.match(ui,/serverError\?\.error/)
 console.log('PASS Restore Relay $399/6-month PDF, live Stripe link gating, one-email template, resend persistence and tenant authorization')
