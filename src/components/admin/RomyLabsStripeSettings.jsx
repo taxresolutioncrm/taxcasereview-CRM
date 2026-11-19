@@ -45,7 +45,7 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     if(!secret.trim()||busy)return
     setBusy(true);setError('');setMessage('')
     try{await invoke({action:'save_webhook',signing_secret:secret.trim(),mode})
-      setSecret('');setMessage('Signing secret stored encrypted. Send a signed account.updated test event from Stripe to verify delivery and activate checkout.')
+      setSecret('');setMessage('Signing secret stored encrypted. Send a signed account.updated or tagged customer.created verification event from Stripe to verify delivery and activate checkout.')
       await refresh()
     }catch(e){setError(String(e?.message||e))}
     finally{setBusy(false)}
@@ -113,7 +113,7 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
         </div>
       </div>
       <div style={{color:'#94a3b8',fontSize:11,marginTop:14,lineHeight:1.7}}>
-        Subscribe the endpoint to account.updated, checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, charge.refunded, charge.dispute.created, and radar.early_fraud_warning.created. Send a signed account.updated event to certify delivery. Never paste sk_ or whsec_ secrets in a chat or public repository.
+        Subscribe the endpoint to account.updated and customer.created, checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, charge.refunded, charge.dispute.created, and radar.early_fraud_warning.created. Send a signed verification event to certify delivery. Never paste sk_ or whsec_ secrets in a chat or public repository.
       </div>
     </div>}
     {Array.isArray(info?.webhook_recent_events)&&info.webhook_recent_events.length>0&&
