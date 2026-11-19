@@ -15,9 +15,9 @@ export const ADMIN_PORTAL_RELEASE = Object.freeze({
   productionDate: null, // Set only on confirmed production deployment.
   title: 'Restore Relay $399 Stripe Link Ready',
   changes: [
-    'Restore Relay presale agreements now prefill the verified live $399 Stripe first-payment link.',
+    'Restore Relay presale agreements now prefill the verified live $399 Stripe initial-payment link.',
     'Office e-sign and presale agreement screens both use the same approved one-time checkout URL.',
-    'Recipients receive signing and first-payment links together; six-installment recurring billing still requires separate setup.',
+    'Recipients receive signing and initial-payment links together; six-installment recurring billing still requires separate setup.',
   ],
 })
 
