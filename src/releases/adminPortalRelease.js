@@ -11,13 +11,13 @@ const ADMIN_PORTAL_BASELINE = Object.freeze({
 })
 
 export const ADMIN_PORTAL_RELEASE = Object.freeze({
-  version: '3.0.2',
+  version: '3.0.3',
   productionDate: null, // Set only on confirmed production deployment.
-  title: 'Restore Relay Agreement and Initial Stripe Payment',
+  title: 'Restore Relay Pre-Sale Agreement Composer',
   changes: [
-    'Restore Relay prospect and office agreements include one email with an e-sign link and a verified $399 initial-installment Stripe link.',
-    'The six-month agreement is $399 per month ($2,394 total) with no automatic renewal.',
-    'Resent e-sign requests and pre-onboarding prospect agreements preserve the original Stripe payment link; unrelated office signing workflows remain unchanged.',
+    'CRM Companies now allows preparing a Restore Relay contract before creating the customer office.',
+    'Authorized admins can create or select an unprovisioned Restore Relay sales record for the $399 six-month agreement.',
+    'The pre-sale contract reuses the existing secure e-sign workflow and sends the $399 Stripe payment link in one email.',
   ],
 })
 
