@@ -10,7 +10,7 @@ export function normalizeStripePaymentLink(value) {
   let url
   try { url = new URL(raw) } catch { throw new Error('Enter a valid Stripe Payment Link URL.') }
   if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'buy.stripe.com' ||
-      !/^\\/[A-Za-z0-9_\\-]+$/.test(url.pathname) || url.username || url.password ||
+      !(url.pathname.startsWith('/') && /^[A-Za-z0-9_-]+$/.test(url.pathname.slice(1))) || url.username || url.password ||
       url.search || url.hash || url.pathname.startsWith('/test_')) {
     throw new Error('Use a live Stripe Payment Link in the format https://buy.stripe.com/… (not a test or temporary Checkout URL).')
   }
@@ -22,7 +22,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':
 export function restoreRelaySigningAndPaymentEmail({signUrl,paymentUrl,recipientName,customerName,title}) {
   const pay=normalizeStripePaymentLink(paymentUrl)
   const safeSign=new URL(String(signUrl))
-  if (safeSign.protocol !== 'https:' || !/^\\/office-sign\\/[a-f0-9]{64}$/i.test(safeSign.pathname)) throw new Error('Signing link is invalid')
+  if (safeSign.protocol !== 'https:' || !(safeSign.pathname.startsWith('/office-sign/') && /^[a-f0-9]{64}$/i.test(safeSign.pathname.slice('/office-sign/'.length)))) throw new Error('Signing link is invalid')
   const name=escapeHtml(recipientName || 'there')
   const customer=escapeHtml(customerName)
   const heading=escapeHtml(title)
