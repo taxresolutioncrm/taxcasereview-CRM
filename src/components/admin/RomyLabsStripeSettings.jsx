@@ -10,7 +10,20 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
   const [busy,setBusy]=useState(false),[expanded,setExpanded]=useState(false),[paying,setPaying]=useState('')
   const invoke=async body=>{
     const {data,error:e}=await supabase.functions.invoke('romylabs-stripe-checkout',{body})
-    if(e||!data?.ok)throw Error(data?.error||e?.message||'Stripe integration unavailable')
+    if(e){
+      // Supabase FunctionsHttpError hides the backend's JSON error behind a generic status.
+      // Read only the response message; never log or show merchant credentials.
+      let reason=''
+      try{
+        const response=e.context
+        if(response && typeof response.clone==='function'){
+          const payload=await response.clone().json()
+          reason=typeof payload?.error==='string'?payload.error:''
+        }
+      }catch(_){}
+      throw Error(reason||e.message||'Stripe integration unavailable')
+    }
+    if(!data?.ok)throw Error(data?.error||'Stripe integration unavailable')
     return data
   }
   const refresh=async()=>{
