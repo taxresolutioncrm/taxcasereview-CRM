@@ -6,12 +6,13 @@ const surface={border:'1px solid rgba(129,140,248,.17)',borderRadius:12,backgrou
 const tableCell={textAlign:'left',padding:'11px 13px',fontSize:12,color:'#cbd5e1',borderBottom:'1px solid rgba(129,140,248,.09)',whiteSpace:'nowrap'}
 const headers={...tableCell,fontSize:10,color:'#94a3b8',fontWeight:800,textTransform:'uppercase'}
 const b={borderRadius:8,padding:'8px 12px',border:'1px solid rgba(129,140,248,.28)',color:'#c7d2fe',background:'rgba(99,102,241,.10)',fontSize:12,fontWeight:750,cursor:'pointer'}
-const views=[['payments','Transactions'],['subscriptions','Subscriptions'],['invoices','Stripe invoices'],['payouts','Payouts'],['refunds','Refunds'],['disputes','Disputes']]
+const views=[['payments','Transactions'],['subscriptions','Subscriptions'],['invoices','Stripe invoices'],['payouts','Payouts'],['balance_transactions','Fees & net'],['refunds','Refunds'],['disputes','Disputes']]
 const viewHeaders={
   payments:['Date','Payment','Description','Amount','Status'],
   subscriptions:['Created','Office','Subscription','Monthly','Status','Scheduled end'],
   invoices:['Created','Invoice','Subscription','Paid','Balance','Status'],
   payouts:['Created','Payout','Amount','Arrival','Status'],
+  balance_transactions:['Date','Transaction','Category','Gross','Fee','Net'],
   refunds:['Date','Refund','Payment reference','Amount','Status'],
   disputes:['Date','Dispute','Payment reference','Amount','Status']
 }
@@ -37,9 +38,12 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
     Object.values(r).join(' ').toLowerCase().includes(search.trim().toLowerCase())),[records,search])
   const payments=snapshot?.data?.payment_intents?.rows||[]
   const payouts=snapshot?.data?.payouts?.rows||[]
+  const charges=(snapshot?.data?.balance_transactions?.rows||[]).filter(p=>p.reporting_category==='charge'||p.type==='charge')
   const financial=[
     ['Stripe payments',usd(sum(payments.filter(p=>p.status==='succeeded'),'amount_received')),
       snapshot?.data?.payment_intents?.has_more?'Latest 50 · not all-time':'Retrieved Stripe payments'],
+    ['Stripe processing fees',snapshot?.data?.balance_transactions?usd(sum(charges,'fee')):'Unavailable',
+      snapshot?.data?.balance_transactions?.has_more?'Latest 50 ledger entries':'Retrieved charge fees'],
     ['Available balance',snapshot?.data?.balance?usd(sum(snapshot.data.balance.available||[],'amount')):'Unavailable','Stripe merchant balance'],
     ['Pending balance',snapshot?.data?.balance?usd(sum(snapshot.data.balance.pending||[],'amount')):'Unavailable','Awaiting availability'],
     ['Paid out',snapshot?.data?.payouts?usd(sum(payouts.filter(p=>p.status==='paid'),'amount')):'Unavailable',
@@ -50,6 +54,7 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
     if(view==='subscriptions')return [day(r.created),r.office||'—',r.id,usd(r.amount_cents),statusChip(r.status),day(r.cancel_at)]
     if(view==='invoices')return [day(r.created),r.number||r.id,r.subscription_id||'—',usd(r.amount_paid),usd(r.amount_remaining),statusChip(r.status)]
     if(view==='payouts')return [day(r.created),r.id,usd(r.amount),day(r.arrival_date),statusChip(r.status)]
+    if(view==='balance_transactions')return [day(r.created),r.id,r.reporting_category||r.type,usd(r.amount),usd(r.fee),usd(r.net)]
     if(view==='refunds')return [day(r.created),r.id,r.payment_intent||'—',usd(r.amount),statusChip(r.status)]
     return [day(r.created),r.id,r.payment_intent||'—',usd(r.amount),statusChip(r.status)]
   }
