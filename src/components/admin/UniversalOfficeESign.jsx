@@ -28,8 +28,6 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   const [firmDocs,setFirmDocs]=useState([])
   const [file,setFile]=useState(null)
   const [contractSetup,setContractSetup]=useState({business:firmName||'',additionalTerms:''})
-  const [stripePaymentUrl,setStripePaymentUrl]=useState('')
-  const [stripePriceConfirmed,setStripePriceConfirmed]=useState(false)
   const [isRestoreRelayAgreement,setIsRestoreRelayAgreement]=useState(false)
   const [pdf,setPdf]=useState(null)
   const [page,setPage]=useState(1)
@@ -138,18 +136,27 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     if(!signer.email){setError('Signer email is required.');return}
     if(!title.trim()){setError('Document title is required.');return}
     if(!fields.some(f=>f.type==='signature')){setError('Place at least one Signature field on the document.');return}
-    let confirmedStripeLink=''
-    if(productKey==='restore_relay' && isRestoreRelayAgreement){
-      try{confirmedStripeLink=normalizeStripePaymentLink(stripePaymentUrl)}catch(e){setError(e.message);return}
-      if(!stripePriceConfirmed){setError('Confirm the Stripe payment link charges exactly $399.00 for the FIRST installment before sending.');return}
-    }
-    if(!window.confirm(confirmedStripeLink
-      ? `Send ONE email to ${signer.email} with both the 6-month $399 agreement signing link and the Stripe $399 first-payment link? Review the actual Stripe checkout amount before proceeding.`
+    const needsRestoreRelayLink=productKey==='restore_relay' && isRestoreRelayAgreement
+    if(!window.confirm(needsRestoreRelayLink
+      ? `Send ONE email to ${signer.email} with the six-month $399/month Restore Relay agreement and a single Stripe subscription checkout? First installment at checkout, five subsequent monthly installments, cancellation after period six.`
       : `Send “${title}” to ${signer.email} for signature?`))return
     setWorking(true);setError('');setMsg('')
     let path=''
     let createdRequest=false
+    let confirmedStripeLink=''
     try{
+      if(needsRestoreRelayLink){
+        // Server verifies the live recurring price and returns the one reusable
+        // single-customer link. Never trust a pasted one-time payment URL or
+        // a user checkbox as proof of a bounded subscription.
+        const {data:linkResult,error:linkError}=await supabase.functions.invoke('romylabs-stripe-checkout',{
+          body:{action:'restore_relay_six_month_link'}
+        })
+        if(linkError||!linkResult?.ok||linkResult?.monthly_amount_cents!==39900||
+           linkResult?.number_of_payments!==6)
+          throw new Error(linkResult?.error||linkError?.message||'Verified six-payment Stripe link is unavailable. No email was sent.')
+        confirmedStripeLink=normalizeStripePaymentLink(linkResult.link_url)
+      }
       path=`${productKey}/${externalOfficeId}/${Date.now()}-${clean(file.name)}`
       const up=await supabase.storage.from('romylabs-esign').upload(path,file,{contentType:'application/pdf',upsert:false})
       if(up.error)throw up.error
@@ -169,8 +176,8 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       }
       const signUrl=`${window.location.origin}${data.sign_url}`
       await sendMail(signUrl,signer,title.trim(),'sent',confirmedStripeLink,contractSetup.business.trim()||firmName)
-      setMsg(confirmedStripeLink ? `One email sent to ${signer.email} with BOTH signing and $399 Stripe payment links ✓` : `Sent “${title}” to ${signer.email} for signature ✓`)
-      setFile(null);setPdf(null);setFields([]);setTitle('');setPage(1);setIsRestoreRelayAgreement(false);setStripePriceConfirmed(false)
+      setMsg(confirmedStripeLink ? `One email sent to ${signer.email} with BOTH signing and the verified six-payment Stripe subscription link ✓` : `Sent “${title}” to ${signer.email} for signature ✓`)
+      setFile(null);setPdf(null);setFields([]);setTitle('');setPage(1);setIsRestoreRelayAgreement(false)
       await load()
     }catch(e){
       if(path&&!createdRequest){ try{ await supabase.storage.from('romylabs-esign').remove([path]) }catch(_){} }
@@ -279,13 +286,11 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
           <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Monthly price (USD)<input value="$399.00" readOnly aria-readonly="true" style={inputStyle}/></label>
           <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Months<input value="6" readOnly aria-readonly="true" style={inputStyle}/></label>
         </div>
-        <label style={{display:'grid',gap:5,fontSize:10,color:'#cbd5e1',fontWeight:800,marginBottom:10}}>Stripe Payment Link — FIRST $399.00 installment (required to email the agreement)
-          <input type="url" value={stripePaymentUrl} onChange={e=>{setStripePaymentUrl(e.target.value);setStripePriceConfirmed(false)}} placeholder="https://buy.stripe.com/..." autoComplete="off" style={inputStyle}/>
-        </label>
-        <label style={{display:'flex',gap:8,alignItems:'flex-start',color:'#cbd5e1',fontSize:10,lineHeight:1.4,marginBottom:10}}>
-          <input type="checkbox" checked={stripePriceConfirmed} onChange={e=>setStripePriceConfirmed(e.target.checked)} style={{marginTop:2}}/>
-          I opened this LIVE Stripe link and confirmed it collects the first $399.00 installment for Restore Relay (not $399.99, $400, or an uncapped recurring subscription).
-        </label>
+        <div style={{padding:'11px 12px',border:'1px solid rgba(16,185,129,.35)',background:'rgba(16,185,129,.06)',borderRadius:8,color:'#cbd5e1',fontSize:11,lineHeight:1.6,marginBottom:10}}>
+          Stripe payment checkout is generated and verified automatically when you send this agreement:
+          <strong> $399/month for six periods, first installment at checkout, five monthly renewals, and automatic cancellation after the sixth period.</strong>
+          No separate one-time link or payment confirmation checkbox is required.
+        </div>
         <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Additional terms (optional, reviewed before sending)<textarea rows={2} value={contractSetup.additionalTerms} onChange={e=>setContractSetup(s=>({...s,additionalTerms:e.target.value}))} style={{...inputStyle,resize:'vertical'}}/></label>
         <div style={{display:'flex',alignItems:'center',gap:12,marginTop:11,flexWrap:'wrap'}}>
           <button type="button" disabled={working} onClick={useRestoreRelayTemplate} style={{padding:'9px 12px',borderRadius:8,border:'none',background:'#059669',color:'#fff',fontWeight:900,cursor:'pointer'}}>Generate Agreement for E-Sign</button>
