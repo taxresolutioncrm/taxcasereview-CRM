@@ -144,6 +144,57 @@ serve(async req=>{
          Number(finalPhase.end_date)-Number(finalPhase.start_date)<130*86400||
          Number(finalPhase.end_date)-Number(finalPhase.start_date)>210*86400)
         throw Error('Six-month cancellation schedule could not be verified')
+      // Stripe owns recurring invoices; mirror the paid first installment once.
+      // The RomyLabs billing cycle must never generate a second invoice or charge.
+      const firstInvoiceId=typeof sub.latest_invoice==='string'?sub.latest_invoice:String(sub.latest_invoice?.id||'')
+      if(!/^in_[A-Za-z0-9]+$/.test(firstInvoiceId))throw Error('Stripe first invoice identity missing')
+      const firstInvoice=await stripeRequest('invoices/'+firstInvoiceId)
+      if(firstInvoice?.status!=='paid'||firstInvoice?.paid!==true||
+         firstInvoice.currency!=='usd'||Number(firstInvoice.amount_paid)<1||
+         firstInvoice.parent?.subscription_details?.subscription!==subscriptionId)
+        throw Error('Stripe first invoice not confirmed paid for the expected subscription')
+      const officeRef=String(sub.metadata?.office_ref||'')
+      if(!/^[A-Za-z0-9_-]{2,80}$/.test(officeRef)||sub.metadata?.romylabs_term!=='restore_relay_six_payments_v1')
+        throw Error('Stripe office subscription metadata missing')
+      const {data:ledger,error:ledgerError}=await db.rpc('romylabs_record_stripe_subscription_invoice',{
+        p_office_ref:officeRef,p_invoice_id:firstInvoiceId,
+        p_amount_cents:Number(firstInvoice.amount_paid),
+        p_paid_at:new Date(Number(firstInvoice.status_transitions?.paid_at||firstInvoice.created)*1000).toISOString(),
+        p_customer_email:String(checkout.customer_details?.email||'')
+      })
+      if(ledgerError||ledger?.ok!==true)throw Error('RomyLabs Stripe subscription ledger did not confirm first installment')
+    }
+    // Subsequent automatic Stripe subscription renewals must update the same
+    // SaaS ledger. Validate subscription identity, registered office, and price
+    // before recording anything; unrelated payments are explicitly ignored.
+    if(event.type==='invoice.paid'){
+      const invoice=event.data?.object||{}
+      if(invoice.object!=='invoice')throw Error('Unexpected Stripe invoice object')
+      const subscriptionId=String(invoice.parent?.subscription_details?.subscription||invoice.subscription||'')
+      if(/^sub_[A-Za-z0-9]+$/.test(subscriptionId)){
+        const res=await fetch('https://api.stripe.com/v1/subscriptions/'+subscriptionId,{
+          headers:{Authorization:'Bearer '+String(key),'Stripe-Version':'2026-09-30.endive'}
+        })
+        const sub=await res.json().catch(()=>({}))
+        if(!res.ok)throw Error('Could not verify Stripe subscription for invoice reconciliation')
+        if(sub.metadata?.romylabs_term==='restore_relay_six_payments_v1'){
+          const officeRef=String(sub.metadata?.office_ref||'')
+          const item=sub.items?.data?.[0]
+          if(verifiedMode!=='live'||sub.livemode!==true||
+             sub.items?.data?.length!==1||item?.price?.id!=='price_1Ud2Q6Fomt0HrzTfApwGodx0'||
+             Number(item?.quantity)!==1||!/^[-A-Za-z0-9_]{2,80}$/.test(officeRef)||
+             invoice.status!=='paid'||invoice.paid!==true||invoice.currency!=='usd'||
+             Number(invoice.amount_paid)<1||!/^in_[A-Za-z0-9]+$/.test(String(invoice.id||'')))
+             throw Error('Tagged Stripe subscription invoice failed verification')
+          const {data:ledger,error:ledgerError}=await db.rpc('romylabs_record_stripe_subscription_invoice',{
+            p_office_ref:officeRef,p_invoice_id:String(invoice.id),
+            p_amount_cents:Number(invoice.amount_paid),
+            p_paid_at:new Date(Number(invoice.status_transitions?.paid_at||invoice.created)*1000).toISOString(),
+            p_customer_email:String(invoice.customer_email||'')
+          })
+          if(ledgerError||ledger?.ok!==true)throw Error('Could not reconcile Stripe paid invoice in RomyLabs billing')
+        }
+      }
     }
     if(['checkout.session.completed','checkout.session.async_payment_succeeded',
         'checkout.session.async_payment_failed'].includes(event.type)){
