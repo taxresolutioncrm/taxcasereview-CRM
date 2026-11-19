@@ -11,13 +11,13 @@ const ADMIN_PORTAL_BASELINE = Object.freeze({
 })
 
 export const ADMIN_PORTAL_RELEASE = Object.freeze({
-  version: '3.0.3',
+  version: '3.0.4',
   productionDate: null, // Set only on confirmed production deployment.
-  title: 'Restore Relay Pre-Sale Agreement Composer',
+  title: 'Restore Relay $399 Stripe Link Ready',
   changes: [
-    'CRM Companies now allows preparing a Restore Relay contract before creating the customer office.',
-    'Authorized admins can create or select an unprovisioned Restore Relay sales record for the $399 six-month agreement.',
-    'The pre-sale contract reuses the existing secure e-sign workflow and sends the $399 Stripe payment link in one email.',
+    'Restore Relay presale agreements now prefill the verified live $399 Stripe first-payment link.',
+    'Office e-sign and presale agreement screens both use the same approved one-time checkout URL.',
+    'Recipients receive signing and first-payment links together; six-installment recurring billing still requires separate setup.',
   ],
 })
 
