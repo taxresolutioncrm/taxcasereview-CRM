@@ -203,7 +203,7 @@ async function sendSignedCopy(admin:any,doc:any,pdfBytes:Uint8Array,recipientOve
   const uploaded=await uploadRes.json()
   if(!uploaded?.blobId) throw new Error('Stalwart did not return signed PDF blob id')
 
-  const recipientAddress=String(recipientOverride||route.outbound_from)
+  const recipientAddress=String(recipientOverride||'romy@romylabs.com')
   const isSignerCopy=recipientAddress.toLowerCase()===String(doc.signer_email||'').toLowerCase()
   const bodyId='body'
   const subject=(isSignerCopy?'Completed - ':'Signed Contract: ')+String(doc.title||'Agreement')
@@ -279,6 +279,8 @@ async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detai
   const drafts=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='drafts')
   const sent=boxes.find((x:any)=>String(x.role||'').toLowerCase()==='sent')
   if(!identity?.id||!drafts?.id||!sent?.id)throw new Error('Stalwart identity or mailboxes unavailable')
+  // Owner notification always goes to the central RomyLabs admin inbox; the
+  // product mailbox remains the authenticated sender for each CRM brand.
   const label=eventType==='viewed'?'Viewed':eventType==='reopened'?'Viewed Again':eventType==='declined'?'Declined':eventType==='voided'?'Voided':eventType==='expired'?'Expired':'Updated'
   const subject=label+': '+String(doc.title||'Signature request')
   const html='<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>'+label+' signature request</h2><p><strong>'+String(doc.firm_name||'Office')+'</strong> - '+String(doc.title||'Agreement')+'</p><p>Signer: '+String(doc.signer_name||doc.signer_email||'Signer')+'</p>'+(detail?'<p>'+detail+'</p>':'')+'<p>Envelope ID: '+String(doc.id)+'</p></div>'
@@ -286,7 +288,7 @@ async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detai
   const sendRes=await fetch(apiUrl,{method:'POST',headers:{Authorization:auth,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({
     using:['urn:ietf:params:jmap:core','urn:ietf:params:jmap:mail','urn:ietf:params:jmap:submission'],
     methodCalls:[
-      ['Email/set',{accountId,create:{draft:{from:[{email:routedFrom,name:String(route.display_name||'RomyLabs')}],to:[{email:String(recipientOverride||routedFrom)}],subject,mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},bodyValues:{[bodyId]:{value:html,charset:'utf-8'}},htmlBody:[{partId:bodyId,type:'text/html'}]}}},'e0'],
+      ['Email/set',{accountId,create:{draft:{from:[{email:routedFrom,name:String(route.display_name||'RomyLabs')}],to:[{email:String(recipientOverride||'romy@romylabs.com')}],subject,mailboxIds:{[drafts.id]:true},keywords:{'$draft':true},bodyValues:{[bodyId]:{value:html,charset:'utf-8'}},htmlBody:[{partId:bodyId,type:'text/html'}]}}},'e0'],
       ['EmailSubmission/set',{accountId,create:{sendIt:{emailId:'#draft',identityId:identity.id}},onSuccessUpdateEmail:{'#sendIt':{['mailboxIds/'+drafts.id]:null,['mailboxIds/'+sent.id]:true,'keywords/$draft':null}}},'s0']
     ]
   })})
@@ -297,13 +299,13 @@ async function sendOwnerLifecycleNotice(admin:any,doc:any,eventType:string,detai
   if(!submissionId)throw new Error('Stalwart lifecycle submission not confirmed')
   const stamp=new Date().toISOString()
   await admin.from('emails').insert({
-    tenant_id:route.tenant_id,recipient:String(recipientOverride||routedFrom),recipients:[String(recipientOverride||routedFrom)],subject,
+    tenant_id:route.tenant_id,recipient:String(recipientOverride||'romy@romylabs.com'),recipients:[String(recipientOverride||'romy@romylabs.com')],subject,
     body:html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(),body_html:html,
     triage:'Sent',status:'Sent',direction:'outbound',is_read:true,sender:routedFrom,from_address:routedFrom,reply_from:routedFrom,
     mailbox_owner:String(route.inbox_owner||'info@romylabs.com'),received_at:stamp,created_at:stamp,product_id:doc.product_key,
     message_id:'stalwart:'+String(submissionId),received_mailbox:routedFrom,route_id:route.id
   })
-  return {submissionId:String(submissionId),recipient:String(recipientOverride||routedFrom),from:routedFrom}
+  return {submissionId:String(submissionId),recipient:String(recipientOverride||'romy@romylabs.com'),from:routedFrom}
 }
 
 serve(async(req)=>{
