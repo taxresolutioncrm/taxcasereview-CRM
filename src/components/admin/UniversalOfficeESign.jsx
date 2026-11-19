@@ -116,13 +116,39 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     setFields(v=>[...v,{id:crypto.randomUUID(),type:tool,label:meta.label,page,x,y,w:meta.w,h:meta.h,required:true}])
   }
 
-  function dragField(e,f){
+  // Shared editor for all RomyLabs offices. Move fields or drag their
+  // bottom-right resize handles; persist exact normalized size in envelope.
+  function adjustField(e,f,action='move'){
+    if(e.pointerType==='mouse'&&e.button!==0)return
     e.preventDefault();e.stopPropagation()
-    const host=e.currentTarget.parentElement
-    const rect=host.getBoundingClientRect();const sx=e.clientX,sy=e.clientY,ox=f.x,oy=f.y
-    const move=ev=>setFields(all=>all.map(x=>x.id===f.id?{...x,x:Math.max(0,Math.min(1-x.w,ox+(ev.clientX-sx)/rect.width)),y:Math.max(0,Math.min(1-x.h,oy+(ev.clientY-sy)/rect.height))}:x))
-    const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)}
-    window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)
+    const layer=e.currentTarget.closest('[data-pdf-field-layer]')
+    const rect=layer?.getBoundingClientRect()
+    if(!rect?.width||!rect?.height)return
+    const sx=e.clientX,sy=e.clientY
+    const initial={x:f.x,y:f.y,w:f.w,h:f.h}
+    const clamp=(value,min,max)=>Math.max(min,Math.min(max,value))
+    const onMove=ev=>{
+      if(ev.pointerId!==e.pointerId)return
+      const dx=(ev.clientX-sx)/rect.width
+      const dy=(ev.clientY-sy)/rect.height
+      setFields(all=>all.map(field=>{
+        if(field.id!==f.id)return field
+        if(action==='resize')return {...field,
+          w:clamp(initial.w+dx,.045,1-initial.x),
+          h:clamp(initial.h+dy,.018,1-initial.y)}
+        return {...field,
+          x:clamp(initial.x+dx,0,1-initial.w),
+          y:clamp(initial.y+dy,0,1-initial.h)}
+      }))
+    }
+    const finish=()=>{
+      window.removeEventListener('pointermove',onMove)
+      window.removeEventListener('pointerup',finish)
+      window.removeEventListener('pointercancel',finish)
+    }
+    window.addEventListener('pointermove',onMove)
+    window.addEventListener('pointerup',finish)
+    window.addEventListener('pointercancel',finish)
   }
 
   async function sendMail(url,recipient,titleText,eventName='sent',paymentUrl='',customerName=''){
@@ -312,14 +338,40 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
         <div style={{display:'grid',gap:7}}>
           <div style={{fontSize:10,fontWeight:900,color:'#94a3b8',textTransform:'uppercase'}}>Place fields</div>
           {Object.entries(FIELD_META).map(([k,m])=><button key={k} onClick={()=>setTool(k)} style={{padding:'8px 9px',textAlign:'left',borderRadius:7,border:`1px solid ${tool===k?'#6366f1':'rgba(99,102,241,.16)'}`,background:tool===k?'rgba(99,102,241,.18)':'rgba(255,255,255,.025)',color:tool===k?'#c7d2fe':'#94a3b8',fontSize:10,fontWeight:800,cursor:'pointer'}}>{m.label}</button>)}
-          <div style={{fontSize:9,color:'#64748b',lineHeight:1.45}}>Choose a field, then click the PDF to place it. Drag a field to move it. Use × to remove it.</div>
+          <div style={{fontSize:9,color:'#64748b',lineHeight:1.45}}>Choose a field, then click the PDF to place it. Drag the box to move it; drag the bottom-right corner to resize width and height. Use × to remove it.</div>
           <button disabled={working} onClick={sendDocument} style={{marginTop:5,padding:'10px 12px',borderRadius:8,border:'none',background:'#10b981',color:'#052e16',fontWeight:900,fontSize:11,cursor:'pointer'}}>Send for Signature</button>
         </div>
         <div style={{minWidth:0}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,fontSize:10,color:'#94a3b8'}}><span>{file?.name}</span><span><button disabled={page<=1} onClick={()=>setPage(p=>p-1)} style={navBtn}>←</button> Page {page} of {pdf.numPages} <button disabled={page>=pdf.numPages} onClick={()=>setPage(p=>p+1)} style={navBtn}>→</button></span></div>
-          <div onClick={addField} style={{position:'relative',display:'inline-block',maxWidth:'100%',overflow:'auto',borderRadius:8,border:'1px solid rgba(148,163,184,.2)',background:'#fff',cursor:'crosshair'}}>
-            <canvas ref={canvasRef} style={{display:'block',maxWidth:'none'}}/>
-            {currentFields.map(f=><div key={f.id} onPointerDown={e=>dragField(e,f)} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:`${f.x*100}%`,top:`${f.y*100}%`,width:`${f.w*100}%`,height:`${f.h*100}%`,boxSizing:'border-box',border:'2px solid #6366f1',background:'rgba(99,102,241,.16)',borderRadius:5,color:'#312e81',fontSize:10,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',cursor:'move',userSelect:'none'}}>{FIELD_META[f.type]?.label||f.type}<button onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setFields(all=>all.filter(x=>x.id!==f.id))}} style={{position:'absolute',right:-7,top:-8,width:17,height:17,borderRadius:9,border:'none',background:'#ef4444',color:'#fff',fontSize:10,fontWeight:900,cursor:'pointer',padding:0}}>×</button></div>)}
+          <div style={{maxWidth:'100%',overflow:'auto',borderRadius:8,border:'1px solid rgba(148,163,184,.2)',background:'#fff'}}>
+            <div data-pdf-field-layer onClick={addField} style={{position:'relative',display:'inline-block',width:size.w||'auto',height:size.h||'auto',cursor:'crosshair'}}>
+              <canvas ref={canvasRef} style={{display:'block',maxWidth:'none'}}/>
+              {currentFields.map(f=><div key={f.id}
+                onPointerDown={e=>adjustField(e,f,'move')}
+                onClick={e=>e.stopPropagation()}
+                style={{position:'absolute',left:`${f.x*100}%`,top:`${f.y*100}%`,width:`${f.w*100}%`,height:`${f.h*100}%`,
+                  boxSizing:'border-box',border:'2px solid #6366f1',background:'rgba(99,102,241,.16)',borderRadius:5,
+                  color:'#312e81',fontSize:10,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',
+                  cursor:'move',touchAction:'none',userSelect:'none'}}>
+                <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',pointerEvents:'none',padding:'0 8px'}}>{FIELD_META[f.type]?.label||f.type}</span>
+                <button type="button" aria-label="Remove field" onPointerDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();setFields(all=>all.filter(x=>x.id!==f.id))}}
+                  style={{position:'absolute',right:-7,top:-8,width:17,height:17,borderRadius:9,border:'none',background:'#ef4444',color:'#fff',fontSize:10,fontWeight:900,cursor:'pointer',padding:0}}>×</button>
+                <div role="button" tabIndex={0} aria-label="Resize field" title="Drag corner to resize this field"
+                  onPointerDown={e=>adjustField(e,f,'resize')} onClick={e=>e.stopPropagation()}
+                  onKeyDown={e=>{
+                    const dx=e.key==='ArrowRight'?.01:e.key==='ArrowLeft'?-.01:0
+                    const dy=e.key==='ArrowDown'?.01:e.key==='ArrowUp'?-.01:0
+                    if(!dx&&!dy)return
+                    e.preventDefault();e.stopPropagation()
+                    setFields(all=>all.map(field=>field.id===f.id?{...field,
+                      w:Math.max(.045,Math.min(1-field.x,field.w+dx)),
+                      h:Math.max(.018,Math.min(1-field.y,field.h+dy))}:field))
+                  }}
+                  style={{position:'absolute',right:-4,bottom:-4,width:15,height:15,background:'#4f46e5',border:'2px solid #fff',
+                    borderRadius:3,cursor:'nwse-resize',touchAction:'none',boxSizing:'border-box'}}/>
+              </div>)}
+            </div>
           </div>
         </div>
       </div>}
