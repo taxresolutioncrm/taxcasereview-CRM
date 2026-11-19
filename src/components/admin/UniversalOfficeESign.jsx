@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react'
 import EnvelopeDetails from './EnvelopeDetails'
 import {createRestoreRelayAgreementPdf} from '../../lib/restoreRelayAgreementPdf'
+import {normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail,RESTORE_RELAY_MONTHLY_CENTS,RESTORE_RELAY_MONTHS} from '../../lib/restoreRelayPaymentProtocol'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -26,7 +27,10 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   const [docs,setDocs]=useState([])
   const [firmDocs,setFirmDocs]=useState([])
   const [file,setFile]=useState(null)
-  const [contractSetup,setContractSetup]=useState({business:firmName||'',monthly:'399.00',months:6,additionalTerms:''})
+  const [contractSetup,setContractSetup]=useState({business:firmName||'',additionalTerms:''})
+  const [stripePaymentUrl,setStripePaymentUrl]=useState('')
+  const [stripePriceConfirmed,setStripePriceConfirmed]=useState(false)
+  const [isRestoreRelayAgreement,setIsRestoreRelayAgreement]=useState(false)
   const [pdf,setPdf]=useState(null)
   const [page,setPage]=useState(1)
   const [size,setSize]=useState({w:0,h:0})
@@ -80,7 +84,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     try{
       const bytes=new Uint8Array(await f.arrayBuffer())
       const doc=await pdfjsLib.getDocument({data:bytes}).promise
-      setFile(f);setPdf(doc);setPage(1);setFields([]);setTitle(f.name.replace(/\.pdf$/i,''))
+      setFile(f);setPdf(doc);setPage(1);setFields([]);setIsRestoreRelayAgreement(false);setTitle(f.name.replace(/\.pdf$/i,''))
     }catch(err){setError('Could not open this PDF: '+(err.message||String(err)))}
   }
 
@@ -90,14 +94,15 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     try{
       const customer=contractSetup.business.trim()
       if(!customer)throw Error('Enter the customer legal business name before creating the agreement.')
-      const result=await createRestoreRelayAgreementPdf({customer,monthlyPrice:contractSetup.monthly,months:Number(contractSetup.months),additionalTerms:contractSetup.additionalTerms})
+      const result=await createRestoreRelayAgreementPdf({customer,monthlyPrice:(RESTORE_RELAY_MONTHLY_CENTS/100).toFixed(2),months:RESTORE_RELAY_MONTHS,additionalTerms:contractSetup.additionalTerms})
       const uploaded=new File([result.bytes],result.fileName,{type:'application/pdf'})
       const document=await pdfjsLib.getDocument({data:new Uint8Array(result.bytes)}).promise
       // The final page includes both parties' signature lines; required customer signature
       // is positioned over the Customer signature line for visual review prior to sending.
       const signaturePage=result.signaturePage
       setFile(uploaded);setPdf(document);setPage(signaturePage)
-      setTitle(`Restore Relay Professional Plan — ${customer} — ${contractSetup.months} Month Agreement`)
+      setTitle(`Restore Relay Professional Plan — ${customer} — ${RESTORE_RELAY_MONTHS} Month Agreement`)
+      setIsRestoreRelayAgreement(true)
       setFields([{id:crypto.randomUUID(),type:'signature',label:'Customer Signature',page:signaturePage,x:.12,y:Math.max(.05,Math.min(.91,result.signatureTop)),w:.36,h:.055,required:true}])
       setMsg('Agreement generated. Review the PDF and adjust the signature field before sending.')
     }catch(e){setError(String(e?.message||e))}
@@ -122,9 +127,9 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)
   }
 
-  async function sendMail(url,recipient,titleText,eventName='sent'){
-    const html=`<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${brand.name} — Signature Requested</h2><p>Hi ${recipient.name||'there'},</p><p><strong>${firmName}</strong> has a document ready for your review and electronic signature.</p><div style="background:#f5f7fb;border-radius:10px;padding:14px 16px;margin:18px 0"><strong>${titleText}</strong></div><p><a href="${url}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Review & Sign Document</a></p><p style="font-size:12px;color:#64748b">This secure signing link expires in 14 days.</p><p>Best Regards,<br><strong>${brand.name}</strong><br>RomyLabs</p></div>`
-    const {data,error:e}=await supabase.functions.invoke('send-email',{body:{kind:'office_esign_request',product_key:productKey,external_office_id:String(externalOfficeId),to:recipient.email,subject:`Signature Requested: ${titleText}`,html,tenant_id:'a0000000-0000-0000-0000-000000000001',from_name:brand.name,esign_event:eventName}})
+  async function sendMail(url,recipient,titleText,eventName='sent',paymentUrl='',customerName=''){
+    const html=paymentUrl ? restoreRelaySigningAndPaymentEmail({signUrl:url,paymentUrl,recipientName:recipient.name,customerName:customerName||firmName,title:titleText}) : `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033"><h2>${brand.name} — Signature Requested</h2><p>Hi ${recipient.name||'there'},</p><p><strong>${firmName}</strong> has a document ready for your review and electronic signature.</p><div style="background:#f5f7fb;border-radius:10px;padding:14px 16px;margin:18px 0"><strong>${titleText}</strong></div><p><a href="${url}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Review & Sign Document</a></p><p style="font-size:12px;color:#64748b">This secure signing link expires in 14 days.</p><p>Best Regards,<br><strong>${brand.name}</strong><br>RomyLabs</p></div>`
+    const {data,error:e}=await supabase.functions.invoke('send-email',{body:{kind:'office_esign_request',product_key:productKey,external_office_id:String(externalOfficeId),to:recipient.email,subject:paymentUrl?`Restore Relay Agreement + $399 Payment — ${customerName||firmName}`:`Signature Requested: ${titleText}`,html,tenant_id:'a0000000-0000-0000-0000-000000000001',from_name:brand.name,esign_event:eventName}})
     if(e||!data?.success)throw new Error(e?.message||data?.error||'Email send failed')
   }
 
@@ -133,7 +138,14 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     if(!signer.email){setError('Signer email is required.');return}
     if(!title.trim()){setError('Document title is required.');return}
     if(!fields.some(f=>f.type==='signature')){setError('Place at least one Signature field on the document.');return}
-    if(!window.confirm(`Send “${title}” to ${signer.email} for signature?`))return
+    let confirmedStripeLink=''
+    if(productKey==='restore_relay' && isRestoreRelayAgreement){
+      try{confirmedStripeLink=normalizeStripePaymentLink(stripePaymentUrl)}catch(e){setError(e.message);return}
+      if(!stripePriceConfirmed){setError('Confirm the Stripe payment link charges exactly $399.00 for the FIRST installment before sending.');return}
+    }
+    if(!window.confirm(confirmedStripeLink
+      ? `Send ONE email to ${signer.email} with both the 6-month $399 agreement signing link and the Stripe $399 first-payment link? Review the actual Stripe checkout amount before proceeding.`
+      : `Send “${title}” to ${signer.email} for signature?`))return
     setWorking(true);setError('');setMsg('')
     let path=''
     let createdRequest=false
@@ -147,10 +159,18 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
       })
       if(e||!data?.ok)throw new Error(e?.message||data?.error||'Could not create signing request')
       createdRequest=true
+      if(confirmedStripeLink){
+        // Persist the checkout link on the specific office e-sign envelope so
+        // resending the signing link does not silently omit the payment CTA.
+        const saved=await supabase.rpc('admin_romylabs_set_restore_relay_signing_payment_link',{
+          p_document_id:data.id,p_payment_url:confirmedStripeLink
+        })
+        if(saved.error||saved.data!==true)throw new Error(saved.error?.message||'Could not save Stripe payment link on the agreement. No email was sent.')
+      }
       const signUrl=`${window.location.origin}${data.sign_url}`
-      await sendMail(signUrl,signer,title.trim(),'sent')
-      setMsg(`Sent “${title}” to ${signer.email} for signature ✓`)
-      setFile(null);setPdf(null);setFields([]);setTitle('');setPage(1)
+      await sendMail(signUrl,signer,title.trim(),'sent',confirmedStripeLink,contractSetup.business.trim()||firmName)
+      setMsg(confirmedStripeLink ? `One email sent to ${signer.email} with BOTH signing and $399 Stripe payment links ✓` : `Sent “${title}” to ${signer.email} for signature ✓`)
+      setFile(null);setPdf(null);setFields([]);setTitle('');setPage(1);setIsRestoreRelayAgreement(false);setStripePriceConfirmed(false)
       await load()
     }catch(e){
       if(path&&!createdRequest){ try{ await supabase.storage.from('romylabs-esign').remove([path]) }catch(_){} }
@@ -227,7 +247,9 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
     try{
       const {data,error:e}=await supabase.rpc('admin_romylabs_refresh_office_signing_link',{p_document_id:row.id,p_expires_days:14})
       if(e||!data?.ok)throw new Error(e?.message||data?.error||'Could not refresh signing link')
-      await sendMail(`${window.location.origin}${data.sign_url}`,{name:row.signer_name,email:row.signer_email},row.title,'resent')
+      const storedStripeLink=String(row.envelope_settings?.restore_relay_first_installment_stripe_link||'')
+      if(storedStripeLink)normalizeStripePaymentLink(storedStripeLink)
+      await sendMail(`${window.location.origin}${data.sign_url}`,{name:row.signer_name,email:row.signer_email},row.title,'resent',storedStripeLink,row.firm_name)
       setMsg('Fresh signing link sent ✓');await load()
     }catch(e){setError(e.message||String(e))}
     setWorking(false)
@@ -251,16 +273,23 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
 
       {productKey==='restore_relay'&&<div style={{padding:13,marginBottom:15,borderRadius:10,background:'rgba(16,185,129,.055)',border:'1px solid rgba(16,185,129,.24)'}}>
         <div style={{fontSize:12,fontWeight:900,color:'#a7f3d0',marginBottom:5}}>Restore Relay · Subscription Agreement Template</div>
-        <div style={{fontSize:10,color:'#94a3b8',marginBottom:12}}>Generate the office contract here, review it, then use the existing Send for Signature action to email the customer. No separate PDF upload required.</div>
+        <div style={{fontSize:10,color:'#94a3b8',marginBottom:12}}>Generate the six-month $399 contract here, then email BOTH the secure signing link and the Stripe first-payment link in one message. No separate PDF upload required.</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginBottom:10}}>
           <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Customer legal business name<input value={contractSetup.business} onChange={e=>setContractSetup(s=>({...s,business:e.target.value}))} style={inputStyle}/></label>
-          <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Monthly price (USD)<input type="number" min=".01" step=".01" value={contractSetup.monthly} onChange={e=>setContractSetup(s=>({...s,monthly:e.target.value}))} style={inputStyle}/></label>
-          <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Months<input type="number" min="1" max="36" step="1" value={contractSetup.months} onChange={e=>setContractSetup(s=>({...s,months:e.target.value}))} style={inputStyle}/></label>
+          <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Monthly price (USD)<input value="$399.00" readOnly aria-readonly="true" style={inputStyle}/></label>
+          <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Months<input value="6" readOnly aria-readonly="true" style={inputStyle}/></label>
         </div>
+        <label style={{display:'grid',gap:5,fontSize:10,color:'#cbd5e1',fontWeight:800,marginBottom:10}}>Stripe Payment Link — FIRST $399.00 installment (required to email the agreement)
+          <input type="url" value={stripePaymentUrl} onChange={e=>{setStripePaymentUrl(e.target.value);setStripePriceConfirmed(false)}} placeholder="https://buy.stripe.com/..." autoComplete="off" style={inputStyle}/>
+        </label>
+        <label style={{display:'flex',gap:8,alignItems:'flex-start',color:'#cbd5e1',fontSize:10,lineHeight:1.4,marginBottom:10}}>
+          <input type="checkbox" checked={stripePriceConfirmed} onChange={e=>setStripePriceConfirmed(e.target.checked)} style={{marginTop:2}}/>
+          I opened this LIVE Stripe link and confirmed it collects the first $399.00 installment for Restore Relay (not $399.99, $400, or an uncapped recurring subscription).
+        </label>
         <label style={{fontSize:9,color:'#94a3b8',fontWeight:800}}>Additional terms (optional, reviewed before sending)<textarea rows={2} value={contractSetup.additionalTerms} onChange={e=>setContractSetup(s=>({...s,additionalTerms:e.target.value}))} style={{...inputStyle,resize:'vertical'}}/></label>
         <div style={{display:'flex',alignItems:'center',gap:12,marginTop:11,flexWrap:'wrap'}}>
           <button type="button" disabled={working} onClick={useRestoreRelayTemplate} style={{padding:'9px 12px',borderRadius:8,border:'none',background:'#059669',color:'#fff',fontWeight:900,cursor:'pointer'}}>Generate Agreement for E-Sign</button>
-          <span style={{fontSize:10,color:'#94a3b8'}}>Total: ${Number.isFinite(Number(contractSetup.monthly)*Number(contractSetup.months))?(Number(contractSetup.monthly)*Number(contractSetup.months)).toLocaleString('en-US',{style:'currency',currency:'USD'}):'—'} · No automatic renewal</span>
+          <span style={{fontSize:10,color:'#94a3b8'}}>Total: $2,394.00 · No automatic renewal</span>
         </div>
       </div>}
 
