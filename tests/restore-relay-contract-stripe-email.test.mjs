@@ -23,6 +23,17 @@ const html=restoreRelaySigningAndPaymentEmail({
   signUrl:sign,paymentUrl:buy,recipientName:'<Customer>',customerName:'Calico GC LLC',
   title:'Restore Relay Professional Plan'
 })
+const saleSign='https://admin.romylabs.com/agreement/'+'b'.repeat(64)
+const presaleHtml=restoreRelaySigningAndPaymentEmail({signUrl:saleSign,paymentUrl:buy,customerName:'Calico GC LLC',title:'Restore Relay Agreement'})
+assert.ok(presaleHtml.includes(saleSign) && presaleHtml.includes(buy))
+const prospectUi=readFileSync('src/components/admin/RomyLabsAgreementPanel.jsx','utf8')
+assert.match(prospectUi,/admin_romylabs_set_sales_agreement_stripe_link/)
+assert.match(prospectUi,/restoreRelaySigningAndPaymentEmail/)
+assert.match(prospectUi,/stripeAmountConfirmed/)
+const presaleSql=readFileSync('supabase/migrations/20261118214500_restore_relay_presale_stripe_agreement.sql','utf8')
+assert.match(presaleSql,/not public\._is_platform_admin\(\)/)
+assert.match(presaleSql,/Restore Relay Professional Plan/)
+assert.match(presaleSql,/\$2,394\.00 total/)
 assert.ok(html.includes(sign))
 assert.ok(html.includes(buy))
 assert.match(html,/Pay \$399.00 with Stripe/)
