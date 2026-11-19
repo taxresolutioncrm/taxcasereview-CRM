@@ -22,7 +22,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':
 export function restoreRelaySigningAndPaymentEmail({signUrl,paymentUrl,recipientName,customerName,title}) {
   const pay=normalizeStripePaymentLink(paymentUrl)
   const safeSign=new URL(String(signUrl))
-  if (safeSign.protocol !== 'https:' || !(safeSign.pathname.startsWith('/office-sign/') && /^[a-f0-9]{64}$/i.test(safeSign.pathname.slice('/office-sign/'.length)))) throw new Error('Signing link is invalid')
+  if (safeSign.protocol !== 'https:' || !(['/office-sign/','/agreement/'].some(prefix => safeSign.pathname.startsWith(prefix) && /^[a-f0-9]{64}$/i.test(safeSign.pathname.slice(prefix.length))))) throw new Error('Signing link is invalid')
   const name=escapeHtml(recipientName || 'there')
   const customer=escapeHtml(customerName)
   const heading=escapeHtml(title)
