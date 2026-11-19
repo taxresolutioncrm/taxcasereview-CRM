@@ -45,7 +45,7 @@ insert into public.romylabs_agreement_templates
 select
   'restore_relay',
   'Restore Relay Professional Plan — Six-Month Fixed Term',
-  '1.0',
+  '1.1',
   'Restore Relay Professional Plan — Six-Month Subscription Agreement',
   $template$
     <h2>Restore Relay Professional Plan — Six-Month Subscription Agreement</h2>
@@ -56,7 +56,7 @@ select
     <h3>2. Fixed six-month term and fees</h3>
     <p>Customer agrees to a fixed term of <strong>six monthly billing periods</strong> beginning when the customer signs or on a separately agreed service-activation date. The subscription is <strong>$399.00 per month, six installments, $2,394.00 total</strong> before any legally applicable taxes and separately authorized charges. <strong>No automatic renewal.</strong> Renewal requires a new written agreement.</p>
     <h3>3. Billing and payment</h3>
-    <p>The first $399.00 installment is due using the secure Stripe payment link provided in the same email as this Agreement. The payment link collects only the first installment unless its checkout expressly discloses otherwise. The remaining five $399.00 installments are due monthly and will be invoiced unless Customer separately elects automatic recurring billing with a valid payment authorization. No more than six installments may be charged for this contract, and automatic billing must not continue after the fixed term. Customer supplies payment details only to Stripe-hosted payment pages, never by reply email. The provider may request payment for amounts already due, subject to applicable law.</p>
+    <p>Customer authorizes a fixed-term recurring subscription through the secure Stripe-hosted checkout linked in the same email as this Agreement. Checkout charges the first $399.00 monthly installment when Customer confirms payment and then automatically bills five further $399.00 installments at monthly intervals, subject to applicable taxes. Stripe automatically schedules the subscription to cancel at the end of the sixth monthly billing period, with no seventh payment or automatic renewal. Payment authorization is given by Customer through Stripe checkout, not by signing alone. Customer supplies payment information only to Stripe-hosted pages, never by reply email. The Provider may request payment of amounts already due subject to applicable law.</p>
     <h3>4. Responsibilities and support</h3>
     <p>Customer will use the platform lawfully, maintain accurate billing contacts, keep account credentials secure, and ensure it has the necessary authority and consents to upload, store and communicate customer and job information. Provider will use commercially reasonable efforts to operate and support the software, subject to scheduled maintenance, service outages and factors outside its reasonable control.</p>
     <h3>5. Data and confidentiality</h3>
