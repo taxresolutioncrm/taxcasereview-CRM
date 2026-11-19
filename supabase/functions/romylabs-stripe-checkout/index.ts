@@ -99,9 +99,11 @@ serve(async req=>{
   // A signed checkout.session.completed webhook converts the subscription into
   // a schedule that cancels after its sixth billing period.
   if(action==='restore_relay_six_month_link'){
-    if(settings.mode!=='live'||!settings.webhook_verified_at||
-       !Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
-      return json({error:'Live merchant webhook and billing reconciliation must be verified first'},409)
+    // Restore Relay uses its own signed Stripe subscription webhook, not the
+    // unrelated RomyLabs invoice-billing adapter secret. Requiring that
+    // invoice secret here prevented all agreement sends before contacting Stripe.
+    if(settings.mode!=='live'||!settings.webhook_verified_at||!settings.webhook_configured)
+      return json({error:'Stripe live merchant and signed subscription webhook must be verified before sending Restore Relay agreements',code:'stripe_webhook_not_verified'},409)
     const key=await secret('romylabs_stripe_live_key')
     if(!key)return json({error:'Live Stripe merchant key unavailable'},503)
     const officeName=String(input.office_name||'Calico GC LLC').trim()
