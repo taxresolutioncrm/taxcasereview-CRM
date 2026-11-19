@@ -66,6 +66,13 @@ const checkoutFn=readFileSync('supabase/functions/romylabs-stripe-checkout/index
 const webhookFn=readFileSync('supabase/functions/romylabs-stripe-webhook/index.ts','utf8')
 assert.match(checkoutFn,/price_1Ud2Q6Fomt0HrzTfApwGodx0/)
 assert.match(checkoutFn,/restore_relay_six_month_link/)
+const rrCheckoutBranch=checkoutFn.split("if(action==='restore_relay_six_month_link')")[1]?.split("if(action==='checkout')")[0]||''
+assert.ok(rrCheckoutBranch.length>500,'Restore Relay subscription handler must exist')
+assert.doesNotMatch(rrCheckoutBranch,/ROMYLABS_BILLING_WEBHOOK_SECRET/,
+  'Restore Relay subscription checkout must not require unrelated invoice billing adapter secret')
+assert.match(rrCheckoutBranch,/webhook_verified_at/,
+  'Restore Relay subscription checkout must still verify signed Stripe webhook')
+
 assert.match(checkoutFn,/subscription_schedules/)
 assert.match(webhookFn,/signatureOkay\(raw,auth,signing\)/)
 assert.match(webhookFn,/from_subscription/)
