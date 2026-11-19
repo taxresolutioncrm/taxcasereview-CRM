@@ -104,6 +104,11 @@ serve(async req=>{
       return json({error:'Live merchant webhook and billing reconciliation must be verified first'},409)
     const key=await secret('romylabs_stripe_live_key')
     if(!key)return json({error:'Live Stripe merchant key unavailable'},503)
+    const officeName=String(input.office_name||'Calico GC LLC').trim()
+    const officeRef=String(input.office_ref||'calico-gc-llc').trim()
+    if(!/^[a-zA-Z0-9 _.,'&()\/-]{2,120}$/.test(officeName)||
+       !/^[A-Za-z0-9_-]{2,80}$/.test(officeRef))
+      return json({error:'Valid Restore Relay office name and office reference are required'},400)
     const priceId='price_1Ud2Q6Fomt0HrzTfApwGodx0'
     try{
       const price=await stripe(key,'prices/'+priceId)
@@ -116,7 +121,7 @@ serve(async req=>{
       const existing=await stripe(key,'payment_links?limit=100')
       const matched=(existing?.data||[]).find((p:any)=>
         p?.livemode===true&&p?.metadata?.romylabs_term==='restore_relay_six_payments_v1'&&
-        p?.metadata?.office==='Calico GC LLC'&&p?.active===true)
+        p?.metadata?.office_ref===officeRef&&p?.active===true)
       if(matched){
         const lineItems=await stripe(key,'payment_links/'+matched.id+'/line_items?limit=20')
         const items=lineItems?.data||[]
@@ -131,20 +136,21 @@ serve(async req=>{
         'billing_address_collection':'required',
         'payment_method_types[0]':'card',
         'payment_method_types[1]':'us_bank_account',
-        'customer_creation':'always',
         'name_collection[business][enabled]':'true',
         'name_collection[business][optional]':'false',
         'name_collection[individual][enabled]':'true',
         'name_collection[individual][optional]':'false',
         'restrictions[completed_sessions][limit]':'1',
         'metadata[romylabs_term]':'restore_relay_six_payments_v1',
-        'metadata[office]':'Calico GC LLC',
+        'metadata[office]':officeName,
+        'metadata[office_ref]':officeRef,
         'subscription_data[metadata][romylabs_term]':'restore_relay_six_payments_v1',
-        'subscription_data[metadata][office]':'Calico GC LLC',
-        'subscription_data[description]':'Restore Relay - Calico GC LLC - $399/month for six billing periods'
+        'subscription_data[metadata][office]':officeName,
+        'subscription_data[metadata][office_ref]':officeRef,
+        'subscription_data[description]':'Restore Relay - '+officeName+' - $399/month for six billing periods'
       })
       const link=await stripe(key,'payment_links',params,
-        'romylabs-restore-relay-calico-six-payments-20261119-v1')
+        'romylabs-restore-relay-six-payments-'+officeRef+'-20261119-v1')
       if(!link?.id||!link?.url||!link?.active)return json({error:'Stripe did not return an active payment link'},502)
       const lineItems=await stripe(key,'payment_links/'+link.id+'/line_items?limit=20')
       if(lineItems?.data?.length!==1||lineItems.data[0]?.price?.id!==priceId||
