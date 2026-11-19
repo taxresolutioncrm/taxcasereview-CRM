@@ -13,9 +13,9 @@ const ADMIN_PORTAL_BASELINE = Object.freeze({
 export const ADMIN_PORTAL_RELEASE = Object.freeze({
   version: '3.0.2',
   productionDate: null, // Set only on confirmed production deployment.
-  title: 'Restore Relay Agreement and First Stripe Payment',
+  title: 'Restore Relay Agreement and Initial Stripe Payment',
   changes: [
-    'Restore Relay office agreements include one email with an e-sign link and a verified $399 first-installment Stripe link.',
+    'Restore Relay office agreements include one email with an e-sign link and a verified $399 initial-installment Stripe link.',
     'The six-month agreement is $399 per month ($2,394 total) with no automatic renewal.',
     'Resent e-sign requests preserve the original Stripe payment link; unrelated office signing workflows remain unchanged.',
   ],
