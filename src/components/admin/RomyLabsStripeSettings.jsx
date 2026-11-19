@@ -85,27 +85,35 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     finally{setBusy(false)}
   }
   const ready=info?.checkout_ready===true
-  return <section style={main} aria-label="RomyLabs Stripe merchant payments">
-    <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap'}}>
-      <div style={{flex:'1 1 250px'}}>
-        <div style={{fontSize:16,fontWeight:900,color:'#fff'}}>Stripe · RomyLabs payments</div>
-        <div style={{fontSize:12,color:'#94a3b8',marginTop:5}}>Merchant: Romy Labs, LLC · SaaS invoices only. Your CRM offices' customer payments stay separate.</div>
+  const connected=Boolean(info?.account_id&&info?.webhook_verified&&info?.mode==='live')
+  const hasIssues=Boolean(error||info?.webhook_recent_events?.some(e=>e.failed))
+  return <section style={{...main,padding:'13px 16px',marginBottom:16}} aria-label="RomyLabs Stripe merchant payments">
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+      <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0,flex:'1 1 270px'}}>
+        <span aria-hidden="true" style={{display:'grid',placeItems:'center',width:34,height:34,flexShrink:0,borderRadius:10,color:'#a5b4fc',background:'rgba(99,102,241,.14)',fontSize:17}}>▣</span>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:850,color:'#f8fafc'}}>Stripe payments <span style={{fontSize:11,fontWeight:600,color:'#94a3b8',marginLeft:6}}>Romy Labs, LLC</span></div>
+          <div style={{fontSize:11,color:'#94a3b8',marginTop:3}}>Platform subscriptions and invoices · CRM client payments remain separate</div>
+        </div>
       </div>
       <div style={{display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}}>
-        <span style={{fontSize:11,fontWeight:800,color:ready?'#34d399':'#fbbf24',padding:'7px 10px',background:ready?'rgba(16,185,129,.1)':'rgba(245,158,11,.1)',borderRadius:20}}>
-          {ready?'Verified · '+info.mode:'Setup required'}
+        <span role="status" style={{fontSize:11,fontWeight:750,color:hasIssues?'#fbbf24':connected?'#6ee7b7':'#fbbf24',padding:'6px 10px',background:hasIssues?'rgba(245,158,11,.09)':connected?'rgba(16,185,129,.1)':'rgba(245,158,11,.09)',borderRadius:20}}>
+          {hasIssues?'Needs review':connected?'● Connected · Live':'Setup required'}
         </span>
-        <button type="button" onClick={()=>setExpanded(v=>!v)} style={btn}>{expanded?'Hide payment settings':'Payment Settings'}</button>
-        <button type="button" onClick={refresh} style={btn}>Refresh</button>
+        <button type="button" aria-expanded={expanded} aria-controls="romylabs-stripe-details" onClick={()=>setExpanded(v=>!v)} style={{...btn,padding:'8px 11px'}}>
+          {expanded?'Hide details ↑':'Manage Stripe ↓'}
+        </button>
+        {expanded&&<button type="button" onClick={refresh} style={{...btn,padding:'8px 11px'}} aria-label="Refresh Stripe status">↻ Refresh</button>}
       </div>
-    </div>
-    <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:15,color:'#cbd5e1',fontSize:11}}>
-      <span style={{padding:'6px 9px',background:'rgba(255,255,255,.04)',borderRadius:7}}>Merchant {info?.account_id?'Verified':'Not configured'}</span>
-      <span style={{padding:'6px 9px',background:'rgba(255,255,255,.04)',borderRadius:7}}>Webhook {info?.webhook_verified?'Verified':info?.webhook_configured?'Awaiting signed test':'Not configured'}</span>
-      <span style={{padding:'6px 9px',background:'rgba(255,255,255,.04)',borderRadius:7}}>Checkout {ready?'Ready':'Locked'}</span>
     </div>
     {error&&<p role="alert" style={{color:'#fca5a5',fontSize:12}}>{error}</p>}
     {message&&<p role="status" style={{color:'#86efac',fontSize:12}}>{message}</p>}
+    <div id="romylabs-stripe-details" hidden={!expanded} style={{display:expanded?'block':'none'}}>
+      <div style={{display:'flex',gap:9,flexWrap:'wrap',marginTop:13,color:'#cbd5e1',fontSize:11}}>
+        <span style={{padding:'6px 9px',background:'rgba(255,255,255,.04)',borderRadius:7}}>Merchant {info?.account_id?'Verified':'Not configured'}</span>
+        <span style={{padding:'6px 9px',background:'rgba(255,255,255,.04)',borderRadius:7}}>Webhook {info?.webhook_verified?'Verified':info?.webhook_configured?'Awaiting signed test':'Not configured'}</span>
+        <span style={{padding:'6px 9px',background:'rgba(255,255,255,.04)',borderRadius:7}}>Invoice checkout {ready?'Ready':'Locked'}</span>
+      </div>
     {expanded&&<div style={{marginTop:20,borderTop:'1px solid rgba(139,92,246,.22)',paddingTop:16}}>
       <p style={{fontSize:12,color:'#cbd5e1',lineHeight:1.7,marginTop:0}}>Create a least-privilege restricted API key in the Stripe Dashboard. Paste it here, not in ChatGPT. A successful verification stores it encrypted in Supabase Vault. Start in Stripe test mode; do not enable live charges until signed webhook delivery is confirmed.</p>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,240px),1fr))',gap:15}}>
@@ -126,7 +134,7 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
         </div>
       </div>
       <div style={{color:'#94a3b8',fontSize:11,marginTop:14,lineHeight:1.7}}>
-        Subscribe the endpoint to account.updated and customer.created, checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, charge.refunded, charge.dispute.created, and radar.early_fraud_warning.created. Send a signed verification event to certify delivery. Never paste sk_ or whsec_ secrets in a chat or public repository.
+        Subscribe the endpoint to account.updated and customer.created, checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, invoice.paid, charge.refunded, charge.dispute.created, and radar.early_fraud_warning.created. Send a signed verification event to certify delivery. Never paste sk_ or whsec_ secrets in a chat or public repository.
       </div>
     </div>}
     {Array.isArray(info?.webhook_recent_events)&&info.webhook_recent_events.length>0&&
@@ -169,6 +177,7 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
             </div>
           </div>)}
         </div>}
+    </div>
     </div>
   </section>
 }
