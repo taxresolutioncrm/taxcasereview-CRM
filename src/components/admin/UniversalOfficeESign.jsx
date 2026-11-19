@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react'
 import EnvelopeDetails from './EnvelopeDetails'
 import {createRestoreRelayAgreementPdf} from '../../lib/restoreRelayAgreementPdf'
-import {normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail,RESTORE_RELAY_MONTHLY_CENTS,RESTORE_RELAY_MONTHS} from '../../lib/restoreRelayPaymentProtocol'
+import {RESTORE_RELAY_FIRST_PAYMENT_URL,normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail,RESTORE_RELAY_MONTHLY_CENTS,RESTORE_RELAY_MONTHS} from '../../lib/restoreRelayPaymentProtocol'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -28,7 +28,7 @@ export default function UniversalOfficeESign({supabase,productKey,externalOffice
   const [firmDocs,setFirmDocs]=useState([])
   const [file,setFile]=useState(null)
   const [contractSetup,setContractSetup]=useState({business:firmName||'',additionalTerms:''})
-  const [stripePaymentUrl,setStripePaymentUrl]=useState('')
+  const [stripePaymentUrl,setStripePaymentUrl]=useState(RESTORE_RELAY_FIRST_PAYMENT_URL)
   const [stripePriceConfirmed,setStripePriceConfirmed]=useState(false)
   const [isRestoreRelayAgreement,setIsRestoreRelayAgreement]=useState(false)
   const [pdf,setPdf]=useState(null)

@@ -1,6 +1,6 @@
 // Signed-sale handoff: signed agreements can launch office onboarding and remain linked to the office record.
 import React, { useEffect, useMemo, useState } from 'react'
-import {normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail} from '../../lib/restoreRelayPaymentProtocol'
+import {RESTORE_RELAY_FIRST_PAYMENT_URL,normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail} from '../../lib/restoreRelayPaymentProtocol'
 
 const money = v => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(v||0))
 const dt = v => v ? new Date(v).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '—'
@@ -23,7 +23,7 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
   const [working,setWorking]=useState(false)
   const [msg,setMsg]=useState('')
   const [error,setError]=useState('')
-  const [stripePaymentUrl,setStripePaymentUrl]=useState('')
+  const [stripePaymentUrl,setStripePaymentUrl]=useState(RESTORE_RELAY_FIRST_PAYMENT_URL)
   const [stripeAmountConfirmed,setStripeAmountConfirmed]=useState(false)
   const restoreSale=prospect?.product==='restore_relay'
 

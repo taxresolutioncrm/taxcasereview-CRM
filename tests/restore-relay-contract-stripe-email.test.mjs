@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {createRestoreRelayAgreementPdf} from '../src/lib/restoreRelayAgreementPdf.js'
-import {normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail,RESTORE_RELAY_MONTHLY_CENTS,RESTORE_RELAY_MONTHS,RESTORE_RELAY_TOTAL_CENTS} from '../src/lib/restoreRelayPaymentProtocol.js'
+import {RESTORE_RELAY_FIRST_PAYMENT_URL,normalizeStripePaymentLink,restoreRelaySigningAndPaymentEmail,RESTORE_RELAY_MONTHLY_CENTS,RESTORE_RELAY_MONTHS,RESTORE_RELAY_TOTAL_CENTS} from '../src/lib/restoreRelayPaymentProtocol.js'
 
+assert.equal(RESTORE_RELAY_FIRST_PAYMENT_URL,'https://buy.stripe.com/6oU5kD8Ywfdd32Qbz60kE01')
+assert.equal(normalizeStripePaymentLink(RESTORE_RELAY_FIRST_PAYMENT_URL),RESTORE_RELAY_FIRST_PAYMENT_URL)
 assert.equal(RESTORE_RELAY_MONTHLY_CENTS,39900)
 assert.equal(RESTORE_RELAY_MONTHS,6)
 assert.equal(RESTORE_RELAY_TOTAL_CENTS,239400)
