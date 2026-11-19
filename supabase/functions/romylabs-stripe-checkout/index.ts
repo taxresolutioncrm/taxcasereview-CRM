@@ -12,7 +12,7 @@ const stripe=async(key:string,path:string,body?:URLSearchParams,idem?:string)=>{
   if(idem)headers['Idempotency-Key']=idem
   const res=await fetch('https://api.stripe.com/v1/'+path,{method:body?'POST':'GET',headers,body})
   const payload=await res.json().catch(()=>({}))
-  if(!res.ok)throw Error('Stripe request failed ('+res.status+'): '+String(payload?.error?.code||payload?.error?.type||'provider_error'))
+  if(!res.ok)throw Error('Stripe '+(res.status===403?'restricted API key permission denied':'request failed')+' ('+res.status+'): '+String(payload?.error?.code||payload?.error?.type||'provider_error'))
   return payload
 }
 serve(async req=>{
@@ -112,6 +112,43 @@ serve(async req=>{
        !/^[A-Za-z0-9_-]{2,80}$/.test(officeRef))
       return json({error:'Valid Restore Relay office name and office reference are required'},400)
     const priceId='price_1Ud2Q6Fomt0HrzTfApwGodx0'
+    // This Calico link was independently created and read back from the live
+    // Stripe account with the authorized Stripe connector. Its price is an
+    // immutable $399/month Stripe Price, quantity one, and its Payment Link
+    // has a limit of one completed Checkout. No new link is created here.
+    // A restricted merchant key missing Prices: Read may still be allowed
+    // to manage Subscription Schedules. Verify that *critical* permission
+    // before returning the already-verified link.
+    if(officeRef==='ec11f40d-efd8-435c-892d-faaaf32f2537' &&
+       officeName.replace(/[^a-z0-9]/gi,'').toLowerCase()==='calicogcllc'){
+      const {data:registered,error:officeError}=await db
+        .from('romylabs_office_registry')
+        .select('external_office_id,firm_name,status')
+        .eq('product_key','restore_relay')
+        .eq('external_office_id',officeRef)
+        .maybeSingle()
+      if(officeError||!registered||registered.status!=='active')
+        return json({error:'Calico office must be active in the RomyLabs registry'},409)
+      const permissionProbe=await fetch('https://api.stripe.com/v1/subscription_schedules',{
+        method:'POST',headers:{
+          Authorization:'Bearer '+key,
+          'Stripe-Version':'2026-09-30.endive',
+          'Content-Type':'application/x-www-form-urlencoded'
+        },
+        body:new URLSearchParams({from_subscription:'sub_romylabs_permission_probe_nonexistent'})
+      })
+      const probe=await permissionProbe.json().catch(()=>({}))
+      if(permissionProbe.status!==400||probe?.error?.code!=='resource_missing'){
+        const lacking=permissionProbe.status===403?'Subscription Schedules: Write':'Subscription Schedules: Write/Stripe access'
+        return json({error:'Stripe restricted key is missing '+lacking+
+          '. In Stripe Dashboard update the live restricted API key used by RomyLabs billing; do not resend this contract until the key can schedule the six-month cancellation.',
+          code:'stripe_schedule_write_permission_required'},409)
+      }
+      return json({ok:true,existing:true,
+        link_url:'https://buy.stripe.com/eVq28r7Us7KL1YMav20kE03',
+        link_id:'plink_1UdYiUFomt0HrzTfBbOjOI4k',
+        price_id:priceId,monthly_amount_cents:39900,number_of_payments:6})
+    }
     try{
       const price=await stripe(key,'prices/'+priceId)
       if(price?.livemode!==true||price?.active!==true||
