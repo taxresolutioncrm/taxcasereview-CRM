@@ -68,8 +68,12 @@ export default function RomyLabsAgreementPanel({prospect,supabase,onChanged}){
           body:{action:'restore_relay_six_month_link',office_name:prospect.firm_name,
             office_ref:String(prospect.id)}
         })
+        // Supabase FunctionsHttpError otherwise hides the JSON cause behind
+        // "Edge Function returned a non-2xx status code".
+        const checkoutFailure=linkError?.context && typeof linkError.context.clone==='function'
+          ? await linkError.context.clone().json().catch(()=>null) : null
         if(linkError||!link?.ok||link.monthly_amount_cents!==39900||link.number_of_payments!==6)
-          throw new Error(link?.error||linkError?.message||'Verified six-payment Stripe checkout unavailable. Agreement not sent.')
+          throw new Error(link?.error||checkoutFailure?.error||linkError?.message||'Verified six-payment Stripe checkout unavailable. Agreement not sent.')
         checkedLink=normalizeStripePaymentLink(link.link_url)
       }
       const {data,error:e}=await supabase.rpc('admin_romylabs_create_sales_agreement',{
