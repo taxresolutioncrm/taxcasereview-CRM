@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+const webhook=readFileSync('supabase/functions/romylabs-stripe-webhook/index.ts','utf8')
+const migration=readFileSync('supabase/migrations/20261119214500_romylabs_stripe_subscription_ledger_reconciliation.sql','utf8')
+const required=(s,needle,description)=>assert.ok(s.includes(needle),description)
+required(webhook,"event.type==='invoice.paid'",'Renewing Stripe invoices must sync to ledger')
+required(webhook,"romylabs_record_stripe_subscription_invoice",'Signed webhook must call dedicated service-only ledger reconciliation')
+required(webhook,"romylabs_term==='restore_relay_six_payments_v1'",'Only Restore Relay term-tagged subscriptions are eligible')
+required(webhook,"item?.price?.id!=='price_1Ud2Q6Fomt0HrzTfApwGodx0'",'Verify immutable $399 Stripe price')
+required(webhook,"firstInvoice.status_transitions?.paid_at",'First installment must use actual Stripe paid time')
+required(webhook,"invoice.status!=='paid'",'Unpaid invoices cannot be recorded as revenue')
+required(migration,"auth.role() <> 'service_role'",'No public ledger write access')
+required(migration,"on conflict (invoice_number) do nothing",'Repeated webhook may not duplicate invoice')
+required(migration,"on conflict (provider,provider_payment_id) do nothing",'Repeated webhook may not duplicate payment')
+required(migration,"auto_invoice = false",'Stripe-managed accounts must not get an additional invoice')
+required(migration,"from public,anon,authenticated",'RPC cannot be used by browser clients')
+console.log('PASS RomyLabs recurring Stripe ledger mapping and idempotency guards')
