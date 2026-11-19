@@ -94,6 +94,66 @@ serve(async req=>{
         next_step:'Send a Stripe signed test event to verify endpoint delivery; checkout remains disabled until verified'})
     }catch{return json({error:'Could not save webhook signing secret'},503)}
   }
+  // The Restore Relay sales agreement uses one hosted recurring Checkout:
+  // six $399 monthly billings total, including the first payment at signup.
+  // A signed checkout.session.completed webhook converts the subscription into
+  // a schedule that cancels after its sixth billing period.
+  if(action==='restore_relay_six_month_link'){
+    if(settings.mode!=='live'||!settings.webhook_verified_at||
+       !Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
+      return json({error:'Live merchant webhook and billing reconciliation must be verified first'},409)
+    const key=await secret('romylabs_stripe_live_key')
+    if(!key)return json({error:'Live Stripe merchant key unavailable'},503)
+    const priceId='price_1Ud2Q6Fomt0HrzTfApwGodx0'
+    try{
+      const price=await stripe(key,'prices/'+priceId)
+      if(price?.livemode!==true||price?.active!==true||
+         price?.currency!=='usd'||price?.unit_amount!==39900||
+         price?.recurring?.interval!=='month'||price?.recurring?.interval_count!==1)
+        return json({error:'Existing Restore Relay $399/month price failed validation'},409)
+      // Locate an existing tagged link rather than producing a second live link
+      // on refresh/retry. Never reuse the legacy one-time or $400 links.
+      const existing=await stripe(key,'payment_links?limit=100')
+      const matched=(existing?.data||[]).find((p:any)=>
+        p?.livemode===true&&p?.metadata?.romylabs_term==='restore_relay_six_payments_v1'&&
+        p?.metadata?.office==='Calico GC LLC'&&p?.active===true)
+      if(matched){
+        const lineItems=await stripe(key,'payment_links/'+matched.id+'/line_items?limit=20')
+        const items=lineItems?.data||[]
+        if(items.length!==1||items[0]?.price?.id!==priceId||items[0]?.quantity!==1)
+          return json({error:'A tagged Restore Relay link has the wrong price. Review before sending.'},409)
+        return json({ok:true,link_url:matched.url,link_id:matched.id,
+          price_id:priceId,monthly_amount_cents:39900,number_of_payments:6,existing:true})
+      }
+      const params=new URLSearchParams({
+        'line_items[0][price]':priceId,'line_items[0][quantity]':'1',
+        'automatic_tax[enabled]':'true',
+        'billing_address_collection':'required',
+        'payment_method_types[0]':'card',
+        'payment_method_types[1]':'us_bank_account',
+        'customer_creation':'always',
+        'name_collection[business][enabled]':'true',
+        'name_collection[business][optional]':'false',
+        'name_collection[individual][enabled]':'true',
+        'name_collection[individual][optional]':'false',
+        'restrictions[completed_sessions][limit]':'1',
+        'metadata[romylabs_term]':'restore_relay_six_payments_v1',
+        'metadata[office]':'Calico GC LLC',
+        'subscription_data[metadata][romylabs_term]':'restore_relay_six_payments_v1',
+        'subscription_data[metadata][office]':'Calico GC LLC',
+        'subscription_data[description]':'Restore Relay - Calico GC LLC - $399/month for six billing periods'
+      })
+      const link=await stripe(key,'payment_links',params,
+        'romylabs-restore-relay-calico-six-payments-20261119-v1')
+      if(!link?.id||!link?.url||!link?.active)return json({error:'Stripe did not return an active payment link'},502)
+      const lineItems=await stripe(key,'payment_links/'+link.id+'/line_items?limit=20')
+      if(lineItems?.data?.length!==1||lineItems.data[0]?.price?.id!==priceId||
+         lineItems.data[0]?.price?.recurring?.interval!=='month')
+        return json({error:'Stripe created a link with unexpected pricing. Do not send.'},502)
+      return json({ok:true,link_url:link.url,link_id:link.id,
+        price_id:priceId,monthly_amount_cents:39900,number_of_payments:6,existing:false})
+    }catch(error){return json({error:String((error as Error).message||'Could not create recurring link')},502)}
+  }
   if(action==='checkout'){
     if(settings.mode==='disabled'||!settings.webhook_verified_at||!Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
       return json({error:'Stripe checkout is not enabled. Verify the signed webhook first.'},409)
