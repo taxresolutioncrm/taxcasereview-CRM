@@ -783,10 +783,50 @@ serve(async (req) => {
         }
       }
 
+      // RomyLabs administrator receives a sender's confirmation copy after
+      // the customer's signing request has actually been accepted by Stalwart.
+      // This is a separate delivery, never a browser-selected arbitrary BCC.
+      const ownerCopyTo='romy@romylabs.com'
+      let ownerCopySent=false
+      let ownerCopyError=''
+      if (!recipients.some((address:string)=>address.toLowerCase()===ownerCopyTo)) {
+        try {
+          const ownerSubject='[RomyLabs E-Sign Sent] '+safe(subject)
+          const ownerHtml='<div style="font-family:Arial,sans-serif;padding:14px;border-bottom:1px solid #ddd">'+
+            '<b>Contract sent to customer</b><p>Office: '+esc(registeredOffice.firm_name)+
+            '<br>Recipient: '+esc(recipients.join(', '))+
+            '<br>Document: '+esc(safe(subject))+
+            '<br>Status: Sent (not yet signed)</p></div>'+String(html||'')
+          const ownerResult=await sendViaStalwartJmap({
+            host:transport.host,username:transport.username,password:transport.password,
+            fromAddress:routedFrom,
+            fromName:safe(route.display_name||from_name||'RomyLabs'),
+            to:ownerCopyTo,subject:ownerSubject,html:ownerHtml,
+          })
+          ownerCopySent=true
+          await admin.from('emails').insert({
+            tenant_id:route.tenant_id||tenant_id,
+            recipient:ownerCopyTo,recipients:[ownerCopyTo],
+            subject:ownerSubject,body:'Contract sent to '+recipients.join(', ')+
+              ' for '+registeredOffice.firm_name,
+            body_html:ownerHtml,triage:'Sent',status:'Sent',direction:'outbound',is_read:true,
+            sender:routedFrom,from_address:routedFrom,reply_from:routedFrom,
+            mailbox_owner:safe(route.inbox_owner||authenticatedUser?.email||'info@romylabs.com'),
+            received_at:new Date().toISOString(),created_at:new Date().toISOString(),
+            product_id:requestedProduct,message_id:'stalwart:'+ownerResult.submissionId,
+            received_mailbox:routedFrom,route_id:route.id,
+          })
+        } catch(error) {
+          ownerCopyError='Could not send administrator copy'
+          console.error('[office-esign] admin confirmation email failed:',String(error))
+        }
+      } else ownerCopySent=true
+
       return new Response(JSON.stringify({
         success:true,via:'stalwart_jmap',from:routedFrom,product_key:requestedProduct,
         external_office_id:externalOfficeId,submissions:deliveries.map((x:any)=>x.submissionId),
-        esign_state_sync:esignStateSync,
+        esign_state_sync:esignStateSync,owner_copy_sent:ownerCopySent,
+        owner_copy_to:ownerCopyTo,owner_copy_error:ownerCopyError,
       }), { headers:{...corsHeaders,'Content-Type':'application/json'} })
     }
 

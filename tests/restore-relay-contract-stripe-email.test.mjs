@@ -72,6 +72,16 @@ assert.doesNotMatch(rrCheckoutBranch,/ROMYLABS_BILLING_WEBHOOK_SECRET/,
   'Restore Relay subscription checkout must not require unrelated invoice billing adapter secret')
 assert.match(rrCheckoutBranch,/webhook_verified_at/,
   'Restore Relay subscription checkout must still verify signed Stripe webhook')
+assert.match(rrCheckoutBranch,/plink_1UdYiUFomt0HrzTfBbOjOI4k/,
+  'Calico must reuse verified existing recurring link')
+assert.match(rrCheckoutBranch,/permissionProbe\.status!==400/,
+  'The existing link must never bypass Subscription Schedules Write permission')
+const officeMail=readFileSync('supabase/functions/send-email/index.ts','utf8')
+assert.match(officeMail,/\[RomyLabs E-Sign Sent\]/,
+  'Admin must receive a delivery copy after recipient mail')
+assert.match(officeMail,/ownerCopyTo='romy@romylabs.com'/)
+assert.match(officeMail,/owner_copy_sent:ownerCopySent/)
+
 
 assert.match(checkoutFn,/subscription_schedules/)
 assert.match(webhookFn,/signatureOkay\(raw,auth,signing\)/)
