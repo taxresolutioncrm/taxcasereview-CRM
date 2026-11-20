@@ -149,6 +149,8 @@ serve(async req=>{
         link_id:'plink_1UdYiUFomt0HrzTfBbOjOI4k',
         price_id:priceId,monthly_amount_cents:39900,number_of_payments:6})
     }
+    // New office subscriptions are ACH-only until credit-card surcharge compliance is approved.
+    // Existing Calico checkout is immutable and has already been completed.
     try{
       const price=await stripe(key,'prices/'+priceId)
       if(price?.livemode!==true||price?.active!==true||
@@ -177,6 +179,9 @@ serve(async req=>{
         p?.livemode===true&&p?.metadata?.romylabs_term==='restore_relay_six_payments_v1'&&
         p?.metadata?.office_ref===officeRef&&p?.active===true)
       if(matched){
+        if(!Array.isArray(matched.payment_method_types)||matched.payment_method_types.includes('card')||
+           !matched.payment_method_types.includes('us_bank_account'))
+          return json({error:'Existing office payment link permits card payment without compliant pricing. Cannot reuse it; request billing review.',code:'legacy_card_link_blocked'},409)
         const lineItems=await stripe(key,'payment_links/'+matched.id+'/line_items?limit=20')
         const items=lineItems?.data||[]
         if(items.length!==1||items[0]?.price?.id!==priceId||items[0]?.quantity!==1)
@@ -188,14 +193,14 @@ serve(async req=>{
         'line_items[0][price]':priceId,'line_items[0][quantity]':'1',
         'automatic_tax[enabled]':'true',
         'billing_address_collection':'required',
-        'payment_method_types[0]':'card',
-        'payment_method_types[1]':'us_bank_account',
+        'payment_method_types[0]':'us_bank_account',
         'name_collection[business][enabled]':'true',
         'name_collection[business][optional]':'false',
         'name_collection[individual][enabled]':'true',
         'name_collection[individual][optional]':'false',
         'restrictions[completed_sessions][limit]':'1',
         'metadata[romylabs_term]':'restore_relay_six_payments_v1',
+        'metadata[romylabs_payment_method_policy]':'ach_no_surcharge_v1',
         'metadata[office]':officeName,
         'metadata[office_ref]':officeRef,
         'subscription_data[metadata][romylabs_term]':'restore_relay_six_payments_v1',
@@ -204,7 +209,7 @@ serve(async req=>{
         'subscription_data[description]':'Restore Relay - '+officeName+' - $399/month for six billing periods'
       })
       const link=await stripe(key,'payment_links',params,
-        'romylabs-restore-relay-six-payments-'+officeRef+'-20261119-v1')
+        'romylabs-restore-relay-ach-six-payments-'+officeRef+'-20261120-v1')
       if(!link?.id||!link?.url||!link?.active)return json({error:'Stripe did not return an active payment link'},502)
       const lineItems=await stripe(key,'payment_links/'+link.id+'/line_items?limit=20')
       if(lineItems?.data?.length!==1||lineItems.data[0]?.price?.id!==priceId||
@@ -214,7 +219,11 @@ serve(async req=>{
         price_id:priceId,monthly_amount_cents:39900,number_of_payments:6,existing:false})
     }catch(error){return json({error:String((error as Error).message||'Could not create recurring link')},502)}
   }
-  if(action==='checkout'){
+  // New RomyLabs invoices must not silently absorb card fees. This checkout
+  // accepts ACH only; credit-card surcharging requires separate compliance
+  // validation and funding-type checks before any card payment is authorized.
+  if(action==='checkout')return json({error:'Mixed card/ACH checkout is retired for new invoices. Select ACH bank payment, or contact billing about a compliant card-payment option.',code:'payment_method_choice_required'},409)
+  if(action==='checkout_ach'){
     if(settings.mode==='disabled'||!settings.webhook_verified_at||!Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
       return json({error:'Stripe checkout is not enabled. Verify the signed webhook first.'},409)
     const mode=String(settings.mode)
@@ -243,19 +252,22 @@ serve(async req=>{
       'line_items[0][price_data][unit_amount]':String(remaining),
       'line_items[0][price_data][product_data][name]':'RomyLabs SaaS invoice '+invoice.invoice_number,
       'line_items[0][quantity]':'1',
+      'payment_method_types[0]':'us_bank_account',
+      'metadata[romylabs_payment_method_policy]':'ach_no_surcharge_v1',
+      'payment_intent_data[metadata][romylabs_payment_method_policy]':'ach_no_surcharge_v1',
       'metadata[romylabs_invoice_id]':invoice.id,
       'payment_intent_data[metadata][romylabs_invoice_id]':invoice.id,
       integration_identifier:'romylabs_'+Array.from(crypto.getRandomValues(new Uint8Array(8)),n=>String.fromCharCode(97+n%26)).join('')
     })
     try{
-      const session=await stripe(key,'checkout/sessions',params,'romylabs-invoice-'+invoice.id+'-'+remaining+'-'+mode)
+      const session=await stripe(key,'checkout/sessions',params,'romylabs-invoice-ach-'+invoice.id+'-'+remaining+'-'+mode)
       if(!session?.id||!session?.url)return json({error:'Stripe checkout session was not returned'},502)
       const {error:insertError}=await db.from('romylabs_stripe_checkout_sessions').upsert({
         session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,currency:'usd',
         livemode:mode==='live',status:'created'
       },{onConflict:'session_id'})
       if(insertError)return json({error:'Could not register checkout session; do not send link'},503)
-      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,invoice_number:invoice.invoice_number,billing_email:account.billing_email,account_name:account.account_name})
+      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,invoice_number:invoice.invoice_number,billing_email:account.billing_email,account_name:account.account_name,payment_method:'us_bank_account',card_surcharge_cents:0})
     }catch(error){return json({error:String((error as Error).message||'Could not create Stripe checkout')},502)}
   }
   return json({error:'Unsupported action'},400)

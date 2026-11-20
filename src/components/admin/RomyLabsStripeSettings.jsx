@@ -55,18 +55,18 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     if(paying)return
     setPaying(invoice.id);setError('');setMessage('')
     try{
-      const data=await invoke({action:'checkout',invoice_id:invoice.id})
+      const data=await invoke({action:'checkout_ach',invoice_id:invoice.id})
       // The billing address is trusted server-side data from the selected invoice's account.
       // An email draft is explicit: never claim a payment link has been sent until a mail system confirms it.
       if(delivery==='email'){
-        const subject='RomyLabs invoice '+data.invoice_number+' — secure payment link'
-        const body='Hello '+(data.account_name||'')+',\n\nYour secure payment link for invoice '+data.invoice_number+' is below.\n\n'+data.checkout_url+'\n\nPlease use the Stripe-hosted checkout to enter your card information. Do not email payment details.\n\nThank you,\nRomyLabs Billing'
+        const subject='RomyLabs invoice '+data.invoice_number+' — ACH bank payment (no credit-card surcharge)'
+        const body='Hello '+(data.account_name||'')+',\n\nYour secure payment link for invoice '+data.invoice_number+' is below.\n\n'+data.checkout_url+'\n\nPlease use this secure Stripe-hosted ACH bank payment link. Your invoice amount will not have a credit-card surcharge. Do not email bank account details.\n\nThank you,\nRomyLabs Billing'
         const href='mailto:'+encodeURIComponent(data.billing_email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)
         window.location.href=href
         setMessage('An email draft was opened for '+data.billing_email+'. Review it and click Send in your email app. Payment will appear here only after Stripe confirms it.')
       }else{
         await navigator.clipboard.writeText(data.checkout_url)
-        setMessage('Secure checkout link copied for '+invoice.invoice_number+'. Payment records update after Stripe verifies the transaction.')
+        setMessage('ACH bank-payment link copied for '+invoice.invoice_number+'. Payment records update after Stripe verifies the transaction.')
       }
       onRefresh?.()
     }catch(e){setError(String(e?.message||e))}
@@ -79,7 +79,7 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
       const data=await invoke({action:'restore_relay_six_month_link'})
       setRestoreLink(data.link_url)
       try{await navigator.clipboard.writeText(data.link_url)
-        setMessage('Verified Restore Relay $399/month six-payment checkout link copied. The signed Stripe webhook schedules cancellation after the sixth monthly billing period.')
+        setMessage('Restore Relay six-payment link copied. New-office checkout uses ACH-only pricing; the signed webhook schedules cancellation after the sixth monthly billing period.')
       }catch(_){setMessage('Restore Relay checkout link is ready below. Copy it into the six-month e-sign agreement.')}
     }catch(e){setError(String(e?.message||e))}
     finally{setBusy(false)}
@@ -149,14 +149,14 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     <div style={{marginTop:16,borderTop:'1px solid rgba(139,92,246,.15)',paddingTop:14}}>
       <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:7}}>Restore Relay · six-month office subscription</div>
       <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 11px',lineHeight:1.6}}>
-        Calico GC LLC · $399 per month · six monthly billing periods. The first payment is collected at checkout;
+        Calico GC LLC · $399 per month · six monthly billing periods. ACH payments may take several business days to settle;
         the signed webhook automatically schedules cancellation after period six.
-        Do not send a separate one-time payment link.
+        Do not send a separate one-time payment link. New offices use ACH-only links until compliant credit-card fees are available.
       </p>
       <button type="button" onClick={createRestoreRelayLink}
         disabled={!ready||info?.mode!=='live'||busy}
         style={{...btn,opacity:ready&&info?.mode==='live'&&!busy?1:.45}}>
-        {busy?'Creating and verifying…':'Create / Copy six-payment link'}
+        {busy?'Creating and verifying…':'Create / Copy ACH subscription link'}
       </button>
       {restoreLink&&<div style={{display:'flex',gap:7,alignItems:'center',marginTop:10,flexWrap:'wrap'}}>
         <input readOnly aria-label="Restore Relay six-month payment link"
@@ -166,14 +166,20 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     </div>
     <div style={{marginTop:16,borderTop:'1px solid rgba(139,92,246,.15)',paddingTop:14}}>
       <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:9}}>Collect an outstanding RomyLabs invoice</div>
+      <p style={{fontSize:12,color:'#94a3b8',lineHeight:1.55,margin:'0 0 12px'}}>
+        <strong style={{color:'#c7d2fe'}}>Office payment policy:</strong> ACH pays the invoice amount with no RomyLabs card surcharge.
+        Credit-card processing fees are the office's responsibility where permitted, but card checkout is
+        not enabled here until credit/debit identification, fee disclosures and network requirements are verified.
+        Debit and prepaid cards must never receive a credit-card surcharge.
+      </p>
       {!ready?<p style={{fontSize:12,color:'#94a3b8',margin:'0'}}>Checkout links unlock only after the merchant key and signature-verified webhook are configured. No live charges can be created from this screen yet.</p>
         :!invoices.some(i=>i.status==='open')?<p style={{fontSize:12,color:'#94a3b8',margin:0}}>No open invoices available for payment links.</p>
         :<div style={{display:'grid',gap:8}}>
           {invoices.filter(i=>i.status==='open').slice(0,15).map(i=><div key={i.id} style={{display:'flex',gap:10,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',padding:'9px 10px',background:'rgba(255,255,255,.025)',borderRadius:9}}>
             <div style={{fontSize:12,color:'#cbd5e1'}}>{i.invoice_number} · {new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format((Number(i.amount_cents)-Number(i.amount_paid_cents||0))/100)} due</div>
             <div style={{display:'flex',gap:7,flexWrap:'wrap'}}>
-              <button type="button" onClick={()=>checkout(i,'copy')} disabled={Boolean(paying)} style={btn}>{paying===i.id?'Creating…':'Copy Checkout Link'}</button>
-              <button type="button" onClick={()=>checkout(i,'email')} disabled={Boolean(paying)} style={{...btn,color:'#86efac',borderColor:'rgba(16,185,129,.34)'}}>Email Payment Link</button>
+              <button type="button" onClick={()=>checkout(i,'copy')} disabled={Boolean(paying)} style={btn}>{paying===i.id?'Creating…':'Copy ACH Link'}</button>
+              <button type="button" onClick={()=>checkout(i,'email')} disabled={Boolean(paying)} style={{...btn,color:'#86efac',borderColor:'rgba(16,185,129,.34)'}}>Email ACH Link</button>
             </div>
           </div>)}
         </div>}

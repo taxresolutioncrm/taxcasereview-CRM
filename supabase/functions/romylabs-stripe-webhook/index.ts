@@ -76,8 +76,9 @@ serve(async req=>{
     // Schedule only our explicitly tagged Restore Relay six-payment checkout.
     // A one-time Checkout, a different CRM office, or an unrelated Stripe
     // subscription must never be rescheduled by this merchant webhook.
-    if(event.type==='checkout.session.completed'&&
-       event.data?.object?.metadata?.romylabs_term==='restore_relay_six_payments_v1'){
+    if(['checkout.session.completed','checkout.session.async_payment_succeeded'].includes(event.type)&&
+       event.data?.object?.metadata?.romylabs_term==='restore_relay_six_payments_v1'&&
+       event.data?.object?.payment_status==='paid'){
       const checkout=event.data.object
       const subscriptionId=String(checkout.subscription||'')
       if(verifiedMode!=='live'||checkout.mode!=='subscription'||
