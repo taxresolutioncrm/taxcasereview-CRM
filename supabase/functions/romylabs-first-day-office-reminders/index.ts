@@ -281,9 +281,11 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     ?'Your '+name+' office subscription is already scheduled for automatic billing on the '+nextBillDay+
       'th. This is an advance notice only; no new payment link is needed and no additional charge is being requested.'
     :'Your '+name+' office subscription for '+month+' is due. Please arrange your regular payment method. If you have already paid, reply with your confirmation.'
+  // Do not imply that an already-running Stripe subscription needs a second payment.
+  // A card-fee option is not yet live; only describe it as an advance policy disclosure.
   const paymentNotice=isAuto
-    ?'Your existing authorization and subscription schedule remain unchanged.'
-    :'ACH bank payments do not include a credit-card surcharge. If you prefer to pay by credit card, contact billing for an approved, clearly disclosed fee-bearing checkout. No credit-card payment link is included until that option is verified.'
+    ?'Your existing authorization and subscription schedule remain unchanged. No action or additional payment is required for this notice.'
+    :'If you prefer to pay by credit card, contact our billing team for available options. A permitted credit-card processing fee will be clearly disclosed before any payment is authorized.'
   return '<!doctype html><html><head><meta charset="utf-8"></head>'+
     '<body style="background:#f0f3f9;margin:0;font-family:Arial,sans-serif;color:#19253b">'+
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:30px 12px">'+
@@ -298,6 +300,11 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     '<div style="font-size:12px;font-weight:bold;color:#0d488d">'+(isAuto?'UPCOMING AUTOMATIC PAYMENT':'MONTHLY SUBSCRIPTION')+'</div>'+
     '<div style="font-size:28px;font-weight:800;color:#101c32 !important">'+dollars(amount)+'</div>'+
     '<div style="font-size:12px;color:#50617a">'+month+' · '+name+'</div></div>'+
+    '<div style="margin:18px 0;padding:16px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc">'+
+    '<div style="font-size:14px;font-weight:800;color:#101c32">Payment options &amp; processing fees</div>'+
+    '<p style="font-size:13px;line-height:1.6;margin:10px 0 5px;color:#243149"><strong>ACH / Bank Transfer:</strong> No additional card-processing fee.</p>'+
+    '<p style="font-size:13px;line-height:1.6;margin:0;color:#243149"><strong>Credit Card:</strong> A processing fee may apply where permitted. The exact amount must be disclosed before payment. Debit and prepaid cards are not subject to a credit-card surcharge.</p>'+
+    '</div>'+
     '<p style="font-size:14px;line-height:1.6">'+escapeHtml(paymentNotice)+'</p>'+
     '<p style="font-size:14px"><strong>'+name+' Billing Team</strong></p>'+
     '</td></tr><tr><td style="background:#edf0f5;padding:20px;text-align:center">'+

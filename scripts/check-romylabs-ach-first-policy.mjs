@@ -16,5 +16,5 @@ required(hook,"'checkout.session.async_payment_succeeded'].includes(event.type)"
 required(hook,"event.data?.object?.payment_status==='paid'",'Unpaid ACH sessions may not initiate subscription settlement')
 required(ui,"action:'checkout_ach'",'UI must use ACH-only Checkout action')
 required(ui,'Copy ACH Link','UI must label ACH payment options')
-required(ui,'Credit-card processing fees are the office','Display merchant fee policy')
+required(ui,'Credit Card</strong> — a processing fee may apply','Display merchant credit-card fee policy')
 console.log('PASS RomyLabs ACH-first invoice policy and async settlement safeguards')

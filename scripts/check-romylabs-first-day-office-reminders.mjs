@@ -19,6 +19,11 @@ for(const [snippet,reason] of [
   ["'Upcoming automatic subscription payment'",'Calico message must not falsely demand duplicate payment'],
   ["no new payment link is needed",'No duplicate Calico payment link'],
   ["credit-card surcharge",'ACH and credit-card-fee distinction'],
+  ["Payment options &amp; processing fees",'Branded payment options box required'],
+  ["ACH / Bank Transfer:", 'ACH must be clearly identified'],
+  ["No additional card-processing fee.", 'Fee-free ACH must be disclosed'],
+  ["Debit and prepaid cards are not subject", 'No debit surcharge allowed'],
+  ["No action or additional payment is required", 'Automatic Calico reminder must not demand a duplicate payment'],
   ["status:'sent'",'Record successful send only after mail server accepts submission'],
   ["status:'pending',last_error:",'Failed delivery must be retried'],
   ["(invoices||[]).some",'Avoid reminding Chris after paid invoice']
