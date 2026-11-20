@@ -75,5 +75,43 @@ serve(async req=>{
       })}
     }
   }
+  // A restricted Stripe key may lack invoices:read while signed Stripe
+  // subscription events have already reconciled paid invoices into our
+  // protected RomyLabs SaaS ledger. Display those verified rows, clearly
+  // marked as a partial ledger view; never pretend they cover all Stripe invoices.
+  if(errors.invoices){
+    const {data:ledger,error:ledgerError}=await db.from('romylabs_invoices')
+      .select('provider_invoice_id,invoice_number,amount_cents,amount_paid_cents,status,issued_at,account_id,hosted_invoice_url')
+      .eq('provider','stripe').like('provider_invoice_id','in_%')
+      .order('issued_at',{ascending:false}).limit(50)
+    if(!ledgerError && Array.isArray(ledger) && ledger.length>0){
+      const accountIds=[...new Set(ledger.map((row:any)=>row.account_id).filter(Boolean))]
+      const {data:accounts,error:accountsError}=await db.from('romylabs_billing_accounts')
+        .select('id,account_name,product_key').in('id',accountIds)
+      if(!accountsError){
+        const accountById=new Map((accounts||[]).map((a:any)=>[a.id,a]))
+        data.invoices={
+          source:'romylabs_reconciled_ledger',
+          coverage:'reconciled_stripe_invoices_only',
+          has_more:ledger.length===50,
+          rows:ledger.map((i:any)=>{
+            const account:any=accountById.get(i.account_id)
+            const paid=Number(i.amount_paid_cents||0),total=Number(i.amount_cents||0)
+            return {
+              id:i.provider_invoice_id,number:i.invoice_number,
+              customer:null,status:i.status,currency:'usd',
+              created:Math.floor(new Date(i.issued_at).getTime()/1000),
+              amount_due:total,amount_paid:paid,
+              amount_remaining:Math.max(0,total-paid),
+              hosted_invoice_url:i.hosted_invoice_url||null,
+              subscription_id:'',account_name:account?.account_name||'',
+              product_key:account?.product_key||''
+            }
+          })
+        }
+        delete errors.invoices
+      }
+    }
+  }
   return json({ok:true,merchant:'Romy Labs, LLC',mode:'live',as_of:new Date().toISOString(),data,errors})
 })

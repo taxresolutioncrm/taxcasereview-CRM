@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+const api=readFileSync('supabase/functions/romylabs-stripe-finance/index.ts','utf8')
+const ui=readFileSync('src/components/admin/RomyLabsProcessorDashboard.jsx','utf8')
+const check=(s,needle,message)=>assert.ok(s.includes(needle),message)
+check(api,'if(errors.invoices){','Fallback only applies when direct Stripe invoices API failed')
+check(api,".eq('provider','stripe').like('provider_invoice_id','in_%')",'Fallback must use provider-confirmed Stripe invoices only')
+check(api,"source:'romylabs_reconciled_ledger'",'Fallback must expose explicit source')
+check(api,"coverage:'reconciled_stripe_invoices_only'",'Fallback must disclose limited coverage')
+check(api,".from('romylabs_billing_accounts')",'Fallback account metadata must come from protected ledger')
+check(api,'delete errors.invoices','Direct permission error replaced only after verified ledger records returned')
+check(ui,"source==='romylabs_reconciled_ledger'",'UI must identify fallback source')
+check(ui,'not the full Stripe invoice history','UI must not misrepresent complete Stripe invoice history')
+check(api,"rpc('_is_platform_admin')",'Merchant reporting restricted to platform admins')
+check(api,"romylabs_stripe_live_key",'Merchant credentials remain server-side')
+console.log('PASS Stripe invoice ledger fallback scope, source and admin security contracts')

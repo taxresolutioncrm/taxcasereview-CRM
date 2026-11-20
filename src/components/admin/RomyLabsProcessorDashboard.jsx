@@ -56,7 +56,7 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
   const renderCells=r=>{
     if(view==='payments')return [day(r.created),r.id,r.description||'—',usd(r.amount_received||r.amount),statusChip(r.status)]
     if(view==='subscriptions')return [day(r.created),r.office||'—',r.id,usd(r.amount_cents),statusChip(r.status),day(r.cancel_at)]
-    if(view==='invoices')return [day(r.created),r.number||r.id,r.subscription_id||'—',usd(r.amount_paid),usd(r.amount_remaining),statusChip(r.status)]
+    if(view==='invoices')return [day(r.created),r.number||r.id,r.subscription_id||r.account_name||'—',usd(r.amount_paid),usd(r.amount_remaining),statusChip(r.status)]
     if(view==='payouts')return [day(r.created),r.id,usd(r.amount),day(r.arrival_date),statusChip(r.status)]
     if(view==='balance_transactions')return [day(r.created),r.id,r.reporting_category||r.type,usd(r.amount),usd(r.fee),usd(r.net)]
     if(view==='refunds')return [day(r.created),r.id,r.payment_intent||'—',usd(r.amount),statusChip(r.status)]
@@ -93,6 +93,12 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
           padding:'10px 12px',borderRadius:9,fontSize:12,flex:'1 1 250px',maxWidth:420}}/>
         <span style={{fontSize:11,color:'#94a3b8'}}>Read-only · No charges or refunds initiated here</span>
       </div>
+      {view==='invoices'&&snapshot?.data?.invoices?.source==='romylabs_reconciled_ledger'&&
+        <div role="status" style={{padding:'10px 14px',margin:'0 14px 12px',border:'1px solid rgba(129,140,248,.18)',borderRadius:9,
+          background:'rgba(99,102,241,.06)',fontSize:11,lineHeight:1.6,color:'#c7d2fe'}}>
+          Showing Stripe-paid invoices verified in the RomyLabs billing ledger.
+          This is not the full Stripe invoice history; direct Stripe invoice access requires Invoices: Read permission.
+        </div>}
       {snapshot?.errors?.[view==='payments'?'payment_intents':view]?
         <div role="status" style={{margin:'1px 14px 15px',padding:'13px 15px',borderRadius:9,background:'rgba(245,158,11,.055)',border:'1px solid rgba(245,158,11,.17)',color:'#fcd34d',fontSize:12,lineHeight:1.6}}>
           <strong style={{display:'block',fontSize:12,color:'#fde68a',marginBottom:3}}>Stripe access needed</strong>
