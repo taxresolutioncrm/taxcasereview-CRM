@@ -214,7 +214,11 @@ serve(async req=>{
         price_id:priceId,monthly_amount_cents:39900,number_of_payments:6,existing:false})
     }catch(error){return json({error:String((error as Error).message||'Could not create recurring link')},502)}
   }
-  if(action==='checkout'){
+  // New RomyLabs invoices must not silently absorb card fees. This checkout
+  // accepts ACH only; credit-card surcharging requires separate compliance
+  // validation and funding-type checks before any card payment is authorized.
+  if(action==='checkout')return json({error:'Mixed card/ACH checkout is retired for new invoices. Select ACH bank payment, or contact billing about a compliant card-payment option.',code:'payment_method_choice_required'},409)
+  if(action==='checkout_ach'){
     if(settings.mode==='disabled'||!settings.webhook_verified_at||!Deno.env.get('ROMYLABS_BILLING_WEBHOOK_SECRET'))
       return json({error:'Stripe checkout is not enabled. Verify the signed webhook first.'},409)
     const mode=String(settings.mode)
@@ -243,19 +247,22 @@ serve(async req=>{
       'line_items[0][price_data][unit_amount]':String(remaining),
       'line_items[0][price_data][product_data][name]':'RomyLabs SaaS invoice '+invoice.invoice_number,
       'line_items[0][quantity]':'1',
+      'payment_method_types[0]':'us_bank_account',
+      'metadata[romylabs_payment_method_policy]':'ach_no_surcharge_v1',
+      'payment_intent_data[metadata][romylabs_payment_method_policy]':'ach_no_surcharge_v1',
       'metadata[romylabs_invoice_id]':invoice.id,
       'payment_intent_data[metadata][romylabs_invoice_id]':invoice.id,
       integration_identifier:'romylabs_'+Array.from(crypto.getRandomValues(new Uint8Array(8)),n=>String.fromCharCode(97+n%26)).join('')
     })
     try{
-      const session=await stripe(key,'checkout/sessions',params,'romylabs-invoice-'+invoice.id+'-'+remaining+'-'+mode)
+      const session=await stripe(key,'checkout/sessions',params,'romylabs-invoice-ach-'+invoice.id+'-'+remaining+'-'+mode)
       if(!session?.id||!session?.url)return json({error:'Stripe checkout session was not returned'},502)
       const {error:insertError}=await db.from('romylabs_stripe_checkout_sessions').upsert({
         session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,currency:'usd',
         livemode:mode==='live',status:'created'
       },{onConflict:'session_id'})
       if(insertError)return json({error:'Could not register checkout session; do not send link'},503)
-      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,invoice_number:invoice.invoice_number,billing_email:account.billing_email,account_name:account.account_name})
+      return json({ok:true,checkout_url:session.url,session_id:session.id,invoice_id:invoice.id,amount_cents:remaining,invoice_number:invoice.invoice_number,billing_email:account.billing_email,account_name:account.account_name,payment_method:'us_bank_account',card_surcharge_cents:0})
     }catch(error){return json({error:String((error as Error).message||'Could not create Stripe checkout')},502)}
   }
   return json({error:'Unsupported action'},400)
