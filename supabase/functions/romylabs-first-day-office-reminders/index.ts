@@ -283,7 +283,7 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     :'Your '+name+' office subscription for '+month+' is due. Please arrange your regular payment method. If you have already paid, reply with your confirmation.'
   const paymentNotice=isAuto
     ?'Your existing authorization and subscription schedule remain unchanged.'
-    :'ACH bank payments do not include a RomyLabs credit-card surcharge. If you prefer to pay by credit card, contact billing for an approved, clearly disclosed fee-bearing checkout. No credit-card payment link is included until that option is verified.'
+    :'ACH bank payments do not include a credit-card surcharge. If you prefer to pay by credit card, contact billing for an approved, clearly disclosed fee-bearing checkout. No credit-card payment link is included until that option is verified.'
   return '<!doctype html><html><head><meta charset="utf-8"></head>'+
     '<body style="background:#f0f3f9;margin:0;font-family:Arial,sans-serif;color:#19253b">'+
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:30px 12px">'+
