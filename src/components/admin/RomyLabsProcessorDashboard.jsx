@@ -38,7 +38,7 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
   const rows=useMemo(()=>records.filter(r=>!search.trim()||
     Object.values(r).join(' ').toLowerCase().includes(search.trim().toLowerCase())),[records,search])
   const transactionPreview=view==='payments'&&!historyOpen&&!search.trim()
-  const shownRows=view==='payments' ? rows.slice(0,transactionPreview?5:historyLimit) : rows
+  const shownRows=view==='payments' ? rows.slice(0,transactionPreview?5:historyOpen?historyLimit:rows.length) : rows
   const payments=snapshot?.data?.payment_intents?.rows||[]
   const payouts=snapshot?.data?.payouts?.rows||[]
   const charges=(snapshot?.data?.balance_transactions?.rows||[]).filter(p=>p.reporting_category==='charge'||p.type==='charge')
