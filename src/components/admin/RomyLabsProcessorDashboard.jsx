@@ -37,9 +37,10 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
   const records=snapshot?.data?.[view==='payments'?'payment_intents':view]?.rows||[]
   const rows=useMemo(()=>records.filter(r=>!search.trim()||
     Object.values(r).join(' ').toLowerCase().includes(search.trim().toLowerCase())),[records,search])
-  // Collapsed means hidden, not a different row limit. Search opens results without changing the disclosure.
-  const showTransactionTable=view!=='payments'||historyOpen||Boolean(search.trim())
-  const shownRows=view==='payments'&&!search.trim()?rows.slice(0,historyLimit):rows
+  // Every merchant tab uses the same real disclosure. Search reveals matching records automatically.
+  const categoryName=views.find(([id])=>id===view)?.[1]?.toLowerCase()||'records'
+  const showTransactionTable=historyOpen||Boolean(search.trim())
+  const shownRows=!search.trim()?rows.slice(0,historyLimit):rows
   const payments=snapshot?.data?.payment_intents?.rows||[]
   const payouts=snapshot?.data?.payouts?.rows||[]
   const charges=(snapshot?.data?.balance_transactions?.rows||[]).filter(p=>p.reporting_category==='charge'||p.type==='charge')
@@ -105,20 +106,20 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
           {snapshot.errors[view==='payments'?'payment_intents':view]}. Enable read-only permission for this section in your Stripe restricted key.
         </div>:
         <div>
-          {view==='payments'&&<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',padding:'0 14px 11px'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',padding:'0 14px 11px'}}>
             <button type="button" aria-expanded={historyOpen} aria-controls="romylabs-stripe-transaction-list" onClick={()=>{setHistoryOpen(v=>!v);setHistoryLimit(20)}} style={{...b,background:'transparent',borderColor:'rgba(129,140,248,.2)',color:'#cbd5e1'}}>
-              {historyOpen?'▴ Hide transactions':'▾ Show transactions'}
+              {historyOpen?'▴ Hide '+categoryName:'▾ Show '+categoryName}
             </button>
-            <span style={{fontSize:11,color:'#94a3b8'}}>{!showTransactionTable?rows.length+' transactions hidden':shownRows.length+' of '+rows.length+' loaded transactions'}</span>
-          </div>}
-          {showTransactionTable&&<div id="romylabs-stripe-transaction-list" style={{overflowX:'auto',maxHeight:view==='payments'&&historyOpen?480:undefined,overflowY:view==='payments'&&historyOpen?'auto':undefined}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:750}}>
+            <span style={{fontSize:11,color:'#94a3b8'}}>{!showTransactionTable?rows.length+' '+categoryName+' hidden':shownRows.length+' of '+rows.length+' loaded '+categoryName}</span>
+          </div>
+          {showTransactionTable&&<div id="romylabs-stripe-transaction-list" style={{overflowX:'auto',maxHeight:historyOpen?480:undefined,overflowY:historyOpen?'auto':undefined}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:750}}>
           <thead><tr>{viewHeaders[view].map(x=><th key={x} style={headers}>{x}</th>)}</tr></thead>
           <tbody>{shownRows.length?shownRows.map(r=><tr key={r.id} style={{background:'transparent'}}>{renderCells(r).map((c,i)=><td key={i} style={{...tableCell,maxWidth:i===2?280:210,overflow:'hidden',textOverflow:'ellipsis'}} title={typeof c==='string'?c:undefined}>{c}</td>)}</tr>):
             <tr><td colSpan={6} style={{...tableCell,padding:24,textAlign:'center'}}>No {view} found in the retrieved Stripe records.</td></tr>}
           </tbody>
         </table></div>}
-          {view==='payments'&&historyOpen&&shownRows.length<rows.length&&<div style={{textAlign:'center',padding:'12px 14px',borderTop:'1px solid rgba(129,140,248,.12)'}}>
-            <button type="button" onClick={()=>setHistoryLimit(n=>n+20)} style={b}>Show 20 more transactions</button>
+          {historyOpen&&shownRows.length<rows.length&&<div style={{textAlign:'center',padding:'12px 14px',borderTop:'1px solid rgba(129,140,248,.12)'}}>
+            <button type="button" onClick={()=>setHistoryLimit(n=>n+20)} style={b}>Show 20 more {categoryName}</button>
           </div>}
         </div>}
       {snapshot?.data?.[view==='payments'?'payment_intents':view]?.has_more&&
