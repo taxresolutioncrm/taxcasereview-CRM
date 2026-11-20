@@ -12,7 +12,7 @@ const SPANISH_DASHBOARD_CHANGES = [
 ]
 
 const SHARED_NASHVILLE_PARITY_CHANGES = [
-  'Internal Staff Note cards on client files now open a secure in-place editor for authorized employees; changes save immediately without navigating away, keep tenant permissions, prevent duplicate or conflicting saves, and support Cancel with unsaved-change protection',
+  'Internal Staff Note cards on client files now open a secure in-place editor for authorized employees; changes save immediately without navigating away, preserve tenant permissions, prevent duplicate or conflicting saves, and use an accessible in-app confirmation to protect unsaved changes',
   'RomyLabs Billing & Collections now has a platform-admin monthly reminder editor for each CRM or individual office: edit subject, opening, extra details and closing, preview, save, restore defaults without deployment; immutable sender, payment rules and verified product identity remain protected',
   'All 13 registered RomyLabs CRM industries have first-day reminder copy with product-specific branding and service-only sender routing; new SaaS offices enter automatically, while unavailable sender or logo fails closed, and existing Chris Zelle and Calico Stripe terms remain isolated by office ID',
   'Chris Nashville Tax Solutions receives a friendly first-day monthly TaxRes Zelle reminder through December 2026, without card or ACH sales instructions; from January 2027 approved credit-card options may be discussed while Rafael Restore Relay notices remain unchanged',
