@@ -9,9 +9,17 @@ for(const [snippet,reason] of [
   ["timeZone:'America/New_York'",'Eastern time zone'],
   ["verify_internal_cron_token",'Signed internal cron authorization'],
   ["romylabs_first_day_office_reminders",'Separate service-only first-day outbox'],
-  ["a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'&&a.product_key==='taxres_crm'",'Chris must only use TaxRes sender'],
-  ["a.id==='339710c8-4739-450f-bac8-540a3a325cec'&&a.product_key==='restore_relay'",'Calico must only use Restore Relay sender'],
+  ["a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'&&a.product_key==='taxres_crm'",'Chris-specific Zelle exception only'],
+  ["a.id==='339710c8-4739-450f-bac8-540a3a325cec'&&a.product_key==='restore_relay'",'Rafael-specific automated invoice exception only'],
   ["sendViaStalwart(db,a.product_key",'Never use one global sender for both offices'],
+  [".in('status',['active','past_due'])",'All active and past due SaaS offices eligible'],
+  ["const isAuto=isRafael||stripeManaged",'Any verified Stripe-managed office should receive advance notice'],
+  ["a.auto_invoice===false",'Do not assume payment method without checking SaaS billing mode'],
+  [".eq('provider','stripe').limit(1)",'Verify a Stripe invoice belongs to this specific office before auto-pay claim'],
+  ["brand_or_verified_sender_unavailable",'No fallback to cross-product sender or invented branding'],
+  ["INDUSTRY_DESCRIPTORS",'Email includes correct business vertical'],
+  ["For your '+industry+' team",'Industry language must render in email'],
+
   ["romylabs_system_reminder_transport",'Sender must be selected and verified by product'],
   ["from.endsWith('@'+domain)",'Reject cross-product sender'],
   ["Cross-product sender or branding rejected",'Strong sender isolation'],
@@ -19,6 +27,12 @@ for(const [snippet,reason] of [
   ["'Upcoming automatic subscription payment'",'Calico message must not falsely demand duplicate payment'],
   ["no new payment link is needed",'No duplicate Calico payment link'],
   ["credit-card surcharge",'ACH and credit-card-fee distinction'],
+  ["chrisZelle= isChris && year<=2026",'Chris keeps Zelle-only instructions through December 2026'],
+  ["const isChris=a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'",'Zelle exception tied to precise office account'],
+  ["isChris?'Friendly monthly reminder'",'Chris gets a courtesy reminder instead of a demand'],
+  ["Please use the same payment arrangement as before.",'Chris retains existing Zelle payment arrangement'],
+  ["This is only a courtesy reminder.",'Chris notice must be friendly'],
+  ["firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year,isChris)",'January 2027 change determined by local billing year'],
   ["Payment options &amp; processing fees",'Branded payment options box required'],
   ["ACH / Bank Transfer:", 'ACH must be clearly identified'],
   ["No additional card-processing fee.", 'Fee-free ACH must be disclosed'],
@@ -36,6 +50,10 @@ for(const [snippet,reason] of [
   ["'tcr_internal_cron_token'",'Existing protected Vault token'],
   ['romylabs-first-day-office-reminders','New cron endpoint']
 ])assert(migration.includes(snippet),reason)
+const products=['taxres_crm','restore_relay','pool_crm','bocasync','arcvena','camvella','oculivo','groundivo','barbers_salons','settlelift','health_insurance','phl_land_care','romylabs']
+for(const product of products)assert(source.includes(product+":"),'Every registered CRM product must have industry-specific brand or descriptor: '+product)
+assert(!source.includes(".in('product_key',['taxres_crm','restore_relay'])"),'Do not restrict notices to the first two offices')
+assert(!source.includes(")))continue\n    const isAuto=a.product_key==='restore_relay'"),'New Restore Relay clients must not be mistaken for Calico')
 assert(!source.includes('api.brevo.com'),'No Brevo fallback')
 assert(!source.includes('sk_live_'),'No Stripe secret')
 console.log('PASS first-day branded SaaS payment notices, protected outbox, and no duplicate Calico charge')
