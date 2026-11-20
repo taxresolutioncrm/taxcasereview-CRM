@@ -324,7 +324,7 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     '<h1 style="font-size:23px;color:#101c32">'+heading+'</h1>'+
     '<p style="font-size:15px;line-height:1.6">Hello '+company+',</p>'+
     '<p style="font-size:15px;line-height:1.6">'+escapeHtml(explanation)+'</p>'+
-    (copy.opening_text?'<p style="font-size:15px;line-height:1.6">'+escapeHtml(copy.opening_text).replaceAll('\\n','<br>')+'</p>':'')+
+    (copy.opening_text?'<p style="font-size:15px;line-height:1.6">'+escapeHtml(copy.opening_text).replaceAll(String.fromCharCode(10),'<br>')+'</p>':'')+
     '<div style="background:#d8eaff;padding:18px;border-radius:9px">'+
     '<div style="font-size:12px;font-weight:bold;color:#0d488d">'+(isAuto?'UPCOMING AUTOMATIC PAYMENT':'MONTHLY SUBSCRIPTION')+'</div>'+
     '<div style="font-size:28px;font-weight:800;color:#101c32 !important">'+dollars(amount)+'</div>'+
@@ -341,8 +341,8 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     '<p style="font-size:13px;line-height:1.6;margin:0;color:#243149"><strong>Credit Card:</strong> A processing fee may apply where permitted. The exact amount must be disclosed before payment. Debit and prepaid cards are not subject to a credit-card surcharge.</p>'+
     '</div>')+
     '<p style="font-size:14px;line-height:1.6">'+escapeHtml(paymentNotice)+'</p>'+
-    (copy.additional_text?'<div style="font-size:14px;line-height:1.65;padding:14px;border:1px solid #e1e7f0;border-radius:9px;color:#243149">'+escapeHtml(copy.additional_text).replaceAll('\\n','<br>')+'</div>':'')+
-    (copy.closing_text?'<p style="font-size:14px;line-height:1.6">'+escapeHtml(copy.closing_text).replaceAll('\\n','<br>')+'</p>':'')+
+    (copy.additional_text?'<div style="font-size:14px;line-height:1.65;padding:14px;border:1px solid #e1e7f0;border-radius:9px;color:#243149">'+escapeHtml(copy.additional_text).replaceAll(String.fromCharCode(10),'<br>')+'</div>':'')+
+    (copy.closing_text?'<p style="font-size:14px;line-height:1.6">'+escapeHtml(copy.closing_text).replaceAll(String.fromCharCode(10),'<br>')+'</p>':'')+
     '<p style="font-size:14px"><strong>'+name+' Billing Team</strong></p>'+
     '</td></tr><tr><td style="background:#edf0f5;padding:20px;text-align:center">'+
     '<a href="'+escapeHtml(brand.website)+'">'+escapeHtml(brand.website)+'</a>'+
@@ -457,7 +457,7 @@ Deno.serve(async(req:Request)=>{
     }
     // Preserve sender product identity even when the admin changes the subject.
     const defaultSubject=(isAuto?'upcoming automatic payment notice':isChris?'friendly monthly reminder':'payment reminder')
-    const customSubject=copy.subject_override.replace(/[\\r\\n]/g,' ').slice(0,180)
+    const customSubject=copy.subject_override.replaceAll(String.fromCharCode(10),' ').replaceAll(String.fromCharCode(13),' ').slice(0,180)
     const subject=brand.name+' — '+(customSubject||defaultSubject)+' — '+monthLabel
     const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year,isChris,copy)
     try{
