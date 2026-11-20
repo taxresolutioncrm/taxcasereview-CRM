@@ -20,7 +20,7 @@ has('explicit server-error handling for zero updated records', clients.includes(
 has('no duplicate saves', clients.includes('staffNoteSavingRef.current = true') && clients.includes('if (!editor || staffNoteSavingRef.current'))
 has('immediate in-memory update', clients.includes('setDetail(prev =>') && clients.includes('setClients(prev => prev.map(client =>'))
 has('save success and error feedback', clients.includes("showToast('✅ Staff note saved')") && clients.includes("showToast('Staff note not saved:"))
-has('cancel and unsaved confirmation', clients.includes("window.confirm('Discard changes to this staff note?')"))
+has('cancel and unsaved confirmation', clients.includes("setStaffNoteDiscardConfirm(true)") && clients.includes('onClick={discardStaffNoteChanges}') && !clients.includes('window.confirm('))
 has('existing activity log reused', clients.includes("action: 'staff_note_updated'"))
 has('modal uses existing CRM shell', clients.includes('className="modal-bg open"') && clients.includes('role="dialog" aria-modal="true" aria-labelledby="staff-note-title"'))
 has('no note rendering in client portal', !portal.includes('internal_note') && !portal.includes('staffNoteEditor'))

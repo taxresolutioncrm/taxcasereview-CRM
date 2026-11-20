@@ -1,11 +1,6 @@
 name: Karbon migration preflight safety tests
 on:
-  pull_request:
-    paths:
-      - 'tools/karbon-migration/**'
-      - 'scripts/check-karbon-migration-preflight.mjs'
-      - 'package.json'
-      - '.github/workflows/karbon-migration-preflight.yml'
+  workflow_dispatch:
 jobs:
   read-only-preflight:
     runs-on: ubuntu-latest

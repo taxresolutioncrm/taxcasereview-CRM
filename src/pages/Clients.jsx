@@ -1497,6 +1497,7 @@ export default function Clients() {
   const [showFlow,  setShowFlow]  = useState(false)
   const [staffNoteEditor, setStaffNoteEditor] = useState(null)
   const [staffNoteSaving, setStaffNoteSaving] = useState(false)
+  const [staffNoteDiscardConfirm, setStaffNoteDiscardConfirm] = useState(false)
   const staffNoteSavingRef = useRef(false)
   // Addendum + 2nd Trade combined modal
   const [addModal,    setAddModal]    = useState(false)
@@ -1993,14 +1994,24 @@ export default function Clients() {
   function openStaffNoteEditor(client) {
     if (!can('edit', 'clients') || !myTenantId || !client?.id) return
     const original = client.internal_note ?? null
+    setStaffNoteDiscardConfirm(false)
     setStaffNoteEditor({ clientId: client.id, clientName: client.name, original, draft: original || '' })
   }
 
   function closeStaffNoteEditor() {
     if (staffNoteSavingRef.current) return
-    if (staffNoteEditor && staffNoteEditor.draft !== (staffNoteEditor.original || '') &&
-        !window.confirm('Discard changes to this staff note?')) return
+    if (staffNoteEditor && staffNoteEditor.draft !== (staffNoteEditor.original || '')) {
+      setStaffNoteDiscardConfirm(true)
+      return
+    }
     setStaffNoteEditor(null)
+    setStaffNoteDiscardConfirm(false)
+  }
+
+  function discardStaffNoteChanges() {
+    if (staffNoteSavingRef.current) return
+    setStaffNoteEditor(null)
+    setStaffNoteDiscardConfirm(false)
   }
 
   async function saveStaffNote() {
@@ -2030,6 +2041,7 @@ export default function Clients() {
       setClients(prev => prev.map(client => client.id === editor.clientId
         ? { ...client, internal_note: data.internal_note } : client))
       setStaffNoteEditor(null)
+      setStaffNoteDiscardConfirm(false)
       showToast('✅ Staff note saved')
       logActivity(supabase, {
         employeeName: resolveActorName(user, employees),
@@ -3856,22 +3868,38 @@ export default function Clients() {
                 <button className="xbtn" type="button" aria-label="Close staff note editor"
                   onClick={closeStaffNoteEditor} disabled={staffNoteSaving}>&times;</button>
               </div>
-              <div className="field">
-                <label htmlFor="staff-note-body">Internal staff only</label>
-                <textarea id="staff-note-body" autoFocus rows={8} value={staffNoteEditor.draft}
-                  onChange={event => setStaffNoteEditor(prev =>
-                    prev ? {...prev, draft:event.target.value} : prev)}
-                  placeholder="Add an internal staff note…"
-                  disabled={staffNoteSaving} style={{width:'100%',resize:'vertical',minHeight:160,maxHeight:'55vh'}}/>
-                <div style={{fontSize:11,color:'var(--t3)',marginTop:6}}>Visible to authorized staff, not clients.</div>
-              </div>
-              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
-                <button type="button" className="btn sec" onClick={closeStaffNoteEditor} disabled={staffNoteSaving}>Cancel</button>
-                <button type="button" className="btn pri" onClick={saveStaffNote}
-                  disabled={staffNoteSaving || staffNoteEditor.draft === (staffNoteEditor.original || '')}>
-                  {staffNoteSaving ? 'Saving…' : 'Save Note'}
-                </button>
-              </div>
+              {staffNoteDiscardConfirm ? (
+                <>
+                  <div style={{padding:'12px 0',fontSize:13,color:'var(--tx)',lineHeight:1.6}}>
+                    This staff note has unsaved changes. Discard them?
+                  </div>
+                  <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                    <button type="button" className="btn sec" autoFocus
+                      onClick={() => setStaffNoteDiscardConfirm(false)}>Keep Editing</button>
+                    <button type="button" className="btn del"
+                      onClick={discardStaffNoteChanges}>Discard Changes</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="field">
+                    <label htmlFor="staff-note-body">Internal staff only</label>
+                    <textarea id="staff-note-body" autoFocus rows={8} value={staffNoteEditor.draft}
+                      onChange={event => setStaffNoteEditor(prev =>
+                        prev ? {...prev, draft:event.target.value} : prev)}
+                      placeholder="Add an internal staff note…"
+                      disabled={staffNoteSaving} style={{width:'100%',resize:'vertical',minHeight:160,maxHeight:'55vh'}}/>
+                    <div style={{fontSize:11,color:'var(--t3)',marginTop:6}}>Visible to authorized staff, not clients.</div>
+                  </div>
+                  <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                    <button type="button" className="btn sec" onClick={closeStaffNoteEditor} disabled={staffNoteSaving}>Cancel</button>
+                    <button type="button" className="btn pri" onClick={saveStaffNote}
+                      disabled={staffNoteSaving || staffNoteEditor.draft === (staffNoteEditor.original || '')}>
+                      {staffNoteSaving ? 'Saving…' : 'Save Note'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
