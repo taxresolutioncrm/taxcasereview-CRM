@@ -1,22 +1,19 @@
 name: Repair RomyLabs MTA Route (romylabs.com outbound)
 
-# Replaces the romylabs.com → Mx route entry with an Oracle Email Delivery
-# transport so outbound mail from info@romylabs.com routes via OCI SMTP
-# (smtp.email.us-ashburn-1.oci.oraclecloud.com:587) rather than attempting
-# direct port-25 delivery (blocked on OCI) or falling through to the Brevo
-# default relay (which would fail romylabs.com SPF + DMARC p=reject).
+# Removes the stale  sender_domain == 'romylabs.com' → mx  branch from
+# MtaOutboundStrategy so romylabs.com outbound falls through to the existing
+# default relay — the same transport TaxRes and Restore Relay already use.
+# OCI blocks port 25, so the mx branch causes all romylabs.com outbound to fail.
+# No new routes or credentials are created.
 #
 # Prerequisites (set as GitHub Actions encrypted secrets before running):
 #   STALWART_REPAIR_SECRET   — CF Workers secret; must match REPAIR_SERVICE_SECRET
 #                              set via `wrangler secret put REPAIR_SERVICE_SECRET`
-#   ORACLE_SMTP_USER         — OCI Email Delivery SMTP credential username
-#                              (from OCI console → Email Delivery → SMTP Credentials)
-#   ORACLE_SMTP_PASSWORD     — OCI Email Delivery SMTP credential password (app password)
 #
 # Architecture:
 #   GitHub Actions → CF Worker (stalwart-api.romylabs.com) → Stalwart JMAP management
 #   The Worker authenticates with STALWART_API_TOKEN (CF encrypted secret) to call
-#   x:MtaRoute/set (Relay) and x:MtaOutboundStrategy/set on mail.taxrescrm.net.
+#   x:MtaOutboundStrategy/set on mail.taxrescrm.net.
 #
 # AGENTS.md: GitHub Actions are manual QA / emergency fallback only.
 # This is that emergency fallback — do not add push/schedule triggers.
@@ -52,22 +49,19 @@ jobs:
           echo 'CF_WORKER_HEALTH_OK'
 
       # ── 2. Call the repair endpoint ──────────────────────────────────────────
-      # Sends ORACLE_SMTP_USER + ORACLE_SMTP_PASSWORD so the Worker can create
-      # the Oracle transport in Stalwart and replace the broken Mx route entry.
+      # No body needed — the Worker removes the bad romylabs.com → mx branch
+      # and lets romylabs.com fall through to the existing default relay.
       - name: Invoke /api/mta-route-repair
         id: repair
         shell: bash
         env:
           STALWART_REPAIR_SECRET: ${{ secrets.STALWART_REPAIR_SECRET }}
-          ORACLE_SMTP_USER: ${{ secrets.ORACLE_SMTP_USER }}
-          ORACLE_SMTP_PASSWORD: ${{ secrets.ORACLE_SMTP_PASSWORD }}
         run: |
           set -euo pipefail
           RESPONSE=$(curl -sf --max-time 60 \
             -X POST \
             -H "X-Repair-Secret: $STALWART_REPAIR_SECRET" \
             -H "Content-Type: application/json" \
-            -d "{\"oracleSmtpUser\":\"$ORACLE_SMTP_USER\",\"oracleSmtpPassword\":\"$ORACLE_SMTP_PASSWORD\"}" \
             "$WORKER_URL/api/mta-route-repair")
           echo "$RESPONSE"
 
@@ -76,13 +70,13 @@ jobs:
 
           # Verify the repair succeeded
           OK=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('ok','')).lower())")
-          TRANSPORT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('audit',{}).get('verification',{}).get('oracle_branch_active','')).lower())")
+          CLEAN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('audit',{}).get('verification',{}).get('confirmed_clean','')).lower())")
 
-          echo "repair_ok=$OK"            >> "$GITHUB_OUTPUT"
-          echo "oracle_transport=$TRANSPORT" >> "$GITHUB_OUTPUT"
+          echo "repair_ok=$OK"      >> "$GITHUB_OUTPUT"
+          echo "confirmed_clean=$CLEAN" >> "$GITHUB_OUTPUT"
 
           if [ "$OK" != "true" ]; then
-            echo "REPAIR FAILED — ok=$OK oracle_transport=$TRANSPORT"
+            echo "REPAIR FAILED — ok=$OK confirmed_clean=$CLEAN"
             exit 1
           fi
           echo 'MTA_ROUTE_REPAIR_SUCCEEDED'
@@ -101,6 +95,7 @@ jobs:
         if: steps.repair.outputs.repair_ok == 'true'
         shell: bash
         run: |
-          echo "Repair confirmed: romylabs.com → Oracle Email Delivery transport active."
+          echo "Repair confirmed: stale romylabs.com → mx branch removed."
+          echo "romylabs.com outbound now falls through to the existing default relay."
           echo "Stalwart will retry queued messages on next retry cycle."
           echo "Next step: send a test email from info@romylabs.com and verify Gmail delivery + SPF/DKIM/DMARC."
