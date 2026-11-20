@@ -294,3 +294,9 @@ verify_jwt = false
 # No unauthenticated caller may read client records or the OTP database.
 [functions.portal-email-login]
 verify_jwt = false
+
+# One-shot Stalwart MTA route repair: removes the romylabs.com → Mx override that
+# blocks outbound email on OCI (port 25 blocked). Authenticates via X-Repair-Secret
+# header; never called by browsers or the application layer.
+[functions.stalwart-route-repair]
+verify_jwt = false
