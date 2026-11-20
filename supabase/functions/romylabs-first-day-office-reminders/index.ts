@@ -20,6 +20,7 @@ const monthInfo=(value:Date)=>{
 }
 const PRODUCT_BRANDS:Record<string,string> = {
   taxres_crm:'TaxRes CRM', romylabs:'RomyLabs', arcvena:'Arcvena',
+  settlelift:'SettleLift',barbers_salons:'ChairStyle',health_insurance:'Health Insurance Agency CRM',phl_land_care:'PHL Land Care CRM',
   camvella:'Camvella', bocasync:'BocaSync', restore_relay:'Restore Relay',
   pool_crm:'PoolVerge', oculivo:'Oculivo', groundivo:'GroundIVO',
   barbers_salons:'Barbers & Salons CRM', health_insurance:'Health Insurance CRM',
@@ -55,6 +56,8 @@ const BRAND_DEFAULTS:Record<string,{website:string;accent:string}>={
   oculivo:{website:'https://oculivo.com',accent:'#7C3AED'},
   groundivo:{website:'https://groundivo.com',accent:'#16A34A'},
   pool_crm:{website:'https://poolverge.com',accent:'#14B8A6'},
+  settlelift:{website:'https://settlelift.com/',accent:'#C6FF00'},
+  barbers_salons:{website:'https://chairstyle.net/',accent:'#EC4899'},
 }
 type BrandDetails={productKey:string;name:string;logoUrl:string;website:string;accent:string}
 const safeHttps=(value:unknown)=>{
@@ -80,6 +83,7 @@ const renderBrandedPaymentReminder=(brand:BrandDetails,accountName:string,monthL
   const name=escapeHtml(brand.name)
   const office=escapeHtml(accountName)
   const month=escapeHtml(monthLabel)
+  const industry=escapeHtml(INDUSTRY_DESCRIPTORS[brand.productKey]||'business software')
   const website=escapeHtml(brand.website)
   const EMAIL_LOGO_CID=emailLogoCid(brand.productKey)
   const logo='cid:'+EMAIL_LOGO_CID
@@ -272,6 +276,21 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
 }
 
 
+const INDUSTRY_DESCRIPTORS:Record<string,string>={
+  taxres_crm:'tax practice and resolution case management',
+  restore_relay:'contractor operations and job management',
+  pool_crm:'pool service scheduling and route operations',
+  bocasync:'dental practice management',
+  arcvena:'field-service and trade business management',
+  camvella:'HOA and community management',
+  oculivo:'eye-care practice management',
+  groundivo:'grounds and outdoor-service management',
+  barbers_salons:'salon and barbershop management',
+  settlelift:'debt-settlement client management',
+  health_insurance:'health insurance agency management',
+  phl_land_care:'land care business management',
+  romylabs:'software and business operations'
+}
 const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount:number,isAuto:boolean,nextBillDay:number,year:number,isChris:boolean)=>{
   const name=escapeHtml(brand.name)
   const company=escapeHtml(office)
@@ -306,7 +325,8 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     '<div style="background:#d8eaff;padding:18px;border-radius:9px">'+
     '<div style="font-size:12px;font-weight:bold;color:#0d488d">'+(isAuto?'UPCOMING AUTOMATIC PAYMENT':'MONTHLY SUBSCRIPTION')+'</div>'+
     '<div style="font-size:28px;font-weight:800;color:#101c32 !important">'+dollars(amount)+'</div>'+
-    '<div style="font-size:12px;color:#50617a">'+month+' · '+name+'</div></div>'+
+    '<div style="font-size:12px;color:#50617a">'+month+' · '+name+'</div>'+ 
+    '<div style="font-size:12px;color:#50617a;margin-top:5px">For your '+industry+' team</div></div>'+
     (chrisZelle
       ?'<div style="margin:18px 0;padding:16px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc">'+
         '<div style="font-size:14px;font-weight:800;color:#101c32">Your usual payment method</div>'+
@@ -348,7 +368,17 @@ Deno.serve(async(req:Request)=>{
     // Product identity comes from this account; special terms belong to the precise account, not the whole CRM.
     const isChris=a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'&&a.product_key==='taxres_crm'
     const isRafael=a.id==='339710c8-4739-450f-bac8-540a3a325cec'&&a.product_key==='restore_relay'
-    const isAuto=isRafael
+    // Never call a new office 'automatic' merely because it shares Restore Relay.
+    // A separately hosted Stripe subscription is considered automatic only when
+    // the SaaS ledger has a confirmed Stripe invoice for this exact account.
+    let stripeManaged=false
+    if(!isRafael && a.auto_invoice===false){
+      const {data:priorStripe,error:stripeError}=await db.from('romylabs_invoices')
+        .select('id').eq('account_id',a.id).eq('provider','stripe').limit(1)
+      if(stripeError){outcomes.push({account_id:a.id,result:'stripe_subscription_check_failed'});continue}
+      stripeManaged=Boolean(priorStripe?.length)
+    }
+    const isAuto=isRafael||stripeManaged
     const email=String(a.billing_email||'').trim()
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
        Number(a.monthly_amount_cents)<=0){outcomes.push({account_id:a.id,result:'invalid_recipient_or_amount'});continue}
@@ -400,7 +430,7 @@ Deno.serve(async(req:Request)=>{
     if(!brand){
       await db.from('romylabs_first_day_office_reminders')
         .update({status:'pending',last_error:'branded sender assets unavailable'}).eq('id',claim.id)
-      outcomes.push({account_id:a.id,result:'brand_unavailable'});continue
+      outcomes.push({account_id:a.id,result:'brand_or_verified_sender_unavailable',product_key:a.product_key});continue
     }
     const subject=brand.name+' '+(isAuto?'upcoming automatic payment notice':isChris?'friendly monthly reminder':'payment reminder')+' — '+monthLabel
     const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year,isChris)
