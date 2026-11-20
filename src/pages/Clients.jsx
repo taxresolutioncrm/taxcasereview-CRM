@@ -1438,7 +1438,7 @@ export default function Clients() {
   const { id: urlId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const openedFromCases = searchParams.get('from') === 'cases'
-  const { user, searchQ, setSearchQ, myTenantId } = useApp()
+  const { user, searchQ, setSearchQ, myTenantId, can } = useApp()
 
   // Cache office communications settings at load time
   const settingsRef = useRef(null)
@@ -1495,6 +1495,9 @@ export default function Clients() {
   const [toast,     setToast]     = useState('')
   const [detail,    setDetail]    = useState(null)
   const [showFlow,  setShowFlow]  = useState(false)
+  const [staffNoteEditor, setStaffNoteEditor] = useState(null)
+  const [staffNoteSaving, setStaffNoteSaving] = useState(false)
+  const staffNoteSavingRef = useRef(false)
   // Addendum + 2nd Trade combined modal
   const [addModal,    setAddModal]    = useState(false)
   const [addModalTab, setAddModalTab] = useState('addendum') // 'addendum' | 'charge'
@@ -1985,6 +1988,62 @@ export default function Clients() {
     if (allClients) setClients(allClients)
     const newest = allClients?.find(c => c.name === form.name)
     if (newest) { setDetail(newest); loadRelated(newest.name); navigate('/clients/' + newest.id, { replace: false }) }
+  }
+
+  function openStaffNoteEditor(client) {
+    if (!can('edit', 'clients') || !myTenantId || !client?.id) return
+    const original = client.internal_note ?? null
+    setStaffNoteEditor({ clientId: client.id, clientName: client.name, original, draft: original || '' })
+  }
+
+  function closeStaffNoteEditor() {
+    if (staffNoteSavingRef.current) return
+    if (staffNoteEditor && staffNoteEditor.draft !== (staffNoteEditor.original || '') &&
+        !window.confirm('Discard changes to this staff note?')) return
+    setStaffNoteEditor(null)
+  }
+
+  async function saveStaffNote() {
+    const editor = staffNoteEditor
+    if (!editor || staffNoteSavingRef.current || !can('edit', 'clients') ||
+        !myTenantId || detail?.id !== editor.clientId) return
+    if (editor.draft === (editor.original || '')) {
+      setStaffNoteEditor(null)
+      return
+    }
+    staffNoteSavingRef.current = true
+    setStaffNoteSaving(true)
+    try {
+      // Existing RLS enforces office membership, client scope, and perm_clients >= 2.
+      // Check the previous value so concurrent edits cannot silently overwrite each other.
+      let query = supabase.from('clients')
+        .update({ internal_note: editor.draft || null })
+        .eq('tenant_id', myTenantId)
+        .eq('id', editor.clientId)
+      query = editor.original === null
+        ? query.is('internal_note', null)
+        : query.eq('internal_note', editor.original)
+      const { data, error } = await query.select('id,internal_note').maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error('This note changed or your access was updated. Close and reopen the client to review the latest note.')
+      setDetail(prev => prev?.id === editor.clientId ? { ...prev, internal_note: data.internal_note } : prev)
+      setClients(prev => prev.map(client => client.id === editor.clientId
+        ? { ...client, internal_note: data.internal_note } : client))
+      setStaffNoteEditor(null)
+      showToast('✅ Staff note saved')
+      logActivity(supabase, {
+        employeeName: resolveActorName(user, employees),
+        employeeEmail: user?.email,
+        action: 'staff_note_updated', category: 'client',
+        description: 'Updated internal staff note',
+        entityId: editor.clientId, entityName: editor.clientName,
+      }).catch(error => console.error('[StaffNote] Activity log failed:', error))
+    } catch (error) {
+      showToast('Staff note not saved: ' + (error?.message || 'Unknown error'))
+    } finally {
+      staffNoteSavingRef.current = false
+      setStaffNoteSaving(false)
+    }
   }
 
   async function saveEdit() {
@@ -2772,11 +2831,20 @@ export default function Clients() {
                 </div>
               </div>
             </div>
-            {c.internal_note && (
-              <div style={{maxWidth:280,background:'rgba(245,158,11,.12)',border:'1.5px solid #f59e0b',borderRadius:8,padding:'8px 12px',fontSize:11,lineHeight:1.5}}>
-                <div style={{fontWeight:700,color:'#f59e0b',marginBottom:3,display:'flex',alignItems:'center',gap:4}}>📌 Staff Note</div>
-                <div style={{color:'var(--tx)'}}>{c.internal_note}</div>
-              </div>
+            {(c.internal_note || can('edit', 'clients')) && (
+              can('edit', 'clients') ? (
+                <button type="button" aria-label={c.internal_note ? 'Edit staff note' : 'Add staff note'}
+                  onClick={() => openStaffNoteEditor(c)}
+                  style={{display:'block',width:'100%',maxWidth:280,textAlign:'left',cursor:'pointer',fontFamily:'inherit',background:'rgba(245,158,11,.12)',border:'1.5px solid #f59e0b',borderRadius:8,padding:'8px 12px',fontSize:11,lineHeight:1.5}}>
+                  <span style={{fontWeight:700,color:'#f59e0b',marginBottom:3,display:'flex',alignItems:'center',gap:4}}>📌 Staff Note</span>
+                  <span style={{color:'var(--tx)',display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical',overflow:'hidden',overflowWrap:'anywhere',whiteSpace:'pre-wrap'}}>{c.internal_note || 'Add a staff note'}</span>
+                </button>
+              ) : (
+                <div style={{maxWidth:280,background:'rgba(245,158,11,.12)',border:'1.5px solid #f59e0b',borderRadius:8,padding:'8px 12px',fontSize:11,lineHeight:1.5}}>
+                  <div style={{fontWeight:700,color:'#f59e0b',marginBottom:3,display:'flex',alignItems:'center',gap:4}}>📌 Staff Note</div>
+                  <div style={{color:'var(--tx)',overflowWrap:'anywhere',whiteSpace:'pre-wrap'}}>{c.internal_note}</div>
+                </div>
+              )
             )}
           </div>
 
@@ -3773,6 +3841,39 @@ export default function Clients() {
 
           </div>
         </div>
+        )}
+
+        {staffNoteEditor && staffNoteEditor.clientId === c.id && (
+          <div className="modal-bg open" onMouseDown={event => {
+            if (event.target === event.currentTarget) closeStaffNoteEditor()
+          }}>
+            <div className="modal" role="dialog" aria-modal="true" aria-labelledby="staff-note-title"
+              onKeyDown={event => {
+                if (event.key === 'Escape') { event.stopPropagation(); closeStaffNoteEditor() }
+              }} style={{width:'min(480px,calc(100vw - 32px))'}}>
+              <div className="mh">
+                <span className="mt" id="staff-note-title">📌 Staff Note — {c.name}</span>
+                <button className="xbtn" type="button" aria-label="Close staff note editor"
+                  onClick={closeStaffNoteEditor} disabled={staffNoteSaving}>&times;</button>
+              </div>
+              <div className="field">
+                <label htmlFor="staff-note-body">Internal staff only</label>
+                <textarea id="staff-note-body" autoFocus rows={8} value={staffNoteEditor.draft}
+                  onChange={event => setStaffNoteEditor(prev =>
+                    prev ? {...prev, draft:event.target.value} : prev)}
+                  placeholder="Add an internal staff note…"
+                  disabled={staffNoteSaving} style={{width:'100%',resize:'vertical',minHeight:160,maxHeight:'55vh'}}/>
+                <div style={{fontSize:11,color:'var(--t3)',marginTop:6}}>Visible to authorized staff, not clients.</div>
+              </div>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                <button type="button" className="btn sec" onClick={closeStaffNoteEditor} disabled={staffNoteSaving}>Cancel</button>
+                <button type="button" className="btn pri" onClick={saveStaffNote}
+                  disabled={staffNoteSaving || staffNoteEditor.draft === (staffNoteEditor.original || '')}>
+                  {staffNoteSaving ? 'Saving…' : 'Save Note'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {editModal&&<ClientFormModal form={form} fld={fld} reps={reps} officeOptions={officeOptions} saving={saving} onSave={saveEdit} onClose={()=>setEditModal(false)} title="Edit Client"/>}
