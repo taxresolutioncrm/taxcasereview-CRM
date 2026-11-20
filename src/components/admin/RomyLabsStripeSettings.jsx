@@ -79,7 +79,7 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
       const data=await invoke({action:'restore_relay_six_month_link'})
       setRestoreLink(data.link_url)
       try{await navigator.clipboard.writeText(data.link_url)
-        setMessage('Verified Restore Relay $399/month six-payment checkout link copied. The signed Stripe webhook schedules cancellation after the sixth monthly billing period.')
+        setMessage('Restore Relay six-payment link copied. New-office checkout uses ACH-only pricing; the signed webhook schedules cancellation after the sixth monthly billing period.')
       }catch(_){setMessage('Restore Relay checkout link is ready below. Copy it into the six-month e-sign agreement.')}
     }catch(e){setError(String(e?.message||e))}
     finally{setBusy(false)}
@@ -149,14 +149,14 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     <div style={{marginTop:16,borderTop:'1px solid rgba(139,92,246,.15)',paddingTop:14}}>
       <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:7}}>Restore Relay · six-month office subscription</div>
       <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 11px',lineHeight:1.6}}>
-        Calico GC LLC · $399 per month · six monthly billing periods. The first payment is collected at checkout;
+        Calico GC LLC · $399 per month · six monthly billing periods. ACH payments may take several business days to settle;
         the signed webhook automatically schedules cancellation after period six.
-        Do not send a separate one-time payment link.
+        Do not send a separate one-time payment link. New offices use ACH-only links until compliant credit-card fees are available.
       </p>
       <button type="button" onClick={createRestoreRelayLink}
         disabled={!ready||info?.mode!=='live'||busy}
         style={{...btn,opacity:ready&&info?.mode==='live'&&!busy?1:.45}}>
-        {busy?'Creating and verifying…':'Create / Copy six-payment link'}
+        {busy?'Creating and verifying…':'Create / Copy ACH subscription link'}
       </button>
       {restoreLink&&<div style={{display:'flex',gap:7,alignItems:'center',marginTop:10,flexWrap:'wrap'}}>
         <input readOnly aria-label="Restore Relay six-month payment link"
