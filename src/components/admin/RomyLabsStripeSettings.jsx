@@ -167,10 +167,11 @@ export default function RomyLabsStripeSettings({invoices=[],onRefresh}){
     <div style={{marginTop:16,borderTop:'1px solid rgba(139,92,246,.15)',paddingTop:14}}>
       <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:9}}>Collect an outstanding RomyLabs invoice</div>
       <p style={{fontSize:12,color:'#94a3b8',lineHeight:1.55,margin:'0 0 12px'}}>
-        <strong style={{color:'#c7d2fe'}}>Office payment policy:</strong> ACH pays the invoice amount with no RomyLabs card surcharge.
-        Credit-card processing fees are the office's responsibility where permitted, but card checkout is
-        not enabled here until credit/debit identification, fee disclosures and network requirements are verified.
-        Debit and prepaid cards must never receive a credit-card surcharge.
+        <strong style={{color:'#c7d2fe'}}>Payment options &amp; processing fees:</strong>{' '}
+        <strong>ACH / Bank Transfer</strong> — no additional card-processing fee.{' '}
+        <strong>Credit Card</strong> — a processing fee may apply where permitted, disclosed before payment.
+        Debit and prepaid cards are not subject to a credit-card surcharge.
+        Card checkout remains unavailable until funding-type and surcharge compliance checks are complete.
       </p>
       {!ready?<p style={{fontSize:12,color:'#94a3b8',margin:'0'}}>Checkout links unlock only after the merchant key and signature-verified webhook are configured. No live charges can be created from this screen yet.</p>
         :!invoices.some(i=>i.status==='open')?<p style={{fontSize:12,color:'#94a3b8',margin:0}}>No open invoices available for payment links.</p>
