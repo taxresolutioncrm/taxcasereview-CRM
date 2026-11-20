@@ -1,0 +1,111 @@
+import React,{useEffect,useMemo,useState} from 'react'
+import {supabase} from '../../lib/supabase'
+
+const shell={border:'1px solid rgba(129,140,248,.2)',borderRadius:12,background:'rgba(255,255,255,.025)',padding:16,marginBottom:18}
+const field={width:'100%',boxSizing:'border-box',padding:'9px 11px',borderRadius:8,background:'#100f1d',border:'1px solid rgba(129,140,248,.3)',color:'#e2e8f0',fontSize:12}
+const button={borderRadius:8,border:'1px solid rgba(129,140,248,.34)',background:'rgba(99,102,241,.15)',color:'#c7d2fe',padding:'8px 13px',fontWeight:800,cursor:'pointer',fontSize:12}
+const fields=[['subject_override','Subject line (without company name or month)',180],['opening_text','Additional opening paragraph',1200],['additional_text','Extra details, instructions or announcement',2400],['closing_text','Closing message',900]]
+const blank=()=>({subject_override:'',opening_text:'',additional_text:'',closing_text:''})
+export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]}){
+  const [product,setProduct]=useState('taxres_crm')
+  const [office,setOffice]=useState('')
+  const [all,setAll]=useState([])
+  const [draft,setDraft]=useState(blank)
+  const [busy,setBusy]=useState(false)
+  const [error,setError]=useState('')
+  const [notice,setNotice]=useState('')
+  const [preview,setPreview]=useState(false)
+  const [loaded,setLoaded]=useState(false)
+  const productName=products.find(([id])=>id===product)?.[1]||product
+  const officeChoices=useMemo(()=>accounts.filter(a=>a.product_key===product),[accounts,product])
+  const selectedAccount=officeChoices.find(a=>a.id===office)
+  const scopeKey=office?'office:'+office:'product:'+product
+  const productRow=all.find(r=>r.scope_key==='product:'+product)
+  const exact=all.find(r=>r.scope_key===scopeKey)
+  const current=useMemo(()=>Object.fromEntries(fields.map(([name])=>[name,exact?.[name]||''])),[exact,scopeKey])
+  const read=async()=>{
+    setBusy(true);setError('');setNotice('')
+    const {data,error:e}=await supabase.from('romylabs_monthly_reminder_content')
+      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,updated_at')
+    if(e){setError('Could not load reminder settings: '+e.message);setLoaded(false)}
+    else {setAll(data||[]);setLoaded(true)}
+    setBusy(false)
+  }
+  useEffect(()=>{void read()},[])
+  useEffect(()=>{setDraft(current);setPreview(false)},[current])
+  useEffect(()=>{if(office&&!officeChoices.some(a=>a.id===office))setOffice('')},[office,officeChoices])
+  const save=async()=>{
+    if(busy||!loaded)return
+    if(fields.some(([name,,max])=>draft[name].length>max)){setError('A text field is too long.');return}
+    setBusy(true);setError('');setNotice('')
+    const {error:e}=await supabase.from('romylabs_monthly_reminder_content').upsert({
+      scope_key:scopeKey,product_key:product,account_id:office||null,...draft
+    },{onConflict:'scope_key'})
+    if(e){setError('Could not save: '+e.message);setBusy(false);return}
+    const {data,error:reloadError}=await supabase.from('romylabs_monthly_reminder_content')
+      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,updated_at')
+    if(reloadError){setError('Saved, but refresh failed: '+reloadError.message)}
+    else {setAll(data||[]);setNotice('Reminder changes saved for '+(selectedAccount?.account_name||productName)+'. Future monthly emails use these settings.')}
+    setBusy(false)
+  }
+  const reset=async()=>{
+    if(busy||!loaded)return
+    if(!window.confirm('Remove the custom reminder text for '+(selectedAccount?.account_name||productName)+'? The standard template will be used.'))return
+    setBusy(true);setError('');setNotice('')
+    const {error:e}=await supabase.from('romylabs_monthly_reminder_content').delete().eq('scope_key',scopeKey)
+    if(e)setError('Could not reset: '+e.message)
+    else {setAll(rows=>rows.filter(r=>r.scope_key!==scopeKey));setNotice('Custom content removed. Default content is restored.')}
+    setBusy(false)
+  }
+  const display=key=>draft[key]||(!office?'':productRow?.[key])||''
+  return <details style={shell}>
+    <summary style={{cursor:'pointer',color:'#c7d2fe',fontSize:13,fontWeight:800}}>Monthly reminders · Edit email text and preview</summary>
+    <div style={{fontSize:12,color:'#94a3b8',lineHeight:1.6,margin:'12px 0 16px'}}>
+      Customize the next first-of-month office reminder without a code deployment. Choose a CRM default or an individual office override.
+      The company sender, logo, subscription amount, Zelle exceptions, autopay notices, and credit/debit processing disclosures are protected.
+      This editor does not send emails or create payment links.
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:12,marginBottom:14}}>
+      <label style={{fontSize:11,color:'#cbd5e1',fontWeight:750}}>CRM / industry
+        <select aria-label="Select reminder CRM" value={product} onChange={e=>{setProduct(e.target.value);setOffice('')}} style={{...field,marginTop:6}}>
+          {products.map(([id,name])=><option key={id} value={id}>{name}</option>)}
+        </select>
+      </label>
+      <label style={{fontSize:11,color:'#cbd5e1',fontWeight:750}}>Apply to
+        <select aria-label="Select reminder office" value={office} onChange={e=>setOffice(e.target.value)} style={{...field,marginTop:6}}>
+          <option value="">All offices in {productName}</option>
+          {officeChoices.map(a=><option key={a.id} value={a.id}>{a.account_name}</option>)}
+        </select>
+      </label>
+    </div>
+    {office&&<div style={{fontSize:11,color:'#94a3b8',marginBottom:12}}>Blank office-specific fields inherit the CRM defaults. Company-level identity and mandatory payment details cannot be overridden.</div>}
+    {fields.map(([name,label,max])=><label key={name} style={{display:'block',fontSize:12,fontWeight:700,color:'#cbd5e1',marginBottom:12}}>
+      <span>{label}</span>
+      {name==='subject_override'
+        ?<input aria-label={label} value={draft[name]} maxLength={max} onChange={e=>setDraft(d=>({...d,[name]:e.target.value}))} placeholder={office?productRow?.[name]||'Use standard subject':'Use standard subject'} style={{...field,marginTop:6}}/>
+        :<textarea aria-label={label} value={draft[name]} maxLength={max} rows={name==='additional_text'?5:3} onChange={e=>setDraft(d=>({...d,[name]:e.target.value}))} placeholder={office?productRow?.[name]||'Use standard message':'Optional custom text'} style={{...field,marginTop:6,resize:'vertical'}}/>}
+      <span style={{display:'block',textAlign:'right',fontSize:10,color:'#64748b'}}>{draft[name].length}/{max}</span>
+    </label>)}
+    {error&&<div role="alert" style={{color:'#fca5a5',fontSize:12,marginBottom:12}}>{error}</div>}
+    {notice&&<div role="status" style={{color:'#86efac',fontSize:12,marginBottom:12}}>{notice}</div>}
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+      <button type="button" onClick={save} disabled={busy||!loaded} style={{...button,opacity:busy||!loaded?0.5:1}}>Save reminder</button>
+      <button type="button" onClick={()=>setPreview(x=>!x)} style={button}>{preview?'Hide preview':'Preview message'}</button>
+      <button type="button" onClick={reset} disabled={busy||!loaded||!exact} style={{...button,opacity:busy||!loaded||!exact?0.5:1}}>Restore defaults</button>
+      <button type="button" onClick={read} disabled={busy} style={button}>Refresh</button>
+      {exact?.updated_at&&<span style={{fontSize:10,color:'#64748b'}}>Saved {new Date(exact.updated_at).toLocaleString()}</span>}
+    </div>
+    {preview&&<div style={{marginTop:16,padding:20,background:'#f8fafc',borderRadius:12,color:'#1e293b',border:'1px solid #cbd5e1',fontSize:13,lineHeight:1.7}}>
+      <strong style={{fontSize:16}}>{productName} — {display('subject_override')||'Monthly subscription reminder'}</strong>
+      <p>Hello {selectedAccount?.account_name||'[Office name]'},</p>
+      <p>Your {productName} monthly subscription reminder includes the verified account amount and payment status.</p>
+      {display('opening_text')&&<p style={{whiteSpace:'pre-wrap'}}>{display('opening_text')}</p>}
+      <div style={{background:'#d8eaff',padding:12,borderRadius:8}}>Subscription balance: <strong>{selectedAccount?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(selectedAccount.monthly_amount_cents||0)/100):'[Actual office amount]'}</strong></div>
+      <p>The standard, protected company-specific payment method and processing-fee section appears here in the actual message.</p>
+      {display('additional_text')&&<p style={{whiteSpace:'pre-wrap'}}>{display('additional_text')}</p>}
+      {display('closing_text')&&<p style={{whiteSpace:'pre-wrap'}}>{display('closing_text')}</p>}
+      <strong>{productName} Billing Team</strong>
+      <p style={{fontSize:11,color:'#64748b'}}>Content preview only — not a sent email. Branding and legally required disclosures are rendered by the live mail template.</p>
+    </div>}
+  </details>
+}
