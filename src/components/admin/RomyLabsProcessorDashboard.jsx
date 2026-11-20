@@ -2,10 +2,10 @@ import React,{useEffect,useMemo,useState} from 'react'
 import {supabase} from '../../lib/supabase'
 const usd=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(c||0)/100)
 const day=seconds=>seconds?new Date(Number(seconds)*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'
-const surface={border:'1px solid rgba(129,140,248,.17)',borderRadius:12,background:'rgba(255,255,255,.022)',overflow:'hidden'}
-const tableCell={textAlign:'left',padding:'11px 13px',fontSize:12,color:'#cbd5e1',borderBottom:'1px solid rgba(129,140,248,.09)',whiteSpace:'nowrap'}
-const headers={...tableCell,fontSize:10,color:'#94a3b8',fontWeight:800,textTransform:'uppercase'}
-const b={borderRadius:8,padding:'8px 12px',border:'1px solid rgba(129,140,248,.28)',color:'#c7d2fe',background:'rgba(99,102,241,.10)',fontSize:12,fontWeight:750,cursor:'pointer'}
+const surface={border:'1px solid rgba(129,140,248,.2)',borderRadius:12,background:'rgba(255,255,255,.025)',overflow:'hidden'}
+const tableCell={textAlign:'left',padding:'12px 15px',fontSize:12,color:'#cbd5e1',borderBottom:'1px solid rgba(129,140,248,.1)',whiteSpace:'nowrap'}
+const headers={...tableCell,fontSize:10,color:'#94a3b8',fontWeight:800,textTransform:'uppercase',letterSpacing:'.045em',background:'rgba(99,102,241,.045)'}
+const b={borderRadius:8,padding:'8px 12px',border:'1px solid rgba(129,140,248,.28)',color:'#c7d2fe',background:'rgba(99,102,241,.10)',fontSize:12,fontWeight:750,cursor:'pointer',transition:'background .15s ease,border-color .15s ease'}
 const views=[['payments','Transactions'],['subscriptions','Subscriptions'],['invoices','Stripe invoices'],['payouts','Payouts'],['balance_transactions','Fees & net'],['refunds','Refunds'],['disputes','Disputes']]
 const viewHeaders={
   payments:['Date','Payment','Description','Amount','Status'],
@@ -77,26 +77,26 @@ export default function RomyLabsProcessorDashboard({onRefresh}){
       </div>)}
     </div>
     <div style={{...surface}}>
-      <div style={{display:'flex',alignItems:'center',gap:7,padding:12,flexWrap:'wrap',borderBottom:'1px solid rgba(129,140,248,.13)'}}>
-        {views.map(([id,label])=><button key={id} type="button" onClick={()=>{setView(id);setSearch('')}} style={{
-          ...b,background:view===id?'rgba(99,102,241,.27)':'transparent',borderColor:view===id?'rgba(165,180,252,.5)':'transparent',
-          color:view===id?'#f8fafc':'#94a3b8'
+      <div role="tablist" aria-label="Stripe finance categories" style={{display:'flex',alignItems:'center',gap:6,padding:'11px 12px',flexWrap:'wrap',borderBottom:'1px solid rgba(129,140,248,.13)',background:'rgba(99,102,241,.025)'}}>
+        {views.map(([id,label])=><button key={id} type="button" role="tab" aria-selected={view===id} onClick={()=>{setView(id);setSearch('')}} style={{
+          ...b,padding:'8px 13px',fontWeight:view===id?800:650,background:view===id?'rgba(99,102,241,.24)':'transparent',borderColor:view===id?'rgba(165,180,252,.56)':'transparent',
+          color:view===id?'#f8fafc':'#a6b1c4'
         }}>{label}{snapshot?.data?.[id==='payments'?'payment_intents':id]?.rows?.length!=null?' ('+snapshot.data[id==='payments'?'payment_intents':id].rows.length+')':''}</button>)}
       </div>
-      <div style={{padding:'10px 12px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+      <div style={{padding:'13px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={'Search '+view}
           aria-label={'Search Stripe '+view} style={{background:'#100f1d',color:'#f8fafc',border:'1px solid rgba(129,140,248,.23)',
-          padding:'9px 11px',borderRadius:8,fontSize:12,flex:'1 1 250px',maxWidth:420}}/>
+          padding:'10px 12px',borderRadius:9,fontSize:12,flex:'1 1 250px',maxWidth:420}}/>
         <span style={{fontSize:11,color:'#94a3b8'}}>Read-only · No charges or refunds initiated here</span>
       </div>
       {snapshot?.errors?.[view==='payments'?'payment_intents':view]?
-        <div role="status" style={{padding:'18px 15px',color:'#fbbf24',fontSize:12}}>
-          This Stripe section is unavailable: {snapshot.errors[view==='payments'?'payment_intents':view]}.
-          Grant read-only access to this resource in the merchant restricted API key.
+        <div role="status" style={{margin:'1px 14px 15px',padding:'13px 15px',borderRadius:9,background:'rgba(245,158,11,.055)',border:'1px solid rgba(245,158,11,.17)',color:'#fcd34d',fontSize:12,lineHeight:1.6}}>
+          <strong style={{display:'block',fontSize:12,color:'#fde68a',marginBottom:3}}>Stripe access needed</strong>
+          {snapshot.errors[view==='payments'?'payment_intents':view]}. Enable read-only permission for this section in your Stripe restricted key.
         </div>:
         <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:750}}>
           <thead><tr>{viewHeaders[view].map(x=><th key={x} style={headers}>{x}</th>)}</tr></thead>
-          <tbody>{rows.length?rows.map(r=><tr key={r.id}>{renderCells(r).map((c,i)=><td key={i} style={{...tableCell,maxWidth:i===2?280:210,overflow:'hidden',textOverflow:'ellipsis'}} title={typeof c==='string'?c:undefined}>{c}</td>)}</tr>):
+          <tbody>{rows.length?rows.map(r=><tr key={r.id} style={{background:'transparent'}}>{renderCells(r).map((c,i)=><td key={i} style={{...tableCell,maxWidth:i===2?280:210,overflow:'hidden',textOverflow:'ellipsis'}} title={typeof c==='string'?c:undefined}>{c}</td>)}</tr>):
             <tr><td colSpan={6} style={{...tableCell,padding:24,textAlign:'center'}}>No {view} found in the retrieved Stripe records.</td></tr>}
           </tbody>
         </table></div>}
