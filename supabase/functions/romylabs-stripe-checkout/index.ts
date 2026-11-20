@@ -149,6 +149,8 @@ serve(async req=>{
         link_id:'plink_1UdYiUFomt0HrzTfBbOjOI4k',
         price_id:priceId,monthly_amount_cents:39900,number_of_payments:6})
     }
+    // New office subscriptions are ACH-only until credit-card surcharge compliance is approved.
+    // Existing Calico checkout is immutable and has already been completed.
     try{
       const price=await stripe(key,'prices/'+priceId)
       if(price?.livemode!==true||price?.active!==true||
@@ -177,6 +179,9 @@ serve(async req=>{
         p?.livemode===true&&p?.metadata?.romylabs_term==='restore_relay_six_payments_v1'&&
         p?.metadata?.office_ref===officeRef&&p?.active===true)
       if(matched){
+        if(!Array.isArray(matched.payment_method_types)||matched.payment_method_types.includes('card')||
+           !matched.payment_method_types.includes('us_bank_account'))
+          return json({error:'Existing office payment link permits card payment without compliant pricing. Cannot reuse it; request billing review.',code:'legacy_card_link_blocked'},409)
         const lineItems=await stripe(key,'payment_links/'+matched.id+'/line_items?limit=20')
         const items=lineItems?.data||[]
         if(items.length!==1||items[0]?.price?.id!==priceId||items[0]?.quantity!==1)
@@ -188,14 +193,14 @@ serve(async req=>{
         'line_items[0][price]':priceId,'line_items[0][quantity]':'1',
         'automatic_tax[enabled]':'true',
         'billing_address_collection':'required',
-        'payment_method_types[0]':'card',
-        'payment_method_types[1]':'us_bank_account',
+        'payment_method_types[0]':'us_bank_account',
         'name_collection[business][enabled]':'true',
         'name_collection[business][optional]':'false',
         'name_collection[individual][enabled]':'true',
         'name_collection[individual][optional]':'false',
         'restrictions[completed_sessions][limit]':'1',
         'metadata[romylabs_term]':'restore_relay_six_payments_v1',
+        'metadata[romylabs_payment_method_policy]':'ach_no_surcharge_v1',
         'metadata[office]':officeName,
         'metadata[office_ref]':officeRef,
         'subscription_data[metadata][romylabs_term]':'restore_relay_six_payments_v1',
@@ -204,7 +209,7 @@ serve(async req=>{
         'subscription_data[description]':'Restore Relay - '+officeName+' - $399/month for six billing periods'
       })
       const link=await stripe(key,'payment_links',params,
-        'romylabs-restore-relay-six-payments-'+officeRef+'-20261119-v1')
+        'romylabs-restore-relay-ach-six-payments-'+officeRef+'-20261120-v1')
       if(!link?.id||!link?.url||!link?.active)return json({error:'Stripe did not return an active payment link'},502)
       const lineItems=await stripe(key,'payment_links/'+link.id+'/line_items?limit=20')
       if(lineItems?.data?.length!==1||lineItems.data[0]?.price?.id!==priceId||
