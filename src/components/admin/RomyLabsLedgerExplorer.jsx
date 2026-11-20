@@ -23,7 +23,7 @@ function downloadCsv(filename,header,rows){
 function Summary({title,value}){return <div style={{padding:'12px 14px',background:'rgba(255,255,255,.035)',border:'1px solid rgba(99,102,241,.16)',borderRadius:10}}><div style={{color:'#94a3b8',fontSize:10,fontWeight:700}}>{title}</div><div style={{fontSize:19,fontWeight:900,color:'#f8fafc',marginTop:5}}>{value}</div></div>}
 function Status({value}){return <span style={{fontWeight:800,color:value==='paid'||value==='succeeded'?'#34d399':value==='open'||value==='pending'?'#fbbf24':value==='failed'||value==='refunded'?'#f87171':'#cbd5e1'}}>{value||'—'}</span>}
 
-export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments=[],events=[]}){
+export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments=[],events=[],transactionsOnly=false}){
   const [tab,setTab]=useState('payments')
   const [search,setSearch]=useState('')
   const [method,setMethod]=useState('all')
@@ -74,7 +74,7 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
         <span>{day(e.created_at)} · {e.detail?.stripe_event_type||e.channel||'billing review'}</span>
       </div>)}</div>
     </details>}
-    <div style={{display:'flex',gap:8,marginBottom:12}}>{[['payments','Payments'],['invoices','Invoices']].map(([value,label])=><button type="button" key={value} onClick={()=>changeTab(value)} style={{...button,background:tab===value?'rgba(99,102,241,.3)':'transparent',borderColor:tab===value?'#818cf8':'rgba(99,102,241,.2)'}}>{label} ({value==='payments'?payments.length:invoices.length})</button>)}</div>
+    {!transactionsOnly&&<div style={{display:'flex',gap:8,marginBottom:12}}>{[['payments','Payments'],['invoices','Invoices']].map(([value,label])=><button type="button" key={value} onClick={()=>changeTab(value)} style={{...button,background:tab===value?'rgba(99,102,241,.3)':'transparent',borderColor:tab===value?'#818cf8':'rgba(99,102,241,.2)'}}>{label} ({value==='payments'?payments.length:invoices.length})</button>)}</div>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:12}}>
       <Summary title="Matching records" value={rows.length.toLocaleString()}/>
       <Summary title={tab==='payments'?'Successful payments':'Paid invoices'} value={settled.length.toLocaleString()}/>
