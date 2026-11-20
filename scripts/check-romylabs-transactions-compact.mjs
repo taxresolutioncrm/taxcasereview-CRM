@@ -8,5 +8,5 @@ assert(processor.includes('aria-expanded={historyOpen}'),'History disclosure mus
 assert(processor.includes('maxHeight:view===\'payments\'&&historyOpen?480'),'Expanded history must be scroll-constrained')
 assert(processor.includes('Show 20 more transactions'),'History must support progressive reveal')
 assert(processor.includes("historyOpen?historyLimit:rows.length"),'Search results must remain accessible when history is collapsed')
-assert(processor.includes('Showing the 50 most recent Stripe records only'),'Do not represent Stripe's capped snapshot as all-time history')
+assert(processor.includes('Showing the 50 most recent Stripe records only'),"Do not represent Stripe's capped snapshot as all-time history")
 console.log('PASS compact RomyLabs Stripe transaction history')
