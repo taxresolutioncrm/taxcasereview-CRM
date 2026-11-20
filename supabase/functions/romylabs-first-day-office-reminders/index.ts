@@ -272,20 +272,28 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
 }
 
 
-const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount:number,isAuto:boolean,nextBillDay:number)=>{
+const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount:number,isAuto:boolean,nextBillDay:number,year:number)=>{
   const name=escapeHtml(brand.name)
   const company=escapeHtml(office)
   const month=escapeHtml(monthLabel)
-  const heading=isAuto?'Upcoming automatic subscription payment':'Monthly subscription payment reminder'
+  const isChris=brand.productKey==='taxres_crm'
+  const chrisZelle= isChris && year<=2026
+  const heading=isAuto?'Upcoming automatic subscription payment':isChris?'Friendly monthly reminder':'Monthly subscription payment reminder'
   const explanation=isAuto
     ?'Your '+name+' office subscription is already scheduled for automatic billing on the '+nextBillDay+
       'th. This is an advance notice only; no new payment link is needed and no additional charge is being requested.'
-    :'Your '+name+' office subscription for '+month+' is due. Please arrange your regular payment method. If you have already paid, reply with your confirmation.'
+    :chrisZelle
+      ?'Just a friendly reminder about your '+month+' '+name+' subscription. You can continue sending your payment through Zelle as usual. If you already sent it, thank you — no further action is needed.'
+      :isChris
+        ?'Just a friendly reminder about your '+month+' '+name+' subscription. Your usual payment arrangement remains available. If you already sent payment, thank you — no action is needed.'
+        :'Your '+name+' office subscription for '+month+' is due. Please arrange your regular payment method. If you have already paid, reply with your confirmation.'
   // Do not imply that an already-running Stripe subscription needs a second payment.
   // A card-fee option is not yet live; only describe it as an advance policy disclosure.
   const paymentNotice=isAuto
     ?'Your existing authorization and subscription schedule remain unchanged. No action or additional payment is required for this notice.'
-    :'If you prefer to pay by credit card, contact our billing team for available options. A permitted credit-card processing fee will be clearly disclosed before any payment is authorized.'
+    :chrisZelle
+      ?'Please continue with Zelle as usual for the remainder of 2026. This is only a courtesy reminder.'
+      :'If you prefer to pay by credit card, contact our billing team for an available approved checkout. Any permitted credit-card processing fee will be clearly disclosed before payment is authorized.'
   return '<!doctype html><html><head><meta charset="utf-8"></head>'+
     '<body style="background:#f0f3f9;margin:0;font-family:Arial,sans-serif;color:#19253b">'+
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:30px 12px">'+
@@ -300,11 +308,16 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     '<div style="font-size:12px;font-weight:bold;color:#0d488d">'+(isAuto?'UPCOMING AUTOMATIC PAYMENT':'MONTHLY SUBSCRIPTION')+'</div>'+
     '<div style="font-size:28px;font-weight:800;color:#101c32 !important">'+dollars(amount)+'</div>'+
     '<div style="font-size:12px;color:#50617a">'+month+' · '+name+'</div></div>'+
-    '<div style="margin:18px 0;padding:16px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc">'+
-    '<div style="font-size:14px;font-weight:800;color:#101c32">Payment options &amp; processing fees</div>'+
+    (chrisZelle
+      ?'<div style="margin:18px 0;padding:16px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc">'+
+        '<div style="font-size:14px;font-weight:800;color:#101c32">Your usual payment method</div>'+
+        '<p style="font-size:13px;line-height:1.6;margin:10px 0 0;color:#243149"><strong>Zelle:</strong> Please use the same payment arrangement as before.</p>'+
+        '</div>'
+      :'<div style="margin:18px 0;padding:16px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc">'+
+        '<div style="font-size:14px;font-weight:800;color:#101c32">Payment options &amp; processing fees</div>'+
     '<p style="font-size:13px;line-height:1.6;margin:10px 0 5px;color:#243149"><strong>ACH / Bank Transfer:</strong> No additional card-processing fee.</p>'+
     '<p style="font-size:13px;line-height:1.6;margin:0;color:#243149"><strong>Credit Card:</strong> A processing fee may apply where permitted. The exact amount must be disclosed before payment. Debit and prepaid cards are not subject to a credit-card surcharge.</p>'+
-    '</div>'+
+    '</div>')+
     '<p style="font-size:14px;line-height:1.6">'+escapeHtml(paymentNotice)+'</p>'+
     '<p style="font-size:14px"><strong>'+name+' Billing Team</strong></p>'+
     '</td></tr><tr><td style="background:#edf0f5;padding:20px;text-align:center">'+
@@ -390,7 +403,7 @@ Deno.serve(async(req:Request)=>{
       outcomes.push({account_id:a.id,result:'brand_unavailable'});continue
     }
     const subject=brand.name+' '+(isAuto?'upcoming automatic payment notice':'payment reminder')+' — '+monthLabel
-    const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19))
+    const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year)
     try{
       const sent=await sendViaStalwart(db,a.product_key,email,subject,html,brand.name,brand.logoUrl)
       await db.from('romylabs_first_day_office_reminders').update({
