@@ -83,8 +83,8 @@ jobs:
           for FN in $FNS; do
             echo "Deploying $FN"
             if [ "$FN" = "linkedin-queue-replenisher" ] || [ "$FN" = "linkedin-scheduler" ] || [ "$FN" = "support-api" ] || [ "$FN" = "stalwart-route-repair" ]; then
-              supabase functions deploy "$FN" --project-ref "$PROJECT_REF" --no-verify-jwt
+              supabase functions deploy "$FN" --project-ref "$PROJECT_REF" --no-verify-jwt --yes
             else
-              supabase functions deploy "$FN" --project-ref "$PROJECT_REF"
+              supabase functions deploy "$FN" --project-ref "$PROJECT_REF" --yes
             fi
           done
