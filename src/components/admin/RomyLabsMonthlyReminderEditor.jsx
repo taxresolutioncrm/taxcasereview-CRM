@@ -89,9 +89,9 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
     {error&&<div role="alert" style={{color:'#fca5a5',fontSize:12,marginBottom:12}}>{error}</div>}
     {notice&&<div role="status" style={{color:'#86efac',fontSize:12,marginBottom:12}}>{notice}</div>}
     <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-      <button type="button" onClick={save} disabled={busy||!loaded} style={{...button,opacity:busy||!loaded?.5:1}}>Save reminder</button>
+      <button type="button" onClick={save} disabled={busy||!loaded} style={{...button,opacity:busy||!loaded?0.5:1}}>Save reminder</button>
       <button type="button" onClick={()=>setPreview(x=>!x)} style={button}>{preview?'Hide preview':'Preview message'}</button>
-      <button type="button" onClick={reset} disabled={busy||!loaded||!exact} style={{...button,opacity:busy||!loaded||!exact?.5:1}}>Restore defaults</button>
+      <button type="button" onClick={reset} disabled={busy||!loaded||!exact} style={{...button,opacity:busy||!loaded||!exact?0.5:1}}>Restore defaults</button>
       <button type="button" onClick={read} disabled={busy} style={button}>Refresh</button>
       {exact?.updated_at&&<span style={{fontSize:10,color:'#64748b'}}>Saved {new Date(exact.updated_at).toLocaleString()}</span>}
     </div>
