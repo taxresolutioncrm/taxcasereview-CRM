@@ -272,11 +272,10 @@ async function sendViaStalwart(db:any,productKey:string,recipient:string,subject
 }
 
 
-const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount:number,isAuto:boolean,nextBillDay:number,year:number)=>{
+const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount:number,isAuto:boolean,nextBillDay:number,year:number,isChris:boolean)=>{
   const name=escapeHtml(brand.name)
   const company=escapeHtml(office)
   const month=escapeHtml(monthLabel)
-  const isChris=brand.productKey==='taxres_crm'
   const chrisZelle= isChris && year<=2026
   const heading=isAuto?'Upcoming automatic subscription payment':isChris?'Friendly monthly reminder':'Monthly subscription payment reminder'
   const explanation=isAuto
@@ -342,13 +341,14 @@ Deno.serve(async(req:Request)=>{
   // Only the explicitly approved accounts; never email other offices without a request.
   const {data:accounts,error:accountError}=await db.from('romylabs_billing_accounts')
     .select('id,account_name,billing_email,monthly_amount_cents,billing_day,auto_invoice,product_key,status')
-    .in('product_key',['taxres_crm','restore_relay']).in('status',['active','past_due'])
+    .in('status',['active','past_due'])
   if(accountError)return json({error:'Billing account query unavailable'},503)
   const outcomes:Array<Record<string,unknown>>=[]
   for(const a of accounts||[]){
-    if(!((a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'&&a.product_key==='taxres_crm')||
-         (a.id==='339710c8-4739-450f-bac8-540a3a325cec'&&a.product_key==='restore_relay')))continue
-    const isAuto=a.product_key==='restore_relay'
+    // Product identity comes from this account; special terms belong to the precise account, not the whole CRM.
+    const isChris=a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'&&a.product_key==='taxres_crm'
+    const isRafael=a.id==='339710c8-4739-450f-bac8-540a3a325cec'&&a.product_key==='restore_relay'
+    const isAuto=isRafael
     const email=String(a.billing_email||'').trim()
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
        Number(a.monthly_amount_cents)<=0){outcomes.push({account_id:a.id,result:'invalid_recipient_or_amount'});continue}
@@ -402,8 +402,8 @@ Deno.serve(async(req:Request)=>{
         .update({status:'pending',last_error:'branded sender assets unavailable'}).eq('id',claim.id)
       outcomes.push({account_id:a.id,result:'brand_unavailable'});continue
     }
-    const subject=brand.name+' '+(isAuto?'upcoming automatic payment notice':'payment reminder')+' — '+monthLabel
-    const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year)
+    const subject=brand.name+' '+(isAuto?'upcoming automatic payment notice':isChris?'friendly monthly reminder':'payment reminder')+' — '+monthLabel
+    const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year,isChris)
     try{
       const sent=await sendViaStalwart(db,a.product_key,email,subject,html,brand.name,brand.logoUrl)
       await db.from('romylabs_first_day_office_reminders').update({
