@@ -32,7 +32,7 @@ for(const [snippet,reason] of [
   ["isChris?'Friendly monthly reminder'",'Chris gets a courtesy reminder instead of a demand'],
   ["Please use the same payment arrangement as before.",'Chris retains existing Zelle payment arrangement'],
   ["This is only a courtesy reminder.",'Chris notice must be friendly'],
-  ["firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year)",'January 2027 change determined by local billing year'],
+  ["firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year,isChris)",'January 2027 change determined by local billing year'],
   ["Payment options &amp; processing fees",'Branded payment options box required'],
   ["ACH / Bank Transfer:", 'ACH must be clearly identified'],
   ["No additional card-processing fee.", 'Fee-free ACH must be disclosed'],
