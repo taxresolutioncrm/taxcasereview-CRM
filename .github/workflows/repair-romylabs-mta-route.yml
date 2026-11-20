@@ -16,7 +16,7 @@ name: Repair RomyLabs MTA Route (romylabs.com outbound)
 # Architecture:
 #   GitHub Actions → CF Worker (stalwart-api.romylabs.com) → Stalwart JMAP management
 #   The Worker authenticates with STALWART_API_TOKEN (CF encrypted secret) to call
-#   x:MtaTransport/set and x:MtaOutboundStrategy/set on mail.taxrescrm.net.
+#   x:MtaRoute/set (Relay) and x:MtaOutboundStrategy/set on mail.taxrescrm.net.
 #
 # AGENTS.md: GitHub Actions are manual QA / emergency fallback only.
 # This is that emergency fallback — do not add push/schedule triggers.
@@ -76,7 +76,7 @@ jobs:
 
           # Verify the repair succeeded
           OK=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('ok','')).lower())")
-          TRANSPORT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('audit',{}).get('verification',{}).get('oracle_transport_active','')).lower())")
+          TRANSPORT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('audit',{}).get('verification',{}).get('oracle_branch_active','')).lower())")
 
           echo "repair_ok=$OK"            >> "$GITHUB_OUTPUT"
           echo "oracle_transport=$TRANSPORT" >> "$GITHUB_OUTPUT"
