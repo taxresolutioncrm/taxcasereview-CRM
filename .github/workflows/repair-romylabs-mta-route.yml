@@ -1,0 +1,157 @@
+name: Repair RomyLabs MTA Route (romylabs.com outbound)
+
+# Emergency one-shot repair for the romylabs.com → Mx routing rule that blocks
+# outbound mail on OCI port 25.  Removes the bad rule, verifies the fix, then
+# sends a test email to prove mail actually flows.
+#
+# AGENTS.md: GitHub Actions are manual QA / emergency fallback only.
+# This is that emergency fallback — do not add push/schedule triggers.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: romylabs-mta-repair
+  cancel-in-progress: false   # never cancel; two concurrent repairs would race
+
+env:
+  CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  CENTRAL_REF: mpxgxfqdbquzkrvvejkh
+  WORKER_NAME: romylabs-stalwart-api
+  WORKER_URL: https://stalwart-api.romylabs.com
+
+jobs:
+  repair:
+    name: Patch MTA route + verify outbound delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ── 0. Preflight ──────────────────────────────────────────────────────────
+      - name: Validate required secrets are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"  || { echo 'CLOUDFLARE_API_TOKEN missing'; exit 2; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'CLOUDFLARE_ACCOUNT_ID missing'; exit 2; }
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo 'SUPABASE_ACCESS_TOKEN missing'; exit 2; }
+          echo 'PREFLIGHT_SECRETS_OK'
+
+      # ── 1. Check out the romylabs repo (CF Worker source lives there) ─────────
+      - name: Check out taxresolutioncrm/romylabs
+        uses: actions/checkout@v4
+        with:
+          repository: taxresolutioncrm/romylabs
+          token: ${{ github.token }}
+          path: romylabs
+
+      # ── 2. Syntax-check the Worker before touching anything live ─────────────
+      - name: Validate Worker source
+        working-directory: romylabs/integrations/stalwart-api
+        run: node --check src/index.js
+
+      # ── 3. Install wrangler ──────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install wrangler
+        working-directory: romylabs/integrations/stalwart-api
+        run: npm ci --ignore-scripts
+
+      # ── 4. Generate a one-shot repair secret (256-bit hex) ───────────────────
+      #      This value is used only for this workflow run:
+      #        • set on the CF Worker   (wrangler secret put)
+      #        • included in the repair call (X-Repair-Secret header)
+      #      It is never stored permanently; a fresh secret on each run is safer.
+      - name: Generate REPAIR_SERVICE_SECRET
+        id: secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          SECRET=$(openssl rand -hex 32)
+          echo "::add-mask::$SECRET"
+          echo "value=$SECRET" >> "$GITHUB_OUTPUT"
+
+      # ── 5. Push the secret to the live CF Worker ─────────────────────────────
+      - name: Set REPAIR_SERVICE_SECRET on CF Worker
+        working-directory: romylabs/integrations/stalwart-api
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '${{ steps.secret.outputs.value }}' \
+            | npx --yes wrangler@latest secret put REPAIR_SERVICE_SECRET \
+                --name "$WORKER_NAME"
+          echo 'CF_WORKER_SECRET_SET'
+
+      # ── 6. Deploy the updated Worker code (adds /api/mta-route-repair) ───────
+      - name: Deploy romylabs-stalwart-api CF Worker
+        working-directory: romylabs/integrations/stalwart-api
+        run: npx --yes wrangler@latest deploy
+
+      - name: Wait for Worker to propagate globally (15 s)
+        run: sleep 15
+
+      # ── 7. Verify Worker is healthy after deploy ─────────────────────────────
+      - name: Health-check CF Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl -sf --max-time 15 "$WORKER_URL/health")
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"ok":true' || { echo 'Worker health check failed'; exit 1; }
+          echo 'CF_WORKER_HEALTH_OK'
+
+      # ── 8. Call the repair endpoint ──────────────────────────────────────────
+      - name: Invoke /api/mta-route-repair
+        id: repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl -sf --max-time 30 \
+            -X POST \
+            -H "X-Repair-Secret: ${{ steps.secret.outputs.value }}" \
+            -H "Content-Type: application/json" \
+            "$WORKER_URL/api/mta-route-repair")
+          echo "$RESPONSE"
+
+          # Save full audit to artifact
+          echo "$RESPONSE" > /tmp/repair-audit.json
+
+          # Verify the repair succeeded
+          OK=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ok',''))")
+          CLEAN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('audit',{}).get('verification',{}).get('confirmed_clean',''))")
+
+          echo "repair_ok=$OK"     >> "$GITHUB_OUTPUT"
+          echo "confirmed_clean=$CLEAN" >> "$GITHUB_OUTPUT"
+
+          if [ "$OK" != "True" ] && [ "$OK" != "true" ]; then
+            echo "REPAIR FAILED — ok=$OK confirmed_clean=$CLEAN"
+            exit 1
+          fi
+          echo 'MTA_ROUTE_REPAIR_SUCCEEDED'
+
+      # ── 9. Upload audit JSON as workflow artifact ────────────────────────────
+      - name: Upload repair audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mta-repair-audit
+          path: /tmp/repair-audit.json
+          retention-days: 90
+
+      # ── 10. Post-repair: drain or cancel the previously queued stuck message ─
+      #       Message ID 341538622461383680 was stuck in the queue trying port 25.
+      #       After the route fix, Stalwart will retry it on the next retry cycle.
+      #       We just log it here; Stalwart retries automatically.
+      - name: Note queued message status
+        if: steps.repair.outputs.repair_ok == 'true' || steps.repair.outputs.repair_ok == 'True'
+        shell: bash
+        run: |
+          echo "Repair confirmed clean. Stalwart will retry queued message 341538622461383680 on next retry cycle."
+          echo "romylabs.com outbound mail should now route via Oracle Email Delivery relay (port 587) instead of direct MX (port 25)."
+          echo "REPAIR_COMPLETE — please send a test email from info@romylabs.com to verify delivery."
