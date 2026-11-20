@@ -291,10 +291,12 @@ const INDUSTRY_DESCRIPTORS:Record<string,string>={
   phl_land_care:'land care business management',
   romylabs:'software and business operations'
 }
-const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount:number,isAuto:boolean,nextBillDay:number,year:number,isChris:boolean)=>{
+type ReminderCopy={subject_override:string;opening_text:string;additional_text:string;closing_text:string}
+const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount:number,isAuto:boolean,nextBillDay:number,year:number,isChris:boolean,copy:ReminderCopy)=>{
   const name=escapeHtml(brand.name)
   const company=escapeHtml(office)
   const month=escapeHtml(monthLabel)
+  const industry=escapeHtml(INDUSTRY_DESCRIPTORS[brand.productKey]||'business software')
   const chrisZelle= isChris && year<=2026
   const heading=isAuto?'Upcoming automatic subscription payment':isChris?'Friendly monthly reminder':'Monthly subscription payment reminder'
   const explanation=isAuto
@@ -322,6 +324,7 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     '<h1 style="font-size:23px;color:#101c32">'+heading+'</h1>'+
     '<p style="font-size:15px;line-height:1.6">Hello '+company+',</p>'+
     '<p style="font-size:15px;line-height:1.6">'+escapeHtml(explanation)+'</p>'+
+    (copy.opening_text?'<p style="font-size:15px;line-height:1.6">'+escapeHtml(copy.opening_text).replaceAll('\\n','<br>')+'</p>':'')+
     '<div style="background:#d8eaff;padding:18px;border-radius:9px">'+
     '<div style="font-size:12px;font-weight:bold;color:#0d488d">'+(isAuto?'UPCOMING AUTOMATIC PAYMENT':'MONTHLY SUBSCRIPTION')+'</div>'+
     '<div style="font-size:28px;font-weight:800;color:#101c32 !important">'+dollars(amount)+'</div>'+
@@ -338,6 +341,8 @@ const firstDayMessage=(brand:BrandDetails,office:string,monthLabel:string,amount
     '<p style="font-size:13px;line-height:1.6;margin:0;color:#243149"><strong>Credit Card:</strong> A processing fee may apply where permitted. The exact amount must be disclosed before payment. Debit and prepaid cards are not subject to a credit-card surcharge.</p>'+
     '</div>')+
     '<p style="font-size:14px;line-height:1.6">'+escapeHtml(paymentNotice)+'</p>'+
+    (copy.additional_text?'<div style="font-size:14px;line-height:1.65;padding:14px;border:1px solid #e1e7f0;border-radius:9px;color:#243149">'+escapeHtml(copy.additional_text).replaceAll('\\n','<br>')+'</div>':'')+
+    (copy.closing_text?'<p style="font-size:14px;line-height:1.6">'+escapeHtml(copy.closing_text).replaceAll('\\n','<br>')+'</p>':'')+
     '<p style="font-size:14px"><strong>'+name+' Billing Team</strong></p>'+
     '</td></tr><tr><td style="background:#edf0f5;padding:20px;text-align:center">'+
     '<a href="'+escapeHtml(brand.website)+'">'+escapeHtml(brand.website)+'</a>'+
@@ -432,8 +437,29 @@ Deno.serve(async(req:Request)=>{
         .update({status:'pending',last_error:'branded sender assets unavailable'}).eq('id',claim.id)
       outcomes.push({account_id:a.id,result:'brand_or_verified_sender_unavailable',product_key:a.product_key});continue
     }
-    const subject=brand.name+' '+(isAuto?'upcoming automatic payment notice':isChris?'friendly monthly reminder':'payment reminder')+' — '+monthLabel
-    const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year,isChris)
+    // Read platform-admin-managed per-CRM copy and optional office-specific override.
+    // If the editor store cannot be read, do not send a silently stale email.
+    const {data:customRows,error:customError}=await db.from('romylabs_monthly_reminder_content')
+      .select('scope_key,subject_override,opening_text,additional_text,closing_text')
+      .eq('product_key',a.product_key).in('scope_key',['product:'+a.product_key,'office:'+a.id])
+    if(customError){
+      await db.from('romylabs_first_day_office_reminders')
+        .update({status:'pending',last_error:'editable reminder content could not be loaded'}).eq('id',claim.id)
+      outcomes.push({account_id:a.id,result:'reminder_content_unavailable'});continue
+    }
+    const productCopy=customRows?.find((r:any)=>r.scope_key==='product:'+a.product_key)
+    const officeCopy=customRows?.find((r:any)=>r.scope_key==='office:'+a.id)
+    const copy:ReminderCopy={
+      subject_override:String(officeCopy?.subject_override||productCopy?.subject_override||'').trim(),
+      opening_text:String(officeCopy?.opening_text||productCopy?.opening_text||'').trim(),
+      additional_text:String(officeCopy?.additional_text||productCopy?.additional_text||'').trim(),
+      closing_text:String(officeCopy?.closing_text||productCopy?.closing_text||'').trim()
+    }
+    // Preserve sender product identity even when the admin changes the subject.
+    const defaultSubject=(isAuto?'upcoming automatic payment notice':isChris?'friendly monthly reminder':'payment reminder')
+    const customSubject=copy.subject_override.replace(/[\\r\\n]/g,' ').slice(0,180)
+    const subject=brand.name+' — '+(customSubject||defaultSubject)+' — '+monthLabel
+    const html=firstDayMessage(brand,a.account_name,monthLabel,Number(a.monthly_amount_cents),isAuto,Number(a.billing_day||19),clock.year,isChris,copy)
     try{
       const sent=await sendViaStalwart(db,a.product_key,email,subject,html,brand.name,brand.logoUrl)
       await db.from('romylabs_first_day_office_reminders').update({
