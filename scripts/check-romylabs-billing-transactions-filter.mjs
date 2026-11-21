@@ -7,7 +7,7 @@ for(const [code,description] of [
   ["v==='transactions'?'Transactions ('+payments.length+')'","Transactions pill must display real payment count"],
   ["filter==='transactions' ? <RomyLabsLedgerExplorer","Clicking Transactions replaces account table with payment ledger"],
   ["transactionsOnly/>","Focused ledger must not expose unrelated invoice view"],
-  ["filter!=='transactions'&&<RomyLabsLedgerExplorer","Do not render duplicate ledger below Transactions view"],
+  ["filter!=='transactions'&&<details","Office ledger is collapsed unless explicitly opened outside Transactions view"],
   ["filter!=='transactions'&&registeredWithoutBilling","Do not show unrelated registered-office list in Transactions view"]
 ])assert(billing.includes(code),description)
 assert(ledger.includes('transactionsOnly=false'),'Ledger must preserve existing uses by default')
