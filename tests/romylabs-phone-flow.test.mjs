@@ -134,6 +134,21 @@ const browserDeadlineMs=26000,serverWatchdogMs=28000
 assert.equal(browserDeadlineMs<serverWatchdogMs,true)
 const timeoutRow={status:'ringing'};assert.equal(redirectToVoicemail(timeoutRow),true);assert.equal(timeoutRow.status,'missed')
 
+// A caller waiting for the RomyLabs browser agent must hear ringing, not
+// SignalWire's default conference hold music. This is isolated to RomyLabs.
+const romyIvrSource=readFileSync(new URL('../supabase/functions/romylabs-ivr-route/index.ts', import.meta.url),'utf8')
+const romyRingbackSource=readFileSync(new URL('../supabase/functions/romylabs-ringback/index.ts', import.meta.url),'utf8')
+const generalIvrSource=readFileSync(new URL('../supabase/functions/ivr-route/index.ts', import.meta.url),'utf8')
+const configSource=readFileSync(new URL('../supabase/config.toml', import.meta.url),'utf8')
+transformSync(romyIvrSource,{loader:'ts'})
+transformSync(romyRingbackSource,{loader:'ts'})
+assert.match(romyIvrSource,/startConferenceOnEnter="false" endConferenceOnExit="false" waitUrl="\$\{base\}\/romylabs-ringback\?audio=1" waitMethod="GET"/)
+assert.match(romyRingbackSource,/<Play loop="0">/)
+assert.match(romyRingbackSource,/Content-Type':'audio\/wav'/)
+assert.match(romyRingbackSource,/const CYCLE_SECONDS=6/)
+assert.match(configSource,/\[functions\.romylabs-ringback\]\s*[^\[]*verify_jwt = false/)
+assert.doesNotMatch(generalIvrSource,/romylabs-ringback/)
+
 console.log(JSON.stringify({
   T1_6999_routes_romylabs:'PASS',
   T2_self_dial_identity_guard:'PASS',
