@@ -5,7 +5,26 @@ const shell={border:'1px solid rgba(129,140,248,.2)',borderRadius:12,background:
 const field={width:'100%',boxSizing:'border-box',padding:'9px 11px',borderRadius:8,background:'#100f1d',border:'1px solid rgba(129,140,248,.3)',color:'#e2e8f0',fontSize:12}
 const button={borderRadius:8,border:'1px solid rgba(129,140,248,.34)',background:'rgba(99,102,241,.15)',color:'#c7d2fe',padding:'8px 13px',fontWeight:800,cursor:'pointer',fontSize:12}
 const fields=[['subject_override','Subject line (without company name or month)',180],['opening_text','Additional opening paragraph',1200],['additional_text','Extra details, instructions or announcement',2400],['closing_text','Closing message',900]]
-const blank=()=>({subject_override:'',opening_text:'',additional_text:'',closing_text:''})
+const blank=()=>({subject_override:'',opening_text:'',additional_text:'',closing_text:'',
+  send_day:'',send_time:'',send_timezone:'',is_enabled:''})
+const ZONES=[
+  ['America/New_York','Eastern (New York)'],
+  ['America/Chicago','Central (Chicago)'],
+  ['America/Denver','Mountain (Denver)'],
+  ['America/Los_Angeles','Pacific (Los Angeles)'],
+  ['America/Phoenix','Arizona (no DST)'],
+  ['America/Anchorage','Alaska'],
+  ['Pacific/Honolulu','Hawaii'],
+  ['America/Puerto_Rico','Puerto Rico'],
+  ['America/Toronto','Toronto'],
+  ['America/Santo_Domingo','Santo Domingo'],
+  ['UTC','UTC']
+]
+const TIME_OPTIONS=Array.from({length:96},(_,i)=>{
+  const h=Math.floor(i/4),m=(i%4)*15
+  const v=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')
+  return [v,new Date(2026,0,1,h,m).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})]
+})
 export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]}){
   const [product,setProduct]=useState('taxres_crm')
   const [office,setOffice]=useState('')
@@ -22,11 +41,25 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
   const scopeKey=office?'office:'+office:'product:'+product
   const productRow=all.find(r=>r.scope_key==='product:'+product)
   const exact=all.find(r=>r.scope_key===scopeKey)
-  const current=useMemo(()=>Object.fromEntries(fields.map(([name])=>[name,exact?.[name]||''])),[exact,scopeKey])
+  const current=useMemo(()=>({
+    ...Object.fromEntries(fields.map(([name])=>[name,exact?.[name]||''])),
+    send_day:exact?.send_day==null?'':String(exact.send_day),
+    send_time:exact?.send_time||'',
+    send_timezone:exact?.send_timezone||'',
+    is_enabled:exact?.is_enabled==null?'':String(exact.is_enabled)
+  }),[exact,scopeKey])
+  const inherited=(key,fallback)=>productRow?.[key]??fallback
+  const effective=(key,fallback)=>draft[key]!==''?(key==='send_day'?Number(draft[key]):key==='is_enabled'?draft[key]==='true':draft[key]):office?inherited(key,fallback):fallback
+  const effectiveDay=effective('send_day',1)
+  const effectiveTime=effective('send_time','09:00')
+  const effectiveZone=effective('send_timezone','America/New_York')
+  const effectiveEnabled=effective('is_enabled',true)
+  const scheduleChange=(key,value)=>setDraft(d=>({...d,[key]:value}))
+
   const read=async()=>{
     setBusy(true);setError('');setNotice('')
     const {data,error:e}=await supabase.from('romylabs_monthly_reminder_content')
-      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,updated_at')
+      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled,updated_at')
     if(e){setError('Could not load reminder settings: '+e.message);setLoaded(false)}
     else {setAll(data||[]);setLoaded(true)}
     setBusy(false)
@@ -39,11 +72,16 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
     if(fields.some(([name,,max])=>draft[name].length>max)){setError('A text field is too long.');return}
     setBusy(true);setError('');setNotice('')
     const {error:e}=await supabase.from('romylabs_monthly_reminder_content').upsert({
-      scope_key:scopeKey,product_key:product,account_id:office||null,...draft
+      scope_key:scopeKey,product_key:product,account_id:office||null,
+      ...Object.fromEntries(fields.map(([name])=>[name,draft[name]])),
+      send_day:draft.send_day===''?null:Number(draft.send_day),
+      send_time:draft.send_time||null,
+      send_timezone:draft.send_timezone||null,
+      is_enabled:draft.is_enabled===''?null:draft.is_enabled==='true'
     },{onConflict:'scope_key'})
     if(e){setError('Could not save: '+e.message);setBusy(false);return}
     const {data,error:reloadError}=await supabase.from('romylabs_monthly_reminder_content')
-      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,updated_at')
+      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled,updated_at')
     if(reloadError){setError('Saved, but refresh failed: '+reloadError.message)}
     else {setAll(data||[]);setNotice('Reminder changes saved for '+(selectedAccount?.account_name||productName)+'. Future monthly emails use these settings.')}
     setBusy(false)
@@ -59,9 +97,9 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
   }
   const display=key=>draft[key]||(!office?'':productRow?.[key])||''
   return <details style={shell}>
-    <summary style={{cursor:'pointer',color:'#c7d2fe',fontSize:13,fontWeight:800}}>Monthly reminders · Edit email text and preview</summary>
+    <summary style={{cursor:'pointer',color:'#c7d2fe',fontSize:13,fontWeight:800}}>Monthly reminders · Edit message and send schedule</summary>
     <div style={{fontSize:12,color:'#94a3b8',lineHeight:1.6,margin:'12px 0 16px'}}>
-      Customize the next first-of-month office reminder without a code deployment. Choose a CRM default or an individual office override.
+      Customize your monthly reminders and when they send, without a code deployment. Choose a CRM default or an individual office override.
       The company sender, logo, subscription amount, Zelle exceptions, autopay notices, and credit/debit processing disclosures are protected.
       This editor does not send emails or create payment links.
     </div>
@@ -79,6 +117,44 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
       </label>
     </div>
     {office&&<div style={{fontSize:11,color:'#94a3b8',marginBottom:12}}>Blank office-specific fields inherit the CRM defaults. Company-level identity and mandatory payment details cannot be overridden.</div>}
+    <div style={{padding:'14px 16px',border:'1px solid rgba(129,140,248,.22)',borderRadius:10,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:4}}>Monthly send schedule</div>
+      <div style={{fontSize:11,lineHeight:1.6,color:'#94a3b8',marginBottom:12}}>
+        Changes take effect on the next eligible send. The same office is never emailed twice in a month.
+        Days 29–31 send on the last day in shorter months. Blank settings inherit the CRM schedule, or the system default (1st at 9 AM Eastern).
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(165px,1fr))',gap:12}}>
+        <label style={{fontSize:11,color:'#cbd5e1',fontWeight:700}}>Send day of month
+          <select aria-label="Monthly send day" value={draft.send_day} onChange={e=>scheduleChange('send_day',e.target.value)} style={{...field,marginTop:6}}>
+            <option value="">Inherit / default</option>
+            {Array.from({length:31},(_,i)=><option key={i+1} value={i+1}>Day {i+1}</option>)}
+          </select>
+        </label>
+        <label style={{fontSize:11,color:'#cbd5e1',fontWeight:700}}>Local send time
+          <select aria-label="Monthly send time" value={draft.send_time} onChange={e=>scheduleChange('send_time',e.target.value)} style={{...field,marginTop:6}}>
+            <option value="">Inherit / default</option>
+            {TIME_OPTIONS.map(([v,label])=><option key={v} value={v}>{label}</option>)}
+          </select>
+        </label>
+        <label style={{fontSize:11,color:'#cbd5e1',fontWeight:700}}>Time zone
+          <select aria-label="Reminder time zone" value={draft.send_timezone} onChange={e=>scheduleChange('send_timezone',e.target.value)} style={{...field,marginTop:6}}>
+            <option value="">Inherit / default</option>
+            {ZONES.map(([v,label])=><option key={v} value={v}>{label}</option>)}
+          </select>
+        </label>
+        <label style={{fontSize:11,color:'#cbd5e1',fontWeight:700}}>Delivery
+          <select aria-label="Monthly reminder delivery" value={draft.is_enabled} onChange={e=>scheduleChange('is_enabled',e.target.value)} style={{...field,marginTop:6}}>
+            <option value="">Inherit / default</option>
+            <option value="true">Enabled</option>
+            <option value="false">Paused — do not send</option>
+          </select>
+        </label>
+      </div>
+      <div role="status" style={{fontSize:11,fontWeight:700,color:effectiveEnabled?'#86efac':'#fbbf24',marginTop:13}}>
+        Effective schedule: {effectiveEnabled?'Day '+effectiveDay+' at '+(TIME_OPTIONS.find(([v])=>v===effectiveTime)?.[1]||effectiveTime)+' · '+(ZONES.find(([v])=>v===effectiveZone)?.[1]||effectiveZone):'Paused — no monthly emails'}
+      </div>
+    </div>
+
     {fields.map(([name,label,max])=><label key={name} style={{display:'block',fontSize:12,fontWeight:700,color:'#cbd5e1',marginBottom:12}}>
       <span>{label}</span>
       {name==='subject_override'
@@ -99,6 +175,7 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
       <strong style={{fontSize:16}}>{productName} — {display('subject_override')||'Monthly subscription reminder'}</strong>
       <p>Hello {selectedAccount?.account_name||'[Office name]'},</p>
       <p>Your {productName} monthly subscription reminder includes the verified account amount and payment status.</p>
+      <p><strong>Scheduled:</strong> {effectiveEnabled?'Day '+effectiveDay+' at '+effectiveTime+' ('+effectiveZone+')':'Paused'}</p>
       {display('opening_text')&&<p style={{whiteSpace:'pre-wrap'}}>{display('opening_text')}</p>}
       <div style={{background:'#d8eaff',padding:12,borderRadius:8}}>Subscription balance: <strong>{selectedAccount?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(selectedAccount.monthly_amount_cents||0)/100):'[Actual office amount]'}</strong></div>
       <p>The standard, protected company-specific payment method and processing-fee section appears here in the actual message.</p>
