@@ -362,19 +362,42 @@ Deno.serve(async(req:Request)=>{
   // Cron ticks every 15 minutes. Each office is evaluated in its configured
   // time zone, but sends are still idempotent by account and local month.
   const {data:accounts,error:accountError}=await db.from('romylabs_billing_accounts')
-    .select('id,account_name,billing_email,monthly_amount_cents,billing_day,auto_invoice,product_key,status')
+    .select('id,account_name,billing_email,monthly_amount_cents,billing_day,auto_invoice,product_key,external_tenant_id,status')
     .in('status',['active','past_due'])
   if(accountError)return json({error:'Billing account query unavailable'},503)
   const outcomes:Array<Record<string,unknown>>=[]
   for(const a of accounts||[]){
     // Read settings BEFORE queuing or checking payments: pausing and rescheduling
     // must never create a new send or resend an already-delivered monthly message.
+    // Registry-only office drafts survive onboarding into a SaaS billing
+    // account. Always prefer account override, then registered office draft,
+    // then product default, and never send to an office without billing.
+    const {data:registryRows,error:registryError}=await db.from('romylabs_office_registry')
+      .select('id,firm_name,metadata').eq('product_key',a.product_key)
+      .eq('external_office_id',String(a.external_tenant_id||'')).limit(2)
+    if(registryError){outcomes.push({account_id:a.id,result:'office_registry_unavailable'});continue}
+    const realRegistry=(registryRows||[]).filter((r:any)=>{
+      const n=String(r.firm_name||'').trim().toLowerCase()
+      return r.metadata?.demo!==true&&r.metadata?.required_demo_office!==true&&
+        !/(^|\\s)demo(\\s|$)/i.test(n)&&
+        !['main office','tax case review','internal','romylabs internal'].includes(n)
+    })
+    const registryId=realRegistry.length===1?String(realRegistry[0].id):''
+    const registryScope=registryId?'registry:'+registryId:''
     const {data:customRows,error:customError}=await db.from('romylabs_monthly_reminder_content')
       .select('scope_key,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled')
-      .eq('product_key',a.product_key).in('scope_key',['product:'+a.product_key,'office:'+a.id])
+      .eq('product_key',a.product_key)
+      .in('scope_key',['product:'+a.product_key,'office:'+a.id,...(registryScope?[registryScope]:[])])
     if(customError){outcomes.push({account_id:a.id,result:'reminder_settings_unavailable'});continue}
     const productCopy=customRows?.find((r:any)=>r.scope_key==='product:'+a.product_key)
-    const officeCopy=customRows?.find((r:any)=>r.scope_key==='office:'+a.id)
+    const registryCopy=customRows?.find((r:any)=>r.scope_key===registryScope)
+    const officeSpecificCopy=customRows?.find((r:any)=>r.scope_key==='office:'+a.id)
+    const officeCopy={
+      ...registryCopy,
+      ...Object.fromEntries(['subject_override','opening_text','additional_text','closing_text',
+        'send_day','send_time','send_timezone','is_enabled'].map(k=>
+        [k,officeSpecificCopy?.[k]??registryCopy?.[k]]))
+    }
     const enabled=officeCopy?.is_enabled??productCopy?.is_enabled??true
     if(!enabled){outcomes.push({account_id:a.id,result:'paused'});continue}
     const sendDay=Number(officeCopy?.send_day??productCopy?.send_day??1)
