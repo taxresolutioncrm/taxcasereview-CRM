@@ -30,7 +30,7 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
   const [status,setStatus]=useState('all')
   const [from,setFrom]=useState('')
   const [to,setTo]=useState('')
-  const [limit,setLimit]=useState(100)
+  const [limit,setLimit]=useState(transactionsOnly?25:100)
   const byId=useMemo(()=>new Map(accounts.map(a=>[a.id,a])),[accounts])
   const alerts=useMemo(()=>events.filter(e=>['manual_hold','payment_failed','suspension_pending'].includes(e.event_type)).slice().sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,12),[events])
   const providers=useMemo(()=>[...new Set(payments.map(p=>p.provider||'manual'))].sort(),[payments])
@@ -61,7 +61,7 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
       rows.map(p=>{const a=byId.get(p.account_id);return [p.paid_at||'',p.created_at||'',a?.account_name||'',a?.product_key||'',a?.billing_email||'',Number(p.amount_cents||0)/100,p.provider||'manual',p.status||'',p.invoice_id||'',p.provider_payment_id||p.reference||'']})):
     downloadCsv('romylabs-invoices.csv',['Issued','Due','Invoice','Office','Product','Amount USD','Paid USD','Balance USD','Status','Payment provider','Provider invoice ID'],
       rows.map(i=>{const a=byId.get(i.account_id);return [i.issued_at||'',i.due_at||'',i.invoice_number||'',a?.account_name||'',a?.product_key||'',Number(i.amount_cents||0)/100,Number(i.amount_paid_cents||0)/100,Math.max(0,Number(i.amount_cents||0)-Number(i.amount_paid_cents||0))/100,i.status||'',i.provider||'',i.provider_invoice_id||'']}))
-  const changeTab=value=>{setTab(value);setLimit(100);setStatus('all');setMethod('all')}
+  const changeTab=value=>{setTab(value);setLimit(transactionsOnly?25:100);setStatus('all');setMethod('all')}
   return <section style={{marginTop:24}} aria-label="RomyLabs billing transaction ledger">
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12,marginBottom:12}}>
       <div><div style={{fontSize:14,fontWeight:900,color:'#f8fafc'}}>Payment Transactions & Invoice Ledger</div><div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>One ledger for RomyLabs SaaS offices. Stripe, ACH and manual payments; office customer payments stay separate.</div></div>
@@ -82,15 +82,15 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
       {tab==='invoices'&&<Summary title="Outstanding balance" value={money(open)}/>}
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:8,marginBottom:12}}>
-      <input aria-label="Search billing transactions" placeholder="Search office, invoice, email or reference" style={input} value={search} onChange={e=>{setSearch(e.target.value);setLimit(100)}}/>
+      <input aria-label="Search billing transactions" placeholder="Search office, invoice, email or reference" style={input} value={search} onChange={e=>{setSearch(e.target.value);setLimit(transactionsOnly?25:100)}}/>
       {tab==='payments'?<select style={input} aria-label="Filter payment method" value={method} onChange={e=>setMethod(e.target.value)}><option value="all">All methods</option>{providers.map(x=><option key={x} value={x}>{x}</option>)}</select>:<div/>}
-      <select style={input} aria-label="Filter billing status" value={status} onChange={e=>{setStatus(e.target.value);setLimit(100)}}><option value="all">All statuses</option>{statuses.map(x=><option key={x} value={x}>{x}</option>)}</select>
-      <input style={input} aria-label="From date" type="date" value={from} onChange={e=>{setFrom(e.target.value);setLimit(100)}}/>
-      <input style={input} aria-label="To date" type="date" min={from||undefined} value={to} onChange={e=>{setTo(e.target.value);setLimit(100)}}/>
+      <select style={input} aria-label="Filter billing status" value={status} onChange={e=>{setStatus(e.target.value);setLimit(transactionsOnly?25:100)}}><option value="all">All statuses</option>{statuses.map(x=><option key={x} value={x}>{x}</option>)}</select>
+      <input style={input} aria-label="From date" type="date" value={from} onChange={e=>{setFrom(e.target.value);setLimit(transactionsOnly?25:100)}}/>
+      <input style={input} aria-label="To date" type="date" min={from||undefined} value={to} onChange={e=>{setTo(e.target.value);setLimit(transactionsOnly?25:100)}}/>
     </div>
-    <div style={{overflowX:'auto',border:'1px solid rgba(99,102,241,.2)',borderRadius:12}}>
+    <div style={{overflowX:'auto',overflowY:'auto',maxHeight:transactionsOnly?460:undefined,border:'1px solid rgba(99,102,241,.2)',borderRadius:12}}>
       <table style={{borderCollapse:'collapse',width:'100%',minWidth:900}}>
-        <thead><tr>{(tab==='payments'?['Payment date','Office','Product','Amount','Method','Status','Reference','Invoice ID']:['Issued','Invoice','Office','Amount','Paid','Balance','Due','Status']).map(x=><th key={x} style={tableHead}>{x}</th>)}</tr></thead>
+        <thead><tr>{(tab==='payments'?['Payment date','Office','Product','Amount','Method','Status','Reference','Invoice ID']:['Issued','Invoice','Office','Amount','Paid','Balance','Due','Status']).map(x=><th key={x} style={{...tableHead,position:transactionsOnly?'sticky':undefined,top:transactionsOnly?0:undefined,zIndex:transactionsOnly?1:undefined,background:'#171625'}}>{x}</th>)}</tr></thead>
         <tbody>{page.length===0?<tr><td colSpan={8} style={{...cell,textAlign:'center',padding:24}}>No records match the selected filters.</td></tr>:page.map(p=>{
           const a=byId.get(p.account_id)
           if(tab==='payments')return <tr key={p.id}><td style={cell}>{day(p.paid_at||p.created_at)}</td><td style={cell}>{a?.account_name||'Unknown office'}</td><td style={cell}>{a?.product_key||'—'}</td><td style={cell}>{money(p.amount_cents)}</td><td style={cell}>{p.provider||'manual'}</td><td style={cell}><Status value={p.status}/></td><td style={{...cell,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis'}} title={p.provider_payment_id||p.reference||''}>{p.provider_payment_id||p.reference||'—'}</td><td style={{...cell,maxWidth:150,overflow:'hidden',textOverflow:'ellipsis'}} title={p.invoice_id||''}>{p.invoice_id||'—'}</td></tr>
@@ -100,7 +100,7 @@ export default function RomyLabsLedgerExplorer({accounts=[],invoices=[],payments
     </div>
     <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',color:'#94a3b8',fontSize:11}}>
       <span>Showing {Math.min(limit,rows.length)} of {rows.length} filtered records. CSV exports all filtered rows, not just the visible page.</span>
-      {rows.length>limit&&<button type="button" style={button} onClick={()=>setLimit(n=>n+100)}>Show 100 more</button>}
+      {rows.length>limit&&<button type="button" style={button} onClick={()=>setLimit(n=>n+(transactionsOnly?25:100))}>Show {transactionsOnly?25:100} more</button>}
     </div>
   </section>
 }
