@@ -11,12 +11,12 @@ const dollars=(c:number)=>new Intl.NumberFormat('en-US',{style:'currency',curren
 const escapeHtml=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
 }[c]||c))
-const monthInfo=(value:Date)=>{
+const monthInfo=(value:Date,timeZone='America/New_York')=>{
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{
-    timeZone:'America/New_York',year:'numeric',month:'2-digit',
-    day:'2-digit',hour:'2-digit',hourCycle:'h23',
+    timeZone,year:'numeric',month:'2-digit',
+    day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',
   }).formatToParts(value).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]))
-  return {year:parts.year,month:parts.month,day:parts.day,hour:parts.hour}
+  return {year:parts.year,month:parts.month,day:parts.day,hour:parts.hour,minute:parts.minute}
 }
 const PRODUCT_BRANDS:Record<string,string> = {
   taxres_crm:'TaxRes CRM', romylabs:'RomyLabs', arcvena:'Arcvena',
@@ -358,18 +358,41 @@ Deno.serve(async(req:Request)=>{
     ? await db.rpc('verify_internal_cron_token',{provided:token})
     : {data:false,error:null}
   if(authError||authorized!==true)return json({error:'Unauthorized'},401)
-  const now=new Date(),clock=monthInfo(now)
-  if(clock.day!==1||clock.hour<9||clock.hour>=12)
-    return json({ok:true,skipped:'outside first day 9–12 Eastern'})
-  const period=clock.year+'-'+String(clock.month).padStart(2,'0')+'-01'
-  const monthLabel=new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric',timeZone:'America/New_York'}).format(now)
-  // Only the explicitly approved accounts; never email other offices without a request.
+  const now=new Date()
+  // Cron ticks every 15 minutes. Each office is evaluated in its configured
+  // time zone, but sends are still idempotent by account and local month.
   const {data:accounts,error:accountError}=await db.from('romylabs_billing_accounts')
     .select('id,account_name,billing_email,monthly_amount_cents,billing_day,auto_invoice,product_key,status')
     .in('status',['active','past_due'])
   if(accountError)return json({error:'Billing account query unavailable'},503)
   const outcomes:Array<Record<string,unknown>>=[]
   for(const a of accounts||[]){
+    // Read settings BEFORE queuing or checking payments: pausing and rescheduling
+    // must never create a new send or resend an already-delivered monthly message.
+    const {data:customRows,error:customError}=await db.from('romylabs_monthly_reminder_content')
+      .select('scope_key,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled')
+      .eq('product_key',a.product_key).in('scope_key',['product:'+a.product_key,'office:'+a.id])
+    if(customError){outcomes.push({account_id:a.id,result:'reminder_settings_unavailable'});continue}
+    const productCopy=customRows?.find((r:any)=>r.scope_key==='product:'+a.product_key)
+    const officeCopy=customRows?.find((r:any)=>r.scope_key==='office:'+a.id)
+    const enabled=officeCopy?.is_enabled??productCopy?.is_enabled??true
+    if(!enabled){outcomes.push({account_id:a.id,result:'paused'});continue}
+    const sendDay=Number(officeCopy?.send_day??productCopy?.send_day??1)
+    const sendTime=String(officeCopy?.send_time??productCopy?.send_time??'09:00')
+    const sendTimezone=String(officeCopy?.send_timezone??productCopy?.send_timezone??'America/New_York')
+    // Fail closed for malformed settings, even if entered outside the editor.
+    if(!Number.isInteger(sendDay)||sendDay<1||sendDay>31||
+       !/^(?:[01][0-9]|2[0-3]):(?:00|15|30|45)$/.test(sendTime))
+      {outcomes.push({account_id:a.id,result:'invalid_reminder_schedule'});continue}
+    const clock=monthInfo(now,sendTimezone)
+    const endOfMonth=new Date(Date.UTC(clock.year,clock.month,0)).getUTCDate()
+    const actualSendDay=Math.min(sendDay,endOfMonth)
+    const targetMinutes=Number(sendTime.slice(0,2))*60+Number(sendTime.slice(3,5))
+    const currentMinutes=clock.hour*60+clock.minute
+    if(clock.day!==actualSendDay||currentMinutes<targetMinutes||
+       currentMinutes>=targetMinutes+60)continue
+    const period=clock.year+'-'+String(clock.month).padStart(2,'0')+'-01'
+    const monthLabel=new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric',timeZone:sendTimezone}).format(now)
     // Product identity comes from this account; special terms belong to the precise account, not the whole CRM.
     const isChris=a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'&&a.product_key==='taxres_crm'
     const isRafael=a.id==='339710c8-4739-450f-bac8-540a3a325cec'&&a.product_key==='restore_relay'
@@ -437,18 +460,7 @@ Deno.serve(async(req:Request)=>{
         .update({status:'pending',last_error:'branded sender assets unavailable'}).eq('id',claim.id)
       outcomes.push({account_id:a.id,result:'brand_or_verified_sender_unavailable',product_key:a.product_key});continue
     }
-    // Read platform-admin-managed per-CRM copy and optional office-specific override.
-    // If the editor store cannot be read, do not send a silently stale email.
-    const {data:customRows,error:customError}=await db.from('romylabs_monthly_reminder_content')
-      .select('scope_key,subject_override,opening_text,additional_text,closing_text')
-      .eq('product_key',a.product_key).in('scope_key',['product:'+a.product_key,'office:'+a.id])
-    if(customError){
-      await db.from('romylabs_first_day_office_reminders')
-        .update({status:'pending',last_error:'editable reminder content could not be loaded'}).eq('id',claim.id)
-      outcomes.push({account_id:a.id,result:'reminder_content_unavailable'});continue
-    }
-    const productCopy=customRows?.find((r:any)=>r.scope_key==='product:'+a.product_key)
-    const officeCopy=customRows?.find((r:any)=>r.scope_key==='office:'+a.id)
+    // Settings and editable text were loaded together before the due-time check.
     const copy:ReminderCopy={
       subject_override:String(officeCopy?.subject_override||productCopy?.subject_override||'').trim(),
       opening_text:String(officeCopy?.opening_text||productCopy?.opening_text||'').trim(),
