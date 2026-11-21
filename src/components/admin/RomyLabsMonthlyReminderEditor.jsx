@@ -43,7 +43,7 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[],o
     const isReal=(name,meta)=>{
       const n=String(name||'').trim().toLowerCase()
       return Boolean(n)&&meta?.demo!==true&&meta?.required_demo_office!==true&&
-        !/(^|\\s)demo(\\s|$)/i.test(n)&&
+        !/(^|\s)demo(\s|$)/i.test(n)&&
         !['main office','tax case review','internal','romylabs internal'].includes(n)
     }
     const items=new Map()
