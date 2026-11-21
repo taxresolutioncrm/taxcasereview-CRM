@@ -226,7 +226,7 @@ export default function RomyLabsBilling() {
       <div style={{minWidth:0,flex:'1 1 420px'}}><div style={{fontSize:22,fontWeight:900,color:'#fff'}}>💳 RomyLabs Billing & Collections</div><div style={{fontSize:13,color:'#64748b',marginTop:5}}>RomyLabs SaaS subscriptions only — separate from each CRM's customer, patient, or client billing.</div></div>
       <div style={{display:'flex',gap:8,flexShrink:0,marginLeft:'auto'}}><button onClick={()=>openPayment(null)} style={{padding:'8px 14px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',fontWeight:800,cursor:'pointer'}}>+ Record Manual Payment</button><button onClick={load} style={{padding:'7px 13px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',fontWeight:700,cursor:'pointer'}}>Refresh</button></div>
     </div>
-    <RomyLabsMonthlyReminderEditor products={products} accounts={accounts}/>
+    <RomyLabsMonthlyReminderEditor products={products} accounts={accounts} officeRegistry={officeRegistry}/>
     <RomyLabsStripeSettings invoices={invoices} onRefresh={load}/>
     <RomyLabsProcessorDashboard onRefresh={load}/>
     <details style={{...card,padding:'13px 16px',marginBottom:18}}>
