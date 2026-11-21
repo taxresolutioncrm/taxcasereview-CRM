@@ -25,7 +25,7 @@ const TIME_OPTIONS=Array.from({length:96},(_,i)=>{
   const v=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')
   return [v,new Date(2026,0,1,h,m).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})]
 })
-export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]}){
+export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[],officeRegistry=[]}){
   const [product,setProduct]=useState('taxres_crm')
   const [office,setOffice]=useState('')
   const [all,setAll]=useState([])
@@ -36,9 +36,35 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
   const [preview,setPreview]=useState(false)
   const [loaded,setLoaded]=useState(false)
   const productName=products.find(([id])=>id===product)?.[1]||product
-  const officeChoices=useMemo(()=>accounts.filter(a=>a.product_key===product),[accounts,product])
-  const selectedAccount=officeChoices.find(a=>a.id===office)
-  const scopeKey=office?'office:'+office:'product:'+product
+  // Registry, not billing, is the source of truth for customer offices.
+  // Exclude demo/internal records without hiding genuine trials or cancelled
+  // customers who might still have an active billing account.
+  const officeChoices=useMemo(()=>{
+    const isReal=(name,meta)=>{
+      const n=String(name||'').trim().toLowerCase()
+      return Boolean(n)&&meta?.demo!==true&&meta?.required_demo_office!==true&&
+        !/(^|\\s)demo(\\s|$)/i.test(n)&&
+        !['main office','tax case review','internal','romylabs internal'].includes(n)
+    }
+    const items=new Map()
+    for(const r of officeRegistry.filter(o=>o.product_key===product&&isReal(o.firm_name,o.metadata))){
+      const linked=accounts.find(a=>a.product_key===r.product_key&&
+        String(a.external_tenant_id||'')===String(r.external_office_id||''))
+      const key=linked?'office:'+linked.id:'registry:'+r.id
+      items.set(key,{key,account:linked||null,registry:r,label:r.firm_name,
+        billingReady:Boolean(linked)})
+    }
+    for(const a of accounts.filter(a=>a.product_key===product)){
+      if(!isReal(a.account_name))continue
+      const already=[...items.values()].some(o=>o.account?.id===a.id)
+      if(!already)items.set('office:'+a.id,{key:'office:'+a.id,account:a,registry:null,
+        label:a.account_name,billingReady:true})
+    }
+    return [...items.values()].sort((a,b)=>a.label.localeCompare(b.label))
+  },[accounts,officeRegistry,product])
+  const selectedOffice=officeChoices.find(o=>o.key===office)
+  const selectedAccount=selectedOffice?.account||null
+  const scopeKey=office||'product:'+product
   const productRow=all.find(r=>r.scope_key==='product:'+product)
   const exact=all.find(r=>r.scope_key===scopeKey)
   const current=useMemo(()=>({
@@ -59,7 +85,7 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
   const read=async()=>{
     setBusy(true);setError('');setNotice('')
     const {data,error:e}=await supabase.from('romylabs_monthly_reminder_content')
-      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled,updated_at')
+      .select('scope_key,product_key,account_id,registry_office_id,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled,updated_at')
     if(e){setError('Could not load reminder settings: '+e.message);setLoaded(false)}
     else {setAll(data||[]);setLoaded(true)}
     setBusy(false)
@@ -72,7 +98,9 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
     if(fields.some(([name,,max])=>draft[name].length>max)){setError('A text field is too long.');return}
     setBusy(true);setError('');setNotice('')
     const {error:e}=await supabase.from('romylabs_monthly_reminder_content').upsert({
-      scope_key:scopeKey,product_key:product,account_id:office||null,
+      scope_key:scopeKey,product_key:product,
+      account_id:selectedOffice?.account?.id||null,
+      registry_office_id:selectedOffice&&!selectedOffice.account?selectedOffice.registry.id:null,
       ...Object.fromEntries(fields.map(([name])=>[name,draft[name]])),
       send_day:draft.send_day===''?null:Number(draft.send_day),
       send_time:draft.send_time||null,
@@ -81,14 +109,14 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
     },{onConflict:'scope_key'})
     if(e){setError('Could not save: '+e.message);setBusy(false);return}
     const {data,error:reloadError}=await supabase.from('romylabs_monthly_reminder_content')
-      .select('scope_key,product_key,account_id,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled,updated_at')
+      .select('scope_key,product_key,account_id,registry_office_id,subject_override,opening_text,additional_text,closing_text,send_day,send_time,send_timezone,is_enabled,updated_at')
     if(reloadError){setError('Saved, but refresh failed: '+reloadError.message)}
-    else {setAll(data||[]);setNotice('Reminder changes saved for '+(selectedAccount?.account_name||productName)+'. Future monthly emails use these settings.')}
+    else {setAll(data||[]);setNotice('Reminder changes saved for '+(selectedOffice?.label||productName)+'. Future monthly emails use these settings.')}
     setBusy(false)
   }
   const reset=async()=>{
     if(busy||!loaded)return
-    if(!window.confirm('Remove the custom reminder text for '+(selectedAccount?.account_name||productName)+'? The standard template will be used.'))return
+    if(!window.confirm('Remove the custom reminder text for '+(selectedOffice?.label||productName)+'? The standard template will be used.'))return
     setBusy(true);setError('');setNotice('')
     const {error:e}=await supabase.from('romylabs_monthly_reminder_content').delete().eq('scope_key',scopeKey)
     if(e)setError('Could not reset: '+e.message)
@@ -112,11 +140,17 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
       <label style={{fontSize:11,color:'#cbd5e1',fontWeight:750}}>Apply to
         <select aria-label="Select reminder office" value={office} onChange={e=>setOffice(e.target.value)} style={{...field,marginTop:6}}>
           <option value="">All offices in {productName}</option>
-          {officeChoices.map(a=><option key={a.id} value={a.id}>{a.account_name}</option>)}
+          {officeChoices.map(o=><option key={o.key} value={o.key}>{o.label}{o.billingReady?'':' · Not billing yet'}</option>)}
         </select>
       </label>
     </div>
-    {office&&<div style={{fontSize:11,color:'#94a3b8',marginBottom:12}}>Blank office-specific fields inherit the CRM defaults. Company-level identity and mandatory payment details cannot be overridden.</div>}
+    {office&&<div style={{fontSize:11,color:'#94a3b8',marginBottom:12}}>
+      Blank office-specific fields inherit the CRM defaults. Company-level identity and mandatory payment details cannot be overridden.
+      {!selectedOffice?.billingReady&&<strong style={{display:'block',color:'#fbbf24',marginTop:6}}>
+        Registry-only office — you can save its reminder template and schedule, but no emails or invoices
+        will be generated until this office has an active SaaS billing account.
+      </strong>}
+    </div>}
     <div style={{padding:'14px 16px',border:'1px solid rgba(129,140,248,.22)',borderRadius:10,marginBottom:16}}>
       <div style={{fontSize:13,fontWeight:800,color:'#e2e8f0',marginBottom:4}}>Monthly send schedule</div>
       <div style={{fontSize:11,lineHeight:1.6,color:'#94a3b8',marginBottom:12}}>
@@ -173,7 +207,7 @@ export default function RomyLabsMonthlyReminderEditor({products=[],accounts=[]})
     </div>
     {preview&&<div style={{marginTop:16,padding:20,background:'#f8fafc',borderRadius:12,color:'#1e293b',border:'1px solid #cbd5e1',fontSize:13,lineHeight:1.7}}>
       <strong style={{fontSize:16}}>{productName} — {display('subject_override')||'Monthly subscription reminder'}</strong>
-      <p>Hello {selectedAccount?.account_name||'[Office name]'},</p>
+      <p>Hello {selectedOffice?.label||'[Office name]'},</p>
       <p>Your {productName} monthly subscription reminder includes the verified account amount and payment status.</p>
       <p><strong>Scheduled:</strong> {effectiveEnabled?'Day '+effectiveDay+' at '+effectiveTime+' ('+effectiveZone+')':'Paused'}</p>
       {display('opening_text')&&<p style={{whiteSpace:'pre-wrap'}}>{display('opening_text')}</p>}
