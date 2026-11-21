@@ -5,8 +5,10 @@ const source=fs.readFileSync('supabase/functions/romylabs-first-day-office-remin
 const migration=fs.readFileSync('supabase/migrations/20261120090000_romylabs_first_day_office_payment_notices.sql','utf8')
 await transform(source,{loader:'ts',target:'es2022'})
 for(const [snippet,reason] of [
-  ["clock.day!==1||clock.hour<9||clock.hour>=12",'Correct local first-day sending gate'],
-  ["timeZone:'America/New_York'",'Eastern time zone'],
+  ["const actualSendDay=Math.min(sendDay,endOfMonth)",'Configured day safely clamps to end of short month'],
+  ["const clock=monthInfo(now,sendTimezone)",'Each office uses its own time zone'],
+  ["const enabled=officeCopy?.is_enabled??productCopy?.is_enabled??true",'Paused and inherited schedules'],
+  ["const targetMinutes=", 'Configured time is enforced'],
   ["verify_internal_cron_token",'Signed internal cron authorization'],
   ["romylabs_first_day_office_reminders",'Separate service-only first-day outbox'],
   ["a.id==='3aa7c0d0-3765-4e9c-9838-9e8efa6c4448'&&a.product_key==='taxres_crm'",'Chris-specific Zelle exception only'],
