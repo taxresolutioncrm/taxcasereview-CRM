@@ -34,6 +34,7 @@ export default function RomyLabsBilling() {
   const [data,setData] = useState(null)
   const [error,setError] = useState('')
   const [filter,setFilter] = useState('all')
+  const [workspace,setWorkspace] = useState('accounts')
   const [selected,setSelected] = useState(null)
   const [tenants,setTenants] = useState([])
   const [officeRegistry,setOfficeRegistry] = useState([])
@@ -130,6 +131,12 @@ export default function RomyLabsBilling() {
     return [...candidates.values()].sort((a,b)=>a.name.localeCompare(b.name))
   },[accounts,tenants,officeRegistry,payment.product_key])
   const registeredWithoutBilling = useMemo(()=>officeRegistry.filter(o=>o.product_key && o.external_office_id && !accounts.some(a=>a.product_key===o.product_key && String(a.external_tenant_id)===String(o.external_office_id))),[accounts,officeRegistry])
+  const workspaces = [
+    ['accounts','Office Accounts','Subscriptions, payments & collections'],
+    ['stripe','Stripe Activity','Live processor records'],
+    ['reminders','Monthly Reminders','Messages, office rules & schedules'],
+    ['tools','Payment Tools','Stripe setup & invoice links']
+  ]
   const kpis = [
     ['Monthly Recurring',money(data?.mrr_cents),'#10b981'],
     ['Past Due',money(data?.past_due_cents),'#f59e0b'],
@@ -224,18 +231,50 @@ export default function RomyLabsBilling() {
   return <div style={{padding:'28px 36px',width:'100%',maxWidth:'none',boxSizing:'border-box'}}>
     <div style={{position:'sticky',top:0,zIndex:40,display:'flex',justifyContent:'space-between',gap:16,alignItems:'flex-start',flexWrap:'wrap',marginBottom:22,padding:'10px 0 14px',background:'#090816',borderBottom:'1px solid rgba(99,102,241,.12)'}}>
       <div style={{minWidth:0,flex:'1 1 420px'}}><div style={{fontSize:22,fontWeight:900,color:'#fff'}}>💳 RomyLabs Billing & Collections</div><div style={{fontSize:13,color:'#64748b',marginTop:5}}>RomyLabs SaaS subscriptions only — separate from each CRM's customer, patient, or client billing.</div></div>
-      <div style={{display:'flex',gap:8,flexShrink:0,marginLeft:'auto'}}><button onClick={()=>openPayment(null)} style={{padding:'8px 14px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',fontWeight:800,cursor:'pointer'}}>+ Record Manual Payment</button><button onClick={load} style={{padding:'7px 13px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',fontWeight:700,cursor:'pointer'}}>Refresh</button></div>
+      <div style={{display:'flex',gap:8,flexShrink:0,marginLeft:'auto'}}>{workspace==='tools'&&<button onClick={()=>openPayment(null)} style={{padding:'8px 14px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',fontWeight:800,cursor:'pointer'}}>+ Record Manual Payment</button>}<button onClick={load} style={{padding:'7px 13px',borderRadius:8,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',fontWeight:700,cursor:'pointer'}}>Refresh</button></div>
     </div>
-    <RomyLabsMonthlyReminderEditor products={products} accounts={accounts} officeRegistry={officeRegistry}/>
-    <RomyLabsStripeSettings invoices={invoices} onRefresh={load}/>
-    <RomyLabsProcessorDashboard onRefresh={load}/>
-    <details style={{...card,padding:'13px 16px',marginBottom:18}}>
-      <summary style={{cursor:'pointer',color:'#c7d2fe',fontSize:12,fontWeight:800}}>Billing account and invoice tools</summary>
-      <div style={{marginTop:12}}><RomyLabsInvoiceSetup accounts={accounts} invoices={invoices} officeRegistry={officeRegistry} onRefresh={load}/></div>
-    </details>
+    <nav aria-label="Billing workspaces" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,220px),1fr))',gap:10,marginBottom:22}}>
+      {workspaces.map(([id,name,description])=><button key={id} type="button"
+        aria-current={workspace===id?'page':undefined} onClick={()=>setWorkspace(id)}
+        style={{textAlign:'left',padding:'14px 16px',minHeight:70,borderRadius:12,cursor:'pointer',
+          border:workspace===id?'1px solid #818cf8':'1px solid rgba(129,140,248,.22)',
+          background:workspace===id?'linear-gradient(135deg,rgba(99,102,241,.22),rgba(99,102,241,.07))':'rgba(255,255,255,.025)',
+          boxShadow:workspace===id?'inset 0 0 0 1px rgba(129,140,248,.14)':'none',color:'#e2e8f0'}}>
+        <span style={{display:'block',fontSize:13,fontWeight:900,color:workspace===id?'#fff':'#cbd5e1'}}>{name}</span>
+        <span style={{display:'block',fontSize:11,color:workspace===id?'#c7d2fe':'#94a3b8',marginTop:5}}>{description}</span>
+      </button>)}
+    </nav>
+    {workspace==='stripe'&&<section aria-label="Stripe merchant activity" style={{...card,padding:'18px 18px 2px',marginBottom:18}}>
+      <h2 style={{fontSize:17,fontWeight:900,color:'#fff',margin:'0 0 5px'}}>Stripe Merchant Activity</h2>
+      <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 16px',lineHeight:1.6}}>Live Stripe merchant reporting only. These transactions are separate from your RomyLabs office billing ledger.</p>
+      <RomyLabsProcessorDashboard onRefresh={load}/>
+    </section>}
+    {workspace==='reminders'&&<section aria-label="Monthly reminder management" style={{...card,padding:18,marginBottom:18}}>
+      <h2 style={{fontSize:17,fontWeight:900,color:'#fff',margin:'0 0 5px'}}>Monthly Reminder Management</h2>
+      <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 16px'}}>Manage CRM branding, office messages, send schedules and delivery pauses. Changes here do not initiate payments.</p>
+      <RomyLabsMonthlyReminderEditor products={products} accounts={accounts} officeRegistry={officeRegistry}/>
+    </section>}
+    {workspace==='tools'&&<section aria-label="Billing and payment tools" style={{...card,padding:18,marginBottom:18}}>
+      <h2 style={{fontSize:17,fontWeight:900,color:'#fff',margin:'0 0 5px'}}>Invoice & Payment Tools</h2>
+      <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 16px'}}>Manage merchant connection, verified payment links and SaaS invoices. Client billing within individual CRMs stays separate.</p>
+      <RomyLabsStripeSettings invoices={invoices} onRefresh={load}/>
+      <details style={{...card,padding:'13px 16px',marginBottom:18}}>
+        <summary style={{cursor:'pointer',color:'#c7d2fe',fontSize:12,fontWeight:800}}>Office invoice setup and collection tools</summary>
+        <div style={{marginTop:12}}><RomyLabsInvoiceSetup accounts={accounts} invoices={invoices} officeRegistry={officeRegistry} onRefresh={load}/></div>
+      </details>
+    </section>}
     {notice && <div role="status" style={{position:'fixed',top:20,right:20,zIndex:12000,maxWidth:480,padding:13,borderRadius:10,background:'#0f2b22',border:'1px solid rgba(16,185,129,.45)',color:'#86efac',fontWeight:800,boxShadow:'0 16px 45px rgba(0,0,0,.45)'}}>{notice}</div>}
     {error && <div style={{padding:14,borderRadius:10,background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.25)',color:'#fca5a5',marginBottom:18}}>Billing error: {error}</div>}
-    <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(150px,1fr))',gap:12,marginBottom:20}}>{kpis.map(([labelText,value,color])=><div key={labelText} style={{...card,padding:'17px 18px'}}><div style={{fontSize:10,color:'#64748b',fontWeight:800,textTransform:'uppercase'}}>{labelText}</div><div style={{fontSize:26,color,fontWeight:900,marginTop:8}}>{data?value:'…'}</div></div>)}</div>
+    {workspace==='accounts'&&<section aria-label="Office billing accounts and collections" style={{...card,padding:18,marginBottom:18}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:17}}>
+        <div>
+          <h2 style={{fontSize:17,fontWeight:900,color:'#fff',margin:'0 0 5px'}}>Billing Accounts & Collections</h2>
+          <p style={{fontSize:12,color:'#94a3b8',margin:0}}>RomyLabs office subscriptions, collection status and recorded payments.</p>
+        </div>
+        <button type="button" onClick={()=>openPayment(null)}
+          style={{padding:'9px 13px',borderRadius:9,border:'1px solid rgba(16,185,129,.3)',background:'rgba(16,185,129,.1)',color:'#86efac',fontSize:12,fontWeight:800,cursor:'pointer'}}>+ Record Manual Payment</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:12,marginBottom:20}}>{kpis.map(([labelText,value,color])=><div key={labelText} style={{...card,padding:'17px 18px'}}><div style={{fontSize:10,color:'#64748b',fontWeight:800,textTransform:'uppercase'}}>{labelText}</div><div style={{fontSize:26,color,fontWeight:900,marginTop:8}}>{data?value:'…'}</div></div>)}</div>
     <div style={{...card,padding:'13px 16px',marginBottom:18,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}><span style={{fontSize:11,fontWeight:800,color:'#64748b',textTransform:'uppercase'}}>Collection policy</span><span style={{fontSize:12,color:'#e2e8f0'}}>Invoice automatically</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#f59e0b'}}>Day 10 notice</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#f97316'}}>Day 15 final notice</span><span style={{color:'#475569'}}>→</span><span style={{fontSize:12,color:'#ef4444'}}>Day 20 suspend</span><span style={{marginLeft:'auto',fontSize:11,color:'#475569'}}>Manual payments are audited and update purchased seats/MRR.</span></div>
     <div style={{display:'flex',gap:8,marginBottom:12}}>{['all','active','past_due','suspended','trial','transactions'].map(v=><button key={v} onClick={()=>setFilter(v)} style={{padding:'6px 11px',borderRadius:20,border:`1px solid ${filter===v?'#6366f1':'rgba(255,255,255,.08)'}`,background:filter===v?'rgba(99,102,241,.18)':'transparent',color:filter===v?'#c7d2fe':'#64748b',cursor:'pointer',fontSize:11,fontWeight:700}}>{v==='all'?'All accounts':v==='transactions'?'Transactions ('+payments.length+')':v.replace('_',' ')}</button>)}</div>
     {filter==='transactions' ? <RomyLabsLedgerExplorer accounts={accounts} invoices={invoices} payments={payments} events={events} transactionsOnly/> : !data ? <div style={{padding:40,textAlign:'center',color:'#475569'}}>Loading billing accounts…</div> : <div style={{...card,overflowX:'auto'}}><table style={{width:'100%',minWidth:1280,borderCollapse:'collapse',tableLayout:'auto'}}><thead><tr>{['Account','Product','Status','Seats','Monthly','Billing Email','Last Payment','Next Billing','Auto Suspend',''].map((h,i)=><th key={h} style={i===9?{...th,position:'sticky',right:0,zIndex:3,background:'#171625',minWidth:220}:{...th}}>{h}</th>)}</tr></thead><tbody>{visible.length===0?<tr><td colSpan={10} style={{...td,textAlign:'center',padding:28}}>No subscription accounts in this view.</td></tr>:visible.map(a=><tr key={a.id}><td style={{...td,color:'#e2e8f0',fontWeight:700}}>{a.account_name}</td><td style={td}>{a.product_key}</td><td style={td}><span style={badge(a.status)}>{a.status.replace('_',' ')}</span></td><td style={{...td,color:'#c7d2fe',fontWeight:800}}>{Number(a.seat_count||0)}</td><td style={{...td,color:'#10b981',fontWeight:800}}>{money(a.monthly_amount_cents)}/mo</td><td style={td}>{a.billing_email||'—'}</td><td style={{...td,minWidth:145}}>{latestPaymentFor(a.id)?money(latestPaymentFor(a.id).amount_cents)+' · '+date(latestPaymentFor(a.id).paid_at||latestPaymentFor(a.id).created_at):'—'}</td><td style={td}>Day {a.billing_day}</td><td style={td}>{a.auto_suspend?'✓ Enabled':'Manual'}</td><td style={{...td,whiteSpace:'nowrap',minWidth:220,position:'sticky',right:0,zIndex:2,background:'#171625',boxShadow:'-10px 0 18px rgba(9,8,22,.45)'}}><div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}><button onClick={()=>openPayment(a)} style={{padding:'5px 9px',borderRadius:7,border:'1px solid rgba(16,185,129,.3)',background:'rgba(16,185,129,.08)',color:'#6ee7b7',cursor:'pointer',fontWeight:700,whiteSpace:'nowrap'}}>Manual Payment</button><button onClick={()=>setSelected(a)} style={{padding:'5px 12px',minWidth:86,borderRadius:7,border:'1px solid rgba(99,102,241,.3)',background:'rgba(99,102,241,.1)',color:'#a5b4fc',cursor:'pointer',fontWeight:700}}>Details →</button></div></td></tr>)}</tbody></table></div>}
@@ -248,6 +287,7 @@ export default function RomyLabsBilling() {
       </div>)}
     </details>}
     {filter!=='transactions'&&<RomyLabsLedgerExplorer accounts={accounts} invoices={invoices} payments={payments} events={events}/>}
+    </section>}
 
     {paymentOpen && <div style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={e=>e.target===e.currentTarget&&setPaymentOpen(false)}><form onSubmit={savePayment} style={{width:620,maxWidth:'96vw',maxHeight:'92vh',overflowY:'auto',background:'#0f0e1a',border:'1px solid rgba(99,102,241,.28)',borderRadius:16,padding:24,boxShadow:'0 24px 80px rgba(0,0,0,.55)'}}><div style={{display:'flex',justifyContent:'space-between',gap:12,marginBottom:20}}><div><div style={{fontSize:20,fontWeight:900,color:'#fff'}}>Record Manual Payment</div><div style={{fontSize:12,color:'#64748b',marginTop:4}}>Zelle, ACH, check, wire, cash, or another offline payment.</div></div><button type="button" onClick={()=>setPaymentOpen(false)} style={{background:'none',border:0,color:'#64748b',fontSize:22,cursor:'pointer'}}>✕</button></div>
       {error && <div role="alert" style={{marginBottom:14,padding:12,borderRadius:9,background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.35)',color:'#fecaca',fontSize:12,fontWeight:700}}>Payment error: {error}</div>}
