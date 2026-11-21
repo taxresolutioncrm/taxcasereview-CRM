@@ -379,7 +379,7 @@ Deno.serve(async(req:Request)=>{
     const realRegistry=(registryRows||[]).filter((r:any)=>{
       const n=String(r.firm_name||'').trim().toLowerCase()
       return r.metadata?.demo!==true&&r.metadata?.required_demo_office!==true&&
-        !/(^|\\s)demo(\\s|$)/i.test(n)&&
+        !/(^|\s)demo(\s|$)/i.test(n)&&
         !['main office','tax case review','internal','romylabs internal'].includes(n)
     })
     const registryId=realRegistry.length===1?String(realRegistry[0].id):''
