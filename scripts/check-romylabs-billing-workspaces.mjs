@@ -23,13 +23,28 @@ for(const [needle,explanation] of [
   ['<RomyLabsStripeSettings invoices={invoices} onRefresh={load}/>','Existing verified Stripe merchant setup preserved'],
   ['<RomyLabsMonthlyReminderEditor products={products} accounts={accounts} officeRegistry={officeRegistry}/>','Office-specific reminder editor preserved'],
   ['<RomyLabsInvoiceSetup accounts={accounts} invoices={invoices} officeRegistry={officeRegistry} onRefresh={load}/>','Existing invoice setup preserved'],
-  ["filter==='transactions' ? <RomyLabsLedgerExplorer",'Account transaction history stays functional'],
+  ["filter==='transactions' ? <div",'Transactions workspace retains compact history disclosure'],
+  ["const [transactionsOpen,setTransactionsOpen] = useState(false)",'Transaction history starts closed'],
+  ["aria-expanded={transactionsOpen}",'Transaction history exposes correct expanded state'],
+  ["onClick={()=>setTransactionsOpen(open=>!open)}",'Transaction history can be opened and closed'],
+  ['transactionsOpen&&<div id="romylabs-office-transactions-history"','Transaction history mounts only on expansion'],
+  ['<RomyLabsLedgerExplorer accounts={accounts} invoices={invoices} payments={payments} events={events} transactionsOnly/>','Expanded Transactions displays real filtered payment ledger'],
   ["{paymentOpen &&",'Manual payment modal persists across views'],
   ["{selected &&",'Account detail drawer persists'],
   ["supabase.rpc('admin_record_manual_subscription_payment'",'Manual payment database logic unchanged'],
   ["supabase.rpc('romylabs_billing_dashboard')",'Billing dashboard source unchanged'],
   ["supabase.rpc('admin_romylabs_office_registry')",'Registry source unchanged']
 ])assert(billing.includes(needle),explanation)
+const ledger=read('src/components/admin/RomyLabsLedgerExplorer.jsx')
+for(const [needle,explanation] of [
+  ['aria-label="Search billing transactions"','History search remains available'],
+  ['aria-label="Filter payment method"','Payment method filter remains available'],
+  ['aria-label="Filter billing status"','Payment status filter remains available'],
+  ['aria-label="From date"','Start date filter remains available'],
+  ['aria-label="To date"','End date filter remains available'],
+  ['romylabs-payment-transactions.csv','Full filtered transaction CSV export remains available'],
+  ['transactionsOnly?25:100','Focused transaction ledger keeps compact pagination']
+])assert(ledger.includes(needle),explanation)
 assert(editor.includes('Select reminder office'),'Office reminder control unchanged')
 assert(processor.includes('Stripe processing fees'),'Stripe finance read-only metrics unchanged')
 assert(stripe.includes("action:'checkout_ach'"),'ACH checkout handling unchanged')
