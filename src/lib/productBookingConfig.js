@@ -40,7 +40,7 @@ export const PRODUCT_BOOKING_CONFIGS = {
   romylabs: {
     key:           'romylabs',
     name:          'RomyLabs',
-    logo:          '/romylabs-logo.png',
+    logo:          'https://romylabs.com/romylabs-header-lime-unified.webp',
     favicon:       '/romylabs-favicon.svg?v=20260903-1',
     logoAlt:       'RomyLabs',
     headline:      'Schedule a Product Demo',
