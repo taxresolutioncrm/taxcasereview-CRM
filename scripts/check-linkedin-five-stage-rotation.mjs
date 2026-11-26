@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 const source=readFileSync('supabase/functions/linkedin-scheduler/index.ts','utf8')
 const services=['tax_preparation','bookkeeping','business_formation','time_clock','tax_resolution']
+const serviceBlock=source.slice(source.indexOf('const TAXRES_SERVICE_LIBRARY:'),source.indexOf('const ARCVENA_LIBRARY:'))
+assert(serviceBlock.length>0,'Service library block missing')
 for(const service of services){
-  const matches=source.split('category:"'+service+'",cta_type:').length-1
+  const matches=serviceBlock.split('category:"'+service+'",cta_type:').length-1
   assert.equal(matches,3,'Three original LinkedIn posts required for '+service)
 }
 assert(source.includes('const TAXRES_SERVICE_AREAS = ["tax_preparation","bookkeeping","business_formation","time_clock","tax_resolution"] as const'),'Five distinct services')
