@@ -43,6 +43,27 @@ const TAXRES_LIBRARY: Post[] = [
   {category:"team_management",cta_type:'website',title:"Employee permissions should follow responsibilities",body:"Not every employee needs access to every record or setting. A practical operations system gives each role the tools and information needed for the job while keeping sensitive settings and unrelated records restricted. Useful permissions reduce confusion.\n\nhttps://romylabs.com" },
 ]
 
+// Five distinct stages of the TaxRes CRM case lifecycle. Each stage has
+// multiple examples so the rolling queue can rotate without repeating copy.
+const TAXRES_WORKFLOW_STAGES = ["intake","investigation","casework","resolution","closeout"] as const
+const TAXRES_WORKFLOW_LIBRARY: Post[] = [
+  {category:"intake",cta_type:'demo',title:"Intake is where reliable casework starts",body:"Before a case becomes a deadline, it starts as a conversation. A useful intake captures the client's goals, the notices already received, missing records, who owns the follow-up, and the next appointment. Tax Res CRM keeps that intake context connected to the client record so the next team member does not have to start over.\n\nhttps://taxrescrm.net/demo"},
+  {category:"intake",cta_type:'demo',title:"The first client handoff should not lose the details",body:"A new client may contact the office by phone, web form, or referral. Intake works best when documents requested, appointments scheduled, notes taken, and assigned responsibilities follow that person into the working file. The point of a CRM is not simply capturing a lead; it is making that first handoff dependable.\n\nhttps://taxrescrm.net/demo"},
+  {category:"intake",cta_type:'demo',title:"Make the missing-document list visible from day one",body:"Intake slows down when outstanding documents live only in a text message or someone's inbox. A shared checklist, clear owner, due date, and client communication history help everyone see what is still needed. Strong intake creates the foundation for investigation and casework, not another spreadsheet to maintain.\n\nhttps://taxrescrm.net/demo"},
+  {category:"investigation",cta_type:'demo',title:"A good investigation starts with what you can verify",body:"Before recommending a next step on an IRS matter, the office needs to understand the notice, filing history, available transcripts, account status, authorizations, and important dates. Keeping those findings together makes investigation easier to review and less dependent on one employee remembering the details.\n\nhttps://taxrescrm.net/demo"},
+  {category:"investigation",cta_type:'demo',title:"The client's file should explain the numbers",body:"Transcript review can generate questions: which period is involved, which balance changed, what has already been assessed, and what still needs verification? An investigation workspace should connect the source documents, working notes, tasks, and follow-up questions instead of scattering them across email and spreadsheets.\n\nhttps://taxrescrm.net/demo"},
+  {category:"investigation",cta_type:'demo',title:"Investigations need ownership, not just documents",body:"Gathering records is only half the job. Someone must request missing information, review the response, track the deadline, and record what was learned. When investigation tasks are assigned and visible, an office can move from uncertainty to a documented case plan without repeatedly rebuilding the same timeline.\n\nhttps://taxrescrm.net/demo"},
+  {category:"casework",cta_type:'demo',title:"Active casework is a team workflow",body:"Once a matter is active, every agency contact, client update, requested document, deadline, and assigned task should have a place in the file. A shared case history helps the next person understand what happened yesterday and what must happen today without reconstructing the case from separate systems.\n\nhttps://taxrescrm.net/demo"},
+  {category:"casework",cta_type:'demo',title:"Case notes should answer the next-step question",body:"A useful case note records more than 'called the IRS.' It should capture who was contacted, the relevant outcome, promised documents, next action, and date to revisit the matter. Tax Res CRM is designed around that operational continuity so handoffs remain clear as cases move between staff.\n\nhttps://taxrescrm.net/demo"},
+  {category:"casework",cta_type:'demo',title:"Managing several open matters requires visibility",body:"A growing team needs to see which cases are awaiting the client, an agency response, an internal review, or a deadline. Tasks and case stages make those distinctions actionable. Better visibility is not about more dashboard numbers; it is about identifying the right next action for each client.\n\nhttps://taxrescrm.net/demo"},
+  {category:"resolution",cta_type:'demo',title:"Resolution decisions need a documented trail",body:"A resolution proposal is stronger when its supporting records, communications, financial intake, deadlines, and client approvals are easy to locate. The software should help staff organize and track the work while leaving professional judgment to the people handling the case. Documentation matters as much as the next call.\n\nhttps://taxrescrm.net/demo"},
+  {category:"resolution",cta_type:'demo',title:"Follow-through matters after the agency conversation",body:"An installment agreement, penalty request, or hardship discussion often produces another task: provide documents, confirm terms, monitor a response, or follow up with the client. Treating those next steps as assigned work keeps a resolution matter moving instead of relying on a note buried in an inbox.\n\nhttps://taxrescrm.net/demo"},
+  {category:"resolution",cta_type:'demo',title:"A clear case timeline makes complex work easier to review",body:"Tax resolution may involve notices, authorization forms, transcripts, financial records, collection deadlines, and repeated contact with an agency. Keeping each action connected to the right matter allows a manager to review the timeline and see what is still outstanding without making unsupported promises about outcomes.\n\nhttps://taxrescrm.net/demo"},
+  {category:"closeout",cta_type:'demo',title:"Case closeout should be a workflow of its own",body:"A case is not fully wrapped up just because the last call ended. The office may still need to confirm the outcome, save correspondence, document the client's instructions, reconcile billing, and assign any follow-up. A deliberate closeout process protects the history the team worked to build.\n\nhttps://taxrescrm.net/demo"},
+  {category:"closeout",cta_type:'demo',title:"Give the next employee a complete case history",body:"Months after a matter closes, someone may need to find a final notice, payment arrangement, signed form, or client instruction. Organized closeout means those records remain attached to the client and case rather than disappearing into personal folders. Clear archives make future service easier.\n\nhttps://taxrescrm.net/demo"},
+  {category:"closeout",cta_type:'demo',title:"The final client update deserves a checklist",body:"Good closeout communication explains what was completed, which documents the client should retain, and whether any monitoring or future action remains. When the update, supporting documents, and final tasks are recorded in one place, the office can close the matter confidently without losing operational context.\n\nhttps://taxrescrm.net/demo"},
+]
+
 const ARCVENA_LIBRARY: Post[] = [
   {category:'dispatch',cta_type:'website',title:'Dispatch should know more than who is available',body:`Good dispatching is not only about finding an open time slot. The office needs to match the right technician, job type, location, required skills, permit requirements, and expected duration.\n\nArcvena gives electrical contractors one operational view from scheduling through closeout—without stitching together five disconnected tools.\n\nSee the dispatch workflow at https://arcvena.com/dispatch`},
   {category:'workflow',cta_type:'website',title:'From lead to paid job without losing the handoff',body:`Every handoff creates risk: lead to estimate, estimate to job, office to technician, completed work to invoice.\n\nArcvena was designed to keep those transitions inside one electrical-contractor workflow. The result is clearer ownership, fewer missing details, and faster closeout.\n\nSee the electrician CRM workflow at https://arcvena.com/electrician-crm`},
@@ -92,7 +113,36 @@ async function generate(sb:any,now:Date,productId:string){
   const {data:existing,error}=await sb.from('linkedin_posts').select('scheduled_at,status').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).in('scheduled_at',times).not('status','eq','failed');if(error)throw error;
   const occupied=new Set((existing||[]).map((x:any)=>new Date(x.scheduled_at).toISOString())); const open=target.filter(s=>!occupied.has(new Date(s.iso).toISOString()));
   const bodies=history.map((x:any)=>x.body||''); const created:any[]=[],quarantined:any[]=[]; let cursor=Math.floor(now.getTime()/86400000)%library.length;
-  for(const slot of open){let source:Post|undefined;for(let tries=0;tries<library.length;tries++){const candidate=library[(cursor++)%library.length];if(validate(candidate,[...bodies,...created.map(x=>x.body||'')],productId).ok){source=candidate;break}}if(!source){quarantined.push({slot,reasons:['no_unique_valid_content']});continue}const post=utm(source,now,productId),check=validate(post,bodies,productId);if(!check.ok){quarantined.push({slot,title:post.title,reasons:check.reasons});continue}const {data,error:insertError}=await sb.from('linkedin_posts').insert({tenant_id:ADMIN_TENANT,product_id:productId,title:post.title,body:post.body,category:post.category,cta_type:post.cta_type,status:'approved',approved_at:now.toISOString(),scheduled_at:slot.iso,retry_count:0}).select('id,title,body,category,status,scheduled_at').single();if(insertError)quarantined.push({slot,title:post.title,reasons:[insertError.message]});else{created.push(data);bodies.push(post.body)}}
+  for(const slot of open){
+    let source:Post|undefined;
+    const usedBodies=[...bodies,...created.map(x=>x.body||'')];
+    // Mondays anchor the two-post weekly cadence. This yields Intake ->
+    // Investigation -> Casework -> Resolution -> Closeout across future
+    // Tuesday/Thursday slots, irrespective of when the cron runs.
+    if(productId===TAXRES_PRODUCT){
+      const scheduled=new Date(slot.iso);
+      const mondayWeek=Math.floor((scheduled.getTime()+3*86400000)/(7*86400000));
+      const step=mondayWeek*2+(scheduled.getUTCDay()===4?1:0);
+      const stage=TAXRES_WORKFLOW_STAGES[((step%5)+5)%5];
+      const options=TAXRES_WORKFLOW_LIBRARY.filter(p=>p.category===stage);
+      const start=((Math.floor(now.getTime()/86400000)%options.length)+options.length)%options.length;
+      for(let i=0;i<options.length;i++){
+        const candidate=options[(start+i)%options.length];
+        if(validate(candidate,usedBodies,productId).ok){source=candidate;break}
+      }
+    }
+    // Do not remove existing tax resolution or broader business content:
+    // it stays available as a safety fallback if all stage copy is recent.
+    if(!source)for(let tries=0;tries<library.length;tries++){
+      const candidate=library[(cursor++)%library.length];
+      if(validate(candidate,usedBodies,productId).ok){source=candidate;break}
+    }
+    if(!source){quarantined.push({slot,reasons:['no_unique_valid_content']});continue}
+    const post=utm(source,now,productId),check=validate(post,bodies,productId);
+    if(!check.ok){quarantined.push({slot,title:post.title,reasons:check.reasons});continue}
+    const {data,error:insertError}=await sb.from('linkedin_posts').insert({tenant_id:ADMIN_TENANT,product_id:productId,title:post.title,body:post.body,category:post.category,cta_type:post.cta_type,status:'approved',approved_at:now.toISOString(),scheduled_at:slot.iso,retry_count:0}).select('id,title,body,category,status,scheduled_at').single();
+    if(insertError)quarantined.push({slot,title:post.title,reasons:[insertError.message]});else{created.push(data);bodies.push(post.body)}
+  }
   return {created,quarantined,skipped:target.length-open.length,unsupported:false}
 }
 async function authorized(req:Request,sb:any,serviceKey:string){
@@ -147,7 +197,7 @@ Deno.serve(async(req)=>{
     if(action==='next_slots')return response({ok:true,slots:slots(now,8)})
     if(action==='generate_report')return response({ok:true,report:await report(sb,now,input.product_id)})
     if(action==='list_reports'){const productId=input.product_id||TAXRES_PRODUCT;const {data,error}=await sb.from('linkedin_weekly_reports').select('*').eq('tenant_id',ADMIN_TENANT).eq('product_id',productId).order('week_start',{ascending:false}).limit(12);if(error)throw error;return response({ok:true,reports:data||[]})}
-    if(action==='generate_monday_drafts'||action==='generate_content'){const productId=input.product_id||TAXRES_PRODUCT;const x=await generate(sb,now,productId);if(x.unsupported)return response({ok:false,error:'no_content_library_for_product',product_id:productId},400);if(x.quarantined.length && clock.day==='Mon' && clock.hour===7)await alert(sb,`LinkedIn autopilot [${productId}]: content withheld`,`<p>${x.quarantined.length} post(s) failed automated validation and were not approved.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);return response({ok:true,autopilot:true,product_id:productId,...x})}
+    if(action==='generate_monday_drafts'||action==='generate_content'){const productId=input.product_id||TAXRES_PRODUCT;const x=await generate(sb,now,productId);if(x.unsupported)return response({ok:false,error:'no_content_library_for_product',product_id:productId},400);if(x.quarantined.length && et(now).day==='Mon' && et(now).hour===7)await alert(sb,`LinkedIn autopilot [${productId}]: content withheld`,`<p>${x.quarantined.length} post(s) failed automated validation and were not approved.</p><pre>${JSON.stringify(x.quarantined,null,2)}</pre>`);return response({ok:true,autopilot:true,product_id:productId,...x})}
     if(action!=='run')return response({ok:false,error:'unknown_action'},400)
 
     const clock=et(now),result:any={ok:true,autopilot:true,generated:0,quarantined:0,skipped:0,products_skipped:[]};
