@@ -31,7 +31,7 @@ check(api,'copy.additional_text','Additional customization must reach email temp
 check(api,'copy.closing_text','Closing customization must reach email template')
 check(api,'escapeHtml(copy.additional_text)','Custom text must be HTML-escaped')
 check(api,'const industry=escapeHtml(INDUSTRY_DESCRIPTORS','Fix undefined industry at runtime')
-check(api,"'editable reminder content could not be loaded'",'Failed editor lookup must block outdated sends')
+check(api,"if(customError){outcomes.push({account_id:a.id,result:'reminder_settings_unavailable'});continue}",'Failed editor lookup must block outdated sends')
 check(api,"const subject=brand.name+' — '",'Subject must retain originating CRM name')
 check(api,'String.fromCharCode(13)','Custom subject must strip CR')
 check(api,'String.fromCharCode(10)','Custom subject and message must safely handle LF')
