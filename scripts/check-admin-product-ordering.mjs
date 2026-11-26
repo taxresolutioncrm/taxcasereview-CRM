@@ -33,4 +33,7 @@ assert(admin.includes('const filtered = placeBuildingCRMsAfterHealth('),
   'Products tab must use final consistent product order')
 assert(admin.includes('const products = placeBuildingCRMsAfterHealth(mergeProductRegistry(reportingProducts))'),
   'Dashboard portfolio must use the same product order')
+assert(!admin.includes("key:       'contractors'"),'Merged standalone Contractors CRM must not reappear in portfolio')
+assert(admin.includes("key:        'restore_relay'"),'Restore Relay must remain listed')
+assert(admin.includes("industry:   'Restoration & Roofing'"),'Restore Relay identity must remain intact')
 console.log('PASS Admin Portal: PoolVerge Live; SettleLift directly below PoolVerge; filtered views safe')
