@@ -3822,14 +3822,14 @@ const PRODUCT_REGISTRY = [
     url:        null,
     appUrl:     null,
     websiteUrl: 'https://poolverge.com',
-    lifecycleStage: 'building',
+    lifecycleStage: 'live',
     connection:     'not_connected',
     brandStatus:    'approved',
     publicOnRomyLabs: false,
     commerciallyAvailable: false,
     desc:      'Mobile-first CRM for pool service companies — customers, routes, scheduling, field work, billing, communications, and team operations.',
     metricsUrl: null,
-    nextMilestone: 'Finish product build, connect Supabase, then enable live platform metrics',
+    nextMilestone: 'Connect and verify production CRM metrics feed',
     priorityRank:   3,
   },
   {
@@ -6578,8 +6578,7 @@ function CommandCenter() {
 
           {/* ── Portfolio Grid (compact — not a duplicate of Products tab) ── */}
           {(() => {
-            // Dashboard portfolio must use the same final Building placement as Products.
-            // SettleLift belongs directly below Health Insurance, ahead of Research.
+            // Dashboard portfolio uses the same PoolVerge / SettleLift placement as Products.
             const products = placeBuildingCRMsAfterHealth(mergeProductRegistry(reportingProducts))
             const LIFECYCLE_COLOR = { live:'#10b981', available:'#10b981', coming:'#8b5cf6', building:'#f59e0b', research:'#64748b', internal:'#475569' }
             const LIFECYCLE_LABEL = { live:'✅ Live', available:'🟢 Available', coming:'🔜 Coming Soon', building:'🔨 Building', research:'🔬 Research', internal:'🔒 Internal' }

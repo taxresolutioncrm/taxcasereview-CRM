@@ -1,38 +1,36 @@
 import assert from 'node:assert/strict'
-import { placeBuildingCRMsAfterHealth } from '../src/lib/adminProductOrdering.js'
+import {readFileSync} from 'node:fs'
+import {placeBuildingCRMsAfterHealth} from '../src/lib/adminProductOrdering.js'
 
-const product = (key,lifecycleStage='building',extra={}) => ({key,lifecycleStage,...extra})
-const items = [
-  product('taxres_crm','live'),
-  product('health_insurance'),
-  product('barbers_salons'),
-  product('home_care','research'),
-  product('veterinary','research'),
-  product('settlelift'),
-  product('other_business','building')
+const p=(key,lifecycleStage='building',extra={})=>({key,lifecycleStage,...extra})
+const full=[
+  p('restore_relay','live'),p('pool_crm','live'),
+  p('health_insurance'),p('barbers_salons'),p('home_care','research'),
+  p('veterinary','research'),p('settlelift','live'),p('med_spa','research')
 ]
-const result=placeBuildingCRMsAfterHealth(items)
-const keys=result.map(x=>x.key)
-assert.deepEqual(keys.slice(keys.indexOf('health_insurance'),keys.indexOf('health_insurance')+3),
-  ['health_insurance','settlelift','barbers_salons'],
-  'SettleLift must be directly below Health Insurance and above ChairStyle')
-assert(keys.indexOf('settlelift') < keys.indexOf('home_care'),'SettleLift must appear above research')
-assert(keys.indexOf('settlelift') < keys.indexOf('veterinary'),'SettleLift must appear above veterinary research')
-assert.equal(new Set(keys).size,keys.length,'Placement must not duplicate records')
-assert.deepEqual(placeBuildingCRMsAfterHealth(result).map(x=>x.key),keys,'Placement must be idempotent')
-assert.deepEqual(placeBuildingCRMsAfterHealth(items.filter(x=>x.key!=='health_insurance')),items.filter(x=>x.key!=='health_insurance'),
-  'Do not insert products into filters where Health Insurance is absent')
-assert.deepEqual(placeBuildingCRMsAfterHealth([product('health_insurance','live'),product('settlelift')]).map(x=>x.key),
-  ['health_insurance','settlelift'],'Do not reposition products if lifecycle status changes')
-// Guard the exact dashboard Product Portfolio table shown in the incident screenshot.
-// The Products tab and dashboard are separate renderers and must both apply this helper.
-const fs = await import('node:fs')
-const adminPortalSource = fs.readFileSync('src/pages/AdminPortal.jsx','utf8')
-const dashboardStart = adminPortalSource.indexOf('{/* ── Portfolio Grid (compact — not a duplicate of Products tab) ── */}')
-assert(dashboardStart >= 0, 'Dashboard Product Portfolio section missing')
-const dashboardSection = adminPortalSource.slice(dashboardStart, dashboardStart + 1800)
-assert(dashboardSection.includes('const products = placeBuildingCRMsAfterHealth(mergeProductRegistry(reportingProducts))'),
-  'Dashboard Product Portfolio must apply the same final Building order as Products tab')
-assert(adminPortalSource.includes('const filtered = placeBuildingCRMsAfterHealth('),
-  'Products tab must preserve its existing Building order fix')
-console.log('PASS Admin Portal Building order: Health Insurance > SettleLift > ChairStyle > Research')
+const ordered=placeBuildingCRMsAfterHealth(full)
+const keys=ordered.map(x=>x.key)
+assert.deepEqual(keys.slice(keys.indexOf('pool_crm'),keys.indexOf('pool_crm')+2),['pool_crm','settlelift'],
+  'SettleLift must appear immediately after PoolVerge regardless of lifecycle')
+assert.deepEqual(keys.slice(keys.indexOf('health_insurance'),keys.indexOf('health_insurance')+2),
+  ['health_insurance','barbers_salons'],'ChairStyle must remain directly under Health Insurance')
+assert(keys.indexOf('settlelift')<keys.indexOf('home_care'),'SettleLift must stay above Research')
+assert.equal(new Set(keys).size,keys.length,'Product rows must not duplicate')
+assert.deepEqual(placeBuildingCRMsAfterHealth(ordered),ordered,'Placement must be idempotent')
+assert.deepEqual(placeBuildingCRMsAfterHealth([p('pool_crm','live'),p('settlelift','live')]).map(x=>x.key),
+  ['pool_crm','settlelift'],'PoolVerge/SettleLift pair must work without Health Insurance')
+const filtered=[p('settlelift','live'),p('restore_relay','live')]
+assert.deepEqual(placeBuildingCRMsAfterHealth(filtered),filtered,
+  'Do not insert or reorder a missing PoolVerge in filtered views')
+const admin=readFileSync('src/pages/AdminPortal.jsx','utf8')
+const poolStart=admin.indexOf("key:        'pool_crm'")
+const poolEnd=admin.indexOf('\n  },',poolStart)
+assert(poolStart>=0&&poolEnd>poolStart,'PoolVerge product definition must exist')
+const pool=admin.slice(poolStart,poolEnd)
+assert(pool.includes("lifecycleStage: 'live'"),'PoolVerge is built, not Building')
+assert(pool.includes("connection:     'not_connected'"),'Do not falsely claim CRM metrics are connected')
+assert(admin.includes('const filtered = placeBuildingCRMsAfterHealth('),
+  'Products tab must use final consistent product order')
+assert(admin.includes('const products = placeBuildingCRMsAfterHealth(mergeProductRegistry(reportingProducts))'),
+  'Dashboard portfolio must use the same product order')
+console.log('PASS Admin Portal: PoolVerge Live; SettleLift directly below PoolVerge; filtered views safe')
