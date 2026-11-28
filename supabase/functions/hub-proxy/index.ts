@@ -240,8 +240,10 @@ Deno.serve(async (req) => {
         const fallbackSecret = hubSecret
         // Camvella accepts either support or hub credentials; send the hub credential
         // even when a possibly stale product-specific support secret is configured.
-        if (productKey === 'camvella' && !supportSecret) return { status:503, data:null, error:'Camvella support secret missing in central proxy' }
-        if (productKey === 'arcvena') {
+        if (productKey === 'camvella') {
+          if (supportSecret) productHeaders['x-romylabs-support-secret'] = supportSecret
+          if (fallbackSecret) productHeaders['x-hub-secret'] = fallbackSecret
+        } else if (productKey === 'arcvena') {
           if (supportSecret) productHeaders['x-arcvena-support-secret'] = supportSecret
           else productHeaders['x-hub-secret'] = fallbackSecret
         } else {
