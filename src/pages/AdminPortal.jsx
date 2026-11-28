@@ -126,6 +126,18 @@ let platformOfficeRowsCache = null
 let platformOfficeRowsCacheAt = 0
 let platformOfficeRowsInflight = null
 const PLATFORM_OFFICE_CACHE_MS = 20000
+const PLATFORM_BATCH_BUDGET_MS = 12000
+
+function fetchPlatformOfficeDirectory() {
+  return Promise.all([
+    supabase.rpc('admin_tenant_overview'),
+    supabase.rpc('admin_romylabs_office_registry'),
+    supabase.rpc('admin_romylabs_billing_totals'),
+    supabase.from('romylabs_products')
+      .select('product_id,name,accent_color,app_url,lifecycle,active,sort_order')
+      .eq('active', true),
+  ])
+}
 
 async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPromise = null } = {}) {
   const [
@@ -133,14 +145,7 @@ async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPro
     { data: registryData, error: registryError },
     { data: billingData, error: billingError },
     { data: productRows, error: productError },
-  ] = await (directoryPromise || Promise.all([
-    supabase.rpc('admin_tenant_overview'),
-    supabase.rpc('admin_romylabs_office_registry'),
-    supabase.rpc('admin_romylabs_billing_totals'),
-    supabase.from('romylabs_products')
-      .select('product_id,name,accent_color,app_url,lifecycle,active,sort_order')
-      .eq('active', true),
-  ]))
+  ] = await (directoryPromise || fetchPlatformOfficeDirectory())
   if (taxresError) throw taxresError
   if (billingError) throw billingError
   if (productError) throw productError
@@ -190,7 +195,7 @@ async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPro
   // romylabs_products. Its authenticated hub feed must still be included.
   // Treat the existing registry as display metadata, never read Nashville tables.
   externalProductConfigs.nashville ||= EXTERNAL_OFFICE_PRODUCTS.nashville
-  const productKeys = Object.keys(externalProductConfigs)
+  const productKeys = Object.keys(externalProductConfigs).filter(key => key === 'nashville' || ['live','available'].includes(String((productRows || []).find(p => p.product_id === key)?.lifecycle || '').toLowerCase()))
 
   // One authenticated hub call fetches all products concurrently server-side.
   // If the batch path is unavailable for any reason, fall back to the existing
@@ -212,7 +217,7 @@ async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPro
       supabase.functions.invoke('hub-proxy', {
         body:{ action:'metrics_batch', products:requestedProducts },
       }),
-      'hub metrics batch',
+      'hub metrics batch', PLATFORM_BATCH_BUDGET_MS,
     )
     batchData = response.data
     batchError = response.error
@@ -656,14 +661,14 @@ async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPro
   return { rows, warnings:[...new Set(warnings)], externalMetrics }
 }
 
-async function loadPlatformOfficeRows(forceRefresh = false) {
+async function loadPlatformOfficeRows(forceRefresh = false, directoryPromise = null) {
   const now = Date.now()
   if (!forceRefresh && platformOfficeRowsCache && now - platformOfficeRowsCacheAt < PLATFORM_OFFICE_CACHE_MS) {
     return platformOfficeRowsCache
   }
   if (platformOfficeRowsInflight) return platformOfficeRowsInflight
 
-  platformOfficeRowsInflight = loadPlatformOfficeRowsFresh()
+  platformOfficeRowsInflight = loadPlatformOfficeRowsFresh({directoryPromise})
     .then(result => {
       platformOfficeRowsCache = result
       platformOfficeRowsCacheAt = Date.now()
@@ -1195,13 +1200,14 @@ function Overview() {
     let cancelled=false
     ;(async()=>{
       try {
-        if (!platformOfficeRowsCache) {
-          const directory = await loadPlatformOfficeRowsFresh({directoryOnly:true})
+        const directoryPromise = !platformOfficeRowsCache ? fetchPlatformOfficeDirectory() : null
+        if (directoryPromise) {
+          const directory = await loadPlatformOfficeRowsFresh({directoryOnly:true,directoryPromise})
           if (cancelled) return
           setStats(directory.rows)
           setMetricsWarnings(directory.warnings)
         }
-        const { rows, warnings, externalMetrics: productMetrics } = await loadPlatformOfficeRows()
+        const { rows, warnings, externalMetrics: productMetrics } = await loadPlatformOfficeRows(false,directoryPromise)
         if(cancelled) return
         setStats(rows)
         setExternalMetrics(productMetrics)
@@ -1212,6 +1218,7 @@ function Overview() {
       } catch(error) {
         if(cancelled) return
         setStats(current => current || [])
+        setMetricsWarnings(current => [...current.filter(w => !w.startsWith('Live CRM metrics are being refreshed')), 'Live CRM metrics unavailable: ' + (error?.message || 'refresh failed')])
         setLoadError(error?.message || 'Unable to load platform offices')
       } finally {
         if (!cancelled) setInitialMetricsPending(false)
@@ -1480,9 +1487,9 @@ function Overview() {
   const KPI = [
     { label:'Monthly Recurring', val: `$${totalMRR.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:'MRR', color:'#10b981' },
     { label:'Active Offices',    val: activeOff, sub:`${operatingStats.length} total`, color:'#6366f1' },
-    { label:'Total Seats',       val: totalSeats, sub:'across all firms', color:'#f59e0b' },
-    { label:'Total Clients',     val: totalClients.toLocaleString(), sub:`${totalLeads} leads`, color:'#0ea5e9' },
-    { label:'Storage Used',      val: fmtBytes(totalStorage), sub:'documents', color:'#8b5cf6' },
+    { label:'Total Seats',       val: initialMetricsPending ? '…' : totalSeats, sub:'across all firms', color:'#f59e0b' },
+    { label:'Total Clients',     val: initialMetricsPending ? '…' : totalClients.toLocaleString(), sub:initialMetricsPending ? 'Refreshing CRM metrics' : `${totalLeads} leads`, color:'#0ea5e9' },
+    { label:'Storage Used',      val: initialMetricsPending ? '…' : fmtBytes(totalStorage), sub:'documents', color:'#8b5cf6' },
     { label:'Total Collected',    val: `$${totalCollected.toLocaleString('en-US',{maximumFractionDigits:0})}`, sub:`${totalTx.toLocaleString()} transactions`, color:'#10b981' },
   ]
 
@@ -1503,7 +1510,7 @@ function Overview() {
           <div key={k.label} style={{ ...S.card, padding:'20px 18px' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8 }}>
               <div style={{ fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.06em' }}>{k.label}</div>
-              {k.label === 'Storage Used' && <button type="button" onClick={refreshAllMetrics} disabled={refreshingMetrics || stats===null} title="Refresh all CRM metrics now" aria-label="Refresh all CRM metrics" style={{ border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.08)', color:'#c4b5fd', borderRadius:7, padding:'4px 7px', fontSize:11, cursor:refreshingMetrics?'wait':'pointer', opacity:refreshingMetrics?.6:1 }}>{refreshingMetrics ? 'Refreshing…' : '↻ Refresh'}</button>}
+              {k.label === 'Storage Used' && <button type="button" onClick={refreshAllMetrics} disabled={refreshingMetrics || initialMetricsPending || stats===null} title="Refresh all CRM metrics now" aria-label="Refresh all CRM metrics" style={{ border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.08)', color:'#c4b5fd', borderRadius:7, padding:'4px 7px', fontSize:11, cursor:refreshingMetrics?'wait':'pointer', opacity:refreshingMetrics?.6:1 }}>{refreshingMetrics ? 'Refreshing…' : '↻ Refresh'}</button>}
             </div>
             <div style={{ fontSize:28, fontWeight:900, color:k.color, lineHeight:1 }}>{stats===null?'…':k.val}</div>
             <div style={{ fontSize:11, color:'#475569', marginTop:4 }}>{k.sub}</div>
@@ -5871,7 +5878,7 @@ function CommandCenter() {
         const next = {}
         for (const key of keys) {
           const item = body?.results?.[key]
-          const ok = !!item && !item.error && Number(item.status||0)>=200 && Number(item.status||0)<300 && item.data?.ok !== false
+          const ok = !!item && !item.error && Number(item.status||0)>=200 && Number(item.status||0)<300 && item.data?.ok !== false && !!item.data && !item.stale
           next[key] = ok ? {status:'connected',checkedAt,error:null} : {status:'partial',checkedAt,error:item?.error || item?.data?.error || 'Metrics endpoint unavailable'}
         }
         if (!cancelled) { setPortfolioCrmStatus(next); setPortfolioCrmCheckedAt(checkedAt) }
