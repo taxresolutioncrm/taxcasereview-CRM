@@ -127,20 +127,20 @@ let platformOfficeRowsCacheAt = 0
 let platformOfficeRowsInflight = null
 const PLATFORM_OFFICE_CACHE_MS = 20000
 
-async function loadPlatformOfficeRowsFresh() {
+async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPromise = null } = {}) {
   const [
     { data: taxresRows, error: taxresError },
     { data: registryData, error: registryError },
     { data: billingData, error: billingError },
     { data: productRows, error: productError },
-  ] = await Promise.all([
+  ] = await (directoryPromise || Promise.all([
     supabase.rpc('admin_tenant_overview'),
     supabase.rpc('admin_romylabs_office_registry'),
     supabase.rpc('admin_romylabs_billing_totals'),
     supabase.from('romylabs_products')
       .select('product_id,name,accent_color,app_url,lifecycle,active,sort_order')
       .eq('active', true),
-  ])
+  ]))
   if (taxresError) throw taxresError
   if (billingError) throw billingError
   if (productError) throw productError
@@ -201,6 +201,9 @@ async function loadPlatformOfficeRowsFresh() {
     new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)),
   ])
 
+  let tenantFeedResults = []
+  let results = []
+  if (!directoryOnly) {
   let batchData = null
   let batchError = null
   let batchTimedOut = false
@@ -218,8 +221,6 @@ async function loadPlatformOfficeRowsFresh() {
     batchTimedOut = /timed out/i.test(String(error?.message || error))
   }
 
-  let tenantFeedResults
-  let results
   if (!batchError && batchData?.ok && batchData?.results) {
     tenantFeedResults = taxResTenantFeeds.map(feed => {
       const item = batchData.results[feed.key] || {}
@@ -282,10 +283,14 @@ async function loadPlatformOfficeRowsFresh() {
     results = results.map(item => byKey.has(item.productKey) ? { ...item, ...byKey.get(item.productKey) } : item)
   }
 
+  } else {
+    warnings.push('Live CRM metrics are being refreshed; directory and billing data only.')
+  }
+
   // The platform metrics cache exposes when an external CRM last supplied
   // trustworthy source data. A stale stored zero must never look like a fresh
   // measurement merely because the Admin Portal loaded today.
-  const {data:metricsCacheRows,error:metricsCacheError}=await supabase
+  const {data:metricsCacheRows,error:metricsCacheError}=directoryOnly ? {data:[],error:null} : await supabase
     .from('romylabs_metrics_cache').select('product_key,updated_at')
   const metricSyncByProduct=new Map((metricsCacheRows||[]).map(row=>[String(row.product_key),row.updated_at]))
   const isMetricCacheStale=key=>{
@@ -1173,6 +1178,7 @@ function AdminDialer() {
 // ── Overview ─────────────────────────────────────────────────────────────────
 function Overview() {
   const [stats, setStats] = useState(null)
+  const [initialMetricsPending, setInitialMetricsPending] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [metricsWarnings, setMetricsWarnings] = useState([])
   const [refreshingMetrics, setRefreshingMetrics] = useState(false)
@@ -1189,6 +1195,12 @@ function Overview() {
     let cancelled=false
     ;(async()=>{
       try {
+        if (!platformOfficeRowsCache) {
+          const directory = await loadPlatformOfficeRowsFresh({directoryOnly:true})
+          if (cancelled) return
+          setStats(directory.rows)
+          setMetricsWarnings(directory.warnings)
+        }
         const { rows, warnings, externalMetrics: productMetrics } = await loadPlatformOfficeRows()
         if(cancelled) return
         setStats(rows)
@@ -1199,17 +1211,17 @@ function Overview() {
         setLoadError('')
       } catch(error) {
         if(cancelled) return
-        setStats([])
-        setMetricsWarnings([])
-        setExternalMetrics({ active_staff:0, active_clients:0, active_leads:0, storage_bytes:0 })
+        setStats(current => current || [])
         setLoadError(error?.message || 'Unable to load platform offices')
+      } finally {
+        if (!cancelled) setInitialMetricsPending(false)
       }
     })()
     return()=>{cancelled=true}
   }, [user])
 
   const refreshAllMetrics = async () => {
-    if (refreshingMetrics) return
+    if (refreshingMetrics || initialMetricsPending) return
     setRefreshingMetrics(true)
     setRefreshError('')
     try {
@@ -5845,8 +5857,7 @@ function CommandCenter() {
     let cancelled = false
     ;(async () => {
       try {
-        const refreshed = await supabase.auth.refreshSession()
-        const activeSession = refreshed?.data?.session || (await supabase.auth.getSession())?.data?.session
+        const activeSession = (await supabase.auth.getSession())?.data?.session
         const token = activeSession?.access_token
         if (!token) throw new Error('Admin session unavailable')
         const res = await fetch('https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy', {
