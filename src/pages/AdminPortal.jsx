@@ -127,6 +127,15 @@ let platformOfficeRowsCacheAt = 0
 let platformOfficeRowsInflight = null
 const PLATFORM_OFFICE_CACHE_MS = 20000
 const PLATFORM_BATCH_BUDGET_MS = 12000
+const platformMetricsRequests = new Map()
+function requestPlatformMetricsBatch(products) {
+  const key = [...new Set(products)].sort().join(',')
+  if (platformMetricsRequests.has(key)) return platformMetricsRequests.get(key)
+  const request = Promise.resolve(supabase.functions.invoke('hub-proxy', {body:{action:'metrics_batch',products:[...new Set(products)]}}))
+    .finally(() => platformMetricsRequests.delete(key))
+  platformMetricsRequests.set(key, request)
+  return request
+}
 
 function fetchPlatformOfficeDirectory() {
   return Promise.all([
@@ -200,7 +209,7 @@ async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPro
   // One authenticated hub call fetches all products concurrently server-side.
   // If the batch path is unavailable for any reason, fall back to the existing
   // per-product parallel calls so reporting behavior never depends on batching.
-  const requestedProducts = [...taxResTenantFeeds.map(feed => feed.key), ...productKeys]
+  const requestedProducts = ['taxres_crm', ...taxResTenantFeeds.map(feed => feed.key), ...productKeys]
   const metricsTimeout = (promise, label, ms = 4000) => Promise.race([
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms)),
@@ -214,9 +223,7 @@ async function loadPlatformOfficeRowsFresh({ directoryOnly = false, directoryPro
   let batchTimedOut = false
   try {
     const response = await metricsTimeout(
-      supabase.functions.invoke('hub-proxy', {
-        body:{ action:'metrics_batch', products:requestedProducts },
-      }),
+      requestPlatformMetricsBatch(requestedProducts),
       'hub metrics batch', PLATFORM_BATCH_BUDGET_MS,
     )
     batchData = response.data
@@ -5866,22 +5873,14 @@ function CommandCenter() {
     let cancelled = false
     ;(async () => {
       try {
-        const activeSession = (await supabase.auth.getSession())?.data?.session
-        const token = activeSession?.access_token
-        if (!token) throw new Error('Admin session unavailable')
-        const res = await fetch('https://mpxgxfqdbquzkrvvejkh.supabase.co/functions/v1/hub-proxy', {
-          method:'POST',
-          headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-          body:JSON.stringify({action:'metrics_batch',products:keys}),
-        })
-        const body = await res.json().catch(() => ({}))
-        if (!res.ok || body?.ok === false) throw new Error(body?.error || `Metrics batch failed (${res.status})`)
+        const {data:body,error} = await requestPlatformMetricsBatch([...keys,'tax_case_review','demo','nashville'])
+        if (error || !body?.ok) throw new Error(error?.message || body?.error || 'Metrics batch failed')
         const checkedAt = new Date().toISOString()
         const next = {}
         for (const key of keys) {
           const item = body?.results?.[key]
           const ok = !!item && !item.error && Number(item.status||0)>=200 && Number(item.status||0)<300 && item.data?.ok !== false && !!item.data && !item.stale
-          next[key] = ok ? {status:'connected',checkedAt,error:null} : {status:'partial',checkedAt,error:item?.error || item?.data?.error || 'Metrics endpoint unavailable'}
+          next[key] = ok ? {status:'connected',checkedAt,error:null} : {status:'partial',checkedAt,error:item?.error || item?.data?.error || (item?.stale ? 'Cached metrics; live endpoint unavailable' : 'Metrics endpoint unavailable')}
         }
         if (!cancelled) { setPortfolioCrmStatus(next); setPortfolioCrmCheckedAt(checkedAt) }
       } catch (e) {
