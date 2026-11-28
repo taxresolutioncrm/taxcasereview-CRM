@@ -5620,7 +5620,9 @@ function CommandCenter() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') || 'overview'
   const setTab = (key) => setSearchParams({ tab: key }, { replace: false })
-  const [data, setData] = useState(null)
+  const [commandData, setData] = useState(null)
+  const [commandRetry, setCommandRetry] = useState(0)
+  const data = commandData || { greeting:new Date().getHours()<12?'Good morning':new Date().getHours()<17?'Good afternoon':'Good evening', todayDate:new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) }
   const [crmProduct, setCrmProduct] = useState('taxres_crm')
   const [crmAccount, setCrmAccount] = useState('all')
   const [crmRemoteData, setCrmRemoteData] = useState(null)
@@ -5807,7 +5809,7 @@ function CommandCenter() {
       }
     }
     load()
-  }, [])
+  }, [commandRetry])
 
   // ── Reporting registry — dynamic product list from romylabs_products ──
   React.useEffect(() => {
@@ -6434,18 +6436,18 @@ function CommandCenter() {
     if (tab==='marketing' && ga4EnabledProducts.includes(marketingProduct)) loadGA4()
   }, [tab, marketingProduct, ga4EnabledProducts])
 
-  if (loadError) return (
+  if (loadError && tab !== 'overview') return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'80vh' }}>
       <div style={{ textAlign:'center', maxWidth:500 }}>
         <div style={{ fontSize:32, marginBottom:12 }}>⚠️</div>
         <div style={{ fontSize:16, color:'#ef4444', fontWeight:700, marginBottom:8 }}>Command Center failed to load</div>
         <div style={{ fontSize:12, color:'#475569', fontFamily:'monospace', background:'rgba(0,0,0,.3)', padding:12, borderRadius:8, textAlign:'left', wordBreak:'break-all' }}>{loadError}</div>
-        <button onClick={() => { setLoadError(null); setData(null); }} style={{ ...S.btn('primary'), marginTop:16 }}>Retry</button>
+        <button onClick={() => { setLoadError(null); setData(null); setCommandRetry(n=>n+1); }} style={{ ...S.btn('primary'), marginTop:16 }}>Retry</button>
       </div>
     </div>
   )
 
-  if (!data) return (
+  if (!commandData && tab !== 'overview') return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'80vh' }}>
       <div style={{ textAlign:'center' }}>
         <div style={{ fontSize:32, marginBottom:12 }}>⚡</div>
@@ -6507,6 +6509,7 @@ function CommandCenter() {
 
         {/* ═══ OVERVIEW TAB — RomyLabs Portfolio Level ═══ */}
         {tab==='overview' && (<>
+          {loadError && <div role="status" style={{color:'#fbbf24',marginBottom:12}}>Some Command Center details are unavailable. <button onClick={()=>{setLoadError(null);setCommandRetry(n=>n+1)}} style={S.btn('ghost')}>Retry</button></div>}
 
           {/* ── Portfolio Scorecard ───────────────────────────────────────── */}
           {(() => {
@@ -6732,7 +6735,7 @@ function CommandCenter() {
             <div style={CC.card({padding:'22px 24px'})}>
               <div style={CC.sectionLabel}>Romy's schedule today</div>
               <div style={{ fontSize:9, color:'#334155', marginBottom:10 }}>RomyLabs platform calendar — all products</div>
-              {data.todaySchedule.length===0
+              {!commandData ? <div style={{color:'#64748b'}}>Schedule {loadError?'unavailable':'loading…'}</div> : data.todaySchedule.length===0
                 ? <div style={{ fontSize:13, color:'#475569' }}>Nothing on the calendar today.</div>
                 : data.todaySchedule.map((e,i) => (
                 <div key={i} style={{ display:'flex', gap:12, padding:'9px 0',
